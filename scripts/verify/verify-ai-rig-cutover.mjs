@@ -30,15 +30,22 @@ function assert(condition, message) {
   if (!condition) failures.push(message);
 }
 
-const catalogPath = "crates/modules/rustok-ai/contracts/rig-0.39-provider-catalog.json";
-const cassettePath = "crates/modules/rustok-ai/contracts/rig-0.39-stream-cassettes.json";
+const catalogPath = "crates/modules/rustok-ai/contracts/provider-catalog.json";
+const cassettePath = "crates/modules/rustok-ai/contracts/stream-cassettes.json";
 assert(existsSync(repoPath(catalogPath)), `missing ${catalogPath}`);
 assert(existsSync(repoPath(cassettePath)), `missing ${cassettePath}`);
 
 if (failures.length === 0) {
   const catalog = JSON.parse(read(catalogPath));
   const cassettes = JSON.parse(read(cassettePath));
-  assert(catalog.rig_version === "0.39.0", "provider catalog must stay pinned to Rig 0.39.0");
+  const manifest = read("Cargo.toml");
+  const rigPin = manifest.match(/^rig\s*=\s*\{[^\n]*version\s*=\s*"=([^"]+)"/m)?.[1];
+  assert(Boolean(rigPin), "workspace Rig must have an exact version pin");
+  assert(catalog.rig_version === rigPin, "provider catalog must match the workspace Rig pin");
+  for (const companion of ["rig-bedrock", "rig-fastembed", "rig-gemini-grpc", "rig-vertexai"]) {
+    const pin = manifest.match(new RegExp(`^${companion}\\s*=\\s*"=([^"]+)"`, "m"))?.[1];
+    assert(pin === rigPin, `${companion} must match the workspace Rig pin`);
+  }
   assert(cassettes.rig_version === catalog.rig_version, "stream cassettes must match provider catalog Rig version");
   const families = cassettes.cassettes.map((cassette) => cassette.family).sort();
   assert(
@@ -50,7 +57,6 @@ if (failures.length === 0) {
 const catalogSource = read("crates/modules/rustok-ai/src/engine/catalog.rs");
 const inferenceSource = read("crates/modules/rustok-ai/src/engine/inference.rs");
 assert(catalogSource.includes("enum ProviderIntegration"), "typed ProviderIntegration dispatch is required");
-assert(catalogSource.includes("catalog_matches_the_rig_0_39_registry_snapshot"), "Rig snapshot test is required");
 assert(inferenceSource.includes("match integration"), "inference factory must dispatch by ProviderIntegration");
 
 const forbidden = ["ModelProvider", "OpenAiCompatibleProvider", "AnthropicProvider", "GeminiProvider", "AiRuntime"];

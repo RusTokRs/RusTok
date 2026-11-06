@@ -1,11 +1,8 @@
+use super::inference::{bedrock_runtime, gemini_grpc_runtime, llamacpp_base_url, openai_config};
 use rig::{
-    client::{EmbeddingsClient, RerankingClient},
-    embeddings::EmbeddingModel,
-    providers::{
-        azure, cohere, copilot, gemini, llamafile, mistral, ollama, openai, openrouter, together,
-        voyageai,
-    },
-    rerank::RerankModel,
+    DynModel,
+    operation::{Embedding, Rerank},
+    providers::{cohere, copilot, gemini, ollama, openai, voyageai},
 };
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
@@ -25,8 +22,8 @@ pub struct EmbeddingRequest {
 pub struct EmbeddingResponse {
     pub documents: Vec<String>,
     pub vectors: Vec<Vec<f64>>,
-    pub input_tokens: u64,
-    pub total_tokens: u64,
+    pub input_tokens: Option<u64>,
+    pub total_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,8 +45,8 @@ pub struct RerankItem {
 pub struct RerankResponse {
     pub model: String,
     pub items: Vec<RerankItem>,
-    pub input_tokens: u64,
-    pub total_tokens: u64,
+    pub input_tokens: Option<u64>,
+    pub total_tokens: Option<u64>,
 }
 
 pub async fn embed(
@@ -69,128 +66,133 @@ pub async fn embed(
         .unwrap_or("");
     let base_url = setting_str(config, "base_url").unwrap_or("");
 
+    if request.dimensions == Some(0) {
+        return Err(AiError::Validation(
+            "embedding dimensions must be positive".to_string(),
+        ));
+    }
     macro_rules! keyed_embed {
-        ($provider:ident) => {{
-            let mut builder = $provider::Client::builder().api_key(api_key);
-            if !base_url.is_empty() {
-                builder = builder.base_url(base_url);
-            }
-            let client = builder
-                .build()
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            let model = match request.dimensions {
-                Some(dimensions) => {
-                    client.embedding_model_with_ndims(request.model.clone(), dimensions)
-                }
-                None => client.embedding_model(request.model.clone()),
-            };
-            embed_with(model, request.documents).await
+        ($dialect:expr) => {{
+            let client = openai_config($dialect, api_key, base_url).client();
+            embed_with(
+                client.embedding(request.model, request.dimensions).erase(),
+                request.documents,
+            )
+            .await
         }};
     }
-
     let integration = ProviderIntegration::from_slug(&config.provider_slug).ok_or_else(|| {
         AiError::InvalidConfig(format!("unknown provider `{}`", config.provider_slug))
     })?;
     match integration {
         #[cfg(feature = "fastembed")]
         ProviderIntegration::Fastembed => {
-            let model = fastembed_model(&request.model)?;
-            let model = rig_fastembed::Client::new()
-                .embedding_model(&model)
+            let kind = fastembed_model(&request.model)?;
+            let client = rig_fastembed::Fastembed::load(&kind)
                 .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            embed_with(model, request.documents).await
+            let model = client
+                .embedding(&kind, request.dimensions)
+                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
+            embed_with(model.erase(), request.documents).await
         }
-        ProviderIntegration::OpenAi | ProviderIntegration::OpenAiCompatible => keyed_embed!(openai),
+        ProviderIntegration::OpenAi | ProviderIntegration::OpenAiCompatible => {
+            keyed_embed!(&openai::wire::OPENAI)
+        }
         ProviderIntegration::AzureOpenAi => {
-            let api_version = setting_str(config, "api_version").ok_or_else(|| {
+            let version = setting_str(config, "api_version").ok_or_else(|| {
                 AiError::InvalidConfig("Azure API version is required".to_string())
             })?;
-            let client = azure::Client::builder()
-                .api_key(api_key)
-                .azure_endpoint(base_url.to_string())
-                .api_version(api_version)
-                .build()
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            let model = match request.dimensions {
-                Some(dimensions) => {
-                    client.embedding_model_with_ndims(request.model.clone(), dimensions)
-                }
-                None => client.embedding_model(request.model.clone()),
-            };
-            embed_with(model, request.documents).await
+            let client = openai_config(&openai::wire::AZURE, api_key, base_url)
+                .with_api_version(version.to_owned())
+                .client();
+            embed_with(
+                client.embedding(request.model, request.dimensions).erase(),
+                request.documents,
+            )
+            .await
         }
-        ProviderIntegration::GithubCopilot => keyed_embed!(copilot),
+        ProviderIntegration::GithubCopilot => keyed_embed!(&copilot::DIALECT),
         ProviderIntegration::Cohere => {
-            let mut builder = cohere::Client::builder().api_key(api_key);
+            let mut target = cohere::CohereConfig::new(api_key.to_owned());
             if !base_url.is_empty() {
-                builder = builder.base_url(base_url);
+                target = target.with_base_url(base_url.to_owned());
             }
-            let client = builder
-                .build()
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            let input_type = setting_str(config, "input_type").unwrap_or("search_document");
-            let model = match request.dimensions {
-                Some(dimensions) => {
-                    client.embedding_model_with_ndims(request.model.clone(), input_type, dimensions)
-                }
-                None => client.embedding_model(request.model.clone(), input_type),
-            };
-            embed_with(model, request.documents).await
+            let mut model = target.client().embedding(request.model, request.dimensions);
+            model.wire = model
+                .wire
+                .with_input_type(setting_str(config, "input_type").unwrap_or("search_document"));
+            embed_with(model.erase(), request.documents).await
         }
-        ProviderIntegration::Gemini => keyed_embed!(gemini),
-        ProviderIntegration::Mistral => keyed_embed!(mistral),
-        ProviderIntegration::Ollama => keyed_embed!(ollama),
-        ProviderIntegration::OpenRouter => keyed_embed!(openrouter),
-        ProviderIntegration::Together => keyed_embed!(together),
-        ProviderIntegration::VoyageAi => keyed_embed!(voyageai),
+        ProviderIntegration::Gemini => {
+            let mut target = gemini::GeminiConfig::new(api_key.to_owned());
+            if !base_url.is_empty() {
+                target = target.with_base_url(base_url.to_owned());
+            }
+            embed_with(
+                target
+                    .client()
+                    .embedding(request.model, request.dimensions)
+                    .erase(),
+                request.documents,
+            )
+            .await
+        }
+        ProviderIntegration::Mistral => keyed_embed!(&openai::wire::MISTRAL),
+        ProviderIntegration::Ollama => {
+            let mut target = ollama::OllamaConfig::new();
+            if !base_url.is_empty() {
+                target = target.with_base_url(base_url.to_owned());
+            }
+            embed_with(
+                target
+                    .client()
+                    .embedding(request.model, request.dimensions)
+                    .erase(),
+                request.documents,
+            )
+            .await
+        }
+        ProviderIntegration::OpenRouter => keyed_embed!(&openai::wire::OPENROUTER),
+        ProviderIntegration::Together => keyed_embed!(&openai::wire::TOGETHER),
+        ProviderIntegration::VoyageAi => {
+            let mut target = voyageai::VoyageAiConfig::new(api_key.to_owned());
+            if !base_url.is_empty() {
+                target = target.with_base_url(base_url.to_owned());
+            }
+            let mut model = target.client().embedding(request.model, request.dimensions);
+            if let Some(dimensions) = request.dimensions {
+                model.wire = model.wire.with_output_dimension(dimensions);
+            }
+            embed_with(model.erase(), request.documents).await
+        }
         ProviderIntegration::AwsBedrock => {
-            let region =
-                setting_str(config, "region").unwrap_or(rig_bedrock::client::DEFAULT_AWS_REGION);
-            let client = if let Some(profile) =
-                setting_str(config, "profile").filter(|value| !value.trim().is_empty())
-            {
-                rig_bedrock::client::Client::with_profile_name(profile)
-            } else {
-                rig_bedrock::client::ClientBuilder::default()
-                    .region(region)
-                    .build()
-                    .await
-            };
-            let model = match request.dimensions {
-                Some(dimensions) => {
-                    client.embedding_model_with_ndims(request.model.clone(), dimensions)
-                }
-                None => client.embedding_model(request.model.clone()),
-            };
-            embed_with(model, request.documents).await
+            let client = bedrock_runtime(config)?;
+            embed_with(
+                client.embedding(request.model, request.dimensions).erase(),
+                request.documents,
+            )
+            .await
         }
         ProviderIntegration::GeminiGrpc => {
-            let client = rig_gemini_grpc::Client::new(api_key.to_string())
-                .await
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            let model = match request.dimensions {
-                Some(dimensions) => {
-                    client.embedding_model_with_ndims(request.model.clone(), dimensions)
-                }
-                None => client.embedding_model(request.model.clone()),
-            };
-            embed_with(model, request.documents).await
+            let client = gemini_grpc_runtime(api_key, base_url).await?;
+            embed_with(
+                client.embedding(request.model, request.dimensions).erase(),
+                request.documents,
+            )
+            .await
         }
         ProviderIntegration::Llamafile => {
-            let mut builder = llamafile::Client::builder().api_key(rig::client::Nothing);
-            if !base_url.is_empty() {
-                builder = builder.base_url(base_url);
-            }
-            let client = builder
-                .build()
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            let model = match request.dimensions {
-                Some(dimensions) => {
-                    client.embedding_model_with_ndims(request.model.clone(), dimensions)
-                }
-                None => client.embedding_model(request.model.clone()),
+            let base = if base_url.is_empty() {
+                String::new()
+            } else {
+                llamacpp_base_url(base_url)
             };
-            embed_with(model, request.documents).await
+            let client = openai_config(&openai::wire::LLAMACPP, api_key, &base).client();
+            embed_with(
+                client.embedding(request.model, request.dimensions).erase(),
+                request.documents,
+            )
+            .await
         }
         _ => Err(AiError::InvalidConfig(format!(
             "Rig provider `{}` does not expose embeddings through this entrypoint",
@@ -241,15 +243,13 @@ pub async fn rerank(
     })?;
     let response = match integration {
         ProviderIntegration::VoyageAi => {
-            let mut builder = voyageai::Client::builder().api_key(api_key);
+            let mut target = voyageai::VoyageAiConfig::new(api_key.to_owned());
             if !base_url.is_empty() {
-                builder = builder.base_url(base_url);
+                target = target.with_base_url(base_url.to_owned());
             }
-            let client = builder
-                .build()
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
             rerank_with(
-                client.rerank_model(request.model),
+                target.client().rerank(request.model.clone()).erase(),
+                request.model,
                 request.query,
                 request.documents,
             )
@@ -269,12 +269,12 @@ pub async fn rerank(
     Ok(RerankResponse { items, ..response })
 }
 
-async fn embed_with<M: EmbeddingModel>(
-    model: M,
+async fn embed_with(
+    model: DynModel<Embedding>,
     documents: Vec<String>,
 ) -> AiResult<EmbeddingResponse> {
     let response = model
-        .embed_texts_with_usage(documents)
+        .call(documents)
         .await
         .map_err(|error| AiError::Provider(error.to_string()))?;
     Ok(EmbeddingResponse {
@@ -293,17 +293,18 @@ async fn embed_with<M: EmbeddingModel>(
     })
 }
 
-async fn rerank_with<M: RerankModel>(
-    model: M,
+async fn rerank_with(
+    model: DynModel<Rerank>,
+    requested_model: String,
     query: String,
     documents: Vec<String>,
 ) -> AiResult<RerankResponse> {
     let response = model
-        .rerank(&query, documents)
+        .call(rig::operation::RerankRequest { query, documents })
         .await
         .map_err(|error| AiError::Provider(error.to_string()))?;
     Ok(RerankResponse {
-        model: response.model,
+        model: response.model.unwrap_or(requested_model),
         items: response
             .results
             .into_iter()

@@ -90,6 +90,7 @@ consumer bindings and Flex Category extension.
 
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
+- [Route registry recovery](./route-registry-recovery.md)
 - [Taxonomy Category + Flex platform plan](../../../../docs/architecture/taxonomy-flex-category-platform-plan.md)
 - [Manifest layer contract](../../../../docs/modules/manifest.md)
 ## Transaction-aware localized name reads

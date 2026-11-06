@@ -86,6 +86,10 @@ An ordinary error (including permission loss before receipt lookup) is unresolve
 and does not authorize a new logical creation. REST retains its ordinary public
 error envelope; REST callers must preserve the key on errors.
 
+Replay validates the stored outcome as well as its JSON shape. Invalid success
+identities, unsupported rejection statuses or empty rejection codes/messages
+are invariant failures, never authoritative acknowledgements or rejections.
+
 Both admin editors freeze the original key and payload while unresolved, and retry
 that exact input. Durable rejection permits correction with a fresh key. Success
 consumes submit ability before independent detail reload/navigation. Pending state

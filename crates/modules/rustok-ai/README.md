@@ -9,7 +9,7 @@ typed runtime contracts for provider profiles, task profiles, hybrid direct/MCP 
 chat sessions, runs, traces, and approval-gated tool execution.
 
 Current implementation includes:
-- Rig 0.39 as the canonical inference engine, with registry-driven provider profiles and
+- Rig 0.46 as the canonical inference engine, with registry-driven provider profiles and
   built-in Rig providers plus Bedrock, Vertex AI, Gemini gRPC, and optional FastEmbed
 - persisted `ProviderSlug`, deployment-owned `ProviderTargetId`, external `SecretRef` credential
   references, and server-owned resolver/egress policies
@@ -88,6 +88,20 @@ Rig is the sole inference path. The host boundary is composed through generic mo
 extensions: `apps/server` transfers typed extension values and runs registered durable workers
 without importing AI capability types. Remaining verification work is tracked in the module
 implementation plan.
+
+The Rig 0.46 adapter uses operation-specific `DynModel` handles for chat, images,
+embeddings, and reranking. Rig owns protocol parsing and stream assembly. A failed,
+filtered, truncated, or unfinished tool response cannot become an executable call.
+Provider token counters remain optional in embedding/rerank responses; chat accounting
+requires both input and output counters before it records complete usage evidence.
+An explicit zero is valid evidence; an absent counter is unavailable evidence.
+
+The active provider inventory is `contracts/provider-catalog.json`. Galadriel is
+not advertised because the pinned SDK has no adapter; persisted profiles remain
+readable and can be deactivated. The stable `llamafile` integration uses Rig's
+llama.cpp adapter. Official OpenAI uses Responses, OpenAI-compatible targets use
+Chat Completions, and Ollama/Cohere retain their native routes. Bedrock applies
+both the deployment-selected region and profile.
 
 ## Responsibilities
 

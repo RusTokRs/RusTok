@@ -78,7 +78,6 @@ pub(crate) enum ProviderIntegration {
     GithubCopilot,
     Cohere,
     DeepSeek,
-    Galadriel,
     Gemini,
     Groq,
     HuggingFace,
@@ -126,7 +125,6 @@ impl ProviderIntegration {
             Self::Anthropic
             | Self::ChatGpt
             | Self::DeepSeek
-            | Self::Galadriel
             | Self::Groq
             | Self::Hyperbolic
             | Self::MiniMax
@@ -643,14 +641,6 @@ static CATALOG: &[ProviderCatalogEntry] = &[
         API_KEY
     ),
     entry!(
-        ProviderIntegration::Galadriel,
-        "galadriel",
-        "Galadriel",
-        CHAT,
-        BASE_URL,
-        API_KEY
-    ),
-    entry!(
         ProviderIntegration::Gemini,
         "gemini",
         "Google Gemini",
@@ -945,17 +935,35 @@ mod tests {
     }
 
     #[test]
-    fn catalog_matches_the_rig_0_39_registry_snapshot() {
-        let snapshot: ProviderCatalogSnapshot = serde_json::from_str(include_str!(
-            "../../contracts/rig-0.39-provider-catalog.json"
-        ))
-        .expect("catalog snapshot is valid JSON");
-        assert_eq!(snapshot.rig_version, "0.39.0");
+    fn catalog_matches_the_rig_registry_snapshot() {
+        let snapshot: ProviderCatalogSnapshot =
+            serde_json::from_str(include_str!("../../contracts/provider-catalog.json"))
+                .expect("catalog snapshot is valid JSON");
+        assert_eq!(snapshot.rig_version, "0.46.0");
         let slugs = CATALOG
             .iter()
             .map(|entry| entry.slug.to_string())
             .collect::<Vec<_>>();
         assert_eq!(slugs, snapshot.provider_slugs);
+    }
+
+    #[test]
+    fn retired_integration_remains_readable_without_advertised_capabilities() {
+        let slug: ProviderSlug = serde_json::from_str("\"galadriel\"").unwrap();
+        assert_eq!(slug.as_str(), "galadriel");
+        assert!(provider_catalog_entry(&slug).is_none());
+        #[cfg(feature = "server")]
+        {
+            assert!(!provider_factory_supports(&slug, ProviderFeature::Chat));
+            let target = AiProviderTarget {
+                id: ProviderTargetId::new("retired").unwrap(),
+                provider_slug: slug,
+                display_name: "Retired".to_string(),
+                auth: ProviderTargetAuth::SecretRefs,
+                settings: BTreeMap::new(),
+            };
+            assert!(AiProviderTargetCatalog::new(vec![target]).is_err());
+        }
     }
 
     #[test]

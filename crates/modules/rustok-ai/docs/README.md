@@ -10,7 +10,7 @@ and MCP tool surface, without extending `rustok-mcp` to the role of model host.
 ## Purpose
 
 - hold a provider-agnostic Rig engine contract for AI orchestration;
-- provide a registry-driven Rig 0.39 runtime. A `base_url`, when required, is a typed
+- provide a registry-driven Rig 0.46 runtime. A `base_url`, when required, is a typed
   deployment-target setting subject to server-owned egress policy; credentials are external
   `SecretRef` values, never plaintext;
 - call MCP tools through a separate `McpClientAdapter`, rather than mixing provider logic with MCP server;
@@ -30,7 +30,7 @@ and MCP tool surface, without extending `rustok-mcp` to the role of model host.
 ### Provider/Runtime Layer
 
 - `ProviderSlug` / `ProviderFeature` registry with typed setting and credential schemas;
-- `InferenceEngine` backed by Rig 0.39;
+- `InferenceEngine` backed by Rig 0.46;
 - `RigAgentDriver` with persisted canonical history, host-side trust boundary,
   tool policy, and approval boundaries. Only owner task policy is emitted as a
   system message; user, RAG, and MCP-result context is size-bounded and
@@ -102,9 +102,11 @@ and MCP tool surface, without extending `rustok-mcp` to the role of model host.
   provider-backed text runs in both admin hosts for `OpenAI-compatible`, `Anthropic` and `Gemini`.
 - direct verticals use the same streaming contract, so direct Alloy / content jobs do
   not lose the live delta/update surface compared to the runtime/MCP path.
-- offline Rig protocol cassettes cover the normalized OpenAI-compatible, Anthropic,
-  Gemini, cloud-auth, and deployment-local stream families; network protocol parsing
-  remains inside Rig rather than reappearing as RusToK SSE code.
+- `contracts/stream-cassettes.json` covers normalized owner events for the
+  OpenAI-compatible, Anthropic, Gemini, cloud-auth, and deployment-local families.
+  These fixtures do not exercise network protocol parsing. Separate SDK transport
+  tests exercise OpenAI Chat Completions, Anthropic, and Gemini decoding, fragmented
+  tool arguments, and premature EOF without external requests. Rig owns parsing.
 - in addition to live subscription, the server layer now holds a bounded recent-event cache; it is accessible
   via `AiManagementService::recent_stream_events(...)` and GraphQL query
   `aiRecentRunStreamEvents(sessionId?, limit?)` for diagnostics and session detail.

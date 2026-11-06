@@ -2,9 +2,13 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use chrono::Utc;
 use rig::{
-    agent::{AgentRun, AgentRunStep, InvalidToolCallAction, ModelTurn, ModelTurnOutcome},
     completion::Usage,
-    message::UserContent,
+    message::AssistantMessage,
+    run::{
+        AgentRun, AgentRunStep, InvalidToolCallAction, ModelTurn, ModelTurnOutcome,
+        PendingToolCall, TurnPolicy,
+    },
+    tool::{ToolOutput, ToolResult},
 };
 use tokio::sync::watch;
 
@@ -16,7 +20,7 @@ use crate::{
         redacted_tool_failure_message, sanitize_provider_assistant_message,
         validate_provider_context, validate_tool_arguments, validate_tool_inventory,
     },
-    engine::{InferenceEngine, assistant_choice, extract_usage, map_message, map_rig_message},
+    engine::{InferenceEngine, assistant_choice, extract_usage, map_message, map_rig_messages},
     error::{AiError, AiResult},
     mcp::McpClientAdapter,
     model::{
@@ -80,6 +84,7 @@ impl RigAgentDriver {
         let mut traces = Vec::new();
         let mut usage = AgentUsageEvidence::default();
         let mut tool_call_attempts = 0_usize;
+        let mut skipped_history_start = None;
 
         loop {
             if cancellation
@@ -88,16 +93,31 @@ impl RigAgentDriver {
             {
                 return Err(AiError::Runtime("AI run cancelled".to_string()));
             }
-            match run
+            let step = run
                 .next_step()
-                .map_err(|error| AiError::Runtime(error.to_string()))?
-            {
+                .map_err(|error| AiError::Runtime(error.to_string()))?;
+            if let Some(start) = skipped_history_start.take() {
+                for message in &run.messages()[start..] {
+                    appended_messages.extend(
+                        map_rig_messages((**message).clone())?
+                            .into_iter()
+                            .filter(|message| message.role == ChatMessageRole::Tool)
+                            .map(|mut message| {
+                                message.metadata["reason"] =
+                                    serde_json::json!("unknown_or_denied_tool");
+                                message
+                            }),
+                    );
+                }
+            }
+            match step {
                 AgentRunStep::CallModel {
                     prompt, history, ..
                 } => {
-                    let mut provider_messages =
-                        history.into_iter().map(map_rig_message).collect::<Vec<_>>();
-                    provider_messages.push(map_rig_message(prompt));
+                    let mut provider_messages = Vec::new();
+                    for message in history.into_iter().chain(std::iter::once(prompt)) {
+                        provider_messages.extend(map_rig_messages(Arc::unwrap_or_clone(message))?);
+                    }
                     if validate_provider_context(&provider_messages).is_err() {
                         return Ok(RuntimeOutcome::Failed {
                             appended_messages,
@@ -134,72 +154,57 @@ impl RigAgentDriver {
                         sanitize_provider_assistant_message(response.assistant_message)?;
                     let choice = assistant_choice(&assistant)?;
                     appended_messages.push(assistant);
-                    let turn = ModelTurn::new(
-                        None,
+                    let mut turn = ModelTurn::new(
+                        AssistantMessage::default(),
                         choice,
                         Usage::new(),
-                        tool_names.clone(),
-                        tool_names.clone(),
+                        TurnPolicy::new(tool_names.clone(), None, None)
+                            .map_err(|error| AiError::Runtime(error.to_string()))?,
+                        response.raw_payload,
                     );
-                    match run
+                    if let Some(reason) = response.finish_reason {
+                        use rig::completion::FinishReason;
+                        turn = turn.with_finish_reason(Some(match reason.as_str() {
+                            "stop" => FinishReason::Stop,
+                            "length" => FinishReason::Length,
+                            "tool_calls" => FinishReason::ToolCalls,
+                            "content_filter" => FinishReason::ContentFilter,
+                            _ => FinishReason::Other(reason),
+                        }));
+                    }
+                    let mut outcome = run
                         .model_response(turn)
-                        .map_err(|error| AiError::Runtime(error.to_string()))?
-                    {
-                        ModelTurnOutcome::Continue { .. } | ModelTurnOutcome::TurnRetried => {}
-                        ModelTurnOutcome::NeedsResolution(_) => {
-                            let invalid = run.pending_invalid_tool_call().ok_or_else(|| {
-                                AiError::Runtime(
-                                    "Rig requested invalid tool resolution without context"
-                                        .to_string(),
-                                )
-                            })?;
-                            let reason = format!(
-                                "Tool `{}` is unavailable for this run and was not executed",
-                                invalid.tool_name
-                            );
-                            let outcome = run
-                                .resolve_invalid_tool_call(InvalidToolCallAction::skip(
-                                    reason.clone(),
-                                ))
-                                .map_err(|error| AiError::Runtime(error.to_string()))?;
-                            appended_messages.push(ChatMessage {
-                                role: ChatMessageRole::Tool,
-                                content: Some(reason.clone()),
-                                name: Some(invalid.tool_name.clone()),
-                                tool_call_id: invalid.tool_call_id,
-                                tool_calls: Vec::new(),
-                                metadata: serde_json::json!({
-                                    "engine": "rig_0_39",
-                                    "skipped": true,
-                                    "reason": "unknown_or_denied_tool"
-                                }),
-                            });
-                            traces.push(ToolTrace {
-                                tool_name: invalid.tool_name,
-                                input_payload: redacted_json_evidence(
-                                    &invalid
-                                        .args
-                                        .as_deref()
-                                        .and_then(|value| serde_json::from_str(value).ok())
-                                        .unwrap_or(serde_json::Value::Null),
-                                ),
-                                output_payload: Some(redacted_text_evidence(&reason)),
-                                status: "skipped".to_string(),
-                                duration_ms: 0,
-                                sensitive: false,
-                                error_message: None,
-                                created_at: Utc::now(),
-                            });
-                            if matches!(outcome, ModelTurnOutcome::NeedsResolution(_)) {
-                                return Ok(RuntimeOutcome::Failed {
-                                    appended_messages,
-                                    traces,
-                                    error_message: "Rig could not recover the invalid tool call"
-                                        .to_string(),
-                                    usage,
-                                });
-                            }
-                        }
+                        .map_err(|error| AiError::Runtime(error.to_string()))?;
+                    while let ModelTurnOutcome::NeedsResolution(_) = outcome {
+                        let invalid = run.pending_invalid_tool_call().ok_or_else(|| {
+                            AiError::Runtime(
+                                "Rig requested invalid tool resolution without context".to_string(),
+                            )
+                        })?;
+                        let reason = format!(
+                            "Tool `{}` is unavailable for this run and was not executed",
+                            invalid.tool_name
+                        );
+                        skipped_history_start.get_or_insert(run.messages().len());
+                        traces.push(ToolTrace {
+                            tool_name: invalid.tool_name.clone(),
+                            input_payload: redacted_json_evidence(
+                                &invalid
+                                    .args
+                                    .as_deref()
+                                    .and_then(|value| serde_json::from_str(value).ok())
+                                    .unwrap_or(serde_json::Value::Null),
+                            ),
+                            output_payload: Some(redacted_text_evidence(&reason)),
+                            status: "skipped".to_string(),
+                            duration_ms: 0,
+                            sensitive: false,
+                            error_message: None,
+                            created_at: Utc::now(),
+                        });
+                        outcome = run
+                            .resolve_invalid_tool_call(InvalidToolCallAction::skip(reason))
+                            .map_err(|error| AiError::Runtime(error.to_string()))?;
                     }
                 }
                 AgentRunStep::CallTools { calls } => {
@@ -227,12 +232,45 @@ impl RigAgentDriver {
                     tool_call_attempts = tool_call_attempts.saturating_add(calls.len());
                     let mut results = Vec::with_capacity(calls.len());
                     let mut pending_approvals = Vec::new();
-                    for call in calls {
-                        let name = call.tool_call.function.name.clone();
-                        let arguments = call.tool_call.function.arguments.clone();
+                    let malformed_batch = calls
+                        .iter()
+                        .any(|call| matches!(call, PendingToolCall::Malformed(_)));
+                    for pending in calls {
+                        let call = match pending {
+                            PendingToolCall::Execute(call) => call,
+                            PendingToolCall::Malformed(call) => {
+                                let reason = "Tool arguments were malformed; no tool in this turn was executed".to_string();
+                                appended_messages.push(ChatMessage { role: ChatMessageRole::Tool, content: Some(reason.clone()), name: Some(call.name().to_string()), tool_call_id: Some(call.id().to_string()), tool_calls: Vec::new(), metadata: serde_json::json!({"engine":"rig_0_46", "skipped":true, "untrusted_context":"mcp_tool_result"}) });
+                                traces.push(ToolTrace {
+                                    tool_name: call.name().to_string(),
+                                    input_payload: redacted_text_evidence(call.raw_arguments()),
+                                    output_payload: Some(redacted_text_evidence(&reason)),
+                                    status: "skipped".to_string(),
+                                    duration_ms: 0,
+                                    sensitive: false,
+                                    error_message: None,
+                                    created_at: Utc::now(),
+                                });
+                                results
+                                    .push(call.answer(Some(InvalidToolCallAction::skip(reason))));
+                                continue;
+                            }
+                            _ => {
+                                return Err(AiError::Runtime(
+                                    "unsupported Rig pending tool call".to_string(),
+                                ));
+                            }
+                        };
+                        let name = call.name().to_string();
+                        let arguments = call.arguments();
                         let started = std::time::Instant::now();
                         let definition = tool_inventory.definition(&name);
-                        let rejection = if !self.tool_policy.is_tool_allowed(&name) {
+                        let rejection = if malformed_batch {
+                            Some(
+                                "A peer tool call was malformed; no tool in this turn was executed"
+                                    .to_string(),
+                            )
+                        } else if !self.tool_policy.is_tool_allowed(&name) {
                             Some(format!(
                                 "Tool `{name}` is denied by the execution policy and was not executed"
                             ))
@@ -255,10 +293,10 @@ impl RigAgentDriver {
                                 role: ChatMessageRole::Tool,
                                 content: Some(content.clone()),
                                 name: Some(name.clone()),
-                                tool_call_id: Some(call.tool_call.id.to_string()),
+                                tool_call_id: Some(call.id().to_string()),
                                 tool_calls: Vec::new(),
                                 metadata: serde_json::json!({
-                                    "engine": "rig_0_42",
+                                    "engine": "rig_0_46",
                                     "skipped": true,
                                     "reason": "tool_execution_policy",
                                     "untrusted_context": "mcp_tool_result",
@@ -276,11 +314,7 @@ impl RigAgentDriver {
                                 error_message: None,
                                 created_at: Utc::now(),
                             });
-                            results.push(UserContent::tool_result(
-                                call.tool_call.id.clone(),
-                                name,
-                                vec![content.into()],
-                            ));
+                            results.push(call.answer(ToolResult::skipped(content)));
                             continue;
                         }
                         let definition = definition.ok_or_else(|| {
@@ -291,11 +325,11 @@ impl RigAgentDriver {
                         if definition.sensitive {
                             pending_approvals.push(PendingApproval {
                                 tool_name: name,
-                                tool_call_id: call.tool_call.id.to_string(),
+                                tool_call_id: call.id().to_string(),
                                 input_payload: arguments,
                                 reason: format!(
                                     "Tool `{}` requires operator approval before execution",
-                                    call.tool_call.function.name
+                                    call.name()
                                 ),
                                 policy_evidence: self.tool_policy.evidence(definition),
                             });
@@ -313,11 +347,11 @@ impl RigAgentDriver {
                                     role: ChatMessageRole::Tool,
                                     content: Some(content.clone()),
                                     name: Some(name.clone()),
-                                    tool_call_id: Some(call.tool_call.id.to_string()),
+                                    tool_call_id: Some(call.id().to_string()),
                                     tool_calls: Vec::new(),
                                     metadata: serde_json::json!({
                                         "tool_output_evidence": output_evidence.clone(),
-                                        "engine": "rig_0_42",
+                                        "engine": "rig_0_46",
                                         "untrusted_context": "mcp_tool_result",
                                         "tool_policy_evidence": self
                                             .tool_policy
@@ -335,11 +369,9 @@ impl RigAgentDriver {
                                     error_message: None,
                                     created_at: Utc::now(),
                                 });
-                                results.push(UserContent::tool_result(
-                                    call.tool_call.id.clone(),
-                                    name,
-                                    vec![content.into()],
-                                ));
+                                results.push(
+                                    call.answer(ToolResult::success(ToolOutput::text(content))),
+                                );
                             }
                             Err(_error) => {
                                 let error_message = redacted_tool_failure_message();
@@ -370,7 +402,7 @@ impl RigAgentDriver {
                             usage,
                         });
                     }
-                    run.tool_results(results)
+                    run.answer_all(results)
                         .map_err(|error| AiError::Runtime(error.to_string()))?;
                 }
                 AgentRunStep::Done(_) => {
@@ -615,6 +647,115 @@ mod tests {
             system_prompt: None,
             locale: None,
         }
+    }
+
+    fn scripted_turn(calls: Vec<ToolCall>) -> ProviderChatResponse {
+        ProviderChatResponse {
+            assistant_message: ChatMessage {
+                role: ChatMessageRole::Assistant,
+                content: Some("OK".to_string()),
+                name: None,
+                tool_call_id: None,
+                tool_calls: calls,
+                metadata: serde_json::Value::Null,
+            },
+            finish_reason: Some("stop".to_string()),
+            raw_payload: serde_json::Value::Null,
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_arguments_cannot_be_coerced_into_executable_objects() {
+        for arguments in [
+            serde_json::json!(null),
+            serde_json::json!("{}"),
+            serde_json::json!([]),
+        ] {
+            let engine = Arc::new(ScriptedEngine {
+                responses: Mutex::new(VecDeque::from([
+                    scripted_turn(vec![
+                        ToolCall {
+                            id: "invalid".to_string(),
+                            name: "publish".to_string(),
+                            arguments,
+                        },
+                        ToolCall {
+                            id: "peer".to_string(),
+                            name: "publish".to_string(),
+                            arguments: serde_json::json!({}),
+                        },
+                    ]),
+                    scripted_turn(Vec::new()),
+                ])),
+            });
+            let mcp = Arc::new(RecordingMcp::default());
+            let driver = RigAgentDriver::new(
+                engine,
+                mcp.clone(),
+                ToolExecutionPolicy::new(None, Vec::new(), Vec::new()),
+            );
+            let outcome = driver.run(&config(), request(), None, None).await.unwrap();
+            let RuntimeOutcome::Completed {
+                appended_messages, ..
+            } = outcome
+            else {
+                panic!("malformed calls should produce recoverable feedback")
+            };
+            let ids = appended_messages
+                .iter()
+                .filter_map(|message| message.tool_call_id.as_deref())
+                .collect::<Vec<_>>();
+            assert_eq!(ids, vec!["invalid", "peer"]);
+            assert!(mcp.calls.lock().await.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn unknown_calls_close_every_peer_in_the_persisted_transcript() {
+        let calls = [
+            ("unknown-a", "unknown_a"),
+            ("peer", "publish"),
+            ("unknown-b", "unknown_b"),
+        ]
+        .into_iter()
+        .map(|(id, name)| ToolCall {
+            id: id.to_string(),
+            name: name.to_string(),
+            arguments: serde_json::json!({}),
+        })
+        .collect();
+        let engine = Arc::new(ScriptedEngine {
+            responses: Mutex::new(VecDeque::from([
+                scripted_turn(calls),
+                scripted_turn(Vec::new()),
+            ])),
+        });
+        let mcp = Arc::new(RecordingMcp::default());
+        let driver = RigAgentDriver::new(
+            engine,
+            mcp.clone(),
+            ToolExecutionPolicy::new(None, Vec::new(), Vec::new()),
+        );
+        let outcome = driver.run(&config(), request(), None, None).await.unwrap();
+        let RuntimeOutcome::Completed {
+            appended_messages, ..
+        } = outcome
+        else {
+            panic!("unknown calls should recover")
+        };
+        let mut ids = appended_messages
+            .iter()
+            .filter_map(|message| message.tool_call_id.clone())
+            .collect::<Vec<_>>();
+        ids.sort();
+        assert_eq!(ids, vec!["peer", "unknown-a", "unknown-b"]);
+        for message in appended_messages
+            .into_iter()
+            .filter(|message| message.role == ChatMessageRole::Tool)
+        {
+            assert!(crate::engine::map_message(message).is_ok());
+        }
+        assert!(mcp.calls.lock().await.is_empty());
     }
 
     #[tokio::test]

@@ -58,8 +58,7 @@ impl PostService {
                         "Invalid Blog creation failure receipt",
                     ));
                 }
-                let public = serde_json::from_str(&error.message)
-                    .map_err(|_| BlogError::invariant("Invalid Blog creation failure payload"))?;
+                let public = decode_creation_rejection(&error.message)?;
                 return Err(BlogError::CreationRejected(Box::new(public)));
             }
         };
@@ -139,6 +138,23 @@ impl PostService {
     }
 }
 
+fn decode_creation_rejection(encoded: &str) -> BlogResult<crate::BlogPublicError> {
+    let public: crate::BlogPublicError = serde_json::from_str(encoded)
+        .map_err(|_| BlogError::invariant("Invalid Blog creation failure payload"))?;
+    // Only the terminal owner errors finalized by run_creation are replayable
+    // rejections. Corrupt success/auth/outage statuses cannot release a client's
+    // retained command, even when the persisted JSON is structurally valid.
+    if !matches!(public.status, 400 | 403 | 404 | 409)
+        || public.code.trim().is_empty()
+        || public.message.trim().is_empty()
+    {
+        return Err(BlogError::invariant(
+            "Invalid Blog creation failure outcome",
+        ));
+    }
+    Ok(public)
+}
+
 fn receipt_error(error: PortError) -> BlogError {
     use rustok_core::error::{ErrorKind, RichError};
     let (kind, message) = match error.kind {
@@ -156,4 +172,53 @@ fn receipt_error(error: PortError) -> BlogError {
     BlogError::Rich(Box::new(
         RichError::new(kind, "Blog creation receipt failed").with_user_message(message),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn creation_failure_receipt_preserves_terminal_owner_outcomes() {
+        for status in [400, 403, 404, 409] {
+            let public = crate::BlogPublicError {
+                status,
+                code: "BLOG_REJECTION".into(),
+                message: "The command was rejected".into(),
+            };
+            let encoded = serde_json::to_string(&public).unwrap();
+            assert_eq!(decode_creation_rejection(&encoded).unwrap(), public);
+        }
+    }
+
+    #[test]
+    fn corrupt_failure_receipt_cannot_confirm_a_rejection() {
+        let public = serde_json::json!({
+            "status": 400,
+            "code": "BLOG_REJECTION",
+            "message": "The command was rejected"
+        });
+        for status in [0, 200, 302, 401, 422, 429, 500, u16::MAX] {
+            let mut encoded = public.clone();
+            encoded["status"] = status.into();
+            assert!(matches!(
+                decode_creation_rejection(&encoded.to_string()),
+                Err(BlogError::Invariant(_))
+            ));
+        }
+        for field in ["code", "message"] {
+            let mut encoded = public.clone();
+            encoded[field] = "  ".into();
+            assert!(matches!(
+                decode_creation_rejection(&encoded.to_string()),
+                Err(BlogError::Invariant(_))
+            ));
+        }
+        for encoded in ["not JSON", "null", "{}"] {
+            assert!(matches!(
+                decode_creation_rejection(encoded),
+                Err(BlogError::Invariant(_))
+            ));
+        }
+    }
 }

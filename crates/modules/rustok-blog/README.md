@@ -72,6 +72,10 @@ receipt. Data, events and completion commit together; replay returns the origina
 UUID under current authority. Both editors preserve the original request after an
 unknown response. See [the creation contract](CRATE_API.md#replayable-post-creation)
 for transport outcomes and the remaining browser restart limitation.
+Executed PostgreSQL scenarios cover concurrent retries, durable GraphQL outcomes,
+service/pool reconstruction and atomic Outbox failure/retry; the
+[reference evidence](docs/implementation-plan.md#post-creation-replay-continuation-2026-11-06)
+records commands and their limits.
 
 The module-owned UI packages use a separate adapter profile:
 `core/` for commands/presentation/tests, `transport/` for GraphQL/native

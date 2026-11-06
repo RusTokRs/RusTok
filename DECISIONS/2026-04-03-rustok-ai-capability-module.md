@@ -23,7 +23,7 @@ Create a separate capability crate `crates/modules/rustok-ai`.
 
 `rustok-ai`:
 
-- owns the Rig 0.39 provider registry, `ProviderSlug`, and provider feature contract;
+- owns the Rig 0.46 provider registry, `ProviderSlug`, and provider feature contract;
 - owns `RigAgentDriver`, chat/session model and approval policy;
 - persists only provider settings and external `SecretRef` values; resolver endpoints,
   cloud identities, allowlists, and egress policy are server-owned composition inputs;
@@ -90,6 +90,27 @@ Leptos UI is shipped as `crates/modules/rustok-ai/admin`, Next.js UI as
 - a new capability crate and a separate persisted control plane appear;
 - the Next.js package requires manual `package.json` wiring and manual rebuild;
 - Rig upgrades are explicit registry-review changes because the exact crate version is pinned.
+
+### Rig 0.46 owner contract
+
+The owner stores operation-specific SDK `DynModel` handles and uses the current
+sans-I/O run API. The SDK owns decoding, stream assembly, and completion detection;
+the owner rejects failed/filtered replies and unfinished tool calls. Tenant,
+policy, approval, argument validation, cancellation, and billing remain owner rules.
+Tool names and call IDs survive every transcript projection, including multiple
+results and synthetic skipped peer results. SDK argument normalization must not
+turn invalid owner input into an executable tool request.
+
+Unknown provider usage is distinct from zero. Chat accounting requires complete
+input/output evidence; embedding and rerank counters remain optional. JSON key
+order and float round-tripping are explicitly enabled on the owner's existing
+`serde_json` dependency after Rig stopped enabling them transitively.
+
+The reviewed provider inventory is `contracts/provider-catalog.json` in the
+capability crate. An integration absent from the SDK is not advertised or routed;
+persisted provider slugs remain readable for inspection and deactivation. The
+normalized event fixtures are not proof of provider protocol interoperability;
+offline SDK transport tests and deployment-owned live probes are separate evidence.
 
 ## What we are not doing
 

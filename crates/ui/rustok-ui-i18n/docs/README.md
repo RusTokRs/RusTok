@@ -52,6 +52,7 @@ embedded binary bytes; external/downloadable resources remain an adapter concern
 ## Related Documents
 
 - [Root README](../README.md)
+- [Public API Reference](./public-api.md)
 - [Implementation Plan](./implementation-plan.md)
 - [Module UI Package Implementation Guide](../../../../docs/UI/module-package-implementation.md)
 - [Platform Documentation Map](../../../../docs/index.md)

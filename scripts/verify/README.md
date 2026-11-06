@@ -337,9 +337,11 @@ Rig-only provider boundary without Rust compilation.
 
 What it checks:
 
-- provider catalog and normalized stream cassettes remain pinned to Rig 0.39.0;
+- provider catalog and normalized stream cassettes match the exact workspace Rig pin,
+  including Bedrock, FastEmbed, Gemini gRPC, and Vertex AI companion versions;
 - cassettes retain OpenAI-compatible, Anthropic, Gemini, cloud-auth, and local-target families;
-- typed `ProviderIntegration` dispatch and its snapshot test remain present;
+- typed `ProviderIntegration` dispatch remains present (executable snapshot and
+  SDK protocol tests run separately through Cargo);
 - removed legacy provider adapters, `AiRuntime`, and plaintext-secret storage markers do not return.
 
 Example:

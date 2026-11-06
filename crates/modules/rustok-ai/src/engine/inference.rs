@@ -1,24 +1,18 @@
-use std::{
-    collections::{BTreeMap, HashSet},
-    sync::Arc,
-};
-
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use rig::prelude::ImageGenerationClient;
 use rig::{
-    client::CompletionClient,
+    DynModel,
     completion::{
-        CompletionModel, CompletionRequest, Message, ToolDefinition as RigToolDefinition,
+        CompletionRequest, CompletionResponse, Message, ToolDefinition as RigToolDefinition,
     },
-    image_generation::ImageGenerationModel,
-    message::{AssistantContent, ToolCall as RigToolCall, ToolCallId, ToolFunction, UserContent},
-    providers::{
-        anthropic, azure, chatgpt, cohere, copilot, deepseek, gemini, groq, huggingface,
-        hyperbolic, llamafile, minimax, mira, mistral, moonshot, ollama, openai, openrouter,
-        perplexity, together, xai, xiaomimimo, zai,
+    image_generation::ImageGenerationRequestBuilder,
+    message::{
+        AssistantContent, AssistantMessage, CallId, ToolCall as RigToolCall, ToolFunction,
+        ToolName, UserContent,
     },
-    streaming::{StreamedAssistantContent, ToolCallDeltaContent},
+    operation::{Completion, ImageGeneration},
+    providers::{anthropic, chatgpt, cohere, copilot, gemini, ollama, openai, xai},
+    streaming::{Item, StreamEvent},
 };
 use secrecy::ExposeSecret;
 
@@ -64,82 +58,87 @@ pub trait InferenceEngine: Send + Sync {
 }
 
 #[derive(Clone)]
-pub struct RigInferenceEngine<M> {
-    model: M,
+pub struct RigInferenceEngine {
+    model: DynModel<Completion>,
     provider: String,
-    image: Option<Arc<dyn ImageInference>>,
+    image: Option<DynModel<ImageGeneration>>,
 }
 
-#[async_trait]
-trait ImageInference: Send + Sync {
-    async fn generate(&self, request: ProviderImageRequest) -> AiResult<ProviderImageResponse>;
-}
-
-#[derive(Clone)]
-struct RigImageInference<I> {
-    model: I,
-    provider: String,
-}
-
-#[async_trait]
-impl<I> ImageInference for RigImageInference<I>
-where
-    I: ImageGenerationModel + 'static,
-{
-    async fn generate(&self, request: ProviderImageRequest) -> AiResult<ProviderImageResponse> {
-        let (width, height) = parse_image_size(request.size.as_deref())?;
-        let mut builder = self
-            .model
-            .image_generation_request()
-            .prompt(&request.prompt)
-            .width(width)
-            .height(height);
-        if let Some(negative_prompt) = request.negative_prompt {
-            builder = builder.additional_params(serde_json::json!({
-                "negative_prompt": negative_prompt
-            }));
-        }
-        let response = builder
-            .send()
-            .await
-            .map_err(|error| AiError::Provider(error.to_string()))?;
-        Ok(ProviderImageResponse {
-            bytes: response.image,
-            mime_type: "image/png".to_string(),
-            revised_prompt: None,
-            raw_payload: serde_json::json!({"provider": self.provider}),
-        })
-    }
-}
-
-fn rig_engine<M>(model: M, provider: &ProviderSlug) -> Box<dyn InferenceEngine>
-where
-    M: CompletionModel + 'static,
-{
+fn rig_engine(
+    model: impl Into<DynModel<Completion>>,
+    provider: &ProviderSlug,
+) -> Box<dyn InferenceEngine> {
     Box::new(RigInferenceEngine {
-        model,
+        model: model.into(),
         provider: provider.to_string(),
         image: None,
     })
 }
 
-fn rig_engine_with_image<M, I>(
-    model: M,
-    image_model: I,
+fn rig_engine_with_image(
+    model: impl Into<DynModel<Completion>>,
+    image: impl Into<DynModel<ImageGeneration>>,
     provider: &ProviderSlug,
-) -> Box<dyn InferenceEngine>
-where
-    M: CompletionModel + 'static,
-    I: ImageGenerationModel + 'static,
-{
+) -> Box<dyn InferenceEngine> {
     Box::new(RigInferenceEngine {
-        model,
+        model: model.into(),
         provider: provider.to_string(),
-        image: Some(Arc::new(RigImageInference {
-            model: image_model,
-            provider: provider.to_string(),
-        })),
+        image: Some(image.into()),
     })
+}
+
+pub(super) fn openai_config(
+    dialect: &'static openai::wire::Dialect,
+    key: &str,
+    base_url: &str,
+) -> openai::OpenAIConfig {
+    let mut config = openai::OpenAIConfig::with_key(dialect, key.to_owned());
+    if !base_url.is_empty() {
+        config = config.with_base_url(base_url.to_owned());
+    }
+    config
+}
+
+// The persisted local integration slug remains stable when Rig renames its adapter.
+pub(super) fn llamacpp_base_url(base_url: &str) -> String {
+    let base = base_url.trim_end_matches('/');
+    if base.ends_with("/v1") {
+        base.to_owned()
+    } else {
+        format!("{base}/v1")
+    }
+}
+
+pub(super) fn bedrock_runtime(config: &AiProviderConfig) -> AiResult<rig_bedrock::BedrockRuntime> {
+    let region = config
+        .settings
+        .get("region")
+        .and_then(serde_json::Value::as_str)
+        .filter(|region| !region.trim().is_empty())
+        .ok_or_else(|| AiError::InvalidConfig("Bedrock region is required".to_string()))?;
+    let mut builder = rig_bedrock::BedrockRuntime::builder().region(region);
+    if let Some(profile) = config
+        .settings
+        .get("profile")
+        .and_then(serde_json::Value::as_str)
+        .filter(|v| !v.trim().is_empty())
+    {
+        builder = builder.profile_name(profile);
+    }
+    Ok(builder.build())
+}
+
+pub(super) async fn gemini_grpc_runtime(
+    key: &str,
+    base_url: &str,
+) -> AiResult<rig_gemini_grpc::GeminiGrpc> {
+    let mut config = gemini::GeminiConfig::new(key.to_owned());
+    if !base_url.is_empty() {
+        config = config.with_base_url(base_url.to_owned());
+    }
+    rig_gemini_grpc::GeminiGrpc::connect(&config)
+        .await
+        .map_err(|error| AiError::InvalidConfig(error.to_string()))
 }
 
 pub async fn inference_for_slug(
@@ -187,154 +186,116 @@ pub async fn inference_for_slug(
         .and_then(serde_json::Value::as_str)
         .unwrap_or(&config.model);
     macro_rules! keyed_engine {
-        ($provider:ident) => {{
-            let mut builder = $provider::Client::builder().api_key(api_key);
-            if !base_url.is_empty() {
-                builder = builder.base_url(base_url);
-            }
-            let client = builder
-                .build()
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            rig_engine(client.completion_model(config.model.clone()), slug)
+        ($dialect:expr) => {{
+            let client = openai_config($dialect, api_key, base_url).client();
+            rig_engine(client.completion(config.model.clone()), slug)
         }};
     }
     let engine = match integration {
         ProviderIntegration::OpenAi | ProviderIntegration::OpenAiCompatible => {
-            let mut builder = openai::Client::builder().api_key(api_key);
-            if !base_url.is_empty() {
-                builder = builder.base_url(base_url);
-            }
-            let client = builder
-                .build()
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            rig_engine_with_image(
-                client.completion_model(config.model.clone()),
-                client.image_generation_model(image_model),
-                slug,
-            )
+            let client = openai_config(&openai::wire::OPENAI, api_key, base_url).client();
+            let model = if integration == ProviderIntegration::OpenAiCompatible {
+                client.chat(config.model.clone()).erase()
+            } else {
+                client.responses(config.model.clone()).erase()
+            };
+            rig_engine_with_image(model, client.image_generation(image_model), slug)
         }
         ProviderIntegration::Anthropic => {
-            let mut builder = anthropic::Client::builder().api_key(api_key);
+            let mut target = anthropic::AnthropicConfig::new(api_key.to_owned());
             if !base_url.is_empty() {
-                builder = builder.base_url(base_url);
+                target = target.with_base_url(base_url.to_owned());
             }
-            let client = builder
-                .build()
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            rig_engine(client.completion_model(config.model.clone()), slug)
+            rig_engine(target.client().completion(config.model.clone()), slug)
         }
         ProviderIntegration::Gemini => {
-            let mut builder = gemini::Client::builder().api_key(api_key);
+            let mut target = gemini::GeminiConfig::new(api_key.to_owned());
             if !base_url.is_empty() {
-                builder = builder.base_url(base_url);
+                target = target.with_base_url(base_url.to_owned());
             }
-            let client = builder
-                .build()
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
+            let client = target.client();
             rig_engine_with_image(
-                client.completion_model(config.model.clone()),
-                client.image_generation_model(image_model),
+                client.completion(config.model.clone()),
+                client.image_generation(image_model),
                 slug,
             )
         }
         ProviderIntegration::AzureOpenAi => {
-            let endpoint = base_url;
-            let api_version = config
+            let version = config
                 .settings
                 .get("api_version")
                 .and_then(serde_json::Value::as_str)
                 .ok_or_else(|| {
                     AiError::InvalidConfig("Azure API version is required".to_string())
                 })?;
-            let client = azure::Client::builder()
-                .api_key(api_key)
-                .azure_endpoint(endpoint.to_string())
-                .api_version(api_version)
-                .build()
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            rig_engine(client.completion_model(config.model.clone()), slug)
+            let client = openai_config(&openai::wire::AZURE, api_key, base_url)
+                .with_api_version(version.to_owned())
+                .client();
+            rig_engine(client.completion(config.model.clone()), slug)
         }
-        ProviderIntegration::ChatGpt => keyed_engine!(chatgpt),
-        ProviderIntegration::GithubCopilot => keyed_engine!(copilot),
-        ProviderIntegration::Cohere => keyed_engine!(cohere),
-        ProviderIntegration::DeepSeek => keyed_engine!(deepseek),
-        ProviderIntegration::Galadriel => {
-            return Err(AiError::Provider(
-                "Galadriel is not supported by the configured Rig provider runtime".to_string(),
-            ));
+        ProviderIntegration::ChatGpt => keyed_engine!(&chatgpt::DIALECT),
+        ProviderIntegration::GithubCopilot => keyed_engine!(&copilot::DIALECT),
+        ProviderIntegration::Cohere => {
+            let mut target = cohere::CohereConfig::new(api_key.to_owned());
+            if !base_url.is_empty() {
+                target = target.with_base_url(base_url.to_owned());
+            }
+            let mut model = target.client().completion(config.model.clone());
+            model.wire = model.wire.with_route(cohere::ChatRoute::Native);
+            rig_engine(model, slug)
         }
-        ProviderIntegration::Groq => keyed_engine!(groq),
+        ProviderIntegration::DeepSeek => keyed_engine!(&openai::wire::DEEPSEEK),
+        ProviderIntegration::Groq => keyed_engine!(&openai::wire::GROQ),
         ProviderIntegration::HuggingFace => {
-            let mut builder = huggingface::Client::builder().api_key(api_key);
-            if !base_url.is_empty() {
-                builder = builder.base_url(base_url);
-            }
-            let client = builder
-                .build()
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
+            let client = openai_config(&openai::wire::HUGGINGFACE, api_key, base_url).client();
             rig_engine_with_image(
-                client.completion_model(config.model.clone()),
-                client.image_generation_model(image_model),
+                client.completion(config.model.clone()),
+                client.image_generation(image_model),
                 slug,
             )
         }
-        ProviderIntegration::Hyperbolic => keyed_engine!(hyperbolic),
+        ProviderIntegration::Hyperbolic => keyed_engine!(&openai::wire::HYPERBOLIC),
         ProviderIntegration::Llamafile => {
-            let mut builder = llamafile::Client::builder().api_key(rig::client::Nothing);
-            if !base_url.is_empty() {
-                builder = builder.base_url(base_url);
-            }
-            let client = builder
-                .build()
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            rig_engine(client.completion_model(config.model.clone()), slug)
+            let base = if base_url.is_empty() {
+                String::new()
+            } else {
+                llamacpp_base_url(base_url)
+            };
+            let client = openai_config(&openai::wire::LLAMACPP, api_key, &base).client();
+            rig_engine(client.completion(config.model.clone()), slug)
         }
-        ProviderIntegration::MiniMax => keyed_engine!(minimax),
-        ProviderIntegration::Mira => keyed_engine!(mira),
-        ProviderIntegration::Mistral => keyed_engine!(mistral),
-        ProviderIntegration::Moonshot => keyed_engine!(moonshot),
-        ProviderIntegration::Ollama => keyed_engine!(ollama),
-        ProviderIntegration::OpenRouter => keyed_engine!(openrouter),
-        ProviderIntegration::Perplexity => keyed_engine!(perplexity),
-        ProviderIntegration::Together => keyed_engine!(together),
-        ProviderIntegration::Xai => {
-            let mut builder = xai::Client::builder().api_key(api_key);
+        ProviderIntegration::MiniMax => keyed_engine!(&openai::wire::MINIMAX),
+        ProviderIntegration::Mira => keyed_engine!(&openai::wire::MIRA),
+        ProviderIntegration::Mistral => keyed_engine!(&openai::wire::MISTRAL),
+        ProviderIntegration::Moonshot => keyed_engine!(&openai::wire::MOONSHOT),
+        ProviderIntegration::Ollama => {
+            let mut target = ollama::OllamaConfig::new();
             if !base_url.is_empty() {
-                builder = builder.base_url(base_url);
+                target = target.with_base_url(base_url.to_owned());
             }
-            let client = builder
-                .build()
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            rig_engine_with_image(
-                client.completion_model(config.model.clone()),
-                client.image_generation_model(image_model),
+            rig_engine(
+                target.client().native_completion(config.model.clone()),
                 slug,
             )
         }
-        ProviderIntegration::XiaomiMimo => keyed_engine!(xiaomimimo),
-        ProviderIntegration::Zai => keyed_engine!(zai),
-        ProviderIntegration::AwsBedrock => {
-            let region = config
-                .settings
-                .get("region")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or(rig_bedrock::client::DEFAULT_AWS_REGION);
-            let client = if let Some(profile) = config
-                .settings
-                .get("profile")
-                .and_then(serde_json::Value::as_str)
-                .filter(|value| !value.trim().is_empty())
-            {
-                rig_bedrock::client::Client::with_profile_name(profile)
-            } else {
-                rig_bedrock::client::ClientBuilder::default()
-                    .region(region)
-                    .build()
-                    .await
-            };
+        ProviderIntegration::OpenRouter => keyed_engine!(&openai::wire::OPENROUTER),
+        ProviderIntegration::Perplexity => keyed_engine!(&openai::wire::PERPLEXITY),
+        ProviderIntegration::Together => keyed_engine!(&openai::wire::TOGETHER),
+        ProviderIntegration::Xai => {
+            let client = openai_config(&xai::DIALECT, api_key, base_url).client();
             rig_engine_with_image(
-                client.completion_model(config.model.clone()),
-                client.image_generation_model(image_model),
+                client.completion(config.model.clone()),
+                client.image_generation(image_model),
+                slug,
+            )
+        }
+        ProviderIntegration::XiaomiMimo => keyed_engine!(&openai::wire::XIAOMIMIMO),
+        ProviderIntegration::Zai => keyed_engine!(&openai::wire::ZAI),
+        ProviderIntegration::AwsBedrock => {
+            let client = bedrock_runtime(config)?;
+            rig_engine_with_image(
+                client.completion(config.model.clone()),
+                client.image_generation(image_model),
                 slug,
             )
         }
@@ -344,7 +305,7 @@ pub async fn inference_for_slug(
                 .get("project")
                 .and_then(serde_json::Value::as_str)
                 .ok_or_else(|| AiError::InvalidConfig("Vertex project is required".to_string()))?;
-            let mut builder = rig_vertexai::Client::builder().with_project(project);
+            let mut builder = rig_vertexai::VertexAi::builder().with_project(project);
             if let Some(location) = config
                 .settings
                 .get("location")
@@ -355,13 +316,11 @@ pub async fn inference_for_slug(
             let client = builder
                 .build()
                 .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            rig_engine(client.completion_model(config.model.clone()), slug)
+            rig_engine(client.completion(config.model.clone()), slug)
         }
         ProviderIntegration::GeminiGrpc => {
-            let client = rig_gemini_grpc::Client::new(api_key.to_string())
-                .await
-                .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
-            rig_engine(client.completion_model(config.model.clone()), slug)
+            let client = gemini_grpc_runtime(api_key, base_url).await?;
+            rig_engine(client.completion(config.model.clone()), slug)
         }
         ProviderIntegration::VoyageAi | ProviderIntegration::Fastembed => {
             return Err(AiError::InvalidConfig(format!(
@@ -373,10 +332,7 @@ pub async fn inference_for_slug(
 }
 
 #[async_trait]
-impl<M> InferenceEngine for RigInferenceEngine<M>
-where
-    M: CompletionModel + 'static,
-{
+impl InferenceEngine for RigInferenceEngine {
     async fn test_connection(&self, config: &AiProviderConfig) -> AiResult<ProviderTestResult> {
         let started = std::time::Instant::now();
         let response = self
@@ -459,7 +415,26 @@ where
                 self.provider
             ))
         })?;
-        image.generate(request).await
+        let (width, height) = parse_image_size(request.size.as_deref())?;
+        let mut builder = ImageGenerationRequestBuilder::new(request.prompt)
+            .width(width)
+            .height(height);
+        if let Some(negative_prompt) = request.negative_prompt {
+            builder =
+                builder.additional_params(serde_json::json!({"negative_prompt": negative_prompt}));
+        }
+        let response = image
+            .call(builder.build())
+            .await
+            .map_err(|error| AiError::Provider(error.to_string()))?;
+        let mime_type = rig::embeddings::image_media_type(&response.image)
+            .ok_or_else(|| AiError::Provider("unsupported generated image format".to_string()))?;
+        Ok(ProviderImageResponse {
+            bytes: response.image,
+            mime_type: mime_type.to_owned(),
+            revised_prompt: None,
+            raw_payload: serde_json::json!({"provider": self.provider, "usage": response.usage}),
+        })
     }
 }
 
@@ -482,110 +457,118 @@ fn parse_image_size(value: Option<&str>) -> AiResult<(u32, u32)> {
     Ok((width, height))
 }
 
-async fn complete_with<M: CompletionModel>(
-    model: &M,
+async fn complete_with(
+    model: &DynModel<Completion>,
     request: CompletionRequest,
     provider: &str,
 ) -> AiResult<ProviderChatResponse> {
     let response = model
-        .completion(request)
+        .call(request)
         .await
         .map_err(|error| AiError::Provider(error.to_string()))?;
+    map_completion(response, provider)
+}
+
+fn map_completion(response: CompletionResponse, provider: &str) -> AiResult<ProviderChatResponse> {
+    if let Some(error) = rig::message::turn_failure(
+        &response.choice,
+        Some(&response.stop()),
+        response.finish_reason().as_ref(),
+    ) {
+        return Err(AiError::Provider(error));
+    }
+    if response.stop().is_failure()
+        || response.unfinished_calls().next().is_some()
+        || (matches!(
+            response.finish_reason(),
+            Some(rig::completion::FinishReason::Length)
+        ) && response
+            .choice
+            .iter()
+            .any(|item| matches!(item, AssistantContent::ToolCall(_))))
+    {
+        return Err(AiError::Provider(
+            "Rig completion failed or returned unfinished tool calls".to_string(),
+        ));
+    }
+    let finish_reason = response
+        .finish_reason()
+        .map(|reason| {
+            use rig::completion::FinishReason;
+            Ok(match reason {
+                FinishReason::Stop => "stop".to_string(),
+                FinishReason::Length => "length".to_string(),
+                FinishReason::ToolCalls => "tool_calls".to_string(),
+                FinishReason::ContentFilter => "content_filter".to_string(),
+                FinishReason::Other(value) => value,
+                _ => {
+                    return Err(AiError::Provider(
+                        "unsupported Rig finish reason".to_string(),
+                    ));
+                }
+            })
+        })
+        .transpose()?;
     let raw_payload = serde_json::json!({
         "provider": provider,
-        "message_id": response.message_id,
-        "response_id": response.response_id,
+        "response_id": response.response_id(),
         "provider_request_id": response.provider_request_id,
         "usage": response.usage,
     });
-    Ok(map_response(
-        response.choice.into_iter().collect(),
-        response.message_id,
+    let mut mapped = map_response(
+        response.choice,
+        response.origin.response_id,
         raw_payload,
         provider,
-    ))
+    )?;
+    mapped.finish_reason = finish_reason;
+    Ok(mapped)
 }
 
-async fn stream_with<M: CompletionModel>(
-    model: &M,
+async fn stream_with(
+    model: &DynModel<Completion>,
     request: CompletionRequest,
     provider: &str,
     emitter: Option<ProviderStreamEmitter>,
 ) -> AiResult<ProviderChatResponse> {
     let mut stream = model
         .stream(request)
-        .await
         .map_err(|error| AiError::Provider(error.to_string()))?;
-    let mut assembled_tool_calls = BTreeMap::<String, (String, String, String)>::new();
-    let mut emitted_tool_call_ids = HashSet::new();
     while let Some(item) = stream.next().await {
         match item.map_err(|error| AiError::Provider(error.to_string()))? {
-            StreamedAssistantContent::Text(text) => {
+            Item::Event(StreamEvent::Text { text, .. }) => {
                 if let Some(emitter) = &emitter {
-                    emitter.emit_text_delta(text.text);
+                    emitter.emit_text_delta(text);
                 }
             }
-            StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                let tool_call_id_str = tool_call.id.to_string();
-                emitted_tool_call_ids.insert(tool_call_id_str.clone());
+            Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(call),
+                ..
+            }) => {
                 if let Some(emitter) = &emitter {
                     emitter.emit_tool_call(ToolCall {
-                        id: tool_call_id_str,
-                        name: tool_call.function.name,
-                        arguments: tool_call.function.arguments,
+                        id: call.id.to_string(),
+                        name: call.function.name.to_string(),
+                        arguments: rig_arguments(&call.function),
                     });
                 }
             }
-            StreamedAssistantContent::ToolCallDelta {
-                internal_call_id,
-                content,
-            } => {
-                let entry = assembled_tool_calls
-                    .entry(internal_call_id.clone())
-                    .or_insert_with(|| (internal_call_id, String::new(), String::new()));
-                match content {
-                    ToolCallDeltaContent::Name(name) => entry.1 = name,
-                    ToolCallDeltaContent::Delta(delta) => entry.2.push_str(&delta),
-                }
-            }
-            StreamedAssistantContent::Reasoning { .. }
-            | StreamedAssistantContent::ReasoningDelta { .. }
-            | StreamedAssistantContent::Final(_) => {}
-            StreamedAssistantContent::Unknown(_) => {
+            Item::Unknown(_) => {
                 tracing::debug!(provider, "received an unmodeled provider streaming item");
             }
+            _ => {}
         }
     }
-    if let Some(emitter) = &emitter {
-        for (_internal_id, (id, name, arguments)) in assembled_tool_calls {
-            if name.is_empty() || emitted_tool_call_ids.contains(&id) {
-                continue;
-            }
-            let arguments =
-                serde_json::from_str(&arguments).unwrap_or(serde_json::Value::String(arguments));
-            emitter.emit_tool_call(ToolCall {
-                id,
-                name,
-                arguments,
-            });
-        }
-    }
-    let raw_payload = stream
-        .response
-        .as_ref()
-        .and_then(|value| serde_json::to_value(value).ok())
-        .unwrap_or_else(|| serde_json::json!({"provider": provider, "streaming": true}));
-    if let Some(usage) = extract_usage(&raw_payload)
-        && let Some(emitter) = &emitter
-    {
+    // The SDK owns assembly and detects truncated replies; never synthesize a successful response.
+    let response = stream
+        .finish()
+        .await
+        .map_err(|error| AiError::Provider(error.to_string()))?;
+    let response = map_completion(response, provider)?;
+    if let (Some(usage), Some(emitter)) = (extract_usage(&response.raw_payload), emitter.as_ref()) {
         emitter.emit_usage(usage);
     }
-    Ok(map_response(
-        stream.choice.into_iter().collect(),
-        stream.message_id,
-        raw_payload,
-        provider,
-    ))
+    Ok(response)
 }
 
 pub(crate) fn extract_usage(payload: &serde_json::Value) -> Option<ProviderUsage> {
@@ -593,18 +576,19 @@ pub(crate) fn extract_usage(payload: &serde_json::Value) -> Option<ProviderUsage
     let input_tokens = usage
         .get("input_tokens")
         .or_else(|| usage.get("prompt_tokens"))
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
+        .and_then(serde_json::Value::as_u64)?;
     let output_tokens = usage
         .get("output_tokens")
         .or_else(|| usage.get("completion_tokens"))
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
+        .and_then(serde_json::Value::as_u64)?;
     let total_tokens = usage
         .get("total_tokens")
         .and_then(serde_json::Value::as_u64);
-    (input_tokens > 0 || output_tokens > 0 || total_tokens.unwrap_or(0) > 0)
-        .then(|| ProviderUsage::normalized(input_tokens, output_tokens, total_tokens))
+    Some(ProviderUsage::normalized(
+        input_tokens,
+        output_tokens,
+        total_tokens,
+    ))
 }
 
 #[cfg(test)]
@@ -620,6 +604,215 @@ mod usage_tests {
                 .unwrap();
         assert_eq!(anthropic.total_tokens, 8);
         assert!(extract_usage(&serde_json::json!({})).is_none());
+    }
+
+    #[test]
+    fn unknown_counters_are_unavailable_and_explicit_zero_is_evidence() {
+        for usage in [
+            serde_json::json!({}),
+            serde_json::json!({"input_tokens":3}),
+            serde_json::json!({"total_tokens":8}),
+            serde_json::json!({"input_tokens":null,"output_tokens":0}),
+        ] {
+            assert!(extract_usage(&serde_json::json!({"usage":usage})).is_none());
+        }
+        let zero =
+            extract_usage(&serde_json::json!({"usage":{"input_tokens":0,"output_tokens":0}}))
+                .unwrap();
+        assert_eq!(zero.total_tokens, 0);
+    }
+}
+
+#[cfg(test)]
+mod sdk_tests {
+    use super::*;
+    use rig::test_utils::{MockStreamingClient, RecordingHttpClient};
+    use serde_json::json;
+    use std::sync::{Arc, Mutex};
+
+    fn request() -> CompletionRequest {
+        CompletionRequest::new("hello").max_tokens(64)
+    }
+
+    fn sse(frames: Vec<serde_json::Value>) -> String {
+        frames
+            .into_iter()
+            .map(|frame| format!("data: {frame}\n\n"))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn sdk_chat_wire_preserves_route_history_and_usage() {
+        let http = RecordingHttpClient::new(json!({"id":"response-1","object":"chat.completion","created":1,"model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":"OK"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}).to_string());
+        let model = openai::OpenAIConfig::new("test-key")
+            .with_base_url("https://inference.example/v1")
+            .connect(http.clone())
+            .chat("test-model")
+            .erase();
+        let response = complete_with(
+            &model,
+            request().messages([Message::system("policy")]),
+            "openai_compatible",
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.assistant_message.content.as_deref(), Some("OK"));
+        assert_eq!(response.finish_reason.as_deref(), Some("stop"));
+        assert_eq!(
+            extract_usage(&response.raw_payload).unwrap().total_tokens,
+            5
+        );
+        assert_eq!(response.raw_payload["response_id"], "response-1");
+        let captured = http.requests();
+        assert_eq!(
+            captured[0].uri,
+            "https://inference.example/v1/chat/completions"
+        );
+        let body: serde_json::Value = serde_json::from_slice(&captured[0].body).unwrap();
+        assert_eq!(body["messages"][0]["role"], "system");
+        assert_eq!(body["messages"][1]["content"], "hello");
+    }
+
+    #[tokio::test]
+    async fn sdk_stream_assembles_fragmented_tool_arguments_once() {
+        let mut bytes = sse(vec![
+            json!({"id":"reply","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"lookup","arguments":"{\"id\":"}}]}}]}),
+            json!({"id":"reply","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"7}"}}]}}]}),
+            json!({"id":"reply","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}),
+        ]);
+        bytes.push_str("data: [DONE]\n\n");
+        let model = openai::OpenAIConfig::new("test-key")
+            .connect(MockStreamingClient {
+                sse_bytes: bytes.into(),
+            })
+            .chat("test-model")
+            .erase();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = events.clone();
+        let emitter = ProviderStreamEmitter::new(move |event| captured.lock().unwrap().push(event));
+        let response = stream_with(&model, request(), "openai_compatible", Some(emitter))
+            .await
+            .unwrap();
+        assert_eq!(response.assistant_message.tool_calls.len(), 1);
+        assert_eq!(
+            response.assistant_message.tool_calls[0].arguments,
+            json!({"id":7})
+        );
+        let events = events.lock().unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, crate::ProviderStreamEvent::ToolCall(_)))
+                .count(),
+            1
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, crate::ProviderStreamEvent::Usage(_)))
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn sdk_stream_rejects_eof_without_provider_completion() {
+        let bytes = sse(vec![
+            json!({"choices":[{"index":0,"delta":{"content":"partial"}}]}),
+        ]);
+        let model = openai::OpenAIConfig::new("test-key")
+            .connect(MockStreamingClient {
+                sse_bytes: bytes.into(),
+            })
+            .chat("test-model")
+            .erase();
+        assert!(
+            stream_with(&model, request(), "openai_compatible", None)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn sdk_native_streams_normalize_anthropic_and_gemini_usage() {
+        let bytes = sse(vec![
+            json!({"type":"message_start","message":{"id":"msg-1","type":"message","role":"assistant","model":"test-model","content":[],"usage":{"input_tokens":3,"output_tokens":0}}}),
+            json!({"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}),
+            json!({"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"OK"}}),
+            json!({"type":"content_block_stop","index":0}),
+            json!({"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}),
+            json!({"type":"message_stop"}),
+        ]);
+        let anthropic = anthropic::AnthropicConfig::new("test-key")
+            .connect(MockStreamingClient {
+                sse_bytes: bytes.into(),
+            })
+            .completion("test-model")
+            .erase();
+        let bytes = sse(vec![
+            json!({"candidates":[{"index":0,"content":{"role":"model","parts":[{"text":"OK"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"totalTokenCount":5}}),
+        ]);
+        let gemini = gemini::GeminiConfig::new("test-key")
+            .connect(MockStreamingClient {
+                sse_bytes: bytes.into(),
+            })
+            .completion("test-model")
+            .erase();
+        for (model, provider) in [(anthropic, "anthropic"), (gemini, "gemini")] {
+            let response = stream_with(&model, request(), provider, None)
+                .await
+                .unwrap();
+            assert_eq!(response.assistant_message.content.as_deref(), Some("OK"));
+            assert_eq!(
+                extract_usage(&response.raw_payload).unwrap().total_tokens,
+                5
+            );
+        }
+    }
+
+    #[test]
+    fn projection_preserves_all_tool_results_and_rejects_argument_coercion() {
+        let rig = Message::tool_results(vec![
+            rig::message::ToolResult {
+                call: CallId::from_wire("a"),
+                name: tool_name("lookup".to_string()).unwrap(),
+                content: vec![rig::message::ToolResultContent::text("first")],
+                is_error: true,
+            },
+            rig::message::ToolResult {
+                call: CallId::from_wire("b"),
+                name: tool_name("lookup".to_string()).unwrap(),
+                content: vec![rig::message::ToolResultContent::text("second")],
+                is_error: false,
+            },
+        ]);
+        let messages = map_rig_messages(rig).unwrap();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[1].tool_call_id.as_deref(), Some("b"));
+        for (index, message) in messages.into_iter().enumerate() {
+            let Message::User { content } = map_message(message).unwrap() else {panic!("tool result must map to a user message")};
+            let UserContent::ToolResult(result) = &content[0] else {panic!("tool result must survive projection")};
+            assert_eq!(result.is_error,index==0);
+        }
+        for invalid in [json!(null), json!("{}"), json!([])] {
+            let function =
+                strict_tool_function(tool_name("lookup".to_string()).unwrap(), invalid.clone())
+                    .unwrap();
+            assert_eq!(rig_arguments(&function), invalid);
+            assert!(function.invalid_arguments.is_some());
+        }
+    }
+
+    #[test]
+    fn local_endpoint_has_one_version_suffix() {
+        assert_eq!(
+            llamacpp_base_url("http://localhost:8080/"),
+            "http://localhost:8080/v1"
+        );
+        assert_eq!(
+            llamacpp_base_url("http://localhost:8080/v1/"),
+            "http://localhost:8080/v1"
+        );
     }
 }
 
@@ -673,38 +866,35 @@ mod live_connectivity_tests {
 }
 
 fn map_request(request: ProviderChatRequest) -> AiResult<CompletionRequest> {
-    let messages = request
+    let mut messages = request
         .messages
         .into_iter()
         .map(map_message)
         .collect::<AiResult<Vec<_>>>()?;
-    if messages.is_empty() {
-        return Err(AiError::Validation(
-            "provider request requires at least one message".to_string(),
-        ));
-    }
+    let prompt = messages.pop().ok_or_else(|| {
+        AiError::Validation("provider request requires at least one message".to_string())
+    })?;
     let tools = request
         .tools
         .into_iter()
-        .map(|tool| RigToolDefinition {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.input_schema,
+        .map(|tool| {
+            Ok(RigToolDefinition::new(
+                tool_name(tool.name)?,
+                tool.description,
+                tool.input_schema,
+            ))
         })
-        .collect();
-    Ok(CompletionRequest {
-        model: Some(request.model),
-        preamble: None,
-        chat_history: messages,
-        documents: Vec::new(),
-        tools,
-        temperature: request.temperature.map(f64::from),
-        max_tokens: request.max_tokens.map(u64::from),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    })
+        .collect::<AiResult<Vec<_>>>()?;
+    Ok(CompletionRequest::new(prompt)
+        .messages(messages)
+        .model(request.model)
+        .tools(tools)
+        .temperature(request.temperature.map(f64::from))
+        .max_tokens(request.max_tokens.map(u64::from)))
+}
+
+fn tool_name(value: String) -> AiResult<ToolName> {
+    ToolName::new(value).map_err(|error| AiError::Validation(error.to_string()))
 }
 
 pub(crate) fn map_message(message: ChatMessage) -> AiResult<Message> {
@@ -715,101 +905,129 @@ pub(crate) fn map_message(message: ChatMessage) -> AiResult<Message> {
             let tool_call_id = message.tool_call_id.ok_or_else(|| {
                 AiError::Validation("tool message requires tool_call_id".to_string())
             })?;
-            Message::tool_result(
-                tool_call_id.as_str(),
-                message.name.unwrap_or_default(),
-                message.content.unwrap_or_default(),
-            )
+            Message::tool_results(vec![rig::message::ToolResult {
+                call: CallId::from_wire(tool_call_id),
+                name: tool_name(message.name.unwrap_or_default())?,
+                content: vec![rig::message::ToolResultContent::text(message.content.unwrap_or_default())],
+                is_error: message.metadata.get("skipped").and_then(serde_json::Value::as_bool).unwrap_or(false),
+            }])
         }
         ChatMessageRole::Assistant => {
             let mut content = Vec::new();
             if let Some(text) = message.content.filter(|value| !value.is_empty()) {
                 content.push(AssistantContent::text(text));
             }
-            content.extend(message.tool_calls.into_iter().map(|call| {
-                AssistantContent::ToolCall(RigToolCall::new(
-                    ToolCallId::new_or_mint(call.id),
-                    ToolFunction::new(call.name, call.arguments),
-                ))
-            }));
+            for call in message.tool_calls {
+                content.push(AssistantContent::ToolCall(RigToolCall::from_wire(
+                    call.id,
+                    strict_tool_function(tool_name(call.name)?, call.arguments)?,
+                )));
+            }
             if content.is_empty() {
                 content.push(AssistantContent::text(""));
             }
-            Message::Assistant { id: None, content }
+            Message::Assistant(AssistantMessage::new(content))
         }
     })
 }
 
-pub(crate) fn map_rig_message(message: Message) -> ChatMessage {
-    match message {
-        Message::System { content } => ChatMessage {
-            role: ChatMessageRole::System,
-            content: Some(content),
-            name: None,
-            tool_call_id: None,
-            tool_calls: Vec::new(),
-            metadata: serde_json::json!({"engine": "rig_0_42"}),
-        },
-        Message::User { content } => {
-            let mut text = String::new();
-            let mut tool_call_id = None;
-            for item in content {
-                match item {
-                    UserContent::Text(value) => text.push_str(&value.text),
-                    UserContent::ToolResult(result) => {
-                        tool_call_id = Some(result.call.to_string());
-                        for value in result.content {
-                            if let rig::message::ToolResultContent::Text(value) = value {
-                                text.push_str(&value.text);
-                            }
-                        }
-                    }
-                    UserContent::Image(_)
-                    | UserContent::Audio(_)
-                    | UserContent::Video(_)
-                    | UserContent::Document(_) => {}
-                }
-            }
-            ChatMessage {
-                role: if tool_call_id.is_some() {
-                    ChatMessageRole::Tool
-                } else {
-                    ChatMessageRole::User
-                },
-                content: (!text.is_empty()).then_some(text),
-                name: None,
-                tool_call_id,
-                tool_calls: Vec::new(),
-                metadata: serde_json::json!({"engine": "rig_0_42"}),
-            }
+fn strict_tool_function(name: ToolName, arguments: serde_json::Value) -> AiResult<ToolFunction> {
+    let mut function = ToolFunction::new(name, arguments.clone());
+    if !arguments.is_object() {
+        function.arguments.clear();
+        function.invalid_arguments = Some(serde_json::to_string(&arguments)?);
+    }
+    Ok(function)
+}
+
+fn rig_arguments(function: &ToolFunction) -> serde_json::Value {
+    match &function.invalid_arguments {
+        Some(raw) => {
+            serde_json::from_str(raw).unwrap_or_else(|_| serde_json::Value::String(raw.clone()))
         }
-        Message::Assistant { id, content } => {
-            let response = map_response(
-                content.into_iter().collect(),
-                id,
-                serde_json::Value::Null,
-                "rig",
-            );
-            response.assistant_message
-        }
+        None => function.arguments_value(),
     }
 }
 
+pub(crate) fn map_rig_messages(message: Message) -> AiResult<Vec<ChatMessage>> {
+    let base = |role, content| ChatMessage {
+        role,
+        content,
+        name: None,
+        tool_call_id: None,
+        tool_calls: Vec::new(),
+        metadata: serde_json::json!({"engine":"rig_0_46"}),
+    };
+    Ok(match message {
+        Message::System { content } => vec![base(ChatMessageRole::System, Some(content))],
+        Message::User { content } => {
+            let mut messages = Vec::new();
+            for item in content {
+                match item {
+                    UserContent::Text(value) => {
+                        messages.push(base(ChatMessageRole::User, Some(value.text)))
+                    }
+                    UserContent::ToolResult(result) => {
+                        let mut text = String::new();
+                        for item in result.content {
+                            match item {
+                                rig::message::ToolResultContent::Text(value) => {
+                                    text.push_str(&value.text)
+                                }
+                                rig::message::ToolResultContent::Json { value } => {
+                                    text.push_str(&serde_json::to_string(&value)?)
+                                }
+                                _ => {
+                                    return Err(AiError::Validation(
+                                        "agent text context cannot contain tool media".to_string(),
+                                    ));
+                                }
+                            }
+                        }
+                        let mut message = base(ChatMessageRole::Tool, Some(text));
+                        message.name = Some(result.name.to_string());
+                        message.tool_call_id = Some(result.call.to_string());
+                        message.metadata["skipped"] = serde_json::json!(result.is_error);
+                        message.metadata["untrusted_context"] =
+                            serde_json::json!("mcp_tool_result");
+                        messages.push(message);
+                    }
+                    _ => {
+                        return Err(AiError::Validation(
+                            "agent text context cannot contain user media".to_string(),
+                        ));
+                    }
+                }
+            }
+            messages
+        }
+        Message::Assistant(assistant) => vec![
+            map_response(
+                assistant.content,
+                assistant.origin.and_then(|origin| origin.response_id),
+                serde_json::Value::Null,
+                "rig",
+            )?
+            .assistant_message,
+        ],
+    })
+}
+
 pub(crate) fn assistant_choice(message: &ChatMessage) -> AiResult<Vec<AssistantContent>> {
-    let Message::Assistant { content, .. } = map_message(message.clone())? else {
+    let Message::Assistant(assistant) = map_message(message.clone())? else {
         return Err(AiError::Validation(
             "Rig model turn must be an assistant message".to_string(),
         ));
     };
-    Ok(content)
+    Ok(assistant.content)
 }
 
 fn map_response(
     content: Vec<AssistantContent>,
-    message_id: Option<String>,
+    response_id: Option<String>,
     raw_payload: serde_json::Value,
     provider: &str,
-) -> ProviderChatResponse {
+) -> AiResult<ProviderChatResponse> {
     let mut text = String::new();
     let mut tool_calls = Vec::new();
     for item in content {
@@ -817,13 +1035,16 @@ fn map_response(
             AssistantContent::Text(value) => text.push_str(&value.text),
             AssistantContent::ToolCall(call) => tool_calls.push(ToolCall {
                 id: call.id.to_string(),
-                name: call.function.name,
-                arguments: call.function.arguments,
+                name: call.function.name.to_string(),
+                arguments: rig_arguments(&call.function),
             }),
-            AssistantContent::Reasoning { .. } | AssistantContent::Image(_) => {}
+            AssistantContent::Reasoning(_)
+            | AssistantContent::Image(_)
+            | AssistantContent::Opaque(_) => {}
+            _ => return Err(AiError::Provider("unsupported Rig assistant content".to_string())),
         }
     }
-    ProviderChatResponse {
+    Ok(ProviderChatResponse {
         assistant_message: ChatMessage {
             role: ChatMessageRole::Assistant,
             content: (!text.is_empty()).then_some(text),
@@ -832,11 +1053,11 @@ fn map_response(
             tool_calls,
             metadata: serde_json::json!({
                 "provider": provider,
-                "message_id": message_id,
-                "engine": "rig_0_39"
+                "response_id": response_id,
+                "engine": "rig_0_46"
             }),
         },
         finish_reason: None,
         raw_payload,
-    }
+    })
 }

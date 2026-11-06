@@ -1,5 +1,5 @@
 {
-  "rig_version": "0.39.0",
+  "rig_version": "0.46.0",
   "provider_slugs": [
     "openai",
     "openai_compatible",
@@ -9,7 +9,6 @@
     "github_copilot",
     "cohere",
     "deepseek",
-    "galadriel",
     "gemini",
     "groq",
     "hugging_face",

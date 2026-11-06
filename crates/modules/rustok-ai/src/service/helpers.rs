@@ -1026,11 +1026,10 @@ mod tests {
     }
 
     #[test]
-    fn rig_stream_cassettes_cover_every_supported_protocol_family() {
-        let document: StreamCassetteDocument = serde_json::from_str(include_str!(
-            "../../contracts/rig-0.39-stream-cassettes.json"
-        ))
-        .expect("stream cassette document is valid JSON");
+    fn normalized_stream_cassettes_cover_each_catalog_family() {
+        let document: StreamCassetteDocument =
+            serde_json::from_str(include_str!("../../contracts/stream-cassettes.json"))
+                .expect("stream cassette document is valid JSON");
         assert_eq!(document.rig_version, "0.39.0");
         assert_eq!(
             document

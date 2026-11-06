@@ -46,7 +46,7 @@ certification wording below where it implies executed or complete readiness.
 | --- | --- | --- |
 | P1 | Blog-owned catalog/validation/preview services, REST/GraphQL/native adapters and host preview/property bindings are implemented in source; mounted editor behavior remains unexecuted | Execute catalog, property validation and preview through the real editor. Manifest/registry adapter tests alone cannot satisfy this gate. |
 | P1 | Both editors construct typed partial updates from the loaded locale/revision snapshot; acknowledgement and independent reload have distinct state, and superseded requests cannot replace a newer session | Retain executed core and native HTTP acknowledgement evidence, then exercise fallback, stale-write, navigation and reload-failure behavior in both mounted clients. |
-| P1 | Post creation now requires stable command identity; owner receipts and both editors retain replay semantics in source | Verify owner rollback/replay and native/GraphQL outcomes. Pending editor state remains memory-only: reload/process recovery and mounted response-loss behavior still require evidence. Confirmed-acknowledgement locking alone cannot satisfy this gate. |
+| P1 | Post creation requires stable command identity; owner library and three PostgreSQL creation scenarios pass; both editors retain replay semantics in source | Retain transport/native evidence. Pending editor state remains memory-only: reload/process recovery and mounted response-loss behavior still require evidence. Confirmed-acknowledgement locking alone cannot satisfy this gate. |
 | P2 | Blog controls, form/grid composition and core policies have been refactored; shared grid messages include en/ru/fr and exact reaction counts remain decimal strings | Retain scoped Rust checks and third-locale/parameter/plural scenarios, then verify actual localized and accessible controls in both mounted clients. |
 | P2 | Both storefronts now compose reaction/comment surfaces; category-load failures are explicit, with the current category retained | Verify critical interactions through both actual client entrypoints, including uncertain reaction writes, read-only cached comments and reply identity across article/locale changes. |
 | P2 | Next owner behavior/API tests and SSR/native HTTP scenarios are present; default builds still omit production feature combinations | Retain scoped production-feature, native/GraphQL/REST, browser, accessibility and client-parity evidence from the actual entrypoints. |
@@ -84,16 +84,20 @@ is an authoritative rejection. Both native/GraphQL adapters preserve this
 outcome, and both editor models retain the immutable original request after
 ordinary errors. Same-actor credential refresh preserves the editor session.
 
+Stored failure replay now validates terminal status and nonempty public
+code/message after decoding. Structurally valid JSON with success, redirect,
+attempt-local authentication, rate-limit or infrastructure status is an invariant
+failure; it cannot release a client's unresolved command. Focused decoder tests
+cover accepted owner statuses and malformed outcomes.
+
 The owner and transport regressions cover response-loss replay, changed-input
 conflict, tenant/author isolation, current permission denial, replay after
-post deletion, durable rejection and injected outbox rollback/retry. The initial
-backend library run passed 187 tests, failed the nil-tenant diagnostic regression
-and ignored one explicitly configured PostgreSQL test. The diagnostic was
-restored; the nil-category assertion now checks the durable public rejection,
-and a new nil-command test checks that no receipt, row or event is written.
-Their combined rerun and the new transport/PostgreSQL scenarios remain pending
-until the selected Rust runs complete. All 24 semantic guard fixtures passed.
-The current client evidence is 17 Next Blog tests; Blog lint passes with the
+post deletion, durable rejection and injected outbox rollback/retry. The corrected
+backend library run passed 191 tests with zero failures and one ignored,
+separately configured PostgreSQL test. The nil-tenant diagnostic is preserved;
+the nil-category assertion checks the durable public rejection, and nil commands
+write no receipt, row or event. All 24 semantic guard fixtures and all 17 Next
+Blog model/API tests passed. Blog lint passes with the
 cached ESLint 9. The installed ESLint 10 fails in its parser integration. Overall
 Next admin type checking reports three existing Pricing errors.
 
@@ -104,12 +108,29 @@ and the lockfile selects `leptos_macro 0.8.18`, `server_fn_macro 0.8.11` and
 `leptos_hot_reload 0.8.6`. The resumed compilation passed both former failure
 locations. The combined scoped run was then interrupted before tests by disk
 pressure; successful dependency compilation does not establish test execution.
-Resume the selected package tests using the primary Cargo target after freeing
-the temporary `target/blog-reference-verification` copy. No workspace-wide
-suite or server compilation is needed for this slice.
+The temporary `target/blog-reference-verification` copy was removed after explicit
+user approval; selected package tests resumed using the primary Cargo target.
+No workspace-wide suite or server compilation is needed for this slice.
+
+Executed creation evidence on the corrected owner code:
+
+- `cargo test -p rustok-blog --lib --locked --offline -- --quiet`: 191 passed,
+  zero failed, one ignored PostgreSQL scenario outside this selected slice.
+- With explicit `RUSTOK_BLOG_TEST_DATABASE_URL` pointing to local PostgreSQL 16.13:
+  `cargo test -p rustok-blog --test post_creation --test post_creation_postgres --locked --offline -- --ignored`:
+  three passed, zero failed. Each scenario applies actual prerequisite/owner
+  migrations in its disposable database and drops that database afterward.
+  The concurrent scenario observes the first writer waiting on its actual INSERT
+  lock, refuses the duplicate while processing, then confirms one post/event and
+  replays through a reconstructed service/pool. Fault injection proves Outbox
+  failure rolls back both data and events, allowing exact retry. The GraphQL
+  scenario confirms Create-only acknowledgement/replay and durable rejection.
+- `npm run test:blog` in `apps/next-admin`: all 17 passed on this continuation.
+- GraphQL contract verification checked 66 schema types against seven client
+  documents. Admin and richtext boundary guards passed.
 
 Pending requests remain memory-only. Mounted response loss, browser reload and
-process recovery, and creation-specific PostgreSQL contention are still required
+process recovery are still required
 before this gate can be called complete. The owner contract is in
 [CRATE_API.md](../CRATE_API.md#replayable-post-creation).
 

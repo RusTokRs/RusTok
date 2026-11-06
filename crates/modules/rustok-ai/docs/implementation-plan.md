@@ -2,7 +2,7 @@
 
 ## Current state
 
-`rustok-ai` is the capability-owned AI host/orchestrator. Rig 0.39 is the only
+`rustok-ai` is the capability-owned AI host/orchestrator. Rig 0.46 is the only
 inference path for chat, streaming, tools, typed output, images, embeddings,
 and reranking. RusToK keeps tenancy, RBAC, routing, policy, approvals,
 persistence, traces, GraphQL/native transport, and first-party domain
@@ -13,10 +13,25 @@ deployment-owned `AiProviderTargetCatalog` entries. A profile selects a stable
 target id, model, policy, and permitted external credential references; it
 never supplies an endpoint, cloud project/region/identity, or plaintext
 secret. The catalog remains locked to
-`contracts/rig-0.39-provider-catalog.json`; updating Rig or adding a provider
+`contracts/provider-catalog.json`; updating Rig or adding a provider
 requires an intentional snapshot change and executable factory evidence. The
 snapshot is an inventory guard, not evidence that every advertised feature can
 be materialized by the selected build.
+
+### Rig 0.46 adaptation
+
+The inference/vector adapters use the SDK's operation-specific `DynModel`,
+non-exhaustive request builders, typed tool names, canonical stream finalization,
+and the current sans-I/O `AgentRun` answer API. Unknown usage remains unknown;
+an explicit zero is retained. Tool-result projection preserves every call ID and
+tool name, including synthetic closures after unknown-tool recovery. Malformed
+arguments suppress peer execution and cannot be coerced into valid objects.
+
+The registry removes the unavailable Galadriel adapter without preventing reads
+or deactivation of persisted profiles. Active snapshot filenames are unversioned;
+their declared SDK version must match every exact workspace Rig dependency pin.
+Offline SDK tests and scoped Rust checks are required for this upgrade. Live
+cloud/authentication probes and billable provider runs remain operator-only.
 
 The platform now supplies a generic manifest/runtime contribution contract with
 no AI-specific imports in `apps/server`. AI GraphQL surfaces and runtime data
@@ -174,7 +189,7 @@ active.
 |---|---|---|---|
 | R0. Static contract repair | `completed` | Provider events are normalized before publication; native DTO conversion is canonical. `ProviderIntegration` owns compiler-exhaustive factory capability binding and target loading rejects unavailable integrations. | `engine::catalog::tests` passes 8/8, including compiled-catalog filtering, target-load rejection, and descriptor/factory parity. |
 | R1. Approval recovery and restart | `completed` | Durable approved outcomes, transactional finalization, batch compare-and-set ownership, recovery, and canonical-history restart are implemented. | `cargo test -p rustok-ai --features server --lib` passes 59 tests with one deployment-live probe intentionally ignored. |
-| R2. Provider protocol evidence | `completed` | Offline cassettes cover OpenAI-compatible, Anthropic, Gemini, cloud-auth, and deployment-local normalized Rig streams; live probes remain opt-in. | Server and GraphQL test gates pass; `verify-ai-rig-cutover.mjs` passes. |
+| R2. Provider protocol evidence | `in_progress` | Normalized owner-event fixtures cover five families. Rig 0.46 transport tests cover OpenAI-compatible, Anthropic, and Gemini protocol decoding; live cloud-auth and deployment-specific verification remain opt-in. | Rerun scoped server/GraphQL tests and the cutover guard for the SDK upgrade; retain operator deployment evidence separately. |
 | R3. Security, migration, and transport parity | `in_progress` | Migration, secret validation, target/egress policy, safe GraphQL/native DTO contracts, and deployment-owned resolver composition are implemented. Explicit-JSON precedence and duplicate aliases are verified for offline/lazy resolver families; live Kubernetes/Azure identity and cloud-emulator coverage remain. | Run the dedicated secret resolver configuration tests, then rerun the existing secrets/server gates. |
 | R4. Final verification and evidence | `in_progress` | The generic runtime composition now publishes module extension values and invokes registered durable workers with no AI-specific server construction. The scheduler observes the shared stop signal before every new claim and exits cleanly while already-claimed work completes canonically. The remaining work is targeted static and later full Rust/frontend verification evidence. | Run the full requested gates in the separate verification pass. |
 
@@ -273,7 +288,7 @@ providers must be added behind the same retrieval contract.
 
 ## Phase FS-07 audit and remediation status
 
-- **Scope:** Complete `rustok-ai` capability ecosystem: `rustok-ai` (orchestration, Rig 0.39 runtime, provider profiles, RAG data plane), `rustok-ai-admin` (Leptos admin UI package), `rustok-ai-alloy`, `rustok-ai-athanor`, `rustok-ai-content`, `rustok-ai-media`, `rustok-ai-order`, `rustok-ai-product`, and `rustok-ai-translation`.
+- **Scope:** Complete `rustok-ai` capability ecosystem: `rustok-ai` (orchestration, Rig 0.46 runtime, provider profiles, RAG data plane), `rustok-ai-admin` (Leptos admin UI package), `rustok-ai-alloy`, `rustok-ai-athanor`, `rustok-ai-content`, `rustok-ai-media`, `rustok-ai-order`, `rustok-ai-product`, and `rustok-ai-translation`.
 - **Cargo metadata:** Workspace standardization applied (`rust-version.workspace = true`, `repository.workspace = true`, `readme = "README.md"`) across all 9 crates.
 - **Universal Logic Dimensions:** Verified bounds checks, non-empty secret resolvers, Rig provider descriptor catalogs, structured execution task ports, encryption keyring configuration, and strict permission intersections.
 - **Verification evidence:**

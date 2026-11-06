@@ -32,3 +32,8 @@ were added; they have not been executed in this continuation.
 ## Verification
 
 - `cargo test -p rustok-graphql --lib`
+
+## Related Documents
+
+- [Implementation plan](./implementation-plan.md)
+- [Crate README](../README.md)
