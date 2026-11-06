@@ -71,6 +71,9 @@ This bounded continuation started on local `main` at
 `4f33743372626e761fb2b628e2c4792f97a4a62b`. Concurrent commits updated dependencies
 and consolidated migrations; the creation implementation was also captured by
 `8237bd93135f448aad16f46de95c5aa4ab6cfd19` and `90276fc80f` during the work.
+The verification continuation resumed from
+`159e191d12d7629d50c5fd7954ff3dbbe17be48d`, which includes the creation
+transport/PostgreSQL test additions and the compatible Leptos macro lockfile.
 No audit ledger or new branch/worktree was activated.
 
 The mandatory `command_id` is scoped through the existing Outbox receipt by
@@ -83,12 +86,27 @@ ordinary errors. Same-actor credential refresh preserves the editor session.
 
 The owner and transport regressions cover response-loss replay, changed-input
 conflict, tenant/author isolation, current permission denial, replay after
-post deletion, durable rejection and injected outbox rollback/retry. These are
-executable scenarios, not evidence of execution until their scoped Rust runs
-complete. The current client/guard evidence is 17 Next Blog tests, 21 existing
-semantic guard fixtures and 3 new creation fixtures; Blog lint passes with the
+post deletion, durable rejection and injected outbox rollback/retry. The initial
+backend library run passed 187 tests, failed the nil-tenant diagnostic regression
+and ignored one explicitly configured PostgreSQL test. The diagnostic was
+restored; the nil-category assertion now checks the durable public rejection,
+and a new nil-command test checks that no receipt, row or event is written.
+Their combined rerun and the new transport/PostgreSQL scenarios remain pending
+until the selected Rust runs complete. All 24 semantic guard fixtures passed.
+The current client evidence is 17 Next Blog tests; Blog lint passes with the
 cached ESLint 9. The installed ESLint 10 fails in its parser integration. Overall
 Next admin type checking reports three existing Pricing errors.
+
+The SSR verification exposed incompatible upstream macro dependencies:
+`server_fn_macro 0.8.12` and `leptos_hot_reload 0.8.7` expose Syn 3 AST types
+to callers still using Syn 2. The shared catalog retains Leptos `=0.8.21`,
+and the lockfile selects `leptos_macro 0.8.18`, `server_fn_macro 0.8.11` and
+`leptos_hot_reload 0.8.6`. The resumed compilation passed both former failure
+locations. The combined scoped run was then interrupted before tests by disk
+pressure; successful dependency compilation does not establish test execution.
+Resume the selected package tests using the primary Cargo target after freeing
+the temporary `target/blog-reference-verification` copy. No workspace-wide
+suite or server compilation is needed for this slice.
 
 Pending requests remain memory-only. Mounted response loss, browser reload and
 process recovery, and creation-specific PostgreSQL contention are still required
