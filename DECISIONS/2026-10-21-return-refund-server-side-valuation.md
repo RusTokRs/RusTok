@@ -2,7 +2,7 @@
 
 - Date: 2026-10-21
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: rustok-commerce (return decision orchestration); rustok-order (line snapshot); rustok-payment (refund execution)
 - Extends: None
 - Supersedes: None

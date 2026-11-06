@@ -2,7 +2,7 @@
 
 - Date: 2026-10-25
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: platform / search team, with every projecting module as source owner
 - Extends: `2026-10-25-search-audience-declared-corpus.md`
 - Supersedes: None

@@ -2,7 +2,7 @@
 
 - Date: 2026-10-17
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-forum` (topic list and audience/read-state composition), module storefront adapters
 - Extends: `DECISIONS/2026-10-15-forum-anonymous-discovery-and-category-counts.md`, `DECISIONS/2026-10-08-owner-routes-and-batched-conversion.md`
 - Supersedes: None

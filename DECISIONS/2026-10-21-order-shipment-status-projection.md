@@ -2,7 +2,7 @@
 
 - Date: 2026-10-21
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: rustok-commerce (projection); rustok-fulfillment (shipment truth); rustok-order (status); rustok-inventory (stock)
 - Extends: None
 - Supersedes: None

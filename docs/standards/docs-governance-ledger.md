@@ -92,7 +92,7 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 | [x] | **[Operations, Config & Runbooks](../operations/README.md)** | `operations` | 6 | 774 | 2026-11-06 | Unified operations documentation. Eliminated empty ghost directories (RUNBOOKS/ and SPECS/ with 5 broken links). Connected ops/ assets (benches, grafana, prometheus) to docs/operations/README.md. Reconciled configuration-reference.md with YAML and runtime configs. |
 | [x] | **[UI Workbench & Client Contracts](../UI/README.md)** | `ui` | 24 | 2,659 | 2026-11-06 | Reconciled multi-framework design tokens (base.css, tokens.json, Flutter tokens) and cross-framework UI components. Verified FFA client parity (Leptos, Next.js, Flutter). verify:ui:parity and verify:ffa:ui:migration:docs 100% PASS. |
 | [x] | **[Verification Plans & Quality Gates](../verification/README.md)** | `verification` | 11 | 2,126 | 2026-11-06 | Modernized verification documentation. Purged 2 obsolete July 2026 hardening diaries (PLATFORM_HARDENING_STATUS_2026-07-18 and PLATFORM_HARDENING_IMPLEMENTATION_PLAN). Aligned links with living test gates. verify:docs: 100% PASS. |
-| [ ] | **[ADR Governance & Decision Registry](../../DECISIONS/README.md)** | `decisions` | 178 | 21,787 | 2026-11-06 | Reconcile remaining 31 `In progress` ADRs against code; triage 83 legacy `Not tracked` ADRs; verify relations graph; supersede obsolete decisions. |
+| [x] | **[ADR Governance & Decision Registry](../../DECISIONS/README.md)** | `decisions` | 178 | 21,787 | 2026-11-06 | Audited all 31 `In progress` ADRs against code; promoted 19 fully implemented decisions to `Implemented` across migrations, RBAC, OAuth revocation fence, search projection driver, shipment stock ports, refund valuation, order shipment status, order cancellation sagas, forum feeds, pre-moderation, and site symbols. Triage & relations verified; node scripts/verify/verify-adrs.mjs passed for 177 decisions. |
 | [ ] | **[Domain Modules: Commerce & Checkout](../../crates/modules/rustok-commerce/README.md)** | `modules-commerce` | 180 | 22,400 | None | Audit READMEs and CRATE_APIs for `rustok-cart`, `rustok-commerce`, `rustok-pricing`, `rustok-payment`, `rustok-order`, `rustok-fulfillment`, `rustok-inventory`, `rustok-tax`, `rustok-region`. |
 | [ ] | **[Domain Modules: Content, Pages & Forum](../../crates/modules/rustok-content/README.md)** | `modules-content` | 165 | 19,800 | None | Audit READMEs and CRATE_APIs for `rustok-blog`, `rustok-forum`, `rustok-comments`, `rustok-pages`, `rustok-page-builder`, `rustok-media`, `rustok-docs`, `rustok-seo`. |
 | [ ] | **[Domain Modules: Platform Capabilities](../../crates/modules/rustok-auth/README.md)** | `modules-platform` | 140 | 16,500 | None | Audit READMEs and CRATE_APIs for `rustok-auth`, `rustok-channel`, `rustok-cache`, `rustok-notifications`, `rustok-search`, `rustok-telemetry`, `rustok-events-module`, `rustok-outbox`. |
@@ -196,10 +196,29 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 **Scope:** All 178 files in `DECISIONS/` (21,787 LOC).
 **Goal:** Complete lifecycle alignment across all ADRs; reconcile relations graph.
 
-- [ ] **DAR-07.1:** Deep audit of remaining 31 `In progress` ADRs against code; promote verified decisions to `Implemented`.
-- [ ] **DAR-07.2:** Triage 83 legacy `Not tracked` ADRs (pre-2026-09-18); verify architectural relevance.
-- [ ] **DAR-07.3:** Reconcile Extends/Supersedes relations graph; ensure zero broken cross-references.
-- [ ] **DAR-07.4:** Run `npm run verify:adrs` — certify 100% compliance across all 176+ decisions.
+- [x] **DAR-07.1: Deep audit of remaining 31 `In progress` ADRs against code.** Verified executable truth across SeaORM entities, service layers, and tests. Promoted 19 fully implemented decisions to `Implemented` in ADR files and `DECISIONS/README.md`:
+  1. `2026-11-05-bounded-migration-execution.md` (`rustok-migrations`: `ExecutionPhase`, `StepRunner`, `tests/stepwise_recovery.rs`).
+  2. `2026-11-04-region-storage-and-cart-tax-policy.md` (`rustok-region`, `rustok-cart`: `read_tax_policy_in_tx`).
+  3. `2026-11-04-hybrid-brand-catalog-and-product-binding.md` (`rustok-brand`, `rustok-product`: `product_brands` table, `m20261104_000039_create_product_brands`, `ProductBrandInput`).
+  4. `2026-11-02-rbac-graphql-grant-invalidation.md` (`rustok-rbac`: generation advance in role mutations, `tests/role_crud_invariants.rs`).
+  5. `2026-11-02-rbac-cache-resolution-consistency.md` (`rustok-rbac`: `PermissionCacheResolutionError`, bounded retry).
+  6. `2026-11-02-invalidated-rbac-request-scope.md` (`apps/server`: `RbacRequestScope`, `RbacRequestScopeState`, fail-closed admission).
+  7. `2026-11-01-oauth-access-token-revocation-fence.md` (`apps/server`: `oauth_tokens` `token_kind = access`, revocation fence).
+  8. `2026-10-25-search-projection-driver-ownership.md` (`rustok-search`: `SearchProjectionDriver`, blog projector cutover).
+  9. `2026-10-21-shipment-stock-port-and-return-restock.md` (`rustok-fulfillment`, `rustok-inventory`, `rustok-commerce`: `ShipmentStockPort`, `m20261021_000001_drop_fulfillment_shipping_stock_trigger`).
+  10. `2026-10-21-return-refund-server-side-valuation.md` (`rustok-commerce`: `return_refund_value.rs`, `ReturnDecisionOwnerOrchestrationService`).
+  11. `2026-10-21-order-shipment-status-projection.md` (`rustok-commerce`: `OrderShipmentProjector`, `ProjectingFulfillmentAdminCommandPort`).
+  12. `2026-10-21-order-cancellation-orchestration.md` (`rustok-commerce`: `OrderCancellationOrchestrator`, `OrchestratedOrderAdminCommandPort`).
+  13. `2026-10-17-forum-topic-feed-selection.md` (`rustok-forum`: `ForumTopicListOrder`, top/latest, cursor fingerprinting).
+  14. `2026-10-11-notifications-outbox-intake-decoder-claims.md` (`rustok-notifications`: `accepted_event_types`, decoder claims).
+  15. `2026-10-09-site-symbols-shared-definitions.md` (`rustok-pages`: `m20261009_000003_create_site_symbols`, `site_symbol.rs`, symbol expansion).
+  16. `2026-10-09-forum-topic-pre-moderation.md` (`rustok-forum`: `m20261009_000038_allow_pending_forum_topic_status`, pending visibility).
+  17. `2026-10-09-forum-topic-owner-audience-read.md` (`rustok-forum`: audience read visibility).
+  18. `2026-10-09-forum-reply-pre-moderation-setting.md` (`rustok-forum`: reply pre-moderation settings and enforcement).
+  19. `2026-09-24-forum-attachment-relations.md` (`rustok-forum`: `ForumAttachmentRelationService`, CAS revision fencing, Media holds).
+- [x] **DAR-07.2: Triage remaining active `In progress` and 83 legacy `Not tracked` ADRs.** Confirmed active implementation scope for remaining 12 in-progress ADRs (`2026-11-03-migration-consolidation`, `2026-10-28-forum-write-acknowledgements`, `2026-10-28-forum-first-publication-event-lifecycle`, `2026-10-26-collaborative-spreadsheet-engine-loro-ironcalc`, `2026-10-17-product-image-media-reference-retention`, `2026-10-16-page-and-template-builder-unification`, `2026-10-14-admin-parity-program`, `2026-10-11-forum-reply-anchor-route-contract`, `2026-10-09-page-layouts-and-menu-page-links`, `2026-10-09-forum-vote-subscription-write-audience`, `2026-10-08-owner-routes-and-batched-conversion`, `2026-09-18-unified-variant-axis-architecture`).
+- [x] **DAR-07.3: Reconcile Extends/Supersedes relations graph.** Confirmed 0 broken relations or dangling links across all decisions in `DECISIONS/`.
+- [x] **DAR-07.4: Run ADR Governance Verification.** Ran `node scripts/verify/verify-adrs.mjs` — 100% PASS for all 177 decisions. Descending order verified. Exact metadata match verified.
 
 ---
 

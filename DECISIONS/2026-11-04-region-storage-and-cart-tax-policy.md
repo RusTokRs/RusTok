@@ -2,7 +2,7 @@
 
 - Date: 2026-11-04
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: Region and Cart
 - Extends: [2026-09-18-canonical-native-module-reference-contract.md](./2026-09-18-canonical-native-module-reference-contract.md)
 - Supersedes: [2026-03-25-commerce-module-split-product-pricing-inventory.md](./2026-03-25-commerce-module-split-product-pricing-inventory.md)

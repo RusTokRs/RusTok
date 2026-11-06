@@ -2,7 +2,7 @@
 
 - Date: 2026-11-04
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: rustok-brand, rustok-product
 - Extends: None
 - Supersedes: None

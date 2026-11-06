@@ -2,7 +2,7 @@
 
 - Date: 2026-11-01
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: platform / auth
 - Extends: None
 - Supersedes: None

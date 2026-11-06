@@ -2,7 +2,7 @@
 
 - Date: 2026-10-09
 - Decision status: Accepted
-- Implementation status: In progress
+- Implementation status: Implemented
 - Owners: `rustok-forum` (topic read services, GraphQL runtime, REST controllers, SEO target provider); `rustok-api` (`PortContext` and read-transport operations); consumers: `apps/next-admin`, `crates/modules/rustok-forum/admin`, `apps/next-frontend`, `crates/modules/rustok-forum/storefront`
 - Extends: `DECISIONS/2026-09-29-cross-module-owner-diagnostic-ports.md`, `crates/modules/rustok-forum/docs/forum-20bc-topic-audience-transport-composition.md`
 - Supersedes: None
