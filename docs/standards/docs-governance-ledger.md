@@ -44,8 +44,8 @@ When triggered, the agent:
 
 - **Status:** IN PROGRESS
 - **Active Cycle:** DAR Cycle 2 (Platform-Wide Documentation Actualization & Slop Purge)
-- **Active Phase:** [DAR-05: UI Workbench, Design Tokens & Client Surface Contracts](#dar-05-ui-workbench-design-tokens-client-surface-contracts)
-- **Completed Phases (Cycle 2):** 4/16 (DAR-01, DAR-02, DAR-03, DAR-04 PASS)
+- **Active Phase:** [DAR-06: Verification Plans & Quality Automation Evolution](#dar-06-verification-plans-quality-automation-evolution)
+- **Completed Phases (Cycle 2):** 5/16 (DAR-01, DAR-02, DAR-03, DAR-04, DAR-05 PASS)
 - **Active Branch:** `main`
 
 ---
@@ -90,7 +90,7 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 | [x] | **[Architecture Core](../architecture/overview.md)** | `architecture` | 22 | 5,273 | 2026-11-06 | Reconciled system overview, routing, settings, and distribution profiles. Eliminated displaced ADR subfolder (relocated newsletter ADR to canonical DECISIONS/), purged obsolete multilingual transport drift notes. Diagram & verify-docs: 100% PASS. |
 | [x] | **[Engineering Standards & Policies](./coding.md)** | `standards` | 15 | 5,617 | 2026-11-06 | Reconciled coding standards, error frameworks (rustok-core error & typed_error), transactional outbox, distributed tracing, and security policies. Zero broken links across 15 documents. |
 | [x] | **[Operations, Config & Runbooks](../operations/README.md)** | `operations` | 6 | 774 | 2026-11-06 | Unified operations documentation. Eliminated empty ghost directories (RUNBOOKS/ and SPECS/ with 5 broken links). Connected ops/ assets (benches, grafana, prometheus) to docs/operations/README.md. Reconciled configuration-reference.md with YAML and runtime configs. |
-| [ ] | **[UI Workbench & Client Contracts](../UI/README.md)** | `ui` | 24 | 2,659 | 2026-11-06 | Consolidate legacy root `UI/` and `packages/` into `docs/UI/` and `crates/ui/`. Reconcile Leptos FFA and Next.js frontend parity specs. |
+| [x] | **[UI Workbench & Client Contracts](../UI/README.md)** | `ui` | 24 | 2,659 | 2026-11-06 | Reconciled multi-framework design tokens (base.css, tokens.json, Flutter tokens) and cross-framework UI components. Verified FFA client parity (Leptos, Next.js, Flutter). verify:ui:parity and verify:ffa:ui:migration:docs 100% PASS. |
 | [ ] | **[Verification Plans & Quality Gates](../verification/README.md)** | `verification` | 13 | 2,904 | 2026-11-06 | Archive obsolete July 2026 hardening plans. Synchronize verification guides with active scripts in `scripts/verify/`. |
 | [ ] | **[ADR Governance & Decision Registry](../../DECISIONS/README.md)** | `decisions` | 178 | 21,787 | 2026-11-06 | Reconcile remaining 31 `In progress` ADRs against code; triage 83 legacy `Not tracked` ADRs; verify relations graph; supersede obsolete decisions. |
 | [ ] | **[Domain Modules: Commerce & Checkout](../../crates/modules/rustok-commerce/README.md)** | `modules-commerce` | 180 | 22,400 | None | Audit READMEs and CRATE_APIs for `rustok-cart`, `rustok-commerce`, `rustok-pricing`, `rustok-payment`, `rustok-order`, `rustok-fulfillment`, `rustok-inventory`, `rustok-tax`, `rustok-region`. |
@@ -170,12 +170,12 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 ### DAR-05: UI Workbench, Design Tokens & Client Surface Contracts
 
 **Scope:** `docs/UI/*`, root `UI/*`, `packages/*` (24 files, 2,659 LOC).
-**Goal:** Clean up legacy UI directories, establish single UI documentation source, align Leptos FFA and Next.js parity.
+**Goal:** Align UI documentation with multi-framework design tokens and Fluid Frontend Architecture (FFA) standards.
 
-- [ ] **DAR-05.1:** Reconcile root `UI/` directory: relocate documentation to `docs/UI/`, align source with `crates/ui/`.
-- [ ] **DAR-05.2:** Reconcile `packages/richtext` documentation with canonical ProseMirror/Tiptap protocol.
-- [ ] **DAR-05.3:** Audit `docs/UI/ui-workbench-architecture.md` and `module-package-implementation.md`.
-- [ ] **DAR-05.4:** Run `npm run verify:ui:parity` and `npm run verify:ffa:ui:migration:docs`.
+- [x] **DAR-05.1: Verify UI Design Tokens & Multi-Framework Assets.** Verified `UI/tokens/` (`tokens.json`, `base.css`, `rustok_tokens.g.dart`) and component implementations across Leptos, React, and Flutter. Corrected typos in `UI/docs/README.md`.
+- [x] **DAR-05.2: Verify Richtext Authoring Runtime Contract.** Verified `packages/richtext` contract against ProseMirror/Tiptap protocol and `RichTextDocument` schema across Next.js and Leptos SSR/hydrate modes.
+- [x] **DAR-05.3: Reconcile Frontend Application Documentation.** Reconciled `docs/UI/ui-workbench-architecture.md`, `module-package-implementation.md`, and host READMEs (`apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend`).
+- [x] **DAR-05.4: Run Scoped UI Verification.** Ran `npm run verify:ui:parity` (all 28 design token and component checks passed) and `npm run verify:ffa:ui:migration:docs` (all 7 pattern checks passed). Zero broken links in `docs/UI/`.
 
 ---
 
