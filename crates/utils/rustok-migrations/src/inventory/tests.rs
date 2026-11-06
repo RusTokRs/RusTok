@@ -92,7 +92,7 @@ fn compose(
 ) -> Result<MigrationInventory, MigrationInventoryError> {
     let sources: Vec<_> = modules
         .iter()
-        .map(|module| ModuleMigrationSource::new(*module))
+        .map(|module| crate::ModuleMigrationSource::new(*module))
         .collect();
     MigrationInventory::compose(platform, &sources)
 }

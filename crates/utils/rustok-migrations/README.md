@@ -142,11 +142,14 @@ table ownership, confine SQL effects, or confer module authority.
 
 This is a diagnostic declaration inventory. It does not hash source inputs,
 resolve transitive build provenance, certify observed safety, or seal a release.
+The existing migration infrastructure approval check also protects the extracted
+inventory implementation and its regression source, alongside the exporter.
 
-Inventory verification is pending on the current source: the Rust regression
-cases are defined, but compilation/execution and the composed pre/post migration
-name comparison have not yet completed. Static contract checks, documentation
-checks and independent source review do not substitute for those runtime checks.
+The neutral library check (`cargo test --locked --offline -p rustok-migrations
+--no-default-features --lib`) passed 24 tests, including all eight inventory
+regressions; the isolated PostgreSQL observer test remained ignored. The composed
+inventory regression and pre/post migration-name comparison are still pending.
+Static checks and source review do not substitute for those composed checks.
 
 The default `composition` feature preserves the complete existing `Migrator`,
 installer entrypoints and exports. Build the independent observer without that

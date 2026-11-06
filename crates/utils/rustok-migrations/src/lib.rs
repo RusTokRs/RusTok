@@ -9,7 +9,7 @@ pub mod identity;
 pub mod inventory;
 pub use inventory::{
     MigrationDescriptor, MigrationEntry, MigrationInventory, MigrationInventoryError,
-    MigrationOwner,
+    MigrationOwner, ModuleMigrationSource,
 };
 pub mod schema_diff;
 pub mod verification;

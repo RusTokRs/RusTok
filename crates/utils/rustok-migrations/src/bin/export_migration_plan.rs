@@ -28,7 +28,7 @@ fn parse_output_path() -> Result<PathBuf, Box<dyn Error>> {
                 output = PathBuf::from(arguments.next().ok_or("--output requires a file path")?);
             }
             "--help" | "-h" => {
-                println!("Usage: export_migration_plan [--output FILE]");
+                println!("Usage: export-migration-plan [--output FILE]");
                 std::process::exit(0);
             }
             unknown => return Err(format!("unknown argument: {unknown}").into()),

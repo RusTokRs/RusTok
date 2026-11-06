@@ -95,6 +95,21 @@ process recovery, and creation-specific PostgreSQL contention are still required
 before this gate can be called complete. The owner contract is in
 [CRATE_API.md](../CRATE_API.md#replayable-post-creation).
 
+The next client acceptance slice is sequenced as follows:
+
+1. Define the pending-command recovery owner contract, including actor/tenant
+   isolation, retained payload, logout behavior and cleanup. Select an existing
+   platform persistence capability where it owns these semantics; document any
+   required shared contract change before implementation.
+2. Restore the original command in both editors after navigation/reload, retain
+   it before transport dispatch, and clear it only after an authoritative outcome.
+   A credential refresh for the same actor must preserve the command; a different
+   actor or tenant must never replay it.
+3. Exercise both mounted entrypoints with a lost response before/after commit,
+   reload while unconfirmed, durable rejection followed by correction, and a
+   confirmed acknowledgement followed by failed detail reload. Assert owner rows
+   and Outbox cardinality alongside the visible retry/editing state.
+
 ### Fly owner continuation (2026-11-05)
 
 This source continuation started from `01ea0627d6b50e64a4b4fe2aa19fb0718e5c4f55`

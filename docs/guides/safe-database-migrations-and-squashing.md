@@ -51,7 +51,7 @@ the current implementation after the first Rust tooling changes.
 | Component | Existing behavior | Verification limit |
 |---|---|---|
 | [Source scanner](../../scripts/dev/safe-migration-squash.mjs) | Recursively inspects recognized entity/DDL shapes, file/directory entrypoints and dated references; rejects empty coverage | Regex parsing still has incomplete syntax/type coverage and warning-only cases; explicitly diagnostic |
-| [Plan exporter](../../crates/utils/rustok-migrations/src/bin/export_migration_plan.rs) | Exports ordered runtime migration names | No migration source hashes, stable seal or independent profile selection |
+| [Plan exporter](../../crates/utils/rustok-migrations/src/bin/export_migration_plan.rs) | Exports ordered runtime migration names and owner/dependency/safety/transaction declarations from the executable inventory | No migration source hashes, stable seal or independent profile selection |
 | [Plan comparator](../../scripts/verify/verify-migration-plan-compatibility.mjs) | Requires the PR base name list to remain an exact prefix | Unchanged names can conceal changed bodies/helpers |
 | [Migration Compatibility](../../.github/workflows/migration-compatibility.yml) | Wires fresh/incremental PostgreSQL, last-step rollback and PR-base upgrade; exporter target matches Cargo | PR base is not the previous stable release |
 | [Rust workflow](../../xtask/src/migrations.rs) | Snapshots exact original Git blobs and current candidate inputs; builds isolated source copies and binds fresh-install reports to source/tool/binary identities | Local fresh-install evidence; no trusted release/range/recovery admission |
@@ -231,9 +231,21 @@ remain unknown. Immutable Git/build input coverage, stable seals and their
 atomic integration/publication fence remain pending; this inventory completes
 neither gate 2 nor production update authorization.
 
-The inventory's Rust regression execution and composed pre/post name comparison
-are still pending on the current source. The available source review and static
-checks are not executable migration-equivalence or release-admission evidence.
+The neutral library passed 24 Rust tests, including eight inventory regressions;
+the isolated PostgreSQL observer test remained ignored. The composed inventory
+regression and pre/post migration-name comparison remain pending. Neither these
+unit tests nor source/static checks establish database equivalence or release
+admission.
+
+The next bounded implementation step extends the existing `xtask migrations
+verify-fresh` build report: bind the executable inventory to the existing
+path/mode/blob source snapshot, lockfile and resolved Cargo dependency/feature
+graph. Keep external package bytes, generated inputs, build-script/proc-macro
+effects and ambient native/toolchain inputs explicitly unverified until their
+provenance is established. A resolved graph is partial build evidence, not a
+complete input read trace or a per-migration freeze set. The module archive
+`source_digest` identifies archive bytes and cannot replace workspace/build
+identity; retain the existing snapshot, publication and source-store owners.
 
 1. **Restore trustworthy existing checks.** Fix the workflow binary target,
    nested-source/directory entrypoint inventory and reference-date matching.

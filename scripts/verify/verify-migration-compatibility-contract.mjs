@@ -169,6 +169,8 @@ requireMarkers("scripts/verify/verify-migration-infrastructure-approval.mjs", [
   ".github/workflows/migration-compatibility.yml",
   ".github/workflows/migration-infrastructure-approval.yml",
   "export_migration_plan.rs",
+  "crates/utils/rustok-migrations/src/inventory.rs",
+  "crates/utils/rustok-migrations/src/inventory/tests.rs",
   "postgres_zero_migration_smoke.rs",
   "tests/support/mod.rs",
   "tests/support/backfill_fixtures.rs",

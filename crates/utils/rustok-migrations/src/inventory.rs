@@ -8,6 +8,7 @@ use sea_orm_migration::MigrationTrait;
 use serde::Serialize;
 use thiserror::Error;
 
+/// Owned ordering projection of the canonical core migration-source declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MigrationDescriptor {
     pub(crate) migration: String,

@@ -19,6 +19,8 @@ const PROTECTED_PATHS = [
   "docs/ci/ruleset-activation-request.md",
   "docs/ci/ruleset-activation-state.json",
   "crates/utils/rustok-migrations/src/bin/export_migration_plan.rs",
+  "crates/utils/rustok-migrations/src/inventory.rs",
+  "crates/utils/rustok-migrations/src/inventory/tests.rs",
   "crates/utils/rustok-migrations/tests/postgres_zero_migration_smoke.rs",
   "crates/utils/rustok-migrations/tests/support/mod.rs",
   "crates/utils/rustok-migrations/tests/support/backfill_fixtures.rs",
@@ -140,6 +142,29 @@ function runSelfTest() {
 
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rustok-migration-approval-"));
   try {
+    const baseRoot = path.join(fixtureRoot, "base");
+    const headRoot = path.join(fixtureRoot, "head");
+    for (const relativePath of [
+      "crates/utils/rustok-migrations/src/inventory.rs",
+      "crates/utils/rustok-migrations/src/inventory/tests.rs",
+    ]) {
+      assert.ok(PROTECTED_PATHS.includes(relativePath));
+      const baseFile = path.join(baseRoot, relativePath);
+      const headFile = path.join(headRoot, relativePath);
+      fs.mkdirSync(path.dirname(baseFile), { recursive: true });
+      fs.mkdirSync(path.dirname(headFile), { recursive: true });
+      fs.writeFileSync(baseFile, "original inventory contract");
+      fs.writeFileSync(headFile, "original inventory contract");
+      assert.deepEqual(changedProtectedPaths(baseRoot, headRoot), []);
+      fs.writeFileSync(headFile, "changed inventory contract");
+      const changedPaths = changedProtectedPaths(baseRoot, headRoot);
+      assert.deepEqual(changedPaths, [relativePath]);
+      assert.deepEqual(approvalDecision(changedPaths, new Set(), false), {
+        required: true,
+        approved: false,
+      });
+      fs.writeFileSync(headFile, "original inventory contract");
+    }
     fs.writeFileSync(path.join(fixtureRoot, "target.txt"), "policy");
     try {
       fs.symlinkSync("target.txt", path.join(fixtureRoot, "link.txt"));

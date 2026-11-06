@@ -109,7 +109,10 @@ observer:
 - `generate_migration_dry_run_receipt(...) -> MigrationDryRunReceipt`
 
 ### Descriptors
-- `MigrationDescriptor`: Internal and exportable dependency descriptor (`migration: String`, `after: Vec<String>`).
+- `MigrationDescriptor`: Owned ordering projection of
+  `rustok_core::MigrationDependencyDescriptor`, constructed with `new` or `From`.
+  The module source owns declarations; exported entries derive their `after`
+  fields from those declarations. This sorter representation is not serialized.
 
 ---
 
