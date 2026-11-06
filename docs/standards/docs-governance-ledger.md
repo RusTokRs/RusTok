@@ -261,12 +261,31 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 
 ---
 
-### DAR-10..DAR-15: Remaining Domain Modules Documentation Audit (by Clusters)
+### DAR-10: Platform Capabilities Cluster
+
+**Scope:** Documentation across 10 platform capability crates in `crates/modules/` and `crates/libs/` (`rustok-auth`, `rustok-cache`, `rustok-channel`, `rustok-events-module`, `rustok-notifications`, `rustok-outbox`, `rustok-rbac`, `rustok-search`, `rustok-telemetry`, `rustok-events`) (85 files, 11,099 LOC).
+**Goal:** Verify and synchronize domain contracts, CRATE_API, entity models, port interfaces, outbox relay policies, and authorization specifications across all platform capability modules.
+
+- [x] **DAR-10.1: Reconcile Retired Forum Search Contracts in `rustok-search`.** Updated `crates/modules/rustok-search/docs/implementation-plan.md` to reference surviving canonical Forum search contracts (`forum-search-category-audience-scope.json`, `forum-search-durable-ingest-sequence.json`, `forum-search-trusted-channel-authority.json`, `forum-search-product-channel-visibility.json`) and purged 4 broken references to retired Forum-only search contracts.
+- [x] **DAR-10.2: Index Unreferenced Architectural & Causation Contracts in `rustok-outbox`.** Reconciled and linked `contract-write-once-causation.md` into `crates/modules/rustok-outbox/docs/README.md` under Related documents.
+- [x] **DAR-10.3: Index Unreferenced Architectural Contracts & Evidence Harnesses in `rustok-rbac`.** Reconciled and linked 7 previously unindexed specifications into `crates/modules/rustok-rbac/docs/README.md`:
+  - `explicit-principal-kind.md`: trusted principal classification and admission invariants.
+  - `owner-role-mutation-contract.md`: operator mutation contract for built-in roles.
+  - `cli-live-repair-propagation-evidence.md`: CLI live system-role repair propagation across replicas.
+  - `policy-incident-trace.md`: policy incident trace connecting relation state, cache snapshot, durable generation, and watchdog action.
+  - `postgres-concurrency-evidence.md`: PostgreSQL concurrency evidence harness.
+  - `two-process-durable-recovery-evidence.md`: two-process durable recovery evidence.
+  - `two-process-redis-restart-evidence.md`: multi-process Redis restart recovery harness.
+- [x] **DAR-10.4: Verify Full Link & Anchor Integrity Across Cluster.** Audited all 85 markdown files and 186 internal links/anchors across all 10 platform capability crates. Confirmed zero broken links, zero dangling anchors, and 100% unindexed file coverage.
+- [x] **DAR-10.5: Run Scoped Verification.** Ran `node scripts/verify/verify-docs.mjs` (100% PASS across all 6 stages), `node scripts/verify/verify-adrs.mjs` (100% PASS), `node scripts/verify/verify-ui-parity.mjs` (100% PASS), `node scripts/verify/verify-search-audience-classes.mjs` (100% PASS), `node scripts/verify/verify-outbox-admin-boundary.mjs` (100% PASS), and `node scripts/verify/verify-search-fba.mjs` (100% PASS).
+
+---
+
+### DAR-11..DAR-15: Remaining Domain Modules Documentation Audit (by Clusters)
 
 **Scope:** Documentation across remaining module directories in `crates/modules/` and `docs/modules/`.
 **Goal:** Verify that every domain module's README, CRATE_API, entity schemas, and port documentation reflect executable reality.
 
-- [ ] **DAR-10: Platform Capabilities Cluster** (`rustok-auth`, `rustok-channel`, `rustok-cache`, `rustok-notifications`, `rustok-search`, `rustok-telemetry`, `rustok-events-module`, `rustok-outbox`).
 - [ ] **DAR-11: Marketplace & Multi-Tenancy Cluster** (`rustok-marketplace*`, `rustok-tenant`, `rustok-distribution`).
 - [ ] **DAR-12: Customer, CRM & Finance Cluster** (`rustok-customer`, `rustok-deal`, `rustok-finance`, `rustok-accounting`, `rustok-billing`, `rustok-forms`, `rustok-workflow`).
 - [ ] **DAR-13: AI & Emerging Capabilities Cluster** (`rustok-ai*`, `rustok-mcp`, `rustok-messenger`, `rustok-tasks`, `flex`, `alloy`).

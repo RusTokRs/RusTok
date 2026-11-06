@@ -109,4 +109,5 @@ not responsible for a recipient's domain side effects.
 
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
+- [Contract write-once and causation boundary](./contract-write-once-causation.md)
 - [Manifest layer contract](../../../../docs/modules/manifest.md)

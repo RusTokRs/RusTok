@@ -680,10 +680,10 @@ should run the relevant subset, including:
 - [Search documentation](./README.md)
 - [Search FBA registry](../contracts/search-fba-registry.json)
 - [Forum exact-category contract](../../rustok-forum/contracts/forum-search-exact-category-filter.json)
-- [Forum result-eligibility contract](../../rustok-forum/contracts/forum-search-result-eligibility.json)
-- [Forum author-filter contract](../../rustok-forum/contracts/forum-search-author-filter.json)
-- [Forum tag/solved contract](../../rustok-forum/contracts/forum-search-tag-solved-filter.json)
-- [Forum locale/date contract](../../rustok-forum/contracts/forum-search-locale-date-filter.json)
+- [Forum category-audience scope contract](../../rustok-forum/contracts/forum-search-category-audience-scope.json)
+- [Forum durable ingest-sequence contract](../../rustok-forum/contracts/forum-search-durable-ingest-sequence.json)
+- [Forum trusted channel authority contract](../../rustok-forum/contracts/forum-search-trusted-channel-authority.json)
+- [Forum product channel visibility contract](../../rustok-forum/contracts/forum-search-product-channel-visibility.json)
 
 
 ## Blog projection tenant and ownership boundary

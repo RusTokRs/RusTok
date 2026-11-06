@@ -230,3 +230,16 @@ durable generation and recovery action is still an open P1 in the implementation
 - [Implementation plan](./implementation-plan.md)
 - [Event flow contract](../../../../docs/architecture/event-flow-contract.md)
 - [Verification plan](../../../../docs/verification/rbac-server-modules-verification-plan.md)
+
+### Architectural contracts & principal classification
+
+- [Explicit principal-kind contract](./explicit-principal-kind.md)
+- [Owner role mutation contract](./owner-role-mutation-contract.md)
+
+### Verification, evidence & incident harnesses
+
+- [CLI live system-role repair propagation evidence](./cli-live-repair-propagation-evidence.md)
+- [Policy incident trace packet](./policy-incident-trace.md)
+- [PostgreSQL concurrency evidence harness](./postgres-concurrency-evidence.md)
+- [Two-process durable recovery evidence](./two-process-durable-recovery-evidence.md)
+- [Two-process Redis restart recovery evidence](./two-process-redis-restart-evidence.md)
