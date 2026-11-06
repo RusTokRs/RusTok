@@ -24,4 +24,4 @@ This is a support crate rather than a host-mounted module surface, so it intenti
 ## Documentation
 
 - See [CRATE_API.md](CRATE_API.md) for full contract specification.
-- See the [module UI package implementation guide](../../../docs/UI/module-package-implementation.md) and the [Comments implementation plan](../rustok-comments/docs/implementation-plan.md).
+- See the [module UI package implementation guide](../../../../docs/UI/module-package-implementation.md) and the [Comments implementation plan](../docs/implementation-plan.md).

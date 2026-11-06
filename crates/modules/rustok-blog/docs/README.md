@@ -208,6 +208,7 @@ slice text.
 - [README crate](../README.md)
 - [Implementation Plan and Reference Evidence](./implementation-plan.md)
 - [CRATE_API](../CRATE_API.md)
+- [Category Hierarchy Contract](./category-hierarchy-contract.md)
 - [Admin package](../admin/README.md)
 - [Storefront package](../storefront/README.md)
 - [Event flow contract](../../../../docs/architecture/event-flow-contract.md)

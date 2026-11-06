@@ -89,3 +89,14 @@ Route resolution and immutable route-history recording batch tenant-scoped reads
 - [Admin package](../admin/README.md)
 - [Storefront package](../storefront/README.md)
 - [Event flow contract](../../../../docs/architecture/event-flow-contract.md)
+
+### Immutable Artifact Integrity & Repair Specifications
+
+- [Artifact Repair Rollback Continuity](./artifact-repair-rollback-continuity.md)
+- [Explicit Artifact Repair Transports](./explicit-artifact-repair-transports.md)
+- [Explicit Immutable Artifact Binding Replacement](./explicit-immutable-artifact-binding-replacement.md)
+- [Explicit Immutable Artifact Loss Activation Recovery](./explicit-immutable-artifact-loss-activation-recovery.md)
+- [Explicit Immutable Artifact Rebuild](./explicit-immutable-artifact-rebuild.md)
+- [Immutable Artifact Integrity Audit Transport](./immutable-artifact-integrity-audit-transport.md)
+- [Immutable Artifact Integrity Audit](./immutable-artifact-integrity-audit.md)
+- [Immutable Artifact Rebuild Provenance](./immutable-artifact-rebuild-provenance.md)
