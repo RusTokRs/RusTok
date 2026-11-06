@@ -39,6 +39,30 @@ pub enum MigrationOwner {
     Module { slug: String },
 }
 
+/// Binds the canonical owner slug to its narrow migration port. Construction
+/// uses static dispatch so operational tools do not retain a full module vtable.
+pub struct ModuleMigrationSource<'a> {
+    slug: &'static str,
+    source: &'a dyn rustok_core::MigrationSource,
+}
+
+impl<'a> ModuleMigrationSource<'a> {
+    pub fn new<M: RusToKModule>(module: &'a M) -> Self {
+        Self {
+            slug: module.slug(),
+            source: module,
+        }
+    }
+
+    pub fn slug(&self) -> &'static str {
+        self.slug
+    }
+
+    pub fn source(&self) -> &'a dyn rustok_core::MigrationSource {
+        self.source
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MigrationEntry {
     pub migration: String,
@@ -106,7 +130,7 @@ pub struct MigrationInventory {
 impl MigrationInventory {
     pub fn compose(
         platform: Vec<Box<dyn MigrationTrait>>,
-        modules: &[&dyn RusToKModule],
+        modules: &[ModuleMigrationSource<'_>],
     ) -> Result<Self, MigrationInventoryError> {
         let mut all = Vec::new();
         let mut entries = BTreeMap::new();
@@ -116,15 +140,16 @@ impl MigrationInventory {
 
         for module in modules {
             let slug = module.slug();
+            let source = module.source();
             if slug.is_empty() || slug.trim() != slug || !owners.insert(slug) {
                 return Err(MigrationInventoryError::InvalidOwner(slug.to_owned()));
             }
             let owner = MigrationOwner::Module {
                 slug: slug.to_owned(),
             };
-            append_migrations(module.migrations(), owner.clone(), &mut all, &mut entries)?;
+            append_migrations(source.migrations(), owner.clone(), &mut all, &mut entries)?;
             let mut declared_dependencies = BTreeSet::new();
-            for descriptor in module.migration_dependencies() {
+            for descriptor in source.migration_dependencies() {
                 let entry = owned_entry(&mut entries, &owner, descriptor.migration, "dependency")?;
                 if !declared_dependencies.insert(descriptor.migration) {
                     return Err(MigrationInventoryError::DuplicateDeclaration {
@@ -139,7 +164,7 @@ impl MigrationInventory {
                     .collect();
                 dependencies.push(MigrationDescriptor::from(descriptor));
             }
-            for metadata in module.migration_safety_metadata() {
+            for metadata in source.migration_safety_metadata() {
                 let entry = owned_entry(&mut entries, &owner, metadata.migration, "safety")?;
                 if entry.safety.replace(metadata).is_some() {
                     return Err(MigrationInventoryError::DuplicateDeclaration {

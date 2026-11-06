@@ -81,6 +81,9 @@ version/extensions and verifier version in the enclosing build identity.
 The current executable inventory supplies the declaration portion through
 `Migrator::inventory()`: one module source list yields both executable objects
 and ordered export entries, with ownership derived from the module contract.
+Typed registrations derive that slug from the concrete module and retain only
+its narrow `MigrationSource` port, avoiding a full module lifecycle vtable in
+the operational inventory.
 Missing safety metadata and undeclared transaction policy remain explicit
 `null`. These declarations do not establish source-input coverage or observed
 safety. Trusted immutable hashes, transitive build provenance and stable seals

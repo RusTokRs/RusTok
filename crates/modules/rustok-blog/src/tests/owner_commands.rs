@@ -84,7 +84,10 @@ async fn creation_replay_returns_original_identity_without_new_rows_or_events() 
             .unwrap(),
         id
     );
-    assert_eq!(outbox_event_count(&db, "blog.post.created").await, event_count);
+    assert_eq!(
+        outbox_event_count(&db, "blog.post.created").await,
+        event_count
+    );
     assert_eq!(blog_post::Entity::find().count(&db).await.unwrap(), 1);
     let mut changed = input.clone();
     changed.title = "Different command payload".into();
@@ -106,7 +109,10 @@ async fn creation_replay_returns_original_identity_without_new_rows_or_events() 
         id
     );
     assert_eq!(blog_post::Entity::find().count(&db).await.unwrap(), 0);
-    assert_eq!(outbox_event_count(&db, "blog.post.created").await, after_delete);
+    assert_eq!(
+        outbox_event_count(&db, "blog.post.created").await,
+        after_delete
+    );
     let denied = rustok_core::SecurityContext::from_permissions(
         rustok_core::UserRole::Admin,
         actor.user_id,

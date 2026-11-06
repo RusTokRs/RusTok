@@ -66,6 +66,33 @@ Primary entry points:
 - **`rustok-channel`**: Channel module binding and public post visibility allowlists.
 - **`rustok-outbox`**: Transactional outbox event publishing for post lifecycle changes.
 
+## Replayable post creation
+
+`PostService::create_post` requires a non-nil `CreatePostInput.command_id`;
+REST JSON uses `command_id`, GraphQL uses mandatory `commandId: UUID!`.
+Allocate this identity once per logical creation and preserve the complete input
+until its outcome is established. The existing Outbox owner-operation receipt is
+scoped by tenant, current author and operation, with the immutable input hash.
+Current Create/Publish authority is checked before receipt lookup. Reusing a key
+with different input returns a conflict. A completed receipt returns the original
+UUID even after the post is deleted, without a new read grant or side effects.
+
+The creation transaction owns all rows, routes, relations, outbox events and receipt
+completion. Confirmed rollback permits a retry after infrastructure failure; a
+failed rollback retains the fenced lease for canonical recovery. Only a durable
+failed receipt becomes `BlogError::CreationRejected`. GraphQL exposes this as
+`extensions.outcome = "rejected"`; native admin uses `BlogPostCreationOutcome`.
+An ordinary error (including permission loss before receipt lookup) is unresolved
+and does not authorize a new logical creation. REST retains its ordinary public
+error envelope; REST callers must preserve the key on errors.
+
+Both admin editors freeze the original key and payload while unresolved, and retry
+that exact input. Durable rejection permits correction with a fresh key. Success
+consumes submit ability before independent detail reload/navigation. Pending state
+is currently in memory: browser reload, unmount and process restart recovery are
+not yet certified. AI and Starter entrypoints allocate identities for new owner
+calls; cross-invocation retry guarantees require their caller to retain identity.
+
 ## Page Builder widget contract
 
 Blog owns the schema, normalization and read-only preview of three Fly widgets.

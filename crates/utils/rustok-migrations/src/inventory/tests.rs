@@ -86,8 +86,19 @@ fn metadata(name: &'static str) -> MigrationSafetyMetadata {
     )
 }
 
-fn error(modules: &[&dyn RusToKModule]) -> MigrationInventoryError {
-    MigrationInventory::compose(Vec::new(), modules)
+fn compose(
+    platform: Vec<Box<dyn MigrationTrait>>,
+    modules: &[&TestModule],
+) -> Result<MigrationInventory, MigrationInventoryError> {
+    let sources: Vec<_> = modules
+        .iter()
+        .map(|module| ModuleMigrationSource::new(*module))
+        .collect();
+    MigrationInventory::compose(platform, &sources)
+}
+
+fn error(modules: &[&TestModule]) -> MigrationInventoryError {
+    compose(Vec::new(), modules)
         .err()
         .expect("invalid declarations must fail")
 }
@@ -100,9 +111,7 @@ fn export_and_executor_share_exact_order_and_owner_facts() {
         .push(MigrationDependencyDescriptor::new("a", vec!["c"]));
     alpha.safety.push(metadata("a"));
     let beta = TestModule::new("beta", &["c"]);
-    let inventory =
-        MigrationInventory::compose(vec![Box::new(TestMigration("b", None))], &[&alpha, &beta])
-            .unwrap();
+    let inventory = compose(vec![Box::new(TestMigration("b", None))], &[&alpha, &beta]).unwrap();
     assert_eq!(inventory.migrations(), &["b", "c", "a", "d"]);
     assert_eq!(alpha.calls.load(Ordering::SeqCst), 1);
     assert_eq!(beta.calls.load(Ordering::SeqCst), 1);
@@ -141,7 +150,7 @@ fn export_and_executor_share_exact_order_and_owner_facts() {
 fn missing_safety_and_transaction_declarations_remain_unknown() {
     let mut module = TestModule::new("alpha", &[]);
     module.names = vec![("a", None), ("b", Some(true)), ("c", Some(false))];
-    let inventory = MigrationInventory::compose(Vec::new(), &[&module]).unwrap();
+    let inventory = compose(Vec::new(), &[&module]).unwrap();
     let json = serde_json::to_value(&inventory).unwrap();
     assert_eq!(
         json["entries"][0]["use_transaction"],
@@ -184,7 +193,7 @@ fn identities_cannot_be_empty_ambiguous_or_owned_twice() {
         MigrationInventoryError::DuplicateIdentity("a".to_owned())
     );
     assert!(matches!(
-        MigrationInventory::compose(vec![Box::new(TestMigration("a", None))], &[&alpha]),
+        compose(vec![Box::new(TestMigration("a", None))], &[&alpha]),
         Err(MigrationInventoryError::DuplicateIdentity(_))
     ));
 }
@@ -302,8 +311,8 @@ fn module_registration_order_does_not_change_exported_bytes() {
         .push(MigrationDependencyDescriptor::new("a", vec!["c"]));
     alpha.safety.push(metadata("a"));
     let beta = TestModule::new("beta", &["b", "c"]);
-    let forward = MigrationInventory::compose(Vec::new(), &[&alpha, &beta]).unwrap();
-    let reversed = MigrationInventory::compose(Vec::new(), &[&beta, &alpha]).unwrap();
+    let forward = compose(Vec::new(), &[&alpha, &beta]).unwrap();
+    let reversed = compose(Vec::new(), &[&beta, &alpha]).unwrap();
     assert_eq!(
         serde_json::to_vec(&forward).unwrap(),
         serde_json::to_vec(&reversed).unwrap()

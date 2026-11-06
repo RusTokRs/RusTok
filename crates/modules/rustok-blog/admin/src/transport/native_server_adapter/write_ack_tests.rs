@@ -28,13 +28,23 @@ async fn native_creation_replays_the_ack_and_exposes_only_durable_rejection() {
     });
     let path = super::BlogAdminCreatePostNative::PATH;
     let (status, first) = execute(
-        &fixture.host, &fixture.tenant, &creator, path, json!({"draft": draft}),
-    ).await;
+        &fixture.host,
+        &fixture.tenant,
+        &creator,
+        path,
+        json!({"draft": draft}),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{first}");
     assert!(first["Created"].as_str().is_some(), "{first}");
     let (status, replay) = execute(
-        &fixture.host, &fixture.tenant, &creator, path, json!({"draft": draft}),
-    ).await;
+        &fixture.host,
+        &fixture.tenant,
+        &creator,
+        path,
+        json!({"draft": draft}),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{replay}");
     assert_eq!(replay, first);
     // An attempt-local permission denial cannot establish the outcome of the
@@ -42,19 +52,34 @@ async fn native_creation_replays_the_ack_and_exposes_only_durable_rejection() {
     let mut denied = creator.clone();
     denied.permissions.clear();
     let (status, _) = execute(
-        &fixture.host, &fixture.tenant, &denied, path, json!({"draft": draft}),
-    ).await;
+        &fixture.host,
+        &fixture.tenant,
+        &denied,
+        path,
+        json!({"draft": draft}),
+    )
+    .await;
     assert_ne!(status, StatusCode::OK);
     draft["command_id"] = json!(uuid::Uuid::new_v4());
     draft["title"] = json!("");
     let (status, rejected) = execute(
-        &fixture.host, &fixture.tenant, &creator, path, json!({"draft": draft}),
-    ).await;
+        &fixture.host,
+        &fixture.tenant,
+        &creator,
+        path,
+        json!({"draft": draft}),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{rejected}");
     assert!(rejected["Rejected"].as_str().is_some(), "{rejected}");
     let (_, replay) = execute(
-        &fixture.host, &fixture.tenant, &creator, path, json!({"draft": draft}),
-    ).await;
+        &fixture.host,
+        &fixture.tenant,
+        &creator,
+        path,
+        json!({"draft": draft}),
+    )
+    .await;
     assert_eq!(replay, rejected);
 }
 

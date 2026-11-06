@@ -126,6 +126,10 @@ the platform/module owner, declared `after` edges, optional owner safety/phase
 metadata, and the exact `use_transaction` declaration (`null`, `true`, or
 `false`). Both projections come from one retained executable inventory;
 module ownership comes from `RusToKModule::slug()`, without another registry.
+`ModuleMigrationSource::new` derives that slug by static dispatch and retains
+only the narrow `MigrationSource` port. The operational inventory does not store
+full module lifecycle/runtime-extension vtables. This does not remove the
+composition's Cargo dependency tree; binary-size effects remain unmeasured.
 
 Composition rejects duplicate identities/owners, foreign or absent declaration
 subjects, duplicate safety/dependency declarations and edges, missing dependency

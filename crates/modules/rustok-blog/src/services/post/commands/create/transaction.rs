@@ -2,7 +2,7 @@ use super::*;
 
 impl PostService {
     #[instrument(skip(self, security, input))]
-    async fn create_post_in_tx(
+    pub(super) async fn create_post_in_tx(
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -211,8 +211,8 @@ impl PostService {
                 .map_err(BlogError::from)?;
         }
 
-        // Acknowledgement needs no additional privileged read. A UI reload is
-        // a separate operation and cannot turn this committed write into failure.
+        // The parent command records this identity in the same transaction and
+        // commits before acknowledgement. It never needs a privileged detail read.
         Ok(post_id)
     }
 }

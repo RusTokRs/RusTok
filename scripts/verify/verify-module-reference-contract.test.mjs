@@ -68,6 +68,27 @@ test("reference source guard accepts the unchanged owner snapshot", (t) => {
 
 const regressions = [
   {
+    name: "creation command identity becomes optional",
+    path: `${blog}/src/dto/post.rs`,
+    before: "pub command_id: Uuid",
+    after: "pub command_id: Option<Uuid>",
+    diagnostic: /missing reference invariant marker pub command_id: Uuid/,
+  },
+  {
+    name: "creation command bypasses receipt admission",
+    path: `${blog}/src/services/post/commands/create.rs`,
+    before: "idempotency::admit(",
+    after: "untracked_admission(",
+    diagnostic: /missing reference invariant marker idempotency::admit/,
+  },
+  {
+    name: "creation commits without receipt completion",
+    path: `${blog}/src/services/post/commands/create.rs`,
+    before: "idempotency::complete(",
+    after: "untracked_completion(",
+    diagnostic: /missing reference invariant marker idempotency::complete/,
+  },
+  {
     name: "native category commands lose nullable field semantics",
     path: `${blog}/admin/src/transport/native_server_adapter/categories.rs`,
     before: "input = leptos::server_fn::codec::Json",

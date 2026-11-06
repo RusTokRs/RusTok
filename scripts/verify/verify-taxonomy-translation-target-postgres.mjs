@@ -317,7 +317,7 @@ requireMarkers(
     'm20260803_000001_create_owner_operation_receipts',
     'Box::new(m20260803_000001_create_owner_operation_receipts::Migration)',
     '&rustok_taxonomy::TaxonomyModule',
-    'MigrationInventory::compose(platform_migrations(), module_migration_sources())',
+    'MigrationInventory::compose(platform_migrations(), &module_migration_sources())',
   ],
   files.serverMigrator,
 );

@@ -78,7 +78,7 @@ forbidAll(exports, ["m20260801_000001_enforce_artifact_permission_tenant_integri
 // migration plan itself is immutable: CI exports base and head plans and accepts
 // only a head that preserves the complete base prefix.
 requireAll(platformMigrator, [
-  "MigrationInventory::compose(platform_migrations(), module_migration_sources())",
+  "MigrationInventory::compose(platform_migrations(), &module_migration_sources())",
   "&rustok_rbac::RbacModule",
 ]);
 requireAll("crates/utils/rustok-migrations/src/inventory.rs", [

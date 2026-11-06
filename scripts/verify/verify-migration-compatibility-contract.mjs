@@ -119,15 +119,17 @@ requireMarkers("crates/utils/rustok-migrations/src/bin/export_migration_plan.rs"
   '"--output"',
 ]);
 requireMarkers("crates/utils/rustok-migrations/src/lib.rs", [
-  "MigrationInventory::compose(platform_migrations(), module_migration_sources())",
+  "MigrationInventory::compose(platform_migrations(), &module_migration_sources())",
   "&rustok_iggy_connector::IggyConnectorModule",
 ]);
 requireMarkers("crates/utils/rustok-migrations/src/inventory.rs", [
   "composed migration plan must not be empty",
   "schema_version: 1",
-  "module.migration_dependencies()",
-  "module.migration_safety_metadata()",
+  "source.migration_dependencies()",
+  "source.migration_safety_metadata()",
   "use_transaction: migration.use_transaction()",
+  "pub fn new<M: RusToKModule>",
+  "source: &'a dyn rustok_core::MigrationSource",
 ]);
 requireMarkers("scripts/verify/verify-migration-plan-compatibility.mjs", [
   "function readPlan",

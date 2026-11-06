@@ -19,10 +19,15 @@
   the fallible compiled production composition. Execution consumes its retained
   migration objects; export derives the ordered name and entry projections.
 - `MigrationInventory::compose(platform, modules)`: neutral composition from
-  platform migration objects and canonical `RusToKModule` sources. `migrations()`
+  platform migration objects and registered module migration ports. `migrations()`
   and `entries()` expose immutable projections; `into_migrations()` transfers
   the same executable objects. Serialization preserves the version-1 name-list
   contract and adds ordered entries.
+- `ModuleMigrationSource::new<M: RusToKModule>(&M)`: derives the canonical slug
+  through static dispatch, then retains only `&dyn MigrationSource`. Private
+  registration fields bind the slug/source pair without retaining a full module
+  lifecycle/runtime-extension vtable. This narrows linking reachability, not the
+  Cargo dependency graph; binary-size impact has not been measured.
 - `MigrationEntry`, `MigrationOwner`: platform/module ownership, declared
   dependency edges, optional `MigrationSafetyMetadata`, and exact optional
   transaction policy. Missing safety is unknown; declarations are not safety

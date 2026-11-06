@@ -113,6 +113,7 @@ pub async fn import_blog_posts(
                     tenant_id,
                     security.clone(),
                     CreatePostInput {
+                        command_id: Uuid::new_v4(),
                         locale: locale.to_string(),
                         title: post.title.clone(),
                         content,

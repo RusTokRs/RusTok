@@ -44,8 +44,12 @@ impl PostService {
         {
             Admission::Run(lease) => lease,
             Admission::Replay(value) => {
-                return serde_json::from_value(value)
-                    .map_err(|_| BlogError::invariant("Invalid Blog creation receipt"));
+                let id: Uuid = serde_json::from_value(value)
+                    .map_err(|_| BlogError::invariant("Invalid Blog creation receipt"))?;
+                if id.is_nil() {
+                    return Err(BlogError::invariant("Nil Blog creation receipt identity"));
+                }
+                return Ok(id);
             }
             Admission::ReplayError(error) => {
                 if error.code != "blog.creation_rejected" {

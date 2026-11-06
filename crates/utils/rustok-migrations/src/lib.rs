@@ -207,54 +207,60 @@ mod composition {
         Migrator::up(db, None).await
     }
 
-    static MODULE_MIGRATION_SOURCES: &[&dyn rustok_core::RusToKModule] = &[
-        &rustok_modules::ModulesModule,
-        &rustok_tenant::TenantModule,
-        &alloy::AlloyModule,
-        &flex::FlexModule,
-        &rustok_auth::AuthModule,
-        &rustok_rbac::RbacModule,
-        &rustok_channel::ChannelModule,
-        &rustok_navigation::NavigationModule,
-        &rustok_cart::CartModule,
-        &rustok_customer::CustomerModule,
-        &rustok_product::ProductModule,
-        &rustok_product_relations::ProductRelationsModule,
-        &rustok_product_bundles::ProductBundlesModule,
-        &rustok_region::RegionModule,
-        &rustok_pricing::PricingModule,
-        &rustok_inventory::InventoryModule,
-        &rustok_order::OrderModule,
-        &rustok_payment::PaymentModule,
-        &rustok_fulfillment::FulfillmentModule,
-        &rustok_commerce::CommerceModule,
-        &rustok_marketplace_seller::MarketplaceSellerModule,
-        &rustok_marketplace_listing::MarketplaceListingModule,
-        &rustok_marketplace_allocation::MarketplaceAllocationModule,
-        &rustok_marketplace_commission::MarketplaceCommissionModule,
-        &rustok_marketplace_balance::MarketplaceBalanceModule,
-        &rustok_marketplace_payout::MarketplacePayoutModule,
-        &rustok_moderation::ModerationModule,
-        &rustok_content::ContentModule,
-        &rustok_blog::BlogModule,
-        &rustok_comments::CommentsModule,
-        &rustok_pages::PagesModule,
-        &rustok_seo::SeoModule,
-        &rustok_forum::ForumModule,
-        &rustok_index::IndexModule,
-        &rustok_search::SearchModule,
-        &rustok_taxonomy::TaxonomyModule,
-        &rustok_workflow::WorkflowModule,
-        &rustok_media::MediaModule,
-        &rustok_profiles::ProfilesModule,
-        &rustok_social_graph::SocialGraphModule,
-        &rustok_translation::TranslationModule,
-        &rustok_ai::AiModule,
-        &rustok_iggy_connector::IggyConnectorModule,
-    ];
-
-    fn module_migration_sources() -> &'static [&'static dyn rustok_core::RusToKModule] {
-        MODULE_MIGRATION_SOURCES
+    fn module_migration_sources() -> Vec<super::ModuleMigrationSource<'static>> {
+        vec![
+            super::ModuleMigrationSource::new(&rustok_modules::ModulesModule),
+            super::ModuleMigrationSource::new(&rustok_tenant::TenantModule),
+            super::ModuleMigrationSource::new(&alloy::AlloyModule),
+            super::ModuleMigrationSource::new(&flex::FlexModule),
+            super::ModuleMigrationSource::new(&rustok_auth::AuthModule),
+            super::ModuleMigrationSource::new(&rustok_rbac::RbacModule),
+            super::ModuleMigrationSource::new(&rustok_channel::ChannelModule),
+            super::ModuleMigrationSource::new(&rustok_navigation::NavigationModule),
+            super::ModuleMigrationSource::new(&rustok_cart::CartModule),
+            super::ModuleMigrationSource::new(&rustok_customer::CustomerModule),
+            super::ModuleMigrationSource::new(&rustok_product::ProductModule),
+            super::ModuleMigrationSource::new(&rustok_product_relations::ProductRelationsModule),
+            super::ModuleMigrationSource::new(&rustok_product_bundles::ProductBundlesModule),
+            super::ModuleMigrationSource::new(&rustok_region::RegionModule),
+            super::ModuleMigrationSource::new(&rustok_pricing::PricingModule),
+            super::ModuleMigrationSource::new(&rustok_inventory::InventoryModule),
+            super::ModuleMigrationSource::new(&rustok_order::OrderModule),
+            super::ModuleMigrationSource::new(&rustok_payment::PaymentModule),
+            super::ModuleMigrationSource::new(&rustok_fulfillment::FulfillmentModule),
+            super::ModuleMigrationSource::new(&rustok_commerce::CommerceModule),
+            super::ModuleMigrationSource::new(&rustok_marketplace_seller::MarketplaceSellerModule),
+            super::ModuleMigrationSource::new(
+                &rustok_marketplace_listing::MarketplaceListingModule,
+            ),
+            super::ModuleMigrationSource::new(
+                &rustok_marketplace_allocation::MarketplaceAllocationModule,
+            ),
+            super::ModuleMigrationSource::new(
+                &rustok_marketplace_commission::MarketplaceCommissionModule,
+            ),
+            super::ModuleMigrationSource::new(
+                &rustok_marketplace_balance::MarketplaceBalanceModule,
+            ),
+            super::ModuleMigrationSource::new(&rustok_marketplace_payout::MarketplacePayoutModule),
+            super::ModuleMigrationSource::new(&rustok_moderation::ModerationModule),
+            super::ModuleMigrationSource::new(&rustok_content::ContentModule),
+            super::ModuleMigrationSource::new(&rustok_blog::BlogModule),
+            super::ModuleMigrationSource::new(&rustok_comments::CommentsModule),
+            super::ModuleMigrationSource::new(&rustok_pages::PagesModule),
+            super::ModuleMigrationSource::new(&rustok_seo::SeoModule),
+            super::ModuleMigrationSource::new(&rustok_forum::ForumModule),
+            super::ModuleMigrationSource::new(&rustok_index::IndexModule),
+            super::ModuleMigrationSource::new(&rustok_search::SearchModule),
+            super::ModuleMigrationSource::new(&rustok_taxonomy::TaxonomyModule),
+            super::ModuleMigrationSource::new(&rustok_workflow::WorkflowModule),
+            super::ModuleMigrationSource::new(&rustok_media::MediaModule),
+            super::ModuleMigrationSource::new(&rustok_profiles::ProfilesModule),
+            super::ModuleMigrationSource::new(&rustok_social_graph::SocialGraphModule),
+            super::ModuleMigrationSource::new(&rustok_translation::TranslationModule),
+            super::ModuleMigrationSource::new(&rustok_ai::AiModule),
+            super::ModuleMigrationSource::new(&rustok_iggy_connector::IggyConnectorModule),
+        ]
     }
 
     #[cfg(test)]
@@ -266,7 +272,7 @@ mod composition {
     fn collect_migration_descriptors() -> Vec<MigrationDescriptor> {
         module_migration_sources()
             .iter()
-            .flat_map(|module| module.migration_dependencies())
+            .flat_map(|module| module.source().migration_dependencies())
             .map(MigrationDescriptor::from)
             .collect()
     }
@@ -275,7 +281,7 @@ mod composition {
         /// The same compiled composition used by execution, with owner declarations.
         /// This diagnostic inventory grants no release or production authority.
         pub fn inventory() -> Result<super::MigrationInventory, super::MigrationInventoryError> {
-            super::MigrationInventory::compose(platform_migrations(), module_migration_sources())
+            super::MigrationInventory::compose(platform_migrations(), &module_migration_sources())
         }
     }
 

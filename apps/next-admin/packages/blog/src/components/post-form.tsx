@@ -242,7 +242,7 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               disabled={
                 Boolean(initialData) ||
                 form.formState.isSubmitting ||
-                writeAcknowledged
+                writeAcknowledged || creationPending
               }
             />
             <FormInput
@@ -259,7 +259,7 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               disabled={
                 categoryState !== 'ready' ||
                 form.formState.isSubmitting ||
-                writeAcknowledged
+                writeAcknowledged || creationPending
               }
             />
             {categoryState === 'error' && (

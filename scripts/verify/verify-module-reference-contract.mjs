@@ -111,6 +111,7 @@ forbid("crates/modules/rustok-blog/build.rs", [
 ]);
 
 requireAll("crates/modules/rustok-blog/src/dto/post.rs", [
+  "pub command_id: Uuid",
   "pub excerpt: Patch<String>",
   "pub category_id: Patch<Uuid>",
   "pub featured_image_url: Patch<String>",
@@ -983,6 +984,8 @@ requireAll("crates/modules/rustok-blog/src/services/post/commands/create.rs", [
   "enforce_scope(&security, Resource::BlogPosts, Action::Publish)?;",
   "idempotency::admit(",
   "idempotency::complete(",
+  "idempotency::fail(",
+  "txn.rollback().await?",
   "txn.commit().await",
   "Admission::Replay(value)",
 ]);

@@ -67,6 +67,12 @@ via typed in-transaction owner commands in `services::orchestration` re-exported
 `ports`, closing finding L-4), owner-service integration seams, deterministic pagination,
 and honest FBA readiness.
 
+Post creation uses caller-retained `command_id` and the canonical Outbox operation
+receipt. Data, events and completion commit together; replay returns the original
+UUID under current authority. Both editors preserve the original request after an
+unknown response. See [the creation contract](CRATE_API.md#replayable-post-creation)
+for transport outcomes and the remaining browser restart limitation.
+
 The module-owned UI packages use a separate adapter profile:
 `core/` for commands/presentation/tests, `transport/` for GraphQL/native
 adapters, and `ui/` for render/controller components. Bundled UI locales are
