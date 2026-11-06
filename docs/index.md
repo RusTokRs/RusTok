@@ -252,7 +252,6 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 - [Native Module Scaffolding Plan](../xtask/docs/implementation-plan.md) — current findings, production blockers and ordered verification gates.
 - [Athanor Operations Documentation](./operations/README.md)
 - [Main Verification README](./verification/README.md)
-- [Platform Hardening and Canonical Code Cleanup Plan](./verification/PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md) - production hardening plus the repository-wide atomic removal plan for internal versions, compatibility paths, suppressed dead code, placeholders, and duplicate implementations.
 - [Migration Source Diagnostics](../scripts/dev/safe-migration-squash.mjs) — partial syntax coverage, see the consolidation guide for verification limits
 - [Cross-platform OpenAPI/GraphQL Reference Artifacts Export](../scripts/verify/export-reference-artifacts.mjs)
 - [OpenAPI/GraphQL Reference Artifacts Verification](../scripts/verify/verify-reference-artifacts.mjs)

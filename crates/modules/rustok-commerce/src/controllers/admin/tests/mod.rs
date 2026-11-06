@@ -222,3 +222,9 @@ pub mod orders;
 pub mod payments;
 pub mod returns;
 pub mod shipping;
+
+#[test]
+fn support_shipment_context_constructs_valid_port_context() {
+    let ctx = support::shipment_context(Uuid::new_v4());
+    assert!(!ctx.tenant_id.is_empty());
+}

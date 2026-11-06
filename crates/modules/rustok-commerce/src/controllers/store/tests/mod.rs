@@ -508,3 +508,9 @@ pub mod carts;
 pub mod checkout;
 pub mod products;
 pub mod shipping;
+
+#[test]
+fn support_shipment_context_constructs_valid_port_context() {
+    let ctx = support::shipment_context(Uuid::new_v4());
+    assert!(!ctx.tenant_id.is_empty());
+}

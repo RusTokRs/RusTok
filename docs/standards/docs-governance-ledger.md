@@ -44,8 +44,8 @@ When triggered, the agent:
 
 - **Status:** IN PROGRESS
 - **Active Cycle:** DAR Cycle 2 (Platform-Wide Documentation Actualization & Slop Purge)
-- **Active Phase:** [DAR-06: Verification Plans & Quality Automation Evolution](#dar-06-verification-plans-quality-automation-evolution)
-- **Completed Phases (Cycle 2):** 5/16 (DAR-01, DAR-02, DAR-03, DAR-04, DAR-05 PASS)
+- **Active Phase:** [DAR-07: ADR Registry Deep Audit & Graph Reconciliation](#dar-07-adr-registry-deep-audit-graph-reconciliation)
+- **Completed Phases (Cycle 2):** 6/16 (DAR-01, DAR-02, DAR-03, DAR-04, DAR-05, DAR-06 PASS)
 - **Active Branch:** `main`
 
 ---
@@ -91,7 +91,7 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 | [x] | **[Engineering Standards & Policies](./coding.md)** | `standards` | 15 | 5,617 | 2026-11-06 | Reconciled coding standards, error frameworks (rustok-core error & typed_error), transactional outbox, distributed tracing, and security policies. Zero broken links across 15 documents. |
 | [x] | **[Operations, Config & Runbooks](../operations/README.md)** | `operations` | 6 | 774 | 2026-11-06 | Unified operations documentation. Eliminated empty ghost directories (RUNBOOKS/ and SPECS/ with 5 broken links). Connected ops/ assets (benches, grafana, prometheus) to docs/operations/README.md. Reconciled configuration-reference.md with YAML and runtime configs. |
 | [x] | **[UI Workbench & Client Contracts](../UI/README.md)** | `ui` | 24 | 2,659 | 2026-11-06 | Reconciled multi-framework design tokens (base.css, tokens.json, Flutter tokens) and cross-framework UI components. Verified FFA client parity (Leptos, Next.js, Flutter). verify:ui:parity and verify:ffa:ui:migration:docs 100% PASS. |
-| [ ] | **[Verification Plans & Quality Gates](../verification/README.md)** | `verification` | 13 | 2,904 | 2026-11-06 | Archive obsolete July 2026 hardening plans. Synchronize verification guides with active scripts in `scripts/verify/`. |
+| [x] | **[Verification Plans & Quality Gates](../verification/README.md)** | `verification` | 11 | 2,126 | 2026-11-06 | Modernized verification documentation. Purged 2 obsolete July 2026 hardening diaries (PLATFORM_HARDENING_STATUS_2026-07-18 and PLATFORM_HARDENING_IMPLEMENTATION_PLAN). Aligned links with living test gates. verify:docs: 100% PASS. |
 | [ ] | **[ADR Governance & Decision Registry](../../DECISIONS/README.md)** | `decisions` | 178 | 21,787 | 2026-11-06 | Reconcile remaining 31 `In progress` ADRs against code; triage 83 legacy `Not tracked` ADRs; verify relations graph; supersede obsolete decisions. |
 | [ ] | **[Domain Modules: Commerce & Checkout](../../crates/modules/rustok-commerce/README.md)** | `modules-commerce` | 180 | 22,400 | None | Audit READMEs and CRATE_APIs for `rustok-cart`, `rustok-commerce`, `rustok-pricing`, `rustok-payment`, `rustok-order`, `rustok-fulfillment`, `rustok-inventory`, `rustok-tax`, `rustok-region`. |
 | [ ] | **[Domain Modules: Content, Pages & Forum](../../crates/modules/rustok-content/README.md)** | `modules-content` | 165 | 19,800 | None | Audit READMEs and CRATE_APIs for `rustok-blog`, `rustok-forum`, `rustok-comments`, `rustok-pages`, `rustok-page-builder`, `rustok-media`, `rustok-docs`, `rustok-seo`. |
@@ -181,12 +181,13 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 
 ### DAR-06: Verification Plans & Quality Automation Evolution
 
-**Scope:** `docs/verification/*` (13 files, 2,904 LOC).
-**Goal:** Modernize verification documentation; archive obsolete July 2026 hardening diaries.
+**Scope:** `docs/verification/*` (11 files, 2,126 LOC).
+**Goal:** Modernize verification documentation; purge obsolete historical hardening diaries in accordance with the strict no-archives/no-histories policy.
 
-- [ ] **DAR-06.1:** Archive completed historical hardening plans (`PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`, `PLATFORM_HARDENING_STATUS_2026-07-18.md`) into `docs/archive/verification/`.
-- [ ] **DAR-06.2:** Reconcile remaining verification guides with actual test scripts in `scripts/verify/`.
-- [ ] **DAR-06.3:** Update `docs/verification/README.md` to reflect the 3-pillar governance model (Continuous Review, Cross-Cutting, and DAR).
+- [x] **DAR-06.1: Purge Historical Hardening Diaries.** Deleted obsolete July 2026 hardening files (`PLATFORM_HARDENING_STATUS_2026-07-18.md` and `PLATFORM_HARDENING_IMPLEMENTATION_PLAN.md`). Reconciled incoming links in `docs/index.md` and `docs/modules/page-builder-backlog.md` to reference living ADRs.
+- [x] **DAR-06.2: Reconcile Living Verification Guides.** Verified remaining 11 verification plans (`PLATFORM_VERIFICATION_PLAN.md`, `platform-api-surfaces-verification-plan.md`, `platform-foundation-verification-plan.md`, `ffa-ui-parity-checklist.md`, etc.) against active scripts in `scripts/verify/`.
+- [x] **DAR-06.3: Align Verification Architecture.** Reconciled `docs/verification/README.md` to reflect the 3-pillar quality model: Continuous Full-Stack Review (`continuous-review-ledger.md`), Cross-Cutting Review (`cross-cutting-review-ledger.md`), and Architecture & Documentation Governance (`docs-governance-ledger.md`).
+- [x] **DAR-06.4: Run Scoped Verification.** Ran `npm run verify:docs` — 100% PASS across all 6 stages. Zero broken relative links or dead anchors.
 
 ---
 

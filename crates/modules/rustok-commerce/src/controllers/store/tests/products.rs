@@ -191,6 +191,7 @@ async fn storefront_line_item_resolution_uses_backend_variant_title_and_price() 
             "source": "store-line-item-test"
         })
     );
+    assert!(resolved.pricing_adjustment.is_none());
 }
 
 #[tokio::test]
@@ -304,6 +305,7 @@ async fn storefront_line_item_resolution_falls_back_to_first_product_translation
         resolved.add_line_item.unit_price,
         Decimal::from_str("19.99").expect("valid decimal")
     );
+    assert!(resolved.pricing_adjustment.is_none());
 }
 
 #[tokio::test]

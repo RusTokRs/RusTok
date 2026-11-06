@@ -273,7 +273,6 @@ pub fn fulfillment_admin_command_runtime(
 }
 
 #[cfg(test)]
-
 /// Explicit test intent/actor. Production entrypoints must use the caller's canonical context.
 pub(crate) fn test_shipment_context(tenant_id: uuid::Uuid) -> rustok_api::PortContext {
     rustok_api::PortContext::new(
