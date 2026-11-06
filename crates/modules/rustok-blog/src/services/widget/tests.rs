@@ -143,7 +143,11 @@ async fn invalid_configuration_and_permission_denial_do_not_reach_persistence() 
     assert!(result.payload.is_none());
     for security in [
         SecurityContext::public_read(),
+        SecurityContext::system(),
+        SecurityContext::new(UserRole::Admin, None),
+        SecurityContext::new(UserRole::Admin, Some(Uuid::nil())),
         SecurityContext::from_permissions(UserRole::Admin, Some(Uuid::new_v4()), []),
+        SecurityContext::service(UserRole::Admin, []),
     ] {
         let result = service
             .preview(

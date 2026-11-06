@@ -1,5 +1,5 @@
 use rustok_api::{Action, Resource};
-use rustok_core::SecurityContext;
+use rustok_core::{SecurityActorKind, SecurityContext};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -30,7 +30,14 @@ impl BlogWidgetService {
         channel_slug: Option<&str>,
         input: BlogWidgetInput,
     ) -> BlogResult<BlogWidgetPreview> {
-        if tenant_id.is_nil() || security.user_id.is_none_or(|id| id.is_nil()) {
+        let authenticated = match security.actor_kind {
+            SecurityActorKind::User => security.user_id.is_some_and(|id| !id.is_nil()),
+            // Service credentials carry effective permissions without human ownership.
+            // Their authenticated identity is established by the transport boundary.
+            SecurityActorKind::Service => true,
+            SecurityActorKind::Public | SecurityActorKind::System => false,
+        };
+        if tenant_id.is_nil() || !authenticated {
             return Err(BlogError::forbidden(
                 "Authenticated tenant and principal are required",
             ));

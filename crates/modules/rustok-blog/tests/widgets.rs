@@ -111,6 +111,18 @@ fn request_context(tenant: &TenantContext, auth: &AuthContext) -> RequestContext
     }
 }
 
+fn service_auth(auth: &AuthContext) -> AuthContext {
+    AuthContext {
+        // OAuth app subject and client identity are distinct from any human author.
+        user_id: Uuid::new_v4(),
+        session_id: Uuid::nil(),
+        client_id: Some(Uuid::new_v4()),
+        scopes: vec!["*".into()],
+        grant_type: "client_credentials".into(),
+        ..auth.clone()
+    }
+}
+
 async fn create_post(
     posts: &PostService,
     tenant: Uuid,
@@ -184,6 +196,43 @@ async fn owner_preview_contract((db, bus, tenant, auth): Fixture) {
         .try_get::<i64>("", "count")
         .unwrap();
     let service = BlogWidgetService::new(db.clone(), bus);
+    let auth_service = service_auth(&auth);
+    let service_security = rustok_core::security_context_from_access_token(
+        auth_service.user_id,
+        &auth_service.grant_type,
+        &auth_service.permissions,
+    );
+    assert_eq!(service_security.user_id, None);
+    let preview = service
+        .preview(
+            tenant.id,
+            service_security,
+            "fr",
+            Some("en"),
+            None,
+            input("blog.post_detail", json!({"post_id": first})),
+        )
+        .await
+        .unwrap();
+    let Some(BlogWidgetPayload::PostDetail(preview)) = preview.payload else {
+        panic!("authenticated service owner detail expected")
+    };
+    assert_eq!(preview.id, first);
+    assert_eq!(preview.title, "First");
+    let denied = service
+        .preview(
+            tenant.id,
+            SecurityContext::service(
+                UserRole::Customer,
+                [rustok_api::Permission::BLOG_POSTS_READ],
+            ),
+            "en",
+            Some("en"),
+            None,
+            input("blog.post_detail", json!({"post_id": first})),
+        )
+        .await;
+    assert!(matches!(denied, Err(rustok_blog::BlogError::Forbidden(_))));
     let list = service
         .preview(
             tenant.id,
@@ -433,6 +482,19 @@ async fn graphql_executes_the_owner_contract_and_fails_closed_on_context_or_modu
         data["previewBlogWidget"]["payload"]["title"],
         "GraphQL preview"
     );
+    let auth_service = service_auth(&auth);
+    let response = schema
+        .execute(
+            request()
+                .data(request_context(&tenant, &auth_service))
+                .data(auth_service),
+        )
+        .await;
+    assert!(response.errors.is_empty(), "{:?}", response.errors);
+    assert_eq!(
+        response.data.into_json().unwrap()["previewBlogWidget"]["payload"]["title"],
+        "GraphQL preview"
+    );
     let anonymous = schema.execute(request()).await;
     assert!(!anonymous.errors.is_empty());
     let mut no_read = auth.clone();
@@ -573,6 +635,39 @@ async fn real_rest_router_serves_catalog_validation_preview_and_explicit_denials
     assert_eq!(status, StatusCode::OK);
     assert_eq!(preview["payload"]["title"], "HTTP preview");
     assert_eq!(preview["payload"]["requested_locale"], "fr");
+    let auth_service = service_auth(&auth);
+    let (status, preview) = http(
+        router(
+            db.clone(),
+            bus.clone(),
+            tenant.clone(),
+            Some(auth_service.clone()),
+        ),
+        "POST",
+        "/api/blog/widgets/preview",
+        json!({"widget_type": "blog.post_detail", "props": {"post_id": id}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{preview}");
+    assert_eq!(preview["payload"]["title"], "HTTP preview");
+    let mut no_service_read = auth_service;
+    no_service_read.permissions.clear();
+    assert_eq!(
+        http(
+            router(
+                db.clone(),
+                bus.clone(),
+                tenant.clone(),
+                Some(no_service_read)
+            ),
+            "POST",
+            "/api/blog/widgets/preview",
+            json!({"widget_type": "blog.post_detail", "props": {"post_id": id}})
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
     let mut no_read = auth.clone();
     no_read.permissions.clear();
     assert_eq!(
