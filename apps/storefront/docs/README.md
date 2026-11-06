@@ -156,7 +156,7 @@ The GraphQL path remains a working and supported headless contract for module-ow
 ## Related documents
 
 - [Implementation plan](./implementation-plan.md)
-- [FORUM-24I canonical topic route mount](../../../crates/modules/rustok-forum/docs/forum-24i-topic-route-storefront-mount.md)
+- [Forum storefront documentation](../../../crates/modules/rustok-forum/storefront/README.md)
 - [Storefront architecture notes](../../../docs/UI/storefront.md)
 - [Manifest layer contract](../../../docs/modules/manifest.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)

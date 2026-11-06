@@ -340,12 +340,33 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
 
 ---
 
-### DAR-15..DAR-16: Host Applications & Automated Governance
+### DAR-15: Client Applications & Host Packages
 
-**Scope:** Documentation across client applications, server host, and CI verification automation.
-**Goal:** Verify client host package contracts and establish continuous orphaned doc / dead link detection in CI.
+**Scope:** Documentation across 6 host applications in `apps/` (`apps/server`, `apps/admin`, `apps/dioxus-admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend`) (107 files, 9,287 LOC).
+**Goal:** Verify and synchronize server composition root, FFA client packages, Leptos and Next.js storefront/admin contracts, and cache stampede protection documentation.
 
-- [ ] **DAR-15: Client Applications & Host Packages** (`apps/server`, `apps/admin`, `apps/next-admin`, `apps/storefront`, `apps/next-frontend`).
+- [x] **DAR-15.1: Reconcile Broken Forum Link in `apps/storefront`.** Corrected invalid link in `apps/storefront/docs/README.md` (`../../../crates/modules/rustok-forum/docs/forum-24i-topic-route-storefront-mount.md` -> `../../../crates/modules/rustok-forum/storefront/README.md`).
+- [x] **DAR-15.2: Index Unreferenced Architectural & Reconciliation Specifications in `apps/server`.** Reconciled and linked 9 specifications into `apps/server/docs/README.md`:
+  - `implementation-plan.md`: Server composition and runtime wiring plan.
+  - `CACHE_STAMPEDE_PROTECTION.md`: Mutex-guarded single-flight cache stampede protection.
+  - `host-authority.md`: Host authority context and permissions.
+  - `index-reconciliation-operator-runtime.md`: Index reconciliation operator runtime contract.
+  - `index-drift-diagnosis-graphql-transport.md`: Index drift diagnosis GraphQL transport.
+  - `index-drift-source-page-diagnosis.md`: Index drift source page diagnosis.
+  - `index-drift-source-page-graphql-transport.md`: Index drift source page GraphQL transport.
+  - `index-replay-graphql-transport.md`: Index replay GraphQL transport.
+  - `index-replay-graphql-shutdown-evidence.md`: Index replay GraphQL shutdown evidence.
+- [x] **DAR-15.3: Verify Dual-Client FFA Parity Documentation.** Verified that `apps/admin` (Leptos) and `apps/next-admin` (Next.js), as well as `apps/storefront` (Leptos) and `apps/next-frontend` (Next.js) have synchronized route, page, and capability contracts.
+- [x] **DAR-15.4: Verify Full Link & Anchor Integrity Across Host Apps.** Audited all 107 markdown files and 133 internal links across all 6 applications. Verified zero broken links, zero dangling anchors, and 100% indexed documentation coverage.
+- [x] **DAR-15.5: Run Scoped Verification.** Ran `node scripts/verify/verify-docs.mjs` (100% PASS across all 6 stages), `node scripts/verify/verify-adrs.mjs` (100% PASS), and `node scripts/verify/verify-ui-parity.mjs` (100% PASS).
+
+---
+
+### DAR-16: Continuous Documentation Verification Evolution
+
+**Scope:** CI verification automation, orphaned document detection, dead path detection, and ADR lifecycle enforcement.
+**Goal:** Establish permanent continuous verification tooling in CI to prevent documentation drift, broken paths, and unindexed specifications.
+
 - [ ] **DAR-16: Continuous Documentation Verification Evolution** (Automated orphaned document detection, dead path detection, and ADR lifecycle enforcement in CI).
 
 ---

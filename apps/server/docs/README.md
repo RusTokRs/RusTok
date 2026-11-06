@@ -753,3 +753,16 @@ registration; existing background-worker role and ModuleWork lifecycle own polli
 [Actual configuration/contract](../../../crates/modules/rustok-distribution/docs/inventory-index.md).
 Current page failures park terminally; retry/original-job recovery, real credentials/backend/
 broker/restart/operator-client evidence remain open. No tests/build/SQL/runtime were executed.
+
+## Related documents
+
+- [Implementation plan](./implementation-plan.md)
+- [Crate README](../README.md)
+- [Cache Stampede Protection](./CACHE_STAMPEDE_PROTECTION.md)
+- [Host authority context and permissions](./host-authority.md)
+- [Index reconciliation operator runtime](./index-reconciliation-operator-runtime.md)
+- [Index drift diagnosis GraphQL transport](./index-drift-diagnosis-graphql-transport.md)
+- [Index drift source page diagnosis](./index-drift-source-page-diagnosis.md)
+- [Index drift source page GraphQL transport](./index-drift-source-page-graphql-transport.md)
+- [Index replay GraphQL transport](./index-replay-graphql-transport.md)
+- [Index replay GraphQL shutdown evidence](./index-replay-graphql-shutdown-evidence.md)
