@@ -7,9 +7,11 @@ const files = {
   lib: "crates/modules/rustok-blog/storefront/src/lib.rs",
   core: "crates/modules/rustok-blog/storefront/src/core.rs",
   pagination: "crates/modules/rustok-blog/storefront/src/core/comments_pagination.rs",
+  search: "crates/modules/rustok-blog/storefront/src/core/search.rs",
   model: "crates/modules/rustok-blog/storefront/src/model.rs",
   ui: "crates/modules/rustok-blog/storefront/src/ui/leptos.rs",
   commentsListUi: "crates/modules/rustok-blog/storefront/src/ui/comments_list.rs",
+  discussionUi: "crates/modules/rustok-blog/storefront/src/ui/comment.rs",
   selectedPostUi: "crates/modules/rustok-blog/storefront/src/ui/leptos/selected_post_card.rs",
   showcaseUi: "crates/modules/rustok-blog/storefront/src/ui/leptos/showcase.rs",
   publishedPostsUi: "crates/modules/rustok-blog/storefront/src/ui/leptos/published_posts_list.rs",
@@ -111,14 +113,16 @@ function rustFilesUnder(root) {
 const lib = text(files.lib);
 const core = text(files.core);
 const pagination = text(files.pagination);
+const search = text(files.search);
 const model = text(files.model);
 const ui = text(files.ui);
 const commentsListUi = existsSync(files.commentsListUi) ? text(files.commentsListUi) : "";
+const discussionUi = text(files.discussionUi);
 const uiExtensions = [files.selectedPostUi, files.showcaseUi, files.publishedPostsUi]
   .filter(existsSync)
   .map(text)
   .join("\n");
-const uiCombined = `${ui}\n${commentsListUi}\n${uiExtensions}`;
+const uiCombined = `${ui}\n${commentsListUi}\n${discussionUi}\n${uiExtensions}`;
 const transport = text(files.transport);
 const native = text(files.native);
 const graphql = text(files.graphql);
@@ -146,6 +150,7 @@ assertContains(lib, "pub use ui::BlogView", `${files.lib}: lib must only re-expo
 for (const marker of ["leptos::", "view!", "#[server", "ServerFnError"]) {
   assertNotContains(core, marker, `${files.core}: core must remain framework/server-function free (${marker})`);
   assertNotContains(pagination, marker, `${files.pagination}: pagination policy must remain framework/server-function free (${marker})`);
+  assertNotContains(search, marker, `${files.search}: request construction must remain framework/server-function free (${marker})`);
 }
 
 for (const rustFile of rustFilesUnder(files.storefrontSrc)) {
@@ -183,16 +188,19 @@ assertNotContains(model, "pub body_format: String", `${files.model}: storefront 
 
 assertContains(ui, "use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY)", `${files.ui}: UI must read route-owned comments page state`);
 assertContains(uiCombined, "use_route_query_writer()", `${files.ui}: UI must write pagination intents through shared routing`);
-if (!/transport::fetch_blog\(request(?:\.clone\(\))?,\s*comments_page\)/.test(ui)) {
-  fail(`${files.ui}: UI must pass the current comments page through transport`);
-}
-assertContains(selectedPostUi, "<PublicCommentsList comments=public_comments comments_page />", `${files.ui}: selected post must render paginated public comments`);
+assertContains(ui, "core::prepare_blog_page_request(", `${files.ui}: UI must prepare the page request through pure core`);
+assertContains(ui, "transport::fetch_blog_page", `${files.ui}: UI must use the page transport facade`);
+assertContains(search, "comments_page", `${files.search}: prepared page request must retain the comments page`);
+assertContains(transport, "fetch_blog(request.feed.clone(), request.comments_page)", `${files.transport}: page facade must forward the prepared comments page`);
+assertContains(selectedPostUi, "<crate::ui::comment::BlogDiscussion props=discussion", `${files.selectedPostUi}: selected post must compose the discussion owner root`);
+assertContains(selectedPostUi, "comments_page,", `${files.selectedPostUi}: discussion props must retain the selected comments page`);
+assertContains(discussionUi, "<super::comments_list::PublicCommentsList comments=props.comments comments_page=props.comments_page", `${files.discussionUi}: discussion root must render paginated public comments`);
 assertContains(uiCombined, "comments_pagination::comments_page_query_intent", `${files.ui}: pagination controls must use the pure route policy`);
 assertContains(selectedPostUi, "let content = post.content;", `${files.ui}: selected post must consume RichTextView from the storefront DTO`);
 assertContains(selectedPostUi, "post.content_plain_text", `${files.ui}: selected post must retain server-derived plain-text fallback`);
 assertContains(selectedPostUi, expectedRenderContract.fallback_sink, `${files.ui}: selected post must render the server-derived plain-text fallback`);
 assertContains(uiCombined, "RichTextHtml", `${files.ui}: UI must use the shared server-projection renderer`);
-assertContains(selectedPostUi, "<CommentComposer", `${files.ui}: selected Blog post must compose the Comments-owned editor`);
+assertContains(discussionUi, "<CommentComposer", `${files.discussionUi}: Blog discussion must compose the Comments-owned editor`);
 const richTextHtmlSinks = [...selectedPostUi.matchAll(/<RichTextHtml\b/g)];
 if (richTextHtmlSinks.length !== 1) {
   fail(`${files.ui}: SelectedPostCard must have exactly one shared RichTextHtml sink`);

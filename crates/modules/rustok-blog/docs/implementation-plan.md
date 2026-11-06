@@ -45,11 +45,11 @@ certification wording below where it implies executed or complete readiness.
 | Priority | Boundary and current evidence | Required result before complete reference acceptance |
 | --- | --- | --- |
 | P1 | Blog-owned catalog/validation/preview services, REST/GraphQL/native adapters and host preview/property bindings are implemented in source; mounted editor behavior remains unexecuted | Execute catalog, property validation and preview through the real editor. Manifest/registry adapter tests alone cannot satisfy this gate. |
-| P1 | Leptos editor hydration and Next editor updates retain requested locale while displaying fallback text | Exercise saving unrelated changes after fallback hydration. Preserve explicit localized write provenance and refuse accidental materialization of another locale's text. |
-| P2 | `admin/src/core/presentation.rs`, storefront reading-time/share helpers, and Next editor/reaction components contain Russian/English branches or literal interface copy | Resolve copy through host effective locale and canonical catalogs/formatters. Pass a third locale and parameter/plural behavior through pure core and mounted clients. |
-| P2 | Blog UI still includes styled raw controls and a manual Category table | Adopt canonical primitives, forms and grid contracts. Keep command construction, validation and state transitions in pure core with meaningful tests. |
-| P2 | Next storefront mounts reaction reads/writes; Leptos storefront has no equivalent surface. Next category loading suppresses failures in `post-form.tsx` | Establish functional reaction parity and explicit category unavailable/error states, then verify both implementations' critical interactions. |
-| P2 | Next admin has no package-local test script. Next storefront currently has only utility tests. Default Rust builds omit runtime/SSR/hydration composition | Retain scoped production-feature, native/GraphQL/REST, browser, accessibility and client-parity evidence from the actual entrypoints. |
+| P1 | Both editors construct typed partial updates from the loaded locale/revision snapshot; acknowledgement and independent reload have distinct state, and superseded requests cannot replace a newer session | Retain executed core and native HTTP acknowledgement evidence, then exercise fallback, stale-write, navigation and reload-failure behavior in both mounted clients. |
+| P1 | Post creation lacks stable command identity for replay after a lost acknowledgement | Complete the owner receipt, all transport/caller and client cutover; prove that retry after commit/response loss returns the same creation with one durable effect. Confirmed-acknowledgement UI locking alone cannot satisfy this gate. |
+| P2 | Blog controls, form/grid composition and core policies have been refactored; shared grid messages include en/ru/fr and exact reaction counts remain decimal strings | Retain scoped Rust checks and third-locale/parameter/plural scenarios, then verify actual localized and accessible controls in both mounted clients. |
+| P2 | Both storefronts now compose reaction/comment surfaces; category-load failures are explicit, with the current category retained | Verify critical interactions through both actual client entrypoints, including uncertain reaction writes, read-only cached comments and reply identity across article/locale changes. |
+| P2 | Next owner behavior/API tests and SSR/native HTTP scenarios are present; default builds still omit production feature combinations | Retain scoped production-feature, native/GraphQL/REST, browser, accessibility and client-parity evidence from the actual entrypoints. |
 
 The database prerequisite, explicit-execution and PostgreSQL contention gates
 were closed by the configured scenarios recorded below. They remain regression
@@ -1586,8 +1586,9 @@ permission gating. Source composition and Fly registry installation are complete
 
 ## Verification
 
-Execution is intentionally not recorded by this source-only update. Maintainers
-should run the relevant subset, including:
+The reference review above records obtained execution evidence and remaining
+acceptance gates. Select the relevant checks for the changed boundary below;
+source guards alone do not establish runtime, browser or complete readiness:
 
 - Execute the applicable public-use-case contract scenarios and record coverage
   gaps explicitly in the current reference acceptance gates.

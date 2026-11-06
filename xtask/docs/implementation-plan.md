@@ -109,10 +109,13 @@ The [2026-11-05 Blog acceptance review](../../crates/modules/rustok-blog/docs/im
 is the current prerequisite for full Blog-derived scaffold extraction. It
 confirmed source-layout/reference guards but found executable locale-filter,
 category response-atomicity and long-locale event/rollback defects. The owner
-has corrected those bounded paths and records exact tests separately. Mounted
-Fly preview/property ports, UI localization and canonical controls, reaction
-parity, fallback-editor provenance, complete prerequisite migrations and
-PostgreSQL contention/restart evidence remain acceptance gates. Do not copy
+has corrected those bounded paths and records exact tests separately. Actual
+prerequisite migrations and PostgreSQL contention/restart scenarios have passed.
+Fly owner ports, localized canonical UI controls, partial editor commands and
+both reaction surfaces are implemented; their scoped execution record remains
+with Blog. Mounted editor/browser/accessibility parity, shared Page Builder
+admission and version policy, and creation replay after a lost acknowledgement
+still block complete reference acceptance. Do not copy
 the complete Blog or promote generated capability readiness until those gates
 are closed. The existing generic file-layout lint remains reusable now.
 

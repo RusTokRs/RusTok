@@ -56,7 +56,7 @@ function verify(root) {
 
 function replace(root, path, before, after, all = false) {
   const target = join(root, path);
-  const source = readFileSync(target, "utf8");
+  const source = readFileSync(target, "utf8").replaceAll("\r\n", "\n");
   assert.ok(source.includes(before), `fixture mutation drifted: ${path}: ${before}`);
   writeFileSync(target, all ? source.replaceAll(before, after) : source.replace(before, after));
 }
@@ -88,6 +88,34 @@ const regressions = [
     before: "pub version: i32",
     after: "pub version: Option<i32>",
     diagnostic: /forbidden reference-module pattern pub version: Option<i32>/,
+  },
+  {
+    name: "admin edit revision becomes optional while response revision remains required",
+    path: `${blog}/admin/src/model.rs`,
+    before: "    pub scheduled_at: Patch<String>,\n    pub version: i32,",
+    after: "    pub scheduled_at: Patch<String>,\n    pub version: Option<i32>,",
+    diagnostic: /forbidden reference-module pattern pub version: Option<i32>/,
+  },
+  {
+    name: "admin edit loses nullable Patch semantics",
+    path: `${blog}/admin/src/model.rs`,
+    before: "pub excerpt: Patch<String>",
+    after: "pub excerpt: Option<String>",
+    diagnostic: /missing reference invariant marker pub excerpt: Patch<String>/,
+  },
+  {
+    name: "editor command loses loaded revision binding",
+    path: `${blog}/admin/src/core/commands.rs`,
+    before: "Some(post.version) == draft.version",
+    after: "post.version > 0",
+    diagnostic: /missing reference invariant marker Some\(post.version\) == draft.version/,
+  },
+  {
+    name: "editor command loses requested locale binding",
+    path: `${blog}/admin/src/core/commands.rs`,
+    before: "post.requested_locale == draft.locale",
+    after: "!draft.locale.is_empty()",
+    diagnostic: /missing reference invariant marker post.requested_locale == draft.locale/,
   },
   {
     name: "post command drops predecessor CAS",

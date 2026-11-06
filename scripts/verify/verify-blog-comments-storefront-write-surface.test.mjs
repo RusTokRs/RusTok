@@ -21,6 +21,7 @@ const files = [
   'crates/modules/rustok-comments/contracts/comments-fba-registry.json',
   'crates/modules/rustok-blog/storefront/README.md',
   'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
+  'crates/modules/rustok-blog/storefront/src/ui/comment.rs',
   'crates/modules/rustok-blog/storefront/src/ui/leptos/selected_post_card.rs',
   'crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs',
   'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs',
@@ -70,8 +71,14 @@ function rejects(mutator) {
   try {
     return run(root);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    removeFixture(root);
   }
+}
+
+function removeFixture(root) {
+  assert.equal(path.dirname(path.resolve(root)), path.resolve(tmpdir()));
+  assert.match(path.basename(root), /^rustok-blog-storefront-write-surface-/);
+  rmSync(root, { recursive: true, force: true });
 }
 
 test('accepts the canonical active storefront Comments write surface', () => {
@@ -80,7 +87,7 @@ test('accepts the canonical active storefront Comments write surface', () => {
     const result = run(root);
     assert.equal(result.status, 0, result.stderr || result.stdout);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    removeFixture(root);
   }
 });
 
@@ -88,16 +95,21 @@ test('rejects removal of the active storefront comment composer', () => {
   const result = rejects((root) => {
     mutate(
       root,
-      'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
-      (source) => source.replaceAll('CommentComposer', 'RemovedComposer'),
-    );
-    mutate(
-      root,
-      'crates/modules/rustok-blog/storefront/src/ui/leptos/selected_post_card.rs',
+      'crates/modules/rustok-blog/storefront/src/ui/comment.rs',
       (source) => source.replaceAll('CommentComposer', 'RemovedComposer'),
     );
   });
   assert.notEqual(result.status, 0);
+});
+
+test('rejects removal of the selected article discussion binding', () => {
+  const result = rejects((root) => mutate(
+    root,
+    'crates/modules/rustok-blog/storefront/src/ui/leptos/selected_post_card.rs',
+    (source) => source.replace('<crate::ui::comment::BlogDiscussion props=discussion', '<UnboundDiscussion props=discussion'),
+  ));
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /missing <crate::ui::comment::BlogDiscussion/);
 });
 
 test('rejects loss of post-create public visibility revalidation', () => {

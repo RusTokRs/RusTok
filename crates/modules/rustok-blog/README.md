@@ -398,11 +398,13 @@ run reports them as ignored. Configured tests cover simultaneous edits, atomic
 outbox rollback, duplicate/reordered delivery and connection/process restart.
 These scoped results do not certify the full platform migrator or remote FBA.
 
-Leptos Page Builder registers Blog widgets without preview/property transport
-ports. Hardcoded interface language branches, canonical UI primitive/form/grid
-adoption, reaction parity, and fallback-editor write provenance remain open.
-Next admin has no package-local test suite, and Next storefront utility tests
-do not establish functional/browser parity. The
+Leptos Page Builder binds Blog-owned catalog, validation and preview transports.
+Its shared editor still needs visual widget rendering, localized property labels
+and Blog admission to the Page Builder FBA registry. Both Blog admin clients now
+construct partial edits from the loaded target-locale snapshot and required
+revision; acknowledged writes consume that snapshot before a separate reload.
+Both storefronts compose reaction and comment surfaces. Scoped core, transport
+and client checks do not establish mounted browser or accessibility parity. The
 [reference acceptance plan](docs/implementation-plan.md#reference-readiness-review-2026-11-05)
 records the findings, execution evidence, and the sequence before scaffold
 extraction.
@@ -419,6 +421,11 @@ The following limitations are tracked in the module backlog:
 - Anonymous REST read access is not available.
 - Newsletter, membership, and paid content are not available.
 - Reactions are limited to `like` on posts.
+- Post creation has no stable logical command identity for replay after an
+  uncertain network outcome. Confirmed acknowledgement blocks a duplicate UI
+  submission, but retry after a lost acknowledgement is not exactly-once. The
+  owner receipt/transport/client cutover and its failure scenario remain a
+  reference acceptance gate.
 - Preview reads have no audit trail;
   the token lifecycle itself is closed — a token of a post that left `draft` is revoked by the
   transition (see "Preview tokens").
@@ -428,15 +435,6 @@ The following limitations are tracked in the module backlog:
 - A route row whose post disappeared stays in the database until `blog_route_reconciliation` sweeps
   it, so the window is bounded by the host scheduler rather than by a cross-module transaction.
 - The Leptos storefront does not redirect retired slugs.
-- The Leptos admin cannot set the Category, the featured image, the SEO title/description, the
-  channel visibility, or a publication schedule: `BlogPostDraft`
-  (`crates/modules/rustok-blog/admin/src/model.rs`) carries only locale, version, title, slug,
-  excerpt, content, publish and tags, and both adapters send `category_id: None`,
-  `featured_image_url: None`, `seo_title: None`, `seo_description: None`, `channel_slugs: None`
-  and `scheduled_at: None`.
-  The owner input types (`CreatePostInput`, `UpdatePostInput`) accept all of them and the Next
-  admin exposes the Category, the featured image and the SEO fields, so the two admin stacks have
-  different capabilities.
 - Blog Tag mutations are authorized by this module, not by the Taxonomy owner: the owner's
   `update_module_term_in_tx`/`delete_module_term_in_tx` accept a `SecurityContext` they do not
   read (`crates/modules/rustok-taxonomy/src/module_term_mutation.rs`), so

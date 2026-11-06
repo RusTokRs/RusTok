@@ -121,6 +121,11 @@ fn comments_page_query_intent() { UiRouteQueryIntent::clear(COMMENTS_PAGE_QUERY_
   );
   writeFixtureFile(
     root,
+    "crates/modules/rustok-blog/storefront/src/core/search.rs",
+    "pub struct BlogPageRequest { comments_page: u64 }",
+  );
+  writeFixtureFile(
+    root,
     "crates/modules/rustok-blog/storefront/src/model.rs",
     options.missingComments
       ? "pub struct StorefrontBlogData;"
@@ -140,19 +145,27 @@ ${options.localRenderer ? "let _: RichTextDocument; content.document; render_ric
   const selectedComments = options.missingComments
     ? ""
     : pagination
-      ? "<PublicCommentsList comments=public_comments comments_page />;"
-      : "<PublicCommentsList comments=public_comments />;";
+      ? "comments_page, <crate::ui::comment::BlogDiscussion props=discussion />;"
+      : "<crate::ui::comment::BlogDiscussion props=discussion />;";
+  writeFixtureFile(
+    root,
+    "crates/modules/rustok-blog/storefront/src/ui/comment.rs",
+    `${options.missingComposer ? "" : "<CommentComposer />;"}
+${options.missingComments ? "" : pagination
+      ? "<super::comments_list::PublicCommentsList comments=props.comments comments_page=props.comments_page />;"
+      : "<super::comments_list::PublicCommentsList comments=props.comments />;"}`,
+  );
   writeFixtureFile(
     root,
     "crates/modules/rustok-blog/storefront/src/ui/leptos.rs",
     `use leptos_ui::RichTextHtml;
 ${pagination ? `use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY);
 use_route_query_writer();
-transport::fetch_blog(request, comments_page);
+core::prepare_blog_page_request(
+transport::fetch_blog_page;
 comments_pagination::comments_page_query_intent;` : "transport::fetch_blog(request);"}
 fn SelectedPostCard() {
 ${selectedRichtext}
-<CommentComposer />;
 ${selectedComments}
 }
 fn PublishedPostsList() {}
@@ -166,6 +179,7 @@ fn PublishedPostsList() {}
       ? `pub mod graphql_adapter;
 pub mod native_server_adapter;
 comments_page: u64;
+${options.missingPageForwarding ? "" : "fetch_blog(request.feed.clone(), request.comments_page);"}
 native_server_adapter::fetch_blog(native_request, comments_page);
 graphql_adapter::fetch_blog(request, comments_page);
 pub async fn create_comment() {}
@@ -271,6 +285,8 @@ function runFixture(options = {}) {
       encoding: "utf8",
     });
   } finally {
+    assert.equal(path.dirname(path.resolve(root)), path.resolve(tmpdir()));
+    assert.match(path.basename(root), /^rustok-blog-storefront-boundary-/);
     rmSync(root, { recursive: true, force: true });
   }
 }
@@ -309,6 +325,18 @@ test("blog storefront boundary verifier rejects missing comment pagination parit
   const result = runFixture({ missingPagination: true });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /pagination|comments page|commentsPage/);
+});
+
+test("blog storefront boundary verifier rejects dropped page-facade forwarding", () => {
+  const result = runFixture({ missingPageForwarding: true });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /page facade must forward the prepared comments page/);
+});
+
+test("blog storefront boundary verifier rejects missing discussion composer", () => {
+  const result = runFixture({ missingComposer: true });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /discussion must compose the Comments-owned editor/);
 });
 
 test("blog storefront boundary verifier rejects legacy richtext transport", () => {

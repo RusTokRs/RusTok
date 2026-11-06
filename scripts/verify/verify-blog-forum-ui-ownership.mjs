@@ -103,9 +103,9 @@ hasAll(
     "@/shared/ui/rich-text-editor",
     "profile='article'",
     'initialData?.requestedLocale',
-    'initialData?.effectiveLocale',
+    'targetPostCopy(initialData)',
     'contentLocale={contentLocale}',
-    'disabled={form.formState.isSubmitting}'
+    'disabled={form.formState.isSubmitting || writeAcknowledged}'
   ],
   'Blog post form'
 );

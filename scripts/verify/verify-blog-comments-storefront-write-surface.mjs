@@ -14,7 +14,7 @@ const files = {
   blogRegistry: 'crates/modules/rustok-blog/contracts/blog-fba-registry.json',
   commentsRegistry: 'crates/modules/rustok-comments/contracts/comments-fba-registry.json',
   readme: 'crates/modules/rustok-blog/storefront/README.md',
-  ui: 'crates/modules/rustok-blog/storefront/src/ui/leptos.rs',
+  ui: 'crates/modules/rustok-blog/storefront/src/ui/comment.rs',
   graphql: 'crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs',
   native: 'crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs',
   facade: 'crates/modules/rustok-blog/storefront/src/transport/mod.rs',
@@ -54,7 +54,8 @@ const blogRegistry = parse(files.blogRegistry);
 const commentsRegistry = parse(files.commentsRegistry);
 const readme = read(files.readme);
 const selectedPostUiPath = 'crates/modules/rustok-blog/storefront/src/ui/leptos/selected_post_card.rs';
-const ui = read(files.ui) + '\n' + read(selectedPostUiPath);
+const ui = read(files.ui);
+const selectedPostUi = read(selectedPostUiPath);
 const graphql = read(files.graphql);
 const native = read(files.native);
 const facade = read(files.facade);
@@ -263,8 +264,9 @@ need(native, 'is_module_enabled_for_tenant', files.native);
 need(facade, 'pub async fn create_comment(', files.facade);
 need(facade, 'blog_comment_create', files.facade);
 need(ui, 'CommentComposer', files.ui);
-need(ui, 'let submit_comment = Action::new_local', files.ui);
+need(ui, 'let submit = Action::new_local', files.ui);
 need(ui, 'transport::create_comment(', files.ui);
+need(selectedPostUi, '<crate::ui::comment::BlogDiscussion props=discussion', selectedPostUiPath);
 
 for (const marker of [
   'storefront_comment_form_active_source_verified',

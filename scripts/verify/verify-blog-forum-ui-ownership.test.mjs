@@ -25,9 +25,9 @@ function fixture(options = {}) {
   writeFixtureFile(root, 'apps/next-admin/packages/blog/src/components/post-form.tsx',
     `@/shared/ui/rich-text-editor
 profile='article'
-${options.blogUsesHostLocale ? '' : 'initialData?.requestedLocale\ninitialData?.effectiveLocale'}
+${options.blogUsesHostLocale ? '' : 'initialData?.requestedLocale\ntargetPostCopy(initialData)'}
 contentLocale={contentLocale}
-disabled={form.formState.isSubmitting}`);
+disabled={form.formState.isSubmitting || writeAcknowledged}`);
   writeFixtureFile(root, 'apps/next-admin/packages/blog/src/api/posts.ts',
     'requestedLocale: string;\neffectiveLocale: string;');
   writeFixtureFile(root, 'apps/next-admin/packages/forum/src/index.ts',

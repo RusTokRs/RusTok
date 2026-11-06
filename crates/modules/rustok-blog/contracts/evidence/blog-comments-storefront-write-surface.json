@@ -11,7 +11,7 @@
   "self_test": "scripts/verify/verify-blog-comments-storefront-write-surface.test.mjs",
   "source_inventory": {
     "readme": "crates/modules/rustok-blog/storefront/README.md",
-    "ui": "crates/modules/rustok-blog/storefront/src/ui/leptos.rs",
+    "ui": "crates/modules/rustok-blog/storefront/src/ui/comment.rs",
     "graphql_transport": "crates/modules/rustok-blog/storefront/src/transport/graphql_adapter.rs",
     "native_transport": "crates/modules/rustok-blog/storefront/src/transport/native_server_adapter.rs",
     "transport_facade": "crates/modules/rustok-blog/storefront/src/transport/mod.rs",

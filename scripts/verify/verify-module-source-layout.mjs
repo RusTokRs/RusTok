@@ -240,7 +240,7 @@ for (const profile of uiProfiles) {
   // FFA contract tests belong to a dedicated source slot, not a root dump file.
   const uiLib = join(sourceRoot, "lib.rs");
   const uiContractTest = join(sourceRoot, "tests", "contract.rs");
-  if (!existsSync(uiLib) || !readFileSync(uiLib, "utf8").includes("#[cfg(test)]\nmod tests;")) {
+  if (!existsSync(uiLib) || !readFileSync(uiLib, "utf8").replaceAll("\r\n", "\n").includes("#[cfg(test)]\nmod tests;")) {
     fail(`${profile.crate}: lib.rs must wire its dedicated tests/ module`);
   }
   if (!existsSync(uiContractTest)) {
@@ -263,7 +263,7 @@ for (const profile of uiProfiles) {
 const adminCore = readFileSync(
   join(repoRoot, "crates/modules/rustok-blog/admin/src/core.rs"),
   "utf8",
-);
+).replaceAll("\r\n", "\n");
 for (const marker of ["mod commands;", "mod presentation;", "#[cfg(test)]\nmod tests;"]) {
   if (!adminCore.includes(marker)) {
     fail(`rustok-blog-admin: core.rs must remain a facade over canonical core responsibilities; missing ${marker}`);

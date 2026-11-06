@@ -14165,6 +14165,7 @@ dependencies = [
  "rustok-graphql",
  "rustok-outbox",
  "rustok-profiles",
+ "rustok-reactions-storefront",
  "rustok-search-storefront",
  "rustok-tenant",
  "rustok-ui-core",
@@ -15478,6 +15479,7 @@ dependencies = [
 name = "rustok-grid"
 version = "0.1.0"
 dependencies = [
+ "rustok-ui-i18n",
  "serde",
  "serde_json",
 ]
@@ -17390,6 +17392,7 @@ version = "0.1.0"
 dependencies = [
  "leptos",
  "leptos-auth",
+ "leptos-ui",
  "rustok-graphql",
  "rustok-ui-core",
  "rustok-ui-i18n",

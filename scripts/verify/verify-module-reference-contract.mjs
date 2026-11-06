@@ -631,15 +631,36 @@ requireOrdered(
   "let existing = self",
 );
 
-requireAll("crates/modules/rustok-blog/admin/src/model.rs", [
-  "pub version: i32",
-  "pub version: Option<i32>",
+const adminModelPath = "crates/modules/rustok-blog/admin/src/model.rs";
+const adminUpdate = read(adminModelPath).match(/^pub struct BlogPostUpdate\s*\{([\s\S]*?)^\}/m);
+if (!adminUpdate) fail(`${adminModelPath}: expected the typed BlogPostUpdate command`);
+else {
+  // Check the update command itself: create-form and response revisions do not
+  // establish that a serialized edit requires its loaded predecessor revision.
+  requireAllSource(adminModelPath, adminUpdate[1], [
+    "pub version: i32",
+    "pub excerpt: Patch<String>",
+    "pub category_id: Patch<String>",
+    "pub seo_title: Patch<String>",
+    "pub seo_description: Patch<String>",
+  ]);
+  forbidSource(adminModelPath, adminUpdate[1], ["pub version: Option<i32>"]);
+}
+requireAll("crates/modules/rustok-blog/admin/src/core/commands.rs", [
+  "pub fn build_post_update(",
+  "let baseline = BlogPostEditorFormState::from_post(post)",
+  "let own_copy = post.requested_locale == post.effective_locale;",
+  "post.id == post_id",
+  "Some(post.version) == draft.version",
+  "post.requested_locale == draft.locale",
+  "version: post.version",
 ]);
 requireAll("crates/modules/rustok-blog/admin/src/transport/graphql_adapter.rs", [
-  "draft.version.ok_or_else",
+  "input: BlogPostUpdate",
 ]);
 requireAll("crates/modules/rustok-blog/admin/src/transport/native_server_adapter.rs", [
-  "draft.version.ok_or_else",
+  "update: BlogPostUpdate",
+  "version: update.version",
   "fn public_internal_error() -> ServerFnError",
   "Err(error) => Err(public_blog_error(error))",
   "use_context::<HostRuntimeContext>().ok_or_else(public_internal_error)?",
