@@ -344,15 +344,19 @@ and proc-macro effects, ambient native/toolchain inputs and per-migration source
 attribution are explicitly unverified. A module archive's `source_digest` is not
 the composed migrator's workspace/build identity. Source/input declarations do
 not grant release authority or replace the existing source-store/publication
-owners. All 14 tests in the migration command group passed, including nine
-build-input regressions and a real Cargo metadata invocation on an isolated
-fixture workspace. The complete updated `verify-fresh` database/build workflow
+owners. All 15 tests in the migration command group passed with
+`--include-ignored`, including ten build-input regressions, real Cargo metadata
+collection on an isolated fixture, and a read-only probe of the current RusToK
+workspace (1084 resolved packages, 75 captured path packages). These are finite
+resolution checks. The complete updated `verify-fresh` database/build workflow
 has not been rerun; this step does not claim fresh PostgreSQL replay evidence.
 
 Scoped verification for this command group:
 
 ```powershell
 cargo test --locked --offline -p xtask --bin xtask migrations
+# Also read and resolve the current repository snapshot without compiling it:
+cargo test --locked --offline -p xtask --bin xtask migrations -- --include-ignored
 ```
 
 The implemented scope is **fresh-install equivalence**. A matching result keeps

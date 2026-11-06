@@ -691,6 +691,40 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "reads the current repository snapshot and resolves its full Cargo metadata; no workspace compilation or database execution"]
+    fn current_repository_resolution_has_captured_local_inputs() -> Result<()> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .context("workspace root missing")?
+            .canonicalize()?;
+        let expected = working_snapshot(&root, None)?;
+        let mut rustc = build_command("rustc", &root)?;
+        rustc.arg("-Vv");
+        let host = native_target(&String::from_utf8(run_process(&mut rustc, 30, 4096)?)?)?;
+        let inputs = collect(
+            &root,
+            &expected,
+            &root.join("target/migration-input-probe"),
+            &host,
+        )?;
+        let local = inputs
+            .packages
+            .values()
+            .filter(|package| matches!(package.source, PackageSource::Snapshot { .. }))
+            .count();
+        assert!(local > 1);
+        assert!(inputs.packages.len() > local);
+        assert_eq!(inputs.source_sha256, expected.sha256);
+        ensure!(
+            working_snapshot(&root, None)? == expected,
+            "source changed during metadata probe"
+        );
+        println!("Native normal/build closure: {} packages, {local} captured path packages; resolution {}",
+            inputs.packages.len(), digest(&serde_json::to_vec(&inputs)?));
+        Ok(())
+    }
+
+    #[test]
     fn host_target_must_be_explicit_and_unambiguous() {
         assert_eq!(
             native_target("rustc version\nhost: x86_64-unknown-linux-gnu\n").unwrap(),

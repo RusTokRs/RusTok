@@ -247,10 +247,12 @@ ambient native/toolchain inputs and per-migration attribution remain explicitly
 unverified. This is partial build evidence, not a complete input read trace or
 per-migration freeze set. The module archive `source_digest` cannot replace
 workspace/build identity. The existing snapshot, publication and source-store
-owners remain canonical. All 14 migration-command tests passed, including nine
-build-input regressions and real Cargo metadata collection on an isolated
-workspace. The complete updated `verify-fresh` workflow has not been rerun;
-no fresh PostgreSQL replay evidence is claimed for this step.
+owners remain canonical. All 15 migration-command tests passed with
+`--include-ignored`, including ten build-input regressions, real Cargo metadata
+collection on an isolated workspace and a read-only resolution of the current
+repository (1084 packages, 75 captured path packages). The complete updated
+`verify-fresh` workflow has not been rerun; no fresh PostgreSQL replay evidence
+is claimed for this step.
 
 1. **Restore trustworthy existing checks.** Fix the workflow binary target,
    nested-source/directory entrypoint inventory and reference-date matching.
