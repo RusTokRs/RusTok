@@ -577,11 +577,10 @@ fn exact_locales(locales: Vec<String>) -> Result<Vec<TenantLocale>, PortError> {
 fn translation_fields(
     source: &MarketplaceSellerTranslationExactLocaleRecord,
     target: Option<&MarketplaceSellerTranslationExactLocaleRecord>,
-) -> Vec<TranslationFieldSnapshot> {
-    vec![TranslationFieldSnapshot {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
+    Ok(vec![TranslationFieldSnapshot {
         descriptor: TranslationFieldDescriptor {
-            key: FieldKey::new("display_name")
-                .expect("static Marketplace Seller field key must satisfy the target contract"),
+            key: field_key_or_invariant("display_name")?,
             profile: TranslationValueProfile::PlainText,
             strategy: TranslationStrategy::Translate,
             classification: TranslationDataClassification::Public,
@@ -594,7 +593,7 @@ fn translation_fields(
         exact_target_value: target.map(|value| value.display_name.clone()),
         source_hash: field_hash(&source.display_name),
         protected_tokens: Vec::new(),
-    }]
+    }])]
 }
 
 fn merged_target_display_name(
