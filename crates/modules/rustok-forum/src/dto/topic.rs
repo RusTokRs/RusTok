@@ -181,15 +181,21 @@ impl Default for ListTopicsFilter {
 impl ListTopicsFilter {
     pub(crate) fn normalize_selection(&mut self) -> ForumResult<()> {
         let raw = self.search.as_deref().unwrap_or("").trim();
-        let invalid = || ForumError::Validation("Forum topic search exceeds 200 characters".into());
-        if raw.chars().take(201).count() > 200 {
-            return Err(invalid());
+        if raw.is_empty() {
+            self.search = None;
+            return Ok(());
         }
         let search = raw.to_lowercase();
-        if search.chars().take(201).count() > 200 {
-            return Err(invalid());
+        if search.chars().count() > 200 {
+            return Err(ForumError::Validation(
+                "Forum topic search exceeds 200 characters".into(),
+            ));
         }
-        self.search = (!search.is_empty()).then_some(search);
+        // Turkish İ lowercases to two codepoints (i + dot); counting after
+        // lowercasing guarantees we enforce the normalized budget, not the raw
+        // input length. Storing lowercased search lets `matches_selection`
+        // and SQL ILIKE use the same canonical form without per-row work.
+        self.search = Some(search);
         Ok(())
     }
 

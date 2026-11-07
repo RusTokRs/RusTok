@@ -238,6 +238,7 @@ impl ForumAudienceFactsResolver {
         Self { port }
     }
 
+    #[tracing::instrument(skip(self, context, security, constraints), fields(tenant_id=%tenant_id))]
     pub async fn resolve_for_constraints(
         &self,
         tenant_id: Uuid,
@@ -321,6 +322,7 @@ impl ForumAudienceDecision {
 pub struct ForumAudienceEvaluator;
 
 impl ForumAudienceEvaluator {
+    #[tracing::instrument(skip(constraints, security, facts), fields(tenant_id=%tenant_id))]
     pub fn decide(
         tenant_id: Uuid,
         constraints: &ForumAudienceConstraints,

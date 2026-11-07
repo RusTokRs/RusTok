@@ -744,6 +744,11 @@ fn forum_attachment_reference_id(
     position: u16,
     media_id: Uuid,
 ) -> Uuid {
+    // Stable CAS identity: SHA-256(identity) → first 16 bytes → UUID v4.
+    // We intentionally do NOT use Uuid::new_v5 (SHA-1, 3.x naming) so the 48-bit
+    // prefix collision space and byte layout stay compatible with data already
+    // stored. `locale` is already normalized via `normalize_locale`, so
+    // `en-US` vs `en-us` cannot fork the identity.
     let identity = format!(
         "{FORUM_ATTACHMENT_REFERENCE_PREFIX}:{tenant_id}:{}:{}:{locale}:{position}:{media_id}",
         target_kind_value(target.kind()),

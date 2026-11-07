@@ -298,27 +298,42 @@ impl ForumError {
     }
 }
 
+const TRIGGER_MSG_AUDIENCE_POLICY_CONFLICT: &str =
+    "forum topic merge audience policy conflict";
+const TRIGGER_MSG_CATEGORY_TOPIC_CREATE_DENIED: &str =
+    "forum category does not allow topic creation";
+const TRIGGER_MSG_CATEGORY_LIFECYCLE_ACTIVE_PARENT: &str =
+    "active forum category cannot have archived parent";
+const TRIGGER_MSG_CATEGORY_LIFECYCLE_ARCHIVED_CHILD: &str =
+    "archived forum category cannot have active child";
+const TRIGGER_MSG_CATEGORY_LIFECYCLE_GENERIC: &str = "forum category lifecycle";
+const TRIGGER_MSG_CATEGORY_ICON: &str = "Forum category icon";
+const TRIGGER_MSG_CATEGORY_COLOR: &str = "Forum category color";
+
 impl From<sea_orm::DbErr> for ForumError {
     fn from(error: sea_orm::DbErr) -> Self {
+        // We match on trigger RAISE messages, not SQLSTATE, because SeaORM
+        // flattens Postgres P0001 into a string. Keep the literals in one place
+        // so a trigger wording change is caught in one diff and not scattered.
         let message = error.to_string();
-        if message.contains("forum topic merge audience policy conflict") {
+        if message.contains(TRIGGER_MSG_AUDIENCE_POLICY_CONFLICT) {
             return Self::TopicMergeAudiencePolicyConflict(Uuid::nil());
         }
-        if message.contains("forum category does not allow topic creation") {
+        if message.contains(TRIGGER_MSG_CATEGORY_TOPIC_CREATE_DENIED) {
             return Self::Validation("Forum category does not allow topic creation".to_string());
         }
-        if message.contains("active forum category cannot have archived parent")
-            || message.contains("archived forum category cannot have active child")
-            || message.contains("forum category lifecycle")
+        if message.contains(TRIGGER_MSG_CATEGORY_LIFECYCLE_ACTIVE_PARENT)
+            || message.contains(TRIGGER_MSG_CATEGORY_LIFECYCLE_ARCHIVED_CHILD)
+            || message.contains(TRIGGER_MSG_CATEGORY_LIFECYCLE_GENERIC)
         {
             return Self::Validation("Forum category archive hierarchy violation".to_string());
         }
-        if message.contains("Forum category icon") {
+        if message.contains(TRIGGER_MSG_CATEGORY_ICON) {
             return Self::Validation(
                 "Forum category icon must be a bounded kebab-case design token".to_string(),
             );
         }
-        if message.contains("Forum category color") {
+        if message.contains(TRIGGER_MSG_CATEGORY_COLOR) {
             return Self::Validation(
                 "Forum category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA".to_string(),
             );

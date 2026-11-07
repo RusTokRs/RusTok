@@ -1,3 +1,12 @@
+//! Posting policy evaluator — **not yet active on write paths**.
+//!
+//! The runtime posting limit is currently [`crate::services::posting_rate`]
+//! (simple cooldown from `ForumModuleSettings`). This module implements the
+//! future window-count policy (FORUM-12x) with 11 facts; it is intentionally
+//! kept behind the scenes until wired. Do not fix posting limits here —
+//! fix `posting_rate.rs` — and do not delete this file until ADR
+//! `2026-10-09-forum-posting-rate-limits.md` is superseded.
+
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
