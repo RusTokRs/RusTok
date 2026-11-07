@@ -191,7 +191,7 @@ const planMarkers = [
   "Product remains `boundary_ready` rather than `transport_verified`",
   "- [x] Lock a reproducible separate-process Product runtime evidence capture contract.",
   "- [ ] Execute the separate-process Product runtime capture and retain its sanitized evidence packet.",
-  "- [ ] Retain authenticated separate-process Commerce and AI business-request evidence.",
+  "- [ ] Retain authenticated separate-process Commerce and AI end-to-end evidence.",
 ];
 
 function fixture(options = {}) {

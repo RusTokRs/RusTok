@@ -75,11 +75,10 @@
 ## FBA deployment coverage
 
 The public ports and implementation remain in one Product crate. The separately packaged
-catalog service exposes only `ReadProductProjection`, `ReadVariantProductProjection` and
-`ListPublishedProducts`. Selecting it does not move commands, schema, identity, storefront
-facets or every mounted endpoint. Unsupported selected capabilities fail explicitly;
-some admin paths remain embedded. Historical loopback results do not establish current
-whole-module or mounted business parity.
+catalog service exposes the three catalog projection RPCs and the two SKU identity RPCs.
+Selecting it also supplies Pricing's identity reader. Commands and some admin paths
+remain embedded. Schema, storefront facets and other optional read capabilities are still
+open. Loopback conformance covers the transport separately from mounted business parity.
 
 See the [current limitations](../README.md#known-limitations--pending-implementation),
 [coverage inventory](./implementation-plan.md#fba-deployment-scope-review-2026-11-06)

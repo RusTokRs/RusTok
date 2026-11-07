@@ -166,7 +166,7 @@ records 58 focused Rust and 30 Node definitions, all uncompiled/unrun; it does n
   fulfillment checks, Inventory-owned scoped Cart add admission (not Product global counts),
   saved Channel resolution and scoped new identity allocation. See the
   [downstream plan](docs/implementation-plan.md#product-downstream-continuation-2026-10-30).
-  This does not close step 8: remote Product identity for Pricing, Cart quantity/tier runtime certification,
+  Step 8 still requires mounted verification of Pricing with remote Product SKU identity, Cart quantity/tier runtime certification,
   complete Order/Fulfillment/stock/event/outbox effects and selected mounted execution remain
   to verify. Direct `CheckoutService` is availability-only, not staged reservation durability.
 

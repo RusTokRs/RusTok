@@ -3,8 +3,8 @@ use std::{collections::HashSet, fmt, sync::Arc};
 use bytes::Bytes;
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_product::{
-    ProductCatalogReadPort, ProductProjectionRequest, PublishedProductsRequest,
-    VariantProductProjectionRequest,
+    ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentityReadPort,
+    PublishedProductsRequest, VariantProductProjectionRequest,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::service::Interceptor;
@@ -21,6 +21,7 @@ use crate::proto::{JsonRequest, JsonResponse};
 /// Provider-side adapter. The wrapped Product owner port retains catalog policy and persistence.
 pub struct ProductCatalogGrpcService<P> {
     provider: Arc<P>,
+    variant_identity_read_port: Option<Arc<dyn ProductVariantIdentityReadPort>>,
 }
 
 /// Authority established by a server-side authentication/authorization interceptor.
@@ -42,13 +43,17 @@ pub enum ProductCatalogGrpcOperation {
     ReadProductProjection,
     ReadVariantProductProjection,
     ListPublishedProducts,
+    ReadVariantIdentities,
+    ListProductVariantIdentities,
 }
 
 impl ProductCatalogGrpcOperation {
-    pub const ALL: [Self; 3] = [
+    pub const ALL: [Self; 5] = [
         Self::ReadProductProjection,
         Self::ReadVariantProductProjection,
         Self::ListPublishedProducts,
+        Self::ReadVariantIdentities,
+        Self::ListProductVariantIdentities,
     ];
 }
 
@@ -219,7 +224,24 @@ fn authentication_failed() -> Status {
 
 impl<P> ProductCatalogGrpcService<P> {
     pub fn new(provider: Arc<P>) -> Self {
-        Self { provider }
+        Self {
+            provider,
+            variant_identity_read_port: None,
+        }
+    }
+
+    pub fn with_variant_identity_read_port(
+        mut self,
+        provider: Arc<dyn ProductVariantIdentityReadPort>,
+    ) -> Self {
+        self.variant_identity_read_port = Some(provider);
+        self
+    }
+
+    fn variant_identity_read_port(&self) -> Result<&dyn ProductVariantIdentityReadPort, Status> {
+        self.variant_identity_read_port.as_deref().ok_or_else(|| {
+            Status::unimplemented("Product SKU identity capability is not configured")
+        })
     }
 }
 
@@ -283,6 +305,42 @@ where
             .await
             .map_err(port_error_to_status)?;
         json_response(&value)
+    }
+
+    async fn read_variant_identities(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::ReadVariantIdentities,
+        )?;
+        let input = decode_input(&request.into_inner().input_json)?;
+        let identities = self
+            .variant_identity_read_port()?
+            .read_variant_identities(context, input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&identities)
+    }
+
+    async fn list_product_variant_identities(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::ListProductVariantIdentities,
+        )?;
+        let input = decode_input(&request.into_inner().input_json)?;
+        let identities = self
+            .variant_identity_read_port()?
+            .list_product_variant_identities(context, input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&identities)
     }
 }
 
@@ -415,6 +473,27 @@ mod tests {
         .expect("trusted authority should be accepted");
         assert_eq!(trusted.tenant_id, "tenant-a");
         assert_eq!(trusted.actor, PortActor::service("trusted-product-service"));
+    }
+
+    #[test]
+    fn projection_grant_does_not_authorize_variant_identity() {
+        let authority = TrustedProductCatalogAuthority::new(
+            "tenant-a",
+            PortActor::service("projection-only-client"),
+        )
+        .allow_operation(ProductCatalogGrpcOperation::ReadVariantProductProjection);
+        let mut request = Request::new(());
+        request.extensions_mut().insert(authority);
+        let context = PortContext::new("tenant-a", PortActor::system(), "en", "corr-identity");
+
+        for operation in [
+            ProductCatalogGrpcOperation::ReadVariantIdentities,
+            ProductCatalogGrpcOperation::ListProductVariantIdentities,
+        ] {
+            let status = trusted_context(&request, context.clone(), operation)
+                .expect_err("SKU identity requires its own operation grant");
+            assert_eq!(status.code(), Code::PermissionDenied);
+        }
     }
 
     #[test]

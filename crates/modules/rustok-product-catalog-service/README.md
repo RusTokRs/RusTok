@@ -25,13 +25,13 @@ It does not own Product DTOs, catalog policy, persistence queries, locale/channe
 
 ## Known Limitations / Pending Implementation
 
-This host exposes `ReadProductProjection`, `ReadVariantProductProjection` and
-`ListPublishedProducts` only. It is not a complete Product command/schema/identity or
-admin/storefront host. Selecting it on the consumer does not move local Product commands
-or their Pricing/Inventory transaction participants into this process.
+This host exposes `ReadProductProjection`, `ReadVariantProductProjection`,
+`ListPublishedProducts`, `ReadVariantIdentities` and `ListProductVariantIdentities`
+through one Product owner instance. Product commands, schema, additional storefront
+and admin operations remain outside this host. Pricing and Inventory transaction
+participants stay local to the embedded Product command runtime.
 
-The current-revision conformance fixture needs repair and recompilation, and actual
-standalone PostgreSQL startup, authenticated mounted business paths and recovery evidence
+Standalone PostgreSQL startup, authenticated mounted business paths and recovery evidence
 remain open in the [Product plan](../rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
 The configured owner database and any local command database must have an explicit
 authority/data-placement contract; this binary provides no replication mechanism.
@@ -103,7 +103,7 @@ For the source-level invocation above, the implementation agent does not claim t
 
 ## Retained separate-process evidence
 
-The locked local evidence profile is defined by `crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json`. Its runner starts this provider, waits for the schema-preflight and listener markers, invokes all three read RPCs through the authenticated `rustok-product-transport` probe, then starts `rustok-server` with `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` and waits for remote-provider initialization.
+The locked local evidence profile is defined by `crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json`. Its runner starts this provider, waits for the schema-preflight and listener markers, invokes the three base catalog RPCs through the authenticated `rustok-product-transport` probe, then starts `rustok-server` with `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` and waits for remote-provider initialization.
 
 The profile is intentionally restricted to an explicitly enabled loopback HTTP endpoint. The runner rejects TLS overrides in this local packet rather than silently weakening a non-loopback deployment. It requires already migrated provider and consumer PostgreSQL databases plus operator-supplied tenant/product/variant fixtures. Those values and the bearer credential are never persisted; retained evidence contains output hashes and byte counts rather than raw process logs.
 

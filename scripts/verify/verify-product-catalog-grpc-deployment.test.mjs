@@ -59,11 +59,11 @@ function fixture(options = {}) {
   write(
     root,
     "apps/server/src/services/product_catalog_deployment.rs",
-    `const PROVIDER_ENV: &str = "RUSTOK_PRODUCT_CATALOG_PROVIDER"; const GRPC_ENDPOINT_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT"; ${authentication} const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN"; "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS" "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK" unwrap_or("embedded") "grpc" => { GrpcProductCatalogReadConnectionConfig::new(remote.endpoint) .with_tls_domain(remote.tls_domain) .with_connect_timeout(Duration::from_millis(remote.connect_timeout_ms)) .allow_insecure_loopback(remote.allow_insecure_loopback) .connect() ProductCatalogReadRuntime::external(Arc::new(provider)) ctx.shared_insert( remote Product catalog provider initialization failed remote Product catalog variables require {PROVIDER_ENV}=grpc is required when {PROVIDER_ENV}=grpc must be either embedded or grpc ${fallback}`,
+    `const PROVIDER_ENV: &str = "RUSTOK_PRODUCT_CATALOG_PROVIDER"; const GRPC_ENDPOINT_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT"; ${authentication} const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN"; "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS" "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK" unwrap_or("embedded") "grpc" => { GrpcProductCatalogReadConnectionConfig::new(remote.endpoint) .with_tls_domain(remote.tls_domain) .with_connect_timeout(Duration::from_millis(remote.connect_timeout_ms)) .allow_insecure_loopback(remote.allow_insecure_loopback) .connect() let provider = Arc::new(provider); ProductCatalogReadRuntime::external(provider.clone()) ${options.missingIdentity ? "" : ".with_variant_identity_read_port(provider)"} ctx.shared_insert(runtime); remote Product catalog provider initialization failed remote Product catalog variables require {PROVIDER_ENV}=grpc is required when {PROVIDER_ENV}=grpc must be either embedded or grpc ${fallback}`,
   );
   const configure = "configure_product_catalog_deployment(&runtime_ctx).await?;";
   const appBootstrap =
-    "bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone(), &rustok_settings).await?;";
+    "bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone()).await?;";
   write(
     root,
     "apps/server/src/services/server_bootstrap.rs",
@@ -93,6 +93,8 @@ function fixture(options = {}) {
         client_authentication: "ProductCatalogGrpcBearerToken",
         host_deployment: "apps/server/src/services/product_catalog_deployment.rs",
         runtime_factory: "ProductCatalogReadRuntime::external",
+        variant_identity_port: "ProductVariantIdentityReadPort",
+        variant_identity_operations: ["read_variant_identities", "list_product_variant_identities"],
         provider_selector_env: "RUSTOK_PRODUCT_CATALOG_PROVIDER",
         endpoint_env: "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT",
         bearer_token_env: "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",
@@ -147,6 +149,10 @@ test("Product catalog gRPC deployment guard accepts canonical fixture", () => {
 
 test("deployment guard rejects missing TLS policy", () => {
   reject({ missingTls: true }, /validated Product gRPC connection/);
+});
+
+test("deployment guard rejects a remote runtime without SKU identity", () => {
+  reject({ missingIdentity: true }, /with_variant_identity_read_port/);
 });
 
 test("deployment guard rejects missing authentication", () => {

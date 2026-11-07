@@ -134,7 +134,7 @@ For domain-specific verticals, RusTok provides pre-packaged module ecosystems:
 Fluid Backend Architecture decouples domain service logic from transport boundaries:
 
 - **Embedded Modular Monolith (Default)**: RusTok executes as a single binary by default. Module service calls execute in-process without network hops or remote serialization. FBA portability and remote readiness apply to explicitly implemented capability profiles; see the [backend contract](docs/backend/module-backend-architecture.md#fba-contracts).
-- **Targeted Remote Service Profiles**: A remote profile covers the operations its provider, host and consumers actually support and verify. Product currently has a gRPC profile for three catalog reads; Product commands stay local. A configured remote authority never silently falls back to the local provider.
+- **Targeted Remote Service Profiles**: A remote profile covers the operations its provider, host and consumers actually support and verify. Product currently has a gRPC profile for catalog projections and SKU identity. Product commands stay local. A configured remote authority never silently falls back to the local provider.
 
 ### 2. Fluid Frontend Architecture (FFA)
 FFA provides a framework-agnostic UI architecture that eliminates frontend fragmentation and protects application code from UI framework lock-in:

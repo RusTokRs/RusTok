@@ -4,8 +4,8 @@
 
 Public modules are `auth`, `client`, `connection`, `server` and generated `proto`.
 
-- `GrpcProductCatalogReadProvider` implements the three declared remote reads of
-  `ProductCatalogReadPort`. Other optional trait methods are not implemented here.
+- `GrpcProductCatalogReadProvider` implements the three base methods of
+  `ProductCatalogReadPort` and both methods of `ProductVariantIdentityReadPort`.
 - `GrpcProductCatalogReadConnectionConfig` validates endpoint, connect timeout, optional
   TLS domain and explicit insecure-loopback permission. `validated()` returns
   `ValidatedGrpcProductCatalogReadConnection`; `connect()` opens the provider channel.
@@ -16,10 +16,12 @@ Public modules are `auth`, `client`, `connection`, `server` and generated `proto
   establish server-side service authority.
 - `TrustedProductCatalogAuthority` carries authenticated tenant/actor/claims/roles and
   allowed operations; client-serialized identity is not authoritative.
-- `ProductCatalogGrpcOperation` has `ReadProductProjection`,
-  `ReadVariantProductProjection` and `ListPublishedProducts` variants.
-- `ProductCatalogGrpcService<P>` exposes the canonical provider over the generated
-  `ProductCatalogReadService` with those three RPC names.
+- `ProductCatalogGrpcOperation` declares `ReadProductProjection`,
+  `ReadVariantProductProjection`, `ListPublishedProducts`, `ReadVariantIdentities`
+  and `ListProductVariantIdentities` grants.
+- `ProductCatalogGrpcService<P>` exposes those operations over the generated
+  `ProductCatalogReadService`. `with_variant_identity_read_port` attaches the owner
+  identity implementation before the service is mounted.
 
 ## Ownership and framing
 
@@ -47,8 +49,8 @@ mean the remote client executes local Product services.
 
 ## Coverage and evidence
 
-This is a three-read capability adapter, not whole-module Product extraction. Missing
-identity/schema/storefront capabilities and local command composition are listed in the
+This adapter covers catalog projections and SKU identity. Open schema and storefront
+capabilities and local command composition are listed in the
 [Product coverage inventory](../rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
 The [README](README.md) distinguishes historical maintainer conformance from current
-fixture repair, compilation and separate-process business evidence still required.
+verification for the extended profile and separate-process business evidence.

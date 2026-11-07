@@ -155,9 +155,9 @@ negotiate capabilities, route calls or create remote services at runtime.
 
 ## Current bounded examples
 
-- Product's `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` selects three catalog-read RPCs.
-  Commands stay local under default composition, and additional read/identity/schema
-  capabilities are not supplied by that remote runtime. See the
+- Product's `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` selects the catalog projection and
+  SKU identity ports. Commands stay local under default composition. Additional
+  storefront, admin and schema reads remain open for that profile. See the
   [Product coverage inventory](../../crates/modules/rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
 - `RUSTOK_PROFILE_MEDIA_PROVIDER=grpc` selects Profiles' public-image descriptor
   capability. Image bytes still use the Media-owned HTTP/storage delivery path.

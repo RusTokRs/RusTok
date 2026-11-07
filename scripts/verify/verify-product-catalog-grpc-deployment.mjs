@@ -101,8 +101,10 @@ requireAll(deployment, [
   ".allow_insecure_loopback(remote.allow_insecure_loopback)",
   ".connect()",
   ".with_authentication(authentication)",
-  "ProductCatalogReadRuntime::external(Arc::new(provider))",
-  "ctx.shared_insert(",
+  "let provider = Arc::new(provider);",
+  "ProductCatalogReadRuntime::external(provider.clone())",
+  ".with_variant_identity_read_port(provider)",
+  "ctx.shared_insert(runtime);",
   "remote Product catalog authentication configuration failed",
   "remote Product catalog provider initialization failed",
   "remote Product catalog variables require {PROVIDER_ENV}=grpc",
@@ -122,13 +124,13 @@ forbidAll(deployment, [
 
 requireAll(bootstrap, [
   "configure_product_catalog_deployment(&runtime_ctx).await?;",
-  "bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone(), &rustok_settings).await?;",
+  "bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone()).await?;",
 ], "server bootstrap Product deployment");
 const configureIndex = bootstrap.indexOf(
   "configure_product_catalog_deployment(&runtime_ctx).await?;",
 );
 const bootstrapIndex = bootstrap.indexOf(
-  "bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone(), &rustok_settings).await?;",
+  "bootstrap_app_runtime(runtime_ctx.clone(), auth_config.clone()).await?;",
 );
 if (!(configureIndex >= 0 && bootstrapIndex >= 0 && configureIndex < bootstrapIndex)) {
   failures.push("server bootstrap must configure Product deployment before app runtime composition");
@@ -138,9 +140,11 @@ requireAll(composition, [
   ".shared_get::<rustok_product::ProductCatalogReadRuntime>()",
   ".or_else(|| server.shared_get::<rustok_product::ProductCatalogReadRuntime>())",
   "host.with_shared_value(runtime)",
-  "SharedAiProductCatalogReadPort(runtime.read_port())",
   "ProductCatalogReadProfile::External",
 ], "host-selected Product runtime composition");
+if (!/SharedAiProductCatalogReadPort\(\s*runtime\.read_port\(\),?\s*\)/.test(composition)) {
+  failures.push("host composition must pass the selected Product read port to AI");
+}
 
 requireAll(readme, [
   "RUSTOK_PRODUCT_CATALOG_PROVIDER=embedded",
@@ -173,6 +177,14 @@ if (registry) {
   }
   if (external.runtime_factory !== "ProductCatalogReadRuntime::external") {
     failures.push("Product registry must identify the external runtime factory");
+  }
+  if (
+    external.variant_identity_port !== "ProductVariantIdentityReadPort" ||
+    !["read_variant_identities", "list_product_variant_identities"].every(
+      (operation) => external.variant_identity_operations?.includes(operation),
+    )
+  ) {
+    failures.push("Product registry must identify both remote SKU identity operations");
   }
   if (external.provider_selector_env !== "RUSTOK_PRODUCT_CATALOG_PROVIDER") {
     failures.push("Product registry must identify the provider selector environment variable");

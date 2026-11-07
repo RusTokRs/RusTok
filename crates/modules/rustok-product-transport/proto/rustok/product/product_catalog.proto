@@ -8,6 +8,8 @@ service ProductCatalogReadService {
   rpc ReadProductProjection(JsonRequest) returns (JsonResponse);
   rpc ReadVariantProductProjection(JsonRequest) returns (JsonResponse);
   rpc ListPublishedProducts(JsonRequest) returns (JsonResponse);
+  rpc ReadVariantIdentities(JsonRequest) returns (JsonResponse);
+  rpc ListProductVariantIdentities(JsonRequest) returns (JsonResponse);
 }
 
 message JsonRequest {

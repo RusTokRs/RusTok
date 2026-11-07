@@ -534,8 +534,9 @@ checked separately from their anchors; this is not a full documentation/readines
 
 ### Remaining step-8 work (not closed by this slice)
 
-- Selected Product identity is composed into Pricing in source, but real remote adapters,
-  selected-provider parity and mounted tenant/auth/channel/locale behavior are unexecuted.
+- Pricing receives the selected Product identity port. The Product gRPC adapter and host
+  now wire that port. Selected-provider parity and mounted tenant/auth/channel/locale
+  behavior still need end-to-end evidence.
   Missing capability refuses. SKU price authoring remains embedded-only until remote write
   coordination/CAS/receipts replace local Product Variant locking; do not retire identity state
   based only on source wiring or introduce a second resolver.

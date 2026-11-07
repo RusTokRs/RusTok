@@ -19,7 +19,7 @@ function write(root, relativePath, content) {
 
 function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-product-service-host-"));
-  write(root, "Cargo.toml", `members = ["crates/*"]`);
+  write(root, "Cargo.toml", `members = ["crates/modules/*"]`);
   write(
     root,
     "crates/modules/rustok-product-catalog-service/Cargo.toml",
@@ -35,7 +35,7 @@ tonic = { workspace = true, features = ["tls-ring"] }`,
 
   const ownerComposition = options.missingOwnerComposition
     ? ""
-    : `CatalogService::new(database, event_bus) OutboxTransport::new(database.clone()) TransactionalEventBus::new(outbox) ProductCatalogGrpcService::new(provider)`;
+    : `CatalogService::new(database, event_bus) OutboxTransport::new(database.clone()) TransactionalEventBus::new(outbox) ProductCatalogGrpcService::new(provider.clone()) .with_variant_identity_read_port(provider)`;
   const authentication = options.missingAuthentication
     ? ""
     : `ProductCatalogGrpcBearerInterceptor::from_bearer_token( PortActor::service(config.trusted_service_actor.clone()) ProductCatalogReadServiceServer::with_interceptor(service, interceptor) required_secret_env(BEARER_TOKEN_ENV) validate_service_actor(required_env(`;

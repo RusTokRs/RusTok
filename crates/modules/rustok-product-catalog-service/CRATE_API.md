@@ -14,9 +14,10 @@ it does not establish secure-memory storage or zeroization.
 
 The host composes PostgreSQL, Product's `CatalogService`, an Outbox-backed
 `TransactionalEventBus` and `ProductCatalogGrpcService` with bearer authentication.
-It exposes `ReadProductProjection`, `ReadVariantProductProjection` and
-`ListPublishedProducts`. It does not expose commands, schema administration, every
-read-trait capability or all Product UI routes.
+It exposes `ReadProductProjection`, `ReadVariantProductProjection`,
+`ListPublishedProducts`, `ReadVariantIdentities` and `ListProductVariantIdentities`.
+Both read ports delegate to the same `CatalogService`. Commands, schema administration
+and other Product UI operations have their own placement.
 
 Product owns catalog rules and queries. The transport package owns wire framing and
 trusted authority adaptation. Outbox supplies the production event-bus constructor;

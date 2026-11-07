@@ -31,7 +31,7 @@ impl ProductCatalogReadRuntime {
     pub fn in_process(catalog: Arc<CatalogService>) -> Self {
         Self::default()
             .with_storefront_http_read_port(catalog.clone())
-            .with_storefront_tag_read_port(catalog)
+            .with_storefront_tag_read_port(catalog.clone())
     }
     pub fn read_port(&self) -> Arc<dyn ProductCatalogReadPort> {}
     pub const fn profile(&self) -> ProductCatalogReadProfile {}
@@ -49,7 +49,7 @@ impl ProductCatalogReadRuntime {
     pub fn in_process(catalog: Arc<CatalogService>) -> Self {
         Self::default()
             .with_storefront_http_read_port(catalog.clone())
-            .with_storefront_tag_read_port(catalog)
+            .with_storefront_tag_read_port(catalog.clone())
     }
     pub fn external(read_port: Arc<dyn ProductCatalogReadPort>) -> Self {}
     pub fn with_storefront_http_read_port(mut self, port: Arc<dyn ProductStorefrontHttpReadPort>) -> Self {}

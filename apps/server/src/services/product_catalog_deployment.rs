@@ -87,7 +87,10 @@ pub async fn configure_product_catalog_deployment(ctx: &ServerRuntimeContext) ->
                 ))
             })?
             .with_authentication(authentication);
-        ctx.shared_insert(ProductCatalogReadRuntime::external(Arc::new(provider)));
+        let provider = Arc::new(provider);
+        let runtime = ProductCatalogReadRuntime::external(provider.clone())
+            .with_variant_identity_read_port(provider);
+        ctx.shared_insert(runtime);
 
         tracing::info!(
             provider = "grpc",

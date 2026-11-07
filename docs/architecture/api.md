@@ -173,10 +173,9 @@ including credentials and connection policy, while owner services remain indepen
 that transport. A public GraphQL, REST or native endpoint is remote-capable only when its
 actual call path uses a selected provider implementing every required operation.
 
-The current Product selector replaces three catalog reads, not all Product endpoints.
-Some native admin paths still construct embedded owner services; selected storefront and
-Pricing paths need capabilities the present gRPC runtime does not supply. This is a
-documented bounded profile, not evidence of complete remote API parity. See the
+The current Product selector binds catalog projections and Pricing SKU identity reads
+to the same remote provider. Some native admin paths remain embedded. Selected storefront
+and Pricing catalog listing paths still require additional read operations. See the
 [Product coverage inventory](../../crates/modules/rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06)
 and [FBA contract](../backend/module-backend-architecture.md#fba-contracts).
 

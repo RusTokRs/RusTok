@@ -2,7 +2,8 @@
 
 > **FBA microservice extraction** — typed gRPC transport adapter for `rustok-product-catalog-service`. Part of the Product domain FBA extraction; MUST NOT be collapsed into `rustok-product`. See `AGENTS.md` §5 and `docs/modules/registry.md`.
 
-Typed tonic gRPC framing for the Product-owned `ProductCatalogReadPort`.
+Typed tonic gRPC framing for the Product-owned `ProductCatalogReadPort` and
+`ProductVariantIdentityReadPort`.
 
 ## Public surface
 
@@ -12,21 +13,19 @@ Typed tonic gRPC framing for the Product-owned `ProductCatalogReadPort`.
 - `ProductCatalogGrpcBearerInterceptor` authenticates bearer and tenant metadata before installing trusted authority.
 - `ProductCatalogGrpcService<P>` exposes an owner-port provider over gRPC.
 - `TrustedProductCatalogAuthority` carries interceptor-authenticated tenant and principal authority.
-- `ProductCatalogGrpcOperation` declares the three authorized read operations.
+- `ProductCatalogGrpcOperation` declares an authorization grant for each of the five read operations.
 - Generated `ProductCatalogReadService` protobuf types define RPC framing only.
 
 ## Known Limitations / Pending Implementation
 
-The remote provider implements only `read_product_projection`,
-`read_variant_product_projection` and `list_published_products`. Other optional methods
-on the current read trait retain unavailable defaults. This package supplies neither
-Product commands nor the external runtime's missing identity/schema/HTTP/tag capabilities.
-It currently depends on the full Product crate, not a separate contracts-only package.
+The remote provider implements the three base catalog projection methods and both SKU
+identity methods. Optional catalog methods outside this profile retain unavailable defaults.
+Commands, schema, storefront HTTP and tag capabilities are outside this transport profile.
+The package depends on the full Product owner crate.
 
-The July 29 maintainer attestation is historical. Current source review found the
-conformance fixture missing the required `ProductResponse.brands` field; compilation and
-conformance must be rerun after that fixture is repaired. The implementation agent does
-not independently certify the current revision. See the
+Upgrade the provider to a version with the two SKU identity RPCs before selecting it for
+Pricing callers that need them. A provider without these methods returns a nonretryable
+`product.grpc_operation_unsupported` error. See the
 [Product review](../rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
 
 ## Boundary
@@ -55,7 +54,7 @@ The standalone Product catalog service host in `crates/modules/rustok-product-ca
 
 ## Evidence
 
-The loopback conformance harness is intended to cover all three declared remote operations, typed not-found details, deadline-required semantics, and trusted actor replacement:
+The loopback harness covers the five declared operations, bearer authentication, typed not-found details, deadline-required semantics, and trusted actor replacement:
 
 ```bash
 cargo test -p rustok-product-transport --test port_conformance
@@ -70,7 +69,7 @@ node scripts/verify/verify-product-catalog-grpc-authentication.mjs
 node scripts/verify/verify-product-catalog-grpc-authentication.test.mjs
 ```
 
-`examples/product_catalog_runtime_probe.rs` is the allowlisted authenticated client used by the separate-process runtime capture. It reads operator-provided tenant, product, and variant fixture identifiers from environment variables, invokes all three owner RPCs, validates returned identities, and emits one bounded success marker without printing identifiers or credentials. It does not connect to Product persistence or construct `CatalogService`.
+`examples/product_catalog_runtime_probe.rs` is the allowlisted authenticated client used by the separate-process runtime capture. It reads operator-provided tenant, product, and variant fixture identifiers from environment variables, invokes the three base catalog RPCs, validates returned projections, and emits one bounded success marker without printing identifiers or credentials. It does not connect to Product persistence or construct `CatalogService`.
 
 The source contract and mutation guard are checked with:
 
@@ -85,7 +84,7 @@ The operator-only capture command is:
 node scripts/evidence/capture-product-catalog-separate-process-runtime.mjs
 ```
 
-The capture starts the standalone provider and `rustok-server` as separate processes under an explicit local-loopback profile, runs the authenticated probe, and retains only source hashes, readiness markers, output hashes, byte counts, toolchain versions, and command metadata. Raw database URLs, bearer credentials, fixture identifiers, and process output are not persisted. This capture does not prove Commerce or AI business requests through the consumer server.
+The capture starts the standalone provider and `rustok-server` as separate processes under an explicit local-loopback profile, runs the authenticated probe, and retains only source hashes, readiness markers, output hashes, byte counts, toolchain versions, and command metadata. Raw database URLs, bearer credentials, fixture identifiers, and process output are not persisted. The existing capture scope is the three base catalog RPCs and consumer startup. SKU identity RPCs and mounted Commerce or AI business requests require separate evidence.
 
 The implementation agent does not claim the runtime capture command was executed. Product remains `boundary_ready` until retained provider/consumer runtime evidence and separate-process Commerce/AI business-request evidence exist.
 

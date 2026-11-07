@@ -3,8 +3,10 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_product::{
-    ProductCatalogReadPort, ProductProjectionRequest, PublishedProductsRequest,
-    StorefrontProductList, VariantProductProjectionRequest, dto::ProductResponse,
+    ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentitiesRequest,
+    ProductVariantIdentityListRequest, ProductVariantIdentityReadPort,
+    ProductVariantIdentitySnapshot, PublishedProductsRequest, StorefrontProductList,
+    VariantProductProjectionRequest, dto::ProductResponse,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::metadata::{Ascii, MetadataValue};
@@ -56,6 +58,18 @@ impl GrpcProductCatalogReadProvider {
         secret: impl AsRef<str>,
     ) -> Result<Self, ProductCatalogGrpcAuthenticationError> {
         Ok(self.with_authentication(ProductCatalogGrpcBearerToken::new(secret)?))
+    }
+
+    fn identity_request(
+        &self,
+        context: &PortContext,
+        input: &impl Serialize,
+    ) -> Result<Request<JsonRequest>, PortError> {
+        let payload = JsonRequest {
+            context_json: encode(context)?,
+            input_json: encode(input)?,
+        };
+        grpc_request(payload, context, self.authentication.as_ref())
     }
 }
 
@@ -131,6 +145,41 @@ impl ProductCatalogReadPort for GrpcProductCatalogReadProvider {
     }
 }
 
+#[async_trait]
+impl ProductVariantIdentityReadPort for GrpcProductCatalogReadProvider {
+    async fn read_variant_identities(
+        &self,
+        context: PortContext,
+        request: ProductVariantIdentitiesRequest,
+    ) -> Result<Vec<ProductVariantIdentitySnapshot>, PortError> {
+        let request = self.identity_request(&context, &request)?;
+        let response = self
+            .client
+            .clone()
+            .read_variant_identities(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn list_product_variant_identities(
+        &self,
+        context: PortContext,
+        request: ProductVariantIdentityListRequest,
+    ) -> Result<Vec<ProductVariantIdentitySnapshot>, PortError> {
+        let request = self.identity_request(&context, &request)?;
+        let response = self
+            .client
+            .clone()
+            .list_product_variant_identities(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+}
+
 fn grpc_request<T>(
     payload: T,
     context: &PortContext,
@@ -184,6 +233,15 @@ fn status_to_port_error(status: Status) -> PortError {
         return error;
     }
 
+    if status.code() == Code::Unimplemented {
+        return PortError::new(
+            PortErrorKind::Unavailable,
+            "product.grpc_operation_unsupported",
+            "The configured Product provider does not support this operation",
+            false,
+        );
+    }
+
     let kind = match status.code() {
         Code::InvalidArgument => PortErrorKind::Validation,
         Code::NotFound => PortErrorKind::NotFound,
@@ -223,6 +281,14 @@ mod tests {
             serde_json::to_vec(&expected).unwrap().into(),
         );
         assert_eq!(status_to_port_error(status), expected);
+    }
+
+    #[test]
+    fn unsupported_rpc_is_unavailable_without_retry() {
+        let error = status_to_port_error(Status::unimplemented("method not available"));
+        assert_eq!(error.kind, PortErrorKind::Unavailable);
+        assert_eq!(error.code, "product.grpc_operation_unsupported");
+        assert!(!error.retryable);
     }
 
     #[test]

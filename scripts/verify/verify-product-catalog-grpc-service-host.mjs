@@ -51,7 +51,7 @@ const readme = read(`${serviceRoot}/README.md`);
 const registrySource = read("crates/modules/rustok-product/contracts/product-fba-registry.json");
 const plan = read("crates/modules/rustok-product/docs/implementation-plan.md");
 
-requireAll(rootCargo, ['"crates/*"'], "workspace service discovery");
+requireAll(rootCargo, ['"crates/modules/*"'], "workspace service discovery");
 requireAll(cargo, [
   'name = "rustok-product-catalog-service"',
   "rustok-api.workspace = true",
@@ -74,7 +74,8 @@ requireAll(source, [
   "CatalogService::new(database, event_bus)",
   "OutboxTransport::new(database.clone())",
   "TransactionalEventBus::new(outbox)",
-  "ProductCatalogGrpcService::new(provider)",
+  "ProductCatalogGrpcService::new(provider.clone())",
+  ".with_variant_identity_read_port(provider)",
   "ProductCatalogGrpcBearerInterceptor::from_bearer_token(",
   "PortActor::service(config.trusted_service_actor.clone())",
   "ProductCatalogReadServiceServer::with_interceptor(service, interceptor)",

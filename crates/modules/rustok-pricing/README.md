@@ -144,11 +144,10 @@ Regression sources are added but unrun; the limitations below still apply.
 
 ## Known Limitations / Pending Implementation
 
-- Product step-8 now delegates selected Channel ID/slug correlation to the Channel owner while
-  retaining Pricing's trusted-context rules. However, `PricingService::variant_identity_read_port`
-  still constructs local `CatalogService`: selecting a remote Product catalog reader does not
-  select a remote identity owner for Pricing. This capability must be traced/composed before
-  claiming selected-provider parity or retiring local Product identity state; see the
+- Pricing reads SKU identity through the selected Product runtime. The gRPC profile
+  now supplies that identity port on the catalog connection. SKU price authoring still
+  requires embedded Product transaction state, and pricing catalog lists still need
+  additional Product read operations. See the
   [downstream plan](../rustok-commerce/docs/implementation-plan.md#remaining-step-8-work-not-closed-by-this-slice).
 
 - This block is source implementation, not runtime certification. Tests are reserved

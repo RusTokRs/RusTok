@@ -178,7 +178,8 @@ async fn run() -> Result<()> {
     let outbox = Arc::new(OutboxTransport::new(database.clone()));
     let event_bus = TransactionalEventBus::new(outbox);
     let provider = Arc::new(CatalogService::new(database, event_bus));
-    let service = ProductCatalogGrpcService::new(provider);
+    let service =
+        ProductCatalogGrpcService::new(provider.clone()).with_variant_identity_read_port(provider);
     let interceptor = ProductCatalogGrpcBearerInterceptor::from_bearer_token(
         config.bearer_token.expose(),
         PortActor::service(config.trusted_service_actor.clone()),

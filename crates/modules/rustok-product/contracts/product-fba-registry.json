@@ -109,6 +109,8 @@
     "conformance_test": "crates/modules/rustok-product-transport/tests/port_conformance.rs",
     "host_deployment": "apps/server/src/services/product_catalog_deployment.rs",
     "runtime_factory": "ProductCatalogReadRuntime::external",
+    "variant_identity_port": "ProductVariantIdentityReadPort",
+    "variant_identity_operations": ["read_variant_identities", "list_product_variant_identities"],
     "provider_selector_env": "RUSTOK_PRODUCT_CATALOG_PROVIDER",
     "endpoint_env": "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT",
     "bearer_token_env": "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",

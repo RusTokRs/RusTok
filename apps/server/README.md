@@ -29,8 +29,8 @@ Server bootstrap owns deployment configuration, secret supply and provider const
 This is composition-root work; domain rules and transport mechanics remain with their
 owners. Current selectors are deliberately bounded:
 
-- `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` selects three Product catalog reads. It does
-  not select remote Product commands or supply every additional read/identity capability.
+- `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` selects the remote catalog projection and SKU
+  identity ports on the same connection. Product commands remain embedded.
 - `RUSTOK_PROFILE_MEDIA_PROVIDER=grpc` selects Profiles public-image descriptors.
   It does not move all Media operations or image-byte delivery.
 

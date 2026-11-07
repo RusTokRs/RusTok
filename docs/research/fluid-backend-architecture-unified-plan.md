@@ -161,8 +161,8 @@ is promoted to a remote deployment class by this plan.
 
 ### Extraction execution status
 
-Product already has a standalone three-read catalog host. Its provider selection does
-not move Product commands or all additional reads. Media has metadata/control and
+Product has a standalone host for catalog projections and SKU identity. Commands stay
+embedded and additional read capabilities remain open. Media has metadata/control and
 public-image descriptor adapters plus a narrow Profiles consumer selector, but no
 standalone `rustok-media-service` package or whole-module runtime selector. The
 [owner plans](../modules/registry.md) record actual coverage and open evidence.

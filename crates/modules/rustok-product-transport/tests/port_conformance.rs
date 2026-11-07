@@ -4,13 +4,15 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_product::{
-    ProductCatalogReadPort, ProductFulfillmentRequirement, ProductProjectionRequest,
-    PublishedProductsRequest, StorefrontProductList, StorefrontProductListItem,
-    VariantProductProjectionRequest, dto::ProductResponse, entities::product::ProductStatus,
+    ProductCatalogReadPort, ProductCatalogReadRuntime, ProductFulfillmentRequirement,
+    ProductProjectionRequest, ProductVariantIdentitiesRequest, ProductVariantIdentityListRequest,
+    ProductVariantIdentityReadPort, ProductVariantIdentitySnapshot, PublishedProductsRequest,
+    StorefrontProductList, StorefrontProductListItem, VariantProductProjectionRequest,
+    dto::ProductResponse, entities::product::ProductStatus,
 };
 use rustok_product_transport::{
-    GrpcProductCatalogReadProvider, ProductCatalogGrpcOperation, ProductCatalogGrpcService,
-    TrustedProductCatalogAuthority,
+    GrpcProductCatalogReadProvider, ProductCatalogGrpcBearerAuthenticator,
+    ProductCatalogGrpcBearerInterceptor, ProductCatalogGrpcOperation, ProductCatalogGrpcService,
     proto::product_catalog_read_service_server::ProductCatalogReadServiceServer,
 };
 use tokio::sync::oneshot;
@@ -49,6 +51,7 @@ impl MockProductCatalogReadPort {
             shipping_profile_slug: Some("default".to_string()),
             primary_category_id: None,
             tags: vec!["remote".to_string()],
+            brands: Vec::new(),
             metadata: serde_json::json!({"transport": "grpc"}),
             created_at: now,
             updated_at: now,
@@ -126,6 +129,45 @@ impl ProductCatalogReadPort for MockProductCatalogReadPort {
     }
 }
 
+#[async_trait]
+impl ProductVariantIdentityReadPort for MockProductCatalogReadPort {
+    async fn read_variant_identities(
+        &self,
+        context: PortContext,
+        request: ProductVariantIdentitiesRequest,
+    ) -> Result<Vec<ProductVariantIdentitySnapshot>, PortError> {
+        self.validate_context(&context)?;
+        if request.variant_ids != [self.variant_id] {
+            return Err(PortError::not_found(
+                "product.variant_identity_missing",
+                "one or more SKUs were not found in the current tenant",
+            ));
+        }
+        assert_eq!(request.product_id, Some(self.product_id));
+        Ok(vec![self.identity()])
+    }
+
+    async fn list_product_variant_identities(
+        &self,
+        context: PortContext,
+        request: ProductVariantIdentityListRequest,
+    ) -> Result<Vec<ProductVariantIdentitySnapshot>, PortError> {
+        self.validate_context(&context)?;
+        assert_eq!(request.product_ids, [self.product_id]);
+        Ok(vec![self.identity()])
+    }
+}
+
+impl MockProductCatalogReadPort {
+    fn identity(&self) -> ProductVariantIdentitySnapshot {
+        ProductVariantIdentitySnapshot {
+            tenant_id: self.tenant_id,
+            product_id: self.product_id,
+            variant_id: self.variant_id,
+        }
+    }
+}
+
 fn read_context(tenant_id: Uuid) -> PortContext {
     PortContext::new(
         tenant_id.to_string(),
@@ -156,21 +198,22 @@ async fn loopback_grpc_provider_executes_the_product_catalog_port_contract() {
         .expect("loopback listener address should exist");
     let incoming = TcpListenerStream::new(listener);
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
-    let authority = TrustedProductCatalogAuthority::new(
-        tenant_id.to_string(),
+    let authentication = ProductCatalogGrpcBearerAuthenticator::new(
+        "loopback-catalog-token",
         PortActor::service("trusted-product-catalog-conformance"),
     )
-    .allow_operations([
+    .expect("test credential must be valid")
+    .with_allowed_operations([
         ProductCatalogGrpcOperation::ReadProductProjection,
         ProductCatalogGrpcOperation::ReadVariantProductProjection,
         ProductCatalogGrpcOperation::ListPublishedProducts,
+        ProductCatalogGrpcOperation::ReadVariantIdentities,
+        ProductCatalogGrpcOperation::ListProductVariantIdentities,
     ]);
+    let expected_identity = provider.identity();
     let server_service = ProductCatalogReadServiceServer::with_interceptor(
-        ProductCatalogGrpcService::new(provider),
-        move |mut request: tonic::Request<()>| {
-            request.extensions_mut().insert(authority.clone());
-            Ok(request)
-        },
+        ProductCatalogGrpcService::new(provider.clone()).with_variant_identity_read_port(provider),
+        ProductCatalogGrpcBearerInterceptor::new(authentication),
     );
     let server = tokio::spawn(async move {
         Server::builder()
@@ -188,6 +231,58 @@ async fn loopback_grpc_provider_executes_the_product_catalog_port_contract() {
     )
     .await
     .expect("loopback Product gRPC client should connect");
+
+    let identity_request = ProductVariantIdentitiesRequest {
+        product_id: Some(product_id),
+        variant_ids: vec![variant_id],
+    };
+    let unauthenticated = remote
+        .read_variant_identities(read_context(tenant_id), identity_request.clone())
+        .await
+        .expect_err("SKU identity calls require a bearer credential");
+    assert_eq!(unauthenticated.kind, PortErrorKind::Forbidden);
+    assert!(!unauthenticated.retryable);
+
+    let remote = Arc::new(
+        remote
+            .with_bearer_token("loopback-catalog-token")
+            .expect("test credential must be valid"),
+    );
+    let runtime = ProductCatalogReadRuntime::external(remote.clone())
+        .with_variant_identity_read_port(remote.clone());
+    let identity_port = runtime
+        .variant_identity_read_port()
+        .expect("the selected remote runtime must provide SKU identities");
+    let identities = identity_port
+        .read_variant_identities(read_context(tenant_id), identity_request)
+        .await
+        .expect("SKU identity lookup should cross gRPC");
+    assert_eq!(identities, [expected_identity.clone()]);
+
+    let listed = identity_port
+        .list_product_variant_identities(
+            read_context(tenant_id),
+            ProductVariantIdentityListRequest {
+                product_ids: vec![product_id],
+            },
+        )
+        .await
+        .expect("SKU identities for the selected Product page should cross gRPC");
+    assert_eq!(listed, [expected_identity]);
+
+    let missing_identity = identity_port
+        .read_variant_identities(
+            read_context(tenant_id),
+            ProductVariantIdentitiesRequest {
+                product_id: Some(product_id),
+                variant_ids: vec![Uuid::new_v4()],
+            },
+        )
+        .await
+        .expect_err("missing SKU must retain its typed owner error");
+    assert_eq!(missing_identity.kind, PortErrorKind::NotFound);
+    assert_eq!(missing_identity.code, "product.variant_identity_missing");
+    assert!(!missing_identity.retryable);
 
     let product = remote
         .read_product_projection(

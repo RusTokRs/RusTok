@@ -270,7 +270,8 @@ source cutover is complete; this statement does not cover every current mounted
 checkout dependency, storefront/admin capability or command path.
 
 `rustok-product-transport` supplies a concrete tonic gRPC client/server adapter
-for all three catalog-read operations. Protobuf owns RPC identity and framing
+for the three catalog projection operations and the two SKU identity operations.
+Protobuf owns RPC identity and framing
 while JSON preserves Product-owned request/response DTOs and `PortContext`. The
 client maps context deadlines to tonic timeouts and restores structured
 `PortError` details. The server requires interceptor-provided
@@ -300,7 +301,8 @@ enabled loopback host, bounds connect timeout, and applies WebPKI TLS roots. The
 server validates authentication before connecting, connects before
 `bootstrap_app_runtime`, inserts `ProductCatalogReadRuntime::external(...)` into
 `ServerRuntimeContext`, and lets all existing composition surfaces reuse that
-same runtime. Invalid remote configuration or connection failure aborts startup
+same runtime. Both projection and SKU identity reads share that authenticated client.
+Invalid remote configuration or connection failure aborts startup
 and never silently falls back to embedded execution. Invalid authentication
 configuration also aborts startup before the network connection is opened.
 Remote variables, including the bearer credential, are rejected in embedded
@@ -507,16 +509,16 @@ rustok-pricing` dependency cycle.
 
 ## FBA deployment scope review (2026-11-06)
 
-This is a documentation/source review, not runtime execution. It preserves the current
-`boundary_ready` label and the July 29 historical attestation. It does not introduce a
-new remote profile, split Product into domain modules or require another contracts crate.
+This inventory tracks the current `boundary_ready` profile. The SKU identity
+extension reuses the existing Product owner, provider host and authenticated connection.
+The July 29 attestation is retained for its original projection and consumer harnesses.
 
 | Boundary | Source truth and limitation |
 |---|---|
 | Provider selection | `apps/server/src/services/product_catalog_deployment.rs` installs only the external catalog-read runtime, before ordinary bootstrap. Invalid configuration/connection aborts; no selected-read failover is implemented. |
-| Wire operations | `rustok-product-transport` implements `ReadProductProjection`, `ReadVariantProductProjection` and `ListPublishedProducts`. |
-| Additional reads | The gRPC client inherits unavailable defaults for filtered lists, facets, storefront detail and other optional read methods. External runtime identity/schema/HTTP/tag handles remain absent unless explicitly supplied. |
-| Mounted consumers | Native storefront list/facets/detail require additional methods. Some native admin list/facets/schema paths construct local services. Pricing requires selected SKU identity and refuses its absence; the default three-read remote runtime does not supply it. |
+| Wire operations | `ReadProductProjection`, `ReadVariantProductProjection` and `ListPublishedProducts` cover catalog projections. `ReadVariantIdentities` and `ListProductVariantIdentities` cover `ProductVariantIdentityReadPort`. |
+| Additional reads | The gRPC client inherits unavailable defaults for filtered lists, facets, storefront detail and other optional read methods. External runtime schema/HTTP/tag handles remain absent unless explicitly supplied. |
+| Mounted consumers | Native storefront list/facets/detail require additional methods. Some native admin list/facets/schema paths construct local services. Pricing reads SKU identity from the selected Product provider. Mounted Commerce/Pricing execution and broader storefront coverage still require verification. |
 | Commands | `commerce_provider_runtime.rs` separately creates the embedded Product command runtime when no command runtime is installed. The catalog-read selector does not select remote writes. |
 | Transactions | Product, Pricing and Inventory lifecycle/bootstrap operations share a local SQL transaction. Their transaction-participant interfaces cannot cross RPC. |
 | Packaging | Public contracts and implementation are in the existing owner crate, with unconditional implementation dependencies. A contracts-only feature is unimplemented and is not a prerequisite for this bounded FBA profile. |
@@ -531,13 +533,12 @@ Resolve transaction/co-deployment decisions before changing write placement.
 
 ### Current revision and evidence limits
 
-Static review at base `856d9529338a08c0a913c46bf4eebda50120c355` found that
-`rustok-product-transport/tests/port_conformance.rs` constructs `ProductResponse` without
-its required `brands` field. This fixture needs repair and targeted compilation; the
-documentation change does not repair or execute it. The older maintainer attestation has
-no exact tested source commit and cannot certify the present revision.
+The conformance fixture now supplies the required `ProductResponse.brands` field.
+The loopback harness exercises both SKU identity operations through the selected runtime,
+with bearer authentication, operation grants and typed errors. The older maintainer
+attestation has no exact tested source commit and does not cover the identity RPCs.
 
-Retain a current compile/conformance result after fixing affected fixtures. Then execute
+Retain a current compile/conformance result for the extended profile. Then execute
 the existing separate-process capture with real migrated data and credentials. Its direct
 RPC probe and consumer startup are narrower than actual Commerce/AI business requests
 through the consumer process. Only executed named paths can be claimed as verified.
@@ -546,8 +547,8 @@ do not silence unavailable errors or substitute local authority.
 
 ## Open results
 
-1. Repair stale current-revision fixtures and rerun the affected Product transport and
-   consumer conformance targets. Run the source guard before process execution:
+1. Rerun the affected transport and consumer conformance targets. Run the source
+   guard before process execution:
    - `node scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs`;
    - `node scripts/verify/verify-product-catalog-separate-process-runtime-contract.test.mjs`.
      Then execute `node scripts/evidence/capture-product-catalog-separate-process-runtime.mjs`
@@ -556,7 +557,7 @@ do not silence unavailable errors or substitute local authority.
      tenant/product/variant fixtures. Commit the generated sanitized evidence packet.
 2. After a successful capture, retain authenticated Commerce checkout and AI
    product-generation business requests through the separately running consumer
-   server. Promote above `boundary_ready` only after those results and their
+   server, including a request that exercises Pricing SKU identity verification. Promote above `boundary_ready` only after those results and their
    sanitized logs or CI artifacts are retained.
 3. Keep Product richtext adoption explicitly deferred until the owner approves
    a typed storage/API/index migration. `product_translations.description` and

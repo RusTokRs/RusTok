@@ -53,7 +53,7 @@ requireAll(runtime, [
   "storefront_tag_read_port: Option<Arc<dyn ProductStorefrontTagReadPort>>",
   "pub fn in_process",
   ".with_storefront_http_read_port(catalog.clone())",
-  ".with_storefront_tag_read_port(catalog)",
+  ".with_storefront_tag_read_port(catalog.clone())",
   "pub fn external",
   "pub fn read_port",
   "pub fn with_storefront_http_read_port",

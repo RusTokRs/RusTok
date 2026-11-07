@@ -15,7 +15,7 @@
 Product remains one domain module. Its public ports, DTOs and local implementation
 currently live in `rustok-product`. The existing infrastructure packages remain separate:
 
-- `rustok-product-catalog-service`: authenticated standalone provider for three catalog reads.
+- `rustok-product-catalog-service`: authenticated standalone provider for catalog projections and SKU identity.
 - `rustok-product-transport`: tonic client/server framing and bearer authentication.
 
 Keep these existing transport/service packages separate under repository policy. Their
@@ -24,24 +24,23 @@ remotely interchangeable. See [FBA scope](../../../docs/backend/module-backend-a
 
 ## Known Limitations / Pending Implementation
 
-The current FBA remote profile is a **three-operation catalog-read slice**, not a
-whole-module Product deployment. `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` installs
-`ProductCatalogReadRuntime::external(...)`. Default command composition separately
-constructs the embedded `ProductCatalogCommandRuntime`.
+The current FBA remote profile covers catalog projections and SKU identity reads.
+`RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` installs `ProductCatalogReadRuntime::external(...)`
+with both ports supplied by the same authenticated client. Default command composition
+separately constructs the embedded `ProductCatalogCommandRuntime`.
 
 | Surface | Current selected remote profile |
 |---|---|
 | Product projection, variant-to-product projection, basic published list | Implemented by the three gRPC RPCs. |
 | Filtered storefront list, facets and storefront detail | Extra read-port methods are not implemented by the gRPC client and return typed unavailable. |
-| Variant identity, schema, HTTP and tag read handles | Not supplied by the default external read runtime; consumers needing them must fail explicitly. |
+| SKU identity lookup and enumeration | Both Product identity-port operations use the same remote Product owner. |
+| Schema, HTTP and tag read handles | Consumers requiring these capabilities still receive typed unavailable in the default external runtime. |
 | Native admin list/facets and schema operations | Some paths still construct embedded owner services. |
 | Product commands and Product/Pricing/Inventory transaction collaboration | Embedded under current default composition; no remote command provider is selected by this setting. |
 
-The July 29 maintainer attestation records historical harness results, without an exact
-source commit or retained raw logs. A November 6 source review found that the transport
-conformance fixture's `ProductResponse` literal omits the now-required `brands` field;
-current compilation/conformance must be repaired and rerun before claiming a current pass.
-This documentation review did not execute Cargo or change that test.
+The July 29 maintainer attestation records historical harness results without an exact
+source commit or retained raw logs. The conformance fixture now includes `ProductResponse.brands`.
+See the [current verification scope](docs/implementation-plan.md#current-revision-and-evidence-limits).
 
 Separate-process provider startup and authenticated mounted Commerce/AI business evidence
 remain open. Existing `boundary_ready` status is bounded to the catalog-read track.
@@ -182,7 +181,7 @@ Contracts and implementation may remain in this one owner crate. See the
   boundary for catalog-read consumers. The in-process `CatalogService`
   implementation has live PostgreSQL execution evidence. The composed
   `rustok-ai` consumer has live unavailable/deadline degraded-path evidence;
-  Commerce checkout currently treats Product as a hard dependency. The external adapter exists for three reads. The module
+  Commerce checkout currently treats Product as a hard dependency. The external adapter supplies the projection and SKU identity ports. The module
   remains `boundary_ready` until current-revision conformance and the declared
   separate-process consumer/business evidence are retained; Commerce has no
   implicit snapshot or local-provider fallback for a failed selected Product read.
@@ -222,7 +221,7 @@ Contracts and implementation may remain in this one owner crate. See the
 - Consumed through `ProductCatalogReadPort` by Commerce checkout and the
   `rustok-ai-product` support adapter composed by `rustok-ai`. Pricing captures selected Product read/identity capabilities and explicitly
   refuses missing identity or unsupported external SKU authoring. Its native
-  transaction collaboration remains separate from the three-read remote profile.
+  transaction collaboration remains separate from the remote read profile.
 
 ## Fulfillment capability gap
 
