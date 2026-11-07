@@ -233,9 +233,9 @@ fn non_negative_u64(value: i64) -> Result<u64, IndexSourceFailure> {
 }
 
 fn retryable(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::retryable(code).expect("static Product absence retry code is valid")
+    IndexSourceFailure::retryable(code).expect("static Product absence retry code is valid: invariant validated at startup")
 }
 
 fn permanent(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::permanent(code).expect("static Product absence failure code is valid")
+    IndexSourceFailure::permanent(code).expect("static Product absence failure code is valid: invariant validated at startup")
 }

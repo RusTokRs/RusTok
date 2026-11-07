@@ -175,9 +175,9 @@ async fn translation_target_rejects_partial_new_menu_locale_aggregate() {
             ReadTranslationResourceRequest {
                 identity: rustok_translation_targets::TranslationResourceIdentity {
                     owner_slug: rustok_translation_targets::OwnerSlug::new("navigation")
-                        .expect("static owner slug should be valid"),
+                        .expect("static owner slug should be valid: invariant validated at startup"),
                     resource_kind: rustok_translation_targets::ResourceKind::new("menu")
-                        .expect("static resource kind should be valid"),
+                        .expect("static resource kind should be valid: invariant validated at startup"),
                     resource_id: rustok_translation_targets::ResourceId::new(menu.id.to_string())
                         .expect("menu UUID should be a valid resource id"),
                     subresource_id: None,

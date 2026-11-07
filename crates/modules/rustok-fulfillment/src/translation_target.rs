@@ -637,7 +637,7 @@ fn owner_patch_value_validation(
             issues: vec![TranslationPatchIssue {
                 field: Some(
                     FieldKey::new("name")
-                        .expect("static Fulfillment field key must satisfy the target contract"),
+                        .expect("static Fulfillment field key must satisfy the target contract: invariant validated at startup"),
                 ),
                 severity: TranslationPatchIssueSeverity::Error,
                 code: "target_value_too_long".to_string(),
@@ -649,7 +649,7 @@ fn owner_patch_value_validation(
             issues: vec![TranslationPatchIssue {
                 field: Some(
                     FieldKey::new("name")
-                        .expect("static Fulfillment field key must satisfy the target contract"),
+                        .expect("static Fulfillment field key must satisfy the target contract: invariant validated at startup"),
                 ),
                 severity: TranslationPatchIssueSeverity::Error,
                 code: "required_target_value_missing".to_string(),

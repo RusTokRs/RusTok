@@ -459,7 +459,7 @@ fn variant_fields(
     vec![TranslationFieldSnapshot {
         descriptor: TranslationFieldDescriptor {
             key: FieldKey::new("title")
-                .expect("static Product Variant field key must satisfy the target contract"),
+                .expect("static Product Variant field key must satisfy the target contract: invariant validated at startup"),
             profile: TranslationValueProfile::PlainText,
             strategy: TranslationStrategy::Translate,
             classification: TranslationDataClassification::Public,

@@ -157,7 +157,7 @@ fn field_patch(
         .find(|field| field.descriptor.key.as_str() == key)
         .expect("requested Taxonomy field should be exposed");
     TranslationFieldPatch {
-        key: FieldKey::new(key).expect("static field key should be valid"),
+        key: FieldKey::new(key).expect("static field key should be valid: invariant validated at startup"),
         value: value.to_string(),
         expected_source_hash: field.source_hash.clone(),
     }
@@ -274,9 +274,9 @@ async fn translation_target_applies_replays_and_tracks_an_exact_term_locale() {
     assert_eq!(
         receipt.applied_field_keys,
         vec![
-            FieldKey::new("name").expect("static field key should be valid"),
-            FieldKey::new("slug").expect("static field key should be valid"),
-            FieldKey::new("description").expect("static field key should be valid"),
+            FieldKey::new("name").expect("static field key should be valid: invariant validated at startup"),
+            FieldKey::new("slug").expect("static field key should be valid: invariant validated at startup"),
+            FieldKey::new("description").expect("static field key should be valid: invariant validated at startup"),
         ]
     );
     let replay = provider

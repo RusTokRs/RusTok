@@ -49,7 +49,7 @@ impl ForumModerationSubjectAdapterFactory {
 
     fn adapter_key(self) -> ModerationSubjectAdapterKey {
         ModerationSubjectAdapterKey::new(FORUM_MODERATION_MODULE, self.kind)
-            .expect("static Forum moderation adapter key is valid")
+            .expect("static Forum moderation adapter key is valid: invariant validated at startup")
     }
 }
 

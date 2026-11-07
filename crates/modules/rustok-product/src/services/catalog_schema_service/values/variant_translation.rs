@@ -749,7 +749,7 @@ impl TranslationTargetProvider for ProductVariantAttributeValueTranslationTarget
     fn descriptor(&self) -> TranslationTargetProviderDescriptor {
         TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Product owner slug must satisfy Translation contract"),
+                .expect("static Product owner slug must satisfy Translation contract: invariant validated at startup"),
             resource_kind: resource_kind_or_invariant()?,
             display_name: "Product Variant localized attribute values".to_string(),
             capabilities: BTreeSet::from([
@@ -1362,7 +1362,7 @@ fn snapshot_from_owner(
             .transpose()?,
         fields: vec![TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
-                key: FieldKey::new(VALUE_FIELD).expect("static Product value field must be valid"),
+                key: FieldKey::new(VALUE_FIELD).expect("static Product value field must be valid: invariant validated at startup"),
                 profile: TranslationValueProfile::PlainText,
                 strategy: TranslationStrategy::Translate,
                 classification: TranslationDataClassification::TenantPrivate,

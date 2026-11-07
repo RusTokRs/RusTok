@@ -35,7 +35,7 @@ impl GroupsModerationSubjectAdapterFactory {
             GROUPS_MODERATION_MODULE,
             ModerationSubjectKind::GroupMembership,
         )
-        .expect("static Groups moderation adapter key is valid")
+        .expect("static Groups moderation adapter key is valid: invariant validated at startup")
     }
 }
 

@@ -458,7 +458,7 @@ fn image_fields(
     vec![TranslationFieldSnapshot {
         descriptor: TranslationFieldDescriptor {
             key: FieldKey::new(IMAGE_ALT_TEXT_FIELD)
-                .expect("static Product Image field key must satisfy the target contract"),
+                .expect("static Product Image field key must satisfy the target contract: invariant validated at startup"),
             profile: TranslationValueProfile::PlainText,
             strategy: TranslationStrategy::Translate,
             classification: TranslationDataClassification::Public,

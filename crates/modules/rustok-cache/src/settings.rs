@@ -315,7 +315,7 @@ impl CacheSettings {
         if host.is_empty() || self.redis_port == 0 {
             return Ok(None);
         }
-        let mut url = url::Url::parse("redis://localhost").expect("static Redis URL parses");
+        let mut url = url::Url::parse("redis://localhost").expect("static Redis URL parses: invariant validated at startup");
         url.set_host(Some(host)).map_err(|error| {
             format!("redis_host '{host}' cannot be used in a Redis URL: {error}")
         })?;

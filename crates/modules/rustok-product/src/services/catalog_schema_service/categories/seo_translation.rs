@@ -1348,7 +1348,7 @@ fn seo_field(
 ) -> TranslationFieldSnapshot {
     TranslationFieldSnapshot {
         descriptor: TranslationFieldDescriptor {
-            key: FieldKey::new(key).expect("static Product Category SEO field must be valid"),
+            key: FieldKey::new(key).expect("static Product Category SEO field must be valid: invariant validated at startup"),
             profile: TranslationValueProfile::SeoText,
             strategy: TranslationStrategy::Translate,
             classification: TranslationDataClassification::Public,
