@@ -17,6 +17,7 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentService;
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
+use futures_util::future::try_join_all;
 use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, VariantProductProjectionRequest,
 };
@@ -707,88 +708,105 @@ impl CheckoutService {
             crate::storefront_channel::resolve_cart_channel(&self.db, &channel_context, cart)
                 .await
                 .map_err(|error| checkout_port_error("read_checkout_channel", error))?;
-        for demand in demands {
+        // Batch product reads concurrently to avoid N+1 sequential owner calls
+        let product_futures = demands.iter().map(|demand| {
             let variant_id = demand.variant_id;
-
-            let product = match demand.product_id {
-                Some(product_id) => {
-                    self.product_catalog_read_port
-                        .read_product_projection(
-                            checkout_product_port_context(
-                                tenant_id,
-                                actor_id,
-                                cart.id,
-                                cart.locale_code.as_deref(),
-                                public_channel_slug.as_deref(),
-                            ),
+            let product_id = demand.product_id;
+            let locale = cart.locale_code.clone();
+            let cart_locale = cart.locale_code.clone();
+            let cart_id = cart.id;
+            let channel_slug = public_channel_slug.clone();
+            let port = self.product_catalog_read_port.clone();
+            async move {
+                let ctx = checkout_product_port_context(
+                    tenant_id,
+                    actor_id,
+                    cart_id,
+                    cart_locale.as_deref(),
+                    channel_slug.as_deref(),
+                );
+                let product = match product_id {
+                    Some(product_id) => {
+                        port.read_product_projection(
+                            ctx,
                             ProductProjectionRequest {
                                 product_id,
-                                locale: cart.locale_code.clone(),
+                                locale: locale.clone(),
                                 fallback_locale: None,
                             },
                         )
                         .await
-                }
-                None => {
-                    self.product_catalog_read_port
-                        .read_variant_product_projection(
-                            checkout_product_port_context(
-                                tenant_id,
-                                actor_id,
-                                cart.id,
-                                cart.locale_code.as_deref(),
-                                public_channel_slug.as_deref(),
-                            ),
+                    }
+                    None => {
+                        port.read_variant_product_projection(
+                            ctx,
                             VariantProductProjectionRequest {
                                 variant_id,
-                                locale: cart.locale_code.clone(),
+                                locale: locale.clone(),
                                 fallback_locale: None,
                             },
                         )
                         .await
+                    }
                 }
+                .map_err(|error| checkout_port_error("read_checkout_product_projection", error))?;
+                Ok::<_, CheckoutError>(product)
             }
-            .map_err(|error| checkout_port_error("read_checkout_product_projection", error))?;
-            for line_item in demand.line_items {
+        }).collect::<Vec<_>>();
+        let products = try_join_all(product_futures).await?;
+        for (demand, product) in demands.iter().zip(products.iter()) {
+            for line_item in &demand.line_items {
                 super::checkout_catalog::validate_variant_line(
                     tenant_id,
                     line_item,
-                    &product,
+                    product,
                     public_channel_slug.as_deref(),
                 )?;
             }
-
-            let availability = self
-                .inventory_reservation_port
-                .check_availability(
-                    checkout_inventory_port_context(
-                        tenant_id,
-                        actor_id,
-                        cart.id,
-                        cart.locale_code.as_deref(),
-                        public_channel_slug.as_deref(),
-                    ),
-                    InventoryAvailabilityRequest {
-                        variant_id,
-                        requested_quantity: demand.quantity,
-                        channel_slug: public_channel_slug.clone(),
-                    },
-                )
-                .await
-                .map_err(|error| checkout_port_error("check_inventory_availability", error))?;
-            super::checkout_catalog::validate_inventory_observation(
-                &availability,
-                variant_id,
-                demand.quantity,
-            )
-            .map_err(|error| checkout_port_error("check_inventory_availability", error))?;
-            if !availability.available {
-                return Err(CheckoutError::Validation(format!(
-                    "Variant {} does not have enough available inventory for the cart channel",
-                    variant_id
-                )));
-            }
         }
+        // Batch inventory checks concurrently
+        let inventory_futures = demands.iter().map(|demand| {
+            let variant_id = demand.variant_id;
+            let quantity = demand.quantity;
+            let cart_id = cart.id;
+            let cart_locale = cart.locale_code.clone();
+            let channel_slug = public_channel_slug.clone();
+            let port = self.inventory_reservation_port.clone();
+            async move {
+                let ctx = checkout_inventory_port_context(
+                    tenant_id,
+                    actor_id,
+                    cart_id,
+                    cart_locale.as_deref(),
+                    channel_slug.as_deref(),
+                );
+                let availability = port
+                    .check_availability(
+                        ctx,
+                        InventoryAvailabilityRequest {
+                            variant_id,
+                            requested_quantity: quantity,
+                            channel_slug: channel_slug.clone(),
+                        },
+                    )
+                    .await
+                    .map_err(|error| checkout_port_error("check_inventory_availability", error))?;
+                super::checkout_catalog::validate_inventory_observation(
+                    &availability,
+                    variant_id,
+                    quantity,
+                )
+                .map_err(|error| checkout_port_error("check_inventory_availability", error))?;
+                if !availability.available {
+                    return Err(CheckoutError::Validation(format!(
+                        "Variant {} does not have enough available inventory for the cart channel",
+                        variant_id
+                    )));
+                }
+                Ok::<_, CheckoutError>(())
+            }
+        }).collect::<Vec<_>>();
+        try_join_all(inventory_futures).await?;
 
         Ok(public_channel_slug)
     }
