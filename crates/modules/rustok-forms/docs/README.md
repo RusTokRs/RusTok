@@ -34,4 +34,5 @@
 
 - [Implementation plan](./implementation-plan.md)
 - [Crate README](../README.md)
+- [Crate API Reference](../CRATE_API.md)
 - [Central Registry](../../../../docs/modules/registry.md)

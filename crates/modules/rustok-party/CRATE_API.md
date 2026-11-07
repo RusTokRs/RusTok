@@ -43,7 +43,7 @@ Deliberate public modules and exports:
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
-- `PartyCreateInput` and `PartyUpdateInput` data transfer objects.
+- `PartySummary` data transfer object.
 
 ### Domain Invariants
 - Tenant isolation: All queries and commands strictly enforce `tenant_id` scoping.

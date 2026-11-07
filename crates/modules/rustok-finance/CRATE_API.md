@@ -43,7 +43,7 @@ Deliberate public modules and exports:
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
-- `FinanceCreateInput` and `FinanceUpdateInput` data transfer objects.
+- `FinanceSummary` data transfer object.
 
 ### Domain Invariants
 - Tenant isolation: All queries and commands strictly enforce `tenant_id` scoping.
