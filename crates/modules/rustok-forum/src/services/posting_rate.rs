@@ -93,6 +93,13 @@ fn retry_after_seconds(
 ) -> Option<u64> {
     let last_created_at = last_created_at?;
     let limit = u64::from(limit_seconds);
+    // Future timestamp must fail closed for the full interval; signed_duration_since
+    // would otherwise produce a negative elapsed that unwrap_or(0) masks as 0 and still
+    // yields limit, but we make the intent explicit and protect against i64 overflow
+    // on far-future values.
+    if last_created_at > now {
+        return Some(limit);
+    }
     let elapsed =
         u64::try_from(now.signed_duration_since(last_created_at).num_seconds()).unwrap_or(0);
     (elapsed < limit).then(|| limit - elapsed)

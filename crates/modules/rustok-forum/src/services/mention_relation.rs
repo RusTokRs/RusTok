@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use chrono::Utc;
-use rustok_api::{Action, Resource, RichTextDocument, normalize_locale_tag};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, RichTextDocument, normalize_locale_tag};
 use rustok_core::{PermissionScope, SecurityContext};
 use rustok_events::ForumMentionEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
@@ -100,6 +100,61 @@ impl MentionRelationService {
         }
     }
 
+    async fn revalidate_resolved(
+        &self,
+        prepared: &PreparedMentionRelations,
+    ) -> ForumResult<()> {
+        if prepared.resolved.users().is_empty() {
+            return Ok(());
+        }
+        let handles = prepared
+            .resolved
+            .users()
+            .iter()
+            .map(|m| m.handle().to_string())
+            .collect::<Vec<_>>();
+        let fresh = self
+            .profiles
+            .find_profile_records_by_handles(
+                prepared.tenant_id,
+                &handles,
+                Some(prepared.locale.as_str()),
+                Some(PLATFORM_FALLBACK_LOCALE),
+            )
+            .await
+            .map_err(|_| ForumError::MentionTargetUnavailable)?;
+        if fresh.len() != prepared.resolved.users().len() {
+            return Err(ForumError::MentionTargetUnavailable);
+        }
+        let mut expected: std::collections::BTreeMap<String, Uuid> = prepared
+            .resolved
+            .users()
+            .iter()
+            .map(|m| (m.handle().to_ascii_lowercase(), m.user_id()))
+            .collect();
+        for (handle_key, record) in fresh {
+            let key = handle_key.to_ascii_lowercase();
+            let Some(expected_id) = expected.remove(&key) else {
+                return Err(ForumError::MentionTargetUnavailable);
+            };
+            if record.user_id != expected_id {
+                return Err(ForumError::MentionTargetUnavailable);
+            }
+            if record.status != rustok_profiles::ProfileStatus::Active {
+                return Err(ForumError::MentionTargetUnavailable);
+            }
+            if record.visibility != rustok_profiles::ProfileVisibility::Public
+                && record.visibility != rustok_profiles::ProfileVisibility::Authenticated
+            {
+                return Err(ForumError::MentionTargetUnavailable);
+            }
+        }
+        if !expected.is_empty() {
+            return Err(ForumError::MentionTargetUnavailable);
+        }
+        Ok(())
+    }
+
     pub(crate) async fn prepare(
         &self,
         tenant_id: Uuid,
@@ -166,6 +221,10 @@ impl MentionRelationService {
     ) -> ForumResult<MentionRelationSyncResult> {
         lock_source_in_tx(txn, prepared.tenant_id, prepared.target).await?;
         ensure_prepared_matches_source_in_tx(txn, &prepared).await?;
+        // Re-validate resolved handles inside the write transaction window so a
+        // profile that became blocked/private/deleted between prepare and persist
+        // does not create a stale mention.
+        self.revalidate_resolved(&prepared).await?;
         validate_quote_targets_in_tx(txn, prepared.tenant_id, &prepared.quotes).await?;
         let latest =
             latest_revision_in_tx(txn, prepared.tenant_id, prepared.target, &prepared.locale)

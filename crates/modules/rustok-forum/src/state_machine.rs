@@ -3,21 +3,14 @@
 /// Models valid status transitions for forum topics:
 ///
 /// ```text
-///  ┌──────┐
-///  │ Open │◄──────────────────┐
-///  └──┬───┘                   │
-///     │ close()               │ reopen()
-///     ↓                       │
-///  ┌────────┐                 │
-///  │ Closed │─────────────────┘
-///  └──┬─────┘
-///     │ archive()
-///     ↓
-///  ┌──────────┐
-///  │ Archived │─── reopen() ──→ Open
-///  └──────────┘
-///
-///  Open ──── archive() ──→ Archived
+///         ┌──────────────────────────────┐
+///         │         pre_moderation       │
+///         │  Open ──→ Pending ──→ Archived (reject)
+///         │    │         │  └────→ Open (approve)
+///         │    │ close() │edit→Pending
+///         ↓    ↓         ↓
+///  Open ↔ Closed ──→ Archived ──→ Open (reopen/undo_archive)
+///  Open ─────────────→ Archived (direct archive)
 /// ```
 ///
 /// Allowed transitions:

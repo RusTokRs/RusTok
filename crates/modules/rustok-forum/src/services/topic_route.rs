@@ -474,8 +474,12 @@ impl ForumTopicRouteService {
                             .target_locale
                             .as_deref()
                             .ok_or(ForumError::TopicRouteResolutionConflict)?;
-                        let _ = target_topic_id;
                         normalize_route_locale(target_locale)?;
+                        // `target_topic_id` well-formedness was already validated
+                        // above (`!is_nil`). Liveness is owned by the canonical
+                        // resolution / repair path, not by delete-tombstone
+                        // recording, so we preserve the redirect as immutable
+                        // history even when the ultimate target is later removed.
                     }
                     match alias.disposition {
                         StoredRouteDisposition::Redirect => {}

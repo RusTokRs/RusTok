@@ -199,11 +199,13 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
             HttpError::not_found(code, "The requested forum resource was not found")
         }
         ForumError::Forbidden(_) => HttpError::forbidden(code, "Permission denied"),
-        ForumError::RateLimited { .. } => HttpError::new(
+        ForumError::RateLimited { retry_after_seconds } => HttpError::new(
             StatusCode::TOO_MANY_REQUESTS,
             code,
             "Forum posting rate limit reached; retry later",
-        ),
+        )
+        .with_retry_after(retry_after_seconds)
+        .with_retryable(false),
         ForumError::RelationRevisionConflict
         | ForumError::SubscriptionRevisionConflict
         | ForumError::RelationRevisionUnavailable
@@ -240,12 +242,23 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
             code,
             "The forum resource state does not allow this operation",
         ),
-        ForumError::CapabilityUnavailable { .. } | ForumError::CapabilityFailure { .. } => {
-            HttpError::new(
+        ForumError::CapabilityUnavailable { .. } => HttpError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            code,
+            "A required forum capability is temporarily unavailable",
+        )
+        .with_retryable(false),
+        ForumError::CapabilityFailure { retryable, .. } => {
+            let mut err = HttpError::new(
                 StatusCode::SERVICE_UNAVAILABLE,
                 code,
                 "A required forum capability is temporarily unavailable",
             )
+            .with_retryable(retryable);
+            if retryable {
+                err = err.with_retry_after(5);
+            }
+            err
         }
         ForumError::Database(_)
         | ForumError::Content(_)

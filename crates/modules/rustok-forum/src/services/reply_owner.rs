@@ -250,13 +250,12 @@ impl ReplyService {
         if reply.status != ReplyStatus::Deleted {
             return Err(ForumError::ReplyRestoreUnavailable(reply_id));
         }
-        if topic.status == TopicStatus::Archived
-            && forum_topic_merge_operation::Entity::find()
-                .filter(forum_topic_merge_operation::Column::TenantId.eq(tenant_id))
-                .filter(forum_topic_merge_operation::Column::SourceTopicId.eq(topic.id))
-                .one(&txn)
-                .await?
-                .is_some()
+        if forum_topic_merge_operation::Entity::find()
+            .filter(forum_topic_merge_operation::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic_merge_operation::Column::SourceTopicId.eq(topic.id))
+            .one(&txn)
+            .await?
+            .is_some()
         {
             return Err(ForumError::ReplyRestoreUnavailable(reply_id));
         }

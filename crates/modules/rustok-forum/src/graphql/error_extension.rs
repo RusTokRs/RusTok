@@ -287,6 +287,7 @@ fn is_page_backed_forum_query(field_name: &str) -> bool {
 struct ForumErrorContract {
     code: &'static str,
     retryable: Option<bool>,
+    retry_after_seconds: Option<u64>,
 }
 
 fn annotate_forum_error(error: &mut ServerError) {
@@ -303,6 +304,11 @@ fn annotate_forum_error(error: &mut ServerError) {
         .map(|source| ForumErrorContract {
             code: source.stable_code(),
             retryable: Some(source.is_retryable()),
+            retry_after_seconds: match source {
+                ForumError::RateLimited { retry_after_seconds } => Some(*retry_after_seconds),
+                ForumError::CapabilityFailure { retryable, .. } if *retryable => Some(5),
+                _ => None,
+            },
         })
         .or_else(|| {
             is_forum_graphql_path(error)
@@ -320,6 +326,9 @@ fn annotate_forum_error(error: &mut ServerError) {
     extensions.set("code", contract.code);
     if let Some(retryable) = contract.retryable {
         extensions.set("retryable", retryable);
+    }
+    if let Some(retry_after) = contract.retry_after_seconds {
+        extensions.set("retryAfter", retry_after);
     }
 }
 
@@ -371,6 +380,9 @@ fn contract_from_safe_message(message: &str) -> Option<ForumErrorContract> {
         _ if message.starts_with("Invalid topic status transition: ") => {
             ("FORUM_TOPIC_TRANSITION_INVALID", Some(false))
         }
+        _ if message.starts_with("Forum posting rate limit reached") => {
+            ("FORUM_RATE_LIMITED", Some(false))
+        }
         _ if message.starts_with("Invalid reply status transition: ") => {
             ("FORUM_REPLY_TRANSITION_INVALID", Some(false))
         }
@@ -380,6 +392,7 @@ fn contract_from_safe_message(message: &str) -> Option<ForumErrorContract> {
     Some(ForumErrorContract {
         code: contract.0,
         retryable: contract.1,
+        retry_after_seconds: None,
     })
 }
 

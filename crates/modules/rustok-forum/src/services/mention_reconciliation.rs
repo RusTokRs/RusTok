@@ -176,7 +176,7 @@ impl ForumMentionReconciliationService {
                 Ok(report)
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
+                if let Err(rollback_err) = transaction.rollback().await { tracing::warn!(error = %rollback_err, "forum reconciliation rollback failed; transaction will be dropped"); }
                 Err(error)
             }
         }
