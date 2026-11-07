@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import { useEffect, useState } from 'react';
 import { parseAsString, parseAsStringLiteral, useQueryStates } from 'nuqs';
 import {

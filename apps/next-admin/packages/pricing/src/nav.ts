@@ -1,8 +1,11 @@
-export const pricingNavItems = [
+import type { NavItem } from '@/types';
+
+export const pricingNavItems: NavItem[] = [
   {
     title: 'Pricing',
-    href: '/dashboard/pricing',
-    icon: 'tag'
+    url: '/dashboard/pricing',
+    group: 'modulePlugins',
+    icon: 'product'
   }
 ];
 

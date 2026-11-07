@@ -19,7 +19,7 @@ import {
   validateRichTextDocument,
   type RichTextDocument
 } from '@rustok/richtext';
-import { useLocale, useTranslations } from '@rustok/next-fluent';
+import { useLocale, useTranslations } from '@rustok/next-fluent/client';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';

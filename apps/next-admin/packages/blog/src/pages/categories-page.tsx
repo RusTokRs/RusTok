@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { useLocale, useTranslations } from '@rustok/next-fluent';
+import { useLocale, useTranslations } from '@rustok/next-fluent/client';
 import { toast } from 'sonner';
 import {
   Plus,

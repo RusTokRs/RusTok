@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import { AlertModal } from '@/widgets/alert-modal';
 import { Button } from '@/components/ui/button';
 import {

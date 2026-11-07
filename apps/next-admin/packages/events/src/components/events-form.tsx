@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import { useState, useTransition } from 'react';
 import { Button } from '@/shared/ui/shadcn/button';
 import {

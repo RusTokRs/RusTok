@@ -39,7 +39,7 @@ import {
   IconUserCircle
 } from '@tabler/icons-react';
 import { useSession, signOut } from 'next-auth/react';
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import * as React from 'react';

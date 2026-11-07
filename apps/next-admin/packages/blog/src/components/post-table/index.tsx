@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import Link from 'next/link';
 import { DataTableShell } from '@/widgets/data-table/data-table-shell';
 import { PostSortSelect, PostStatusSelect, PostTextFilter } from './sort-select';

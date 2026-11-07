@@ -12,7 +12,7 @@
 
 import type { CreateVariantInput, UpdateVariantInput } from '../api/products';
 import * as React from 'react';
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import {
   ProductWriteAttempt,
   type ProductAxesWriteRequest,
@@ -144,6 +144,9 @@ export interface ProductEditorPageProps {
   onRemoveBundleItem?: (bundleId: string, itemId: string) => Promise<void>;
 }
 
+const EMPTY_RELATIONS: ProductRelation[] = [];
+const EMPTY_BUNDLES: ProductBundle[] = [];
+
 export function ProductEditorPage({
   writeScope,
   resourceId,
@@ -152,8 +155,8 @@ export function ProductEditorPage({
   categories,
   initialEffectiveForm = null,
   initialAttributeValues = [],
-  initialRelations = [],
-  initialBundles = [],
+  initialRelations = EMPTY_RELATIONS,
+  initialBundles = EMPTY_BUNDLES,
   isNew = false,
   onSaveProduct,
   onChangeStatus,

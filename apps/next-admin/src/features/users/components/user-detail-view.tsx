@@ -15,7 +15,7 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import { listRoles, type RoleInfo } from '@rustok/rbac-admin';
 
 interface UserDetail {

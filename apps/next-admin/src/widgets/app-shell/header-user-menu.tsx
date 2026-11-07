@@ -16,7 +16,7 @@ import {
   IconUserCircle
 } from '@tabler/icons-react';
 import { signOut, useSession } from 'next-auth/react';
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import { useRouter } from 'next/navigation';
 
 function getInitials(value: string, fallback: string) {

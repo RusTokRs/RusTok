@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import { Alert, AlertDescription } from '@/shared/ui/shadcn/alert';
 import {
   buildCategoryUpdate,

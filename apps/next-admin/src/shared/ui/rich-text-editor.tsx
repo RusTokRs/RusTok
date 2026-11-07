@@ -2,7 +2,7 @@
 
 import { RichTextEditor as SharedRichTextEditor } from '@rustok/richtext/react';
 import type { RichTextDocument, RichTextProfileId } from '@rustok/richtext';
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import { useMemo } from 'react';
 
 export function RichTextEditor({

@@ -6,7 +6,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import { Button } from '@/shared/ui/shadcn/button';
 import { Label } from '@/shared/ui/shadcn/label';
 import { Alert, AlertDescription } from '@/shared/ui/shadcn/alert';

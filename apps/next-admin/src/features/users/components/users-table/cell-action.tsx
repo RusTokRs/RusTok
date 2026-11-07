@@ -22,7 +22,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { AssignRoleDialog, listRoles, type RoleInfo } from '@rustok/rbac-admin';
 import { useSession } from 'next-auth/react';
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import type { User } from '@/entities/user';
 
 interface CellActionProps {

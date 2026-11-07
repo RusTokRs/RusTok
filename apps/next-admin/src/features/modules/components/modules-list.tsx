@@ -10,7 +10,7 @@ import {
   IconTable
 } from '@tabler/icons-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import { useSession } from 'next-auth/react';
 import {
   startTransition,

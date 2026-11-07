@@ -24,12 +24,10 @@
 Run the local debug server against `apps/server` on `http://localhost:5150`:
 
 ```powershell
-npm.cmd run dev -- --hostname localhost --port 3000 --webpack
+npm.cmd run dev -- --hostname 127.0.0.1 --port 3000 --turbopack
 ```
 
-Use `localhost`, not `127.0.0.1`, in this Windows debug environment. The local loopback path through `127.0.0.1` can accept TCP connections while HTTP responses never reach the client; `localhost` resolves to the working IPv6 loopback.
-
-`--webpack` is intentional for local debug because Next.js 16 Turbopack currently hangs while compiling `/auth/sign-in` in this workspace. This does not change the public backend contract: `NEXT_PUBLIC_API_URL=http://localhost:5150`, GraphQL remains `/api/graphql`, and auth remains `/api/auth`.
+Turbopack serves the local admin on IPv4 loopback. The public backend contract remains unchanged: `NEXT_PUBLIC_API_URL=http://localhost:5150`, GraphQL uses `/api/graphql`, and auth uses `/api/auth`.
 
 ## Interactions
 

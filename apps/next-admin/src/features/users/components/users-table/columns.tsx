@@ -9,7 +9,7 @@ import { CircleDot, Shield, Text } from 'lucide-react';
 import Link from 'next/link';
 import type { User } from '@/entities/user';
 import { CellAction } from './cell-action';
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 
 export const ROLE_OPTIONS = [
   { label: 'Super Admin', value: 'SUPER_ADMIN' },

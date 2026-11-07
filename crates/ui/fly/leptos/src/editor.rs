@@ -2405,7 +2405,16 @@ pub fn FlyEditorWorkspace(
                                 on_intent.run(BrowserIntentEnvelope::duplicate(&shortcut_instance));
                             } else {
                                 let apply_result = shortcut_editor.try_update(|e| {
-                                    e.apply(fly::EditorCommand::Duplicate { component_id })
+                                    let location = e.document().component_location(&component_id)
+                                        .ok_or_else(|| fly::FlyError::ComponentNotFound(component_id.clone()))?;
+                                    if location.depth == 0 {
+                                        return Err(fly::FlyError::InvalidProjectBundle(
+                                            "the page root cannot be duplicated".to_string(),
+                                        ));
+                                    }
+                                    let fragment = fly::ProjectFragment::from_component(e.document(), &component_id)?;
+                                    fragment.insert(e, location.parent_component_id, location.index + 1)?;
+                                    Ok(())
                                 });
                                 if let Some(Err(error)) = &apply_result {
                                     report_workspace_error(

@@ -3,6 +3,8 @@
 //! Leptos storefront UI package for the `rustok-blog` module.
 //! Provides published post viewing, RSS feed generation, and comment thread integrations.
 
+#![recursion_limit = "512"]
+
 mod core;
 pub use core::comments_pagination;
 #[cfg(any(feature = "ssr", not(feature = "comment-island")))]

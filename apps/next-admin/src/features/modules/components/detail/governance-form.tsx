@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import { IconAlertTriangle, IconCheck, IconShield } from '@tabler/icons-react';
 
 import { Badge } from '@/shared/ui/shadcn/badge';

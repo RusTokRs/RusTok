@@ -17,7 +17,7 @@ query Users($pagination: PaginationInput, $filter: UsersFilter, $search: String)
   }
 }`;
 
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 
 export default function UsersView() {
   const t = useTranslations('users');

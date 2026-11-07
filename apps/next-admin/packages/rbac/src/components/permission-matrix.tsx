@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useTranslations } from '@rustok/next-fluent';
+import { useTranslations } from '@rustok/next-fluent/client';
 import { Input } from '@/shared/ui/shadcn/input';
 import { Button } from '@/shared/ui/shadcn/button';
 import { Badge } from '@/shared/ui/shadcn/badge';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useLocale, useTranslations } from '@rustok/next-fluent';
+import { useLocale, useTranslations } from '@rustok/next-fluent/client';
 import { useEffect, useState } from 'react';
 import { Copy, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
