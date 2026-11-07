@@ -1,3 +1,72 @@
+use chrono::Utc;
+use sea_orm::{
+    sea_query::{Expr, ExprTrait},
+    ActiveModelTrait,
+    ActiveValue::Set,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
+    EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait,
+};
+use tracing::instrument;
+use uuid::Uuid;
+
+use rustok_api::{Action, Resource};
+use rustok_content::normalize_locale_code;
+use rustok_core::SecurityContext;
+
+use crate::dto::{CreateCategoryInput, UpdateCategoryInput};
+use crate::entities::forum_category;
+use crate::error::{ForumError, ForumResult};
+use crate::services::rbac::enforce_scope;
+
+use crate::dto::MAX_FORUM_CATEGORY_TREE_NODES;
+
+fn validate_category_name(name: &str) -> ForumResult<()> {
+    if name.trim().is_empty() {
+        return Err(ForumError::Validation(
+            "Category name cannot be empty".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn normalize_locale(locale: &str) -> ForumResult<String> {
+    normalize_locale_code(locale)
+        .ok_or_else(|| ForumError::Validation("Invalid locale".to_string()))
+}
+
+fn normalize_required_slug(value: &str) -> ForumResult<String> {
+    let slug = normalize_slug(value);
+    if slug.is_empty() {
+        return Err(ForumError::Validation(
+            "Category slug cannot be empty".to_string(),
+        ));
+    }
+    Ok(slug)
+}
+
+fn normalize_slug(value: &str) -> String {
+    let mut normalized = String::with_capacity(value.len());
+    let mut previous_dash = false;
+    for ch in value.chars().flat_map(|ch| ch.to_lowercase()) {
+        if ch.is_ascii_alphanumeric() {
+            normalized.push(ch);
+            previous_dash = false;
+        } else if !previous_dash {
+            normalized.push('-');
+            previous_dash = true;
+        }
+    }
+    normalized.trim_matches('-').to_string()
+}
+
+/// Crate-private persistence seam shared by Forum category owner commands.
+///
+/// Canonical Category reads and localized copy no longer live here: public reads
+/// are Taxonomy-backed and public mutations are owned by
+/// `CategoryProjectionOwnerService`. This type remains only for transaction
+/// helpers reused by topic/reply/import owners.
+pub(super) struct CategoryService;
+
 impl CategoryService {
     pub(crate) async fn insert_import_category_in_tx(
         txn: &DatabaseTransaction,
@@ -78,78 +147,7 @@ impl CategoryService {
 
         Ok(())
     }
-}
 
-use chrono::Utc;
-use sea_orm::{
-    sea_query::{Expr, ExprTrait},
-    ActiveModelTrait,
-    ActiveValue::Set,
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
-    EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement, TransactionTrait,
-};
-use tracing::instrument;
-use uuid::Uuid;
-
-use rustok_api::{Action, Resource};
-use rustok_content::normalize_locale_code;
-use rustok_core::SecurityContext;
-
-use crate::dto::{CreateCategoryInput, UpdateCategoryInput};
-use crate::entities::forum_category;
-use crate::error::{ForumError, ForumResult};
-use crate::services::rbac::enforce_scope;
-
-fn validate_category_name(name: &str) -> ForumResult<()> {
-    if name.trim().is_empty() {
-        return Err(ForumError::Validation(
-            "Category name cannot be empty".to_string(),
-        ));
-    }
-    Ok(())
-}
-
-fn normalize_locale(locale: &str) -> ForumResult<String> {
-    normalize_locale_code(locale)
-        .ok_or_else(|| ForumError::Validation("Invalid locale".to_string()))
-}
-
-fn normalize_required_slug(value: &str) -> ForumResult<String> {
-    let slug = normalize_slug(value);
-    if slug.is_empty() {
-        return Err(ForumError::Validation(
-            "Category slug cannot be empty".to_string(),
-        ));
-    }
-    Ok(slug)
-}
-
-fn normalize_slug(value: &str) -> String {
-    let mut normalized = String::with_capacity(value.len());
-    let mut previous_dash = false;
-    for ch in value.chars().flat_map(|ch| ch.to_lowercase()) {
-        if ch.is_ascii_alphanumeric() {
-            normalized.push(ch);
-            previous_dash = false;
-        } else if !previous_dash {
-            normalized.push('-');
-            previous_dash = true;
-        }
-    }
-    normalized.trim_matches('-').to_string()
-}
-
-use crate::dto::MAX_FORUM_CATEGORY_TREE_NODES;
-
-/// Crate-private persistence seam shared by Forum category owner commands.
-///
-/// Canonical Category reads and localized copy no longer live here: public reads
-/// are Taxonomy-backed and public mutations are owned by
-/// `CategoryProjectionOwnerService`. This type remains only for transaction
-/// helpers reused by topic/reply/import owners.
-pub(super) struct CategoryService;
-
-impl CategoryService {
     pub(crate) async fn load_categories_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
@@ -502,4 +500,3 @@ pub(crate) mod taxonomy_sync;
 /// Taxonomy-backed canonical Category read adapter used by the public owner facade.
 #[path = "category_taxonomy_read.rs"]
 pub(super) mod taxonomy_read;
-

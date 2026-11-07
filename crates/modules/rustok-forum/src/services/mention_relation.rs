@@ -1,3 +1,31 @@
+use std::collections::BTreeSet;
+use std::sync::Arc;
+use chrono::Utc;
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, RichTextDocument, normalize_locale_tag};
+use rustok_core::{PermissionScope, SecurityContext};
+use rustok_events::ForumMentionEvent;
+use rustok_outbox::{OutboxTransport, TransactionalEventBus};
+use rustok_profiles::{ProfileService, ProfilesReader};
+use sea_orm::{
+    ActiveModelTrait,
+    ActiveValue::{NotSet, Set},
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect,
+};
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
+use crate::entities::{
+    forum_audience_mention, forum_domain_event, forum_quote, forum_relation_revision, forum_reply,
+    forum_reply_body, forum_topic, forum_topic_translation, forum_user_mention,
+};
+use crate::error::{ForumError, ForumResult};
+use crate::mentions::{
+    FORUM_MAX_QUOTE_REFERENCES_PER_REVISION, ForumContentTarget, ForumContentTargetKind,
+    ForumMentionAudience, ForumMentionPolicy, ForumQuoteReference, ForumResolvedMentions,
+    ForumRevisionIdentity, extract_forum_mention_candidates, resolve_forum_mentions,
+    validate_forum_quote_references,
+};
+
 impl MentionRelationService {
     /// Persist one already-admitted FORUM-34M relation projection inside an
     /// existing Forum owner transaction.
@@ -168,36 +196,6 @@ fn validate_import_relation_source(
     }
     Ok(())
 }
-
-use std::collections::BTreeSet;
-use std::sync::Arc;
-
-use chrono::Utc;
-use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, RichTextDocument, normalize_locale_tag};
-use rustok_core::{PermissionScope, SecurityContext};
-use rustok_events::ForumMentionEvent;
-use rustok_outbox::{OutboxTransport, TransactionalEventBus};
-use rustok_profiles::{ProfileService, ProfilesReader};
-use sea_orm::{
-    ActiveModelTrait,
-    ActiveValue::{NotSet, Set},
-    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect,
-};
-use sha2::{Digest, Sha256};
-use uuid::Uuid;
-
-use crate::entities::{
-    forum_audience_mention, forum_domain_event, forum_quote, forum_relation_revision, forum_reply,
-    forum_reply_body, forum_topic, forum_topic_translation, forum_user_mention,
-};
-use crate::error::{ForumError, ForumResult};
-use crate::mentions::{
-    FORUM_MAX_QUOTE_REFERENCES_PER_REVISION, ForumContentTarget, ForumContentTargetKind,
-    ForumMentionAudience, ForumMentionPolicy, ForumQuoteReference, ForumResolvedMentions,
-    ForumRevisionIdentity, extract_forum_mention_candidates, resolve_forum_mentions,
-    validate_forum_quote_references,
-};
 
 pub(crate) struct MentionRelationService {
     profiles: Arc<dyn ProfilesReader>,
@@ -908,4 +906,3 @@ fn parse_audience(value: &str) -> ForumResult<ForumMentionAudience> {
         )),
     }
 }
-
