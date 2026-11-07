@@ -577,7 +577,7 @@ fn snapshot_from_owner(
             .target_revision
             .map(|revision| opaque_revision(revision, "target_revision"))
             .transpose()?,
-        fields: translation_fields(&snapshot.source, snapshot.target.as_ref()),
+        fields: translation_fields(&snapshot.source, snapshot.target.as_ref())?,
     };
     resource.validate().map_err(|error| {
         PortError::invariant_violation("product.translation_snapshot_invalid", error.to_string())
@@ -654,7 +654,7 @@ fn parse_change_cursor(cursor: &OpaqueCursor) -> Result<(u64, u64), PortError> {
 fn translation_fields(
     source: &ProductTranslationExactLocaleRecord,
     target: Option<&ProductTranslationExactLocaleRecord>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
             "title",
@@ -710,10 +710,9 @@ fn translation_fields(
     .into_iter()
     .map(
         |(key, source_value, target_value, profile, strategy, required, ai_export_allowed, max)| {
-            TranslationFieldSnapshot {
+            Ok(TranslationFieldSnapshot {
                 descriptor: TranslationFieldDescriptor {
-                    key: FieldKey::new(key)
-                        .expect("static Product field key must satisfy the target contract"),
+                    key: field_key_or_invariant(key)?,
                     profile,
                     strategy,
                     classification: TranslationDataClassification::Public,
@@ -911,7 +910,7 @@ mod tests {
     #[test]
     fn product_fields_expose_reviewed_handle_and_bounded_seo_metadata() {
         let source = record("en", "Product");
-        let fields = translation_fields(&source, None);
+        let fields = translation_fields(&source, None)?;
         assert_eq!(fields.len(), 5);
         assert_eq!(
             fields

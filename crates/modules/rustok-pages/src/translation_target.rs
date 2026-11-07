@@ -712,7 +712,7 @@ fn snapshot_from_models(
         target_revision: target
             .map(|translation| opaque_positive_revision(translation.revision, "target_revision"))
             .transpose()?,
-        fields: translation_fields(source, target),
+        fields: translation_fields(source, target)?,
     };
     snapshot.validate().map_err(|error| {
         PortError::invariant_violation("pages.translation_snapshot_invalid", error.to_string())
@@ -743,7 +743,7 @@ fn page_metadata_identity(page_id: Uuid) -> Result<TranslationResourceIdentity, 
 fn translation_fields(
     source: &PageTranslationModel,
     target: Option<&PageTranslationModel>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
             "title",
@@ -789,10 +789,9 @@ fn translation_fields(
     .into_iter()
     .map(
         |(key, source_value, target_value, profile, strategy, required, ai_export_allowed, max)| {
-            TranslationFieldSnapshot {
+            Ok(TranslationFieldSnapshot {
                 descriptor: TranslationFieldDescriptor {
-                    key: FieldKey::new(key)
-                        .expect("static Pages field key must satisfy the target contract"),
+                    key: field_key_or_invariant(key)?,
                     profile,
                     strategy,
                     classification: TranslationDataClassification::Public,

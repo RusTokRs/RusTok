@@ -741,7 +741,7 @@ fn snapshot_from_models(
         target_revision: target
             .map(|translation| opaque_numeric_revision(translation.revision))
             .transpose()?,
-        fields: translation_fields(source, target),
+        fields: translation_fields(source, target)?,
     };
     snapshot.validate().map_err(|error| {
         PortError::invariant_violation("media.translation_snapshot_invalid", error.to_string())
@@ -779,7 +779,7 @@ fn opaque_numeric_revision(revision: i64) -> Result<OpaqueRevision, PortError> {
 fn translation_fields(
     source: &TranslationModel,
     target: Option<&TranslationModel>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
             "title",
@@ -800,9 +800,9 @@ fn translation_fields(
     .into_iter()
     .map(|(key, source_value, target_value)| {
         let source_value = source_value.unwrap_or_default().to_string();
-        TranslationFieldSnapshot {
+        Ok(TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
-                key: FieldKey::new(key).expect("static field key must be valid"),
+                key: field_key_or_invariant(key)?,
                 profile: TranslationValueProfile::PlainText,
                 strategy: TranslationStrategy::Translate,
                 classification: TranslationDataClassification::Public,
@@ -815,9 +815,9 @@ fn translation_fields(
             source_value,
             exact_target_value: target_value.map(str::to_string),
             protected_tokens: Vec::new(),
-        }
+        })
     })
-    .collect()
+    .collect::<Result<Vec<_>, PortError>>()
 }
 
 fn field_hash(value: &str) -> String {

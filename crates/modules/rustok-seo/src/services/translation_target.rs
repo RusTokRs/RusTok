@@ -746,7 +746,7 @@ where
         rendered_fallback_locale: None,
         source_revision: seo_locale_revision(source_revision)?,
         target_revision: target_revision.map(seo_locale_revision).transpose()?,
-        fields: translation_fields(source, target),
+        fields: translation_fields(source, target)?,
     };
     snapshot
         .validate()
@@ -757,7 +757,7 @@ where
 fn translation_fields(
     source: &meta_translation::Model,
     target: Option<&meta_translation::Model>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
             "title",
@@ -788,10 +788,9 @@ fn translation_fields(
     .into_iter()
     .map(|(key, source_value, target_value)| {
         let source_value = source_value.unwrap_or_default().to_string();
-        TranslationFieldSnapshot {
+        Ok(TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
-                key: FieldKey::new(key)
-                    .expect("static SEO field key must satisfy Translation target contract"),
+                key: field_key_or_invariant(key)?,
                 profile: TranslationValueProfile::SeoText,
                 strategy: TranslationStrategy::Translate,
                 classification: TranslationDataClassification::Public,
@@ -804,9 +803,9 @@ fn translation_fields(
             source_value,
             exact_target_value: target_value.map(str::to_string),
             protected_tokens: Vec::new(),
-        }
+        })
     })
-    .collect()
+    .collect::<Result<Vec<_>, PortError>>()
 }
 
 fn validate_patch_for_snapshot(

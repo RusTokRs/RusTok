@@ -867,7 +867,7 @@ fn snapshot_from_models(
         target_revision: target
             .map(|translation| opaque_positive_revision(translation.revision, "target_revision"))
             .transpose()?,
-        fields: translation_fields(source, target),
+        fields: translation_fields(source, target)?,
     };
     snapshot.validate().map_err(|error| {
         PortError::invariant_violation("taxonomy.translation_snapshot_invalid", error.to_string())
@@ -887,7 +887,7 @@ fn taxonomy_identity(term_id: Uuid) -> Result<TranslationResourceIdentity, PortE
 fn translation_fields(
     source: &TranslationModel,
     target: Option<&TranslationModel>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
             "name",
@@ -923,9 +923,9 @@ fn translation_fields(
     .into_iter()
     .map(
         |(key, source_value, target_value, profile, strategy, required, ai_export_allowed, max)| {
-            TranslationFieldSnapshot {
+            Ok(TranslationFieldSnapshot {
                 descriptor: TranslationFieldDescriptor {
-                    key: FieldKey::new(key).expect("static field key must satisfy the contract"),
+                    key: field_key_or_invariant(key)?,
                     profile,
                     strategy,
                     classification: TranslationDataClassification::Public,
