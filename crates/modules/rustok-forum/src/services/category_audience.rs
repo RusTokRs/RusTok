@@ -299,26 +299,6 @@ where
     .or_else(|e| Err(e))
 }
 
-fn layer_mut(
-    layers: &mut HashMap<Uuid, ForumAudienceConstraints>,
-    category_id: Uuid,
-) -> ForumResult<&mut ForumAudienceConstraints> {
-    layers.get_mut(&category_id).ok_or_else(|| {
-        ForumError::Validation(
-            "Forum category audience relation is missing its local policy layer".to_string(),
-        )
-    })
-}
-
-fn ensure_storage_bound(actual: usize, maximum: usize, label: &str) -> ForumResult<()> {
-    if actual > maximum {
-        return Err(ForumError::Validation(format!(
-            "Forum category audience storage exceeds the bounded {label} limit of {maximum}"
-        )));
-    }
-    Ok(())
-}
-
 pub(super) fn constraints_are_empty(constraints: &ForumAudienceConstraints) -> bool {
     constraints.roles_any.is_empty()
         && constraints.minimum_trust_level.is_none()
