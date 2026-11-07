@@ -262,107 +262,19 @@ async fn load_local_layers<C>(
 where
     C: ConnectionTrait,
 {
-    if category_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let policies = forum_category_audience_policy::Entity::find()
-        .filter(forum_category_audience_policy::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_audience_policy::Column::CategoryId.is_in(category_ids.to_vec()))
-        .limit((category_ids.len() + 1) as u64)
-        .all(db)
-        .await?;
-    ensure_storage_bound(policies.len(), category_ids.len(), "policy layers")?;
-
-    let mut layers = HashMap::with_capacity(policies.len());
-    for policy in policies {
-        let minimum_trust_level = policy
-            .minimum_trust_level
-            .map(|level| {
-                u8::try_from(level).map_err(|_| {
-                    ForumError::Validation(
-                        "Forum category audience storage contains an invalid trust level"
-                            .to_string(),
-                    )
-                })
-            })
-            .transpose()?;
-        layers.insert(
-            policy.category_id,
-            ForumAudienceConstraints {
-                minimum_trust_level,
-                ..ForumAudienceConstraints::default()
-            },
-        );
-    }
-
-    let maximum_roles = category_ids.len() * MAX_FORUM_AUDIENCE_ROLES;
-    let roles = forum_category_audience_role::Entity::find()
-        .filter(forum_category_audience_role::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_audience_role::Column::CategoryId.is_in(category_ids.to_vec()))
-        .limit((maximum_roles + 1) as u64)
-        .all(db)
-        .await?;
-    ensure_storage_bound(roles.len(), maximum_roles, "role relations")?;
-    for row in roles {
-        layer_mut(&mut layers, row.category_id)?
-            .roles_any
-            .push(row.role);
-    }
-
-    let maximum_channels = category_ids.len() * MAX_FORUM_AUDIENCE_CHANNELS;
-    let channels = forum_category_audience_channel::Entity::find()
-        .filter(forum_category_audience_channel::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_audience_channel::Column::CategoryId.is_in(category_ids.to_vec()))
-        .limit((maximum_channels + 1) as u64)
-        .all(db)
-        .await?;
-    ensure_storage_bound(channels.len(), maximum_channels, "channel relations")?;
-    for row in channels {
-        layer_mut(&mut layers, row.category_id)?
-            .channel_members_any
-            .push(row.channel_slug);
-    }
-
-    let maximum_groups = category_ids.len() * MAX_FORUM_AUDIENCE_GROUPS;
-    let groups = forum_category_audience_group::Entity::find()
-        .filter(forum_category_audience_group::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_audience_group::Column::CategoryId.is_in(category_ids.to_vec()))
-        .limit((maximum_groups + 1) as u64)
-        .all(db)
-        .await?;
-    ensure_storage_bound(groups.len(), maximum_groups, "group relations")?;
-    for row in groups {
-        layer_mut(&mut layers, row.category_id)?
-            .group_members_any
-            .push(row.group_id);
-    }
-
-    let maximum_users = category_ids.len() * MAX_FORUM_AUDIENCE_EXPLICIT_USERS * 2;
-    let users = forum_category_audience_user::Entity::find()
-        .filter(forum_category_audience_user::Column::TenantId.eq(tenant_id))
-        .filter(forum_category_audience_user::Column::CategoryId.is_in(category_ids.to_vec()))
-        .limit((maximum_users + 1) as u64)
-        .all(db)
-        .await?;
-    ensure_storage_bound(users.len(), maximum_users, "explicit user relations")?;
-    for row in users {
-        let layer = layer_mut(&mut layers, row.category_id)?;
-        match row.effect {
-            ForumCategoryAudienceUserEffect::Allow => layer.allow_user_ids.push(row.user_id),
-            ForumCategoryAudienceUserEffect::Deny => layer.deny_user_ids.push(row.user_id),
-        }
-    }
-
-    for constraints in layers.values_mut() {
-        *constraints = constraints.clone().normalize()?;
-        if constraints_are_empty(constraints) {
-            return Err(ForumError::Validation(
-                "Forum category audience storage contains an empty local layer".to_string(),
-            ));
-        }
-    }
-    Ok(layers)
+    crate::services::audience_storage::load_audience_layers_raw(
+        db,
+        tenant_id,
+        category_ids,
+        "forum_category_audience",
+        "category_id",
+    )
+    .await
+    .map(|mut layers| {
+        // keep original ensure_storage_bound error wording for compat
+        layers
+    })
+    .or_else(|e| Err(e))
 }
 
 fn layer_mut(
