@@ -171,7 +171,7 @@ async fn registered_native_host_resolves_forum_canonical_alias_and_missing_route
         &app,
         &tenant,
         TOPIC_ENDPOINT,
-        "locale=en&short_id=000000000000&slug=missing-topic",
+        "locale=en&short_id=0000000000000000&slug=missing-topic",
     )
     .await?;
     assert_absent(&missing_topic);

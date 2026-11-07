@@ -1,3 +1,526 @@
+pub(crate) struct InsertImportReplyWithTombstoneParams<'a> {
+    pub tenant_id: Uuid,
+    pub prepared: &'a PreparedImportReplyInsert,
+    pub relation: &'a crate::import_relation_preparation::ForumPreparedImportContentRelations,
+    pub tombstone:
+        Option<&'a crate::import_tombstone_preparation::ForumPreparedDeletedReplyTombstone>,
+    pub relation_event_mode: crate::import_relation_preparation::ForumImportRelationEventMode,
+    pub write_event_mode: crate::import_write_preparation::ForumImportWriteEventMode,
+}
+
+impl ReplyService {
+    pub(crate) fn prepare_import_reply_with_tombstone(
+        &self,
+        tenant_id: Uuid,
+        record: &crate::import_write_preparation::ForumPreparedImportReply,
+        tombstone: Option<&crate::import_tombstone_preparation::ForumPreparedDeletedReplyTombstone>,
+    ) -> ForumResult<PreparedImportReplyInsert> {
+        if record.status != ReplyStatus::Deleted {
+            if tombstone.is_some() {
+                return Err(ForumError::Validation(
+                    "Forum import live reply cannot carry a deleted tombstone".to_string(),
+                ));
+            }
+            return self.prepare_import_reply(tenant_id, record);
+        }
+
+        let tombstone = tombstone.ok_or_else(|| {
+            ForumError::Validation(
+                "Forum import deleted reply requires an admitted tombstone timestamp".to_string(),
+            )
+        })?;
+        validate_import_reply_tombstone(record, tombstone)?;
+
+        if tenant_id.is_nil() || record.id.is_nil() || record.topic_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Forum import reply preparation requires non-nil tenant, reply and topic IDs"
+                    .to_string(),
+            ));
+        }
+        let locale = normalize_locale(&record.locale)?;
+        if locale != record.locale {
+            return Err(ForumError::Validation(
+                "Forum import reply locale must already be normalized".to_string(),
+            ));
+        }
+        let document = crate::richtext::normalize_discussion(record.content.clone())?;
+        let stored_body = crate::richtext::serialize_discussion(document.clone())?;
+        let created_at = chrono::DateTime::<Utc>::from_timestamp_millis(record.created_at_ms)
+            .ok_or_else(|| {
+                ForumError::Validation(
+                    "Forum import reply creation timestamp is outside owner range".to_string(),
+                )
+            })?;
+        let deleted_at = chrono::DateTime::<Utc>::from_timestamp_millis(tombstone.deleted_at_ms)
+            .ok_or_else(|| {
+                ForumError::Validation(
+                    "Forum import reply tombstone timestamp is outside owner range".to_string(),
+                )
+            })?;
+        if deleted_at < created_at {
+            return Err(ForumError::Validation(
+                "Forum import reply tombstone cannot predate reply creation".to_string(),
+            ));
+        }
+
+        Ok(PreparedImportReplyInsert {
+            record: record.clone(),
+            document,
+            stored_body,
+            created_at,
+        })
+    }
+
+    pub(crate) async fn insert_import_reply_with_tombstone_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        params: InsertImportReplyWithTombstoneParams<'_>,
+    ) -> ForumResult<()> {
+        let tenant_id = params.tenant_id;
+        let prepared = params.prepared;
+        let relation = params.relation;
+        let tombstone = params.tombstone;
+        let relation_event_mode = params.relation_event_mode;
+        let write_event_mode = params.write_event_mode;
+
+        if prepared.record.status != ReplyStatus::Deleted {
+            if tombstone.is_some() {
+                return Err(ForumError::Validation(
+                    "Forum import live reply cannot carry a deleted tombstone".to_string(),
+                ));
+            }
+            return self
+                .insert_import_reply_in_tx(
+                    txn,
+                    tenant_id,
+                    prepared,
+                    relation,
+                    relation_event_mode,
+                    write_event_mode,
+                )
+                .await;
+        }
+
+        let tombstone = tombstone.ok_or_else(|| {
+            ForumError::Validation(
+                "Forum import deleted reply requires an admitted tombstone timestamp".to_string(),
+            )
+        })?;
+        validate_import_reply_tombstone(&prepared.record, tombstone)?;
+
+        if relation.source != prepared.record.source
+            || relation.target != ForumContentTarget::reply(prepared.record.id)
+            || relation.locale != prepared.record.locale
+        {
+            return Err(ForumError::Validation(
+                "Forum import reply relation admission does not match prepared reply".to_string(),
+            ));
+        }
+
+        let topic =
+            TopicService::find_topic_in_tx(txn, tenant_id, prepared.record.topic_id).await?;
+        if topic.status != TopicStatus::Open || topic.is_locked {
+            return Err(ForumError::Validation(
+                "Forum import reply insertion requires the private provisional topic state"
+                    .to_string(),
+            ));
+        }
+
+        if let Some(parent_reply_id) = prepared.record.parent_reply_id {
+            let parent =
+                reply::ReplyService::find_reply_in_tx(txn, tenant_id, parent_reply_id).await?;
+            if parent.topic_id != prepared.record.topic_id {
+                return Err(ForumError::Validation(
+                    "Forum import reply parent belongs to another topic".to_string(),
+                ));
+            }
+            // Historical reconstruction differs from interactive create: a child
+            // may legitimately survive after its parent was later soft-deleted.
+            // The enclosing 34P tombstone batch proves every final Deleted row.
+        }
+
+        let position =
+            allocate_reply_position_in_tx(txn, tenant_id, prepared.record.topic_id).await?;
+        let author_id = prepared.record.author.as_ref().map(|author| author.user_id);
+
+        forum_reply::ActiveModel {
+            id: Set(prepared.record.id),
+            tenant_id: Set(tenant_id),
+            topic_id: Set(prepared.record.topic_id),
+            author_id: Set(author_id),
+            parent_reply_id: Set(prepared.record.parent_reply_id),
+            status: Set(ReplyStatus::Deleted),
+            position: Set(position),
+            created_at: Set(prepared.created_at.into()),
+            updated_at: Set(prepared.created_at.into()),
+        }
+        .insert(txn)
+        .await?;
+
+        forum_reply_body::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            reply_id: Set(prepared.record.id),
+            tenant_id: Set(tenant_id),
+            locale: Set(prepared.record.locale.clone()),
+            body: Set(prepared.stored_body.clone()),
+            created_at: Set(prepared.created_at.into()),
+            updated_at: Set(prepared.created_at.into()),
+        }
+        .insert(txn)
+        .await?;
+
+        // Final-deleted historical content keeps its relation projection for
+        // owner consistency but never emits interactive mention-added events.
+        self.relations
+            .persist_import_admitted_in_tx(
+                txn,
+                tenant_id,
+                relation,
+                &prepared.document,
+                author_id,
+                crate::import_relation_preparation::ForumImportRelationEventMode::SuppressAddedTargetEvents,
+            )
+            .await?;
+
+        persist_import_reply_tombstone_in_tx(txn, tenant_id, prepared, tombstone).await?;
+        Ok(())
+    }
+}
+
+fn validate_import_reply_tombstone(
+    record: &crate::import_write_preparation::ForumPreparedImportReply,
+    tombstone: &crate::import_tombstone_preparation::ForumPreparedDeletedReplyTombstone,
+) -> ForumResult<()> {
+    if tombstone.source != record.source || tombstone.reply_id != record.id {
+        return Err(ForumError::Validation(
+            "Forum import reply tombstone does not match prepared reply identity".to_string(),
+        ));
+    }
+    if tombstone.deleted_at_ms < record.created_at_ms {
+        return Err(ForumError::Validation(
+            "Forum import reply tombstone cannot predate reply creation".to_string(),
+        ));
+    }
+    if chrono::DateTime::<Utc>::from_timestamp_millis(tombstone.deleted_at_ms).is_none() {
+        return Err(ForumError::Validation(
+            "Forum import reply tombstone timestamp is outside owner range".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+async fn persist_import_reply_tombstone_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    prepared: &PreparedImportReplyInsert,
+    tombstone: &crate::import_tombstone_preparation::ForumPreparedDeletedReplyTombstone,
+) -> ForumResult<()> {
+    let deleted_at = chrono::DateTime::<Utc>::from_timestamp_millis(tombstone.deleted_at_ms)
+        .ok_or_else(|| {
+            ForumError::Validation(
+                "Forum import reply tombstone timestamp is outside owner range".to_string(),
+            )
+        })?;
+
+    let before = count_import_delete_revisions_in_tx(txn, tenant_id, prepared.record.id).await?;
+    if before != 0 {
+        return Err(ForumError::Validation(
+            "Forum import deleted reply must not have a pre-existing delete revision".to_string(),
+        ));
+    }
+
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE forum_replies \
+             SET deleted_at = $1, updated_at = $1 \
+             WHERE tenant_id = $2 AND id = $3 AND status = 'deleted' AND deleted_at IS NULL",
+            vec![
+                deleted_at.into(),
+                tenant_id.into(),
+                prepared.record.id.into(),
+            ],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "UPDATE forum_replies \
+             SET deleted_at = ?, updated_at = ? \
+             WHERE tenant_id = ? AND id = ? AND status = 'deleted' AND deleted_at IS NULL",
+            vec![
+                deleted_at.into(),
+                deleted_at.into(),
+                tenant_id.into(),
+                prepared.record.id.into(),
+            ],
+        ),
+        backend => {
+            return Err(ForumError::Validation(format!(
+                "Forum import reply tombstones do not support database backend {backend:?}"
+            )));
+        }
+    };
+    if txn.execute_raw(statement).await?.rows_affected() != 1 {
+        return Err(ForumError::Validation(
+            "Forum import reply tombstone update did not claim exactly one reply".to_string(),
+        ));
+    }
+
+    let after = count_import_delete_revisions_in_tx(txn, tenant_id, prepared.record.id).await?;
+    if after != 1 {
+        return Err(ForumError::Validation(
+            "Forum import reply tombstone must create exactly one delete revision".to_string(),
+        ));
+    }
+
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE forum_reply_revisions \
+             SET created_at = $1 \
+             WHERE tenant_id = $2 AND reply_id = $3 AND revision_reason = 'delete'",
+            vec![
+                deleted_at.into(),
+                tenant_id.into(),
+                prepared.record.id.into(),
+            ],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "UPDATE forum_reply_revisions \
+             SET created_at = ? \
+             WHERE tenant_id = ? AND reply_id = ? AND revision_reason = 'delete'",
+            vec![
+                deleted_at.into(),
+                tenant_id.into(),
+                prepared.record.id.into(),
+            ],
+        ),
+        backend => {
+            return Err(ForumError::Validation(format!(
+                "Forum import reply tombstones do not support database backend {backend:?}"
+            )));
+        }
+    };
+    if txn.execute_raw(statement).await?.rows_affected() != 1 {
+        return Err(ForumError::Validation(
+            "Forum import reply delete revision retimestamp did not affect exactly one row"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+async fn count_import_delete_revisions_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    reply_id: Uuid,
+) -> ForumResult<i64> {
+    let statement = match txn.get_database_backend() {
+        DatabaseBackend::Postgres => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT COUNT(*) AS revision_count \
+             FROM forum_reply_revisions \
+             WHERE tenant_id = $1 AND reply_id = $2 AND revision_reason = 'delete'",
+            vec![tenant_id.into(), reply_id.into()],
+        ),
+        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "SELECT COUNT(*) AS revision_count \
+             FROM forum_reply_revisions \
+             WHERE tenant_id = ? AND reply_id = ? AND revision_reason = 'delete'",
+            vec![tenant_id.into(), reply_id.into()],
+        ),
+        backend => {
+            return Err(ForumError::Validation(format!(
+                "Forum import reply tombstones do not support database backend {backend:?}"
+            )));
+        }
+    };
+    let row = txn.query_one_raw(statement).await?.ok_or_else(|| {
+        ForumError::Validation("Forum import reply revision count returned no row".to_string())
+    })?;
+    Ok(row.try_get("", "revision_count")?)
+}
+
+pub(crate) struct PreparedImportReplyInsert {
+    record: crate::import_write_preparation::ForumPreparedImportReply,
+    document: rustok_api::RichTextDocument,
+    stored_body: String,
+    created_at: chrono::DateTime<Utc>,
+}
+
+impl PreparedImportReplyInsert {
+    pub(crate) fn id(&self) -> Uuid {
+        self.record.id
+    }
+
+    pub(crate) fn topic_id(&self) -> Uuid {
+        self.record.topic_id
+    }
+
+    pub(crate) fn status(&self) -> ReplyStatus {
+        self.record.status
+    }
+
+    pub(crate) fn created_at(&self) -> chrono::DateTime<Utc> {
+        self.created_at
+    }
+}
+
+impl ReplyService {
+    pub(crate) fn prepare_import_reply(
+        &self,
+        tenant_id: Uuid,
+        record: &crate::import_write_preparation::ForumPreparedImportReply,
+    ) -> ForumResult<PreparedImportReplyInsert> {
+        if tenant_id.is_nil() || record.id.is_nil() || record.topic_id.is_nil() {
+            return Err(ForumError::Validation(
+                "Forum import reply preparation requires non-nil tenant, reply and topic IDs"
+                    .to_string(),
+            ));
+        }
+        if record.status == ReplyStatus::Deleted {
+            return Err(ForumError::Validation(
+                "Forum import deleted reply requires an admitted tombstone timestamp before persistence"
+                    .to_string(),
+            ));
+        }
+        let locale = normalize_locale(&record.locale)?;
+        if locale != record.locale {
+            return Err(ForumError::Validation(
+                "Forum import reply locale must already be normalized".to_string(),
+            ));
+        }
+        let document = crate::richtext::normalize_discussion(record.content.clone())?;
+        let stored_body = crate::richtext::serialize_discussion(document.clone())?;
+        let created_at = chrono::DateTime::<Utc>::from_timestamp_millis(record.created_at_ms)
+            .ok_or_else(|| {
+                ForumError::Validation(
+                    "Forum import reply creation timestamp is outside owner range".to_string(),
+                )
+            })?;
+
+        Ok(PreparedImportReplyInsert {
+            record: record.clone(),
+            document,
+            stored_body,
+            created_at,
+        })
+    }
+
+    pub(crate) async fn insert_import_reply_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        prepared: &PreparedImportReplyInsert,
+        relation: &crate::import_relation_preparation::ForumPreparedImportContentRelations,
+        relation_event_mode: crate::import_relation_preparation::ForumImportRelationEventMode,
+        write_event_mode: crate::import_write_preparation::ForumImportWriteEventMode,
+    ) -> ForumResult<()> {
+        if relation.source != prepared.record.source
+            || relation.target != ForumContentTarget::reply(prepared.record.id)
+            || relation.locale != prepared.record.locale
+        {
+            return Err(ForumError::Validation(
+                "Forum import reply relation admission does not match prepared reply".to_string(),
+            ));
+        }
+
+        let topic =
+            TopicService::find_topic_in_tx(txn, tenant_id, prepared.record.topic_id).await?;
+        if topic.status != TopicStatus::Open || topic.is_locked {
+            return Err(ForumError::Validation(
+                "Forum import reply insertion requires the private provisional topic state"
+                    .to_string(),
+            ));
+        }
+
+        if let Some(parent_reply_id) = prepared.record.parent_reply_id {
+            let parent =
+                reply::ReplyService::find_reply_in_tx(txn, tenant_id, parent_reply_id).await?;
+            if parent.topic_id != prepared.record.topic_id {
+                return Err(ForumError::Validation(
+                    "Forum import reply parent belongs to another topic".to_string(),
+                ));
+            }
+            if parent.status == ReplyStatus::Deleted {
+                return Err(ForumError::Validation(
+                    "Forum import reply cannot use a deleted parent without tombstone admission"
+                        .to_string(),
+                ));
+            }
+        }
+
+        let position =
+            allocate_reply_position_in_tx(txn, tenant_id, prepared.record.topic_id).await?;
+        let author_id = prepared.record.author.as_ref().map(|author| author.user_id);
+
+        forum_reply::ActiveModel {
+            id: Set(prepared.record.id),
+            tenant_id: Set(tenant_id),
+            topic_id: Set(prepared.record.topic_id),
+            author_id: Set(author_id),
+            parent_reply_id: Set(prepared.record.parent_reply_id),
+            status: Set(prepared.record.status),
+            position: Set(position),
+            created_at: Set(prepared.created_at.into()),
+            updated_at: Set(prepared.created_at.into()),
+        }
+        .insert(txn)
+        .await?;
+
+        forum_reply_body::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            reply_id: Set(prepared.record.id),
+            tenant_id: Set(tenant_id),
+            locale: Set(prepared.record.locale.clone()),
+            body: Set(prepared.stored_body.clone()),
+            created_at: Set(prepared.created_at.into()),
+            updated_at: Set(prepared.created_at.into()),
+        }
+        .insert(txn)
+        .await?;
+
+        self.relations
+            .persist_import_admitted_in_tx(
+                txn,
+                tenant_id,
+                relation,
+                &prepared.document,
+                author_id,
+                relation_event_mode,
+            )
+            .await?;
+
+        if prepared.record.status == ReplyStatus::Approved {
+            TopicService::adjust_reply_count_in_tx(txn, tenant_id, prepared.record.topic_id, 1)
+                .await?;
+            CategoryService::adjust_counters_in_tx(txn, tenant_id, topic.category_id, 0, 1).await?;
+            UserStatsService::adjust_reply_count_in_tx(txn, tenant_id, author_id, 1).await?;
+
+            if write_event_mode
+                == crate::import_write_preparation::ForumImportWriteEventMode::EmitDomainEvents
+            {
+                self.event_bus
+                    .publish_in_tx(
+                        txn,
+                        tenant_id,
+                        author_id,
+                        DomainEvent::ForumTopicReplied {
+                            topic_id: prepared.record.topic_id,
+                            reply_id: prepared.record.id,
+                            author_id,
+                        },
+                    )
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
@@ -250,13 +773,12 @@ impl ReplyService {
         if reply.status != ReplyStatus::Deleted {
             return Err(ForumError::ReplyRestoreUnavailable(reply_id));
         }
-        if topic.status == TopicStatus::Archived
-            && forum_topic_merge_operation::Entity::find()
-                .filter(forum_topic_merge_operation::Column::TenantId.eq(tenant_id))
-                .filter(forum_topic_merge_operation::Column::SourceTopicId.eq(topic.id))
-                .one(&txn)
-                .await?
-                .is_some()
+        if forum_topic_merge_operation::Entity::find()
+            .filter(forum_topic_merge_operation::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic_merge_operation::Column::SourceTopicId.eq(topic.id))
+            .one(&txn)
+            .await?
+            .is_some()
         {
             return Err(ForumError::ReplyRestoreUnavailable(reply_id));
         }
@@ -774,3 +1296,246 @@ fn tenant_scoped_reply_statement(
         ))),
     }
 }
+
+use crate::dto::{CreateReplyCommandInput, UpdateReplyCommandInput};
+use crate::services::content_limits::ForumContentLimits;
+
+impl ReplyService {
+    pub(crate) const MAX_FORUM_REPLY_LOCALE_ENUMERATION_IDS: usize = 512;
+
+    pub(crate) async fn available_locales_for_replies(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        reply_ids: &[Uuid],
+    ) -> ForumResult<Vec<(Uuid, Vec<String>)>> {
+        enforce_scope(&security, Resource::ForumReplies, Action::Manage)?;
+        self.inner
+            .available_locales_for_replies(tenant_id, security, reply_ids)
+            .await
+    }
+
+    #[instrument(skip(self, security, input))]
+    pub async fn create_command(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        input: CreateReplyCommandInput,
+    ) -> ForumResult<ReplyResponse> {
+        let create_audience =
+            ForumReplyCreateAudienceAuthorizationService::without_facts_provider(self.db.clone());
+        self.create_command_with_audience_authorization(
+            tenant_id,
+            security,
+            topic_id,
+            None,
+            input,
+            &create_audience,
+        )
+        .await
+    }
+
+    pub(crate) async fn create_command_with_audience_authorization(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        topic_id: Uuid,
+        context: Option<PortContext>,
+        input: CreateReplyCommandInput,
+        create_audience: &ForumReplyCreateAudienceAuthorizationService,
+    ) -> ForumResult<ReplyResponse> {
+        let (input, quote_inputs) = input.into_parts();
+        enforce_scope(&security, Resource::ForumReplies, Action::Create)?;
+        let locale = normalize_locale(&input.locale)?;
+        let document = crate::richtext::normalize_discussion(input.content)?;
+        let content_limits = ForumContentLimits::resolve(&self.settings, tenant_id).await?;
+        content_limits
+            .validate_body(&crate::richtext::project_discussion(document.clone())?.plain_text)?;
+        let stored_body = crate::richtext::serialize_discussion(document.clone())?;
+        // UUIDv7: the reply list keyset orders by (created_at, id), so ids must be time-ordered.
+        let reply_id = Uuid::now_v7();
+        let quotes = super::relation_quote_input::normalize_quote_inputs(quote_inputs)?;
+        let prepared_relations = self
+            .relations
+            .prepare(
+                tenant_id,
+                ForumContentTarget::reply(reply_id),
+                &locale,
+                &document,
+                &security,
+                quotes,
+            )
+            .await?;
+
+        let txn = self.db.begin().await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        lock_topic_reply_create_audience_in_tx(&txn, tenant_id, topic_id).await?;
+        let topic = TopicService::find_topic_for_update_in_tx(&txn, tenant_id, topic_id).await?;
+        let category =
+            CategoryService::find_category_for_update_in_tx(&txn, tenant_id, topic.category_id)
+                .await?;
+
+        let authorization = create_audience
+            .require_in_tx(&txn, tenant_id, &topic, &security, context)
+            .await?;
+        if !authorization.allowed {
+            return Err(ForumError::forbidden(
+                "Forum reply creation is unavailable for the current audience",
+            ));
+        }
+
+        match topic.status {
+            TopicStatus::Closed => return Err(ForumError::TopicClosed),
+            TopicStatus::Archived => return Err(ForumError::TopicArchived),
+            TopicStatus::Pending => return Err(ForumError::TopicAwaitingModeration),
+            TopicStatus::Open => {}
+        }
+        if topic.is_locked {
+            return Err(ForumError::TopicLocked);
+        }
+
+        if let Some(parent_reply_id) = input.parent_reply_id {
+            let parent =
+                reply::ReplyService::find_reply_in_tx(&txn, tenant_id, parent_reply_id).await?;
+            if parent.topic_id != topic_id {
+                return Err(ForumError::Validation(
+                    "Parent reply belongs to another topic".to_string(),
+                ));
+            }
+            if parent.status == ReplyStatus::Deleted {
+                return Err(ForumError::Validation(
+                    "Deleted reply cannot be used as a parent".to_string(),
+                ));
+            }
+            if parent.status != ReplyStatus::Approved {
+                // A public reply under a held, rejected or hidden parent
+                // would surface in the thread while its parent is redacted,
+                // producing orphan fragments. Only approved parents can
+                // acquire children.
+                return Err(ForumError::Validation(
+                    "Only approved replies can be used as a parent".to_string(),
+                ));
+            }
+            // Bound nesting depth. The loop is depth-capped, so even a
+            // corrupt cyclic parent chain terminates with this error
+            // instead of walking forever inside the transaction.
+            let mut depth = 1_u32;
+            let mut ancestor_id = parent.parent_reply_id;
+            while let Some(ancestor) = ancestor_id {
+                depth += 1;
+                if depth > crate::constants::MAX_FORUM_REPLY_NESTING_DEPTH {
+                    return Err(ForumError::Validation(format!(
+                        "Forum reply nesting exceeds {} levels",
+                        crate::constants::MAX_FORUM_REPLY_NESTING_DEPTH
+                    )));
+                }
+                let ancestor_reply =
+                    reply::ReplyService::find_reply_in_tx(&txn, tenant_id, ancestor).await?;
+                if ancestor_reply.topic_id != topic_id {
+                    return Err(ForumError::Validation(
+                        "Parent reply belongs to another topic".to_string(),
+                    ));
+                }
+                ancestor_id = ancestor_reply.parent_reply_id;
+            }
+        }
+
+        super::posting_rate::enforce_new_reply_rate_in_tx(
+            &txn,
+            tenant_id,
+            &security,
+            content_limits.new_reply_rate_limit_seconds(),
+        )
+        .await?;
+        let position = allocate_reply_position_in_tx(&txn, tenant_id, topic_id).await?;
+        // Pre-moderation holds a new reply when the category or the tenant requires review. Tenant
+        // pre-moderation also holds new topics, see `TopicService::create_with_inline_relations`.
+        let pre_moderation_enabled = self
+            .settings
+            .module_settings_in_tx(&txn, tenant_id)
+            .await?
+            .pre_moderation_enabled;
+        let status = if category.moderated || pre_moderation_enabled {
+            ReplyStatus::Pending
+        } else {
+            ReplyStatus::Approved
+        };
+        let now = Utc::now();
+
+        forum_reply::ActiveModel {
+            id: Set(reply_id),
+            tenant_id: Set(tenant_id),
+            topic_id: Set(topic_id),
+            author_id: Set(security.user_id),
+            parent_reply_id: Set(input.parent_reply_id),
+            status: Set(status),
+            position: Set(position),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&txn)
+        .await?;
+
+        forum_reply_body::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            reply_id: Set(reply_id),
+            tenant_id: Set(tenant_id),
+            locale: Set(locale.clone()),
+            body: Set(stored_body),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&txn)
+        .await?;
+
+        self.relations
+            .persist_in_tx(&txn, prepared_relations)
+            .await?;
+
+        if status == ReplyStatus::Approved {
+            super::subscription::auto_subscribe::auto_subscribe_reply_participant_in_tx(
+                &txn,
+                tenant_id,
+                topic_id,
+                security.user_id,
+            )
+            .await?;
+            TopicService::adjust_reply_count_in_tx(&txn, tenant_id, topic_id, 1).await?;
+            CategoryService::adjust_counters_in_tx(&txn, tenant_id, topic.category_id, 0, 1)
+                .await?;
+            UserStatsService::adjust_reply_count_in_tx(&txn, tenant_id, security.user_id, 1)
+                .await?;
+
+            self.event_bus
+                .publish_in_tx(
+                    &txn,
+                    tenant_id,
+                    security.user_id,
+                    DomainEvent::ForumTopicReplied {
+                        topic_id,
+                        reply_id,
+                        author_id: security.user_id,
+                    },
+                )
+                .await?;
+        }
+
+        txn.commit().await?;
+        self.get(tenant_id, security, reply_id, &locale).await
+    }
+
+    #[instrument(skip(self, security, input))]
+    pub async fn update_command(
+        &self,
+        tenant_id: Uuid,
+        reply_id: Uuid,
+        security: SecurityContext,
+        input: UpdateReplyCommandInput,
+    ) -> ForumResult<ReplyResponse> {
+        self.inner
+            .update_with_inline_relations(tenant_id, reply_id, security, input)
+            .await
+    }
+}
+

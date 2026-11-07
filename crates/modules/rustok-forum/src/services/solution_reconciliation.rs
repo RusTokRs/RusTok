@@ -1,4 +1,4 @@
-use std::{collections::HashSet, time::Instant};
+use std::collections::HashSet; // Instant via executor
 
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
@@ -9,6 +9,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::reconciliation_executor::ReconciliationExecutor;
 use super::{
     counter_reconciliation::{
         DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
@@ -95,40 +96,21 @@ impl ForumSolutionReconciliationService {
         solution_after: Option<Uuid>,
         solution_stat_after: Option<Uuid>,
     ) -> ForumResult<ForumSolutionReconciliationReport> {
-        rustok_telemetry::metrics::record_module_entrypoint_call(
-            "forum",
-            "solution_reconciliation_report",
-            "library",
-        );
-        let started_at = Instant::now();
-        let result = match enforce_operations_scope(security) {
-            Ok(()) => {
-                self.report_inner(
-                    tenant_id,
-                    requested_limit,
-                    solution_after,
-                    solution_stat_after,
-                )
-                .await
-            }
-            Err(error) => Err(error),
-        };
-        rustok_telemetry::metrics::record_span_duration(
+        ReconciliationExecutor::new(
             FORUM_SOLUTION_RECONCILIATION_OPERATION,
-            started_at.elapsed().as_secs_f64(),
-        );
-        if result.is_err() {
-            rustok_telemetry::metrics::record_span_error(
-                FORUM_SOLUTION_RECONCILIATION_OPERATION,
-                "owner_report",
-            );
-            rustok_telemetry::metrics::record_module_error(
-                "forum",
-                "solution_reconciliation",
-                "error",
-            );
-        }
-        result
+            DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT,
+            MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
+        )
+        .execute(security, || async {
+            self.report_inner(
+                tenant_id,
+                requested_limit,
+                solution_after,
+                solution_stat_after,
+            )
+            .await
+        })
+        .await
     }
 
     async fn report_inner(
@@ -172,7 +154,7 @@ impl ForumSolutionReconciliationService {
                 Ok(report)
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
+                if let Err(rollback_err) = transaction.rollback().await { tracing::warn!(error = %rollback_err, "forum reconciliation rollback failed; transaction will be dropped"); }
                 Err(error)
             }
         }

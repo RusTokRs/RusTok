@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS forum_topic_route_aliases (
     alias_id UUID NOT NULL,
     topic_id UUID NOT NULL,
     locale VARCHAR(64) NOT NULL,
-    short_id VARCHAR(12) NOT NULL,
+    short_id VARCHAR(16) NOT NULL,
     slug VARCHAR(255) NOT NULL,
     disposition VARCHAR(16) NOT NULL,
     target_topic_id UUID NULL,
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS forum_topic_route_aliases (
         AND position(E'\r' in locale) = 0
     ),
     CONSTRAINT ck_forum_topic_route_alias_short_id CHECK (
-        short_id ~ '^[0-9a-f]{12}$'
+        short_id ~ '^[0-9a-f]{16}$'
     ),
     CONSTRAINT ck_forum_topic_route_alias_slug CHECK (
         length(slug) BETWEEN 1 AND 255
@@ -179,7 +179,7 @@ CREATE TABLE IF NOT EXISTS forum_topic_route_aliases (
         AND instr(locale, char(13)) = 0
     ),
     CHECK (
-        length(short_id) = 12
+        length(short_id) = 16
         AND short_id = lower(short_id)
         AND short_id NOT GLOB '*[^0-9a-f]*'
     ),

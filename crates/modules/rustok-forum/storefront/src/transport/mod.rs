@@ -1,18 +1,7 @@
-mod graphql_adapter {
-    include!("graphql_adapter.rs");
-    include!("category_route_graphql_adapter.rs");
-    include!("topic_route_graphql_adapter.rs");
-    include!("revision_graphql_adapter.rs");
-}
+mod graphql_adapter;
 mod composer_graphql;
 mod composer_native_server;
-mod native_server_adapter {
-    include!("native_server_adapter.rs");
-    include!("native_server_adapter_bulk.rs");
-    include!("native_server_adapter_category_route.rs");
-    include!("native_server_adapter_topic_route.rs");
-    include!("native_server_adapter_revision.rs");
-}
+mod native_server_adapter;
 mod native_server_adapter_pages;
 
 use crate::model::{

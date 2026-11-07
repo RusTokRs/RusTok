@@ -22,6 +22,7 @@ use crate::entities::{
 use crate::error::{ForumError, ForumResult};
 use crate::state_machine::TopicStatus;
 
+use super::merge_reconciliation_executor::{MergeReconciliationExecutor, SubscriptionScope};
 use super::rbac::enforce_scope;
 use super::topic_subscription_lock::{
     lock_topic_rows_for_subscription_in_tx, lock_topic_subscription_scopes_in_tx,
@@ -89,6 +90,7 @@ impl ForumTopicMergeSubscriptionReconciliationService {
         let reason = validate_input(tenant_id, merge_operation_id, actor_id, &input)?;
 
         let txn = self.db.begin().await?;
+        MergeReconciliationExecutor::<SubscriptionScope>::advisory_lock(&txn, tenant_id, merge_operation_id).await?;
         let operation = self
             .reconcile_in_tx(
                 &txn,

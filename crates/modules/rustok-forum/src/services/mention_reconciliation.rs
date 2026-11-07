@@ -1,4 +1,4 @@
-use std::time::Instant;
+// Instant via executor
 
 use rustok_api::{Action, Resource, normalize_locale_tag};
 use rustok_core::SecurityContext;
@@ -9,6 +9,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::reconciliation_executor::ReconciliationExecutor;
 use super::{
     counter_reconciliation::{
         DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
@@ -101,35 +102,15 @@ impl ForumMentionReconciliationService {
         requested_limit: Option<u64>,
         relation_after: Option<i64>,
     ) -> ForumResult<ForumMentionReconciliationReport> {
-        rustok_telemetry::metrics::record_module_entrypoint_call(
-            "forum",
-            "mention_reconciliation_report",
-            "library",
-        );
-        let started_at = Instant::now();
-        let result = match enforce_operations_scope(security) {
-            Ok(()) => {
-                self.report_inner(tenant_id, requested_limit, relation_after)
-                    .await
-            }
-            Err(error) => Err(error),
-        };
-        rustok_telemetry::metrics::record_span_duration(
+        ReconciliationExecutor::new(
             FORUM_MENTION_RECONCILIATION_OPERATION,
-            started_at.elapsed().as_secs_f64(),
-        );
-        if result.is_err() {
-            rustok_telemetry::metrics::record_span_error(
-                FORUM_MENTION_RECONCILIATION_OPERATION,
-                "owner_report",
-            );
-            rustok_telemetry::metrics::record_module_error(
-                "forum",
-                "mention_reconciliation",
-                "error",
-            );
-        }
-        result
+            DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT,
+            MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
+        )
+        .execute(security, || async {
+            self.report_inner(tenant_id, requested_limit, relation_after).await
+        })
+        .await
     }
 
     async fn report_inner(
@@ -176,7 +157,7 @@ impl ForumMentionReconciliationService {
                 Ok(report)
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
+                if let Err(rollback_err) = transaction.rollback().await { tracing::warn!(error = %rollback_err, "forum reconciliation rollback failed; transaction will be dropped"); }
                 Err(error)
             }
         }

@@ -87,7 +87,8 @@ async fn storefront_forum_native(
 ) -> Result<StorefrontForumData, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{
             HostRuntimeContext, OptionalAuthContext, Permission, RequestContext,
             SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,
             TenantContext, has_any_effective_permission,
@@ -485,7 +486,8 @@ async fn storefront_topic_mark_read_native(
 ) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
         use rustok_forum::{
             ForumError, ForumStorefrontReadStateService, ForumTopicReadOperation,
@@ -880,3 +882,805 @@ fn empty_replies() -> ForumReplyPage {
 pub(super) fn server_error(error: impl std::fmt::Display) -> ServerFnError {
     ServerFnError::new(error.to_string())
 }
+
+pub async fn mark_storefront_category_read_server(
+    category_id: String,
+    cursor: Option<String>,
+    limit: Option<u64>,
+    locale: Option<String>,
+) -> Result<super::StorefrontForumBulkReadResult, ApiError> {
+    storefront_category_mark_read_native(category_id, cursor, limit, locale)
+        .await
+        .map_err(|error| ApiError::ServerFn(error.to_string()))
+}
+
+pub async fn mark_all_storefront_topics_read_server(
+    cursor: Option<String>,
+    limit: Option<u64>,
+    locale: Option<String>,
+) -> Result<super::StorefrontForumBulkReadResult, ApiError> {
+    storefront_all_topics_mark_read_native(cursor, limit, locale)
+        .await
+        .map_err(|error| ApiError::ServerFn(error.to_string()))
+}
+
+#[server(prefix = "/api/fn", endpoint = "forum/storefront-category-read")]
+async fn storefront_category_mark_read_native(
+    category_id: String,
+    cursor: Option<String>,
+    limit: Option<u64>,
+    locale: Option<String>,
+) -> Result<super::StorefrontForumBulkReadResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_core::SecurityContext;
+        use rustok_forum::{
+            ForumError, ForumStorefrontReadStateService, ForumTopicReadOperation,
+            ForumTopicReadTransport, MarkForumTopicsReadBatchInput, SharedForumAudienceFactsPort,
+            topic_read_audience_port_context,
+        };
+        use rustok_outbox::TransactionalEventBus;
+
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let auth = leptos_axum::extract::<OptionalAuthContext>()
+            .await
+            .map_err(ServerFnError::new)?
+            .0
+            .ok_or_else(|| ServerFnError::new("Authentication required"))?;
+        let request = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request)
+            .await?
+        {
+            return Err(ServerFnError::new(
+                "Forum module is not enabled for this channel",
+            ));
+        }
+        let event_bus = runtime_ctx
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "forum/storefront-category-read requires TransactionalEventBus in host runtime context",
+                )
+            })?;
+        let category_id = uuid::Uuid::parse_str(category_id.trim())
+            .map_err(|_| ServerFnError::new("category_id must be a valid UUID"))?;
+        let effective_locale = normalize_locale(
+            locale
+                .as_deref()
+                .or(Some(request.locale.as_str()))
+                .or(Some(tenant.default_locale.as_str())),
+        );
+        let security =
+            SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+        let audience_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::NativeServer,
+            ForumTopicReadOperation::MarkCategoryRead,
+            tenant.id,
+            &auth,
+            Some(&request),
+            effective_locale.as_str(),
+        )
+        .map_err(server_error)?;
+        let db = runtime_ctx.db_clone();
+        let service = match runtime_ctx.shared_get::<SharedForumAudienceFactsPort>() {
+            Some(facts) => {
+                ForumStorefrontReadStateService::with_audience_facts(db, event_bus, facts)
+            }
+            None => ForumStorefrontReadStateService::new(db, event_bus),
+        };
+        let result = match service
+            .mark_category_read_audience_visible(
+                tenant.id,
+                category_id,
+                security,
+                audience_context,
+                MarkForumTopicsReadBatchInput {
+                    cursor,
+                    limit: limit.map(|v| bounded_forum_read_limit(Some(v))),
+                },
+            )
+            .await
+        {
+            Ok(result) => result,
+            Err(ForumError::CategoryNotFound(_)) => {
+                return Err(ServerFnError::new("Forum category is unavailable"));
+            }
+            Err(error) => return Err(server_error(error)),
+        };
+        Ok(map_storefront_bulk_read_result(result))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (category_id, cursor, limit, locale);
+        Err(ServerFnError::new(
+            "forum/storefront-category-read requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(prefix = "/api/fn", endpoint = "forum/storefront-all-read")]
+async fn storefront_all_topics_mark_read_native(
+    cursor: Option<String>,
+    limit: Option<u64>,
+    locale: Option<String>,
+) -> Result<super::StorefrontForumBulkReadResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_core::SecurityContext;
+        use rustok_forum::{
+            ForumStorefrontReadStateService, ForumTopicReadOperation, ForumTopicReadTransport,
+            MarkForumTopicsReadBatchInput, SharedForumAudienceFactsPort,
+            topic_read_audience_port_context,
+        };
+        use rustok_outbox::TransactionalEventBus;
+
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let auth = leptos_axum::extract::<OptionalAuthContext>()
+            .await
+            .map_err(ServerFnError::new)?
+            .0
+            .ok_or_else(|| ServerFnError::new("Authentication required"))?;
+        let request = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request)
+            .await?
+        {
+            return Err(ServerFnError::new(
+                "Forum module is not enabled for this channel",
+            ));
+        }
+        let event_bus = runtime_ctx
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "forum/storefront-all-read requires TransactionalEventBus in host runtime context",
+                )
+            })?;
+        let effective_locale = normalize_locale(
+            locale
+                .as_deref()
+                .or(Some(request.locale.as_str()))
+                .or(Some(tenant.default_locale.as_str())),
+        );
+        let security =
+            SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+        let audience_context = topic_read_audience_port_context(
+            ForumTopicReadTransport::NativeServer,
+            ForumTopicReadOperation::MarkAllRead,
+            tenant.id,
+            &auth,
+            Some(&request),
+            effective_locale.as_str(),
+        )
+        .map_err(server_error)?;
+        let db = runtime_ctx.db_clone();
+        let service = match runtime_ctx.shared_get::<SharedForumAudienceFactsPort>() {
+            Some(facts) => {
+                ForumStorefrontReadStateService::with_audience_facts(db, event_bus, facts)
+            }
+            None => ForumStorefrontReadStateService::new(db, event_bus),
+        };
+        let result = service
+            .mark_all_read_audience_visible(
+                tenant.id,
+                security,
+                audience_context,
+                MarkForumTopicsReadBatchInput {
+                    cursor,
+                    limit: limit.map(|v| bounded_forum_read_limit(Some(v))),
+                },
+            )
+            .await
+            .map_err(server_error)?;
+        Ok(map_storefront_bulk_read_result(result))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (cursor, limit, locale);
+        Err(ServerFnError::new(
+            "forum/storefront-all-read requires the `ssr` feature",
+        ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_storefront_bulk_read_result(
+    result: rustok_forum::MarkForumTopicsReadBatchResult,
+) -> super::StorefrontForumBulkReadResult {
+    super::StorefrontForumBulkReadResult {
+        processed: result.processed,
+        next_cursor: result.next_cursor,
+        has_more: result.has_more,
+        snapshot_at: result.snapshot_at,
+    }
+}
+
+use crate::model::StorefrontForumCategoryRouteResolution;
+#[cfg(feature = "ssr")]
+use crate::model::{
+    StorefrontForumCategoryRouteDescriptor, StorefrontForumCategoryRouteDisposition,
+};
+
+pub async fn resolve_storefront_category_route_server(
+    locale: String,
+    slug: String,
+) -> Result<Option<StorefrontForumCategoryRouteResolution>, ApiError> {
+    storefront_category_route_native(locale, slug)
+        .await
+        .map_err(|error| ApiError::ServerFn(error.to_string()))
+}
+
+#[server(prefix = "/api/fn", endpoint = "forum/storefront-category-route")]
+async fn storefront_category_route_native(
+    locale: String,
+    slug: String,
+) -> Result<Option<StorefrontForumCategoryRouteResolution>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_core::SecurityContext;
+        use rustok_forum::{
+            ForumCategoryAudienceReadService, ForumCategoryReadOperation,
+            ForumCategoryReadTransport, ForumCategoryRouteService, ForumError,
+            SharedForumAudienceFactsPort, category_read_audience_port_context,
+        };
+
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let auth = leptos_axum::extract::<OptionalAuthContext>()
+            .await
+            .map_err(ServerFnError::new)?
+            .0;
+        let request = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let db = runtime_ctx.db_clone();
+        let settings_providers =
+            super::native_server_adapter::forum_settings_providers(&runtime_ctx);
+        if auth.is_none()
+            && !settings_providers
+                .anonymous_reading_allowed(tenant.id)
+                .await
+                .map_err(server_error)?
+        {
+            return Ok(None);
+        }
+
+        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request)
+            .await?
+        {
+            return Ok(None);
+        }
+
+        let resolution = match ForumCategoryRouteService::new(db.clone())
+            .resolve(
+                tenant.id,
+                &locale,
+                &slug,
+                Some(tenant.default_locale.as_str()),
+            )
+            .await
+        {
+            Ok(resolution) => resolution,
+            Err(ForumError::CategoryNotFound(_)) | Err(ForumError::CategoryRouteNotFound) => {
+                return Ok(None);
+            }
+            Err(error) => return Err(server_error(error)),
+        };
+
+        let service = match runtime_ctx.shared_get::<SharedForumAudienceFactsPort>() {
+            Some(facts) => ForumCategoryAudienceReadService::with_audience_facts(db, facts),
+            None => ForumCategoryAudienceReadService::new(db),
+        }
+        .with_settings_providers(settings_providers);
+        let visible = if let Some(auth) = auth.as_ref() {
+            let security =
+                SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+            let context = category_read_audience_port_context(
+                ForumCategoryReadTransport::NativeServer,
+                ForumCategoryReadOperation::SelectedCategory,
+                tenant.id,
+                auth,
+                Some(&request),
+                resolution.canonical.locale.as_str(),
+            )
+            .map_err(server_error)?;
+            service
+                .get_authenticated_storefront_list_visible_with_audience_context(
+                    tenant.id,
+                    security,
+                    context,
+                    resolution.canonical.category_id,
+                    Some(tenant.default_locale.as_str()),
+                )
+                .await
+        } else {
+            service
+                .get_public_storefront_visible_with_locale_fallback(
+                    tenant.id,
+                    resolution.canonical.category_id,
+                    resolution.canonical.locale.as_str(),
+                    Some(tenant.default_locale.as_str()),
+                )
+                .await
+        };
+
+        match visible {
+            Ok(_) => Ok(Some(map_native_category_route_resolution(resolution))),
+            Err(ForumError::CategoryNotFound(_)) | Err(ForumError::CategoryRouteNotFound) => {
+                Ok(None)
+            }
+            Err(error) => Err(server_error(error)),
+        }
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (locale, slug);
+        Err(ServerFnError::new(
+            "forum/storefront-category-route requires the `ssr` feature",
+        ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_native_category_route_resolution(
+    resolution: rustok_forum::ForumCategoryRouteResolution,
+) -> StorefrontForumCategoryRouteResolution {
+    let disposition = match resolution.disposition {
+        rustok_forum::ForumCategoryRouteDisposition::Canonical => {
+            StorefrontForumCategoryRouteDisposition::Canonical
+        }
+        rustok_forum::ForumCategoryRouteDisposition::Redirect => {
+            StorefrontForumCategoryRouteDisposition::Redirect
+        }
+    };
+    StorefrontForumCategoryRouteResolution {
+        requested_locale: resolution.requested_locale,
+        requested_slug: resolution.requested_slug,
+        disposition,
+        canonical: StorefrontForumCategoryRouteDescriptor {
+            category_id: resolution.canonical.category_id.to_string(),
+            locale: resolution.canonical.locale,
+            slug: resolution.canonical.slug,
+            path: resolution.canonical.path,
+        },
+    }
+}
+
+use crate::model::StorefrontForumTopicRouteResolution;
+#[cfg(feature = "ssr")]
+use crate::model::{StorefrontForumTopicRouteDescriptor, StorefrontForumTopicRouteDisposition};
+
+pub async fn resolve_storefront_topic_route_server(
+    locale: String,
+    short_id: String,
+    slug: String,
+) -> Result<Option<StorefrontForumTopicRouteResolution>, ApiError> {
+    storefront_topic_route_native(locale, short_id, slug)
+        .await
+        .map_err(|error| ApiError::ServerFn(error.to_string()))
+}
+
+#[server(prefix = "/api/fn", endpoint = "forum/storefront-topic-route")]
+async fn storefront_topic_route_native(
+    locale: String,
+    short_id: String,
+    slug: String,
+) -> Result<Option<StorefrontForumTopicRouteResolution>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_core::SecurityContext;
+        use rustok_forum::services::ForumTopicRouteTombstoneVisibilityService;
+        use rustok_forum::{
+            ForumError, ForumTopicAudienceReadService, ForumTopicReadOperation,
+            ForumTopicReadTransport, ForumTopicRouteDisposition, ForumTopicRouteService,
+            SharedForumAudienceFactsPort, topic_read_audience_port_context,
+        };
+        use rustok_outbox::TransactionalEventBus;
+
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let auth = leptos_axum::extract::<OptionalAuthContext>()
+            .await
+            .map_err(ServerFnError::new)?
+            .0;
+        let request = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let db = runtime_ctx.db_clone();
+        let settings_providers =
+            super::native_server_adapter::forum_settings_providers(&runtime_ctx);
+        if auth.is_none()
+            && !settings_providers
+                .anonymous_reading_allowed(tenant.id)
+                .await
+                .map_err(server_error)?
+        {
+            return Ok(None);
+        }
+        if !super::native_server_adapter::forum_channel_enabled(&runtime_ctx, tenant.id, &request)
+            .await?
+        {
+            return Ok(None);
+        }
+
+        let resolution = match ForumTopicRouteService::new(db.clone())
+            .resolve(tenant.id, &locale, &short_id, &slug)
+            .await
+        {
+            Ok(resolution) => resolution,
+            Err(ForumError::TopicNotFound(_))
+            | Err(ForumError::TopicDeleted)
+            | Err(ForumError::TopicRouteNotFound) => return Ok(None),
+            Err(error) => return Err(server_error(error)),
+        };
+
+        if resolution.disposition == ForumTopicRouteDisposition::Gone {
+            let topic_id = resolution.requested_topic_id.ok_or_else(|| {
+                ServerFnError::new(
+                    "Forum gone route resolution did not provide its historical topic identity",
+                )
+            })?;
+            let disclose = ForumTopicRouteTombstoneVisibilityService::new(db.clone())
+                .can_disclose_public_gone(tenant.id, topic_id, request.channel_slug.as_deref())
+                .await
+                .map_err(server_error)?;
+            if !disclose {
+                return Ok(None);
+            }
+            return map_native_topic_route_resolution(resolution);
+        }
+
+        let canonical = resolution.canonical.as_ref().ok_or_else(|| {
+            ServerFnError::new("Forum topic route resolution did not provide a canonical target")
+        })?;
+        let event_bus = runtime_ctx
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "forum/storefront-topic-route requires TransactionalEventBus in host runtime context",
+                )
+            })?;
+        let service = match runtime_ctx.shared_get::<SharedForumAudienceFactsPort>() {
+            Some(facts) => ForumTopicAudienceReadService::with_audience_facts(db, event_bus, facts),
+            None => ForumTopicAudienceReadService::new(db, event_bus),
+        }
+        .with_settings_providers(settings_providers);
+        let visible = if let Some(auth) = auth.as_ref() {
+            let security =
+                SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+            let context = topic_read_audience_port_context(
+                ForumTopicReadTransport::NativeServer,
+                ForumTopicReadOperation::SelectedTopic,
+                tenant.id,
+                auth,
+                Some(&request),
+                canonical.locale.as_str(),
+            )
+            .map_err(server_error)?;
+            service
+                .get_authenticated_storefront_visible_with_audience_context(
+                    tenant.id,
+                    security,
+                    context,
+                    canonical.topic_id,
+                    Some(tenant.default_locale.as_str()),
+                )
+                .await
+                .map_err(server_error)?
+        } else {
+            service
+                .get_public_storefront_visible_with_locale_fallback(
+                    tenant.id,
+                    canonical.topic_id,
+                    canonical.locale.as_str(),
+                    Some(tenant.default_locale.as_str()),
+                    request.channel_slug.as_deref(),
+                )
+                .await
+                .map_err(server_error)?
+        };
+        if visible.is_none() {
+            return Ok(None);
+        }
+
+        map_native_topic_route_resolution(resolution)
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (locale, short_id, slug);
+        Err(ServerFnError::new(
+            "forum/storefront-topic-route requires the `ssr` feature",
+        ))
+    }
+}
+
+#[cfg(feature = "ssr")]
+fn map_native_topic_route_resolution(
+    resolution: rustok_forum::ForumTopicRouteResolution,
+) -> Result<Option<StorefrontForumTopicRouteResolution>, ServerFnError> {
+    let (disposition, canonical) = match resolution.disposition {
+        rustok_forum::ForumTopicRouteDisposition::Canonical => (
+            StorefrontForumTopicRouteDisposition::Canonical,
+            Some(map_native_canonical_descriptor(
+                resolution.canonical.ok_or_else(|| {
+                    ServerFnError::new(
+                        "Forum topic route resolution did not provide a canonical target",
+                    )
+                })?,
+            )),
+        ),
+        rustok_forum::ForumTopicRouteDisposition::Redirect => (
+            StorefrontForumTopicRouteDisposition::Redirect,
+            Some(map_native_canonical_descriptor(
+                resolution.canonical.ok_or_else(|| {
+                    ServerFnError::new(
+                        "Forum topic route resolution did not provide a canonical target",
+                    )
+                })?,
+            )),
+        ),
+        rustok_forum::ForumTopicRouteDisposition::Gone => {
+            if resolution.canonical.is_some() {
+                return Err(ServerFnError::new(
+                    "Forum gone route resolution unexpectedly provided a canonical target",
+                ));
+            }
+            (StorefrontForumTopicRouteDisposition::Gone, None)
+        }
+    };
+
+    Ok(Some(StorefrontForumTopicRouteResolution {
+        requested_locale: resolution.requested_locale,
+        requested_short_id: resolution.requested_short_id,
+        requested_slug: resolution.requested_slug,
+        disposition,
+        canonical,
+    }))
+}
+
+#[cfg(feature = "ssr")]
+fn map_native_canonical_descriptor(
+    canonical: rustok_forum::ForumTopicRouteDescriptor,
+) -> StorefrontForumTopicRouteDescriptor {
+    StorefrontForumTopicRouteDescriptor {
+        topic_id: canonical.topic_id.to_string(),
+        locale: canonical.locale,
+        short_id: canonical.short_id,
+        slug: canonical.slug,
+        path: canonical.path,
+    }
+}
+
+pub async fn fetch_storefront_topic_current_revision_server(
+    topic_id: String,
+    locale: Option<String>,
+) -> Result<Option<String>, ApiError> {
+    storefront_topic_current_revision_native(topic_id, locale)
+        .await
+        .map_err(|error| ApiError::ServerFn(error.to_string()))
+}
+
+pub async fn fetch_storefront_reply_current_revision_server(
+    reply_id: String,
+    locale: Option<String>,
+) -> Result<Option<String>, ApiError> {
+    storefront_reply_current_revision_native(reply_id, locale)
+        .await
+        .map_err(|error| ApiError::ServerFn(error.to_string()))
+}
+
+#[server(
+    prefix = "/api/fn",
+    endpoint = "forum/storefront-topic-current-revision"
+)]
+async fn storefront_topic_current_revision_native(
+    topic_id: String,
+    locale: Option<String>,
+) -> Result<Option<String>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_forum::{
+            ForumTopicAudienceReadService, RevisionService, SharedForumAudienceFactsPort,
+        };
+        use rustok_outbox::TransactionalEventBus;
+
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let auth = leptos_axum::extract::<OptionalAuthContext>()
+            .await
+            .map_err(ServerFnError::new)?
+            .0;
+        let request = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let event_bus = runtime_ctx
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "forum/storefront-topic-current-revision requires TransactionalEventBus in host runtime context",
+                )
+            })?;
+        let topic_id = uuid::Uuid::parse_str(topic_id.trim())
+            .map_err(|_| ServerFnError::new("topic_id must be a valid UUID"))?;
+        let effective_locale = normalize_locale(
+            locale
+                .as_deref()
+                .or(Some(request.locale.as_str()))
+                .or(Some(tenant.default_locale.as_str())),
+        );
+        let db = runtime_ctx.db_clone();
+        let audience_facts = runtime_ctx.shared_get::<SharedForumAudienceFactsPort>();
+        let topic_audience_service = match audience_facts {
+            Some(facts) => {
+                ForumTopicAudienceReadService::with_audience_facts(db.clone(), event_bus, facts)
+            }
+            None => ForumTopicAudienceReadService::new(db.clone(), event_bus),
+        }
+        .with_settings_providers(super::native_server_adapter::forum_settings_providers(
+            &runtime_ctx,
+        ));
+        let topic = load_audience_visible_topic(
+            &topic_audience_service,
+            tenant.id,
+            auth.as_ref(),
+            &request,
+            topic_id,
+            effective_locale.as_str(),
+            tenant.default_locale.as_str(),
+        )
+        .await?;
+        let Some(topic) = topic else {
+            return Ok(None);
+        };
+        let revision = RevisionService::new(db)
+            .current_topic_revision(tenant.id, topic.id)
+            .await
+            .map_err(server_error)?;
+        Ok(Some(revision.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (topic_id, locale);
+        Err(ServerFnError::new(
+            "forum/storefront-topic-current-revision requires the `ssr` feature",
+        ))
+    }
+}
+
+#[server(
+    prefix = "/api/fn",
+    endpoint = "forum/storefront-reply-current-revision"
+)]
+async fn storefront_reply_current_revision_native(
+    reply_id: String,
+    locale: Option<String>,
+) -> Result<Option<String>, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_core::SecurityContext;
+        use rustok_forum::{
+            ForumReplyAudienceReadService, ForumReplyReadOperation, ForumReplyReadTransport,
+            ReplyStatus, RevisionService, SharedForumAudienceFactsPort,
+            reply_read_audience_port_context,
+        };
+        use rustok_outbox::TransactionalEventBus;
+
+        let runtime_ctx = expect_context::<HostRuntimeContext>();
+        let tenant = leptos_axum::extract::<TenantContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let auth = leptos_axum::extract::<OptionalAuthContext>()
+            .await
+            .map_err(ServerFnError::new)?
+            .0;
+        let request = leptos_axum::extract::<RequestContext>()
+            .await
+            .map_err(ServerFnError::new)?;
+        let event_bus = runtime_ctx
+            .shared_get::<TransactionalEventBus>()
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "forum/storefront-reply-current-revision requires TransactionalEventBus in host runtime context",
+                )
+            })?;
+        let reply_id = uuid::Uuid::parse_str(reply_id.trim())
+            .map_err(|_| ServerFnError::new("reply_id must be a valid UUID"))?;
+        let effective_locale = normalize_locale(
+            locale
+                .as_deref()
+                .or(Some(request.locale.as_str()))
+                .or(Some(tenant.default_locale.as_str())),
+        );
+        let db = runtime_ctx.db_clone();
+        let audience_facts = runtime_ctx.shared_get::<SharedForumAudienceFactsPort>();
+        let reply_audience_service = match audience_facts {
+            Some(facts) => {
+                ForumReplyAudienceReadService::with_audience_facts(db.clone(), event_bus, facts)
+            }
+            None => ForumReplyAudienceReadService::new(db.clone(), event_bus),
+        }
+        .with_settings_providers(super::native_server_adapter::forum_settings_providers(
+            &runtime_ctx,
+        ));
+        let approved_statuses = [ReplyStatus::Approved];
+        let reply = if let Some(auth) = auth.as_ref() {
+            let security =
+                SecurityContext::from_permission_snapshot(Some(auth.user_id), &auth.permissions);
+            let context = reply_read_audience_port_context(
+                ForumReplyReadTransport::NativeServer,
+                ForumReplyReadOperation::SelectedReply,
+                tenant.id,
+                auth,
+                Some(&request),
+                effective_locale.as_str(),
+            )
+            .map_err(server_error)?;
+            reply_audience_service
+                .get_authenticated_storefront_visible_with_audience_context(
+                    tenant.id,
+                    security,
+                    context,
+                    reply_id,
+                    Some(tenant.default_locale.as_str()),
+                    Some(&approved_statuses),
+                )
+                .await
+                .map_err(server_error)?
+        } else {
+            reply_audience_service
+                .get_public_storefront_visible_with_locale_fallback(
+                    tenant.id,
+                    reply_id,
+                    effective_locale.as_str(),
+                    Some(tenant.default_locale.as_str()),
+                    request.channel_slug.as_deref(),
+                    Some(&approved_statuses),
+                )
+                .await
+                .map_err(server_error)?
+        };
+        let Some(reply) = reply else {
+            return Ok(None);
+        };
+        let revision = RevisionService::new(db)
+            .current_reply_revision(tenant.id, reply.id)
+            .await
+            .map_err(server_error)?;
+        Ok(Some(revision.to_string()))
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (reply_id, locale);
+        Err(ServerFnError::new(
+            "forum/storefront-reply-current-revision requires the `ssr` feature",
+        ))
+    }
+}
+

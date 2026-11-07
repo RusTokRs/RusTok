@@ -857,10 +857,10 @@ mod tests {
             })
         );
         assert_eq!(
-            parse_canonical_forum_route("/ru/forum/t/123456789abc/privet").unwrap(),
+            parse_canonical_forum_route("/ru/forum/t/123456789abc1234/privet").unwrap(),
             Some(CanonicalForumRoute::Topic {
                 locale: "ru".to_string(),
-                short_id: "123456789abc".to_string(),
+                short_id: "123456789abc1234".to_string(),
                 slug: "privet".to_string(),
             })
         );

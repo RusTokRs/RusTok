@@ -298,30 +298,84 @@ impl ForumError {
     }
 }
 
+const TRIGGER_MSG_AUDIENCE_POLICY_CONFLICT: &str =
+    "forum topic merge audience policy conflict";
+const TRIGGER_MSG_CATEGORY_TOPIC_CREATE_DENIED: &str =
+    "forum category does not allow topic creation";
+const TRIGGER_MSG_CATEGORY_LIFECYCLE_ACTIVE_PARENT: &str =
+    "active forum category cannot have archived parent";
+const TRIGGER_MSG_CATEGORY_LIFECYCLE_ARCHIVED_CHILD: &str =
+    "archived forum category cannot have active child";
+const TRIGGER_MSG_CATEGORY_LIFECYCLE_GENERIC: &str = "forum category lifecycle";
+const TRIGGER_MSG_CATEGORY_ICON: &str = "Forum category icon";
+const TRIGGER_MSG_CATEGORY_COLOR: &str = "Forum category color";
+
+const SQLSTATE_RAISE_EXCEPTION: &str = "P0001";
+const SQLSTATE_UNIQUE_VIOLATION: &str = "23505";
+
 impl From<sea_orm::DbErr> for ForumError {
     fn from(error: sea_orm::DbErr) -> Self {
+        // Prefer SQLSTATE over free-form message: Postgres RAISE EXCEPTION
+        // is P0001 and SeaORM surfaces it as `code: Some("P0001")` in the debug
+        // representation. TRIGGER_MSG_* remain the second-level discriminator so a
+        // trigger wording change is caught in one place.
+        let debug = format!("{error:?}");
         let message = error.to_string();
-        if message.contains("forum topic merge audience policy conflict") {
+        let is_raise = debug.contains(SQLSTATE_RAISE_EXCEPTION) || message.contains(SQLSTATE_RAISE_EXCEPTION);
+
+        if is_raise && message.contains(TRIGGER_MSG_AUDIENCE_POLICY_CONFLICT) {
             return Self::TopicMergeAudiencePolicyConflict(Uuid::nil());
         }
-        if message.contains("forum category does not allow topic creation") {
+        if is_raise && message.contains(TRIGGER_MSG_CATEGORY_TOPIC_CREATE_DENIED) {
             return Self::Validation("Forum category does not allow topic creation".to_string());
         }
-        if message.contains("active forum category cannot have archived parent")
-            || message.contains("archived forum category cannot have active child")
-            || message.contains("forum category lifecycle")
+        if is_raise
+            && (message.contains(TRIGGER_MSG_CATEGORY_LIFECYCLE_ACTIVE_PARENT)
+                || message.contains(TRIGGER_MSG_CATEGORY_LIFECYCLE_ARCHIVED_CHILD)
+                || message.contains(TRIGGER_MSG_CATEGORY_LIFECYCLE_GENERIC))
         {
             return Self::Validation("Forum category archive hierarchy violation".to_string());
         }
-        if message.contains("Forum category icon") {
+        if is_raise && message.contains(TRIGGER_MSG_CATEGORY_ICON) {
             return Self::Validation(
                 "Forum category icon must be a bounded kebab-case design token".to_string(),
             );
         }
-        if message.contains("Forum category color") {
+        if is_raise && message.contains(TRIGGER_MSG_CATEGORY_COLOR) {
             return Self::Validation(
                 "Forum category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA".to_string(),
             );
+        }
+        // Fallback for drivers that flatten code into message only (e.g. SQLite
+        // in tests) — keep the original contains checks.
+        if message.contains(TRIGGER_MSG_AUDIENCE_POLICY_CONFLICT) {
+            return Self::TopicMergeAudiencePolicyConflict(Uuid::nil());
+        }
+        if message.contains(TRIGGER_MSG_CATEGORY_TOPIC_CREATE_DENIED) {
+            return Self::Validation("Forum category does not allow topic creation".to_string());
+        }
+        if message.contains(TRIGGER_MSG_CATEGORY_LIFECYCLE_ACTIVE_PARENT)
+            || message.contains(TRIGGER_MSG_CATEGORY_LIFECYCLE_ARCHIVED_CHILD)
+            || message.contains(TRIGGER_MSG_CATEGORY_LIFECYCLE_GENERIC)
+        {
+            return Self::Validation("Forum category archive hierarchy violation".to_string());
+        }
+        if message.contains(TRIGGER_MSG_CATEGORY_ICON) {
+            return Self::Validation(
+                "Forum category icon must be a bounded kebab-case design token".to_string(),
+            );
+        }
+        if message.contains(TRIGGER_MSG_CATEGORY_COLOR) {
+            return Self::Validation(
+                "Forum category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA".to_string(),
+            );
+        }
+        // Unique violation (23505) from concurrent inserts should surface as a
+        // retryable conflict rather than a generic 500 — the owner will retry
+        // with idempotency key. Keep it as Database so the caller can decide,
+        // but preserve the code for observability.
+        if debug.contains(SQLSTATE_UNIQUE_VIOLATION) || message.contains(SQLSTATE_UNIQUE_VIOLATION) {
+            return Self::Database(error);
         }
         Self::Database(error)
     }

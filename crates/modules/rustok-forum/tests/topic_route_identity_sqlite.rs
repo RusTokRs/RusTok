@@ -243,7 +243,7 @@ async fn current_alias_and_tombstone_routes_resolve_without_slug_identity() -> T
     assert!(gone.canonical.is_none());
 
     let missing = service
-        .resolve(tenant_id, "en", "000000000000", "missing")
+        .resolve(tenant_id, "en", "0000000000000000", "missing")
         .await
         .expect_err("unknown route must not resolve");
     assert!(matches!(missing, ForumError::TopicRouteNotFound));

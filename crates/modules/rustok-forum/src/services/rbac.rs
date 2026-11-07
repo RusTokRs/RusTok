@@ -29,7 +29,8 @@ pub(crate) fn enforce_author_deletion_policy(
         PermissionScope::Own if !author_deletion_allowed => Err(ForumError::forbidden(
             "Authors cannot delete their own content in this forum",
         )),
-        PermissionScope::All | PermissionScope::Own | PermissionScope::None => Ok(()),
+        PermissionScope::All | PermissionScope::Own => Ok(()),
+        PermissionScope::None => Err(ForumError::forbidden("Permission denied")),
     }
 }
 

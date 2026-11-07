@@ -4,7 +4,7 @@ use crate::model::{
 use rustok_ui_core::css_hex_accent_class;
 use uuid::Uuid;
 
-const FORUM_TOPIC_ROUTE_SHORT_ID_LEN: usize = 12;
+const FORUM_TOPIC_ROUTE_SHORT_ID_LEN: usize = 16;
 const MAX_FORUM_ROUTE_LOCALE_LEN: usize = 64;
 const MAX_FORUM_ROUTE_SLUG_LEN: usize = 255;
 
@@ -284,7 +284,7 @@ mod tests {
                 "Welcome Thread"
             )
             .as_deref(),
-            Some("/en-US/forum/t/123456789abc/welcome-thread")
+            Some("/en-US/forum/t/123456789abc1234/welcome-thread")
         );
     }
 
