@@ -5,7 +5,7 @@ use crate::error::{ForumError, ForumResult};
 
 /// Ideal helper: one place for the 4× `insert_roles/channels/groups/users` copy-paste
 /// across `category_audience*`, `category_moderation_audience`, `topic_audience*`.
-/// Tables are `{prefix}_role|_channel|_group|_user` with `(tenant_id, subject_id)` PK.
+/// Tables are `{prefix}_roles|_channels|_groups|_users` with `(tenant_id, subject_id)` PK.
 /// `subject_column` is `category_id` or `topic_id` depending on scope — passed by caller
 /// so the generic does not need a full EntityTrait bound.
 pub async fn insert_roles_raw(
@@ -94,7 +94,8 @@ pub async fn clear_audience_raw(
     subject_id: Uuid,
     subject_column: &str,
 ) -> ForumResult<()> {
-    for suffix in ["_policy", "_role", "_channel", "_group", "_user"] {
+    // Real tables are pluralised: _policies, _roles, _channels, _groups, _users
+    for suffix in ["_policies", "_roles", "_channels", "_groups", "_users"] {
         let table = format!("{table_prefix}{suffix}");
         let sql = format!("DELETE FROM {table} WHERE tenant_id = $1 AND {subject_column} = $2");
         // Postgres vs SQLite placeholder handled by SeaORM's Statement builder
