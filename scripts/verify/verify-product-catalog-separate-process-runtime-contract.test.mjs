@@ -87,6 +87,7 @@ function contract(options = {}) {
     RUSTOK_PRODUCT_CATALOG_PROVIDER: "grpc",
     RUSTOK_ENV: "development",
     RUSTOK_LOG_FORMAT: "json",
+    RUST_LOG: "warn,rustok_product_catalog_service=info,rustok_server=info",
     OTEL_ENABLED: "false",
   };
   return {
@@ -111,7 +112,7 @@ function contract(options = {}) {
         "Product catalog gRPC service listening",
       ],
       probe: [
-        "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=3 product_projection=matched variant_projection=matched published_list=nonempty",
+        "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=5 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched",
       ],
       consumer: [
         "Product catalog deployment provider initialized",
@@ -166,11 +167,13 @@ const probeMarkers = [
   ".read_product_projection(",
   ".read_variant_product_projection(",
   ".list_published_products(",
+  ".read_variant_identities(",
+  ".list_product_variant_identities(",
   "product.id != config.product_id",
   "product.tenant_id != config.tenant_id",
   "variant.id == config.variant_id",
   "published.total == 0",
-  "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=3",
+  contract().readiness_markers.probe[0],
 ];
 const providerMarkers = [
   "verify_required_schema(&database).await?",
@@ -228,7 +231,7 @@ function fixture(options = {}) {
     }),
   );
   write(root, planPath, (options.missingPlan ? planMarkers.slice(1) : planMarkers).join("\n"));
-  if (options.forbiddenEvidence) {
+  if (options.forbiddenEvidence || options.incompleteProbeEvidence) {
     write(
       root,
       evidencePath,
@@ -240,7 +243,11 @@ function fixture(options = {}) {
         generated_from: contractPath,
         runner: runnerPath,
         verifier: verifierPath,
-        tenant_id: "forbidden",
+        ...(options.forbiddenEvidence ? { tenant_id: "forbidden" } : {}),
+        authenticated_probe: {
+          operation_count: options.incompleteProbeEvidence ? 3 : 5,
+          readiness_markers: contract().readiness_markers.probe,
+        },
         remaining_gates: remainingGates,
         promotion: {
           product_status: "boundary_ready",
@@ -311,4 +318,8 @@ test("guard rejects missing implementation-plan handoff", () => {
 
 test("guard rejects forbidden retained fixture identifiers", () => {
   reject({ forbiddenEvidence: true }, /forbidden field: tenant_id/);
+});
+
+test("guard rejects retained evidence that omits SKU identity operations", () => {
+  reject({ incompleteProbeEvidence: true }, /must include all five owner RPCs/);
 });

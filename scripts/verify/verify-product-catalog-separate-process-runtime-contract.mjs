@@ -22,6 +22,8 @@ const registryPath = "crates/modules/rustok-product/contracts/product-fba-regist
 const planPath = "crates/modules/rustok-product/docs/implementation-plan.md";
 const providerPath = "crates/modules/rustok-product-catalog-service/src/main.rs";
 const consumerDeploymentPath = "apps/server/src/services/product_catalog_deployment.rs";
+const expectedProbeMarker =
+  "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=5 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched";
 const expectedCommands = {
   provider: {
     program: "cargo",
@@ -141,13 +143,17 @@ function verifyContract() {
     fail("Product separate-process fail-closed environment drift");
   }
   if (
+    contract.forced_environment?.RUST_LOG !==
+    "warn,rustok_product_catalog_service=info,rustok_server=info"
+  ) {
+    fail("Product separate-process readiness logging drift");
+  }
+  if (
     !sameValue(contract.readiness_markers?.provider, [
       "Product catalog database schema preflight passed",
       "Product catalog gRPC service listening",
     ]) ||
-    !sameValue(contract.readiness_markers?.probe, [
-      "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=3 product_projection=matched variant_projection=matched published_list=nonempty",
-    ]) ||
+    !sameValue(contract.readiness_markers?.probe, [expectedProbeMarker]) ||
     !sameValue(contract.readiness_markers?.consumer, [
       "Product catalog deployment provider initialized",
       "RusTok Axum host listening",
@@ -226,11 +232,13 @@ function verifyProbe() {
     ".read_product_projection(",
     ".read_variant_product_projection(",
     ".list_published_products(",
+    ".read_variant_identities(",
+    ".list_product_variant_identities(",
     "product.id != config.product_id",
     "product.tenant_id != config.tenant_id",
     "variant.id == config.variant_id",
     "published.total == 0",
-    "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=3",
+    expectedProbeMarker,
   ]) {
     requireText("Product authenticated runtime probe", source, marker);
   }
@@ -325,6 +333,12 @@ function verifyRetainedEvidenceIfPresent() {
   }
   if (!sameValue(evidence.remaining_gates, expectedRemainingGates)) {
     fail("retained Product separate-process remaining gates drift");
+  }
+  if (
+    evidence.authenticated_probe?.operation_count !== 5 ||
+    !sameValue(evidence.authenticated_probe?.readiness_markers, [expectedProbeMarker])
+  ) {
+    fail("retained Product separate-process evidence must include all five owner RPCs");
   }
   const serialized = JSON.stringify(evidence);
   for (const forbiddenField of [

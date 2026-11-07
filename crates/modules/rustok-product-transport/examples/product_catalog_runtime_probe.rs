@@ -2,8 +2,9 @@ use std::{env, error::Error, io, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortError};
 use rustok_product::{
-    ProductCatalogReadPort, ProductProjectionRequest, PublishedProductsRequest,
-    VariantProductProjectionRequest,
+    ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentitiesRequest,
+    ProductVariantIdentityListRequest, ProductVariantIdentityReadPort,
+    ProductVariantIdentitySnapshot, PublishedProductsRequest, VariantProductProjectionRequest,
 };
 use rustok_product_transport::{
     GrpcProductCatalogReadConnectionConfig, ProductCatalogGrpcBearerToken,
@@ -130,7 +131,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let published = provider
         .list_published_products(
-            context,
+            context.clone(),
             PublishedProductsRequest {
                 locale: Some(config.locale),
                 fallback_locale: config.fallback_locale,
@@ -145,8 +146,44 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Err(invalid("published product list evidence fixture is empty or invalid").into());
     }
 
+    let expected_identity = ProductVariantIdentitySnapshot {
+        tenant_id: config.tenant_id,
+        product_id: config.product_id,
+        variant_id: config.variant_id,
+    };
+    let identities = provider
+        .read_variant_identities(
+            context.clone(),
+            ProductVariantIdentitiesRequest {
+                product_id: Some(config.product_id),
+                variant_ids: vec![config.variant_id],
+            },
+        )
+        .await
+        .map_err(|error| port_error("read_variant_identities", error))?;
+    if identities.as_slice() != std::slice::from_ref(&expected_identity) {
+        return Err(invalid("SKU identity lookup did not match the fixture").into());
+    }
+
+    let product_identities = provider
+        .list_product_variant_identities(
+            context,
+            ProductVariantIdentityListRequest {
+                product_ids: vec![config.product_id],
+            },
+        )
+        .await
+        .map_err(|error| port_error("list_product_variant_identities", error))?;
+    if !product_identities.contains(&expected_identity)
+        || product_identities.iter().any(|identity| {
+            identity.tenant_id != config.tenant_id || identity.product_id != config.product_id
+        })
+    {
+        return Err(invalid("Product SKU identity list did not match the fixture scope").into());
+    }
+
     println!(
-        "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=3 product_projection=matched variant_projection=matched published_list=nonempty"
+        "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=5 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched"
     );
     Ok(())
 }

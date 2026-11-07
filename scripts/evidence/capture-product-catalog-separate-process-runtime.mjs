@@ -66,6 +66,7 @@ const expectedForcedEnvironment = {
   RUSTOK_PRODUCT_CATALOG_PROVIDER: "grpc",
   RUSTOK_ENV: "development",
   RUSTOK_LOG_FORMAT: "json",
+  RUST_LOG: "warn,rustok_product_catalog_service=info,rustok_server=info",
   OTEL_ENABLED: "false",
 };
 const expectedMarkers = {
@@ -74,7 +75,7 @@ const expectedMarkers = {
     "Product catalog gRPC service listening",
   ],
   probe: [
-    "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=3 product_projection=matched variant_projection=matched published_list=nonempty",
+    "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=5 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched",
   ],
   consumer: [
     "Product catalog deployment provider initialized",
@@ -532,6 +533,7 @@ try {
     RUSTOK_PRODUCT_CATALOG_SERVICE_BIND: `${binding.host}:${binding.port}`,
     RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK: "true",
     RUSTOK_LOG_FORMAT: "json",
+    RUST_LOG: contract.forced_environment.RUST_LOG,
     RUSTOK_METRICS: "false",
     OTEL_ENABLED: "false",
   });
@@ -574,6 +576,7 @@ try {
     RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK: "true",
     RUSTOK_ENV: "development",
     RUSTOK_LOG_FORMAT: "json",
+    RUST_LOG: contract.forced_environment.RUST_LOG,
     RUSTOK_METRICS: "false",
     OTEL_ENABLED: "false",
   });
@@ -646,7 +649,7 @@ try {
     authenticated_probe: {
       result: "passed",
       readiness_markers: contract.readiness_markers.probe,
-      operation_count: 3,
+      operation_count: 5,
       output_sha256: probeOutputMetadata.sha256,
       output_bytes: probeOutputMetadata.bytes,
     },

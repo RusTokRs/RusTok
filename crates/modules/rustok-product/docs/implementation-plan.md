@@ -351,7 +351,7 @@ separate-process Commerce and AI execution.
 
 The separate-process runtime capture contract is source-complete. The locked
 local-loopback runner starts `rustok-product-catalog-service`, waits for schema
-preflight and listener readiness, invokes the three base projection RPCs through
+preflight and listener readiness, invokes all five catalog and SKU identity RPCs through
 the authenticated transport example, starts `rustok-server` with the external
 Product profile, and waits for remote-provider and HTTP host readiness before
 bounded shutdown. Commands and readiness markers are allowlisted; arbitrary shell
@@ -547,10 +547,19 @@ and nonretryable errors for an unsupported RPC. These tests use a test owner for
 and cover host configuration separately. The older maintainer attestation does not cover
 the identity RPCs.
 
-The separate-process capture still needs migrated data and credentials. Its current probe
-checks the three base projection RPCs and consumer startup. Run mounted Commerce and AI
-business requests separately, including a Pricing SKU identity read against the deployed
-Product owner. Consumers that need further capabilities require explicit coverage.
+On 2026-11-07, the standalone provider from the same runtime revision passed a
+separate local smoke check with PostgreSQL 16. The test applied platform migrations
+to an isolated database and seeded an active Product and one SKU. The provider
+passed schema preflight and the updated authenticated probe verified all five
+RPCs, including the exact tenant, Product and variant identifiers in both SKU
+reads. A probe with a different bearer token was rejected. This run covered the
+standalone provider and the probe. The combined capture and mounted checkout
+remain open.
+
+The separate-process capture checks all five owner RPCs and consumer startup with migrated
+data and credentials. Run mounted Commerce and AI business requests separately, including
+a Pricing SKU identity read against the deployed Product owner. Consumers that need further
+capabilities require explicit coverage.
 
 ## Open results
 

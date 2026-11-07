@@ -69,7 +69,7 @@ node scripts/verify/verify-product-catalog-grpc-authentication.mjs
 node scripts/verify/verify-product-catalog-grpc-authentication.test.mjs
 ```
 
-`examples/product_catalog_runtime_probe.rs` is the allowlisted authenticated client used by the separate-process runtime capture. It reads operator-provided tenant, product, and variant fixture identifiers from environment variables, invokes the three base catalog RPCs, validates returned projections, and emits one bounded success marker without printing identifiers or credentials. It does not connect to Product persistence or construct `CatalogService`.
+`examples/product_catalog_runtime_probe.rs` is the allowlisted authenticated client used by the separate-process runtime capture. It reads operator-provided tenant, product, and variant fixture identifiers from environment variables, invokes all five RPCs, checks returned projections and SKU identities, and emits one bounded success marker without printing identifiers or credentials.
 
 The source contract and mutation guard are checked with:
 
@@ -84,7 +84,7 @@ The operator-only capture command is:
 node scripts/evidence/capture-product-catalog-separate-process-runtime.mjs
 ```
 
-The capture starts the standalone provider and `rustok-server` as separate processes under an explicit local-loopback profile, runs the authenticated probe, and retains only source hashes, readiness markers, output hashes, byte counts, toolchain versions, and command metadata. Raw database URLs, bearer credentials, fixture identifiers, and process output are not persisted. The existing capture scope is the three base catalog RPCs and consumer startup. SKU identity RPCs and mounted Commerce or AI business requests require separate evidence.
+The capture starts the standalone provider and `rustok-server` as separate processes under an explicit local-loopback profile, runs the authenticated probe, and retains only source hashes, readiness markers, output hashes, byte counts, toolchain versions, and command metadata. Raw database URLs, bearer credentials, fixture identifiers, and process output are not persisted. The capture covers all five owner RPCs and consumer startup. Mounted Commerce and AI business requests require separate evidence.
 
 The implementation agent does not claim the runtime capture command was executed. Product remains `boundary_ready` until retained provider/consumer runtime evidence and separate-process Commerce/AI business-request evidence exist.
 

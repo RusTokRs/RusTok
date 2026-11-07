@@ -65,6 +65,7 @@
     "RUSTOK_PRODUCT_CATALOG_PROVIDER": "grpc",
     "RUSTOK_ENV": "development",
     "RUSTOK_LOG_FORMAT": "json",
+    "RUST_LOG": "warn,rustok_product_catalog_service=info,rustok_server=info",
     "OTEL_ENABLED": "false"
   },
   "readiness_markers": {
@@ -73,7 +74,7 @@
       "Product catalog gRPC service listening"
     ],
     "probe": [
-      "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=3 product_projection=matched variant_projection=matched published_list=nonempty"
+      "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=5 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched"
     ],
     "consumer": [
       "Product catalog deployment provider initialized",
