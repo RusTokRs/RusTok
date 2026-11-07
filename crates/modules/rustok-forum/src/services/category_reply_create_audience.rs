@@ -25,6 +25,7 @@ use crate::entities::{
 use crate::error::{ForumError, ForumResult};
 use crate::services::category_audience::{load_category_ancestor_ids, lock_category_tree_in_tx};
 use crate::services::rbac::enforce_scope;
+use crate::services::audience_policy::{AudienceLayer, AudiencePolicy, CategoryReplyCreateScope};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ForumCategoryReplyCreateAudiencePolicyLayer {
@@ -210,25 +211,47 @@ pub(crate) async fn load_category_reply_create_audience_policy<C>(
 where
     C: ConnectionTrait,
 {
+    let generic = load_category_reply_create_audience_policy_generic(db, tenant_id, category_id).await?;
+    Ok(ForumCategoryReplyCreateAudiencePolicy {
+        category_id: generic.subject_id,
+        configured_constraints: generic.configured_constraints,
+        effective_layers: generic
+            .effective_layers
+            .into_iter()
+            .map(|l| ForumCategoryReplyCreateAudiencePolicyLayer {
+                category_id: l.subject_id,
+                constraints: l.constraints,
+            })
+            .collect(),
+    })
+}
+
+/// Ideal generic store: single `AudiencePolicy<Scope>` replaces 4× copy-paste `ForumCategoryReplyCreateAudiencePolicy`.
+pub(crate) async fn load_category_reply_create_audience_policy_generic<C>(
+    db: &C,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> ForumResult<AudiencePolicy<CategoryReplyCreateScope>>
+where
+    C: ConnectionTrait,
+{
     let ancestor_ids = load_category_ancestor_ids(db, tenant_id, category_id).await?;
     let layers = load_local_layers(db, tenant_id, &ancestor_ids).await?;
     let configured_constraints = layers.get(&category_id).cloned();
     let effective_layers = ancestor_ids
         .into_iter()
         .filter_map(|ancestor_id| {
-            layers.get(&ancestor_id).cloned().map(|constraints| {
-                ForumCategoryReplyCreateAudiencePolicyLayer {
-                    category_id: ancestor_id,
-                    constraints,
-                }
-            })
+            layers
+                .get(&ancestor_id)
+                .cloned()
+                .map(|constraints| AudienceLayer::new(ancestor_id, constraints))
         })
         .collect();
-
-    Ok(ForumCategoryReplyCreateAudiencePolicy {
-        category_id,
+    Ok(AudiencePolicy {
+        subject_id: category_id,
         configured_constraints,
         effective_layers,
+        _marker: std::marker::PhantomData,
     })
 }
 
