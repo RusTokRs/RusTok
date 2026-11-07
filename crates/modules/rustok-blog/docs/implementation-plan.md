@@ -158,6 +158,11 @@ errors outside Blog. The Leptos package passed `cargo check -p rustok-blog-admin
 UI catalog parity passed across 77 catalog directories. The shared i18n contract
 guard still reports a missing OAuth translation marker in Channel.
 
+`cargo test -p rustok-blog-admin --features ssr --lib --locked --offline`
+passed all 67 tests with the recovery code in `0df04cea51`. The native HTTP
+fixture reads the authenticated scope, rejects a changed actor or tenant before
+inserting a post, and exercises exact acknowledgement and rejection replay.
+
 The mounted evidence gate still requires both entrypoints with a lost response
 before and after commit, reload while unconfirmed, durable rejection followed
 by correction, and a confirmed acknowledgement followed by failed detail reload.
