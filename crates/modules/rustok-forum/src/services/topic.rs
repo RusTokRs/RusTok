@@ -746,6 +746,58 @@ impl TopicService {
         Ok(tags)
     }
 
+    pub(crate) async fn load_topic_tags_for_topics(
+        &self,
+        tenant_id: Uuid,
+        topic_ids: &[Uuid],
+        locale: &str,
+        fallback_locale: Option<&str>,
+    ) -> ForumResult<std::collections::HashMap<Uuid, Vec<String>>> {
+        use std::collections::{HashMap, HashSet};
+        if topic_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        // Single query for all topic_ids -> term_ids
+        let rows = forum_topic_tag::Entity::find()
+            .filter(forum_topic_tag::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic_tag::Column::TopicId.is_in(topic_ids.to_vec()))
+            .order_by_asc(forum_topic_tag::Column::TopicId)
+            .order_by_asc(forum_topic_tag::Column::CreatedAt)
+            .all(&self.db)
+            .await?;
+        if rows.is_empty() {
+            return Ok(topic_ids.iter().map(|id| (*id, Vec::new())).collect());
+        }
+        let mut topic_to_terms: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+        let mut all_term_ids = HashSet::new();
+        for row in rows {
+            topic_to_terms
+                .entry(row.topic_id)
+                .or_default()
+                .push(row.term_id);
+            all_term_ids.insert(row.term_id);
+        }
+        let all_term_ids: Vec<Uuid> = all_term_ids.into_iter().collect();
+        let resolved_names = TaxonomyService::new(self.db.clone())
+            .resolve_term_names(tenant_id, &all_term_ids, locale, fallback_locale)
+            .await?;
+        let mut result: HashMap<Uuid, Vec<String>> = HashMap::new();
+        for topic_id in topic_ids {
+            if let Some(term_ids) = topic_to_terms.get(topic_id) {
+                let mut tags = term_ids
+                    .iter()
+                    .filter_map(|term_id| resolved_names.get(term_id).cloned())
+                    .collect::<Vec<_>>();
+                tags.sort();
+                tags.dedup();
+                result.insert(*topic_id, tags);
+            } else {
+                result.insert(*topic_id, Vec::new());
+            }
+        }
+        Ok(result)
+    }
+
     async fn is_topic_deleted(&self, tenant_id: Uuid, topic_id: Uuid) -> ForumResult<bool> {
         let statement = match self.db.get_database_backend() {
             DatabaseBackend::Postgres => Statement::from_sql_and_values(
