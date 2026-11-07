@@ -19,6 +19,7 @@ mod category_topic_create_audience;
 mod category_visibility;
 mod content_limits;
 mod counter_reconciliation;
+mod merge_reconciliation_executor;
 mod reconciliation_executor;
 mod edit_window;
 mod engagement_mode;
