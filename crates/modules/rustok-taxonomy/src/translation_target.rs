@@ -53,6 +53,43 @@ const REQUIRED_FIELD_COUNT: u64 = 2;
 const OPTIONAL_FIELD_COUNT: u64 = 1;
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+
 #[async_trait]
 pub trait TaxonomyModuleTermTranslationOwner: Send + Sync {
     fn module_slug(&self) -> &str;
@@ -787,7 +824,7 @@ fn summary_from_models(
         .filter_map(|translation| TenantLocale::new(&translation.locale).ok())
         .collect::<Vec<_>>();
     Ok(TranslationResourceSummary {
-        identity: taxonomy_identity(term.id),
+        identity: taxonomy_identity(term.id)?,
         display_label: source.name.clone(),
         lifecycle: TranslationResourceLifecycle::Active,
         resource_revision: opaque_positive_revision(term.revision, "resource_revision")?,
@@ -833,16 +870,13 @@ fn snapshot_from_models(
     Ok(snapshot)
 }
 
-fn taxonomy_identity(term_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static owner slug must satisfy the target contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static resource kind must satisfy the target contract"),
-        resource_id: ResourceId::new(term_id.to_string())
-            .expect("taxonomy UUID must satisfy the resource id contract"),
+fn taxonomy_identity(term_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
+        resource_kind: resource_kind_or_invariant()?,
+        resource_id: resource_id_or_invariant(term_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn translation_fields(
@@ -932,7 +966,7 @@ fn merged_target(
 fn change_from_model(change: ChangeModel) -> Result<TranslationTargetChange, PortError> {
     let lifecycle = parse_resource_lifecycle(&change.lifecycle)?;
     Ok(TranslationTargetChange {
-        identity: taxonomy_identity(change.term_id),
+        identity: taxonomy_identity(change.term_id)?,
         resource_revision: opaque_positive_revision(change.resource_revision, "resource_revision")?,
         lifecycle,
     })
