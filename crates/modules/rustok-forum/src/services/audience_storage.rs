@@ -29,6 +29,64 @@ pub async fn insert_roles_raw(
     )).await.map(|_| ()).map_err(ForumError::from)
 }
 
+pub async fn insert_channels_raw(
+    txn: &DatabaseTransaction,
+    table: &str,
+    tenant_id: Uuid,
+    subject_id: Uuid,
+    subject_column: &str,
+    channels: &[String],
+) -> ForumResult<()> {
+    if channels.is_empty() { return Ok(()); }
+    let mut sql = format!("INSERT INTO {table} (tenant_id, {subject_column}, channel_slug) VALUES ");
+    let mut vals: Vec<sea_orm::Value> = Vec::new();
+    for (i, ch) in channels.iter().enumerate() {
+        if i > 0 { sql.push_str(", "); }
+        sql.push_str(&format!("(${}, ${}, ${})", vals.len()+1, vals.len()+2, vals.len()+3));
+        vals.push(tenant_id.into()); vals.push(subject_id.into()); vals.push(ch.clone().into());
+    }
+    txn.execute(Statement::from_sql_and_values(txn.get_database_backend(), sql, vals)).await.map(|_| ()).map_err(ForumError::from)
+}
+
+pub async fn insert_groups_raw(
+    txn: &DatabaseTransaction,
+    table: &str,
+    tenant_id: Uuid,
+    subject_id: Uuid,
+    subject_column: &str,
+    groups: &[Uuid],
+) -> ForumResult<()> {
+    if groups.is_empty() { return Ok(()); }
+    let mut sql = format!("INSERT INTO {table} (tenant_id, {subject_column}, group_id) VALUES ");
+    let mut vals: Vec<sea_orm::Value> = Vec::new();
+    for (i, g) in groups.iter().enumerate() {
+        if i > 0 { sql.push_str(", "); }
+        sql.push_str(&format!("(${}, ${}, ${})", vals.len()+1, vals.len()+2, vals.len()+3));
+        vals.push(tenant_id.into()); vals.push(subject_id.into()); vals.push((*g).into());
+    }
+    txn.execute(Statement::from_sql_and_values(txn.get_database_backend(), sql, vals)).await.map(|_| ()).map_err(ForumError::from)
+}
+
+pub async fn insert_users_raw(
+    txn: &DatabaseTransaction,
+    table: &str,
+    tenant_id: Uuid,
+    subject_id: Uuid,
+    subject_column: &str,
+    user_ids: &[Uuid],
+    effect: &str,
+) -> ForumResult<()> {
+    if user_ids.is_empty() { return Ok(()); }
+    let mut sql = format!("INSERT INTO {table} (tenant_id, {subject_column}, user_id, effect) VALUES ");
+    let mut vals: Vec<sea_orm::Value> = Vec::new();
+    for (i, uid) in user_ids.iter().enumerate() {
+        if i > 0 { sql.push_str(", "); }
+        sql.push_str(&format!("(${}, ${}, ${}, ${})", vals.len()+1, vals.len()+2, vals.len()+3, vals.len()+4));
+        vals.push(tenant_id.into()); vals.push(subject_id.into()); vals.push((*uid).into()); vals.push(effect.to_string().into());
+    }
+    txn.execute(Statement::from_sql_and_values(txn.get_database_backend(), sql, vals)).await.map(|_| ()).map_err(ForumError::from)
+}
+
 pub async fn clear_audience_raw(
     txn: &DatabaseTransaction,
     table_prefix: &str,
