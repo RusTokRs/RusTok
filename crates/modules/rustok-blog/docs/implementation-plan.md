@@ -45,11 +45,11 @@ certification wording below where it implies executed or complete readiness.
 | Priority | Boundary and current evidence | Required result before complete reference acceptance |
 | --- | --- | --- |
 | P1 | Blog-owned catalog/validation/preview services, REST/GraphQL/native adapters and host preview/property bindings are implemented in source; mounted editor behavior remains unexecuted | Execute catalog, property validation and preview through the real editor. Manifest/registry adapter tests alone cannot satisfy this gate. |
-| P1 | Both editors construct typed partial updates from the loaded locale/revision snapshot; acknowledgement and independent reload have distinct state, and superseded requests cannot replace a newer session | Retain executed core and native HTTP acknowledgement evidence, then exercise fallback, stale-write, navigation and reload-failure behavior in both mounted clients. |
-| P1 | Post creation requires stable command identity; owner library and three PostgreSQL creation scenarios pass; both editors retain replay semantics in source | Retain transport/native evidence. Pending editor state remains memory-only: reload/process recovery and mounted response-loss behavior still require evidence. Confirmed-acknowledgement locking alone cannot satisfy this gate. |
+| P1 | Both editors construct typed partial updates from the loaded locale/revision snapshot; core and native HTTP acknowledgement tests pass, including a write-only actor whose independent read is denied | Exercise fallback, stale-write, navigation and reload-failure behavior in both mounted clients. |
+| P1 | Post creation requires stable command identity; owner, PostgreSQL, REST, GraphQL and native SSR scenarios pass | Persist and recover pending commands in both editors. Verify reload/process recovery and response loss through both mounted clients. |
 | P2 | Blog controls, form/grid composition and core policies have been refactored; shared grid messages include en/ru/fr and exact reaction counts remain decimal strings | Retain scoped Rust checks and third-locale/parameter/plural scenarios, then verify actual localized and accessible controls in both mounted clients. |
 | P2 | Both storefronts now compose reaction/comment surfaces; category-load failures are explicit, with the current category retained | Verify critical interactions through both actual client entrypoints, including uncertain reaction writes, read-only cached comments and reply identity across article/locale changes. |
-| P2 | Next owner behavior/API tests and SSR/native HTTP scenarios are present; default builds still omit production feature combinations | Retain scoped production-feature, native/GraphQL/REST, browser, accessibility and client-parity evidence from the actual entrypoints. |
+| P2 | Next behavior/API tests and selected SSR/native HTTP scenarios pass; default builds still omit production feature combinations | Verify remaining production features, browser accessibility and client parity through the actual entrypoints. |
 
 The database prerequisite, explicit-execution and PostgreSQL contention gates
 were closed by the configured scenarios recorded below. They remain regression
@@ -92,25 +92,20 @@ cover accepted owner statuses and malformed outcomes.
 
 The owner and transport regressions cover response-loss replay, changed-input
 conflict, tenant/author isolation, current permission denial, replay after
-post deletion, durable rejection and injected outbox rollback/retry. The corrected
-backend library run passed 191 tests with zero failures and one ignored,
-separately configured PostgreSQL test. The nil-tenant diagnostic is preserved;
-the nil-category assertion checks the durable public rejection, and nil commands
-write no receipt, row or event. All 24 semantic guard fixtures and all 17 Next
-Blog model/API tests passed. Blog lint passes with the
-cached ESLint 9. The installed ESLint 10 fails in its parser integration. Overall
-Next admin type checking reports three existing Pricing errors.
+post deletion, durable rejection and injected outbox rollback/retry. The nil-tenant
+diagnostic is preserved; the nil-category assertion checks the durable public
+rejection, and nil commands write no receipt, row or event. All 24 semantic guard
+fixtures passed. Blog lint passes with the cached ESLint 9. The installed ESLint 10
+fails in its parser integration. Overall Next admin type checking reports three
+existing Pricing errors.
 
 The SSR verification exposed incompatible upstream macro dependencies:
 `server_fn_macro 0.8.12` and `leptos_hot_reload 0.8.7` expose Syn 3 AST types
 to callers still using Syn 2. The shared catalog retains Leptos `=0.8.21`,
 and the lockfile selects `leptos_macro 0.8.18`, `server_fn_macro 0.8.11` and
-`leptos_hot_reload 0.8.6`. The resumed compilation passed both former failure
-locations. The combined scoped run was then interrupted before tests by disk
-pressure; successful dependency compilation does not establish test execution.
-The temporary `target/blog-reference-verification` copy was removed after explicit
-user approval; selected package tests resumed using the primary Cargo target.
-No workspace-wide suite or server compilation is needed for this slice.
+`leptos_hot_reload 0.8.6`. The initial isolated build stopped under disk
+pressure. The selected package builds succeeded using the primary Cargo target
+after removal of the temporary copy.
 
 Executed creation evidence on the corrected owner code:
 
@@ -129,9 +124,24 @@ Executed creation evidence on the corrected owner code:
 - GraphQL contract verification checked 66 schema types against seven client
   documents. Admin and richtext boundary guards passed.
 
+On 2026-11-07, with local `main` at `1c334bc6c03cb1cde867f9cb4d23564a645cea3d`,
+the binaries from the scoped builds were executed directly to reuse the existing
+artifacts. Blog source was unchanged after the verified receipt fix in `9ca4f31c3a`.
+
+- `rustok-blog-admin` library with `ssr`: 67 passed, zero failed or ignored.
+  Real native HTTP dispatch confirms replay of the original creation acknowledgement,
+  replay of a durable rejection, and a separate read denial after a successful write.
+- `rustok-blog` integration targets `post_creation`,
+  `graphql_create_post_input_conversion_test`, `widgets`, `integration`,
+  `taxonomy_tags` and `post_category_name_projection`: 39 passed, zero failed,
+  two ignored opt-in PostgreSQL scenarios. This includes SQLite REST and GraphQL
+  creation with actual prerequisite and Blog migrations.
+- `cargo clippy -p rustok-blog --all-targets --locked --offline -- -D warnings`
+  passed for the package and its test targets.
+
 Pending requests remain memory-only. Mounted response loss, browser reload and
-process recovery are still required
-before this gate can be called complete. The owner contract is in
+process recovery are still required before this gate can be called complete.
+The owner contract is in
 [CRATE_API.md](../CRATE_API.md#replayable-post-creation).
 
 The next client acceptance slice is sequenced as follows:
