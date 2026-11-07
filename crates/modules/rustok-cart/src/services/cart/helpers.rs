@@ -678,10 +678,15 @@ pub async fn load_tenant_default_locale<C>(conn: &C, tenant_id: Uuid) -> CartRes
 where
     C: ConnectionTrait,
 {
+    let backend = conn.get_database_backend();
+    let query = match backend {
+        DatabaseBackend::Postgres => "SELECT default_locale FROM tenants WHERE id = $1",
+        _ => "SELECT default_locale FROM tenants WHERE id = ?",
+    };
     let row = conn
         .query_one_raw(Statement::from_sql_and_values(
-            conn.get_database_backend(),
-            "SELECT default_locale FROM tenants WHERE id = ?",
+            backend,
+            query,
             vec![tenant_id.into()],
         ))
         .await?;
