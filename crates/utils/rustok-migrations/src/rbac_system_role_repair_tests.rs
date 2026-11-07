@@ -22,7 +22,7 @@ impl MigratorTrait for RbacSystemRoleTestMigrator {
         let mut migrations: Vec<Box<dyn MigrationTrait>> = vec![
             Box::new(super::m20250101_000001_create_tenants::Migration),
             Box::new(super::m20250101_000002_create_users::Migration),
-            Box::new(super::m20250101_000005_create_roles_and_permissions::Migration),
+            Box::new(crate::identity::m20250101_000005_create_roles_and_permissions::Migration),
         ];
         migrations.extend(MigrationSource::migrations(&rustok_rbac::RbacModule));
         migrations.sort_by_key(|migration| migration.name().to_string());

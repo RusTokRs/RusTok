@@ -814,7 +814,7 @@ mod composition {
             let sources = super::module_migration_sources();
             for slug in ["product_relations", "product_bundles"] {
                 assert!(
-                    sources.iter().any(|source| source.slug == slug),
+                    sources.iter().any(|source| source.slug() == slug),
                     "server migrator must collect migration dependencies for {slug}"
                 );
             }

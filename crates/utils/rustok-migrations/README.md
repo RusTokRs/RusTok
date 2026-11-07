@@ -153,17 +153,16 @@ inventory implementation and its regression source, alongside the exporter.
 
 The neutral library check (`cargo test --locked --offline -p rustok-migrations
 --no-default-features --lib`) passed 24 tests, including all eight inventory
-regressions; the isolated PostgreSQL observer test remained ignored. The composed
-inventory regression and pre/post migration-name comparison are still pending.
-Static checks and source review do not substitute for those composed checks.
+regressions. The isolated PostgreSQL observer test remained ignored.
 
-The composed command `cargo test --locked --offline -p rustok-migrations --lib
-inventory` was attempted after the inventory/build-report changes. Compilation
-stopped in `rustok-ai` with 47 Rig 0.46 adapter errors, including unresolved
-provider `Client` types, client traits, `Nothing` and `DEFAULT_AWS_REGION` in
-its engine modules. The inventory tests did not execute in that run, and no
-post-change composed exporter was produced for the name comparison. Restoring
-the AI SDK adapter contract is required before those checks can be completed.
+After the Rig 0.46 adapter update, the default composition passed 11
+inventory-related tests and four targeted owner coverage and RBAC repair tests.
+The saved pre-cutover export and the new `export-migration-plan` output match
+all 581 names in exact execution order. The new entries cover 38 platform
+migrations and 543 migrations from 43 modules. The exporter was built with
+`rustok-outbox/test-transport-fallback` to reuse the test build's feature graph.
+This verifies inventory identity and order. PostgreSQL equivalence and release
+admission require their own evidence.
 
 The default `composition` feature preserves the complete existing `Migrator`,
 installer entrypoints and exports. Build the independent observer without that
