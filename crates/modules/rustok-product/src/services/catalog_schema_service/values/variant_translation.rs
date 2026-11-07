@@ -750,9 +750,7 @@ impl TranslationTargetProvider for ProductVariantAttributeValueTranslationTarget
         TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Product owner slug must satisfy Translation contract"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
-                "static Product Variant Attribute Value resource kind must satisfy Translation contract",
-            ),
+            resource_kind: resource_kind_or_invariant()?,
             display_name: "Product Variant localized attribute values".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
@@ -1517,12 +1515,8 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
 fn variant_attribute_value_identity(value_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
     Ok(TranslationResourceIdentity {
         owner_slug: owner_slug_or_invariant()?,
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
-            "static Product Variant Attribute Value resource kind must satisfy Translation contract",
-        ),
-        resource_id: ResourceId::new(value_id.to_string()).expect(
-            "Product Variant attribute-value UUID must satisfy Translation resource id contract",
-        ),
+        resource_kind: resource_kind_or_invariant()?,
+        resource_id: resource_id_or_invariant(value_id.to_string())?,
         subresource_id: None,
     })
 }
