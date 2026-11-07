@@ -56,6 +56,43 @@ const ITEM_TITLE_FIELD_PREFIX: &str = "item:";
 const ITEM_TITLE_FIELD_SUFFIX: &str = ":title";
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+
 #[derive(Clone)]
 /// Owner adapter for exact Navigation menu localization. It keeps a menu name
 /// and every item title in one atomic locale aggregate and calls the canonical
@@ -701,7 +738,7 @@ fn summary_from_aggregate(
         )
     })?;
     Ok(TranslationResourceSummary {
-        identity: menu_identity(aggregate.menu.id),
+        identity: menu_identity(aggregate.menu.id)?,
         display_label: source.menu_translation.name.clone(),
         lifecycle: TranslationResourceLifecycle::Active,
         resource_revision: opaque_positive_revision(aggregate.menu.revision, "resource_revision")?,
@@ -836,19 +873,16 @@ fn exact_locales(aggregate: &MenuAggregate) -> Result<Vec<TenantLocale>, PortErr
         .collect()
 }
 
-fn menu_identity(menu_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
+fn menu_identity(menu_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
         // INVARIANT: static owner slug "navigation" is a valid non-empty ASCII identifier.
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Navigation owner slug must satisfy the target contract"),
+        owner_slug: owner_slug_or_invariant()?,
         // INVARIANT: static resource kind "menu" is a valid non-empty ASCII identifier.
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Navigation resource kind must satisfy the target contract"),
+        resource_kind: resource_kind_or_invariant()?,
         // INVARIANT: UUID string representation is non-empty printable ASCII and satisfies the resource id contract.
-        resource_id: ResourceId::new(menu_id.to_string())
-            .expect("Navigation menu UUID must satisfy the resource id contract"),
+        resource_id: resource_id_or_invariant(menu_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn translation_fields(
@@ -986,7 +1020,7 @@ fn parse_menu_item_title_field_key(key: &str) -> Result<Uuid, PortError> {
 
 fn change_from_model(change: TranslationChangeModel) -> Result<TranslationTargetChange, PortError> {
     Ok(TranslationTargetChange {
-        identity: menu_identity(change.resource_id),
+        identity: menu_identity(change.resource_id)?,
         resource_revision: opaque_positive_revision(change.resource_revision, "resource_revision")?,
         lifecycle: parse_resource_lifecycle(&change.lifecycle)?,
     })

@@ -38,6 +38,43 @@ const OPERATION_APPLY_PATCH: &str = "translation_target_apply_shipping_option_co
 const CHANGE_CURSOR_VERSION: &str = "v1";
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+
 #[derive(Clone)]
 pub struct ShippingOptionTranslationTargetProvider {
     service: Arc<ShippingOptionTranslationService>,
@@ -411,7 +448,7 @@ impl TranslationTargetProvider for ShippingOptionTranslationTargetProvider {
             .into_iter()
             .map(|change| {
                 Ok(TranslationTargetChange {
-                    identity: shipping_option_identity(change.shipping_option_id),
+                    identity: shipping_option_identity(change.shipping_option_id)?,
                     resource_revision: opaque_revision(
                         change.resource_revision,
                         "resource_revision",
@@ -473,23 +510,20 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
     Ok(shipping_option_id)
 }
 
-fn shipping_option_identity(shipping_option_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Fulfillment owner slug must satisfy the target contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Shipping Option Copy resource kind must satisfy the target contract"),
-        resource_id: ResourceId::new(shipping_option_id.to_string())
-            .expect("Shipping Option UUID must satisfy the resource id contract"),
+fn shipping_option_identity(shipping_option_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
+        resource_kind: resource_kind_or_invariant()?,
+        resource_id: resource_id_or_invariant(shipping_option_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn summary_from_owner(
     snapshot: ShippingOptionTranslationExactLocaleSnapshot,
 ) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
-        identity: shipping_option_identity(snapshot.shipping_option_id),
+        identity: shipping_option_identity(snapshot.shipping_option_id)?,
         display_label: snapshot.source.name,
         lifecycle: translation_lifecycle(snapshot.active),
         resource_revision: opaque_revision(snapshot.resource_revision, "resource_revision")?,
@@ -502,7 +536,7 @@ fn snapshot_from_owner(
     request: &ReadTranslationResourceRequest,
 ) -> Result<TranslationResourceSnapshot, PortError> {
     let summary = TranslationResourceSummary {
-        identity: shipping_option_identity(snapshot.shipping_option_id),
+        identity: shipping_option_identity(snapshot.shipping_option_id)?,
         display_label: snapshot.source.name.clone(),
         lifecycle: translation_lifecycle(snapshot.active),
         resource_revision: opaque_revision(snapshot.resource_revision, "resource_revision")?,
@@ -750,7 +784,7 @@ mod tests {
     use rustok_translation_targets::TranslationFieldPatch;
 
     fn test_identity() -> TranslationResourceIdentity {
-        shipping_option_identity(Uuid::new_v4())
+        shipping_option_identity(Uuid::new_v4()).expect("test identity must be valid")
     }
 
     fn test_snapshot() -> TranslationResourceSnapshot {

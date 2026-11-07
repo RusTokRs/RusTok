@@ -37,6 +37,43 @@ const OPERATION_APPLY_PATCH: &str = "translation_target_apply_region_copy_patch"
 const CHANGE_CURSOR_VERSION: &str = "v1";
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+
 #[derive(Clone)]
 pub struct RegionTranslationTargetProvider {
     service: Arc<RegionTranslationService>,
@@ -403,7 +440,7 @@ impl TranslationTargetProvider for RegionTranslationTargetProvider {
             .into_iter()
             .map(|change| {
                 Ok(TranslationTargetChange {
-                    identity: region_identity(change.region_id),
+                    identity: region_identity(change.region_id)?,
                     resource_revision: opaque_revision(
                         change.resource_revision,
                         "resource_revision",
@@ -472,23 +509,20 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
     Ok(region_id)
 }
 
-fn region_identity(region_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Region owner slug must satisfy the target contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Region Copy resource kind must satisfy the target contract"),
-        resource_id: ResourceId::new(region_id.to_string())
-            .expect("Region UUID must satisfy the resource id contract"),
+fn region_identity(region_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
+        resource_kind: resource_kind_or_invariant()?,
+        resource_id: resource_id_or_invariant(region_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn summary_from_owner(
     snapshot: RegionTranslationExactLocaleSnapshot,
 ) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
-        identity: region_identity(snapshot.region_id),
+        identity: region_identity(snapshot.region_id)?,
         display_label: snapshot.source.name,
         lifecycle: TranslationResourceLifecycle::Active,
         resource_revision: opaque_revision(snapshot.resource_revision, "resource_revision")?,
@@ -501,7 +535,7 @@ fn snapshot_from_owner(
     request: &ReadTranslationResourceRequest,
 ) -> Result<TranslationResourceSnapshot, PortError> {
     let summary = TranslationResourceSummary {
-        identity: region_identity(snapshot.region_id),
+        identity: region_identity(snapshot.region_id)?,
         display_label: snapshot.source.name.clone(),
         lifecycle: TranslationResourceLifecycle::Active,
         resource_revision: opaque_revision(snapshot.resource_revision, "resource_revision")?,

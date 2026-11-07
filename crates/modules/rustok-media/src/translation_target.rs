@@ -52,6 +52,43 @@ const OPERATION_APPLY_PATCH: &str = "translation_target_apply_patch";
 const TRANSLATABLE_FIELD_COUNT: u64 = 3;
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+
 #[derive(Clone)]
 /// Owner adapter that exposes Media localized metadata through the neutral
 /// translation-target SPI without granting direct access to Media tables.
@@ -583,7 +620,7 @@ fn change_from_model(change: TranslationChangeModel) -> Result<TranslationTarget
         }
     };
     Ok(TranslationTargetChange {
-        identity: media_identity(change.asset_id),
+        identity: media_identity(change.asset_id)?,
         resource_revision: OpaqueRevision::new(change.resource_revision).map_err(|error| {
             PortError::invariant_violation(
                 "media.translation_change_revision_invalid",
@@ -661,7 +698,7 @@ fn summary_from_models(
         .unwrap_or(asset.original_name.as_str())
         .to_string();
     Ok(TranslationResourceSummary {
-        identity: media_identity(asset.id),
+        identity: media_identity(asset.id)?,
         display_label,
         lifecycle: TranslationResourceLifecycle::Active,
         resource_revision: opaque_resource_revision(asset)?,
@@ -707,16 +744,13 @@ fn snapshot_from_models(
     Ok(snapshot)
 }
 
-fn media_identity(media_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static owner slug must be valid"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static resource kind must be valid"),
-        resource_id: ResourceId::new(media_id.to_string())
-            .expect("media UUID must be a valid resource id"),
+fn media_identity(media_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
+        resource_kind: resource_kind_or_invariant()?,
+        resource_id: resource_id_or_invariant(media_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn opaque_resource_revision(asset: &AssetModel) -> Result<OpaqueRevision, PortError> {

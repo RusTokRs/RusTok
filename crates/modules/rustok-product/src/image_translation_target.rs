@@ -32,6 +32,43 @@ use crate::{
 const TRANSLATION_OWNER_SLUG: &str = "product";
 const TRANSLATION_RESOURCE_KIND: &str = "image";
 const OPERATION_APPLY_PATCH: &str = "translation_target_apply_image_patch";
+
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
 const IMAGE_ALT_TEXT_FIELD: &str = "alt_text";
 
 #[derive(Clone)]
@@ -325,16 +362,13 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
     })
 }
 
-fn image_identity(image_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Product owner slug must satisfy the target contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Product Image resource kind must satisfy the target contract"),
-        resource_id: ResourceId::new(image_id.to_string())
-            .expect("Image UUID must satisfy the target resource id contract"),
+fn image_identity(image_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
+        resource_kind: resource_kind_or_invariant()?,
+        resource_id: resource_id_or_invariant(image_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn display_label(snapshot: &ProductImageTranslationExactLocaleSnapshot) -> String {
@@ -350,7 +384,7 @@ fn summary_from_owner(
     snapshot: ProductImageTranslationExactLocaleSnapshot,
 ) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
-        identity: image_identity(snapshot.image_id),
+        identity: image_identity(snapshot.image_id)?,
         display_label: display_label(&snapshot),
         lifecycle: product_lifecycle(&snapshot.product_status),
         resource_revision: opaque_revision(snapshot.resource_revision, "resource_revision")?,
@@ -363,7 +397,7 @@ fn snapshot_from_owner(
     request: &ReadTranslationResourceRequest,
 ) -> Result<TranslationResourceSnapshot, PortError> {
     let summary = TranslationResourceSummary {
-        identity: image_identity(snapshot.image_id),
+        identity: image_identity(snapshot.image_id)?,
         display_label: display_label(&snapshot),
         lifecycle: product_lifecycle(&snapshot.product_status),
         resource_revision: opaque_revision(snapshot.resource_revision, "resource_revision")?,

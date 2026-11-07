@@ -50,6 +50,43 @@ const OPERATION_APPLY_PATCH: &str = "translation_target_apply_variant_attribute_
 const CHANGE_CURSOR_VERSION: &str = "v1";
 const MAX_CHANGE_PAGE: u16 = 200;
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
+
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
 const LOCALE_REVISION_NAMESPACE: &str =
     "rustok-product/variant-attribute-value-translation-locale/v1";
 const DELETED_REVISION_NAMESPACE: &str =
@@ -900,7 +937,7 @@ impl TranslationTargetProvider for ProductVariantAttributeValueTranslationTarget
             .into_iter()
             .map(|change| {
                 Ok(TranslationTargetChange {
-                    identity: variant_attribute_value_identity(change.value_id),
+                    identity: variant_attribute_value_identity(change.value_id)?,
                     resource_revision: opaque_revision(
                         change.resource_revision,
                         "resource_revision",
@@ -1283,7 +1320,7 @@ fn summary_from_owner(
     owner: &ExactLocaleSnapshot,
 ) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
-        identity: variant_attribute_value_identity(owner.value_id),
+        identity: variant_attribute_value_identity(owner.value_id)?,
         display_label: format!("{} · {}", owner.attribute_code, owner.variant_id),
         lifecycle: TranslationResourceLifecycle::Active,
         resource_revision: opaque_revision(owner.resource_revision.clone(), "resource_revision")?,
@@ -1477,10 +1514,9 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
     })
 }
 
-fn variant_attribute_value_identity(value_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Product owner slug must satisfy Translation contract"),
+fn variant_attribute_value_identity(value_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
         resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
             "static Product Variant Attribute Value resource kind must satisfy Translation contract",
         ),
@@ -1488,7 +1524,7 @@ fn variant_attribute_value_identity(value_id: Uuid) -> TranslationResourceIdenti
             "Product Variant attribute-value UUID must satisfy Translation resource id contract",
         ),
         subresource_id: None,
-    }
+    })
 }
 
 fn resource_cursor(value_id: Uuid) -> Result<OpaqueCursor, PortError> {

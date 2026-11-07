@@ -33,6 +33,43 @@ const TRANSLATION_OWNER_SLUG: &str = "product";
 const TRANSLATION_RESOURCE_KIND: &str = "variant";
 const OPERATION_APPLY_PATCH: &str = "translation_target_apply_variant_patch";
 
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+
 #[derive(Clone)]
 /// Product-owned neutral adapter for exact Variant title localization.
 ///
@@ -324,16 +361,13 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
     })
 }
 
-fn variant_identity(variant_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Product owner slug must satisfy the target contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Product Variant resource kind must satisfy the target contract"),
-        resource_id: ResourceId::new(variant_id.to_string())
-            .expect("Variant UUID must satisfy the target resource id contract"),
+fn variant_identity(variant_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
+        resource_kind: resource_kind_or_invariant()?,
+        resource_id: resource_id_or_invariant(variant_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn summary_from_owner(
@@ -346,7 +380,7 @@ fn summary_from_owner(
         .filter(|title| !title.trim().is_empty())
         .unwrap_or_else(|| format!("Variant {}", snapshot.variant_id));
     Ok(TranslationResourceSummary {
-        identity: variant_identity(snapshot.variant_id),
+        identity: variant_identity(snapshot.variant_id)?,
         display_label,
         lifecycle: product_lifecycle(&snapshot.product_status),
         resource_revision: opaque_revision(snapshot.resource_revision, "resource_revision")?,
@@ -359,7 +393,7 @@ fn snapshot_from_owner(
     request: &ReadTranslationResourceRequest,
 ) -> Result<TranslationResourceSnapshot, PortError> {
     let summary = TranslationResourceSummary {
-        identity: variant_identity(snapshot.variant_id),
+        identity: variant_identity(snapshot.variant_id)?,
         display_label: snapshot
             .source
             .title
