@@ -944,7 +944,7 @@ where
               AND translation.locale = $2
               AND translation.slug IS NOT NULL
               AND length(translation.slug) > 0
-              AND left(replace(lower(topic.id::text), '-', ''), 12) = $3
+              AND left(replace(lower(topic.id::text), '-', ''), 16) = $3
             ORDER BY topic.id
             LIMIT 2
             "#,
@@ -963,7 +963,7 @@ where
               AND translation.locale = ?
               AND translation.slug IS NOT NULL
               AND length(translation.slug) > 0
-              AND substr(lower(hex(topic.id)), 1, 12) = ?
+              AND substr(lower(hex(topic.id)), 1, 16) = ?
             ORDER BY topic.id
             LIMIT 2
             "#,
@@ -1201,7 +1201,7 @@ mod tests {
         let topic_id = Uuid::parse_str("ABCD1234-5678-4ABC-8DEF-0123456789AB").expect("uuid");
         assert_eq!(
             ForumTopicRouteService::short_identity(topic_id),
-            "abcd12345678"
+            "abcd123456789abc"
         );
     }
 
@@ -1210,7 +1210,7 @@ mod tests {
         let locale = normalize_route_locale(" EN_us ").expect("locale");
         let slug = normalize_route_slug(" A focused topic! ").expect("slug");
         assert_eq!(
-            forum_topic_route_path(&locale, "abcd12345678", &slug),
+            forum_topic_route_path(&locale, "abcd123456789abc", &slug),
             "/en-US/forum/t/abcd12345678/a-focused-topic"
         );
     }

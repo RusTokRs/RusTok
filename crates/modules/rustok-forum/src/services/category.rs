@@ -139,7 +139,6 @@ fn normalize_slug(value: &str) -> String {
     normalized.trim_matches('-').to_string()
 }
 
-
 use crate::dto::MAX_FORUM_CATEGORY_TREE_NODES;
 
 /// Crate-private persistence seam shared by Forum category owner commands.
