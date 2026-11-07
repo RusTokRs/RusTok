@@ -62,5 +62,5 @@ Product/Pricing/Inventory atomic participants remain a separate local contract. 
 owner storage and independent storage/replication are different deployment choices.
 
 Local provider startup and all six authenticated RPCs were exercised against PostgreSQL.
-The [Product plan](../rustok-product/docs/implementation-plan.md#current-revision-and-evidence-limits)
-records the scope of the local run and the open mounted Commerce and AI evidence.
+The [Product plan](../rustok-product/docs/implementation-plan.md#mounted-commerce-http-checkout-2026-11-07)
+records the local Commerce HTTP checkout and the remaining combined capture and mounted AI evidence.

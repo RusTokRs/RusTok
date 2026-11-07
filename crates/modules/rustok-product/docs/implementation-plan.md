@@ -358,15 +358,20 @@ bounded shutdown. Commands and readiness markers are allowlisted; arbitrary shel
 commands and non-loopback plaintext are rejected. Retained output contains source
 hashes, toolchain versions, marker sets, output hashes, and byte counts only.
 The capture contract guarantees that raw database URLs, bearer credentials, tenant IDs, product IDs, variant IDs, and process logs are not retained.
-A successful capture would prove provider startup, authenticated owner RPCs, and consumer remote-profile initialization, but Commerce and AI business requests through the separate consumer process remain open.
+A successful capture records provider startup, authenticated owner RPCs and consumer
+remote-profile initialization. Mounted business requests have separate evidence.
 
 Adapter and production-wiring source are complete. Consumer-behavior,
 authentication, provider-host, and schema-preflight source are complete, and the
 requested unit, authentication, loopback, Commerce, and AI harnesses are
 maintainer-attested as passed. These commands were not independently run by the implementation agent, and raw
 logs were not retained.
-Product remains `boundary_ready` rather than `transport_verified`; configured remote-profile execution evidence remain open; provider-host execution evidence remains open; schema-preflight execution evidence remains open; the standalone PostgreSQL schema-preflight runtime evidence remains open; authenticated separate-process Commerce and AI end-to-end evidence remains open.
-Schema-preflight execution evidence remains open.
+At the time of the maintainer attestation, Product remained at `boundary_ready`.
+The attestation recorded these limits: configured remote-profile execution evidence remain open,
+provider-host execution evidence remains open, Schema-preflight execution evidence remains open,
+and standalone PostgreSQL schema-preflight runtime evidence remains open.
+Product remains `boundary_ready` rather than `transport_verified` pending the combined
+capture and mounted AI evidence. See the current local execution results below.
 Concrete external transport execution remains open for the configured separate-process
 profile. The capture source is complete, but its sanitized runtime packet has not
 been generated or retained.
@@ -518,7 +523,7 @@ The July 29 attestation is retained for its original projection and consumer har
 | Provider selection | `apps/server/src/services/product_catalog_deployment.rs` installs only the external catalog-read runtime, before ordinary bootstrap. Invalid configuration/connection aborts; no selected-read failover is implemented. |
 | Wire operations | `ReadProductProjection`, `ReadVariantProductProjection` and `ListPublishedProducts` cover base catalog projections. `ReadStorefrontVariantProductProjection` applies Product visibility rules when Cart resolves a SKU. `ReadVariantIdentities` and `ListProductVariantIdentities` cover `ProductVariantIdentityReadPort`. |
 | Additional reads | The gRPC client inherits unavailable defaults for filtered lists, facets, storefront detail by handle or Product ID and other optional read methods. External runtime schema/HTTP/tag handles remain absent unless explicitly supplied. |
-| Mounted consumers | Native storefront list/facets/detail require additional methods. Some native admin list/facets/schema paths construct local services. Pricing reads SKU identity from the selected Product provider. Mounted Commerce/Pricing execution and broader storefront coverage still require verification. |
+| Mounted consumers | Pricing reads SKU identity from the selected Product provider. The local Commerce HTTP checkout passed against both selected profiles. Native storefront list/facets/detail require additional methods. Some native admin list/facets/schema paths construct local services. |
 | Commands | `commerce_provider_runtime.rs` separately creates the embedded Product command runtime when no command runtime is installed. The catalog-read selector does not select remote writes. |
 | Transactions | Product, Pricing and Inventory lifecycle/bootstrap operations share a local SQL transaction. Their transaction-participant interfaces cannot cross RPC. |
 | Packaging | Public contracts and implementation are in the existing owner crate, with unconditional implementation dependencies. A contracts-only feature is unimplemented and is not a prerequisite for this bounded FBA profile. |
@@ -552,9 +557,7 @@ separate local smoke check with PostgreSQL 16. The test applied platform migrati
 to an isolated database and seeded an active Product and one SKU. The provider
 passed schema preflight and the updated authenticated probe verified all five
 RPCs, including the exact tenant, Product and variant identifiers in both SKU
-reads. A probe with a different bearer token was rejected. This run covered the
-standalone provider and the probe. The combined capture and mounted checkout
-remain open.
+reads. A probe with a different bearer token was rejected.
 
 The storefront SKU projection added in `89427e6055` passed the same 29-test
 transport and provider suite. Against the migrated PostgreSQL 16 fixture, the
@@ -562,10 +565,29 @@ standalone provider passed all six RPCs. The updated probe resolved the
 published SKU and confirmed that the same storefront operation hides a draft
 SKU. A request with the wrong bearer token was rejected.
 
-The separate-process capture checks all six owner RPCs and consumer startup with migrated
-data and credentials. Run mounted Commerce and AI business requests separately, including
-a Pricing SKU identity read against the deployed Product owner. Consumers that need further
-capabilities require explicit coverage.
+### Mounted Commerce HTTP checkout (2026-11-07)
+
+The API host was built with `cargo build --locked --offline -p rustok-server
+--bin rustok-server --no-default-features --features mod-commerce`. It ran with
+`RUSTOK_RUNTIME_HOST_MODE=api`, a module manifest matching the build, and one
+isolated PostgreSQL 16 database. In the gRPC profile the HTTP host and Product
+provider were separate loopback processes sharing that database. The same HTTP
+scenario ran with the embedded Product profile and the manual payment provider.
+
+- `POST /store/carts` created a guest cart and issued its access token.
+- `POST /store/carts/{id}/line-items` refused the draft SKU with HTTP 404
+  and added two units of the published SKU for USD 50.
+- `POST /store/carts/{id}/complete` applied a price change from USD 25 to
+  USD 31 per unit. The order was paid and payment captured for USD 62. Reusing
+  the idempotency key returned the same order, payment and amount in both profiles.
+- With Product stopped in the gRPC profile, a new checkout returned HTTP 503.
+  The PostgreSQL order count was unchanged.
+
+The first HTTP run exposed a PostgreSQL parameter binding error when Cart loaded
+the tenant locale. Commit `8077c68a71` selects the correct parameter syntax for
+PostgreSQL, and the successful runs used that fix. This evidence covers the
+Commerce HTTP path for a digital SKU on shared storage. The combined
+provider/consumer capture and mounted AI request remain open.
 
 ## Open results
 
@@ -575,12 +597,13 @@ capabilities require explicit coverage.
      Then execute `node scripts/evidence/capture-product-catalog-separate-process-runtime.mjs`
      from a clean commit with migrated provider and consumer PostgreSQL databases,
      matching loopback bind/endpoint values, one bearer credential, and existing
-     tenant/product/variant fixtures. Commit the generated sanitized evidence packet.
-2. After a successful capture, retain authenticated Commerce checkout and AI
-   product-generation business requests through the separately running consumer
-   server, including a request that exercises Pricing SKU identity verification.
-   Promote above `boundary_ready` only after those results and their sanitized logs or
-   CI artifacts are retained.
+     tenant/product/variant fixtures. Set `RUSTOK_RUNTIME_HOST_MODE=api` and use
+     `RUSTOK_MODULES_MANIFEST` with the modules compiled into that consumer profile.
+     Use a fresh consumer database or one with the matching active composition.
+     Commit the generated sanitized evidence packet.
+2. Retain a mounted AI product-generation request and the Commerce checkout
+   evidence for that captured deployment. Promote above `boundary_ready` after
+   the required results and their sanitized logs or CI artifacts are retained.
 3. Keep Product richtext adoption explicitly deferred until the owner approves
    a typed storage/API/index migration. `product_translations.description` and
    catalog attributes currently named `richtext` are scalar text, so replacing
@@ -604,6 +627,7 @@ capabilities require explicit coverage.
 - [x] Execute the Product catalog service-host unit, authentication, and loopback conformance test suites.
 - [x] Execute the Commerce and AI remote consumer behavior harnesses.
 - [x] Lock a reproducible separate-process Product runtime evidence capture contract.
+- [x] Verify mounted Commerce HTTP checkout locally with embedded and separate gRPC Product on PostgreSQL.
 - [ ] Execute the separate-process Product runtime capture and retain its sanitized evidence packet.
 - [ ] Execute the standalone PostgreSQL schema preflight and retain runtime logs.
 - [ ] Retain authenticated separate-process Commerce and AI end-to-end evidence.

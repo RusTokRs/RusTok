@@ -191,7 +191,7 @@ const consumerMarkers = [
 const planMarkers = [
   "separate-process runtime capture contract is source-complete",
   "raw database URLs, bearer credentials, tenant IDs, product IDs, variant IDs, and process logs are not retained",
-  "Commerce and AI business requests through the separate consumer process remain open",
+  "Mounted business requests have separate evidence",
   "Product remains `boundary_ready` rather than `transport_verified`",
   "- [x] Lock a reproducible separate-process Product runtime evidence capture contract.",
   "- [ ] Execute the separate-process Product runtime capture and retain its sanitized evidence packet.",
