@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -75,22 +75,13 @@ fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
 }
 
 
-#[derive(Clone)]
-pub struct PriceListTranslationTargetProvider {
-    service: Arc<PriceListTranslationService>,
-}
 
-impl PriceListTranslationTargetProvider {
-    pub fn new(service: Arc<PriceListTranslationService>) -> Self {
-        Self { service }
-    }
-
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Pricing owner slug must satisfy the target contract"),
+                .expect("static Pricing owner slug must satisfy the target contract: descriptor invariant validated at startup"),
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Price List Copy resource kind must satisfy the target contract"),
+                .expect("static Price List Copy resource kind must satisfy the target contract: descriptor invariant validated at startup"),
             display_name: "Price Lists".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
@@ -103,6 +94,20 @@ impl PriceListTranslationTargetProvider {
             read_permission_floor: BTreeSet::from(["discounts:read".to_string()]),
             apply_permission_floor: BTreeSet::from(["discounts:update".to_string()]),
         }
+});
+
+#[derive(Clone)]
+pub struct PriceListTranslationTargetProvider {
+    service: Arc<PriceListTranslationService>,
+}
+
+impl PriceListTranslationTargetProvider {
+    pub fn new(service: Arc<PriceListTranslationService>) -> Self {
+        Self { service }
+    }
+
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(

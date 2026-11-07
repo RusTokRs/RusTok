@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale, sha256_digest};
@@ -47,6 +47,27 @@ const CHANGE_JOURNAL_TABLE: &str = "seo_translation_change_journal";
 const APPLY_RECEIPTS_TABLE: &str = "seo_translation_apply_receipts";
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
+            owner_slug: OwnerSlug::new(OWNER_SLUG)
+                .expect("static SEO owner slug must satisfy Translation target contract"),
+            resource_kind: ResourceKind::new(RESOURCE_KIND)
+                .expect("static SEO resource kind must satisfy Translation target contract"),
+            display_name: "SEO explicit copy".to_string(),
+            capabilities: BTreeSet::from([
+                TranslationTargetCapability::ListResources,
+                TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::AggregateProgress,
+                TranslationTargetCapability::ValidatePatch,
+                TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
+            ]),
+            read_permission_floor: BTreeSet::from(["seo:read".to_string()]),
+            apply_permission_floor: BTreeSet::from(["seo:update".to_string()]),
+        }
+});
+
 #[derive(Clone)]
 pub struct SeoTranslationTargetProvider {
     db: DatabaseConnection,
@@ -65,24 +86,8 @@ impl SeoTranslationTargetProvider {
         }
     }
 
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
-            owner_slug: OwnerSlug::new(OWNER_SLUG)
-                .expect("static SEO owner slug must satisfy Translation target contract"),
-            resource_kind: ResourceKind::new(RESOURCE_KIND)
-                .expect("static SEO resource kind must satisfy Translation target contract"),
-            display_name: "SEO explicit copy".to_string(),
-            capabilities: BTreeSet::from([
-                TranslationTargetCapability::ListResources,
-                TranslationTargetCapability::ReadExactResource,
-                TranslationTargetCapability::AggregateProgress,
-                TranslationTargetCapability::ValidatePatch,
-                TranslationTargetCapability::ApplyPatch,
-                TranslationTargetCapability::ChangeCursor,
-            ]),
-            read_permission_floor: BTreeSet::from(["seo:read".to_string()]),
-            apply_permission_floor: BTreeSet::from(["seo:update".to_string()]),
-        }
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn list_resources_in(

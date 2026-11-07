@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use async_trait::async_trait;
@@ -87,24 +87,13 @@ fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
 }
 
 
-#[derive(Clone)]
-/// Owner adapter for exact Page metadata localization. It delegates writes to
-/// `PageService`, so Translation never obtains direct write access to Pages rows.
-pub struct PagesMetadataTranslationTargetProvider {
-    service: Arc<PageService>,
-}
 
-impl PagesMetadataTranslationTargetProvider {
-    pub fn new(service: Arc<PageService>) -> Self {
-        Self { service }
-    }
-
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Pages owner slug must satisfy the target contract"),
+                .expect("static Pages owner slug must satisfy the target contract: descriptor invariant validated at startup"),
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Pages resource kind must satisfy the target contract"),
+                .expect("static Pages resource kind must satisfy the target contract: descriptor invariant validated at startup"),
             display_name: "Page metadata".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
@@ -117,6 +106,22 @@ impl PagesMetadataTranslationTargetProvider {
             read_permission_floor: BTreeSet::from(["pages:read".to_string()]),
             apply_permission_floor: BTreeSet::from(["pages:update".to_string()]),
         }
+});
+
+#[derive(Clone)]
+/// Owner adapter for exact Page metadata localization. It delegates writes to
+/// `PageService`, so Translation never obtains direct write access to Pages rows.
+pub struct PagesMetadataTranslationTargetProvider {
+    service: Arc<PageService>,
+}
+
+impl PagesMetadataTranslationTargetProvider {
+    pub fn new(service: Arc<PageService>) -> Self {
+        Self { service }
+    }
+
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(

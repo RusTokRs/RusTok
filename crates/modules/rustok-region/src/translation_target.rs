@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -74,22 +74,13 @@ fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
 }
 
 
-#[derive(Clone)]
-pub struct RegionTranslationTargetProvider {
-    service: Arc<RegionTranslationService>,
-}
 
-impl RegionTranslationTargetProvider {
-    pub fn new(service: Arc<RegionTranslationService>) -> Self {
-        Self { service }
-    }
-
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Region owner slug must satisfy the target contract"),
+                .expect("static Region owner slug must satisfy the target contract: descriptor invariant validated at startup"),
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Region Copy resource kind must satisfy the target contract"),
+                .expect("static Region Copy resource kind must satisfy the target contract: descriptor invariant validated at startup"),
             display_name: "Regions".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
@@ -102,6 +93,20 @@ impl RegionTranslationTargetProvider {
             read_permission_floor: BTreeSet::from(["regions:read".to_string()]),
             apply_permission_floor: BTreeSet::from(["regions:update".to_string()]),
         }
+});
+
+#[derive(Clone)]
+pub struct RegionTranslationTargetProvider {
+    service: Arc<RegionTranslationService>,
+}
+
+impl RegionTranslationTargetProvider {
+    pub fn new(service: Arc<RegionTranslationService>) -> Self {
+        Self { service }
+    }
+
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(

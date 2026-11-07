@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeMap, collections::BTreeSet, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -39,6 +39,27 @@ const PATCH_FINGERPRINT_NAMESPACE: &str = "rustok-flex/attached-neutral-patch/v1
 /// resource subresource id and in the list cursor. This keeps one future-proof provider namespace
 /// instead of creating a provider kind per donor while still preventing UUID collisions between
 /// different donor entity types.
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
+            // INVARIANT: TRANSLATION_OWNER_SLUG ("flex") is a compile-time static ASCII identifier under 191 bytes.
+            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
+                .expect("static Flex owner slug must satisfy the target contract: descriptor invariant validated at startup"),
+            // INVARIANT: TRANSLATION_RESOURCE_KIND ("attached_localized_value") is a compile-time static ASCII identifier under 191 bytes.
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
+                .expect("static Flex attached-value kind must satisfy the target contract: descriptor invariant validated at startup"),
+            display_name: "Flex attached localized values".to_string(),
+            capabilities: BTreeSet::from([
+                TranslationTargetCapability::ListResources,
+                TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::ValidatePatch,
+                TranslationTargetCapability::ApplyPatch,
+            ]),
+            read_permission_floor: BTreeSet::from(["flex_entries:read".to_string()]),
+            apply_permission_floor: BTreeSet::from(["flex_entries:update".to_string()]),
+        }
+});
+
 #[derive(Clone)]
 pub struct FlexAttachedTranslationTargetProvider {
     owner: Arc<dyn FlexAttachedTranslationOwnerPort>,
@@ -62,24 +83,8 @@ impl FlexAttachedTranslationTargetProvider {
         &self.entity_type
     }
 
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
-            // INVARIANT: TRANSLATION_OWNER_SLUG ("flex") is a compile-time static ASCII identifier under 191 bytes.
-            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Flex owner slug must satisfy the target contract"),
-            // INVARIANT: TRANSLATION_RESOURCE_KIND ("attached_localized_value") is a compile-time static ASCII identifier under 191 bytes.
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Flex attached-value kind must satisfy the target contract"),
-            display_name: "Flex attached localized values".to_string(),
-            capabilities: BTreeSet::from([
-                TranslationTargetCapability::ListResources,
-                TranslationTargetCapability::ReadExactResource,
-                TranslationTargetCapability::ValidatePatch,
-                TranslationTargetCapability::ApplyPatch,
-            ]),
-            read_permission_floor: BTreeSet::from(["flex_entries:read".to_string()]),
-            apply_permission_floor: BTreeSet::from(["flex_entries:update".to_string()]),
-        }
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_owner_snapshot(
