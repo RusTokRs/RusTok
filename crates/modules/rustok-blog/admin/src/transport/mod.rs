@@ -1,3 +1,4 @@
+pub(crate) mod creation_journal;
 mod graphql_adapter;
 mod moderation_adapter;
 mod native_server_adapter;
@@ -8,6 +9,7 @@ pub use widget::{
 };
 
 use crate::core::BlogPostAdminSort;
+use crate::core::creation::CreationScope;
 use crate::model::{
     BlogCategoryDetail, BlogCategoryDraft, BlogCategoryOption, BlogCategoryUpdate,
     BlogModerationCommentList, BlogModerationStatus, BlogPostDetail, BlogPostDraft, BlogPostList,
@@ -86,17 +88,31 @@ pub async fn fetch_post(
     .await
 }
 
-pub async fn create_post(
+pub(crate) async fn fetch_creation_scope(
     token: Option<String>,
     tenant_slug: Option<String>,
+) -> Result<CreationScope, ApiError> {
+    execute_selected_transport(
+        "blog/admin/creation-scope",
+        selected_transport_path(),
+        native_server_adapter::fetch_creation_scope,
+        move || graphql_adapter::fetch_creation_scope(token, tenant_slug),
+    )
+    .await
+}
+
+pub(crate) async fn create_post(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    scope: CreationScope,
     draft: BlogPostDraft,
 ) -> Result<crate::model::BlogPostCreationOutcome, ApiError> {
     let native_draft = draft.clone();
     execute_selected_transport(
         "blog/admin/create-post",
         selected_transport_path(),
-        move || native_server_adapter::create_post(native_draft),
-        move || graphql_adapter::create_post(token, tenant_slug, draft),
+        move || native_server_adapter::create_post(scope, native_draft),
+        move || graphql_adapter::create_post(token, tenant_slug, scope, draft),
     )
     .await
 }

@@ -63,10 +63,15 @@ installed ESLint may differ from the manifest version; use the declared ESLint
 execution evidence and remaining cross-client acceptance gates.
 
 Editor sessions are keyed by snapshot, principal, tenant and requested locale.
-Unmounted sessions ignore write completions; acknowledged writes remain locked
-until navigation replaces the form. This prevents duplicate creation while a
-post-commit navigation is delayed. Clearing an existing canonical Post route
-produces an explicit localized validation error.
+Unmounted sessions leave the pending record available for recovery. Acknowledged
+writes remain locked until navigation replaces the form. Clearing an existing
+canonical Post route produces an explicit localized validation error.
+
+`model/creation-journal.ts` persists the normalized GraphQL creation input before
+the form invokes the transport. The tab journal is scoped to the authenticated
+actor and tenant UUIDs. A reload restores the complete request and leaves retry
+to the operator. Browser storage errors block creation. The owner defines the
+[recovery and retention contract](../../../../crates/modules/rustok-blog/CRATE_API.md#replayable-post-creation).
 
 Post detail status and missing-record copy use the owner Fluent catalog.
 Publication dates use `getFormatter({ locale })` with the canonical request

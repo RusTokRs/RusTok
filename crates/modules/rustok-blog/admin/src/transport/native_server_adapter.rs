@@ -9,6 +9,7 @@ mod write_ack_tests;
 #[cfg(feature = "ssr")]
 use std::sync::Arc;
 
+use crate::core::creation::CreationScope;
 use crate::model::{
     BlogCategoryOption, BlogModerationCommentList, BlogModerationStatus, BlogPostDetail,
     BlogPostDraft, BlogPostList, BlogPostUpdate,
@@ -38,9 +39,14 @@ pub(super) async fn fetch_post(
 }
 
 pub(super) async fn create_post(
+    scope: CreationScope,
     draft: BlogPostDraft,
 ) -> Result<crate::model::BlogPostCreationOutcome, ServerFnError> {
-    blog_admin_create_post_native(draft).await
+    blog_admin_create_post_native(scope, draft).await
+}
+
+pub(super) async fn fetch_creation_scope() -> Result<CreationScope, ServerFnError> {
+    blog_admin_creation_scope_native().await
 }
 
 pub(super) async fn update_post(id: String, update: BlogPostUpdate) -> Result<(), ServerFnError> {
@@ -451,8 +457,25 @@ async fn blog_admin_post_native(
     }
 }
 
+#[server(prefix = "/api/fn", endpoint = "blog/admin/creation-scope", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
+async fn blog_admin_creation_scope_native() -> Result<CreationScope, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        let context = native_context().await?;
+        Ok(CreationScope {
+            actor_id: context.auth.user_id,
+            tenant_id: context.tenant.id,
+        })
+    }
+    #[cfg(not(feature = "ssr"))]
+    Err(ServerFnError::new(
+        "blog/admin/creation-scope requires the `ssr` feature",
+    ))
+}
+
 #[server(prefix = "/api/fn", endpoint = "blog/admin/create-post", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
 async fn blog_admin_create_post_native(
+    scope: CreationScope,
     draft: BlogPostDraft,
 ) -> Result<crate::model::BlogPostCreationOutcome, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -460,6 +483,9 @@ async fn blog_admin_create_post_native(
         use rustok_blog::{CreatePostInput, PostService};
 
         let context = native_context().await?;
+        if scope.actor_id != context.auth.user_id || scope.tenant_id != context.tenant.id {
+            return Err(ServerFnError::new("Blog creation scope changed"));
+        }
         require_blog_posts_create_permission(&context.auth)?;
         let service = PostService::new(context.db, context.event_bus);
         let result = service
@@ -500,7 +526,7 @@ async fn blog_admin_create_post_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = draft;
+        let _ = (scope, draft);
         Err(ServerFnError::new(
             "blog/admin/create-post requires the `ssr` feature",
         ))

@@ -133,8 +133,20 @@ An attempt-local authorization refusal cannot disprove an earlier commit.
 Both editors retain the exact creation command and identity before IO and retry
 that command after an unknown outcome. Only a successful acknowledgement or a
 durable terminal rejection releases it. Credential refresh must preserve the
-same principal's pending command. This contract does not claim browser reload
-recovery without a durable client journal and its execution evidence.
+same principal's pending command.
+
+Blog's admin editors persist one unresolved creation per browser tab, client,
+authenticated tenant UUID and actor UUID. The journal holds the complete frozen
+request and key. It carries no credentials and grants no authority. On remount
+the editor restores the matching request and waits for the operator to retry it.
+The native adapter checks the expected scope against the authenticated request.
+The GraphQL adapter binds the request to the authenticated tenant and captured
+actor credential. Corrupt, incompatible or unavailable storage blocks dispatch.
+Only the active editor settles a command. Cleanup compares the stored predecessor
+so a late completion cannot clear a different command. Logout detaches the editor
+from its record. A later sign-in to the same scope in that tab can recover it. Tab storage may be lost when the
+tab is closed or its data is cleared. The backend receipt remains authoritative.
+Mounted client execution evidence is tracked separately in the Blog plan.
 
 ### Owner-backed Page Builder contributions
 

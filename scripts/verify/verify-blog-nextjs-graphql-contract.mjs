@@ -20,6 +20,8 @@ const TYPES_PATH = `${BLOG_CRATE}/src/graphql/types.rs`;
 const TAXONOMY_TYPES_PATH = `${BLOG_CRATE}/src/graphql/types/taxonomy.rs`;
 const SEARCH_TYPES_PATH = 'crates/modules/rustok-search/src/graphql/types.rs';
 const SEARCH_QUERY_PATH = 'crates/modules/rustok-search/src/graphql/query.rs';
+const HOST_QUERY_PATH = 'apps/server/src/graphql/queries.rs';
+const HOST_TYPES_PATH = 'apps/server/src/graphql/types.rs';
 const QUERY_PATH = `${BLOG_CRATE}/src/graphql/query.rs`;
 const MUTATION_PATH = `${BLOG_CRATE}/src/graphql/mutation.rs`;
 
@@ -389,7 +391,7 @@ function checkDocument(document, types, rootFields) {
     const rustType = root.get(selection.name);
     if (!rustType) {
       fail(
-        `${document.path}: root field ${selection.name} is not declared by the Blog ` +
+        `${document.path}: root field ${selection.name} is not declared by the supported ` +
           `${isMutation ? 'mutation' : 'query'} root`
       );
       continue;
@@ -524,6 +526,23 @@ if (!storefrontSearchType) {
   fail('Blog cannot shadow the Search owner storefrontSearch GraphQL root');
 } else {
   rootFields.query.set('storefrontSearch', storefrontSearchType);
+}
+
+// Creation recovery binds to authenticated identity before it reads browser state.
+// Resolve only the two host-owned fields used by that scope check.
+const hostQueryFields = parseRootFields(requireFile(HOST_QUERY_PATH), 'Host').fields;
+const hostTypes = parseSchemaTypes(requireFile(HOST_TYPES_PATH));
+for (const field of ['currentTenant', 'me']) {
+  const typeName = hostQueryFields.get(field);
+  const definition = hostTypes.get(typeName);
+  if (!definition) {
+    fail(`${HOST_QUERY_PATH}: missing host creation scope field ${field}`);
+  } else if (rootFields.query.has(field) || types.has(typeName)) {
+    fail(`Blog cannot shadow the host GraphQL scope field ${field} or type ${typeName}`);
+  } else {
+    rootFields.query.set(field, typeName);
+    types.set(typeName, definition);
+  }
 }
 
 if (types.size === 0) {

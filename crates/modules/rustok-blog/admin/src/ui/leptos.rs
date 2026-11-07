@@ -2,6 +2,7 @@ mod lifecycle;
 mod page;
 use page::BlogAdminPageState;
 
+use leptos::either::Either;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
@@ -12,8 +13,9 @@ use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use super::components::{
     BlogEditBanner, BlogPostFormSetters, BlogPostSeoPanel, BlogPostsList, BlogPostsListHeader,
-    BlogPostsPageHeader, BlogPreviewTokenBanner, BlogSeoConfigError, apply_post_to_form,
-    blog_form_copy_view_model, blog_form_view_model, local_resource, reset_form,
+    BlogPostsPageHeader, BlogPreviewTokenBanner, BlogSeoConfigError, apply_pending_creation,
+    apply_post_to_form, blog_form_copy_view_model, blog_form_view_model, local_resource,
+    reset_form,
 };
 use super::richtext::BlogRichTextEditor;
 use crate::i18n::t;
@@ -52,6 +54,9 @@ pub fn BlogAdmin() -> impl IntoView {
     );
 
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
+    let creation_scope =
+        RwSignal::new(None::<(core::EditorPrincipal, core::creation::CreationScope)>);
+    let creation_load = RwSignal::new(uuid::Uuid::new_v4());
     let editor_session = RwSignal::new(crate::core::PostEditorSession::Creating);
     let editor_request = RwSignal::new(None::<core::EditorRequest>);
     let editing_post_id = Signal::derive(move || {
@@ -79,6 +84,16 @@ pub fn BlogAdmin() -> impl IntoView {
     let (publish_now, set_publish_now) = signal(false);
     let (busy_key, set_busy_key) = signal(Option::<String>::None);
     let (submit_error, set_submit_error) = signal(Option::<WritePathIssue>::None);
+    let storage_issue = StoredValue::new(t(
+        ui_locale.as_deref(),
+        "blog.editor.creationStorage",
+        "Post creation recovery is unavailable. Reload this tab to try again.",
+    ));
+    let creation_notice = StoredValue::new(t(
+        ui_locale.as_deref(),
+        "blog.editor.creationUnknown",
+        "Creation is unconfirmed. Save again to retry the original request.",
+    ));
     let form_setters = BlogPostFormSetters {
         editor_session,
         title: set_title,
@@ -99,6 +114,8 @@ pub fn BlogAdmin() -> impl IntoView {
     let reset_form_action = Callback::new({
         let default_locale = default_locale.clone();
         move |_| {
+            creation_load.set(uuid::Uuid::new_v4());
+            creation_scope.set(None);
             editor_request.set(None);
             set_busy_key.set(None);
             set_save_notice.set(None);
@@ -257,6 +274,7 @@ pub fn BlogAdmin() -> impl IntoView {
     let edit_post_reset_form_action = reset_form_action;
     let edit_post = Callback::new(move |(post_id, requested_locale): (String, String)| {
         let reset_form_to_defaults = edit_post_reset_form_action;
+        reset_form_to_defaults.run(());
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let ui_locale = edit_post_locale.clone();
@@ -336,21 +354,49 @@ pub fn BlogAdmin() -> impl IntoView {
     Effect::new(move |_| {
         // A new principal/tenant owns a new editor session even when the URL is
         // unchanged. In-flight responses from the predecessor are discarded.
-        let _principal = editor_principal.get();
+        let principal = editor_principal.get();
         if let Some(request) = core::selected_post_request(
             selected_post_query.get().as_deref(),
             effect_default_locale.as_str(),
         ) {
             initial_edit_post.run(request);
         } else {
-            reset_form_action.run(())
+            reset_form_action.run(());
+            set_submit_error.set(None);
+            let load = creation_load.get_untracked();
+            let token_value = token.get_untracked();
+            spawn_local(async move {
+                let result =
+                    transport::fetch_creation_scope(token_value, principal.tenant.clone()).await;
+                if creation_load.try_get_untracked() != Some(load)
+                    || editor_principal.try_get_untracked().as_ref() != Some(&principal)
+                {
+                    return;
+                }
+                match result {
+                    Ok(scope) if scope.matches_actor(principal.actor_id.as_deref()) => {
+                        match transport::creation_journal::load(scope) {
+                            Ok(pending) => {
+                                if let Some(draft) = pending {
+                                    apply_pending_creation(form_setters, draft);
+                                    set_save_notice.set(Some(creation_notice.get_value()));
+                                }
+                                creation_scope.set(Some((principal, scope)));
+                            }
+                            Err(_) => set_submit_error
+                                .set(Some(WritePathIssue::new(storage_issue.get_value()))),
+                        }
+                    }
+                    _ => set_submit_error.set(Some(WritePathIssue::new(storage_issue.get_value()))),
+                }
+            });
         }
     });
 
     let submit_ui_locale = ui_locale.clone();
     let submit_query_writer = query_writer.clone();
     let submit_post = Callback::new(move |_: ()| {
-        if busy_key.get_untracked().is_some() {
+        if busy_key.get_untracked().is_some() || !editor_session.with_untracked(|s| s.can_save()) {
             return;
         }
         set_save_notice.set(None);
@@ -359,54 +405,46 @@ pub fn BlogAdmin() -> impl IntoView {
         let submit_query_writer = submit_query_writer.clone();
 
         let locale_value = locale.get_untracked();
-        let title_value = title.get_untracked();
-        let slug_value = slug.get_untracked();
-        let excerpt_value = excerpt.get_untracked();
-        let content_value = content.get_untracked();
-        let tags_value = tags_input.get_untracked();
-        let category_id_value = category_id.get_untracked();
-        let channel_slugs_value = channel_slugs_input.get_untracked();
-        let featured_image_value = featured_image_url.get_untracked();
-        let seo_title_value = seo_title.get_untracked();
-        let seo_description_value = seo_description.get_untracked();
-        let scheduled_at_value = scheduled_at.get_untracked();
-        let draft = core::build_blog_post_draft(core::BlogPostFormInput {
-            locale: &locale_value,
-            version: editing_version.get_untracked(),
-            title: &title_value,
-            slug: &slug_value,
-            excerpt: &excerpt_value,
-            content: &content_value,
-            publish: publish_now.get_untracked(),
-            tags: &tags_value,
-            category_id: &category_id_value,
-            channel_slugs: &channel_slugs_value,
-            featured_image_url: &featured_image_value,
-            seo_title: &seo_title_value,
-            seo_description: &seo_description_value,
-            scheduled_at: &scheduled_at_value,
-            schedule_editable: schedule_editable.get_untracked(),
-        });
-
-        let required_fields_message = t(
-            submit_ui_locale.as_deref(),
-            "blog.error.requiredFields",
-            "Title and content are required to save a blog post.",
-        );
-        let draft = editor_session
-            .with_untracked(|s| s.pending_creation().cloned())
-            .unwrap_or(draft);
-        let mut command = match core::prepare_blog_post_save_command(
-            editing_post_id.get_untracked(),
-            loaded_post.get_untracked().as_ref(),
-            draft,
-            required_fields_message,
-            t(
-                submit_ui_locale.as_deref(),
-                "blog.editor.slugRequired",
-                "Canonical slug is required",
+        let pending = editor_session.with_untracked(|s| s.pending_creation().cloned());
+        let is_retry = pending.is_some();
+        let command = match pending {
+            Some(draft) => Ok(core::BlogPostSaveCommand {
+                operation: core::BlogPostSaveOperation::Create(draft),
+                busy_key: core::busy_key_for_save(None),
+            }),
+            None => core::prepare_blog_post_save_command(
+                editing_post_id.get_untracked(),
+                loaded_post.get_untracked().as_ref(),
+                core::build_blog_post_draft(core::BlogPostFormInput {
+                    locale: &locale_value,
+                    version: editing_version.get_untracked(),
+                    title: &title.get_untracked(),
+                    slug: &slug.get_untracked(),
+                    excerpt: &excerpt.get_untracked(),
+                    content: &content.get_untracked(),
+                    publish: publish_now.get_untracked(),
+                    tags: &tags_input.get_untracked(),
+                    category_id: &category_id.get_untracked(),
+                    channel_slugs: &channel_slugs_input.get_untracked(),
+                    featured_image_url: &featured_image_url.get_untracked(),
+                    seo_title: &seo_title.get_untracked(),
+                    seo_description: &seo_description.get_untracked(),
+                    scheduled_at: &scheduled_at.get_untracked(),
+                    schedule_editable: schedule_editable.get_untracked(),
+                }),
+                t(
+                    submit_ui_locale.as_deref(),
+                    "blog.error.requiredFields",
+                    "Title and content are required to save a blog post.",
+                ),
+                t(
+                    submit_ui_locale.as_deref(),
+                    "blog.editor.slugRequired",
+                    "Canonical slug is required",
+                ),
             ),
-        ) {
+        };
+        let command = match command {
             Ok(command) => command,
             Err(issue) => {
                 set_submit_error.set(Some(issue));
@@ -414,40 +452,71 @@ pub fn BlogAdmin() -> impl IntoView {
             }
         };
 
-        if let core::BlogPostSaveOperation::Create(draft) = &command.operation {
-            let mut session = editor_session.get_untracked();
-            let retained = session.retain_creation(draft.clone());
-            editor_session.set(session);
-            command.operation = core::BlogPostSaveOperation::Create(retained);
-        }
-
+        let principal = editor_principal.get_untracked();
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
+        let write_token = token_value.clone();
+        let write_tenant = tenant_value.clone();
+        let (write, retained) = match command.operation {
+            core::BlogPostSaveOperation::Create(draft) => {
+                let Some((_, scope)) = creation_scope
+                    .get_untracked()
+                    .filter(|(loaded, _)| loaded == &principal)
+                else {
+                    return;
+                };
+                if transport::creation_journal::retain(scope, &draft, is_retry).is_err() {
+                    creation_scope.set(None);
+                    set_submit_error.set(Some(WritePathIssue::new(storage_issue.get_value())));
+                    return;
+                }
+                editor_session.set(core::PostEditorSession::CreatingPending(Box::new(
+                    draft.clone(),
+                )));
+                (
+                    Either::Left(transport::create_post(
+                        write_token,
+                        write_tenant,
+                        scope,
+                        draft.clone(),
+                    )),
+                    Some((scope, draft)),
+                )
+            }
+            core::BlogPostSaveOperation::Update { post_id, update } => (
+                Either::Right(async move {
+                    transport::update_post(write_token, write_tenant, post_id.clone(), update)
+                        .await
+                        .map(|()| crate::model::BlogPostCreationOutcome::Created(post_id))
+                }),
+                None,
+            ),
+        };
+
+        let reload_locale = retained
+            .as_ref()
+            .map_or(locale_value, |(_, draft)| draft.locale.clone());
         let request =
-            core::EditorRequest::new(editing_post_id.get_untracked(), locale_value.clone());
+            core::EditorRequest::new(editing_post_id.get_untracked(), reload_locale.clone());
         editor_request.set(Some(request.clone()));
         set_busy_key.set(Some(command.busy_key.clone()));
 
         spawn_local(async move {
-            let reload_locale = locale_value;
-            let result = match command.operation {
-                core::BlogPostSaveOperation::Update { post_id, update } => transport::update_post(
-                    token_value.clone(),
-                    tenant_value.clone(),
-                    post_id.clone(),
-                    update,
-                )
-                .await
-                .map(|()| crate::model::BlogPostCreationOutcome::Created(post_id)),
-                core::BlogPostSaveOperation::Create(draft) => {
-                    transport::create_post(token_value.clone(), tenant_value.clone(), draft).await
-                }
+            let result = match write {
+                Either::Left(create) => create.await,
+                Either::Right(update) => update.await,
             };
-            if !request.is_current(editor_request.get_untracked().as_ref()) {
-                if result.is_ok() {
-                    set_refresh_nonce.update(|value| *value += 1);
-                }
+            if !request.is_current(editor_request.try_get_untracked().flatten().as_ref())
+                || editor_principal.try_get_untracked().as_ref() != Some(&principal)
+            {
                 return;
+            }
+            let cleanup_failed = retained.as_ref().is_some_and(|(scope, draft)| {
+                result.is_ok() && transport::creation_journal::clear(*scope, draft).is_err()
+            });
+            if cleanup_failed {
+                creation_scope.set(None);
+                set_submit_error.set(Some(WritePathIssue::new(storage_issue.get_value())));
             }
             match result {
                 Ok(crate::model::BlogPostCreationOutcome::Created(post_id)) => {
@@ -473,7 +542,13 @@ pub fn BlogAdmin() -> impl IntoView {
                     )
                     .await
                     {
-                        _ if !request.is_current(editor_request.get_untracked().as_ref()) => return,
+                        _ if !request
+                            .is_current(editor_request.try_get_untracked().flatten().as_ref())
+                            || editor_principal.try_get_untracked().as_ref()
+                                != Some(&principal) =>
+                        {
+                            return;
+                        }
                         Ok(Some(post))
                             if request
                                 .accepts_post(editor_request.get_untracked().as_ref(), &post) =>
@@ -490,16 +565,14 @@ pub fn BlogAdmin() -> impl IntoView {
                     }
                 }
                 Ok(crate::model::BlogPostCreationOutcome::Rejected(message)) => {
-                    editor_session.update(|session| session.reject_creation());
-                    set_submit_error.set(Some(WritePathIssue::new(message)));
+                    if !cleanup_failed {
+                        editor_session.update(|session| session.reject_creation());
+                        set_submit_error.set(Some(WritePathIssue::new(message)));
+                    }
                 }
                 Err(err) => {
                     if editor_session.with_untracked(|s| s.pending_creation().is_some()) {
-                        set_save_notice.set(Some(t(
-                            submit_ui_locale.as_deref(),
-                            "blog.editor.creationUnknown",
-                            "Creation is unconfirmed. Save again to retry the original request.",
-                        )));
+                        set_save_notice.set(Some(creation_notice.get_value()));
                     }
                     set_submit_error.set(Some(core::blog_post_transport_failure_issue(
                         &t(
@@ -706,6 +779,9 @@ pub fn BlogAdmin() -> impl IntoView {
         loaded_post,
         editor_session,
         save_notice,
+        creation_blocked: Signal::derive(move || {
+            editing_post_id.get().is_none() && creation_scope.get().is_none()
+        }),
     })
     .into_any()
 }

@@ -1294,3 +1294,4 @@ blog-detail-notFound = Post not found.
 blog-detail-publishedAt = Published { $date }
 
 blog-editor-creationUnknown = Creation is unconfirmed. Save again to retry the original request.
+blog-editor-creationStorage = Post creation recovery is unavailable. Reload this tab to try again.

@@ -246,7 +246,7 @@ impl BlogModerationStatus {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct BlogPostDraft {
     pub command_id: uuid::Uuid,
     pub locale: String,

@@ -29,8 +29,14 @@ import type { PostResponse, GqlOpts } from '../api/posts';
 import { createPost, updatePost } from '../api/posts';
 import { listAllBlogCategories, type BlogCategory } from '../api/categories';
 import {
+  CreationJournalError,
+  isCreationAcknowledgement,
+  isDurableCreationRejection,
+  PostCreationJournal
+} from '../model/creation-journal';
+import {
   buildPostCommand,
-  PostCreationAttempt,
+  creationFormValues,
   canSubmitEditor,
   completeEditorWrite,
   type EditorWriteState,
@@ -59,7 +65,12 @@ export default function PostForm(props: Props) {
   ]);
   return <PostEditorSession key={session} {...props} />;
 }
-function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
+function PostEditorSession({
+  initialData,
+  pageTitle,
+  actorId,
+  gqlOpts = {}
+}: Props) {
   const router = useRouter();
   const t = useTranslations('blog');
   const hostLocale = useLocale();
@@ -70,7 +81,9 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
   );
   const documentRef = useRef(content);
   const writeState = useRef<EditorWriteState>('idle');
-  const creation = useRef(new PostCreationAttempt());
+  const creation = useRef<PostCreationJournal | null>(null);
+  const [journalReady, setJournalReady] = useState(false);
+  const [journalFailed, setJournalFailed] = useState(false);
   const [creationPending, setCreationPending] = useState(false);
   const [writeAcknowledged, setWriteAcknowledged] = useState(false);
   const active = useRef(true);
@@ -110,15 +123,6 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
       value: category.id
     }))
   ];
-  if (
-    initialData?.categoryId &&
-    !categories.some((row) => row.id === initialData.categoryId)
-  ) {
-    options.push({
-      label: initialData.categoryName ?? t('editor.currentCategory'),
-      value: initialData.categoryId
-    });
-  }
   const form = useForm<PostEditorValues>({
     defaultValues: {
       title: targetCopy.title,
@@ -135,6 +139,58 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
       scheduledAt: initialData?.scheduledAt ?? ''
     }
   });
+  const { reset } = form;
+  useEffect(() => {
+    if (initialData) return;
+    try {
+      const journal = new PostCreationJournal(
+        window.sessionStorage,
+        actorId,
+        tenantId
+      );
+      const pending = journal.request;
+      if (pending) {
+        if (
+          !pending.content ||
+          !validateRichTextDocument(
+            pending.content,
+            getRichTextProfile('article')
+          ).valid
+        ) {
+          throw new CreationJournalError('Invalid retained article');
+        }
+        reset(creationFormValues(pending));
+        documentRef.current = pending.content;
+        setContent(pending.content);
+        setCreationPending(true);
+      }
+      creation.current = journal;
+      setJournalReady(true);
+    } catch {
+      setJournalFailed(true);
+    }
+  }, [actorId, initialData, reset, tenantId]);
+  const currentCategory = form.watch('categoryId');
+  if (
+    currentCategory &&
+    currentCategory !== '__none__' &&
+    !categories.some((row) => row.id === currentCategory)
+  ) {
+    options.push({
+      label:
+        initialData?.categoryId === currentCategory && initialData.categoryName
+          ? initialData.categoryName
+          : t('editor.currentCategory'),
+      value: currentCategory
+    });
+  }
+  const creationBlocked =
+    !initialData && (!journalReady || journalFailed || !token);
+  const fieldsDisabled =
+    creationBlocked ||
+    form.formState.isSubmitting ||
+    writeAcknowledged ||
+    creationPending;
   const contentLocale = form.watch('locale');
   const publishNow = form.watch('publish');
   const imageSource = postImageSource(form.watch('featuredImageUrl'));
@@ -142,10 +198,15 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
     if (publishNow) form.setValue('scheduledAt', '');
   }, [publishNow, form]);
   async function onSubmit(values: PostEditorValues) {
-    if (!canSubmitEditor(writeState.current)) return;
+    if (
+      !active.current ||
+      !canSubmitEditor(writeState.current) ||
+      creationBlocked
+    )
+      return;
     let acknowledged = false;
     try {
-      const retained = creation.current.request;
+      const retained = creation.current?.request;
       const command = retained
         ? { kind: 'create' as const, input: retained }
         : buildPostCommand(
@@ -155,7 +216,7 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
             emptyRichTextDocument(),
             richTextDocumentHasText
           );
-      if (command.input.content) {
+      if (!retained && command.input.content) {
         const validation = validateRichTextDocument(
           command.input.content,
           getRichTextProfile('article')
@@ -169,17 +230,33 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
       if (command.kind === 'update' && initialData)
         await updatePost(initialData.id, command.input, gqlOpts);
       else if (command.kind === 'create') {
-        const input = creation.current.prepare(command.input, () =>
-          crypto.randomUUID()
-        );
+        const journal = creation.current;
+        if (!journal || !token)
+          throw new CreationJournalError('Creation journal unavailable');
+        const input = journal.prepare(command.input, () => crypto.randomUUID());
         setCreationPending(true);
-        await createPost(input, gqlOpts);
+        const id = await createPost(input, gqlOpts);
+        if (!isCreationAcknowledgement(id))
+          throw new Error('Invalid creation acknowledgement');
       }
       acknowledged = true;
+      if (active.current) creation.current?.clear();
     } catch (error) {
+      if (
+        active.current &&
+        !acknowledged &&
+        creation.current &&
+        isDurableCreationRejection(error)
+      ) {
+        try {
+          creation.current.clear();
+        } catch {
+          if (active.current) setJournalFailed(true);
+        }
+      }
       if (!active.current) return;
-      creation.current.resolve(error);
-      setCreationPending(Boolean(creation.current.request));
+      setCreationPending(Boolean(creation.current?.request));
+      if (error instanceof CreationJournalError) setJournalFailed(true);
       if (error instanceof EditorValidationError) {
         const messages = {
           requiredCopy: t('editor.requiredCopy'),
@@ -190,7 +267,7 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
           revisionMissing: t('editor.revisionMissing')
         };
         form.setError('root', { message: messages[error.code] });
-      } else toast.error(t('error.savePost'));
+      } else if (!acknowledged) toast.error(t('error.savePost'));
     } finally {
       writeState.current = completeEditorWrite(acknowledged);
     }
@@ -226,6 +303,11 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               <AlertDescription>{t('editor.creationUnknown')}</AlertDescription>
             </Alert>
           )}
+          {journalFailed && (
+            <Alert variant='destructive'>
+              <AlertDescription>{t('editor.creationStorage')}</AlertDescription>
+            </Alert>
+          )}
           <Form
             form={form}
             onSubmit={form.handleSubmit(onSubmit)}
@@ -235,54 +317,32 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               control={form.control}
               name='title'
               label={t('form.title')}
-              disabled={
-                form.formState.isSubmitting ||
-                writeAcknowledged ||
-                creationPending
-              }
+              disabled={fieldsDisabled}
             />
             <FormInput
               control={form.control}
               name='slug'
               label={t('form.slug')}
-              disabled={
-                form.formState.isSubmitting ||
-                writeAcknowledged ||
-                creationPending
-              }
+              disabled={fieldsDisabled}
             />
             <FormInput
               control={form.control}
               name='locale'
               label={t('form.locale')}
-              disabled={
-                Boolean(initialData) ||
-                form.formState.isSubmitting ||
-                writeAcknowledged ||
-                creationPending
-              }
+              disabled={Boolean(initialData) || fieldsDisabled}
             />
             <FormInput
               control={form.control}
               name='tags'
               label={t('form.tags')}
-              disabled={
-                form.formState.isSubmitting ||
-                writeAcknowledged ||
-                creationPending
-              }
+              disabled={fieldsDisabled}
             />
             <FormSelect
               control={form.control}
               name='categoryId'
               label={t('form.category')}
               options={options}
-              disabled={
-                categoryState !== 'ready' ||
-                form.formState.isSubmitting ||
-                writeAcknowledged ||
-                creationPending
-              }
+              disabled={categoryState !== 'ready' || fieldsDisabled}
             />
             {categoryState === 'error' && (
               <Alert variant='destructive'>
@@ -301,22 +361,14 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               control={form.control}
               name='channelSlugs'
               label={t('form.channels')}
-              disabled={
-                form.formState.isSubmitting ||
-                writeAcknowledged ||
-                creationPending
-              }
+              disabled={fieldsDisabled}
             />
             <RichTextEditor
               label={t('form.content')}
               profile='article'
               value={content}
               contentLocale={contentLocale}
-              disabled={
-                form.formState.isSubmitting ||
-                writeAcknowledged ||
-                creationPending
-              }
+              disabled={fieldsDisabled}
               onChange={(document) => {
                 documentRef.current = document;
                 setContent(document);
@@ -326,21 +378,13 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               control={form.control}
               name='excerpt'
               label={t('form.excerpt')}
-              disabled={
-                form.formState.isSubmitting ||
-                writeAcknowledged ||
-                creationPending
-              }
+              disabled={fieldsDisabled}
             />
             <FormInput
               control={form.control}
               name='featuredImageUrl'
               label={t('form.featuredImage')}
-              disabled={
-                form.formState.isSubmitting ||
-                writeAcknowledged ||
-                creationPending
-              }
+              disabled={fieldsDisabled}
             />
             {imageSource && (
               <Image
@@ -356,32 +400,20 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
               control={form.control}
               name='seoTitle'
               label={t('form.seoTitle')}
-              disabled={
-                form.formState.isSubmitting ||
-                writeAcknowledged ||
-                creationPending
-              }
+              disabled={fieldsDisabled}
             />
             <FormTextarea
               control={form.control}
               name='seoDescription'
               label={t('form.seoDescription')}
-              disabled={
-                form.formState.isSubmitting ||
-                writeAcknowledged ||
-                creationPending
-              }
+              disabled={fieldsDisabled}
             />
             {!initialData && (
               <FormSwitch
                 control={form.control}
                 name='publish'
                 label={t('form.publishNow')}
-                disabled={
-                  form.formState.isSubmitting ||
-                  writeAcknowledged ||
-                  creationPending
-                }
+                disabled={fieldsDisabled}
               />
             )}
             {(!initialData || initialData.status === 'DRAFT') && (
@@ -390,12 +422,7 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
                 name='scheduledAt'
                 label={t('form.scheduledAt')}
                 description={t('editor.scheduleHelp')}
-                disabled={
-                  publishNow ||
-                  form.formState.isSubmitting ||
-                  writeAcknowledged ||
-                  creationPending
-                }
+                disabled={publishNow || fieldsDisabled}
               />
             )}
             {form.formState.errors.root?.message && (
@@ -407,7 +434,11 @@ function PostEditorSession({ initialData, pageTitle, gqlOpts = {} }: Props) {
             )}
             <Button
               type='submit'
-              disabled={form.formState.isSubmitting || writeAcknowledged}
+              disabled={
+                form.formState.isSubmitting ||
+                writeAcknowledged ||
+                creationBlocked
+              }
             >
               {initialData ? t('form.update') : t('form.create')}
             </Button>

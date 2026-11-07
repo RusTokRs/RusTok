@@ -46,7 +46,7 @@ certification wording below where it implies executed or complete readiness.
 | --- | --- | --- |
 | P1 | Blog-owned catalog/validation/preview services, REST/GraphQL/native adapters and host preview/property bindings are implemented in source; mounted editor behavior remains unexecuted | Execute catalog, property validation and preview through the real editor. Manifest/registry adapter tests alone cannot satisfy this gate. |
 | P1 | Both editors construct typed partial updates from the loaded locale/revision snapshot; core and native HTTP acknowledgement tests pass, including a write-only actor whose independent read is denied | Exercise fallback, stale-write, navigation and reload-failure behavior in both mounted clients. |
-| P1 | Post creation requires stable command identity; owner, PostgreSQL, REST, GraphQL and native SSR scenarios pass | Persist and recover pending commands in both editors. Verify reload/process recovery and response loss through both mounted clients. |
+| P1 | Post creation requires stable command identity. Both editors now persist the frozen command in tab storage | Verify response loss and recovery through both mounted clients, including storage failure, actor/tenant switch and a rejected detail reload after acknowledgement. |
 | P2 | Blog controls, form/grid composition and core policies have been refactored; shared grid messages include en/ru/fr and exact reaction counts remain decimal strings | Retain scoped Rust checks and third-locale/parameter/plural scenarios, then verify actual localized and accessible controls in both mounted clients. |
 | P2 | Both storefronts now compose reaction/comment surfaces; category-load failures are explicit, with the current category retained | Verify critical interactions through both actual client entrypoints, including uncertain reaction writes, read-only cached comments and reply identity across article/locale changes. |
 | P2 | Next behavior/API tests and selected SSR/native HTTP scenarios pass; default builds still omit production feature combinations | Verify remaining production features, browser accessibility and client parity through the actual entrypoints. |
@@ -139,25 +139,29 @@ artifacts. Blog source was unchanged after the verified receipt fix in `9ca4f31c
 - `cargo clippy -p rustok-blog --all-targets --locked --offline -- -D warnings`
   passed for the package and its test targets.
 
-Pending requests remain memory-only. Mounted response loss, browser reload and
-process recovery are still required before this gate can be called complete.
-The owner contract is in
-[CRATE_API.md](../CRATE_API.md#replayable-post-creation).
+### Tab recovery for post creation (2026-11-07)
 
-The next client acceptance slice is sequenced as follows:
+Started on local `main` at `63338e1d81b503e70788afe51f8a90a7605340c9`.
+Both editors now retain the original command before dispatch and recover it on
+remount in the same tab. Creation uses a scoped session journal, following the
+Product recovery precedent. The record carries the complete payload and key.
+Credentials remain in the host session. Storage cleanup checks the predecessor
+after a terminal result. The [owner contract](../CRATE_API.md#replayable-post-creation)
+defines logout, scope and retention behavior.
 
-1. Define the pending-command recovery owner contract, including actor/tenant
-   isolation, retained payload, logout behavior and cleanup. Select an existing
-   platform persistence capability where it owns these semantics; document any
-   required shared contract change before implementation.
-2. Restore the original command in both editors after navigation/reload, retain
-   it before transport dispatch, and clear it only after an authoritative outcome.
-   A credential refresh for the same actor must preserve the command; a different
-   actor or tenant must never replay it.
-3. Exercise both mounted entrypoints with a lost response before/after commit,
-   reload while unconfirmed, durable rejection followed by correction, and a
-   confirmed acknowledgement followed by failed detail reload. Assert owner rows
-   and Outbox cardinality alongside the visible retry/editing state.
+The 18 Next Blog tests passed. The model scenarios cover exact replay after
+journal reconstruction, independent actor and tenant keys, corrupt data, a
+failed storage write and stale cleanup. The Blog package lint and GraphQL
+contract guards passed. Host TypeScript checking still reports three Pricing
+errors outside Blog. The Leptos package passed `cargo check -p rustok-blog-admin
+--target wasm32-unknown-unknown --features hydrate --locked --offline`.
+UI catalog parity passed across 77 catalog directories. The shared i18n contract
+guard still reports a missing OAuth translation marker in Channel.
+
+The mounted evidence gate still requires both entrypoints with a lost response
+before and after commit, reload while unconfirmed, durable rejection followed
+by correction, and a confirmed acknowledgement followed by failed detail reload.
+Assert owner rows and Outbox cardinality alongside the visible retry/editing state.
 
 ### Fly owner continuation (2026-11-05)
 

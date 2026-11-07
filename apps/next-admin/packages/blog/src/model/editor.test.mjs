@@ -4,6 +4,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
 import { compileFunction } from 'node:vm';
+import {
+  PostCreationJournal,
+  isCreationAcknowledgement,
+  isDurableCreationRejection
+} from './creation-journal.ts';
 
 const source = readFileSync(new URL('./editor.ts', import.meta.url), 'utf8')
   .replace(/^import type.*;$/gm, '')
@@ -16,11 +21,10 @@ const {
   targetCategoryCopy,
   canSubmitEditor,
   completeEditorWrite,
-  EditorValidationError,
-  PostCreationAttempt
+  EditorValidationError
 } = compileFunction(
   stripTypeScriptTypes(source) +
-    '\nreturn { PostCreationAttempt, buildPostCommand, targetPostCopy, buildCategoryUpdate, targetCategoryCopy, EditorValidationError, canSubmitEditor, completeEditorWrite };',
+    '\nreturn { buildPostCommand, targetPostCopy, buildCategoryUpdate, targetCategoryCopy, EditorValidationError, canSubmitEditor, completeEditorWrite };',
   ['z']
 )(z);
 const doc = (text) => ({
@@ -314,28 +318,104 @@ test('post write acknowledgement never performs a second privileged detail query
   );
 });
 
-test('creation retries retain exact identity and payload after an unknown response', () => {
-  const attempt = new PostCreationAttempt();
-  let calls = 0;
-  const allocate = () => `command-${++calls}`;
-  const input = {
-    title: 'Original',
-    locale: 'en',
-    tags: [],
-    publish: false,
-    content: doc('Body')
+function creationStorage() {
+  const data = new Map();
+  return {
+    data,
+    getItem: (key) => data.get(key) ?? null,
+    setItem: (key, raw) => data.set(key, raw),
+    removeItem: (key) => data.delete(key)
   };
-  const first = attempt.prepare(input, allocate);
+}
+const actor = '01958e8f-306f-747a-acd0-8ec31ed7e001';
+const tenant = '01958e8f-306f-747a-acd0-8ec31ed7e002';
+const command = '01958e8f-306f-747a-acd0-8ec31ed7e003';
+const other = '01958e8f-306f-747a-acd0-8ec31ed7e004';
+const createInput = {
+  title: 'Original',
+  locale: 'fr',
+  tags: ['retained'],
+  publish: false,
+  content: doc('Body'),
+  scheduledAt: '2027-01-01T10:00:00.000Z',
+  categoryId: other,
+  channelSlugs: ['editorial']
+};
+
+test('creation reload retains exact identity and payload after an unknown response', () => {
+  const storage = creationStorage();
+  const attempt = new PostCreationJournal(storage, actor, tenant);
+  let calls = 0;
+  const allocate = () => (++calls === 1 ? command : other);
+  const incoming = structuredClone(createInput);
+  const first = attempt.prepare(incoming, allocate);
   first.content.content.length = 0;
-  input.title = 'Changed';
-  attempt.resolve(new Error('network'));
-  attempt.resolve({ code: 'UNAUTHORIZED' });
-  assert.equal(attempt.prepare(input, allocate).title, 'Original');
-  assert.equal(attempt.request.content.content.length, 1);
-  assert.equal(attempt.request.commandId, 'command-1');
+  incoming.content.content.length = 0;
+  assert.deepEqual(attempt.request.content, createInput.content);
+  assert.equal(isDurableCreationRejection(new Error('network')), false);
+  assert.equal(isDurableCreationRejection({ code: 'UNAUTHORIZED' }), false);
+  const recovered = new PostCreationJournal(storage, actor, tenant);
+  const changed = { ...createInput, title: 'Changed' };
+  assert.deepEqual(recovered.prepare(changed, allocate), {
+    ...createInput,
+    commandId: command
+  });
   assert.equal(calls, 1);
-  attempt.resolve({ outcome: 'rejected' });
-  assert.equal(attempt.request, undefined);
-  assert.equal(attempt.prepare(input, allocate).commandId, 'command-2');
-  assert.equal(attempt.request.title, 'Changed');
+  assert.equal(isDurableCreationRejection({ outcome: 'rejected' }), true);
+  recovered.clear();
+  assert.equal(recovered.prepare(changed, allocate).commandId, other);
+  assert.throws(() => attempt.clear(), /predecessor changed/);
+  assert.equal(
+    new PostCreationJournal(storage, actor, tenant).request.title,
+    'Changed'
+  );
+  assert.equal(isCreationAcknowledgement(other), true);
+  assert.equal(
+    isCreationAcknowledgement('00000000-0000-0000-0000-000000000000'),
+    false
+  );
+});
+
+test('journal refuses corrupt scope, unavailable storage and a lost predecessor', () => {
+  const storage = creationStorage();
+  const attempt = new PostCreationJournal(storage, actor, tenant);
+  attempt.prepare(createInput, () => command);
+  assert.equal(
+    new PostCreationJournal(storage, other, tenant).request,
+    undefined
+  );
+  assert.equal(
+    new PostCreationJournal(storage, actor, other).request,
+    undefined
+  );
+  const [key, raw] = storage.data.entries().next().value;
+  storage.setItem(key, '{');
+  assert.throws(() => new PostCreationJournal(storage, actor, tenant));
+  const record = JSON.parse(raw);
+  record.scope.actor_id = other;
+  storage.setItem(key, JSON.stringify(record));
+  assert.throws(
+    () => new PostCreationJournal(storage, actor, tenant),
+    /scope changed/
+  );
+  storage.removeItem(key);
+  assert.throws(
+    () => attempt.prepare(createInput, () => other),
+    /predecessor changed/
+  );
+  const unavailable = new PostCreationJournal(
+    {
+      ...storage,
+      setItem: () => {
+        throw new Error('Quota');
+      }
+    },
+    actor,
+    tenant
+  );
+  assert.throws(
+    () => unavailable.prepare(createInput, () => other),
+    /write failed/
+  );
+  assert.equal(unavailable.request, undefined);
 });

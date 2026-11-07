@@ -294,6 +294,8 @@ export type AppMessageKey =
   | 'blog.editor.categoriesUnavailable'
   | 'blog-editor-categoryFallbackNotice'
   | 'blog.editor.categoryFallbackNotice'
+  | 'blog-editor-creationStorage'
+  | 'blog.editor.creationStorage'
   | 'blog-editor-creationUnknown'
   | 'blog.editor.creationUnknown'
   | 'blog-editor-currentCategory'
@@ -2634,6 +2636,8 @@ export interface AppMessageArgs {
   'blog-editor-categoriesUnavailable'?: Record<string, never>;
   'blog.editor.categoryFallbackNotice'?: Record<string, never>;
   'blog-editor-categoryFallbackNotice'?: Record<string, never>;
+  'blog.editor.creationStorage'?: Record<string, never>;
+  'blog-editor-creationStorage'?: Record<string, never>;
   'blog.editor.creationUnknown'?: Record<string, never>;
   'blog-editor-creationUnknown'?: Record<string, never>;
   'blog.editor.currentCategory'?: Record<string, never>;

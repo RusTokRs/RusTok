@@ -69,9 +69,10 @@ and honest FBA readiness.
 
 Post creation uses caller-retained `command_id` and the canonical Outbox operation
 receipt. Data, events and completion commit together; replay returns the original
-UUID under current authority. Both editors preserve the original request after an
-unknown response. See [the creation contract](CRATE_API.md#replayable-post-creation)
-for transport outcomes and the remaining browser restart limitation.
+UUID under current authority. Both editors persist the original request before
+dispatch and restore it after reload in the same tab and authenticated scope.
+The operator explicitly retries that request. The creation contract describes
+storage and transport outcomes. [Replayable post creation](CRATE_API.md#replayable-post-creation)
 Executed PostgreSQL scenarios cover concurrent retries, durable GraphQL outcomes,
 service/pool reconstruction and atomic Outbox failure/retry; the
 [reference evidence](docs/implementation-plan.md#post-creation-replay-continuation-2026-11-06)
@@ -431,10 +432,10 @@ The following limitations are tracked in the module backlog:
 - Anonymous REST read access is not available.
 - Newsletter, membership, and paid content are not available.
 - Reactions are limited to `like` on posts.
-- Post creation has a durable owner receipt and both editors retain the original
-  command for exact retry after an uncertain response. Pending editor state is
-  still memory-only; browser reload, unmount and process recovery are not yet
-  certified. Mounted response-loss evidence remains a reference acceptance gate.
+- Post creation has a durable owner receipt. Both editors retain the original
+  command in the tab for exact retry after an uncertain response. Closing the
+  tab or clearing its storage can lose the pending request. Mounted response-loss
+  evidence remains a reference acceptance gate.
 - Preview reads have no audit trail;
   the token lifecycle itself is closed — a token of a post that left `draft` is revoked by the
   transition (see "Preview tokens").

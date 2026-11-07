@@ -5,6 +5,7 @@ use leptos::server_fn::ServerFn;
 use rustok_api::Permission;
 use rustok_blog::{CreatePostInput, PostService};
 use rustok_core::{SecurityContext, UserRole};
+use sea_orm::{ConnectionTrait, Statement};
 use serde_json::json;
 
 use super::test_support::{execute, fixture};
@@ -27,12 +28,50 @@ async fn native_creation_replays_the_ack_and_exposes_only_durable_rejection() {
         "schedule_editable": true
     });
     let path = super::BlogAdminCreatePostNative::PATH;
+    let (status, scope) = execute(
+        &fixture.host,
+        &fixture.tenant,
+        &creator,
+        super::BlogAdminCreationScopeNative::PATH,
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{scope}");
+    assert_eq!(scope["tenant_id"], json!(fixture.tenant.id));
+    assert_eq!(scope["actor_id"], json!(creator.user_id));
+    for field in ["actor_id", "tenant_id"] {
+        let mut changed = scope.clone();
+        changed[field] = json!(uuid::Uuid::new_v4());
+        let (status, response) = execute(
+            &fixture.host,
+            &fixture.tenant,
+            &creator,
+            path,
+            json!({"scope": changed, "draft": draft}),
+        )
+        .await;
+        assert_ne!(status, StatusCode::OK, "{response}");
+        assert!(
+            response.to_string().contains("Blog creation scope changed"),
+            "{response}"
+        );
+    }
+    let counts = fixture
+        .db
+        .query_one_raw(Statement::from_string(
+            fixture.db.get_database_backend(),
+            "SELECT COUNT(*) AS posts FROM blog_posts",
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(counts.try_get::<i64>("", "posts").unwrap(), 0);
     let (status, first) = execute(
         &fixture.host,
         &fixture.tenant,
         &creator,
         path,
-        json!({"draft": draft}),
+        json!({"scope": scope, "draft": draft}),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{first}");
@@ -42,7 +81,7 @@ async fn native_creation_replays_the_ack_and_exposes_only_durable_rejection() {
         &fixture.tenant,
         &creator,
         path,
-        json!({"draft": draft}),
+        json!({"scope": scope, "draft": draft}),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{replay}");
@@ -56,7 +95,7 @@ async fn native_creation_replays_the_ack_and_exposes_only_durable_rejection() {
         &fixture.tenant,
         &denied,
         path,
-        json!({"draft": draft}),
+        json!({"scope": scope, "draft": draft}),
     )
     .await;
     assert_ne!(status, StatusCode::OK);
@@ -67,7 +106,7 @@ async fn native_creation_replays_the_ack_and_exposes_only_durable_rejection() {
         &fixture.tenant,
         &creator,
         path,
-        json!({"draft": draft}),
+        json!({"scope": scope, "draft": draft}),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{rejected}");
@@ -77,7 +116,7 @@ async fn native_creation_replays_the_ack_and_exposes_only_durable_rejection() {
         &fixture.tenant,
         &creator,
         path,
-        json!({"draft": draft}),
+        json!({"scope": scope, "draft": draft}),
     )
     .await;
     assert_eq!(replay, rejected);

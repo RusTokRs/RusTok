@@ -14244,6 +14244,7 @@ dependencies = [
  "leptos-auth",
  "leptos-ui",
  "leptos-ui-routing",
+ "leptos-use",
  "leptos_axum",
  "leptos_router",
  "rustok-api",

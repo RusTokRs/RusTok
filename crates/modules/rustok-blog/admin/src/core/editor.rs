@@ -76,16 +76,6 @@ impl PostEditorSession {
         }
     }
 
-    /// Retain the entire request before IO. A transport error cannot prove that
-    /// a previous attempt did not commit, even if current authorization fails.
-    pub fn retain_creation(&mut self, draft: BlogPostDraft) -> BlogPostDraft {
-        if let Some(pending) = self.pending_creation() {
-            return pending.clone();
-        }
-        *self = Self::CreatingPending(Box::new(draft.clone()));
-        draft
-    }
-
     /// An authoritative failed receipt releases only a pending creation. It
     /// cannot discard an existing edit snapshot or an acknowledged write.
     pub fn reject_creation(&mut self) {

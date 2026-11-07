@@ -90,11 +90,18 @@ Replay validates the stored outcome as well as its JSON shape. Invalid success
 identities, unsupported rejection statuses or empty rejection codes/messages
 are invariant failures, never authoritative acknowledgements or rejections.
 
-Both admin editors freeze the original key and payload while unresolved, and retry
-that exact input. Durable rejection permits correction with a fresh key. Success
-consumes submit ability before independent detail reload/navigation. Pending state
-is currently in memory: browser reload, unmount and process restart recovery are
-not yet certified. AI and Starter entrypoints allocate identities for new owner
+Both admin editors persist the original key and payload before dispatch. On
+reload or remount they restore the pending request from the same tab for the
+authenticated actor and tenant and wait for an explicit retry. The native
+request includes the expected scope, checked against authentication before
+the owner call. GraphQL uses the captured credential and tenant confirmation.
+The record carries no credentials. Logout detaches the editor from its record.
+Returning to the same scope in the tab can recover it. Storage failure blocks
+creation, and clearing tab data or closing the tab can lose the request.
+Durable rejection permits correction with a fresh key after matching cleanup.
+Success consumes submit ability before independent detail reload/navigation.
+Mounted verification remains tracked in the implementation plan.
+AI and Starter entrypoints allocate identities for new owner
 calls; cross-invocation retry guarantees require their caller to retain identity.
 
 ## Page Builder widget contract

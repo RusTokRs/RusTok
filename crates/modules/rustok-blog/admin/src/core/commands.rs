@@ -332,6 +332,27 @@ pub struct BlogPostEditorFormState {
 }
 
 impl BlogPostEditorFormState {
+    pub(crate) fn from_draft(draft: &BlogPostDraft) -> Self {
+        Self {
+            editing_post_id: None,
+            version: None,
+            title: draft.title.clone(),
+            slug: draft.slug.clone(),
+            excerpt: draft.excerpt.clone(),
+            content: draft.content.clone(),
+            locale: draft.locale.clone(),
+            tags_input: tags_input_value(&draft.tags),
+            category_id: optional_text_or_default(draft.category_id.clone()),
+            channel_slugs_input: tags_input_value(&draft.channel_slugs),
+            featured_image_url: optional_text_or_default(draft.featured_image_url.clone()),
+            seo_title: optional_text_or_default(draft.seo_title.clone()),
+            seo_description: optional_text_or_default(draft.seo_description.clone()),
+            scheduled_at: optional_text_or_default(draft.scheduled_at.clone()),
+            schedule_editable: draft.schedule_editable,
+            publish_now: draft.publish,
+        }
+    }
+
     pub fn empty(default_locale: &str) -> Self {
         Self {
             editing_post_id: None,

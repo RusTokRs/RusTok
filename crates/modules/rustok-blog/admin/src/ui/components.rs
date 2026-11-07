@@ -470,6 +470,16 @@ pub(super) fn apply_post_to_form(setters: BlogPostFormSetters, post: &BlogPostDe
     apply_form_state(setters, core::BlogPostEditorFormState::from_post(post));
 }
 
+pub(super) fn apply_pending_creation(
+    setters: BlogPostFormSetters,
+    draft: crate::model::BlogPostDraft,
+) {
+    apply_form_state(setters, core::BlogPostEditorFormState::from_draft(&draft));
+    setters
+        .editor_session
+        .set(core::PostEditorSession::CreatingPending(Box::new(draft)));
+}
+
 pub(super) fn reset_form(setters: BlogPostFormSetters, default_locale: &str) {
     setters
         .editor_session

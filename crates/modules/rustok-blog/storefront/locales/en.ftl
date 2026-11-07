@@ -78,6 +78,7 @@ blog-comments-replying = Replying to a comment
 blog-comments-replyAction = Reply
 
 blog-search-pages = Search pages
+# plural-exempt: The results label is invariant and the count is an exact decimal string.
 blog-search-results = Page { $page } · Results: { $total }
 
 blog-reactions-invalid = Reactions are unavailable for this article.

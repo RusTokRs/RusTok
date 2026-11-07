@@ -67,9 +67,9 @@ Blog's owner widget payloads and schema references are already unversioned;
 that bounded correction does not resolve the shared policy mismatch.
 
 Mounted browser, accessibility and authenticated persistence/reload scenarios
-remain required in both clients. Creation now carries a stable command identity
-through the owner receipt and both transports. Pending requests are retained in
-memory; browser reload/process recovery remains an open reference gate.
+remain required in both clients. The editor restores the pending command for
+the current actor and tenant using the tab's session storage. See the owner
+[recovery contract](../CRATE_API.md#replayable-post-creation).
 
 ## Documentation
 
@@ -80,8 +80,13 @@ memory; browser reload/process recovery remains an open reference gate.
 
 Post creation uses a complete `BlogPostDraft` with a caller-retained `command_id`.
 `BlogPostCreationOutcome::Rejected` is produced only by a durable failed receipt;
-ordinary errors preserve the frozen key and payload for exact retry. A durable
-rejection permits correction with a new identity. Post editing uses a distinct
+ordinary errors preserve the frozen key and payload for exact retry. The typed
+journal envelope lives in `core/creation.rs`. `transport/creation_journal.rs`
+checks that browser storage retained the request before either mutation adapter
+can send it. The native server function checks the expected actor and tenant
+against the authenticated context, and the GraphQL adapter verifies the scope
+with the same bearer it uses for the mutation. A durable rejection permits
+correction with a new identity after cleanup. Post editing uses a distinct
 `BlogPostUpdate` with mandatory predecessor revision and canonical nullable
 `Patch` semantics. Pure command builders compare target-language editor values
 against the loaded owner snapshot. Unchanged fields are omitted from both

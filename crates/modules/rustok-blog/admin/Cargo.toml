@@ -57,6 +57,9 @@ rustok-seo-targets.workspace = true
 rustok-seo-panel.workspace = true
 uuid.workspace = true
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+leptos-use = { workspace = true, features = ["storage"] }
+
 [build-dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

@@ -4,6 +4,7 @@ use rustok_graphql::{GraphqlHttpError, GraphqlRequest, execute as execute_graphq
 use serde::{Deserialize, Serialize};
 
 use crate::core;
+use crate::core::creation::CreationScope;
 use crate::model::{
     BlogCategoryDetail, BlogCategoryDraft, BlogCategoryOption, BlogCategoryUpdate, BlogPostDetail,
     BlogPostDraft, BlogPostList, BlogPostUpdate, BlogPreviewToken,
@@ -14,8 +15,7 @@ pub type ApiError = GraphqlHttpError;
 const BLOG_CATEGORIES_QUERY: &str = "query BlogCategoriesAdmin($filter: BlogCategoriesFilter) { blogCategories(filter: $filter) { items { id name } total } }";
 const BLOG_POSTS_QUERY: &str = "query BlogPostsAdmin($filter: PostsFilter) { posts(filter: $filter) { nextCursor items { id title effectiveLocale slug excerpt status authorId authorProfile { displayName } createdAt publishedAt scheduledAt isPinned pinnedAt } } }";
 const BLOG_POST_QUERY: &str = "query BlogPostAdmin($id: UUID!, $locale: String) { post(id: $id, locale: $locale) { id requestedLocale effectiveLocale availableLocales title slug excerpt content { document html } contentPlainText status createdAt updatedAt publishedAt scheduledAt isPinned pinnedAt tags categoryId channelSlugs featuredImageUrl seoTitle seoDescription version } }";
-const CREATE_POST_MUTATION: &str =
-    "mutation CreatePost($input: CreatePostInput!) { createPost(input: $input) }";
+const CREATE_POST_MUTATION: &str = "mutation CreatePost($tenantId: UUID, $input: CreatePostInput!) { createPost(tenantId: $tenantId, input: $input) }";
 const UPDATE_POST_MUTATION: &str = "mutation UpdatePost($id: UUID!, $input: UpdatePostInput!) { updatePost(id: $id, input: $input) }";
 const PUBLISH_POST_MUTATION: &str = "mutation PublishPost($id: UUID!) { publishPost(id: $id) }";
 const UNPUBLISH_POST_MUTATION: &str =
@@ -118,6 +118,8 @@ struct PostVariables {
 
 #[derive(Debug, Serialize)]
 struct CreatePostVariables {
+    #[serde(rename = "tenantId")]
+    tenant_id: uuid::Uuid,
     input: CreatePostInput,
 }
 
@@ -333,14 +335,57 @@ pub async fn fetch_post(
     Ok(response.post)
 }
 
-pub async fn create_post(
+pub(super) async fn fetch_creation_scope(
     token: Option<String>,
     tenant_slug: Option<String>,
+) -> Result<CreationScope, ApiError> {
+    #[derive(Deserialize)]
+    struct Identity {
+        id: uuid::Uuid,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ScopeResponse {
+        me: Identity,
+        current_tenant: Identity,
+    }
+    if token.as_deref().is_none_or(str::is_empty) {
+        return Err(GraphqlHttpError::Unauthorized);
+    }
+    let response = execute_graphql::<(), ScopeResponse>(
+        &graphql_url(),
+        GraphqlRequest::new(
+            "query BlogCreationScope { currentTenant { id } me { id } }",
+            None,
+        ),
+        token,
+        tenant_slug,
+        None,
+    )
+    .await?;
+    Ok(CreationScope {
+        actor_id: response.me.id,
+        tenant_id: response.current_tenant.id,
+    })
+}
+
+pub(super) async fn create_post(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    scope: CreationScope,
     draft: BlogPostDraft,
 ) -> Result<crate::model::BlogPostCreationOutcome, ApiError> {
+    // The explicit bearer is used for both requests, so credential refresh
+    // cannot retarget a recovered command between scope verification and dispatch.
+    if fetch_creation_scope(token.clone(), tenant_slug.clone()).await? != scope {
+        return Err(GraphqlHttpError::Graphql(
+            "Blog creation scope changed".into(),
+        ));
+    }
     let request = GraphqlRequest::new(
         CREATE_POST_MUTATION,
         Some(CreatePostVariables {
+            tenant_id: scope.tenant_id,
             input: CreatePostInput {
                 command_id: draft.command_id,
                 locale: draft.locale.clone(),
@@ -368,9 +413,17 @@ pub async fn create_post(
     )
     .await;
     match result {
-        Ok(created) => Ok(crate::model::BlogPostCreationOutcome::Created(
-            created.create_post,
-        )),
+        Ok(created) => {
+            let id = uuid::Uuid::parse_str(&created.create_post)
+                .ok()
+                .filter(|id| !id.is_nil())
+                .ok_or_else(|| {
+                    GraphqlHttpError::Graphql("Invalid Blog creation acknowledgement".into())
+                })?;
+            Ok(crate::model::BlogPostCreationOutcome::Created(
+                id.to_string(),
+            ))
+        }
         Err(error)
             if error.extensions.as_ref().and_then(|e| e.outcome.as_deref()) == Some("rejected") =>
         {

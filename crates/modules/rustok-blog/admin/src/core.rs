@@ -1,5 +1,6 @@
 mod categories;
 mod commands;
+pub(crate) mod creation;
 mod editor;
 pub mod page_builder;
 mod presentation;

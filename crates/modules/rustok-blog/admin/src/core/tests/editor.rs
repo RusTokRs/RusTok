@@ -2,26 +2,44 @@ use super::*;
 
 #[test]
 fn pending_creation_retains_original_command_until_a_durable_outcome() {
+    use crate::core::creation::{CreationScope, JournalError, decode, encode};
+
     let post = editor_post();
-    let original = editor_draft(&post);
-    let mut session = PostEditorSession::Creating;
-    let request = session.retain_creation(original.clone());
-    let mut changed = original;
-    changed.command_id = uuid::Uuid::new_v4();
-    changed.title = "Different input after timeout".into();
-    let retried = session.retain_creation(changed.clone());
+    let mut original = editor_draft(&post);
+    original.version = None;
+    let scope = CreationScope {
+        actor_id: uuid::Uuid::new_v4(),
+        tenant_id: uuid::Uuid::new_v4(),
+    };
+    let encoded = encode(scope, &original).unwrap();
+    let restored = decode(scope, &encoded).unwrap();
+    assert_eq!(restored, original);
     assert_eq!(
-        serde_json::to_value(&retried).unwrap(),
-        serde_json::to_value(&request).unwrap(),
-        "retry retains every input field, not only the command identity"
+        decode(
+            CreationScope {
+                tenant_id: uuid::Uuid::new_v4(),
+                ..scope
+            },
+            &encoded
+        ),
+        Err(JournalError::Changed)
     );
+    assert_eq!(
+        decode(
+            CreationScope {
+                actor_id: uuid::Uuid::new_v4(),
+                ..scope
+            },
+            &encoded
+        ),
+        Err(JournalError::Changed)
+    );
+    assert_eq!(decode(scope, "{"), Err(JournalError::Invalid));
+    let mut session = PostEditorSession::CreatingPending(Box::new(restored));
+    assert_eq!(session.pending_creation(), Some(&original));
     assert!(session.can_save(), "retry remains available");
     session.reject_creation();
     assert!(session.pending_creation().is_none());
-    assert_eq!(
-        session.retain_creation(changed.clone()).command_id,
-        changed.command_id
-    );
     let mut loaded = PostEditorSession::Loaded(Box::new(post));
     loaded.reject_creation();
     assert!(

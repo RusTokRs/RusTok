@@ -215,26 +215,19 @@ export function postImageSource(value?: string | null): string | undefined {
     : undefined;
 }
 
-/** One immutable logical creation. Only durable receipt rejection can release it. */
-export class PostCreationAttempt {
-  private pending: CreatePostInput | undefined;
-  get request(): CreatePostInput | undefined {
-    return this.pending ? structuredClone(this.pending) : undefined;
-  }
-  prepare(
-    input: Omit<CreatePostInput, 'commandId'>,
-    allocate: () => string
-  ): CreatePostInput {
-    this.pending ??= { ...structuredClone(input), commandId: allocate() };
-    return structuredClone(this.pending);
-  }
-  resolve(error: unknown): void {
-    if (
-      typeof error === 'object' &&
-      error !== null &&
-      'outcome' in error &&
-      error.outcome === 'rejected'
-    )
-      this.pending = undefined;
-  }
+export function creationFormValues(input: CreatePostInput): PostEditorValues {
+  return {
+    title: input.title,
+    slug: input.slug ?? '',
+    locale: input.locale,
+    categoryId: input.categoryId ?? '__none__',
+    channelSlugs: input.channelSlugs?.join(', ') ?? '',
+    excerpt: input.excerpt ?? '',
+    tags: input.tags.join(', '),
+    featuredImageUrl: input.featuredImageUrl ?? '',
+    seoTitle: input.seoTitle ?? '',
+    seoDescription: input.seoDescription ?? '',
+    publish: input.publish,
+    scheduledAt: input.scheduledAt ?? ''
+  };
 }
