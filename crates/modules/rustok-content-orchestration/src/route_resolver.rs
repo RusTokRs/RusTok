@@ -23,6 +23,7 @@ use crate::errors::{blog_error_to_content_error, forum_error_to_content_error};
 const BLOG_SLUG_PARAM: &str = "slug=";
 const FORUM_TOPIC_PARAM: &str = "topic=";
 
+#[derive(Debug)]
 pub struct OwnerCanonicalRouteResolver {
     db: DatabaseConnection,
 }

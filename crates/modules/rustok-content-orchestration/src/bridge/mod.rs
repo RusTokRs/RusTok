@@ -30,6 +30,12 @@ pub struct ServerContentOrchestrationBridge {
     routes: OwnerRoutes,
 }
 
+impl std::fmt::Debug for ServerContentOrchestrationBridge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerContentOrchestrationBridge").finish()
+    }
+}
+
 impl ServerContentOrchestrationBridge {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
         Self {

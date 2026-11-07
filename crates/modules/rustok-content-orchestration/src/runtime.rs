@@ -14,7 +14,7 @@ mod enabled {
 
     use crate::bridge::ServerContentOrchestrationBridge;
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub struct SharedContentOrchestrationService(pub Arc<ContentOrchestrationService>);
 
     pub fn build_content_orchestration_service(
@@ -43,7 +43,7 @@ mod enabled {
     feature = "mod-comments"
 )))]
 mod disabled {
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub struct SharedContentOrchestrationService;
 
     pub fn build_content_orchestration_service(
