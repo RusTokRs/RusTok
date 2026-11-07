@@ -11,7 +11,7 @@ use crate::error::{ForumError, ForumResult};
 
 use super::topic_canonical_resolution::ForumTopicCanonicalResolutionService;
 
-pub const FORUM_TOPIC_ROUTE_SHORT_ID_LEN: usize = 12;
+pub const FORUM_TOPIC_ROUTE_SHORT_ID_LEN: usize = 16;
 pub const MAX_FORUM_TOPIC_ROUTE_LOCALE_LEN: usize = 64;
 pub const MAX_FORUM_TOPIC_ROUTE_SLUG_LEN: usize = 255;
 pub const MAX_FORUM_TOPIC_ROUTE_ALIAS_REASON_LEN: usize = 500;

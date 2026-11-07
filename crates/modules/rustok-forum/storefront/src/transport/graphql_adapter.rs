@@ -646,3 +646,151 @@ mod tests {
         )));
     }
 }
+
+use crate::model::StorefrontForumCategoryRouteResolution;
+
+const STOREFRONT_FORUM_CATEGORY_ROUTE_QUERY: &str = "query StorefrontForumCategoryRoute($tenantId: UUID, $locale: String!, $slug: String!) { forumStorefrontCategoryRoute(tenantId: $tenantId, locale: $locale, slug: $slug) { requestedLocale requestedSlug disposition canonical { categoryId locale slug path } } }";
+
+#[derive(Debug, Deserialize)]
+struct StorefrontForumCategoryRouteResponse {
+    #[serde(rename = "forumStorefrontCategoryRoute")]
+    forum_storefront_category_route: Option<StorefrontForumCategoryRouteResolution>,
+}
+
+#[derive(Debug, Serialize)]
+struct StorefrontForumCategoryRouteVariables {
+    #[serde(rename = "tenantId")]
+    tenant_id: Option<String>,
+    locale: String,
+    slug: String,
+}
+
+pub async fn resolve_storefront_category_route_graphql(
+    locale: String,
+    slug: String,
+) -> Result<Option<StorefrontForumCategoryRouteResolution>, ApiError> {
+    let response: StorefrontForumCategoryRouteResponse = request(
+        STOREFRONT_FORUM_CATEGORY_ROUTE_QUERY,
+        StorefrontForumCategoryRouteVariables {
+            tenant_id: None,
+            locale,
+            slug,
+        },
+    )
+    .await?;
+    Ok(response.forum_storefront_category_route)
+}
+
+use crate::model::StorefrontForumTopicRouteResolution;
+
+const STOREFRONT_FORUM_TOPIC_ROUTE_QUERY: &str = "query StorefrontForumTopicRouteDecision($tenantId: UUID, $locale: String!, $shortId: String!, $slug: String!) { forumStorefrontTopicRouteDecision(tenantId: $tenantId, locale: $locale, shortId: $shortId, slug: $slug) { requestedLocale requestedShortId requestedSlug disposition canonical { topicId locale shortId slug path } } }";
+
+#[derive(Debug, Deserialize)]
+struct StorefrontForumTopicRouteResponse {
+    #[serde(rename = "forumStorefrontTopicRouteDecision")]
+    forum_storefront_topic_route_decision: Option<StorefrontForumTopicRouteResolution>,
+}
+
+#[derive(Debug, Serialize)]
+struct StorefrontForumTopicRouteVariables {
+    #[serde(rename = "tenantId")]
+    tenant_id: Option<String>,
+    locale: String,
+    #[serde(rename = "shortId")]
+    short_id: String,
+    slug: String,
+}
+
+pub async fn resolve_storefront_topic_route_graphql(
+    locale: String,
+    short_id: String,
+    slug: String,
+) -> Result<Option<StorefrontForumTopicRouteResolution>, ApiError> {
+    let response: StorefrontForumTopicRouteResponse = request(
+        STOREFRONT_FORUM_TOPIC_ROUTE_QUERY,
+        StorefrontForumTopicRouteVariables {
+            tenant_id: None,
+            locale,
+            short_id,
+            slug,
+        },
+    )
+    .await?;
+    Ok(response.forum_storefront_topic_route_decision)
+}
+
+const STOREFRONT_FORUM_TOPIC_CURRENT_REVISION_QUERY: &str = "query StorefrontForumTopicCurrentRevision($tenantId: UUID, $id: UUID!, $locale: String) { forumStorefrontTopicCurrentRevision(tenantId: $tenantId, id: $id, locale: $locale) }";
+const STOREFRONT_FORUM_REPLY_CURRENT_REVISION_QUERY: &str = "query StorefrontForumReplyCurrentRevision($tenantId: UUID, $id: UUID!, $locale: String) { forumStorefrontReplyCurrentRevision(tenantId: $tenantId, id: $id, locale: $locale) }";
+
+#[derive(Debug, Serialize)]
+struct StorefrontForumRevisionVariables {
+    #[serde(rename = "tenantId")]
+    tenant_id: Option<String>,
+    id: String,
+    locale: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StorefrontForumTopicCurrentRevisionResponse {
+    #[serde(rename = "forumStorefrontTopicCurrentRevision")]
+    revision: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StorefrontForumReplyCurrentRevisionResponse {
+    #[serde(rename = "forumStorefrontReplyCurrentRevision")]
+    revision: Option<String>,
+}
+
+pub async fn fetch_storefront_topic_current_revision_graphql(
+    topic_id: String,
+    locale: Option<String>,
+) -> Result<Option<String>, ApiError> {
+    let response: StorefrontForumTopicCurrentRevisionResponse = request(
+        STOREFRONT_FORUM_TOPIC_CURRENT_REVISION_QUERY,
+        StorefrontForumRevisionVariables {
+            tenant_id: None,
+            id: topic_id,
+            locale,
+        },
+    )
+    .await?;
+    Ok(response.revision)
+}
+
+pub async fn fetch_storefront_reply_current_revision_graphql(
+    reply_id: String,
+    locale: Option<String>,
+) -> Result<Option<String>, ApiError> {
+    let response: StorefrontForumReplyCurrentRevisionResponse = request(
+        STOREFRONT_FORUM_REPLY_CURRENT_REVISION_QUERY,
+        StorefrontForumRevisionVariables {
+            tenant_id: None,
+            id: reply_id,
+            locale,
+        },
+    )
+    .await?;
+    Ok(response.revision)
+}
+
+#[cfg(test)]
+mod revision_tests {
+    use super::{
+        STOREFRONT_FORUM_REPLY_CURRENT_REVISION_QUERY,
+        STOREFRONT_FORUM_TOPIC_CURRENT_REVISION_QUERY,
+    };
+
+    #[test]
+    fn current_revision_queries_stay_generic_forum_owner_facts() {
+        for query in [
+            STOREFRONT_FORUM_TOPIC_CURRENT_REVISION_QUERY,
+            STOREFRONT_FORUM_REPLY_CURRENT_REVISION_QUERY,
+        ] {
+            assert!(query.contains("CurrentRevision"));
+            assert!(!query.to_lowercase().contains("reaction"));
+            assert!(!query.contains("actorId"));
+        }
+    }
+}
+

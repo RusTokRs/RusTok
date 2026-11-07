@@ -1,39 +1,19 @@
 mod attachment_hold_reconciliation;
 mod attachment_relation;
 pub mod topic_routes;
-mod category {
-    include!("category_import.rs");
-    include!("category.rs");
-    include!("category_projection_owner.rs");
-    include!("category_visibility_list.rs");
-}
+mod category;
 pub mod category_audience;
-mod category_audience_read {
-    include!("category_audience_read.rs");
-    include!("category_audience_read_inline.rs");
-    include!("category_audience_read_search.rs");
-}
+mod category_audience_read;
 mod category_audience_visibility;
-mod category_command {
-    include!("category_command_owner.rs");
-}
-mod category_lifecycle {
-    include!("category_lifecycle.rs");
-    include!("category_lifecycle_owner.rs");
-}
+mod category_command;
+mod category_lifecycle;
 mod category_moderation_audience;
-mod category_owner {
-    include!("category_owner.rs");
-    include!("category_owner_locale_enumeration.rs");
-}
+mod category_owner;
 mod category_policy;
 mod category_reply_create_audience;
 mod category_route;
 mod category_search_audience_scope;
-mod category_search_scope {
-    include!("category_search_scope_visible.rs");
-    include!("category_search_scope.rs");
-}
+mod category_search_scope;
 mod category_topic_create_audience;
 mod category_visibility;
 mod content_limits;
@@ -42,20 +22,11 @@ mod edit_window;
 mod engagement_mode;
 pub mod event;
 mod solution_reconciliation;
-mod import_write {
-    include!("import_tombstone_write.rs");
-    include!("import_write.rs");
-}
-mod mention_relation {
-    include!("mention_relation_import.rs");
-    include!("mention_relation.rs");
-}
+mod import_write;
+mod mention_relation;
 pub mod mention_reconciliation;
 #[cfg(test)]
-mod mention_relation_tests {
-    include!("mention_relation_tests.rs");
-    include!("relation_quote_input_tests.rs");
-}
+mod mention_relation_tests;
 mod moderation_owner;
 pub mod moderation_report;
 pub mod moderation {
@@ -63,12 +34,6 @@ pub mod moderation {
 }
 mod moderation_audience_authorization;
 mod pending_visibility;
-mod posting_policy;
-mod posting_policy_approved_facts;
-mod posting_policy_create_window_facts;
-mod posting_policy_evaluator;
-mod posting_policy_facts;
-mod posting_policy_reading_facts;
 mod posting_rate;
 pub(crate) mod projection_invalidation;
 mod public_discovery;
@@ -78,47 +43,20 @@ mod read_model_owner;
 pub mod read_model {
     pub use super::read_model_owner::ForumReadModelService;
 }
-pub mod read_tracking {
-    include!("read_tracking.rs");
-    include!("read_tracking_audience.rs");
-}
+pub mod read_tracking;
 mod relation_quote_input;
 mod relation_read;
-mod reply {
-    include!("reply.rs");
-    include!("reply_inline.rs");
-    #[cfg(test)]
-    include!("reply_tests.rs");
-}
+mod reply;
 mod reply_audience_read;
 mod reply_create_audience_authorization;
 mod reply_facade;
-mod reply_owner {
-    include!("reply_owner_tombstone_import.rs");
-    include!("reply_owner_import.rs");
-    include!("reply_owner.rs");
-    include!("reply_owner_inline.rs");
-}
+mod reply_owner;
 pub mod revision;
 mod search_result_eligibility;
-pub mod storefront_read_state {
-    include!("storefront_read_state.rs");
-    include!("storefront_read_state_bulk.rs");
-}
+pub mod storefront_read_state;
 pub mod subscription;
-pub(crate) mod topic {
-    use sea_orm::QuerySelect;
-    include!("topic_import.rs");
-    include!("topic.rs");
-    include!("topic_locale_enumeration.rs");
-    include!("topic_inline.rs");
-    include!("topic_visibility_list.rs");
-    include!("topic_widget_preview.rs");
-}
-mod topic_audience {
-    include!("topic_audience.rs");
-    include!("topic_audience_owner.rs");
-}
+pub(crate) mod topic;
+mod topic_audience;
 mod topic_audience_list;
 mod topic_audience_lock;
 mod topic_audience_read;
@@ -128,10 +66,7 @@ mod topic_create_audience_authorization;
 mod topic_route;
 mod topic_route_backfill;
 mod topic_write_audience;
-mod topic_facade {
-    include!("topic_facade.rs");
-    include!("topic_facade_locale_enumeration.rs");
-}
+mod topic_facade;
 mod topic_fork;
 mod topic_merge;
 mod topic_merge_audience_reconciliation;
@@ -141,10 +76,7 @@ mod topic_merge_subscription_reconciliation;
 mod topic_merge_tag_reconciliation;
 mod topic_merge_vote_reconciliation;
 mod topic_move;
-mod topic_owner {
-    include!("topic_owner.rs");
-    include!("topic_owner_inline.rs");
-}
+mod topic_owner;
 mod topic_read_state_lock;
 mod topic_reply_create_audience;
 mod topic_reply_range_move;
@@ -223,30 +155,6 @@ pub use moderation::ModerationService;
 pub use moderation_audience_authorization::{
     ForumModerationAudienceAuthorization, ForumModerationAudienceAuthorizationService,
 };
-pub use posting_policy::{
-    ForumPostingAction, ForumPostingCandidateMetrics, ForumPostingPolicyDecision,
-    ForumPostingPolicyDecisionReason, ForumPostingPolicyEvaluationInput,
-    ForumPostingPolicyEvidence, ForumPostingPolicyFactKind, ForumPostingPolicyFacts,
-    ForumPostingPolicyMeasureUnit, ForumPostingPolicyOutcome, ForumPostingPolicyUnavailableFact,
-    ForumPostingWindowCount, MAX_FORUM_POSTING_POLICY_FACTS,
-    MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
-};
-pub use posting_policy_approved_facts::ForumApprovedPostsFactPort;
-pub use posting_policy_create_window_facts::{
-    ForumReplyCreatesWindowFactPort, ForumTopicCreatesWindowFactPort,
-};
-pub use posting_policy_evaluator::{
-    FORUM_POSTING_POLICY_PRECEDENCE, ForumPostingPolicyEvaluator, ForumPostingPolicyRules,
-    ForumPostingWindowLimit,
-};
-pub use posting_policy_facts::{
-    FORUM_POSTING_POLICY_FACTS_CAPABILITY, FORUM_POSTING_POLICY_FACTS_CAPABILITY_UNAVAILABLE,
-    ForumPostingPolicyCompositionRequest, ForumPostingPolicyFactsComposer,
-    ForumPostingPolicyOwnerFactPort, ForumPostingPolicyOwnerFactRequest,
-    ForumPostingPolicyOwnerFactResponse, ForumPostingPolicyOwnerFactValue,
-    ForumPostingTrustFactPort, SharedForumPostingPolicyOwnerFactPort,
-};
-pub use posting_policy_reading_facts::ForumTopicReadPostingFactPort;
 pub use public_discovery::ForumPublicDiscoveryService;
 pub use quote_command::ForumQuoteCommandService;
 pub use read_model::ForumReadModelService;

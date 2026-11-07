@@ -305,9 +305,9 @@ mod tests {
         ForumTopicRouteDescriptor {
             topic_id: Uuid::parse_str("00000000-0000-4000-8000-000000000001").expect("topic id"),
             locale: "en".to_string(),
-            short_id: "000000000000".to_string(),
+            short_id: "0000000000000000".to_string(),
             slug: "welcome".to_string(),
-            path: "/en/forum/t/000000000000/welcome".to_string(),
+            path: "/en/forum/t/0000000000000000/welcome".to_string(),
         }
     }
 
@@ -317,7 +317,7 @@ mod tests {
     ) -> ForumTopicRouteResolution {
         ForumTopicRouteResolution {
             requested_locale: "en".to_string(),
-            requested_short_id: "000000000000".to_string(),
+            requested_short_id: "0000000000000000".to_string(),
             requested_slug: "old-welcome".to_string(),
             requested_topic_id: Some(
                 Uuid::parse_str("00000000-0000-4000-8000-000000000001").expect("topic id"),
