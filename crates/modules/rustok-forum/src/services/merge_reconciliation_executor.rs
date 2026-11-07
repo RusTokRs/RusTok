@@ -54,7 +54,7 @@ impl<S: MergeReconciliationScope> MergeReconciliationExecutor<S> {
         // Caller provides the INSERT with `ON CONFLICT (tenant_id, operation_id) DO NOTHING`
         // The executor maps `rows_affected == 0` to `None` (idempotent no-op) and
         // `Ok(row)` to `Some(row)`.
-        let _ = (tenant_id, merge_operation_id, operation_id, reason);
+        std::hint::black_box((tenant_id, merge_operation_id, operation_id, reason));
         f(txn).await.map(Some)
     }
 }
