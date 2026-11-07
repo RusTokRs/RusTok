@@ -784,7 +784,7 @@ mod tests {
     use rustok_translation_targets::TranslationFieldPatch;
 
     fn test_identity() -> TranslationResourceIdentity {
-        shipping_option_identity(Uuid::new_v4())
+        shipping_option_identity(Uuid::new_v4()).expect("test identity must be valid")
     }
 
     fn test_snapshot() -> TranslationResourceSnapshot {
