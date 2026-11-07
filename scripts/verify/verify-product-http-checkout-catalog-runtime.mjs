@@ -55,8 +55,8 @@ for (const marker of [
   "product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime",
   "shared_get::<rustok_product::ProductCatalogReadRuntime>()",
   "Commerce HTTP routes require ProductCatalogReadRuntime in HostRuntimeContext",
-  "fn product_catalog_read_port",
-  "self.product_catalog_read_runtime.read_port()",
+  "fn product_catalog_read_runtime(&self)",
+  "self.product_catalog_read_runtime.clone()",
 ]) {
   requireText(runtime, marker, "Commerce HTTP runtime");
 }
@@ -72,7 +72,7 @@ if (!handlerBody) {
   );
   requireText(
     handlerBody,
-    "runtime.product_catalog_read_port()",
+    ".with_product_catalog_read_runtime(runtime.product_catalog_read_runtime())",
     "Commerce HTTP checkout handler",
   );
   if (handlerBody.includes("complete_storefront_checkout_input(")) {

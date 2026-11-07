@@ -61,7 +61,6 @@ The catalog selector in the consumer does not select remote Product commands. Na
 Product/Pricing/Inventory atomic participants remain a separate local contract. Sharing
 owner storage and independent storage/replication are different deployment choices.
 
-Standalone provider startup and mounted Commerce/AI business evidence remain
-open as described by the [Product plan](../rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
-Historical loopback attestation does not certify the current revision or a standalone
-production deployment.
+Local provider startup and all six authenticated RPCs were exercised against PostgreSQL.
+The [Product plan](../rustok-product/docs/implementation-plan.md#current-revision-and-evidence-limits)
+records the scope of the local run and the open mounted Commerce and AI evidence.

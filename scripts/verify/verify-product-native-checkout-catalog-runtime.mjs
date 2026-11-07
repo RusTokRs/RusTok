@@ -54,7 +54,7 @@ const plan = read(planPath);
 for (const marker of [
   "complete_storefront_checkout_with_product_runtime",
   "complete_storefront_checkout_input_with_product_runtime",
-  "product_catalog_read_port: Arc<dyn rustok_product::ProductCatalogReadPort>",
+  "product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime",
 ]) {
   requireText(staged, marker, "Commerce staged checkout");
 }
@@ -65,7 +65,9 @@ const composedBody = findFunctionBody(
 if (!composedBody) {
   failures.push("Commerce staged checkout: composed input function body is missing");
 } else {
-  requireText(composedBody, "product_catalog_read_port", "Commerce composed checkout body");
+  requireText(composedBody, "StorefrontCheckoutPricingResolver::new", "Commerce composed checkout body");
+  requireText(composedBody, "product_catalog_read_runtime.clone()", "Commerce composed checkout body");
+  requireText(composedBody, "product_catalog_read_runtime.read_port()", "Commerce composed checkout body");
   requireText(composedBody, "CheckoutPlanBuilder::new", "Commerce composed checkout body");
   if (composedBody.includes("CatalogService::new")) {
     failures.push("Commerce composed checkout body must not construct CatalogService");
@@ -77,7 +79,7 @@ if (!compatibilityBody) {
 } else {
   requireText(
     compatibilityBody,
-    "product_catalog_read_runtime_for_current_graphql_scope",
+    "runtime.product_catalog_read_runtime()",
     "Commerce checkout compatibility wrapper",
   );
   if (compatibilityBody.includes("CatalogService::new")) {
@@ -86,7 +88,7 @@ if (!compatibilityBody) {
 }
 for (const marker of [
   "shared_get::<ProductCatalogReadRuntime>()",
-  ".read_port()",
+  "product_catalog_read_runtime,",
   "complete_storefront_checkout_with_product_runtime",
   'dependency = "ProductCatalogReadRuntime"',
 ]) {

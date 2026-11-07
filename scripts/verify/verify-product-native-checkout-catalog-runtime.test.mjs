@@ -25,9 +25,9 @@ function fixture(options = {}) {
     root,
     "crates/modules/rustok-commerce/src/storefront_staged_checkout_runtime.rs",
     `
-    pub async fn complete_storefront_checkout_with_product_runtime(product_catalog_read_port: Arc<dyn rustok_product::ProductCatalogReadPort>) { complete_storefront_checkout_input_with_product_runtime(); }
-    pub async fn complete_storefront_checkout_input() { product_catalog_read_runtime_for_current_graphql_scope; ${compatibilityCatalog} }
-    pub async fn complete_storefront_checkout_input_with_product_runtime(product_catalog_read_port: Arc<dyn rustok_product::ProductCatalogReadPort>) { CheckoutPlanBuilder::new; product_catalog_read_port; ${composedCatalog} }
+    pub async fn complete_storefront_checkout_with_product_runtime(product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime) { complete_storefront_checkout_input_with_product_runtime(); }
+    pub async fn complete_storefront_checkout_input() { runtime.product_catalog_read_runtime(); ${compatibilityCatalog} }
+    pub async fn complete_storefront_checkout_input_with_product_runtime(product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime) { StorefrontCheckoutPricingResolver::new(product_catalog_read_runtime.clone()); CheckoutPlanBuilder::new(product_catalog_read_runtime.read_port()); ${composedCatalog} }
     `,
   );
   write(
@@ -35,7 +35,7 @@ function fixture(options = {}) {
     "crates/modules/rustok-order/storefront/src/transport/native_server_adapter/server_functions.rs",
     options.nativeDirect
       ? "CatalogService::new"
-      : `shared_get::<ProductCatalogReadRuntime>() .read_port() complete_storefront_checkout_with_product_runtime dependency = "ProductCatalogReadRuntime"`,
+      : `shared_get::<ProductCatalogReadRuntime>() complete_storefront_checkout_with_product_runtime(product_catalog_read_runtime, ) dependency = "ProductCatalogReadRuntime"`,
   );
   write(
     root,

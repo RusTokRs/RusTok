@@ -32,7 +32,8 @@ through one Product owner instance. Product commands, schema, additional storefr
 and admin operations remain outside this host. Pricing and Inventory transaction
 participants stay local to the embedded Product command runtime.
 
-The standalone provider passed a local PostgreSQL smoke check for all five RPCs.
+The standalone provider passed a local PostgreSQL smoke check for all six RPCs,
+including the storefront SKU projection for a published product and a draft.
 The combined provider/consumer capture, mounted business paths and recovery evidence
 remain open in the [Product plan](../rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
 The configured owner database and any local command database must have an explicit

@@ -32,20 +32,20 @@ function fixture(options = {}) {
     `;
   write(root, "crates/modules/rustok-commerce/src/graphql_runtime.rs", runtimeSource);
   const wrapperCatalog = options.wrapperCatalog ? "CatalogService::new;" : "";
-  const wrapperScope = options.missingScope
+  const mutationScope = options.missingScope
     ? ""
-    : "product_catalog_read_runtime_for_current_graphql_scope; .read_port();";
+    : ".with_product_catalog_read_runtime(product_catalog_read_runtime_for_current_graphql_scope());";
   write(
     root,
     "crates/modules/rustok-commerce/src/storefront_staged_checkout_runtime.rs",
-    `pub async fn complete_storefront_checkout_input() { ${wrapperScope} complete_storefront_checkout_input_with_product_runtime; ${wrapperCatalog} }`,
+    `pub async fn complete_storefront_checkout_input() { runtime.product_catalog_read_runtime(); complete_storefront_checkout_input_with_product_runtime; ${wrapperCatalog} }`,
   );
   write(
     root,
     "crates/modules/rustok-commerce/src/graphql/mutations/checkout.rs",
     options.mutationCatalog
       ? "async fn complete_storefront_checkout() { CatalogService::new; }"
-      : "async fn complete_storefront_checkout() { complete_storefront_checkout_input; }",
+      : `async fn complete_storefront_checkout() { ${mutationScope} complete_storefront_checkout_input(); }`,
   );
   const complete = options.registryPending
     ? ["commerce-checkout-http"]
@@ -117,7 +117,7 @@ test("GraphQL checkout guard rejects missing schema runtime", () => {
 });
 
 test("GraphQL checkout guard rejects missing resolver scope", () => {
-  reject({ missingScope: true }, /compatibility wrapper/);
+  reject({ missingScope: true }, /checkout mutation/);
 });
 
 test("GraphQL checkout guard rejects Product construction in wrapper", () => {

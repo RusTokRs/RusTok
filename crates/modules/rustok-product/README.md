@@ -43,8 +43,8 @@ The July 29 maintainer attestation records historical harness results without an
 source commit or retained raw logs. The conformance fixture now includes `ProductResponse.brands`.
 See the [current verification scope](docs/implementation-plan.md#current-revision-and-evidence-limits).
 
-Separate-process provider startup and authenticated mounted Commerce/AI business evidence
-remain open. Existing `boundary_ready` status is bounded to the catalog-read track.
+The standalone PostgreSQL probe exercises all six RPCs. Authenticated mounted Commerce
+and AI business evidence remains open. The `boundary_ready` status covers the catalog-read track.
 Product does not currently publish a contracts-only build without ORM dependencies.
 Contracts and implementation may remain in this one owner crate. See the
 [coverage and verification work](docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).

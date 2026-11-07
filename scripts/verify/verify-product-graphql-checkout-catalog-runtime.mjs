@@ -52,7 +52,6 @@ const registrySource = read(registryPath);
 const plan = read(planPath);
 
 for (const marker of [
-  "use rustok_product::ProductCatalogReadRuntime;",
   "CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME",
   "runtime_data.product_catalog_read_runtime()",
   "product_catalog_read_runtime: ProductCatalogReadRuntime",
@@ -82,10 +81,9 @@ if (!wrapperBody) {
 } else {
   requireText(
     wrapperBody,
-    "product_catalog_read_runtime_for_current_graphql_scope",
+    "runtime.product_catalog_read_runtime()",
     "Commerce GraphQL checkout compatibility wrapper",
   );
-  requireText(wrapperBody, ".read_port()", "Commerce GraphQL checkout compatibility wrapper");
   requireText(
     wrapperBody,
     "complete_storefront_checkout_input_with_product_runtime",
@@ -102,7 +100,17 @@ if (!mutationBody) {
 } else {
   requireText(
     mutationBody,
-    "complete_storefront_checkout_input",
+    ".with_product_catalog_read_runtime(",
+    "Commerce GraphQL checkout mutation",
+  );
+  requireText(
+    mutationBody,
+    "product_catalog_read_runtime_for_current_graphql_scope",
+    "Commerce GraphQL checkout mutation",
+  );
+  requireText(
+    mutationBody,
+    "complete_storefront_checkout_input(",
     "Commerce GraphQL checkout mutation",
   );
   if (mutationBody.includes("CatalogService::new")) {

@@ -27,12 +27,12 @@ function fixture(options = {}) {
       : `
         struct CommerceHttpRuntime { product_catalog_read_runtime: rustok_product::ProductCatalogReadRuntime }
         fn from_host() { shared_get::<rustok_product::ProductCatalogReadRuntime>(); "Commerce HTTP routes require ProductCatalogReadRuntime in HostRuntimeContext"; }
-        fn product_catalog_read_port(&self) { self.product_catalog_read_runtime.read_port(); }
+        fn product_catalog_read_runtime(&self) { self.product_catalog_read_runtime.clone(); }
       `,
   );
   const handlerCall = options.embeddedHandler
     ? "complete_storefront_checkout_input("
-    : "complete_storefront_checkout_input_with_product_runtime(runtime.product_catalog_read_port(),";
+    : "checkout.with_product_catalog_read_runtime(runtime.product_catalog_read_runtime()); complete_storefront_checkout_input_with_product_runtime(runtime.product_catalog_read_runtime(),";
   write(
     root,
     "crates/modules/rustok-commerce/src/controllers/store/checkout.rs",

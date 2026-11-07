@@ -265,9 +265,9 @@ Marketplace Listing, Order storefront native checkout, Commerce HTTP checkout,
 and mounted Commerce GraphQL checkout consume the host-selected port rather than
 constructing parallel `CatalogService` instances. GraphQL schema data carries the
 Product runtime into a resolver-scoped task-local; directly embedded schemas
-retain an explicit in-process compatibility fallback. The three-operation checkout consumer
-source cutover is complete; this statement does not cover every current mounted
-checkout dependency, storefront/admin capability or command path.
+retain an explicit in-process compatibility fallback. The checkout consumer source cutover is complete
+for these entrypoints. Checkout pricing receives the selected runtime, and checkout
+planning obtains the catalog read port from it.
 
 `rustok-product-transport` supplies a concrete tonic gRPC client/server adapter
 for catalog projections, the storefront variant projection used by Cart, and the two SKU identity operations.
@@ -555,6 +555,12 @@ RPCs, including the exact tenant, Product and variant identifiers in both SKU
 reads. A probe with a different bearer token was rejected. This run covered the
 standalone provider and the probe. The combined capture and mounted checkout
 remain open.
+
+The storefront SKU projection added in `89427e6055` passed the same 29-test
+transport and provider suite. Against the migrated PostgreSQL 16 fixture, the
+standalone provider passed all six RPCs. The updated probe resolved the
+published SKU and confirmed that the same storefront operation hides a draft
+SKU. A request with the wrong bearer token was rejected.
 
 The separate-process capture checks all six owner RPCs and consumer startup with migrated
 data and credentials. Run mounted Commerce and AI business requests separately, including
