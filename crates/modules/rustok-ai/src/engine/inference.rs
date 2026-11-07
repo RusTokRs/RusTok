@@ -14,6 +14,7 @@ use rig::{
     providers::{anthropic, chatgpt, cohere, copilot, gemini, ollama, openai, xai},
     streaming::{Item, StreamEvent},
 };
+use rig_bedrock::client::BedrockRuntime;
 use secrecy::ExposeSecret;
 
 use crate::{
@@ -109,14 +110,14 @@ pub(super) fn llamacpp_base_url(base_url: &str) -> String {
     }
 }
 
-pub(super) fn bedrock_runtime(config: &AiProviderConfig) -> AiResult<rig_bedrock::BedrockRuntime> {
+pub(super) fn bedrock_runtime(config: &AiProviderConfig) -> AiResult<BedrockRuntime> {
     let region = config
         .settings
         .get("region")
         .and_then(serde_json::Value::as_str)
         .filter(|region| !region.trim().is_empty())
         .ok_or_else(|| AiError::InvalidConfig("Bedrock region is required".to_string()))?;
-    let mut builder = rig_bedrock::BedrockRuntime::builder().region(region);
+    let mut builder = BedrockRuntime::builder().region(region);
     if let Some(profile) = config
         .settings
         .get("profile")
