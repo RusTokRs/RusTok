@@ -20,9 +20,6 @@
 - `cargo test -p rustok-index`
 - `cargo xtask module validate index`
 
-## Related documents
-
-
 ## Query continuation admission (FS-07 bounded remediation, 2026-10-28)
 
 The same bounded FS-07 continuation makes PostgreSQL drift/repair transaction
@@ -167,3 +164,35 @@ The repository owner still executes and retains the PostgreSQL packet. Source-co
 - [M2 Storage Benchmark Contract](./storage-benchmark.md)
 - [M2 Replacement Evidence Runbook](./storage-evidence-runbook.md)
 - [M3 Retained Partition Capture Runbook](./partition-full-capture.md)
+- [M4 many-link `EXISTS` filtering](./m4-many-link-filtering.md)
+- [M4 PostgreSQL/reference equivalence fixture, capture, and admission](./m4-postgres-reference-equivalence.md)
+- [M4 query planner actualization](./m4-query-planner.md)
+- [M4 retained query plan and SQL snapshots](./m4-query-snapshots.md)
+- [M4 Social Graph privacy parity shadow](./m4-social-graph-privacy-consumer.md)
+- [M5 Product refresh PostgreSQL/Iggy redelivery evidence](./m5-product-refresh-postgres-iggy-redelivery-evidence.md)
+- [M6 drift-finding PostgreSQL lifecycle harness](./m6-drift-finding-postgres-harness.md)
+- [M6 locale replay checkpoint and one-page worker contract](./m6-locale-replay-checkpoint-worker.md)
+- [M6 locale replay command/restart evidence](./m6-locale-replay-command-evidence.md)
+- [M6 durable locale replay job scope](./m6-locale-replay-job-scope.md)
+- [M6 locale replay runner and GraphQL command scope](./m6-locale-replay-runner-graphql.md)
+- [M6 locale-scoped replay source scan foundation](./m6-locale-scoped-source-scan.md)
+- [M6 replay graceful interruption and restart](./m6-replay-graceful-shutdown.md)
+- [M6 replay mode contract](./m6-replay-mode-contract.md)
+- [M6 replay multi-host reclaim evidence](./m6-replay-multihost-reclaim-evidence.md)
+- [M6 replay page-duration / lease-heartbeat policy](./m6-replay-page-lease-heartbeat.md)
+- [M6 replay pending-future timeout boundary](./m6-replay-pending-future-timeouts.md)
+- [M7 linked-target recreate PostgreSQL harness](./m7-linked-target-recreate-postgres-harness.md)
+- [M7 linked-target replay/redelivery PostgreSQL harness](./m7-linked-target-replay-redelivery-postgres-harness.md)
+- [M7 Product visibility / Channel identity convergence PostgreSQL harness](./m7-product-channel-convergence-postgres-harness.md)
+- [M7 Product / Channel identity-transition PostgreSQL harness](./m7-product-channel-identity-transitions-postgres-harness.md)
+- [M7 Product current-schema promotion](./m7-product-current-schema-promotion.md)
+- [M7 Product materialized/query freshness PostgreSQL harness](./m7-product-materialized-query-freshness-postgres-harness.md)
+- [M7 Product materialized/query freshness fence](./m7-product-materialized-query-freshness.md)
+- [M7 bounded Product source reconciliation](./m7-product-reconciliation.md)
+- [M7 Product-to-SalesChannel automatic convergence](./m7-product-sales-channel-convergence.md)
+- [M7 Product Storefront budgeted execution](./m7-product-storefront-budgeted-execution.md)
+- [M7 Product Storefront serving-budget policy](./m7-product-storefront-serving-budget-policy.md)
+- [M7 Product and ProductVariant tombstone replay](./m7-product-tombstone-source.md)
+- [M7 SalesChannel schema, bounded replay source, and retained deletes](./m7-sales-channel-source.md)
+- [Index M3 partition cutover rehearsal evidence](./partition-cutover-evidence.md)
+- [Index PostgreSQL storage decision](./storage-decision.md)

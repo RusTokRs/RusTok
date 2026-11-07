@@ -10,3 +10,7 @@ entities, provider-owned chunk publication into canonical snapshots, and
 lexical retrieval through Athanor's Tantivy-backed search. Vector retrieval
 remains an explicit capability gap until Athanor Phase 9 ships a concrete
 `VectorIndex` adapter.
+
+## Related documents
+
+- [Implementation Plan](./implementation-plan.md)

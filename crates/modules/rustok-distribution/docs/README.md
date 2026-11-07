@@ -48,3 +48,7 @@ tests, signing, evidence publication, and the bound terminal receipt.
 
 The current control-plane work permits only lightweight formatting, diff, and
 metadata checks; the compile commands above remain the target verification gate.
+
+## Related documents
+
+- [Selected Inventory → generic Index consumption](./inventory-index.md)

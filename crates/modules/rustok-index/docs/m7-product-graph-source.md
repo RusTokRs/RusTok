@@ -151,8 +151,8 @@ does not mount the Index path into Storefront traffic.
 - [Product typed EAV terms](./m7-product-attribute-term-contract.md)
 - [Product current-schema promotion](./m7-product-current-schema-promotion.md)
 - [Storefront parity gate](./m7-product-storefront-parity-gate.md)
-- [Storefront public projection](./m7-product-storefront-public-projection.md)
-- [Storefront tag hydration](./m7-product-storefront-tag-hydration.md)
+- [Storefront localized query architecture](./m7-product-storefront-localized-query-architecture.md)
+- [Storefront budgeted execution](./m7-product-storefront-budgeted-execution.md)
 - [Storefront serving budget](./m7-product-storefront-serving-budget-policy.md)
 - [Cross-owner resolver](./m7-product-sales-channel-resolver.md)
 

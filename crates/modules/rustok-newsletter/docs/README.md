@@ -206,7 +206,7 @@ src/
 
 - [Implementation plan](./implementation-plan.md)
 - [Crate README](../README.md)
-- [Central Registry](../../../docs/modules/registry.md)
+- [Central Registry](../../../../docs/modules/registry.md)
 
 ## License
 

@@ -20,8 +20,9 @@ The `party` module provides canonical Counterparty & Legal Entities domain funct
 
 ## Related Documents
 - [Implementation Plan](./implementation-plan.md)
-- [Module Platform Overview](../overview.md)
-- [Backend Implementation Guide](../../../backend/module-backend-implementation.md)
+- [Module Platform Overview](../README.md)
+- [Crate API Reference](../CRATE_API.md)
+- [Backend Implementation Guide](../../../../docs/backend/module-backend-implementation.md)
 
 ## Related Documentation
 - Documentation maps and registry contracts are centralized in `docs/modules/`.

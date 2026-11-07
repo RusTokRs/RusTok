@@ -9,9 +9,10 @@
  * 1. ADR governance (verify-adrs.mjs)
  * 2. Manifest/Topology synchronization (generate-docs-topology.mjs --check)
  * 3. Malformed literal escapes (\n, \t) detection in markdown text
- * 4. Internal relative links and anchor validation across platform entrypoints
+ * 4. Internal relative links and anchor validation across platform entrypoints, crates, and apps
  * 5. Forbidden stale terminology guard
  * 6. Canonical metadata & status schema validation
+ * 7. Complete documentation indexing & orphaned file guard across all crate and application docs directories
  */
 
 import fs from 'node:fs';
@@ -52,7 +53,7 @@ const governedDocs = [
   'README.md',
 ];
 
-console.log('[1/6] Verifying ADR governance...');
+console.log('[1/7] Verifying ADR governance...');
 try {
   execSync('node scripts/verify/verify-adrs.mjs', {
     cwd: repoRoot,
@@ -63,7 +64,7 @@ try {
   fail(`ADR governance verification failed:\n${e.stderr || e.stdout || e.message}`);
 }
 
-console.log('[2/6] Verifying module topology & architecture diagrams synchronization...');
+console.log('[2/7] Verifying module topology & architecture diagrams synchronization...');
 try {
   execSync('node scripts/generate/generate-docs-topology.mjs --check', {
     cwd: repoRoot,
@@ -74,7 +75,7 @@ try {
   fail(`Module topology verification failed. Run node scripts/generate/generate-docs-topology.mjs to update.\n${e.stderr || e.stdout || e.message}`);
 }
 
-console.log('[3/6] Checking for malformed literal escape characters in markdown text...');
+console.log('[3/7] Checking for malformed literal escape characters in markdown text...');
 for (const rel of governedDocs) {
   if (!exists(rel)) continue;
   const content = readText(rel);
@@ -97,7 +98,7 @@ for (const rel of governedDocs) {
   }
 }
 
-console.log('[4/6] Verifying internal relative links across docs/ and anchors in governed documents...');
+console.log('[4/7] Verifying internal relative links across docs/, crates/, and apps/ and anchors in governed documents...');
 function slugifyHeading(text) {
   return text
     .toLowerCase()
@@ -120,6 +121,7 @@ function extractHeadings(markdown) {
 // Collect all docs files
 const allDocsFiles = [];
 function collectDocsFiles(dir) {
+  if (!fs.existsSync(dir)) return;
   for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
     if (['node_modules', 'target', '.git', 'dist', '.next'].includes(f.name)) continue;
     const full = path.join(dir, f.name);
@@ -128,6 +130,30 @@ function collectDocsFiles(dir) {
   }
 }
 collectDocsFiles(path.join(repoRoot, 'docs'));
+
+function findDocsDirs(base) {
+  let list = [];
+  try {
+    for (const ent of fs.readdirSync(base, { withFileTypes: true })) {
+      if (['node_modules', 'target', '.git', 'dist', '.next'].includes(ent.name)) continue;
+      const full = path.join(base, ent.name);
+      if (ent.isDirectory()) {
+        if (ent.name === 'docs') list.push(full);
+        else list = list.concat(findDocsDirs(full));
+      }
+    }
+  } catch {}
+  return list;
+}
+
+const componentDocsDirs = [
+  ...findDocsDirs(path.join(repoRoot, 'crates')),
+  ...findDocsDirs(path.join(repoRoot, 'apps')),
+];
+for (const d of componentDocsDirs) {
+  collectDocsFiles(d);
+}
+
 governedDocs.forEach((d) => {
   const full = path.join(repoRoot, d);
   if (!allDocsFiles.includes(full) && fs.existsSync(full)) allDocsFiles.push(full);
@@ -185,7 +211,7 @@ for (const fullPath of allDocsFiles) {
   }
 }
 
-console.log('[5/6] Checking for forbidden stale terminology...');
+console.log('[5/7] Checking for forbidden stale terminology...');
 const forbiddenPatterns = [
   {
     regex: /Do not invent a third module type besides Core and Optional/i,
@@ -215,7 +241,7 @@ for (const rel of governedDocs) {
   }
 }
 
-console.log('[6/6] Verifying canonical metadata and status schema on central documents...');
+console.log('[6/7] Verifying canonical metadata and status schema on central documents...');
 const validDocTypes = new Set([
   'current_contract',
   'accepted_target',
@@ -295,6 +321,19 @@ for (const rel of metadataGovernedDocs) {
   }
 }
 
+console.log('[7/7] Verifying all crate and application documentation files are indexed in local README.md...');
+for (const d of componentDocsDirs) {
+  const readmePath = path.join(d, 'README.md');
+  if (!fs.existsSync(readmePath)) continue;
+  const readmeContent = fs.readFileSync(readmePath, 'utf8');
+  const mdFiles = fs.readdirSync(d).filter(f => f.endsWith('.md') && f !== 'README.md');
+  for (const file of mdFiles) {
+    if (!readmeContent.includes(file)) {
+      fail(`${path.relative(repoRoot, path.join(d, file)).replace(/\\/g, '/')}: orphaned documentation file not indexed in local README.md`);
+    }
+  }
+}
+
 console.log('');
 if (errors.length > 0) {
   console.error(`Documentation governance verification failed with ${errors.length} error(s):`);
@@ -306,6 +345,7 @@ if (errors.length > 0) {
 
 console.log(`Documentation governance verification passed successfully!`);
 console.log(`- ${governedDocs.length} core platform documents verified`);
-console.log(`- All internal links and anchors resolved`);
+console.log(`- ${allDocsFiles.length} total documentation files link-checked across platform`);
+console.log(`- ${componentDocsDirs.length} component docs directories verified for 100% indexing`);
 console.log(`- All module topology and Mermaid diagrams up to date`);
 console.log(`- Zero forbidden stale terminology or unescaped escape sequences detected`);

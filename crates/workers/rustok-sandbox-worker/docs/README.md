@@ -86,3 +86,7 @@ RuntimeClass configuration must additionally enforce the attested PID and file
 limits; a ConfigMap assertion is not proof of those controls. Kill, OOM,
 filesystem, egress, cleanup, and replica-capacity recovery must be exercised in
 the selected cluster and retained as operational evidence.
+
+## Related documents
+
+- [Implementation Plan](./implementation-plan.md)

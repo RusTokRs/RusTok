@@ -299,6 +299,9 @@ never auto-select the first entry.
 ## Related Documents
 
 - [Implementation plan](implementation-plan.md)
+- [Translation public error safety](./translation-public-error-safety.md)
+- [Translation event consumer lag prerequisite](./translation-event-consumer-lag-prerequisite.md)
+- [Translation settings localization prerequisite](./translation-settings-localization-prerequisite.md)
 - [Central translation plan](../../../../docs/modules/translation-implementation-plan.md)
 - [Translation surface registry](../../../../docs/modules/translation-surfaces.json)
 - [Module authoring guide](../../../../docs/modules/module-authoring.md)

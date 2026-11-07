@@ -181,9 +181,50 @@ slice. Runtime evidence remains `null`; FFA, FBA, `GROUPS-06`, `GROUPS-07`, and 
 
 - [Canonical implementation plan](implementation-plan.md)
 - [Root module README](../README.md)
+- [Bulk review contract](./bulk-review-contract.md)
 - [FBA registry](../contracts/groups-fba-registry.json)
 - [Effective invitation/application contract](../contracts/groups-effective-membership-invitations-applications.json)
 - [Module authoring guide](../../../../docs/modules/module-authoring.md)
 - [Database contract](../../../../docs/architecture/database.md)
 - [FFA package architecture](../../../../docs/UI/module-package-architecture.md)
 - [FBA architecture](../../../../docs/backend/module-backend-architecture.md)
+
+### Membership enforcement contracts
+
+- [Membership enforcement access path integration contract](./membership-enforcement-access-path-integration-contract.md)
+- [Membership enforcement command contract](./membership-enforcement-command-contract.md)
+- [Membership enforcement concurrency PostgreSQL contract](./membership-enforcement-concurrency-postgres-contract.md)
+- [Membership enforcement concurrency SQLite contract](./membership-enforcement-concurrency-sqlite-contract.md)
+- [Membership enforcement expiry PostgreSQL contract](./membership-enforcement-expiry-postgres-contract.md)
+- [Membership enforcement expiry SQLite contract](./membership-enforcement-expiry-sqlite-contract.md)
+- [Membership enforcement GraphQL contract](./membership-enforcement-graphql-contract.md)
+- [Membership enforcement runtime PostgreSQL contract](./membership-enforcement-runtime-postgres-contract.md)
+- [Membership enforcement runtime SQLite contract](./membership-enforcement-runtime-sqlite-contract.md)
+- [Membership enforcement target lock contract](./membership-enforcement-target-lock-contract.md)
+
+### Governance enforcement contracts
+
+- [Governance enforcement PostgreSQL contract](./governance-enforcement-postgres-contract.md)
+- [Governance enforcement SQLite contract](./governance-enforcement-sqlite-contract.md)
+- [Governance enforcement stress PostgreSQL contract](./governance-enforcement-stress-postgres-contract.md)
+- [Governance enforcement stress SQLite contract](./governance-enforcement-stress-sqlite-contract.md)
+- [Governance GraphQL PostgreSQL parity contract](./governance-graphql-postgres-parity-contract.md)
+- [Governance GraphQL SQLite parity contract](./governance-graphql-sqlite-parity-contract.md)
+- [Governance suspension expiry PostgreSQL contract](./governance-suspension-expiry-postgres-contract.md)
+- [Governance suspension expiry SQLite contract](./governance-suspension-expiry-sqlite-contract.md)
+
+### Localization enforcement contracts
+
+- [Localization enforcement concurrency PostgreSQL contract](./localization-enforcement-concurrency-postgres-contract.md)
+- [Localization enforcement concurrency SQLite contract](./localization-enforcement-concurrency-sqlite-contract.md)
+- [Localization enforcement expiry PostgreSQL contract](./localization-enforcement-expiry-postgres-contract.md)
+- [Localization enforcement expiry SQLite contract](./localization-enforcement-expiry-sqlite-contract.md)
+- [Localization GraphQL PostgreSQL parity contract](./localization-graphql-postgres-parity-contract.md)
+- [Localization GraphQL SQLite parity contract](./localization-graphql-sqlite-parity-contract.md)
+
+### Feature enforcement & moderation contracts
+
+- [Feature enforcement authorization contract](./feature-enforcement-authorization-contract.md)
+- [Feature enforcement PostgreSQL contract](./feature-enforcement-postgres-contract.md)
+- [Feature enforcement SQLite contract](./feature-enforcement-sqlite-contract.md)
+- [Moderation subject PostgreSQL contract](./moderation-subject-postgres-contract.md)

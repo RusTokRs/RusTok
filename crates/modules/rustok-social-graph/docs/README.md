@@ -24,3 +24,5 @@
 
 - [Crate README](../README.md)
 - [Implementation Plan](./implementation-plan.md)
+- [Index poison receipt observer](./index-poison-receipt-observer.md)
+- [Receipt cleanup CLI](./receipt-cleanup-cli.md)

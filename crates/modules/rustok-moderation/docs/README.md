@@ -24,3 +24,11 @@
 
 - [Crate README](../README.md)
 - [Implementation Plan](./implementation-plan.md)
+- [Application operation migration contract](./application-operation-migration-contract.md)
+- [Forum lost response PostgreSQL contract](./forum-lost-response-postgres-contract.md)
+- [Host composition executable contract](./host-composition-executable-contract.md)
+- [PostgreSQL application operation contract](./postgres-application-operation-contract.md)
+- [PostgreSQL dispatch contract](./postgres-dispatch-contract.md)
+- [PostgreSQL owner contract](./postgres-owner-contract.md)
+- [PostgreSQL recovery contract](./postgres-recovery-contract.md)
+- [PostgreSQL scheduler contract](./postgres-scheduler-contract.md)

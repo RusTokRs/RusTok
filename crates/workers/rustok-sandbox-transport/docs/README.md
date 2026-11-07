@@ -50,3 +50,7 @@ request and cannot activate a local fallback.
 
 Plaintext channels are available only to crate-local loopback tests.
 
+## Related documents
+
+- [Implementation Plan](./implementation-plan.md)
+
