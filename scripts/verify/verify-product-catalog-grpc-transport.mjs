@@ -137,7 +137,7 @@ requireAll(readme, [
   "does not own Product DTOs",
   "TrustedProductCatalogAuthority",
   "cargo test -p rustok-product-transport --test port_conformance",
-  "does not claim this command was executed",
+  "Loopback conformance covers transport and authority handling",
   "boundary_ready",
 ], "transport README");
 

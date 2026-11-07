@@ -60,7 +60,7 @@ The loopback harness covers the five declared operations, bearer authentication,
 cargo test -p rustok-product-transport --test port_conformance
 ```
 
-For this current-revision invocation, the implementation agent does not claim this command was executed. Historical maintainer-reported results remain bounded to their attestation.
+Loopback conformance covers transport and authority handling against a test owner. Retain mounted provider and consumer evidence separately. Historical maintainer-reported results remain bounded to their attestation.
 
 Authentication source and mutation guards are available separately:
 

@@ -78,16 +78,22 @@ forbidAll(commerceBehavior, [
   "use_cart_snapshot_fallback",
 ], "Commerce remote Product fallback ownership");
 requireAll(checkoutPlan, [
-  "self.product_catalog_read_port",
-  ".read_product_projection(",
-  ".read_variant_product_projection(",
   'boundary_error("read_checkout_product_projection", error)',
 ], "Commerce checkout Product boundary");
+for (const operation of ["read_product_projection", "read_variant_product_projection"]) {
+  const viaOwnerPort = new RegExp(
+    String.raw`\bself\s*\.product_catalog_read_port\s*\.${operation}\s*\(`,
+  );
+  if (!viaOwnerPort.test(checkoutPlan)) {
+    failures.push(`Commerce checkout Product boundary: ${operation} must use the owner read port`);
+  }
+}
 
 requireAll(aiCargo, [
   'rustok-product-transport = { path = "../rustok-product-transport" }',
   'tokio-stream = { version = "0.1", features = ["net"] }',
-  "tonic.workspace = true",
+  '"dep:tonic"',
+  "tonic = { workspace = true, optional = true }",
 ], "AI remote behavior test dependencies");
 requireAll(aiBehavior, [
   "mod remote_profile_tests",

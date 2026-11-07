@@ -39,13 +39,13 @@ function fixture(options = {}) {
   write(
     root,
     "crates/modules/rustok-commerce/src/services/checkout_plan_builder.rs",
-    `self.product_catalog_read_port .read_product_projection( .read_variant_product_projection( boundary_error("read_checkout_product_projection", error)`,
+    `self\n  .product_catalog_read_port\n  .read_product_projection( self\n  .product_catalog_read_port\n  .read_variant_product_projection( boundary_error("read_checkout_product_projection", error)`,
   );
 
   write(
     root,
     "crates/modules/rustok-ai/Cargo.toml",
-    `rustok-product-transport = { path = "../rustok-product-transport" }\ntokio-stream = { version = "0.1", features = ["net"] }\ntonic.workspace = true`,
+    `rustok-product-transport = { path = "../rustok-product-transport" }\ntokio-stream = { version = "0.1", features = ["net"] }\n[features]\nserver = ["dep:tonic"]\n[dependencies]\ntonic = { workspace = true, optional = true }`,
   );
   const aiReview = options.missingAiReview ? "" : `"review_required": true`;
   const aiTimeout = options.missingAiTimeout

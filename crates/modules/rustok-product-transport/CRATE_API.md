@@ -23,29 +23,43 @@ Public modules are `auth`, `client`, `connection`, `server` and generated `proto
   `ProductCatalogReadService`. `with_variant_identity_read_port` attaches the owner
   identity implementation before the service is mounted.
 
-## Ownership and framing
+## Platform Capability Bindings
 
-Product owns its request/response DTOs, catalog policy and persistence. Pricing remains
-the pricing authority; Product may return owner-composed price projections. This adapter
-owns protobuf framing, JSON serialization of owner DTOs/context, service authentication,
-deadline propagation and gRPC status/detail mapping. It owns no Product storage or
-alternate business implementation and emits no domain events.
+The adapter supplies gRPC framing, transport deadlines, service authentication and
+trusted-authority adaptation for the selected Product read ports.
 
-The existing package depends on `rustok-product` with its implementation dependencies.
-A contracts-only owner build is not currently published. This packaging fact does not
-mean the remote client executes local Product services.
+## Domain Collaborations
 
-## Invariants and errors
+Product owns the DTOs, catalog policy and persistence. Both ports execute through the
+configured Product owner. Pricing consumes SKU identity and remains the pricing authority.
+The package depends on the full Product owner crate.
 
-- Production connection configuration requires HTTPS; explicitly permitted loopback HTTP
-  is limited to local use. Connect timeout is bounded to 1..=30000 milliseconds.
+## Minimum Contract Set
+
+### Input DTOs/Commands
+
+Protobuf frames a serialized Product request DTO and a typed `PortContext`. The selected
+owner returns a typed projection or a bounded list of SKU identities.
+
+### Domain Invariants
+
+- Production connection configuration requires HTTPS. Explicit loopback HTTP is for local use.
+  Connect timeout is bounded to 1..=30000 milliseconds.
 - The bearer comparison uses constant-time equality for the complete authorization value.
-- The server verifies trusted tenant and operation authority and replaces untrusted
-  actor/claims/roles before invoking the owner port.
-- Port deadlines become gRPC timeouts; structured `PortError` details are preserved.
-- `ProductCatalogGrpcAuthenticationError` and `GrpcProductCatalogReadConnectionError`
-  describe local configuration/authentication failures. Owner domain codes are mapped
-  through the canonical port envelope, not redefined as a separate transport vocabulary.
+- The server verifies tenant and operation grants and replaces untrusted actor, claims
+  and roles before invoking the owner port.
+- Port deadlines become gRPC timeouts.
+
+### Events / Outbox Side Effects
+
+The transport executes reads and emits no domain events or outbox writes.
+
+### Errors / Failure Codes
+
+Owner `PortError` details are preserved. `ProductCatalogGrpcAuthenticationError` and
+`GrpcProductCatalogReadConnectionError` describe local authentication or connection
+configuration failures. An unsupported RPC maps to a nonretryable
+`product.grpc_operation_unsupported` error.
 
 ## Coverage and evidence
 

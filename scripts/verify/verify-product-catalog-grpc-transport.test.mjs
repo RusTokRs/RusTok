@@ -64,7 +64,7 @@ function fixture(options = {}) {
   write(
     root,
     "crates/modules/rustok-product-transport/README.md",
-    `Typed tonic gRPC framing does not own Product DTOs TrustedProductCatalogAuthority cargo test -p rustok-product-transport --test port_conformance does not claim this command was executed boundary_ready`,
+    `Typed tonic gRPC framing does not own Product DTOs TrustedProductCatalogAuthority cargo test -p rustok-product-transport --test port_conformance Loopback conformance covers transport and authority handling boundary_ready`,
   );
   const falsePromotion = options.falsePromotion === true;
   write(

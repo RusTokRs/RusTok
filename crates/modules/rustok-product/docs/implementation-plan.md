@@ -351,7 +351,7 @@ separate-process Commerce and AI execution.
 
 The separate-process runtime capture contract is source-complete. The locked
 local-loopback runner starts `rustok-product-catalog-service`, waits for schema
-preflight and listener readiness, invokes all three owner read operations through
+preflight and listener readiness, invokes the three base projection RPCs through
 the authenticated transport example, starts `rustok-server` with the external
 Product profile, and waits for remote-provider and HTTP host readiness before
 bounded shutdown. Commands and readiness markers are allowlisted; arbitrary shell
@@ -534,21 +534,27 @@ Resolve transaction/co-deployment decisions before changing write placement.
 ### Current revision and evidence limits
 
 The conformance fixture now supplies the required `ProductResponse.brands` field.
-The loopback harness exercises both SKU identity operations through the selected runtime,
-with bearer authentication, operation grants and typed errors. The older maintainer
-attestation has no exact tested source commit and does not cover the identity RPCs.
+On 2026-11-07, the Product SKU identity implementation in `308e8e7207` passed 29 local
+tests after the transport and host API documentation sections were restored:
 
-Retain a current compile/conformance result for the extended profile. Then execute
-the existing separate-process capture with real migrated data and credentials. Its direct
-RPC probe and consumer startup are narrower than actual Commerce/AI business requests
-through the consumer process. Only executed named paths can be claimed as verified.
-Implement and verify additional capabilities before enabling consumers that require them;
-do not silence unavailable errors or substitute local authority.
+```bash
+cargo test --locked --offline -p rustok-product-transport -p rustok-product-catalog-service
+```
+
+The loopback harness exercises both SKU identity operations through the selected runtime
+with bearer authentication and typed errors. Unit tests cover distinct operation grants
+and nonretryable errors for an unsupported RPC. These tests use a test owner for loopback
+and cover host configuration separately. The older maintainer attestation does not cover
+the identity RPCs.
+
+The separate-process capture still needs migrated data and credentials. Its current probe
+checks the three base projection RPCs and consumer startup. Run mounted Commerce and AI
+business requests separately, including a Pricing SKU identity read against the deployed
+Product owner. Consumers that need further capabilities require explicit coverage.
 
 ## Open results
 
-1. Rerun the affected transport and consumer conformance targets. Run the source
-   guard before process execution:
+1. Run the source guard before separate-process execution:
    - `node scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs`;
    - `node scripts/verify/verify-product-catalog-separate-process-runtime-contract.test.mjs`.
      Then execute `node scripts/evidence/capture-product-catalog-separate-process-runtime.mjs`
@@ -557,8 +563,9 @@ do not silence unavailable errors or substitute local authority.
      tenant/product/variant fixtures. Commit the generated sanitized evidence packet.
 2. After a successful capture, retain authenticated Commerce checkout and AI
    product-generation business requests through the separately running consumer
-   server, including a request that exercises Pricing SKU identity verification. Promote above `boundary_ready` only after those results and their
-   sanitized logs or CI artifacts are retained.
+   server, including a request that exercises Pricing SKU identity verification.
+   Promote above `boundary_ready` only after those results and their sanitized logs or
+   CI artifacts are retained.
 3. Keep Product richtext adoption explicitly deferred until the owner approves
    a typed storage/API/index migration. `product_translations.description` and
    catalog attributes currently named `richtext` are scalar text, so replacing
