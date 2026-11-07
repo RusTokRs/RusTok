@@ -73,7 +73,7 @@ capabilities, not complete module placement.
 
 | Selector | Required remote configuration | Scope |
 |---|---|---|
-| `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` | `RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT` and `RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN` | Three catalog projection RPCs and two SKU identity RPCs. Product commands remain embedded. |
+| `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` | `RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT` and `RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN` | Three base catalog projections, the storefront variant projection used by Cart, and two SKU identity reads. Product commands remain embedded. |
 | `RUSTOK_PROFILE_MEDIA_PROVIDER=grpc` | `RUSTOK_PROFILE_MEDIA_GRPC_ENDPOINT`; optional `RUSTOK_PROFILE_MEDIA_PUBLIC_ORIGIN` | Profiles public-image descriptors only; HTTP bytes and other Media operations retain their owner path. |
 
 Both connection configurations support their documented TLS-domain, bounded connect-timeout

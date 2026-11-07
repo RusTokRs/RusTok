@@ -30,7 +30,8 @@ schema administration have separate placement.
 
 The generated service accepts Product-owned read DTOs and a typed `PortContext`.
 The operations are `ReadProductProjection`, `ReadVariantProductProjection`,
-`ListPublishedProducts`, `ReadVariantIdentities` and `ListProductVariantIdentities`.
+`ListPublishedProducts`, `ReadVariantIdentities`, `ListProductVariantIdentities`
+and `ReadStorefrontVariantProductProjection`.
 
 ### Domain Invariants
 

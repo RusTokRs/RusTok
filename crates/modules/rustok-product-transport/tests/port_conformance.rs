@@ -7,8 +7,8 @@ use rustok_product::{
     ProductCatalogReadPort, ProductCatalogReadRuntime, ProductFulfillmentRequirement,
     ProductProjectionRequest, ProductVariantIdentitiesRequest, ProductVariantIdentityListRequest,
     ProductVariantIdentityReadPort, ProductVariantIdentitySnapshot, PublishedProductsRequest,
-    StorefrontProductList, StorefrontProductListItem, VariantProductProjectionRequest,
-    dto::ProductResponse, entities::product::ProductStatus,
+    StorefrontProductList, StorefrontProductListItem, StorefrontVariantProductProjectionRequest,
+    VariantProductProjectionRequest, dto::ProductResponse, entities::product::ProductStatus,
 };
 use rustok_product_transport::{
     GrpcProductCatalogReadProvider, ProductCatalogGrpcBearerAuthenticator,
@@ -68,6 +68,18 @@ impl MockProductCatalogReadPort {
 
 #[async_trait]
 impl ProductCatalogReadPort for MockProductCatalogReadPort {
+    async fn read_storefront_variant_product_projection(
+        &self,
+        context: PortContext,
+        request: StorefrontVariantProductProjectionRequest,
+    ) -> Result<Option<ProductResponse>, PortError> {
+        self.validate_context(&context)?;
+        assert_eq!(request.locale.as_deref(), Some("en"));
+        assert_eq!(request.fallback_locale.as_deref(), Some("en-GB"));
+        assert_eq!(request.public_channel_slug.as_deref(), Some("web"));
+        Ok((request.variant_id == self.variant_id).then(|| self.product()))
+    }
+
     async fn read_product_projection(
         &self,
         context: PortContext,
@@ -209,6 +221,7 @@ async fn loopback_grpc_provider_executes_the_product_catalog_port_contract() {
         ProductCatalogGrpcOperation::ListPublishedProducts,
         ProductCatalogGrpcOperation::ReadVariantIdentities,
         ProductCatalogGrpcOperation::ListProductVariantIdentities,
+        ProductCatalogGrpcOperation::ReadStorefrontVariantProductProjection,
     ]);
     let expected_identity = provider.identity();
     let server_service = ProductCatalogReadServiceServer::with_interceptor(
@@ -310,6 +323,36 @@ async fn loopback_grpc_provider_executes_the_product_catalog_port_contract() {
         .await
         .expect("variant-first projection should cross gRPC");
     assert_eq!(variant_product.id, product_id);
+
+    let storefront_request = StorefrontVariantProductProjectionRequest {
+        variant_id,
+        locale: Some("en".to_string()),
+        fallback_locale: Some("en-GB".to_string()),
+        public_channel_slug: Some("web".to_string()),
+    };
+    let storefront_product = runtime
+        .read_port()
+        .read_storefront_variant_product_projection(
+            read_context(tenant_id),
+            storefront_request.clone(),
+        )
+        .await
+        .expect("storefront SKU projection should cross gRPC")
+        .expect("published SKU should resolve");
+    assert_eq!(storefront_product.id, product_id);
+    assert_eq!(storefront_product.tenant_id, tenant_id);
+    let hidden = runtime
+        .read_port()
+        .read_storefront_variant_product_projection(
+            read_context(tenant_id),
+            StorefrontVariantProductProjectionRequest {
+                variant_id: Uuid::new_v4(),
+                ..storefront_request
+            },
+        )
+        .await
+        .expect("owner absence should cross gRPC");
+    assert!(hidden.is_none());
 
     let page = remote
         .list_published_products(

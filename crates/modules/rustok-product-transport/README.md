@@ -18,13 +18,14 @@ Typed tonic gRPC framing for the Product-owned `ProductCatalogReadPort` and
 
 ## Known Limitations / Pending Implementation
 
-The remote provider implements the three base catalog projection methods and both SKU
-identity methods. Optional catalog methods outside this profile retain unavailable defaults.
+The remote provider implements the three base catalog projection methods, the storefront
+variant projection used by Cart, and both SKU identity methods. Optional catalog methods
+outside this profile retain unavailable defaults.
 Commands, schema, storefront HTTP and tag capabilities are outside this transport profile.
 The package depends on the full Product owner crate.
 
-Upgrade the provider to a version with the two SKU identity RPCs before selecting it for
-Pricing callers that need them. A provider without these methods returns a nonretryable
+Upgrade the provider to a version with the SKU identity and storefront variant RPCs
+before selecting it for Cart and Pricing. A provider without these methods returns a nonretryable
 `product.grpc_operation_unsupported` error. See the
 [Product review](../rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
 
@@ -69,7 +70,7 @@ node scripts/verify/verify-product-catalog-grpc-authentication.mjs
 node scripts/verify/verify-product-catalog-grpc-authentication.test.mjs
 ```
 
-`examples/product_catalog_runtime_probe.rs` is the allowlisted authenticated client used by the separate-process runtime capture. It reads operator-provided tenant, product, and variant fixture identifiers from environment variables, invokes all five RPCs, checks returned projections and SKU identities, and emits one bounded success marker without printing identifiers or credentials.
+`examples/product_catalog_runtime_probe.rs` is the allowlisted authenticated client used by the separate-process runtime capture. It reads operator-provided tenant, product, and variant fixture identifiers from environment variables, invokes all six RPCs, checks returned projections and SKU identities, and emits one bounded success marker without printing identifiers or credentials.
 
 The source contract and mutation guard are checked with:
 
@@ -84,7 +85,7 @@ The operator-only capture command is:
 node scripts/evidence/capture-product-catalog-separate-process-runtime.mjs
 ```
 
-The capture starts the standalone provider and `rustok-server` as separate processes under an explicit local-loopback profile, runs the authenticated probe, and retains only source hashes, readiness markers, output hashes, byte counts, toolchain versions, and command metadata. Raw database URLs, bearer credentials, fixture identifiers, and process output are not persisted. The capture covers all five owner RPCs and consumer startup. Mounted Commerce and AI business requests require separate evidence.
+The capture starts the standalone provider and `rustok-server` as separate processes under an explicit local-loopback profile, runs the authenticated probe, and retains only source hashes, readiness markers, output hashes, byte counts, toolchain versions, and command metadata. Raw database URLs, bearer credentials, fixture identifiers, and process output are not persisted. The capture covers all six owner RPCs and consumer startup. Mounted Commerce and AI business requests require separate evidence.
 
 The implementation agent does not claim the runtime capture command was executed. Product remains `boundary_ready` until retained provider/consumer runtime evidence and separate-process Commerce/AI business-request evidence exist.
 

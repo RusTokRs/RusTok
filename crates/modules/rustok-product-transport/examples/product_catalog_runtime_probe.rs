@@ -4,7 +4,8 @@ use rustok_api::{PortActor, PortContext, PortError};
 use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentitiesRequest,
     ProductVariantIdentityListRequest, ProductVariantIdentityReadPort,
-    ProductVariantIdentitySnapshot, PublishedProductsRequest, VariantProductProjectionRequest,
+    ProductVariantIdentitySnapshot, PublishedProductsRequest,
+    StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,
 };
 use rustok_product_transport::{
     GrpcProductCatalogReadConnectionConfig, ProductCatalogGrpcBearerToken,
@@ -129,6 +130,29 @@ async fn main() -> Result<(), Box<dyn Error>> {
         return Err(invalid("variant projection identity mismatch").into());
     }
 
+    let storefront_product = provider
+        .read_storefront_variant_product_projection(
+            context.clone(),
+            StorefrontVariantProductProjectionRequest {
+                variant_id: config.variant_id,
+                locale: Some(config.locale.clone()),
+                fallback_locale: config.fallback_locale.clone(),
+                public_channel_slug: config.channel_slug.clone(),
+            },
+        )
+        .await
+        .map_err(|error| port_error("read_storefront_variant_product_projection", error))?
+        .ok_or_else(|| invalid("SKU fixture is unavailable on the storefront"))?;
+    if storefront_product.id != config.product_id
+        || storefront_product.tenant_id != config.tenant_id
+        || !storefront_product
+            .variants
+            .iter()
+            .any(|variant| variant.id == config.variant_id)
+    {
+        return Err(invalid("storefront SKU projection identity mismatch").into());
+    }
+
     let published = provider
         .list_published_products(
             context.clone(),
@@ -183,7 +207,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     println!(
-        "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=5 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched"
+        "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=6 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched storefront_variant=matched"
     );
     Ok(())
 }

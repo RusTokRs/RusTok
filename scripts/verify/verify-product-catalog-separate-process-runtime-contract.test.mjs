@@ -112,7 +112,7 @@ function contract(options = {}) {
         "Product catalog gRPC service listening",
       ],
       probe: [
-        "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=5 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched",
+        "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=6 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched storefront_variant=matched",
       ],
       consumer: [
         "Product catalog deployment provider initialized",
@@ -166,6 +166,7 @@ const probeMarkers = [
   ".with_authentication(authentication)",
   ".read_product_projection(",
   ".read_variant_product_projection(",
+  ".read_storefront_variant_product_projection(",
   ".list_published_products(",
   ".read_variant_identities(",
   ".list_product_variant_identities(",
@@ -245,7 +246,7 @@ function fixture(options = {}) {
         verifier: verifierPath,
         ...(options.forbiddenEvidence ? { tenant_id: "forbidden" } : {}),
         authenticated_probe: {
-          operation_count: options.incompleteProbeEvidence ? 3 : 5,
+          operation_count: options.incompleteProbeEvidence ? 5 : 6,
           readiness_markers: contract().readiness_markers.probe,
         },
         remaining_gates: remainingGates,
@@ -320,6 +321,6 @@ test("guard rejects forbidden retained fixture identifiers", () => {
   reject({ forbiddenEvidence: true }, /forbidden field: tenant_id/);
 });
 
-test("guard rejects retained evidence that omits SKU identity operations", () => {
-  reject({ incompleteProbeEvidence: true }, /must include all five owner RPCs/);
+test("guard rejects retained evidence that omits the storefront SKU projection", () => {
+  reject({ incompleteProbeEvidence: true }, /must include all six owner RPCs/);
 });

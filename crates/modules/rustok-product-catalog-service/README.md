@@ -26,7 +26,8 @@ It does not own Product DTOs, catalog policy, persistence queries, locale/channe
 ## Known Limitations / Pending Implementation
 
 This host exposes `ReadProductProjection`, `ReadVariantProductProjection`,
-`ListPublishedProducts`, `ReadVariantIdentities` and `ListProductVariantIdentities`
+`ListPublishedProducts`, `ReadVariantIdentities`, `ListProductVariantIdentities`
+and `ReadStorefrontVariantProductProjection`
 through one Product owner instance. Product commands, schema, additional storefront
 and admin operations remain outside this host. Pricing and Inventory transaction
 participants stay local to the embedded Product command runtime.
@@ -104,7 +105,7 @@ For the source-level invocation above, the implementation agent does not claim t
 
 ## Retained separate-process evidence
 
-The locked local evidence profile is defined by `crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json`. Its runner starts this provider, waits for the schema-preflight and listener markers, invokes all five catalog and SKU identity RPCs through the authenticated `rustok-product-transport` probe, then starts `rustok-server` with `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` and waits for remote-provider initialization.
+The locked local evidence profile is defined by `crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json`. Its runner starts this provider, waits for the schema-preflight and listener markers, invokes all six catalog and SKU identity RPCs through the authenticated `rustok-product-transport` probe, then starts `rustok-server` with `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` and waits for remote-provider initialization.
 
 The profile is intentionally restricted to an explicitly enabled loopback HTTP endpoint. The runner rejects TLS overrides in this local packet rather than silently weakening a non-loopback deployment. It requires already migrated provider and consumer PostgreSQL databases plus operator-supplied tenant/product/variant fixtures. Those values and the bearer credential are never persisted; retained evidence contains output hashes and byte counts rather than raw process logs.
 

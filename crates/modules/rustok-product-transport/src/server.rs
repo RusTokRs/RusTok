@@ -4,7 +4,8 @@ use bytes::Bytes;
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentityReadPort,
-    PublishedProductsRequest, VariantProductProjectionRequest,
+    PublishedProductsRequest, StorefrontVariantProductProjectionRequest,
+    VariantProductProjectionRequest,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::service::Interceptor;
@@ -45,15 +46,17 @@ pub enum ProductCatalogGrpcOperation {
     ListPublishedProducts,
     ReadVariantIdentities,
     ListProductVariantIdentities,
+    ReadStorefrontVariantProductProjection,
 }
 
 impl ProductCatalogGrpcOperation {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::ReadProductProjection,
         Self::ReadVariantProductProjection,
         Self::ListPublishedProducts,
         Self::ReadVariantIdentities,
         Self::ListProductVariantIdentities,
+        Self::ReadStorefrontVariantProductProjection,
     ];
 }
 
@@ -250,6 +253,25 @@ impl<P> ProductCatalogReadService for ProductCatalogGrpcService<P>
 where
     P: ProductCatalogReadPort + 'static,
 {
+    async fn read_storefront_variant_product_projection(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::ReadStorefrontVariantProductProjection,
+        )?;
+        let input: StorefrontVariantProductProjectionRequest =
+            decode_input(&request.into_inner().input_json)?;
+        let value = self
+            .provider
+            .read_storefront_variant_product_projection(context, input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
     async fn read_product_projection(
         &self,
         request: Request<JsonRequest>,

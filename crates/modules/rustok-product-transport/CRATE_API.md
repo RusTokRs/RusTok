@@ -4,8 +4,9 @@
 
 Public modules are `auth`, `client`, `connection`, `server` and generated `proto`.
 
-- `GrpcProductCatalogReadProvider` implements the three base methods of
-  `ProductCatalogReadPort` and both methods of `ProductVariantIdentityReadPort`.
+- `GrpcProductCatalogReadProvider` implements the three base methods and the storefront
+  variant projection of `ProductCatalogReadPort`, plus both methods of
+  `ProductVariantIdentityReadPort`.
 - `GrpcProductCatalogReadConnectionConfig` validates endpoint, connect timeout, optional
   TLS domain and explicit insecure-loopback permission. `validated()` returns
   `ValidatedGrpcProductCatalogReadConnection`; `connect()` opens the provider channel.
@@ -17,8 +18,8 @@ Public modules are `auth`, `client`, `connection`, `server` and generated `proto
 - `TrustedProductCatalogAuthority` carries authenticated tenant/actor/claims/roles and
   allowed operations; client-serialized identity is not authoritative.
 - `ProductCatalogGrpcOperation` declares `ReadProductProjection`,
-  `ReadVariantProductProjection`, `ListPublishedProducts`, `ReadVariantIdentities`
-  and `ListProductVariantIdentities` grants.
+  `ReadVariantProductProjection`, `ListPublishedProducts`, `ReadVariantIdentities`,
+  `ListProductVariantIdentities` and `ReadStorefrontVariantProductProjection` grants.
 - `ProductCatalogGrpcService<P>` exposes those operations over the generated
   `ProductCatalogReadService`. `with_variant_identity_read_port` attaches the owner
   identity implementation before the service is mounted.

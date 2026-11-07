@@ -6,7 +6,8 @@ use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentitiesRequest,
     ProductVariantIdentityListRequest, ProductVariantIdentityReadPort,
     ProductVariantIdentitySnapshot, PublishedProductsRequest, StorefrontProductList,
-    VariantProductProjectionRequest, dto::ProductResponse,
+    StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,
+    dto::ProductResponse,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::metadata::{Ascii, MetadataValue};
@@ -60,7 +61,7 @@ impl GrpcProductCatalogReadProvider {
         Ok(self.with_authentication(ProductCatalogGrpcBearerToken::new(secret)?))
     }
 
-    fn identity_request(
+    fn read_request(
         &self,
         context: &PortContext,
         input: &impl Serialize,
@@ -75,6 +76,22 @@ impl GrpcProductCatalogReadProvider {
 
 #[async_trait]
 impl ProductCatalogReadPort for GrpcProductCatalogReadProvider {
+    async fn read_storefront_variant_product_projection(
+        &self,
+        context: PortContext,
+        request: StorefrontVariantProductProjectionRequest,
+    ) -> Result<Option<ProductResponse>, PortError> {
+        let request = self.read_request(&context, &request)?;
+        let response = self
+            .client
+            .clone()
+            .read_storefront_variant_product_projection(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
     async fn read_product_projection(
         &self,
         context: PortContext,
@@ -152,7 +169,7 @@ impl ProductVariantIdentityReadPort for GrpcProductCatalogReadProvider {
         context: PortContext,
         request: ProductVariantIdentitiesRequest,
     ) -> Result<Vec<ProductVariantIdentitySnapshot>, PortError> {
-        let request = self.identity_request(&context, &request)?;
+        let request = self.read_request(&context, &request)?;
         let response = self
             .client
             .clone()
@@ -168,7 +185,7 @@ impl ProductVariantIdentityReadPort for GrpcProductCatalogReadProvider {
         context: PortContext,
         request: ProductVariantIdentityListRequest,
     ) -> Result<Vec<ProductVariantIdentitySnapshot>, PortError> {
-        let request = self.identity_request(&context, &request)?;
+        let request = self.read_request(&context, &request)?;
         let response = self
             .client
             .clone()

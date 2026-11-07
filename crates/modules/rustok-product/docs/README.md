@@ -75,7 +75,8 @@
 ## FBA deployment coverage
 
 The public ports and implementation remain in one Product crate. The separately packaged
-catalog service exposes the three catalog projection RPCs and the two SKU identity RPCs.
+catalog service exposes the three base catalog projection RPCs, the storefront variant
+projection used by Cart, and the two SKU identity RPCs.
 Selecting it also supplies Pricing's identity reader. Commands and some admin paths
 remain embedded. Schema, storefront facets and other optional read capabilities are still
 open. Loopback conformance covers the transport separately from mounted business parity.

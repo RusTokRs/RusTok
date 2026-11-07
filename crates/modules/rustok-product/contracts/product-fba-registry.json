@@ -111,6 +111,7 @@
     "runtime_factory": "ProductCatalogReadRuntime::external",
     "variant_identity_port": "ProductVariantIdentityReadPort",
     "variant_identity_operations": ["read_variant_identities", "list_product_variant_identities"],
+    "storefront_variant_projection_operation": "read_storefront_variant_product_projection",
     "provider_selector_env": "RUSTOK_PRODUCT_CATALOG_PROVIDER",
     "endpoint_env": "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT",
     "bearer_token_env": "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",

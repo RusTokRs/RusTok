@@ -32,7 +32,8 @@ separately constructs the embedded `ProductCatalogCommandRuntime`.
 | Surface | Current selected remote profile |
 |---|---|
 | Product projection, variant-to-product projection, basic published list | Implemented by the three gRPC RPCs. |
-| Filtered storefront list, facets and storefront detail | Extra read-port methods are not implemented by the gRPC client and return typed unavailable. |
+| Storefront SKU projection for Cart | A separate gRPC operation delegates lifecycle, channel and locale handling to Product. |
+| Filtered storefront list, facets and storefront detail by Product ID or handle | Extra read-port methods return typed unavailable. |
 | SKU identity lookup and enumeration | Both Product identity-port operations use the same remote Product owner. |
 | Schema, HTTP and tag read handles | Consumers requiring these capabilities still receive typed unavailable in the default external runtime. |
 | Native admin list/facets and schema operations | Some paths still construct embedded owner services. |

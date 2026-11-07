@@ -10,6 +10,7 @@ service ProductCatalogReadService {
   rpc ListPublishedProducts(JsonRequest) returns (JsonResponse);
   rpc ReadVariantIdentities(JsonRequest) returns (JsonResponse);
   rpc ListProductVariantIdentities(JsonRequest) returns (JsonResponse);
+  rpc ReadStorefrontVariantProductProjection(JsonRequest) returns (JsonResponse);
 }
 
 message JsonRequest {

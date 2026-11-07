@@ -23,7 +23,7 @@ const planPath = "crates/modules/rustok-product/docs/implementation-plan.md";
 const providerPath = "crates/modules/rustok-product-catalog-service/src/main.rs";
 const consumerDeploymentPath = "apps/server/src/services/product_catalog_deployment.rs";
 const expectedProbeMarker =
-  "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=5 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched";
+  "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=6 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched storefront_variant=matched";
 const expectedCommands = {
   provider: {
     program: "cargo",
@@ -231,6 +231,7 @@ function verifyProbe() {
     ".with_authentication(authentication)",
     ".read_product_projection(",
     ".read_variant_product_projection(",
+    ".read_storefront_variant_product_projection(",
     ".list_published_products(",
     ".read_variant_identities(",
     ".list_product_variant_identities(",
@@ -335,10 +336,10 @@ function verifyRetainedEvidenceIfPresent() {
     fail("retained Product separate-process remaining gates drift");
   }
   if (
-    evidence.authenticated_probe?.operation_count !== 5 ||
+    evidence.authenticated_probe?.operation_count !== 6 ||
     !sameValue(evidence.authenticated_probe?.readiness_markers, [expectedProbeMarker])
   ) {
-    fail("retained Product separate-process evidence must include all five owner RPCs");
+    fail("retained Product separate-process evidence must include all six owner RPCs");
   }
   const serialized = JSON.stringify(evidence);
   for (const forbiddenField of [

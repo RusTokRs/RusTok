@@ -75,7 +75,7 @@ const expectedMarkers = {
     "Product catalog gRPC service listening",
   ],
   probe: [
-    "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=5 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched",
+    "PRODUCT_CATALOG_RUNTIME_PROBE_OK operations=6 product_projection=matched variant_projection=matched published_list=nonempty sku_lookup=matched sku_list=matched storefront_variant=matched",
   ],
   consumer: [
     "Product catalog deployment provider initialized",
@@ -649,7 +649,7 @@ try {
     authenticated_probe: {
       result: "passed",
       readiness_markers: contract.readiness_markers.probe,
-      operation_count: 5,
+      operation_count: 6,
       output_sha256: probeOutputMetadata.sha256,
       output_bytes: probeOutputMetadata.bytes,
     },

@@ -71,7 +71,7 @@ pub enum StorefrontProductProjectionSubject {
     Handle { handle: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StorefrontVariantProductProjectionRequest {
     pub variant_id: Uuid,
     pub locale: Option<String>,

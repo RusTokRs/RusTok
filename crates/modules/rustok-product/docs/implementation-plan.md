@@ -270,7 +270,7 @@ source cutover is complete; this statement does not cover every current mounted
 checkout dependency, storefront/admin capability or command path.
 
 `rustok-product-transport` supplies a concrete tonic gRPC client/server adapter
-for the three catalog projection operations and the two SKU identity operations.
+for catalog projections, the storefront variant projection used by Cart, and the two SKU identity operations.
 Protobuf owns RPC identity and framing
 while JSON preserves Product-owned request/response DTOs and `PortContext`. The
 client maps context deadlines to tonic timeouts and restores structured
@@ -351,7 +351,7 @@ separate-process Commerce and AI execution.
 
 The separate-process runtime capture contract is source-complete. The locked
 local-loopback runner starts `rustok-product-catalog-service`, waits for schema
-preflight and listener readiness, invokes all five catalog and SKU identity RPCs through
+preflight and listener readiness, invokes all six catalog and SKU identity RPCs through
 the authenticated transport example, starts `rustok-server` with the external
 Product profile, and waits for remote-provider and HTTP host readiness before
 bounded shutdown. Commands and readiness markers are allowlisted; arbitrary shell
@@ -516,8 +516,8 @@ The July 29 attestation is retained for its original projection and consumer har
 | Boundary | Source truth and limitation |
 |---|---|
 | Provider selection | `apps/server/src/services/product_catalog_deployment.rs` installs only the external catalog-read runtime, before ordinary bootstrap. Invalid configuration/connection aborts; no selected-read failover is implemented. |
-| Wire operations | `ReadProductProjection`, `ReadVariantProductProjection` and `ListPublishedProducts` cover catalog projections. `ReadVariantIdentities` and `ListProductVariantIdentities` cover `ProductVariantIdentityReadPort`. |
-| Additional reads | The gRPC client inherits unavailable defaults for filtered lists, facets, storefront detail and other optional read methods. External runtime schema/HTTP/tag handles remain absent unless explicitly supplied. |
+| Wire operations | `ReadProductProjection`, `ReadVariantProductProjection` and `ListPublishedProducts` cover base catalog projections. `ReadStorefrontVariantProductProjection` applies Product visibility rules when Cart resolves a SKU. `ReadVariantIdentities` and `ListProductVariantIdentities` cover `ProductVariantIdentityReadPort`. |
+| Additional reads | The gRPC client inherits unavailable defaults for filtered lists, facets, storefront detail by handle or Product ID and other optional read methods. External runtime schema/HTTP/tag handles remain absent unless explicitly supplied. |
 | Mounted consumers | Native storefront list/facets/detail require additional methods. Some native admin list/facets/schema paths construct local services. Pricing reads SKU identity from the selected Product provider. Mounted Commerce/Pricing execution and broader storefront coverage still require verification. |
 | Commands | `commerce_provider_runtime.rs` separately creates the embedded Product command runtime when no command runtime is installed. The catalog-read selector does not select remote writes. |
 | Transactions | Product, Pricing and Inventory lifecycle/bootstrap operations share a local SQL transaction. Their transaction-participant interfaces cannot cross RPC. |
@@ -556,7 +556,7 @@ reads. A probe with a different bearer token was rejected. This run covered the
 standalone provider and the probe. The combined capture and mounted checkout
 remain open.
 
-The separate-process capture checks all five owner RPCs and consumer startup with migrated
+The separate-process capture checks all six owner RPCs and consumer startup with migrated
 data and credentials. Run mounted Commerce and AI business requests separately, including
 a Pricing SKU identity read against the deployed Product owner. Consumers that need further
 capabilities require explicit coverage.
