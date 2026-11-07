@@ -87,7 +87,8 @@ async fn storefront_forum_native(
 ) -> Result<StorefrontForumData, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{
             HostRuntimeContext, OptionalAuthContext, Permission, RequestContext,
             SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,
             TenantContext, has_any_effective_permission,
@@ -485,7 +486,8 @@ async fn storefront_topic_mark_read_native(
 ) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
         use rustok_forum::{
             ForumError, ForumStorefrontReadStateService, ForumTopicReadOperation,
@@ -911,7 +913,8 @@ async fn storefront_category_mark_read_native(
 ) -> Result<super::StorefrontForumBulkReadResult, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
         use rustok_forum::{
             ForumError, ForumStorefrontReadStateService, ForumTopicReadOperation,
@@ -978,7 +981,10 @@ async fn storefront_category_mark_read_native(
                 category_id,
                 security,
                 audience_context,
-                MarkForumTopicsReadBatchInput { cursor, limit },
+                MarkForumTopicsReadBatchInput {
+                    cursor,
+                    limit: limit.map(|v| bounded_forum_read_limit(Some(v))),
+                },
             )
             .await
         {
@@ -1007,7 +1013,8 @@ async fn storefront_all_topics_mark_read_native(
 ) -> Result<super::StorefrontForumBulkReadResult, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
         use rustok_forum::{
             ForumStorefrontReadStateService, ForumTopicReadOperation, ForumTopicReadTransport,
@@ -1071,7 +1078,10 @@ async fn storefront_all_topics_mark_read_native(
                 tenant.id,
                 security,
                 audience_context,
-                MarkForumTopicsReadBatchInput { cursor, limit },
+                MarkForumTopicsReadBatchInput {
+                    cursor,
+                    limit: limit.map(|v| bounded_forum_read_limit(Some(v))),
+                },
             )
             .await
             .map_err(server_error)?;
@@ -1120,7 +1130,8 @@ async fn storefront_category_route_native(
 ) -> Result<Option<StorefrontForumCategoryRouteResolution>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
         use rustok_forum::{
             ForumCategoryAudienceReadService, ForumCategoryReadOperation,
@@ -1274,7 +1285,8 @@ async fn storefront_topic_route_native(
 ) -> Result<Option<StorefrontForumTopicRouteResolution>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
         use rustok_forum::services::ForumTopicRouteTombstoneVisibilityService;
         use rustok_forum::{
@@ -1488,7 +1500,8 @@ async fn storefront_topic_current_revision_native(
 ) -> Result<Option<String>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_forum::{
             ForumTopicAudienceReadService, RevisionService, SharedForumAudienceFactsPort,
         };
@@ -1569,7 +1582,8 @@ async fn storefront_reply_current_revision_native(
 ) -> Result<Option<String>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use crate::dto::bounded_forum_read_limit;
+use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
         use rustok_forum::{
             ForumReplyAudienceReadService, ForumReplyReadOperation, ForumReplyReadTransport,

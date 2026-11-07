@@ -5,6 +5,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
+use crate::dto::bounded_forum_read_limit;
 use crate::model::{
     ForumCategoryConnection, ForumMemberCard, ForumReplyPage, ForumTopicDetail, ForumTopicPage,
     StorefrontForumData,
@@ -576,7 +577,8 @@ pub async fn mark_all_storefront_topics_read_graphql(
 fn graphql_bulk_limit(limit: Option<u64>) -> Result<Option<i32>, ApiError> {
     limit
         .map(|value| {
-            i32::try_from(value).map_err(|_| {
+            let clamped = bounded_forum_read_limit(Some(value));
+            i32::try_from(clamped).map_err(|_| {
                 ApiError::Graphql("Forum bulk read limit exceeds GraphQL Int range".to_string())
             })
         })
