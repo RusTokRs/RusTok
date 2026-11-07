@@ -88,6 +88,14 @@ fn rig_engine_with_image(
     })
 }
 
+pub(super) const OPENAI_COMPATIBLE_DIALECT: openai::wire::Dialect = {
+    let mut dialect = openai::wire::OPENAI;
+    dialect.name = "openai_compatible";
+    dialect.quirks.completion_route = openai::Route::Chat;
+    dialect.quirks.embedding.requires_usage = false;
+    dialect
+};
+
 pub(super) fn openai_config(
     dialect: &'static openai::wire::Dialect,
     key: &str,
@@ -129,15 +137,8 @@ pub(super) fn bedrock_runtime(config: &AiProviderConfig) -> AiResult<BedrockRunt
     Ok(builder.build())
 }
 
-pub(super) async fn gemini_grpc_runtime(
-    key: &str,
-    base_url: &str,
-) -> AiResult<rig_gemini_grpc::GeminiGrpc> {
-    let mut config = gemini::GeminiConfig::new(key.to_owned());
-    if !base_url.is_empty() {
-        config = config.with_base_url(base_url.to_owned());
-    }
-    rig_gemini_grpc::GeminiGrpc::connect(&config)
+pub(super) async fn gemini_grpc_runtime(key: &str) -> AiResult<rig_gemini_grpc::GeminiGrpc> {
+    rig_gemini_grpc::GeminiGrpc::new(key.to_owned())
         .await
         .map_err(|error| AiError::InvalidConfig(error.to_string()))
 }
@@ -147,30 +148,15 @@ pub async fn inference_for_slug(
     config: &AiProviderConfig,
     secrets: &rustok_secrets::SecretResolverRegistry,
 ) -> AiResult<Box<dyn InferenceEngine>> {
+    if slug != &config.provider_slug {
+        return Err(AiError::InvalidConfig(
+            "inference provider does not match the configured target".to_string(),
+        ));
+    }
     let descriptor = super::provider_catalog_entry(slug)
         .ok_or_else(|| AiError::InvalidConfig(format!("unknown provider integration `{slug}`")))?;
     let integration = descriptor.integration;
-    let credential = if matches!(config.target_auth, crate::ProviderTargetAuth::SecretRefs) {
-        match descriptor.credentials.first() {
-            Some(field) => {
-                let reference = config.credential_refs.get(field.key).ok_or_else(|| {
-                    AiError::InvalidConfig(format!(
-                        "provider credential reference `{}` is required",
-                        field.key
-                    ))
-                })?;
-                Some(
-                    secrets
-                        .resolve_for_tenant(config.tenant_id, reference)
-                        .await
-                        .map_err(|error| AiError::InvalidConfig(error.to_string()))?,
-                )
-            }
-            None => None,
-        }
-    } else {
-        None
-    };
+    let credential = super::resolve_primary_credential(config, secrets).await?;
     let api_key = credential
         .as_ref()
         .map(ExposeSecret::expose_secret)
@@ -194,13 +180,17 @@ pub async fn inference_for_slug(
     }
     let engine = match integration {
         ProviderIntegration::OpenAi | ProviderIntegration::OpenAiCompatible => {
-            let client = openai_config(&openai::wire::OPENAI, api_key, base_url).client();
-            let model = if integration == ProviderIntegration::OpenAiCompatible {
-                client.chat(config.model.clone()).erase()
+            let dialect = if integration == ProviderIntegration::OpenAiCompatible {
+                &OPENAI_COMPATIBLE_DIALECT
             } else {
-                client.responses(config.model.clone()).erase()
+                &openai::wire::OPENAI
             };
-            rig_engine_with_image(model, client.image_generation(image_model), slug)
+            let client = openai_config(dialect, api_key, base_url).client();
+            rig_engine_with_image(
+                client.completion(config.model.clone()),
+                client.image_generation(image_model),
+                slug,
+            )
         }
         ProviderIntegration::Anthropic => {
             let mut target = anthropic::AnthropicConfig::new(api_key.to_owned());
@@ -320,7 +310,7 @@ pub async fn inference_for_slug(
             rig_engine(client.completion(config.model.clone()), slug)
         }
         ProviderIntegration::GeminiGrpc => {
-            let client = gemini_grpc_runtime(api_key, base_url).await?;
+            let client = gemini_grpc_runtime(api_key).await?;
             rig_engine(client.completion(config.model.clone()), slug)
         }
         ProviderIntegration::VoyageAi | ProviderIntegration::Fastembed => {
@@ -582,9 +572,10 @@ pub(crate) fn extract_usage(payload: &serde_json::Value) -> Option<ProviderUsage
         .get("output_tokens")
         .or_else(|| usage.get("completion_tokens"))
         .and_then(serde_json::Value::as_u64)?;
-    let total_tokens = usage
-        .get("total_tokens")
-        .and_then(serde_json::Value::as_u64);
+    let total_tokens = match usage.get("total_tokens") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(value) => Some(value.as_u64()?),
+    };
     Some(ProviderUsage::normalized(
         input_tokens,
         output_tokens,
@@ -614,6 +605,7 @@ mod usage_tests {
             serde_json::json!({"input_tokens":3}),
             serde_json::json!({"total_tokens":8}),
             serde_json::json!({"input_tokens":null,"output_tokens":0}),
+            serde_json::json!({"input_tokens":3,"output_tokens":5,"total_tokens":"8"}),
         ] {
             assert!(extract_usage(&serde_json::json!({"usage":usage})).is_none());
         }
@@ -719,7 +711,7 @@ mod sdk_tests {
     #[tokio::test]
     async fn sdk_stream_rejects_eof_without_provider_completion() {
         let bytes = sse(vec![
-            json!({"choices":[{"index":0,"delta":{"content":"partial"}}]}),
+            json!({"id":"reply","object":"chat.completion.chunk","created":1,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":"partial"}}]}),
         ]);
         let model = openai::OpenAIConfig::new("test-key")
             .connect(MockStreamingClient {
@@ -727,10 +719,17 @@ mod sdk_tests {
             })
             .chat("test-model")
             .erase();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = events.clone();
+        let emitter = ProviderStreamEmitter::new(move |event| captured.lock().unwrap().push(event));
         assert!(
-            stream_with(&model, request(), "openai_compatible", None)
+            stream_with(&model, request(), "openai_compatible", Some(emitter))
                 .await
                 .is_err()
+        );
+        assert_eq!(
+            *events.lock().unwrap(),
+            [crate::ProviderStreamEvent::TextDelta("partial".to_string())]
         );
     }
 
@@ -791,9 +790,13 @@ mod sdk_tests {
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[1].tool_call_id.as_deref(), Some("b"));
         for (index, message) in messages.into_iter().enumerate() {
-            let Message::User { content } = map_message(message).unwrap() else {panic!("tool result must map to a user message")};
-            let UserContent::ToolResult(result) = &content[0] else {panic!("tool result must survive projection")};
-            assert_eq!(result.is_error,index==0);
+            let Message::User { content } = map_message(message).unwrap() else {
+                panic!("tool result must map to a user message")
+            };
+            let UserContent::ToolResult(result) = &content[0] else {
+                panic!("tool result must survive projection")
+            };
+            assert_eq!(result.is_error, index == 0);
         }
         for invalid in [json!(null), json!("{}"), json!([])] {
             let function =
@@ -909,8 +912,14 @@ pub(crate) fn map_message(message: ChatMessage) -> AiResult<Message> {
             Message::tool_results(vec![rig::message::ToolResult {
                 call: CallId::from_wire(tool_call_id),
                 name: tool_name(message.name.unwrap_or_default())?,
-                content: vec![rig::message::ToolResultContent::text(message.content.unwrap_or_default())],
-                is_error: message.metadata.get("skipped").and_then(serde_json::Value::as_bool).unwrap_or(false),
+                content: vec![rig::message::ToolResultContent::text(
+                    message.content.unwrap_or_default(),
+                )],
+                is_error: message
+                    .metadata
+                    .get("skipped")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false),
             }])
         }
         ChatMessageRole::Assistant => {
@@ -943,9 +952,10 @@ fn strict_tool_function(name: ToolName, arguments: serde_json::Value) -> AiResul
 
 fn rig_arguments(function: &ToolFunction) -> serde_json::Value {
     match &function.invalid_arguments {
-        Some(raw) => {
-            serde_json::from_str(raw).unwrap_or_else(|_| serde_json::Value::String(raw.clone()))
-        }
+        Some(raw) => match serde_json::from_str::<serde_json::Value>(raw) {
+            Ok(value) if !value.is_object() => value,
+            _ => serde_json::Value::String(raw.clone()),
+        },
         None => function.arguments_value(),
     }
 }
@@ -1042,7 +1052,11 @@ fn map_response(
             AssistantContent::Reasoning(_)
             | AssistantContent::Image(_)
             | AssistantContent::Opaque(_) => {}
-            _ => return Err(AiError::Provider("unsupported Rig assistant content".to_string())),
+            _ => {
+                return Err(AiError::Provider(
+                    "unsupported Rig assistant content".to_string(),
+                ));
+            }
         }
     }
     Ok(ProviderChatResponse {

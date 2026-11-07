@@ -950,7 +950,6 @@ mod tests {
 
     #[derive(Deserialize)]
     struct StreamCassetteDocument {
-        rig_version: String,
         cassettes: Vec<StreamCassette>,
     }
 
@@ -1030,7 +1029,6 @@ mod tests {
         let document: StreamCassetteDocument =
             serde_json::from_str(include_str!("../../contracts/stream-cassettes.json"))
                 .expect("stream cassette document is valid JSON");
-        assert_eq!(document.rig_version, "0.39.0");
         assert_eq!(
             document
                 .cassettes

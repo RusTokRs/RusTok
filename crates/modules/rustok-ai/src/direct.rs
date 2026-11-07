@@ -2335,6 +2335,10 @@ mod tests {
                 .expect("product copy fixture schema");
         }
         let manager = SchemaManager::new(&database);
+        rustok_product::migrations::m20261104_000039_create_product_brands::Migration
+            .up(&manager)
+            .await
+            .expect("product brands migration");
         SysEventsMigration
             .up(&manager)
             .await

@@ -95,6 +95,10 @@ filtered, truncated, or unfinished tool response cannot become an executable cal
 Provider token counters remain optional in embedding/rerank responses; chat accounting
 requires both input and output counters before it records complete usage evidence.
 An explicit zero is valid evidence; an absent counter is unavailable evidence.
+OpenAI-compatible gateways can omit embedding usage. The vector adapter aligns
+indexed OpenAI-family replies before Rig associates vectors with documents. A
+reply with duplicate, missing, or out-of-range indices is rejected when it
+supplies indices. A reply with no indices uses its returned order.
 
 The active provider inventory is `contracts/provider-catalog.json`. Galadriel is
 not advertised because the pinned SDK has no adapter; persisted profiles remain

@@ -106,6 +106,11 @@ input/output evidence; embedding and rerank counters remain optional. JSON key
 order and float round-tripping are explicitly enabled on the owner's existing
 `serde_json` dependency after Rig stopped enabling them transitively.
 
+The OpenAI-compatible dialect permits usage-less embedding replies. The vector
+adapter uses Rig's frame hook to validate and order explicit response indices
+before Rig pairs vectors with request documents. Rig continues to own transport,
+decoding, and usage normalization.
+
 The reviewed provider inventory is `contracts/provider-catalog.json` in the
 capability crate. An integration absent from the SDK is not advertised or routed;
 persisted provider slugs remain readable for inspection and deactivation. The

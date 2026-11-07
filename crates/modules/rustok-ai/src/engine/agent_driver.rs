@@ -93,9 +93,9 @@ impl RigAgentDriver {
             {
                 return Err(AiError::Runtime("AI run cancelled".to_string()));
             }
-            let step = run
-                .next_step()
-                .map_err(|error| AiError::Runtime(error.to_string()))?;
+            let step = run.next_step();
+            // Rig can commit a skipped turn before reporting that the next
+            // model turn exceeds its budget. Keep those committed results.
             if let Some(start) = skipped_history_start.take() {
                 for message in &run.messages()[start..] {
                     appended_messages.extend(
@@ -110,6 +110,17 @@ impl RigAgentDriver {
                     );
                 }
             }
+            let step = match step {
+                Ok(step) => step,
+                Err(error) => {
+                    return Ok(RuntimeOutcome::Failed {
+                        appended_messages,
+                        traces,
+                        error_message: error.to_string(),
+                        usage,
+                    });
+                }
+            };
             match step {
                 AgentRunStep::CallModel {
                     prompt, history, ..
@@ -1463,11 +1474,28 @@ mod tests {
         let mut limited_request = request();
         limited_request.max_turns = 1;
 
-        let error = driver
+        let outcome = driver
             .run(&config(), limited_request, None, None)
             .await
-            .expect_err("max turn budget must stop the next model step");
-        assert!(error.to_string().contains("turn"));
+            .unwrap();
+        let RuntimeOutcome::Failed {
+            appended_messages,
+            traces,
+            error_message,
+            usage,
+        } = outcome
+        else {
+            panic!("max turn budget must stop the next model step");
+        };
+        assert!(error_message.contains("turn"));
+        assert_eq!(usage.provider_turns, 1);
+        assert_eq!(traces.len(), 1);
+        assert_eq!(traces[0].status, "completed");
+        assert!(
+            appended_messages
+                .iter()
+                .any(|message| message.tool_call_id.as_deref() == Some("publish-1"))
+        );
         assert_eq!(mcp.calls.lock().await.as_slice(), ["publish"]);
         assert_eq!(engine.responses.lock().await.len(), 2);
     }

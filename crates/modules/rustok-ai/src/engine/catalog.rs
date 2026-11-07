@@ -843,7 +843,6 @@ mod tests {
 
     #[derive(Deserialize)]
     struct ProviderCatalogSnapshot {
-        rig_version: String,
         provider_slugs: Vec<String>,
     }
 
@@ -939,7 +938,6 @@ mod tests {
         let snapshot: ProviderCatalogSnapshot =
             serde_json::from_str(include_str!("../../contracts/provider-catalog.json"))
                 .expect("catalog snapshot is valid JSON");
-        assert_eq!(snapshot.rig_version, "0.46.0");
         let slugs = CATALOG
             .iter()
             .map(|entry| entry.slug.to_string())

@@ -1,15 +1,26 @@
-use super::inference::{bedrock_runtime, gemini_grpc_runtime, llamacpp_base_url, openai_config};
+use futures_util::StreamExt;
 use rig::{
-    DynModel,
+    DynModel, Model,
+    driver::{Exchange, Opening, Transport},
+    error::ProviderError,
+    http_client::DynHttpClient,
     operation::{Embedding, Rerank},
     providers::{cohere, copilot, gemini, ollama, openai, voyageai},
+    wire::{Encoded, WireFrame},
 };
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 
 use crate::{AiError, AiProviderConfig, AiResult};
 
-use super::catalog::ProviderIntegration;
+use super::{
+    catalog::ProviderIntegration,
+    inference::{
+        OPENAI_COMPATIBLE_DIALECT, bedrock_runtime, gemini_grpc_runtime, llamacpp_base_url,
+        openai_config,
+    },
+    resolve_primary_credential,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingRequest {
@@ -22,7 +33,9 @@ pub struct EmbeddingRequest {
 pub struct EmbeddingResponse {
     pub documents: Vec<String>,
     pub vectors: Vec<Vec<f64>>,
+    /// `None` means the provider did not report this counter.
     pub input_tokens: Option<u64>,
+    /// `None` means the provider did not report this counter.
     pub total_tokens: Option<u64>,
 }
 
@@ -45,7 +58,9 @@ pub struct RerankItem {
 pub struct RerankResponse {
     pub model: String,
     pub items: Vec<RerankItem>,
+    /// `None` means the provider did not report this counter.
     pub input_tokens: Option<u64>,
+    /// `None` means the provider did not report this counter.
     pub total_tokens: Option<u64>,
 }
 
@@ -59,23 +74,22 @@ pub async fn embed(
             "embedding request requires at least one document".to_string(),
         ));
     }
-    let credential = resolve_primary_credential(config, secrets).await?;
-    let api_key = credential
-        .as_ref()
-        .map(ExposeSecret::expose_secret)
-        .unwrap_or("");
-    let base_url = setting_str(config, "base_url").unwrap_or("");
-
     if request.dimensions == Some(0) {
         return Err(AiError::Validation(
             "embedding dimensions must be positive".to_string(),
         ));
     }
+    let credential = resolve_primary_credential(config, secrets).await?;
+    let api_key = credential
+        .as_ref()
+        .map(ExposeSecret::expose_secret)
+        .unwrap_or("");
+    let base_url = setting_str(config, "base_url").unwrap_or("").trim();
     macro_rules! keyed_embed {
         ($dialect:expr) => {{
             let client = openai_config($dialect, api_key, base_url).client();
             embed_with(
-                client.embedding(request.model, request.dimensions).erase(),
+                ordered_openai_embeddings(client.embedding(request.model, request.dimensions)),
                 request.documents,
             )
             .await
@@ -95,9 +109,8 @@ pub async fn embed(
                 .map_err(|error| AiError::InvalidConfig(error.to_string()))?;
             embed_with(model.erase(), request.documents).await
         }
-        ProviderIntegration::OpenAi | ProviderIntegration::OpenAiCompatible => {
-            keyed_embed!(&openai::wire::OPENAI)
-        }
+        ProviderIntegration::OpenAi => keyed_embed!(&openai::wire::OPENAI),
+        ProviderIntegration::OpenAiCompatible => keyed_embed!(&OPENAI_COMPATIBLE_DIALECT),
         ProviderIntegration::AzureOpenAi => {
             let version = setting_str(config, "api_version").ok_or_else(|| {
                 AiError::InvalidConfig("Azure API version is required".to_string())
@@ -106,7 +119,7 @@ pub async fn embed(
                 .with_api_version(version.to_owned())
                 .client();
             embed_with(
-                client.embedding(request.model, request.dimensions).erase(),
+                ordered_openai_embeddings(client.embedding(request.model, request.dimensions)),
                 request.documents,
             )
             .await
@@ -174,7 +187,7 @@ pub async fn embed(
             .await
         }
         ProviderIntegration::GeminiGrpc => {
-            let client = gemini_grpc_runtime(api_key, base_url).await?;
+            let client = gemini_grpc_runtime(api_key).await?;
             embed_with(
                 client.embedding(request.model, request.dimensions).erase(),
                 request.documents,
@@ -189,7 +202,7 @@ pub async fn embed(
             };
             let client = openai_config(&openai::wire::LLAMACPP, api_key, &base).client();
             embed_with(
-                client.embedding(request.model, request.dimensions).erase(),
+                ordered_openai_embeddings(client.embedding(request.model, request.dimensions)),
                 request.documents,
             )
             .await
@@ -199,6 +212,68 @@ pub async fn embed(
             config.provider_slug
         ))),
     }
+}
+
+#[derive(Clone)]
+struct OrderedOpenAiEmbeddingTransport(DynHttpClient);
+
+impl Transport<openai::wire::Embeddings> for OrderedOpenAiEmbeddingTransport {
+    fn send(&self, payload: Encoded, exchange: Exchange) -> Opening<WireFrame> {
+        let opening = Transport::<openai::wire::Embeddings>::send(&self.0, payload, exchange);
+        Opening::new(async move {
+            Ok(opening
+                .await?
+                .map_frames(|frames| frames.map(|frame| frame.and_then(order_embedding_frame))))
+        })
+    }
+}
+
+fn ordered_openai_embeddings(model: Model<openai::wire::Embeddings>) -> DynModel<Embedding> {
+    Model::new(model.wire, OrderedOpenAiEmbeddingTransport(model.transport)).erase()
+}
+
+// Rig 0.46 pairs vectors with inputs by frame order. Normalize explicit
+// response indices before that fold, while leaving protocol decoding to Rig.
+fn order_embedding_frame(frame: WireFrame) -> Result<WireFrame, ProviderError> {
+    let Ok(mut payload) = serde_json::from_str::<serde_json::Value>(&frame.as_str()) else {
+        return Ok(frame);
+    };
+    let Some(data) = payload
+        .get_mut("data")
+        .and_then(serde_json::Value::as_array_mut)
+    else {
+        return Ok(frame);
+    };
+    if data.iter().all(|row| row.get("index").is_none()) {
+        return Ok(frame);
+    }
+    let index = |row: &serde_json::Value| {
+        row.get("index")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|index| usize::try_from(index).ok())
+    };
+    if data
+        .iter()
+        .enumerate()
+        .all(|(position, row)| index(row) == Some(position))
+    {
+        return Ok(frame);
+    }
+    let invalid_indices = || {
+        ProviderError::Response(
+            "embedding reply indices do not identify each input exactly once".to_string(),
+        )
+    };
+    let mut ordered = vec![serde_json::Value::Null; data.len()];
+    for row in data.drain(..) {
+        let slot = index(&row)
+            .and_then(|index| ordered.get_mut(index))
+            .filter(|slot| slot.is_null())
+            .ok_or_else(invalid_indices)?;
+        *slot = row;
+    }
+    *data = ordered;
+    Ok(WireFrame::Text(payload.to_string().into()))
 }
 
 #[cfg(feature = "fastembed")]
@@ -237,7 +312,7 @@ pub async fn rerank(
         .as_ref()
         .map(ExposeSecret::expose_secret)
         .unwrap_or("");
-    let base_url = setting_str(config, "base_url").unwrap_or("");
+    let base_url = setting_str(config, "base_url").unwrap_or("").trim();
     let integration = ProviderIntegration::from_slug(&config.provider_slug).ok_or_else(|| {
         AiError::InvalidConfig(format!("unknown provider `{}`", config.provider_slug))
     })?;
@@ -319,29 +394,60 @@ async fn rerank_with(
     })
 }
 
-async fn resolve_primary_credential(
-    config: &AiProviderConfig,
-    secrets: &rustok_secrets::SecretResolverRegistry,
-) -> AiResult<Option<secrecy::SecretString>> {
-    if !matches!(config.target_auth, crate::ProviderTargetAuth::SecretRefs) {
-        return Ok(None);
-    }
-    let descriptor = super::provider_catalog_entry(&config.provider_slug).ok_or_else(|| {
-        AiError::InvalidConfig(format!("unknown provider `{}`", config.provider_slug))
-    })?;
-    let Some(field) = descriptor.credentials.first() else {
-        return Ok(None);
-    };
-    let reference = config.credential_refs.get(field.key).ok_or_else(|| {
-        AiError::InvalidConfig(format!("credential reference `{}` is required", field.key))
-    })?;
-    secrets
-        .resolve_for_tenant(config.tenant_id, reference)
-        .await
-        .map(Some)
-        .map_err(|error| AiError::InvalidConfig(error.to_string()))
-}
-
 fn setting_str<'a>(config: &'a AiProviderConfig, key: &str) -> Option<&'a str> {
     config.settings.get(key).and_then(serde_json::Value::as_str)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rig::test_utils::RecordingHttpClient;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn embedding_keeps_document_alignment_and_unreported_usage() {
+        let http = RecordingHttpClient::new(
+            json!({
+                "object": "list",
+                "model": "text-embedding-3-small",
+                "data": [
+                    {"object": "embedding", "index": 1, "embedding": [0.0, 1.0]},
+                    {"object": "embedding", "index": 0, "embedding": [1.0, 0.0]}
+                ]
+            })
+            .to_string(),
+        );
+        let model = openai_config(
+            &OPENAI_COMPATIBLE_DIALECT,
+            "test-key",
+            "https://inference.example/v1",
+        )
+        .connect(http.clone())
+        .embedding("text-embedding-3-small", Some(2));
+        let response = embed_with(
+            ordered_openai_embeddings(model),
+            vec!["first".to_string(), "second".to_string()],
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.documents, ["first", "second"]);
+        assert_eq!(response.vectors, [vec![1.0, 0.0], vec![0.0, 1.0]]);
+        assert_eq!(response.input_tokens, None);
+        assert_eq!(response.total_tokens, None);
+        let requests = http.requests();
+        let request: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(request["dimensions"], 2);
+    }
+
+    #[test]
+    fn partially_indexed_and_duplicate_embedding_replies_fail_closed() {
+        for data in [
+            json!([{"index":0},{}]),
+            json!([{"index":0},{"index":0}]),
+            json!([{"index":2},{"index":0}]),
+        ] {
+            let frame = WireFrame::Text(json!({"data": data}).to_string().into());
+            assert!(order_embedding_frame(frame).is_err());
+        }
+    }
 }
