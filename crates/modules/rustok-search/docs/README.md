@@ -28,6 +28,13 @@ or host-specific UI wiring.
 - event-driven ingestion is published by the module via `SearchModule::register_event_listeners(...)` and connected by the server through `ModuleRegistry`, without a separate host-owned search dispatcher;
 - domain modules deliver changes through the ingestion path without knowing about the active engine.
 
+## Deployment scope
+
+The embedded PostgreSQL provider is the current Search profile. The isolated
+whole-module service is a [proposed target](./implementation-plan.md#deployment-and-connector-boundary).
+The current catalog query path reads Index-owned category and attribute projections;
+removing query-time SQL access to those projections is an isolation prerequisite.
+
 ## Projection correctness
 
 - The public `SearchProjector` facade is backed by the canonical `projector_core.rs` implementation; repository filenames must not preserve retired `legacy` naming for current code.

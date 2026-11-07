@@ -85,9 +85,8 @@ transport-local Blog route builder, or compatibility URL implementation.
 - Is composed by `apps/server`, `apps/admin`, and `apps/storefront` through module
   contracts rather than host-owned Search logic.
 - Keeps external engine integrations behind Search-owned connector crates.
-- Is a whole-module remote extraction pilot: PostgreSQL and future
-  Meilisearch/Typesense/Algolia engines remain internal `SearchEngine`
-  implementations, while consumers use only Search ports.
+- Is a candidate for the [proposed whole-module extraction pilot](../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md). PostgreSQL and future
+  Meilisearch/Typesense/Algolia engines stay behind Search-owned contracts.
 
 ## Entry points
 
@@ -297,6 +296,10 @@ The items below are implementation/evidence gaps. They are not hidden behind com
 Each one has a follow-up task in
 [`docs/implementation-plan.md`](./docs/implementation-plan.md).
 
+- The isolated Search service is proposed. The embedded PostgreSQL baseline and
+  source/evidence gates for the query ports do not establish a remote provider host.
+  Query-time access to Index projections, event replay and mounted consumer paths
+  remain [isolation gates](docs/implementation-plan.md#deployment-and-connector-boundary).
 - Explicit sealed Inventory reservation refetch and PostgreSQL product-scope serialization are
   source-wired, with two new definitions uncompiled/unrun. Actual concurrent refresh/rebuild/
   delete, relay/Iggy/restart/lag convergence is unverified. The existing direct-table stock

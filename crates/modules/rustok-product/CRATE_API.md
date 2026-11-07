@@ -45,6 +45,20 @@ and unique per-parent SKU limits. These are projection validators, not another c
 publication/eligibility authorization or distributed reservation. Pricing consumes this selected
 capability before tenant-less price-row reads. Remote adapter execution remains unverified.
 
+## FBA execution scope
+
+The current remote adapter implements the three mandatory `ProductCatalogReadPort`
+operations listed below. Additional optional read methods have typed unavailable defaults;
+the external runtime does not supply identity/schema/HTTP/tag handles automatically.
+`ProductCatalogCommandRuntime` remains embedded under default host composition.
+Some admin paths construct local services directly. The
+[coverage inventory](docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06)
+is the scope of the present claim, not all Product API entries in this document.
+
+`ProductPricingPort` and bootstrap interfaces taking `DatabaseTransaction` are native
+transaction-participant contracts. Their signatures are not remotely callable. Contract
+types may stay in this crate; no contracts-only Cargo feature profile currently exists.
+
 ## Domain Collaborations
 
 - **Taxonomy**: Product categorization, hierarchical taxonomy tree bindings, and storefront breadcrumbs.
@@ -133,7 +147,7 @@ create/receipt boundary. Sparse selected tuples are valid; there is no implicit 
 expansion or temporary axis-less default SKU. Variant UUIDs remain cross-owner identities.
 Product typed EAV writes accept only `product`/`both` scope, not variant-only definitions.
 
-See [Known Limitations / Pending Implementation](README.md#known-limitations-pending-implementation)
+See [Known Limitations / Pending Implementation](README.md#known-limitations--pending-implementation)
 and the [implementation plan](docs/implementation-plan.md#variant-axis-continuation-2026-10-29)
 for source-only verification, unsupported/unverified writers and remaining rollout work.
 

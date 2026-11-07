@@ -13,37 +13,39 @@
 - `GrpcMediaPublicImageProvider`: Narrow presentation adapter implementing `MediaPublicImageReadPort`.
 - `GrpcMediaPublicImageConnectionConfig`: Connection configuration for HTTPS, timeouts, and public origins.
 - `MediaGrpcService`: Server-side gRPC service wrapping canonical media providers.
-- `MediaGrpcOperation`: Typed operations (`GetPublicImageAsset`).
-- `TrustedMediaAuthority`: Service authority authorization trait.
+- `MediaGrpcOperation`: Explicit authorization variants for the declared metadata/reference/upload/delete/translation/reconciliation operations, including the distinct `GetPublicImageAsset` grant.
+- `TrustedMediaAuthority`: Server-installed authority struct carrying tenant, actor, claims/roles and explicit allowed operations.
 
 ## Platform Capability Bindings
-- **Transport Extraction**: Encapsulates gRPC communications for extracted microservice deployments of `rustok-media`.
+- **gRPC adapters**: Supplies client and server transport mechanics for the declared Media operations.
 - **Zero-Binary Framing**: gRPC frames contain metadata and descriptors only; image binaries remain on HTTP/S3 presigned channels.
-- **Tls & Security**: Enforces HTTPS/TLS by default, allowing plaintext loopback only for local testing.
+- **Connection policy**: The narrow `GrpcMediaPublicImageConnectionConfig` requires HTTPS unless explicit loopback HTTP is allowed. Generic providers receive an already constructed channel. The provider listener must install authenticated authority separately.
 
 ## Domain Collaborations
 - **`rustok-media`**: Sovereign owner of media entities, storage engines, image variant processing, and ports.
-- **Consumers (`rustok-profiles`, `rustok-blog`, etc.)**: Call media ports remotely without depending on SeaORM entities or storage engines.
+- **Consumers**: `rustok-profiles` can select the descriptor client through host composition. Other consumers use their declared Media port; this adapter does not switch them to gRPC.
 
 ## Minimum Contract Set
 
 ### Input DTOs/Commands
-- `GrpcMediaPublicImageConnectionConfig`: `endpoint`, `connect_timeout`, `tls_domain`, `public_origin`.
+- `GrpcMediaPublicImageConnectionConfig`: endpoint, connect timeout, TLS domain, public origin and explicit insecure-loopback permission.
 - Protobuf RPC payloads for asset inspection and descriptor retrieval.
 
 ### Domain Invariants
 - **Metadata Framing Only**: Media binary bodies never traverse the gRPC channel.
-- **PortContext Propagation**: Caller deadlines and correlation metadata are propagated into gRPC request headers.
+- **PortContext Propagation**: Typed call context is serialized in the request; deadlines are also enforced through gRPC timeouts. Server-installed authority replaces untrusted tenant/principal claims.
 - **Typed Error Roundtripping**: Serialized `PortError` structures are preserved and mapped back accurately across process boundaries.
-- **Strict TLS**: Remote endpoints require valid TLS certificates unless explicitly marked loopback.
+- **Trusted authority**: `MediaGrpcService` rejects requests without authenticated `TrustedMediaAuthority` and the exact operation grant. The public-image provider also requires explicit attachment.
 
 ### Events / Outbox Side Effects
 - Transport adapter itself emits no domain events; side effects are executed by the underlying `rustok-media` service.
 
 ### Errors / Failure Codes
-- `GrpcMediaPublicImageConnectionError`: Invalid endpoint, missing TLS configuration, or timeout.
-- Mapped `PortError` failure codes:
-  - `media.not_found`
-  - `media.validation`
-  - `media.unavailable`
-  - `media.access_denied`
+- `GrpcMediaPublicImageConnectionError`: Endpoint/public-origin/timeout/TLS-domain validation and connection failures.
+- Owner `PortError` details are preserved; unstructured network failures use the adapter mapping.
+
+## Deployment scope
+
+The adapter package and its conformance sources do not establish a standalone Media
+service or all-consumer remote readiness. The current host selector changes Profiles'
+public-image descriptor provider only. See [deployment limits](README.md#known-limitations--pending-implementation).

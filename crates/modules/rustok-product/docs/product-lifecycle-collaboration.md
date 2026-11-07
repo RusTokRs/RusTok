@@ -140,7 +140,12 @@ Retain execution evidence for:
 - no ordinary cyclic dependency;
 - no Product ownership of Inventory or Pricing persistence.
 
-Host-injected transaction participant ports remain a future alternative if Product lifecycle writes need a remote/distributed collaboration profile; they are not required to describe the current embedded atomic contract.
+Host-injected transaction participant ports can change local dependency wiring, but cannot
+transport the same SQL transaction across processes. A future independently deployed write
+profile must explicitly choose co-deployment of atomic participants or accept a different
+consistency/workflow contract with receipts, failure recovery and any compensation.
+Sharing a database URL or injecting a port alone does not preserve cross-process atomicity.
+The existing embedded contract remains unchanged; no remote write profile is claimed.
 
 ## Evidence
 

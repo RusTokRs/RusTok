@@ -2,52 +2,53 @@
 
 ## Public surface
 
-### Public modules
-- `auth`: Bearer token authentication and validation errors.
-- `client`: Client-side gRPC adapter `GrpcProductCatalogReadProvider`.
-- `connection`: Configuration and connection lifecycle for gRPC channels.
-- `server`: gRPC server adapter `ProductCatalogGrpcService` and interceptor.
-- `proto`: Generated protobuf service definitions (`product_catalog_read_service_client`, `product_catalog_read_service_server`).
+Public modules are `auth`, `client`, `connection`, `server` and generated `proto`.
 
-### Primary Public Types & Contracts
-- `GrpcProductCatalogReadProvider`: Implements `ProductCatalogReadPort` over remote gRPC.
-- `GrpcProductCatalogReadConnectionConfig`: Configuration validator for HTTPS/loopback endpoints, timeouts, and TLS domain overrides.
-- `ProductCatalogGrpcBearerToken`: Secret-redacted bearer credential wrapper.
-- `ProductCatalogGrpcBearerInterceptor`: Ingress interceptor validating bearer tokens and tenant headers.
-- `ProductCatalogGrpcService`: Server adapter exposing the catalog read port.
-- `TrustedProductCatalogAuthority`: Installed authority holding authenticated tenant and service principal identity.
-- `ProductCatalogGrpcOperation`: Authorized operations enum (`GetProductCatalogEntry`, `GetProductVariantCatalogEntry`, `ListProductCatalogEntries`).
+- `GrpcProductCatalogReadProvider` implements the three declared remote reads of
+  `ProductCatalogReadPort`. Other optional trait methods are not implemented here.
+- `GrpcProductCatalogReadConnectionConfig` validates endpoint, connect timeout, optional
+  TLS domain and explicit insecure-loopback permission. `validated()` returns
+  `ValidatedGrpcProductCatalogReadConnection`; `connect()` opens the provider channel.
+- `ProductCatalogGrpcBearerToken` validates a credential and redacts Debug output.
+  Client authentication is attached with `with_authentication(...)`, separately from
+  connection configuration. No secure-memory or zeroization guarantee is claimed.
+- `ProductCatalogGrpcBearerAuthenticator` and `ProductCatalogGrpcBearerInterceptor`
+  establish server-side service authority.
+- `TrustedProductCatalogAuthority` carries authenticated tenant/actor/claims/roles and
+  allowed operations; client-serialized identity is not authoritative.
+- `ProductCatalogGrpcOperation` has `ReadProductProjection`,
+  `ReadVariantProductProjection` and `ListPublishedProducts` variants.
+- `ProductCatalogGrpcService<P>` exposes the canonical provider over the generated
+  `ProductCatalogReadService` with those three RPC names.
 
-## Platform Capability Bindings
-- **Microservice Extraction**: Supplies typed remote gRPC transport for whole-module extraction of the Product catalog.
-- **Port Framing**: Encapsulates `ProductCatalogReadPort` RPC invocation and status translation.
-- **Zero-Storage Adapter**: Contains no catalog persistence, caching, or business calculation logic.
+## Ownership and framing
 
-## Domain Collaborations
-- **`rustok-product`**: Sovereign domain module owning product catalog entities, variants, prices, and queries.
-- **Consumers (`rustok-commerce`, `rustok-cart`, `rustok-order`)**: Access catalog entries remotely without direct database coupling.
+Product owns its request/response DTOs, catalog policy and persistence. Pricing remains
+the pricing authority; Product may return owner-composed price projections. This adapter
+owns protobuf framing, JSON serialization of owner DTOs/context, service authentication,
+deadline propagation and gRPC status/detail mapping. It owns no Product storage or
+alternate business implementation and emits no domain events.
 
-## Minimum Contract Set
+The existing package depends on `rustok-product` with its implementation dependencies.
+A contracts-only owner build is not currently published. This packaging fact does not
+mean the remote client executes local Product services.
 
-### Input DTOs/Commands
-- `GrpcProductCatalogReadConnectionConfig`: Connection parameters (`endpoint`, `connect_timeout`, `tls_domain`, `bearer_token`, `allow_insecure_loopback`).
-- Protobuf RPC payloads serializing `PortContext` and query parameters.
+## Invariants and errors
 
-### Domain Invariants
-- **Constant-Time Authentication**: Bearer token comparisons use constant-time equality (`subtle::ConstantTimeEq`) to prevent timing side-channels.
-- **Trusted Authority Enforcement**: The server overrides caller-supplied untrusted actors with the interceptor-authenticated service authority.
-- **Strict HTTPS Default**: Non-loopback endpoints require valid TLS certificates and reject unencrypted HTTP.
-- **Deadline Propagation**: Context deadlines are translated into gRPC timeouts and enforced on both client and server.
+- Production connection configuration requires HTTPS; explicitly permitted loopback HTTP
+  is limited to local use. Connect timeout is bounded to 1..=30000 milliseconds.
+- The bearer comparison uses constant-time equality for the complete authorization value.
+- The server verifies trusted tenant and operation authority and replaces untrusted
+  actor/claims/roles before invoking the owner port.
+- Port deadlines become gRPC timeouts; structured `PortError` details are preserved.
+- `ProductCatalogGrpcAuthenticationError` and `GrpcProductCatalogReadConnectionError`
+  describe local configuration/authentication failures. Owner domain codes are mapped
+  through the canonical port envelope, not redefined as a separate transport vocabulary.
 
-### Events / Outbox Side Effects
-- Read-only transport adapter; emits no domain events and performs no data mutations.
+## Coverage and evidence
 
-### Errors / Failure Codes
-- `ProductCatalogGrpcAuthenticationError`: Missing authorization header, malformed token, or tenant ID mismatch.
-- `GrpcProductCatalogReadConnectionError`: Invalid URL, insecure scheme, or connection timeout.
-- Mapped `PortError` failure codes:
-  - `product.not_found`
-  - `product.variant_not_found`
-  - `product.validation`
-  - `product.unavailable`
-  - `port.access_denied`
+This is a three-read capability adapter, not whole-module Product extraction. Missing
+identity/schema/storefront capabilities and local command composition are listed in the
+[Product coverage inventory](../rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
+The [README](README.md) distinguishes historical maintainer conformance from current
+fixture repair, compilation and separate-process business evidence still required.

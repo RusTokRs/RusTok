@@ -18,7 +18,14 @@ Fluid Backend Architecture contracts defining neutral module boundaries, capabil
 ## Contract invariants
 - **Transport neutrality**: Contracts never own network sockets, connection pools, or protocol serializers directly.
 - **Topology independence**: Provider descriptors declare capabilities orthogonally to host deployment mode.
-- **Fail-safe fallback**: Consumer dependencies explicitly declare fallback modes (`fallback_modes`) when optional dependencies degrade.
+- **Declared fallback**: `fallback_modes` records consumer policy; these metadata types do not execute fallback or permit a change of owner authority.
 
 ## Errors
-- Reuses canonical `PortError` for boundary crossing failures, timeouts, and capability unreachability.
+- Reuses canonical [`PortError`](../rustok-api/CRATE_API.md) for boundary crossing failures, timeouts, and capability unreachability.
+
+## Runtime limits
+
+Capability IDs, version strings and topology are declarations, not executable validation
+or negotiation. The crate does not create providers, route calls or enforce lifecycle.
+Readiness belongs to a named capability/profile and its owner evidence; it must not be
+inferred from a descriptor value alone.

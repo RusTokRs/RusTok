@@ -125,18 +125,114 @@ uses `rustok_web::json_response`; do not add a second routing model.
 
 ## FBA Contracts
 
-Fluid Backend Architecture means module backend boundaries are explicit, typed and
-discoverable:
+Fluid Backend Architecture preserves a module's identity, owner implementation and
+business semantics while allowing an explicitly supported boundary to execute in-process
+or through a remote adapter. The modular monolith remains the default. The active
+[embedded-first plan](../research/fluid-backend-architecture-unified-plan.md#24-active-embedded-first-foundation-plan-2026-h2)
+does not require a remote service for every module.
 
-- owner-owned ports use `rustok_api::PortContext`, `PortError`, `PortCallPolicy` and
-  `PortOperationKind`;
-- provider/consumer metadata uses `rustok-fba` descriptors;
-- runtime metadata and evidence live in module-local `contracts/` and
-  `docs/implementation-plan.md`;
-- the central readiness board in `docs/modules/registry.md` must match the local status.
+### Scope of a deployment claim
 
-Do not use FBA as a reason to create empty abstraction layers. Add a port or descriptor when
-there is a real cross-module, host, CLI or headless consumer boundary.
+| Claim | Required scope |
+|---|---|
+| Embedded boundary | Named owner ports/services, their real consumers, data ownership and local execution evidence. |
+| Remote capability profile | Exact supported operations, required outgoing capabilities, context/error semantics, data placement, transport, provider host and consumer-path evidence. |
+| Whole-module remote deployment | Every required query, command, event handler, background task, lifecycle/migration responsibility and public surface is assigned to the remote owner or explicitly composed through its contracts. All required dependencies and transaction boundaries are resolved. |
+
+A capability is an interface grouping, not automatically a separate process. One module
+process can provide several capabilities. A read-only catalog service is a valid bounded
+profile; it does not establish that Product commands, schema operations or all UI surfaces
+can run remotely. Unsupported optional operations must fail explicitly. A consumer's
+required capabilities must be validated before admitting that consumer path; a trait's
+default `Unavailable` method is not evidence that a provider implements that capability.
+
+For operations declared by both profiles, run the same observable contract cases against
+the same owner implementation. Preserve domain results, tenant/channel/locale/policy and
+typed errors; remote transport adds latency, cancellation and uncertain-outcome failures.
+Do not promise that a timed-out write had no effect. Retry only under the owner idempotency
+and recovery contract.
+
+### Contract ownership and packaging
+
+- Shared `PortContext`, `PortError`, `PortCallPolicy` and `PortOperationKind`
+  belong to `rustok-api`. Domain ports, DTOs and published events belong to their module.
+- Contracts and implementation may stay in one owner crate. A separate owner contracts
+  package is optional when demonstrated consumers need a smaller dependency boundary;
+  it does not create another domain module or tenant lifecycle entry.
+- A contracts-only Cargo build is an additional packaging capability, not an FBA readiness
+  requirement. It requires optional implementation dependencies, independent public types
+  and checks of the resolved feature graph. Cargo features are additive; they do not choose
+  a runtime provider. Product does not currently publish such a build.
+- Keep the existing owner transport and standalone-service packages separate under
+  `AGENTS.md` section 5. Their package count does not establish remote completeness.
+- Do not create empty contract, repository or transport layers for modules without a real
+  boundary. Module-specific contracts do not move to `rustok-api` merely because another
+  module consumes them.
+
+### Composition and runtime responsibility
+
+The composition root may read deployment configuration, obtain secret handles, select an
+embedded or remote provider, invoke adapter constructors and manage connection/shutdown
+lifecycles. This belongs to the host or an explicit infrastructure composition adapter.
+Transport packages encapsulate protocol framing, connection validation, TLS/authentication,
+deadline/status mapping and transport mechanics. Domain services receive explicit
+dependencies; they do not discover hosts, read deployment environment variables or choose
+their own transport.
+
+Consumers use the selected owner ports rather than constructing another provider on
+failure. Explicit optional degradation is part of the consumer contract. Configuring
+embedded execution is not failover from a selected remote authority.
+
+### Storage and transactions
+
+Process placement and storage placement are separate decisions. Controlled remote
+execution may use the same physical database, subject to owner access boundaries;
+autonomous service-owned storage and read-model replicas require their own deployment,
+migration and recovery contracts. A separate database per port is not an FBA rule.
+
+An interface accepting a SeaORM `DatabaseTransaction` is a native co-located
+transaction-participant contract. It cannot cross RPC, even when both processes connect
+to the same database. Before independently extracting its participants, either keep the
+atomic collaboration co-deployed or accept an explicit new consistency/workflow design.
+Outbox, idempotency, recovery and compensation must preserve the agreed business contract;
+adding a saga is not automatically equivalent to the existing transaction.
+
+### Events and observability
+
+Use synchronous ports for operations whose caller needs a result now. Keep asynchronous
+workflows, projections and fan-out on canonical events/outbox and define their delivery,
+ordering, replay and recovery rules. Replacing an in-process call with RPC does not change
+which events the owner must publish.
+
+Record comparable operation latency and failures in embedded and remote profiles. Correlate
+consumer/provider spans, report readiness for the configured capabilities and expose typed
+degradation. Where a profile needs version or capability compatibility checks, specify how
+they are enforced; metadata alone does not enforce them.
+
+### Metadata, readiness and current examples
+
+Provider/consumer descriptors belong to `rustok-fba`; that crate describes capabilities
+and topology, but does not implement runtime discovery, routing, capability negotiation
+or provider selection. Module-local `contracts/` and `docs/implementation-plan.md`
+record the implemented profile and evidence. The central readiness board in
+`docs/modules/registry.md` projects the same status.
+
+Readiness always has a scope. `boundary_ready` is not whole-module remote certification;
+`transport_verified` needs executed evidence for the declared provider/consumer profile.
+Use the [verification guide](./module-backend-verification.md#fba-evidence) for the evidence
+levels and the current static-boundary policy.
+
+Current bounded profiles illustrate this distinction:
+
+- Product's `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` selects three catalog-read RPCs.
+  Product commands and other capabilities are not moved by that setting. See the
+  [Product scope and gaps](../../crates/modules/rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
+- `RUSTOK_PROFILE_MEDIA_PROVIDER=grpc` selects the Profiles public-image descriptor
+  provider. It does not move all Media operations or image bytes to gRPC. See the
+  [Media owner plan](../../crates/modules/rustok-media/docs/implementation-plan.md#ffafba-boundary).
+- Whole-module isolated Media/Search deployment remains a
+  [proposed pilot](../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md),
+  with acceptance and operational gates distinct from existing adapters.
 
 ## CLI and Operations
 

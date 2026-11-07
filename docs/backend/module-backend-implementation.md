@@ -16,6 +16,27 @@ Before changing backend code:
 4. Check `docs/modules/registry.md` and `docs/modules/implementation-plans-registry.md`.
 5. If naming changes are involved, follow the naming contract in `docs/standards/coding.md`.
 
+## FBA implementation boundary
+
+Use the [FBA architecture contract](./module-backend-architecture.md#fba-contracts)
+before changing deployment or package boundaries. Public owner ports and DTOs may stay
+in the same crate as their implementation. Keep their responsibility distinct from ORM
+entities, concrete service constructors and native transaction-participant interfaces.
+A separate owner contracts package or a contracts-only feature profile is optional;
+neither is scaffolding required for every module.
+
+When implementing a contracts-only build, remove implementation-only types and transitive
+dependencies from that build, gate all local constructors/registration/migration paths,
+and inspect resolved features for each actual consumer binary. Check both contract-only
+and embedded profiles; an all-features build alone cannot prove this separation. This is
+future packaging work for Product, not an existing supported feature.
+
+For a remote profile, inventory required operations and outgoing capabilities, register
+the selected provider before consumer composition, and ensure mounted entrypoints use it.
+Keep existing owner service/transport packages separate; do not move their logic into
+consumer modules or duplicate the owner service in a network handler. Document unsupported
+capabilities and native transaction dependencies before claiming whole-module extraction.
+
 ## Scaffold profiles and generation contract
 
 This section defines the contract for `cargo xtask module new` and

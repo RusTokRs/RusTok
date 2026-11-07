@@ -120,6 +120,21 @@ repository interfaces are optional late-stage seams, not mandatory scaffolding f
 The working name FBA is not carried over into type names without necessity: code-facing
 contracts use neutral `*Port`, `PortContext`, `PortError`, `provider` and `consumer`.
 
+### Declare the FBA profile scope
+
+For each provider/consumer track, name its operations, required capabilities, selected
+topology, storage/transaction placement and evidence. Distinguish an embedded boundary,
+a remote capability profile and a whole-module remote deployment. Required command,
+query, event, background, migration/lifecycle and UI paths must all be covered before
+the last claim is made. Missing optional capabilities fail explicitly; they must not be
+described as implemented merely because the trait has a default method.
+
+One owner crate may contain both contracts and implementation. A separate contracts
+package and a contracts-only Cargo build are optional packaging choices. Native SQL
+transaction participants are local collaboration interfaces, not remote contracts.
+The composition root selects and constructs providers. See the
+[canonical FBA contract](../backend/module-backend-architecture.md#fba-contracts).
+
 ### New Implementation Without Legacy Layer
 
 RusToK is at the stage of initial implementation. FFA/FBA refactoring here is not
@@ -367,7 +382,7 @@ Minimum checks:
 RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1 ./scripts/verify/verify-migration-smoke.sh
 ```
 
-For failure diagnostics, see [runtime guardrails runbook](../guides/runtime-guardrails.md#wave-6-diagnostics-runbook).
+For failure diagnostics, see [runtime guardrails runbook](../guides/runtime-guardrails.md#runtime-diagnostics-runbook).
 
 ### 6. UI Verification
 

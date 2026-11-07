@@ -74,6 +74,15 @@ The modular monolith uses those tables in the shared PostgreSQL deployment. Whol
 - Source-level embedded/loopback conformance now covers owner-selected capability descriptors, deadlines, deleted-state errors, and explicit trusted operation grants.
 - Remote byte delivery is not a gRPC concern. Extracted deployments still need a reachable Media HTTP ingress, public base routing when a shared relative ingress is unavailable, cache/conditional-GET evidence, mTLS, readiness, isolated database/storage, rollback, and performance evidence.
 - This addition does not promote Media beyond its current FBA status.
+- Actual consumer startup selection is `RUSTOK_PROFILE_MEDIA_PROVIDER=grpc`,
+  with `RUSTOK_PROFILE_MEDIA_GRPC_ENDPOINT` and optional
+  `RUSTOK_PROFILE_MEDIA_PUBLIC_ORIGIN`. It replaces Profiles' public-image descriptor
+  provider only. Other Media operations and HTTP byte delivery are not switched by it.
+- The repository has no standalone `rustok-media-service` package or whole-module
+  `RUSTOK_MEDIA_PROVIDER` selector. Media remains a proposed whole-module extraction pilot
+  under the [July 16 proposal](../../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md),
+  not an already deployed isolated owner. The remote descriptor source is not a substitute
+  for a provider host, authenticated authority, HTTP ingress or production runtime evidence.
 
 ## Public image capability model
 

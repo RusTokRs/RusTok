@@ -72,6 +72,19 @@
   `rustok-commerce` facade and checks the reference against active shipping profiles from the typed
   registry `shipping_profiles`, so that the product write-path does not accept arbitrary slugs.
 
+## FBA deployment coverage
+
+The public ports and implementation remain in one Product crate. The separately packaged
+catalog service exposes only `ReadProductProjection`, `ReadVariantProductProjection` and
+`ListPublishedProducts`. Selecting it does not move commands, schema, identity, storefront
+facets or every mounted endpoint. Unsupported selected capabilities fail explicitly;
+some admin paths remain embedded. Historical loopback results do not establish current
+whole-module or mounted business parity.
+
+See the [current limitations](../README.md#known-limitations--pending-implementation),
+[coverage inventory](./implementation-plan.md#fba-deployment-scope-review-2026-11-06)
+and [native transaction contract](./product-lifecycle-collaboration.md#atomicity).
+
 ## Native catalog attributes
 
 - `product_attributes` is the unified reference for ecommerce attributes.

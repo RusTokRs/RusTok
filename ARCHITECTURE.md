@@ -36,6 +36,12 @@ actually publishes that port, transport adapter, service host, security
 boundary, and verification evidence**. Remote execution is not a universal
 microservice switch and must never silently fall back to another authority.
 
+FBA readiness applies to the declared capability/profile. A remote read adapter does not
+certify whole-module command, event, lifecycle or UI coverage. One owner crate may contain
+both contracts and implementation; a separate contracts package is optional. The
+[FBA contract](docs/backend/module-backend-architecture.md#fba-contracts) defines scope,
+composition-root responsibility, packaging and transaction limits.
+
 ---
 
 ## 2. Composition Axes

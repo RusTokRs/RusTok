@@ -521,12 +521,13 @@ projection can remain stale after recovery.
 
 ## Deployment and connector boundary
 
-Search is a whole-module extraction pilot. Remote deployment contains the complete
-`rustok-search` owner, including `SearchEngine`, ranking, dictionaries, query
-rules, analytics, URL policy, and PostgreSQL baseline. Storefront and admin
-consumers call normalized Search contracts and never construct application routes.
-The extraction boundary follows
-[Media and Search Extraction Boundaries](../../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md).
+The current Search profile is embedded. The whole-module extraction pilot is
+[Proposed](../../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md).
+The proposed deployment contains the complete `rustok-search` owner, including
+`SearchEngine`, ranking, dictionaries, query rules, analytics, URL policy, and
+PostgreSQL baseline. Storefront and admin consumers would continue to use
+normalized Search contracts and canonical owner routes. A provider host, isolated
+storage, event replay and mounted remote consumer execution remain open.
 
 Meilisearch, Typesense, and Algolia remain connector implementations inside the
 Search service. They receive canonical `SearchQuery` and document inputs and

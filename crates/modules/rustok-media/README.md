@@ -4,14 +4,27 @@
 
 `rustok-media` owns media asset uploads, metadata, translations, delivery descriptors, and transport adapters for RusToK.
 
-## Microservice Extraction Architecture & Standalone Service Sovereignty
+## FBA deployment scope
 
-Like the Product ecosystem, the Media subsystem follows the Fluid Backend Architecture (FBA) microservice extraction model:
-- `rustok-media`: Core media domain module, SeaORM entities, upload/rendition processing, and storage abstraction.
-- `rustok-media-transport`: Typed tonic gRPC framing, protobuf definitions (`media.proto`), bearer auth interceptors, and client/server adapters (`GrpcMediaProvider`, `MediaGrpcService`).
-- `rustok-media-service`: Standalone authenticated gRPC microservice host binary (symmetrically equivalent to `rustok-product-catalog-service`), allowing Media to be deployed and scaled as an independent network service outside `apps/server` (`RUSTOK_MEDIA_PROVIDER=grpc`).
+Media remains one domain module. `rustok-media-transport` supplies client/server adapters
+for declared metadata/control and public-image descriptor operations. Keep that existing
+package separate under repository policy. Whole-module isolated deployment is a proposed
+target, with explicit coverage and operational gates in the owner plan.
 
-Contributors and AI agents MUST NOT collapse or merge these separated boundaries into `rustok-media`. They exist as separate standalone crates specifically to support independent microservice deployment without direct database or in-process coupling.
+## Known Limitations / Pending Implementation
+
+There is no standalone `rustok-media-service` package or whole-module
+`RUSTOK_MEDIA_PROVIDER=grpc` selector in the current implementation. The actual
+`RUSTOK_PROFILE_MEDIA_PROVIDER=grpc` selector changes only Profiles' public-image
+descriptor provider. Its endpoint is `RUSTOK_PROFILE_MEDIA_GRPC_ENDPOINT`; optional
+`RUSTOK_PROFILE_MEDIA_PUBLIC_ORIGIN` routes root-relative owner descriptors to a
+reachable Media HTTP origin. It does not select remote Media writes or transfer bytes.
+
+The descriptor adapter source exists; provider authentication/authorization, production
+mTLS, HTTP ingress/byte/cache behavior, actual isolated storage/process and restart/
+recovery evidence remain open. Metadata and loopback sources do not certify complete
+whole-module extraction. See the [owner plan](docs/implementation-plan.md#ffafba-boundary)
+and the [Proposed pilot](../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md).
 
 ## Responsibilities
 
@@ -42,7 +55,7 @@ Contributors and AI agents MUST NOT collapse or merge these separated boundaries
 - Publish `MediaAssetReadPort` / `media.asset_read.v1` source-locked FBA evidence, including deadline/context guards, typed `PortError` retryability mapping, and `MediaAssetSummary` kind/usage metadata for consumers.
 - Expose a bounded `MediaAssetReferenceListPage` owner-read operation for deterministic consumer-reference reconciliation; results are tenant-scoped and keyed by stable reference identity, without exposing Media storage details.
 - Publish `MediaAssetWritePort` / `media.asset_write.v1` for upload preparation/completion, deletion, translations, and tenant-scoped reconciliation. Binary bodies never enter generic write-port DTOs.
-- Publish `MediaPublicImageReadPort` for embedded public presentation. It returns the canonical `MediaItem` plus a Media-issued descriptor: direct-public URLs remain unchanged, storage-relative image paths become immutable capability URLs, and opaque references remain unavailable.
+- Publish `MediaPublicImageReadPort` for public presentation through the embedded owner and implemented remote descriptor adapter. It returns the canonical `MediaItem` plus a Media-issued descriptor: direct-public URLs remain unchanged, storage-relative image paths become immutable capability URLs, and opaque references remain unavailable.
 - Serve capability URLs at `/api/media/public/images/{id}/{checksum_sha256}`. The handler verifies tenant, active asset/blob, ready state, image MIME, active-blob SHA-256, and object size before returning bytes with immutable cache headers and ETag.
 
 ## Interactions
@@ -59,7 +72,7 @@ Contributors and AI agents MUST NOT collapse or merge these separated boundaries
 - `rustok-seo`, Profiles, and owner SEO providers consume Media-owned image descriptors without raw media blob coupling.
 - Profiles revalidates tenant, uploader, and image MIME on the `MediaItem` returned alongside the descriptor; it never constructs the capability path.
 - `rustok-media-admin` uses native Leptos `#[server]` functions as the default internal data layer, keeps GraphQL as the selected path for list/detail/translations/delete/usage, and preserves REST upload via `/api/media`.
-- Media is the whole-module remote extraction pilot. `rustok-media-transport` supplies gRPC adapters for the existing metadata/control ports. The new public-image capability is currently an embedded DB/storage owner surface; remote provider parity and deployment evidence remain required before it can participate in an extracted Media provider.
+- Media is a proposed whole-module extraction pilot. `rustok-media-transport` supplies metadata/control and public-image descriptor adapters. The owner HTTP/storage endpoint still delivers bytes; complete provider-host, security, ingress and isolated-runtime evidence remain required.
 
 ## Entry points
 

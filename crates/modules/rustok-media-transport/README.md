@@ -1,11 +1,11 @@
 # rustok-media-transport
 
-> **FBA microservice extraction** — typed gRPC transport adapter for `rustok-media` whole-module extraction. Part of the Media domain FBA extraction; MUST NOT be collapsed into `rustok-media`. See `AGENTS.md` §5 and `docs/modules/registry.md`.
+> **FBA microservice extraction** — typed gRPC transport adapter supporting the proposed whole-module extraction of `rustok-media`, with current scope bounded to implemented owner ports. Part of the Media domain FBA extraction; MUST NOT be collapsed into `rustok-media`. See `AGENTS.md` §5 and `docs/modules/registry.md`.
 
 ## Purpose
 
 `rustok-media-transport` maps the Media-owned read, public-image presentation,
-and write ports onto tonic gRPC for whole-module extraction. The canonical
+and write ports onto tonic gRPC as prerequisites for the proposed extraction. The canonical
 DTOs, policies, URL selection, and typed errors remain owned by `rustok-media`.
 
 ## Responsibilities
@@ -33,7 +33,7 @@ uses the narrower `GrpcMediaPublicImageProvider`, which exposes only
 `MediaPublicImageReadPort` and may resolve root-relative owner descriptors against a
 validated deployment-owned Media public origin.
 
-An isolated Media process serves `MediaGrpcService` around its canonical
+A deployment providing an isolated Media process must serve `MediaGrpcService` around its canonical
 metadata/write provider and explicitly attaches the owner public-image provider with
 `with_public_image_provider(...)`.
 
@@ -55,3 +55,14 @@ reads or returns the image body.
 
 - [CRATE_API.md](CRATE_API.md) — Public API contract, transport framing, capability bindings, and domain invariants.
 - [Transport Documentation](docs/README.md)
+
+## Known Limitations / Pending Implementation
+
+This is an adapter library, not a standalone Media provider host. No
+`rustok-media-service` package currently exists. The consumer host's
+`RUSTOK_PROFILE_MEDIA_PROVIDER=grpc` selector is limited to Profiles public-image
+presentation. A provider must separately install authenticated `TrustedMediaAuthority`
+with exact operation grants and expose the Media-owned HTTP byte endpoint. TLS connection
+configuration alone does not establish caller authority. See the
+[deployment contract](docs/README.md#deployment-boundary) and
+[Media owner plan](../rustok-media/docs/implementation-plan.md#ffafba-boundary).

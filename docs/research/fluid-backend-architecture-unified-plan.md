@@ -9,7 +9,7 @@ status: verified
 # Unified Fluid Backend Architecture (FBA) Implementation Plan for RusTok
 
 This document is the **single current FBA implementation plan** for RusTok.
-It replaces scattered planning materials and defines the mandatory stage sequence.
+It replaces scattered planning materials. Section 2.4 defines the active embedded-first execution focus; later extraction stages are gated future work, not an instruction to create remote services now.
 
 Related concept document: [Fluid Backend Architecture for RusTok](./fluid-backend-architecture.md).
 
@@ -56,7 +56,12 @@ All stages preserve:
 - `service contract` (commands, queries, events);
 - `domain rules` and policy semantics.
 
-Only the `runtime topology` changes: embedded / remote / hybrid.
+For an explicitly supported profile, topology and adapters change while owner semantics
+remain stable. The profile must name its operations and outgoing dependencies. Remote
+capability coverage does not imply complete module extraction, equivalent transactions,
+autonomous storage or current UI/API parity. The
+[canonical FBA contract](../backend/module-backend-architecture.md#fba-contracts)
+defines these distinctions and permits contracts and implementation in one owner crate.
 
 ## 1.3 What Is Prohibited
 
@@ -67,7 +72,7 @@ Only the `runtime topology` changes: embedded / remote / hybrid.
 
 ---
 
-## 2) Stage Structure (Mandatory Order)
+## 2) Stage Structure and Execution Gates
 
 1. **Stage A — Module Audit and Readiness**
 2. **Stage B — Basic FBA Contracts (Before Transport)**
@@ -77,45 +82,38 @@ Only the `runtime topology` changes: embedded / remote / hybrid.
 6. **Stage F — Pilot 3 (Payment/Fulfillment/Product read/Pricing)**
 7. **Stage G — Selective Storage Decomposition and Write Extraction**
 
-Transition to the next stage is only allowed after completing the Exit Criteria of the current one.
+The labels preserve the planning sequence, but named Inventory/Product examples do not
+override the active embedded-first focus or schedule remote deployment. For any selected
+pilot, complete its contract/event/consistency prerequisites before transport and storage
+cutover. The Media/Search proposal has its own candidate scope and acceptance gates.
 
 ## 2.1 Current FBA Tracks and Unified Template
 
-As of 2026-06-14 the repository already has several FBA tracks. They must not be migrated
-in different ways: new and existing increments must converge on a single template
-of `provider/consumer metadata + neutral ports + typed errors + locked contract-test/fallback-smoke metadata + fallback/rollout evidence`.
+Current statuses come from owner-local implementation plans and are projected into the
+[central readiness board](../modules/registry.md#ffafba-readiness-board-module-owned-ui).
+This plan does not maintain a third independent status table. Each track uses neutral
+ports, provider/consumer metadata, typed errors, source guards and explicitly scoped
+execution/failure evidence.
 
-| Module | Current Role | Status | Uniform Next Step | Evidence Source |
-|---|---|---|---|---|
-| `page_builder` | reference provider for `preview/tree/properties/publish` | `in_progress` | Continue after first migration slice: `PageBuilderCapabilityService` already accepts `PortContext`, next step — capability handlers and contract tests until `boundary_ready` without changing provider/consumer metadata format | `crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json`, `crates/modules/rustok-page-builder/docs/implementation-plan.md` |
-| `pages` | first consumer of reference provider `page_builder` | `in_progress` | Replace synthetic Wave 0 evidence with actual tenant before/after snapshots and smoke/trace packet | `crates/modules/rustok-pages/docs/implementation-plan.md`, registry page-builder |
-| `commerce` | umbrella orchestration/readiness-hardening for ecommerce slices | `in_progress` | Align checkout/post-order boundaries to the same template: owner-module ports, typed errors/context, events and absence of rules in transport/UI; consumer registry now captures checkout orchestration dependencies on pricing/inventory/order/payment/fulfillment/cart provider contracts and mirrors payment/fulfillment provider SPI default-provider/lifecycle metadata, and payment/fulfillment provider SPI source markers/source paths/explicit lifecycle owner service names/default provider ids/capability fields are checked by the same fast gate | `crates/modules/rustok-commerce/contracts/commerce-fba-registry.json`, `crates/modules/rustok-commerce/docs/implementation-plan.md` |
-| `product` | provider catalog read-projection for commerce checkout/storefront and pricing enrichment consumers | `in_progress` | Close runtime contract tests/fallback smoke for `ProductCatalogReadPort`, confirm embedded/GraphQL catalog parity snapshots before status promotion | `crates/modules/rustok-product/src/ports/`, `crates/modules/rustok-product/contracts/product-fba-registry.json`, `crates/modules/rustok-product/docs/implementation-plan.md` |
-| `ai-product` | support-consumer product catalog context for product copy / AI attributes verticals | `boundary_ready` | Next step: owner transport cutover/admin host rendering evidence; runtime source-smoke already verified by `cargo test -p rustok-ai-product --lib` | `crates/modules/rustok-ai-product/contracts/ai-product-fba-registry.json`, `crates/modules/rustok-ai-product/contracts/evidence/ai-product-runtime-fallback-smoke.json`, `crates/modules/rustok-ai-product/docs/implementation-plan.md` |
-| `ai-content` | support-consumer content moderation/blog draft vertical contracts | `boundary_ready` | Next step: executable host/direct runtime composition evidence; generated payload and policy fallback smoke already verified by `cargo test -p rustok-ai-content --lib` | `crates/modules/rustok-ai-content/contracts/ai-content-fba-registry.json`, `crates/modules/rustok-ai-content/contracts/evidence/ai-content-runtime-fallback-smoke.json`, `crates/modules/rustok-ai-content/docs/implementation-plan.md` |
-| `ai-order` | support-consumer order operator context for analytics / ops assistant verticals | `boundary_ready` | Next step: executable host/direct runtime composition evidence; order payload and live-status fallback smoke already verified by `cargo test -p rustok-ai-order --lib` | `crates/modules/rustok-ai-order/contracts/ai-order-fba-registry.json`, `crates/modules/rustok-ai-order/contracts/evidence/ai-order-runtime-fallback-smoke.json`, `crates/modules/rustok-ai-order/docs/implementation-plan.md` |
-| `auth` | core capability provider for identity/permission/admin auth boundary | `boundary_ready` | Next step: full admin/server transport parity evidence; permission/admin-boundary smoke already verified by `cargo test -p rustok-auth --lib` and `npm run verify:auth:admin-boundary` | `crates/modules/rustok-auth/contracts/auth-fba-registry.json`, `crates/modules/rustok-auth/contracts/evidence/auth-runtime-fallback-smoke.json`, `crates/modules/rustok-auth/docs/implementation-plan.md` |
-| `ai` | capability orchestrator for router/direct execution/admin transport boundaries | `in_progress` | Advance source-smoke to executable runtime fallback evidence and confirm provider fallback/direct operator-review diagnostics before `boundary_ready` | `crates/modules/rustok-ai/contracts/ai-fba-registry.json`, `crates/modules/rustok-ai/contracts/evidence/ai-runtime-fallback-smoke.json`, `crates/modules/rustok-ai/docs/implementation-plan.md` |
-| `pricing` | provider read-projection for checkout/product price consumers | `in_progress` | Close contract tests for `PricingReadPort` and replace embedded/GraphQL compatibility evidence with actual parity snapshots before status promotion | `crates/modules/rustok-pricing/src/ports.rs`, `crates/modules/rustok-pricing/contracts/pricing-fba-registry.json`, `crates/modules/rustok-pricing/docs/implementation-plan.md` |
-| `inventory` | provider availability/reservation for checkout/product inventory consumers | `in_progress` | Close contract tests/fallback smoke for `InventoryReservationPort`, confirm idempotency/write semantics and storefront projection parity before status promotion | `crates/modules/rustok-inventory/src/ports.rs`, `crates/modules/rustok-inventory/contracts/inventory-fba-registry.json`, `crates/modules/rustok-inventory/docs/implementation-plan.md` |
-| `order` | provider checkout completion/result for commerce orchestration | `boundary_ready` | Owner checkout-completion path has `runtime_evidence.checkout_completion_owner_path.status = "runtime_verified"` and is gated by `npm run verify:ecommerce:fba`; remote/base fallback smoke remains follow-up before `transport_verified` | `crates/modules/rustok-order/src/ports.rs`, `crates/modules/rustok-order/contracts/order-fba-registry.json`, `crates/modules/rustok-order/docs/implementation-plan.md` |
-| `payment` | provider payment collection create/reuse for commerce checkout | `boundary_ready` | Provider SPI live-adapter executed evidence already recorded (`payment-provider-spi-live-adapter-evidence.json`) and gated by `npm run verify:ecommerce:fba`; base `PaymentCollectionPort` runtime fallback remains follow-up before `transport_verified` | `crates/modules/rustok-payment/src/ports.rs`, `crates/modules/rustok-payment/contracts/payment-fba-registry.json`, `crates/modules/rustok-payment/docs/implementation-plan.md` |
-| `customer` | provider read-projection for commerce checkout/order customer consumers | `in_progress` | Close contract tests/fallback smoke for `CustomerReadPort`, confirm embedded/GraphQL checkout compatibility snapshots before status promotion | `crates/modules/rustok-customer/src/ports.rs`, `crates/modules/rustok-customer/contracts/customer-fba-registry.json`, `crates/modules/rustok-customer/docs/implementation-plan.md` |
-| `cart` | provider checkout lifecycle for commerce checkout consumers | `in_progress` | Close contract tests/fallback smoke for `CartCheckoutPort`, confirm embedded/GraphQL checkout/storefront compatibility snapshots and lifecycle writes before status promotion | `crates/modules/rustok-cart/src/ports.rs`, `crates/modules/rustok-cart/contracts/cart-fba-registry.json`, `crates/modules/rustok-cart/docs/implementation-plan.md` |
-| `tax` | provider tax calculation for cart tax-line consumers | `in_progress` | Close runtime contract tests/fallback smoke for `TaxCalculationPort`, confirm cart/order tax snapshot parity before status promotion | `crates/modules/rustok-tax/src/ports/calculation.rs`, `crates/modules/rustok-tax/contracts/tax-fba-registry.json`, `crates/modules/rustok-tax/docs/implementation-plan.md` |
-| `comments` | provider generic comment thread boundary for blog/commentable-surface consumers | `boundary_ready` | Execute provider runtime contract/fallback evidence and prove atomic lifecycle-event publication, Blog delivery, retry, and recovery before `transport_verified` | `crates/modules/rustok-comments/src/ports.rs`, `crates/modules/rustok-comments/contracts/comments-fba-registry.json`, `crates/modules/rustok-comments/docs/implementation-plan.md` |
-| `blog` | consumer generic comment thread boundary and reply-count projection from `comments` | `boundary_ready` | Execute real consumer/projection runtime delivery, duplicate-event, missing-post, retry, and recovery evidence before `transport_verified` | `crates/modules/rustok-blog/contracts/blog-fba-registry.json`, `crates/modules/rustok-blog/contracts/evidence/blog-comments-consumer-static-matrix.json`, `crates/modules/rustok-blog/contracts/evidence/blog-comments-runtime-fallback-smoke.json`, `crates/modules/rustok-blog/docs/implementation-plan.md` |
-| `media` | provider asset read/image descriptor boundary for SEO/AI media consumers, plus owner write/control boundary | `boundary_ready` | One compiled suite verifies every read/write port operation against embedded and loopback gRPC providers, including deadlines, typed errors, owner normalization, upload-control transport, reconciliation, and delete. Isolated process/database/storage operational evidence remains required before `transport_verified` | `crates/modules/rustok-media/src/ports.rs`, `crates/modules/rustok-media-transport/tests/port_conformance.rs`, `crates/modules/rustok-media/contracts/media-fba-registry.json` |
-| `seo` | Media image descriptor consumer boundary | `in_progress` | Product forwards its media asset UUIDs and SEO composes `MediaAssetReadPort`; remaining target providers, tenant/degraded media execution, and public URL/proxy evidence are required before promotion | `crates/modules/rustok-seo/contracts/seo-fba-registry.json`, `crates/modules/rustok-seo/docs/implementation-plan.md` |
-| `ai-media` | support consumer image asset descriptor boundary from `media` | `boundary_ready` | Next step: provider-side media runtime execution evidence; support-adapter fallback smoke already verified by `cargo test -p rustok-ai-media --lib` | `crates/modules/rustok-ai-media/contracts/ai-media-fba-registry.json`, `crates/modules/rustok-ai-media/contracts/evidence/ai-media-consumer-static-matrix.json`, `crates/modules/rustok-ai-media/contracts/evidence/ai-media-runtime-fallback-smoke.json`, `crates/modules/rustok-ai-media/docs/implementation-plan.md` |
-| `ai-alloy` | support adapter script execution policy boundary for Alloy vertical | `in_progress` | Source-level policy registry captures `alloy_script_execution_policy`, `allowed_operations` and descriptor `runtime_operation`; next step — targeted Rust tests when compilations are allowed | `crates/modules/rustok-ai-alloy/contracts/ai-alloy-policy-registry.json`, `crates/modules/rustok-ai-alloy/contracts/evidence/ai-alloy-policy-static-matrix.json`, `crates/modules/rustok-ai-alloy/docs/implementation-plan.md` |
-| `search` | provider search query/suggestions boundary for storefront/admin consumers | `boundary_ready` | Executable no-compile runtime fallback/contract/invocation evidence already recorded; next step before `transport_verified` — live runtime contract execution with real provider invocation | `crates/modules/rustok-search/src/ports.rs`, `crates/modules/rustok-search/contracts/search-fba-registry.json`, `crates/modules/rustok-search/docs/implementation-plan.md` |
-| `index` | generic cross-module relational index and query engine | `in_progress` | Complete M2 scale evidence and storage selection, then publish replacement query/rebuild contracts. All Index v1 ports, registry, evidence, projections, and runtime wiring are removed. | `crates/modules/rustok-index/docs/implementation-plan.md`, `DECISIONS/2026-07-23-index-engine-rewrite.md` |
-| `fulfillment` | provider seller-aware shipping selection for commerce checkout | `boundary_ready` | Provider SPI live-adapter executed evidence already recorded (`fulfillment-provider-spi-live-adapter-evidence.json`) and gated by `npm run verify:ecommerce:fba`; base `ShippingSelectionPort` runtime fallback remains follow-up before `transport_verified` | `crates/modules/rustok-fulfillment/src/ports.rs`, `crates/modules/rustok-fulfillment/contracts/fulfillment-fba-registry.json`, `crates/modules/rustok-fulfillment/docs/implementation-plan.md` |
-| `rbac` | provider permission-decision boundary for admin consumers | `in_progress` | Close runtime fallback smoke for `RbacPermissionDecisionPort`, confirm claims-scope/degraded action hiding semantics before status promotion | `crates/modules/rustok-rbac/src/ports.rs`, `crates/modules/rustok-rbac/contracts/rbac-fba-registry.json`, `crates/modules/rustok-rbac/docs/implementation-plan.md` |
-| `tenant` | provider read-projection boundary for server-host tenant resolution consumers | `boundary_ready` | No-compile fallback smoke is locked by `npm run verify:foundation:fba-runtime-smoke`; compiled runtime contract/fallback smoke for `TenantReadPort` remains `cargo test -p rustok-tenant --lib --tests`; next step before `transport_verified` is host/runtime cache parity evidence beyond source-lock | `crates/modules/rustok-tenant/src/ports.rs`, `crates/modules/rustok-tenant/contracts/tenant-fba-registry.json`, `crates/modules/rustok-tenant/contracts/evidence/tenant-runtime-fallback-smoke.json`, `crates/modules/rustok-tenant/docs/implementation-plan.md` |
-| `workflow` | provider read-projection boundary for workflow admin consumers | `in_progress` | Close runtime contract tests/fallback smoke for `WorkflowReadPort`, confirm native/GraphQL admin read projection parity snapshots before status promotion | `crates/modules/rustok-workflow/src/ports.rs`, `crates/modules/rustok-workflow/contracts/workflow-fba-registry.json`, `crates/modules/rustok-workflow/docs/implementation-plan.md` |
-| `forum` | deferred consumer candidate for `page_builder` | `not_started` | Do not promote status until local consumer evidence appears; keep entry as deferred in provider registry | `crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json` |
+Track entrypoints include:
+
+- Product catalog reads: `ProductCatalogReadPort`,
+  `crates/modules/rustok-product/contracts/product-fba-registry.json` and the
+  [Product plan](../../crates/modules/rustok-product/docs/implementation-plan.md).
+- Ecommerce orchestration and owner ports: the [central registry](../modules/registry.md)
+  links Commerce, Pricing, Inventory, Customer, Cart, Order, Payment, Fulfillment and Tax.
+- `blog` consumes `CommentsThreadPort` through
+  `crates/modules/rustok-blog/contracts/blog-fba-registry.json`.
+- `ai-product` uses `ai-product-fba-registry.json` and
+  `ai-product-runtime-fallback-smoke.json` under its owner `contracts/` directory.
+- `ai-media` consumes `MediaAssetReadPort` with `ai-media-fba-registry.json` and
+  `ai-media-runtime-fallback-smoke.json` under its owner `contracts/` directory.
+- `ai-alloy` records `alloy_script_execution_policy` in `ai-alloy-policy-registry.json`.
+- Page Builder/Pages, Media/SEO/Profiles, Search and foundation capabilities retain their
+  own registries and plans; their status and verification scope must be read there.
+
+Evidence whose filename contains `runtime-smoke` may be a source/metadata check only.
+Read its execution status and commands before claiming a real owner invocation.
 
 Uniformity rules:
 
@@ -127,10 +125,11 @@ Uniformity rules:
 
 ## 2.2 Structural Standard for Module Migration
 
-### Whole-module extraction pilots: media and search
+### Proposed whole-module extraction pilots: media and search
 
-The first distributed FBA pilots are whole-module deployments, not splits of
-one module into multiple microservices. `media` is the storage/read pilot and
+The Media/Search proposal targets whole-module deployments rather than a separate
+microservice per port. It remains Proposed; existing bounded adapters are current
+implementation and do not establish that the proposed isolated services exist. `media` is the storage/read pilot and
 `search` is the query/connector pilot. The modular monolith remains the default.
 Media loopback transport conformance is accepted; an actual process split still
 requires isolated-runtime evidence.
@@ -156,11 +155,18 @@ The extraction order is:
    recovery evidence;
 6. performance and operational comparison against the in-process baseline.
 
-The authoritative decision and acceptance evidence are recorded in
+The proposed decision and required acceptance evidence are recorded in
 `DECISIONS/2026-07-16-media-search-extraction-boundaries.md`. No other module
 is promoted to a remote deployment class by this plan.
 
 ### Extraction execution status
+
+Product already has a standalone three-read catalog host. Its provider selection does
+not move Product commands or all additional reads. Media has metadata/control and
+public-image descriptor adapters plus a narrow Profiles consumer selector, but no
+standalone `rustok-media-service` package or whole-module runtime selector. The
+[owner plans](../modules/registry.md) record actual coverage and open evidence.
+The July 16 Media/Search ADR remains a proposal, not an accepted completion record.
 
 The deployment default remains the modular monolith. Media now has its bounded
 metadata/control gRPC adapter and compiled loopback conformance. This does not
@@ -207,7 +213,8 @@ status above `in_progress`:
    captures the provider/consumer dependency profile, contract versions, degraded modes and
    toggle/fallback profiles if the module participates in a provider/consumer track.
 4. **Contract location:** transport-neutral DTO/port/error contracts live in the owner module
-   or a shared foundation crate only if they are truly cross-module; host apps do not
+   or an optional owner contracts package; only genuinely shared platform primitives belong
+   in a foundation crate. Having multiple consumers does not transfer domain ownership; host apps do not
    become owners of domain/application contracts.
 5. **Verification location:** alongside machine-readable metadata there is an anti-drift/fallback gate
    (`scripts/verify/*` or module-local verifier), and the local plan lists command/evidence.
@@ -217,6 +224,11 @@ status above `in_progress`:
    tenancy, UI contract or observability changes, local docs, central board
    and this unified plan are updated simultaneously if the standard itself changes.
 
+
+### Historical increments
+
+The dated entries below retain historical scope and reported results. They do not
+supersede current owner plans or certify the current revision after later contract changes.
 
 As of 2026-06-16 the ecommerce provider track additionally received a unified static evidence layer for future contract tests: `pricing`, `inventory`, `order`, `payment`, `fulfillment`, `customer` and `cart` have `contracts/evidence/*-contract-test-static-matrix.json`, the command `npm run verify:ecommerce:fba` runs registry + evidence gates, including checking evidence packet compliance with provider registry cases/fallback profiles via `npm run verify:ecommerce:fba-contract-evidence`. This still does not promote status to `boundary_ready`: runtime execution and fallback smoke remain separate gates.
 
@@ -294,7 +306,7 @@ crates/modules/rustok-<module>/
   rustok-module.toml        # runtime metadata, dependencies, provider/consumer FBA sections
   contracts/                # optional machine-readable registry/evidence for provider/consumer tracks
 
-crates/modules/rustok-<module>-grpc/ # optional late-stage adapter crate, not a default requirement
+crates/modules/rustok-<module>-transport/ # optional adapter, existing Product/Media convention
   proto/schema              # gRPC/protobuf contract only after ADR/DoR
   server adapter            # calls the same service/port, does not contain domain rules
   client adapter            # remote implementation of the same port
@@ -302,7 +314,7 @@ crates/modules/rustok-<module>-grpc/ # optional late-stage adapter crate, not a 
 
 apps/server/
   composition/root wiring   # module registry, GraphQL/REST/controllers, health/metrics
-  transport selection       # future per-module runtime profile; currently mostly in-process/native/GraphQL
+  transport selection       # explicit supported profile, e.g. bounded Product catalog reads
   public API                # host API does not own domain rules
 ```
 
@@ -315,7 +327,7 @@ mandatory template:
 2. **Repository interfaces are not mandatory from the first PR.** Currently many modules own SeaORM
    entities/migrations directly; the abstraction seam is added when a remote adapter,
    test double or foreign-table access prohibition is needed.
-3. **`rustok-<module>-grpc` is a late optional adapter.** Until DoR is closed, a gRPC
+3. **A remote transport package is optional.** Existing packages use `*-transport`; until DoR is closed, a gRPC
    crate should not be created just for form's sake; first you need stable port, `PortContext`, typed errors, events/outbox,
    contract tests and ADR.
 4. **Transport adapters already exist, but not all are remote.** GraphQL/REST/`#[server]` live as
@@ -325,7 +337,12 @@ mandatory template:
    `page_builder -> pages` this is `page-builder-fba-registry.json` + `rustok-module.toml`; new
    provider/consumer tracks must repeat this pattern or extend it within the unified plan.
 
-In summary: the concept matches by layers (`domain/service-port/implementation/storage/adapter/server
+Contracts and implementation may remain in the same owner crate. Neither a second
+domain module nor an owner-contracts package is required. A contracts-only Cargo build
+must be implemented and checked independently; Product currently has unconditional
+implementation dependencies. Existing separate transport/service packages stay separate.
+
+The concept matches by layers (`domain/service-port/implementation/storage/adapter/server
 wiring`), but the RusTok standard does not require creating all folders and `*-grpc` crate ahead of time. The structure
 evolves through readiness gates to avoid getting formal interfaces without evidence.
 
@@ -517,12 +534,15 @@ Each event must have: tenant, aggregate id, schema version, correlation/causatio
 
 ## 5.3 Contract Tests
 
-For each port the same test suite runs:
+For each declared remote port/profile, the same observable operation cases run:
 
 - against in-process impl;
 - against remote adapter.
 
-Business result must match; differences allowed only in latency/failure envelope.
+Business results and owner policy must agree for supported operations. Add explicit network
+failure, timeout/uncertain-write, cancellation and recovery cases. An optional method with
+no implementation is an unsupported capability, not conformance coverage. Historical
+attestation and source-only checks do not certify the current revision.
 
 ## 5.4 Stage C Exit Criteria
 
@@ -573,7 +593,10 @@ Business result must match; differences allowed only in latency/failure envelope
 
 ## 8) Stage F — Pilot 3 (Payment/Fulfillment/Product read/Pricing)
 
-Order is mandatory:
+The historical sequence below describes candidate dependencies after a named remote
+workstream is admitted. It does not schedule these owners ahead of section 2.4 or the
+Media/Search proposal. External payment-provider APIs are also distinct from extracting
+the RusTok Payment module itself:
 
 1. `PaymentPort` and `FulfillmentPort` as remote adapters (external providers).
 2. `ProductPort` read-side snapshots (`get_product_snapshot`, `list_publishable_catalog_page`).
@@ -593,17 +616,24 @@ Order is mandatory:
 Allowed storage modes:
 
 1. shared DB + in-process;
-2. shared DB + remote process;
+2. controlled shared DB + remote process, with explicit owner access and schema coordination;
 3. service-owned DB;
 4. read-model replica/projection.
 
-Rule: transition to `service-owned DB` only after stable remote operation of the module, mature saga/outbox model and approved ADR.
+Rule: transition to service-owned storage only under an explicit approved ownership,
+consistency, migration and recovery decision. The former shared SQL transaction cannot
+cross RPC. Co-deploying atomic participants or adopting a new workflow requires a
+documented decision; adding ports alone does not change atomicity. Existing shared-storage
+read profiles must disclose that they are process extraction, not autonomous storage.
 
 ---
 
 ## 10) Unified Definition of Ready for Module Remote Migration
 
-A module can be moved to a remote profile only when **all** conditions are met:
+A named remote capability/profile can be admitted only when all applicable conditions
+below are met. Whole-module deployment additionally requires a complete operation,
+event/job, lifecycle/migration and public-surface inventory with resolved outgoing
+dependencies and transaction boundaries:
 
 1. Stable transport-agnostic port + contract tests (in-process/remote).
 2. Full `PortContext` on all commands/queries.
@@ -615,14 +645,17 @@ A module can be moved to a remote profile only when **all** conditions are met:
 
 ---
 
-## 11) Minimum Quarterly Rollout (Template)
+## 11) Illustrative Rollout Template
 
-- **Q1:** Stages A+B.
-- **Q2:** Stage C + Pilot 1.
-- **Q3:** Pilot 2.
-- **Q4:** Pilot 3 + decisions on selective storage evolution.
+These are relative planning periods, not calendar commitments or authorization to end
+the embedded-first focus. A named owner plan and ADR must schedule each remote increment.
 
-If stage Exit Criteria are not met, the next quarterly step does not start.
+- **Period 1:** Stages A+B.
+- **Period 2:** Stage C + Pilot 1.
+- **Period 3:** Pilot 2.
+- **Period 4:** Pilot 3 + decisions on selective storage evolution.
+
+If the selected stage Exit Criteria are not met, its dependent step does not start.
 
 ---
 

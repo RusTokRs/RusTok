@@ -65,6 +65,29 @@ RusToK enforces tenant isolation at runtime through explicit profiles defined in
 | `settings.rustok.tenant.default_id` | `RUSTOK_DEFAULT_TENANT_ID` | `00000000-0000-...-000000000001` | Default tenant UUID used in `single_tenant` or dev fallback. |
 | `settings.rustok.tenant.base_domains` | `RUSTOK_BASE_DOMAINS` | `[]` | Allowed root domains when extracting tenants via `subdomain`. |
 
+### 5.1 FBA provider selectors
+
+These existing selectors are parsed from environment during server bootstrap, separately
+from the tenant-profile settings above. Both default to `embedded`. They select bounded
+capabilities, not complete module placement.
+
+| Selector | Required remote configuration | Scope |
+|---|---|---|
+| `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` | `RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT` and `RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN` | Three catalog-read RPCs; Product commands and additional capabilities are not moved. |
+| `RUSTOK_PROFILE_MEDIA_PROVIDER=grpc` | `RUSTOK_PROFILE_MEDIA_GRPC_ENDPOINT`; optional `RUSTOK_PROFILE_MEDIA_PUBLIC_ORIGIN` | Profiles public-image descriptors only; HTTP bytes and other Media operations retain their owner path. |
+
+Both connection configurations support their documented TLS-domain, bounded connect-timeout
+and explicit insecure-loopback options. Remote-only variables are rejected in embedded
+mode; invalid remote configuration or connection aborts startup. There is no silent local
+failover. The narrow Media selector does not configure provider authentication or client
+certificates; these remain deployment gates.
+
+Use the [Product connection contract](../../crates/modules/rustok-product-transport/README.md#server-deployment),
+[Product provider host](../../crates/modules/rustok-product-catalog-service/README.md)
+and [Media connection contract](../../crates/modules/rustok-media-transport/docs/README.md#server-deployment-wiring)
+for exact options and limits. There is no current whole-module `RUSTOK_MEDIA_PROVIDER`
+selector. See [FBA scope](../backend/module-backend-architecture.md#fba-contracts).
+
 ---
 
 ## 6. Rate Limiting & Protection

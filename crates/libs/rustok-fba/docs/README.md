@@ -34,6 +34,15 @@ implementations stay in owner modules or adapter crates.
 
 Related guide: [Backend Module Architecture](../../../../docs/backend/module-backend-architecture.md).
 
+## Metadata and readiness limits
+
+These descriptors are declarative. They do not implement discovery, provider selection,
+capability negotiation, dependency enforcement, fallback or service lifecycle. Composition
+roots and owner adapters implement actual execution. A capability/profile may cover only
+part of a module; its status is not complete whole-module remote certification.
+Owner ports/DTOs may remain in their implementation crate or an optional owner contracts
+package. See the [FBA contract](../../../../docs/backend/module-backend-architecture.md#fba-contracts).
+
 ## Related documents
 
 - [Implementation plan](./implementation-plan.md)

@@ -4,6 +4,12 @@
 
 Proposed
 
+This ADR remains Proposed. Its whole-module isolated-runtime design is a target,
+not a statement that the named standalone hosts or all remote surfaces exist.
+Current execution priority is the embedded-first focus in the
+[unified FBA plan](../docs/research/fluid-backend-architecture-unified-plan.md#24-active-embedded-first-foundation-plan-2026-h2).
+Existing adapters have narrower owner-documented coverage and evidence.
+
 ## Context
 
 RusToK is implementing Fluid Backend Architecture as a deployment-neutral
@@ -47,14 +53,19 @@ module-owned adapters. No consumer may select or call a search engine directly.
 
 ### Media boundary
 
-`MediaAssetReadPort` remains the only cross-module read contract. The remote
-media service owns media metadata, translation policy, storage handles, public
-URL/proxy policy, and its database. Raw blobs are not returned through the
+`MediaAssetReadPort` is the general cross-module asset-read contract.
+`MediaPublicImageReadPort` is a separate narrow presentation contract. The proposed
+remote Media owner provides both and owns metadata, translation policy, storage
+handles, public URL/proxy policy, and its database. Raw blobs are not returned through the
 cross-module port. SEO and AI-media continue to consume descriptors and typed
 degraded outcomes.
 
 **Sovereignty & Anti-Collapse Invariant:**
-`rustok-media-transport` (gRPC framing, client/server adapters, and protobuf definitions) and the standalone host binary `rustok-media-service` (symmetrically equivalent to `rustok-product-catalog-service`) are strictly separated outside `rustok-media`. AI agents and contributors MUST NOT merge, glue, or collapse them into `rustok-media`.
+The existing `rustok-media-transport` adapter remains separate from `rustok-media`.
+A future standalone Media host must also be a separate owner deployment package under
+repository policy. The previously suggested name `rustok-media-service` does not identify
+an existing package. The Product catalog host is a bounded read-service precedent, not
+evidence that whole-module Media or Product extraction is complete.
 
 ### Search boundary
 
@@ -121,6 +132,18 @@ upload, delete, translation updates, and cleanup/operator actions. Large binary
 upload should use the Media-owned REST streaming or presigned-upload surface;
 gRPC remains appropriate for metadata/control calls and must not buffer whole
 blobs in generic port envelopes.
+
+## Current implementation scope clarification (2026-11-06)
+
+Media has metadata/write and public-image descriptor gRPC adapter source. The host's
+actual narrow selector is `RUSTOK_PROFILE_MEDIA_PROVIDER=grpc` for Profiles presentation;
+it does not select a whole-module Media host or transfer image bytes over gRPC.
+Provider authentication, reachable HTTP byte delivery, actual isolated process/storage,
+restart and mounted business evidence remain acceptance work in the Media owner plan.
+
+The isolated database/schema requirement below belongs to these proposed whole-module
+pilots. General FBA also allows explicitly documented controlled shared-storage remote
+profiles. Native SQL transaction handles cannot be passed across those process boundaries.
 
 ## Remote transport requirements
 

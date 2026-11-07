@@ -37,6 +37,18 @@ API would pull in the entire core runtime, while the `server` feature maintained
    never establishes current persisted grants or an atomic revocation fence;
    destructive owner commands use the current transaction-backed decision API.
 
+## Scope clarification (2026-11-06)
+
+This decision places shared platform primitives in `rustok-api`. Module-specific ports,
+DTOs and integration-event contracts remain owned by their domain module. They may live
+with its implementation or in an optional owner contracts package. This ADR neither
+requires one package per module nor requires a separate contracts package.
+
+Runtime composition may construct local services or configured transport adapters. The
+host's knowledge of deployment configuration, TLS and credentials is not a transfer of
+domain ownership. A contracts-only owner build requires separate dependency verification;
+it is not implied by the neutral shared API feature boundary established here.
+
 ## Consequences
 
 Secret capability authority follows the same owner boundary. Its canonical

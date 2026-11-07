@@ -45,7 +45,7 @@
 
 **RusTok** is a next-generation, high-performance platform designed to eliminate the dilemma between rigid monoliths and overly complex microservice architectures. Built from the ground up on **Rust** and **Tokio**, RusTok combines compile-time type safety with a fluid, topology-agnostic runtime model.
 
-Rather than forcing developers to pick between a closed monolith or an expensive distributed network of microservices, RusTok operates as a **blazing-fast in-process modular monolith by default**, while keeping its domain boundaries **ready for on-demand microservice extraction via gRPC or event streams**.
+RusTok runs as an **in-process modular monolith by default**. Its owner boundaries let deployments move selected capabilities to remote providers or event-driven workers as their adapters, composition, and operational evidence become available.
 
 ![RusTok Platform Overview](assets/rustok-platform-overview.png)
 
@@ -119,7 +119,7 @@ For domain-specific verticals, RusTok provides pre-packaged module ecosystems:
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Type Safety Guarantees** | None (PHP) | None (PHP) | Build-step (TS) | Build-step (TS) | **Compile-time enforced (Rust)** |
 | **Native Multi-Tenancy** | Multisite add-on | Store views | None | Limited | **Composite DB primary keys & typed `PortContext`** |
-| **Fluid Backend Topology (FBA)** | Monolith only | Monolith only | Headless only | Complex setup | **In-process modular monolith default; verified gRPC profiles** |
+| **Fluid Backend Topology (FBA)** | Monolith only | Monolith only | Headless only | Complex setup | **In-process modular monolith default; scoped remote profiles** |
 | **Read Indexing Engine** | Direct DB queries | Heavy EAV / ES | Direct DB queries | Remote Query | **`rustok-index` (JSONB + Keyset)** |
 | **Event Streaming & Replay** | Cron / MySQL | Triggers / Mview | None | Pub/Sub | **Iggy (Event Replay in Rust)** |
 | **On-the-Fly Dynamic Logic** | Unsafe PHP plugins | Heavy DDL / Cron | JS Hooks | JS Workflows | **Alloy (`rustok-sandbox` Rhai/WASM)** |
@@ -133,8 +133,8 @@ For domain-specific verticals, RusTok provides pre-packaged module ecosystems:
 ### 1. Fluid Backend Architecture (FBA)
 Fluid Backend Architecture decouples domain service logic from transport boundaries:
 
-- **Embedded Modular Monolith (Default)**: RusTok executes as a single binary by default. Module service calls execute as zero-overhead, in-process Rust trait invocations without network hops or serialization penalties.
-- **Targeted Remote Service Profiles**: When a module's owner explicitly publishes that port, transport adapter, service host, security boundary, and verification evidence (e.g. `rustok-product-transport`), it can run as an independent gRPC microservice. Remote execution is not a universal switch and never silently falls back.
+- **Embedded Modular Monolith (Default)**: RusTok executes as a single binary by default. Module service calls execute in-process without network hops or remote serialization. FBA portability and remote readiness apply to explicitly implemented capability profiles; see the [backend contract](docs/backend/module-backend-architecture.md#fba-contracts).
+- **Targeted Remote Service Profiles**: A remote profile covers the operations its provider, host and consumers actually support and verify. Product currently has a gRPC profile for three catalog reads; Product commands stay local. A configured remote authority never silently falls back to the local provider.
 
 ### 2. Fluid Frontend Architecture (FFA)
 FFA provides a framework-agnostic UI architecture that eliminates frontend fragmentation and protects application code from UI framework lock-in:

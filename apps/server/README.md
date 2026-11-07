@@ -23,6 +23,22 @@
 - Serves `apps/admin`, `apps/storefront`, `apps/next-admin`, and `apps/next-frontend`.
 - Hosts platform-owned runtime layers such as MCP management, module composition, and orchestration bridges.
 
+## FBA provider composition
+
+Server bootstrap owns deployment configuration, secret supply and provider construction.
+This is composition-root work; domain rules and transport mechanics remain with their
+owners. Current selectors are deliberately bounded:
+
+- `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` selects three Product catalog reads. It does
+  not select remote Product commands or supply every additional read/identity capability.
+- `RUSTOK_PROFILE_MEDIA_PROVIDER=grpc` selects Profiles public-image descriptors.
+  It does not move all Media operations or image-byte delivery.
+
+Invalid selected-remote configuration or connection aborts startup. Current Product
+commands remain separately embedded; this is mixed composition, not read-failure failover.
+See the [configuration reference](../../docs/operations/configuration-reference.md#51-fba-provider-selectors)
+and [FBA contract](../../docs/backend/module-backend-architecture.md#fba-contracts).
+
 ## Production container configuration
 
 The production Docker image is fail-closed by default: it sets `RUSTOK_ENV=production`, `RUSTOK_CONFIG_DIR=/app/config`, and `RUSTOK_HTTPS=true`. Mount the operator-managed `production.yaml` at `/app/config/production.yaml` (or provide an equivalent config through the configured directory). Development and test configuration files are deliberately not copied into the production image.

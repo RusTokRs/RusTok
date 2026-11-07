@@ -73,6 +73,11 @@ silently selecting embedded Media.
 Endpoint and public-origin values are not logged. The server logs only the selected
 provider class and non-sensitive configuration booleans.
 
+This selector supplies no whole-module Media deployment or provider listener. There is
+currently no standalone `rustok-media-service` package. Production provider identity,
+authentication/authorization and byte ingress must be composed separately; the consumer
+startup code does not configure bearer credentials or client certificates in this slice.
+
 ## Deployment boundary
 
 Embedded deployments use the Media providers directly. Extracted deployments wrap

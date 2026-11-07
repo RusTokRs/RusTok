@@ -73,7 +73,7 @@ API adapters follow the backend module layout:
   `rustok-cli-core`, not in HTTP handlers.
 
 Use `rustok-web` for Axum response/error mapping and `rustok-runtime` only for reusable
-runtime helper access. Stable request/port contracts stay in `rustok-api`.
+runtime helper access. Shared request/context/error primitives stay in `rustok-api`; module-specific ports and DTOs remain owned by their domain module.
 
 ## GraphQL Surface
 
@@ -165,6 +165,20 @@ contract:
 New module services, ports, HTTP handlers, GraphQL roots, `#[server]` adapters and CLI
 adapters must use explicit owner and Axum runtime contracts as their target
 contract. The active server and generated module composition are Axum-only.
+
+## FBA provider scope
+
+Provider selection is composition-root work. Host bootstrap may configure a gRPC client,
+including credentials and connection policy, while owner services remain independent of
+that transport. A public GraphQL, REST or native endpoint is remote-capable only when its
+actual call path uses a selected provider implementing every required operation.
+
+The current Product selector replaces three catalog reads, not all Product endpoints.
+Some native admin paths still construct embedded owner services; selected storefront and
+Pricing paths need capabilities the present gRPC runtime does not supply. This is a
+documented bounded profile, not evidence of complete remote API parity. See the
+[Product coverage inventory](../../crates/modules/rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06)
+and [FBA contract](../backend/module-backend-architecture.md#fba-contracts).
 
 ## HTTP error retry advice
 

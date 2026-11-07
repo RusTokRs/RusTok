@@ -30,3 +30,12 @@
 See [CRATE_API.md](CRATE_API.md) for the formal public API surface and contract invariants.
 
 See [docs](docs/README.md).
+
+## Metadata and readiness limits
+
+These descriptors are declarative. They do not implement discovery, provider selection,
+capability negotiation, dependency enforcement, fallback or service lifecycle. Composition
+roots and owner adapters implement actual execution. A capability/profile may cover only
+part of a module; its status is not complete whole-module remote certification.
+Owner ports/DTOs may remain in their implementation crate or an optional owner contracts
+package. See the [FBA contract](../../../docs/backend/module-backend-architecture.md#fba-contracts).

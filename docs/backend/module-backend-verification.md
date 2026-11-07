@@ -296,21 +296,41 @@ When only a static boundary changed, document why reference artifacts were not r
 
 ## FBA Evidence
 
-FBA slices need evidence appropriate to the status:
+Use the [FBA contract](./module-backend-architecture.md#fba-contracts) to name the
+profile being verified. FBA statuses are `not_started`, `in_progress`,
+`boundary_ready` and `transport_verified`; `parity_verified` is an FFA status.
+The local owner plan and central readiness board must identify the scope and remaining
+gates. Under the central 2026-07-13 policy, `boundary_ready` may have static evidence
+without local Cargo execution. It is not runtime or whole-module remote certification.
 
-- source-level descriptors and registry JSON for planned/in-progress;
-- static matrix and fallback smoke for boundary-ready candidates;
-- compiled runtime smoke before transport-verified or parity-verified promotion.
+| Evidence | What it can establish | What it does not establish |
+|---|---|---|
+| Source/registry checks | Metadata shape, selected source paths and expected policy markers. | Compilation, database effects or real provider invocation. |
+| Compiled embedded cases | Actual owner behavior for executed operations and fixtures. | Network mapping or another process's lifecycle. |
+| Loopback conformance | Embedded/remote contract comparison for tested RPCs, context, errors and failure cases. | Standalone production configuration, isolated storage or all mounted business paths. |
+| Separate-process startup and probe | Provider readiness, authenticated tested RPCs and selected consumer startup. | Commerce checkout or AI business requests unless they were actually sent through that consumer. |
+| Profile business/recovery tests | Executed mounted consumer paths and documented restart/failure/data behavior. | Unlisted capabilities, another revision or automatic whole-module readiness. |
 
-Use module-local verifier scripts when they exist, for example:
+Before `transport_verified`, execute the declared provider/consumer operations,
+context/authorization/deadline/error cases and applicable failure/degraded behavior.
+Whole-module isolated-service claims additionally require complete entrypoint/background/
+lifecycle coverage, actual process and storage placement, migrations, event/outbox replay,
+retry/restart, recovery and operational evidence. Do not replace those with a smoke marker.
 
-```bash
-npm run verify:workflow:fba
-npm run verify:foundation:fba-runtime-smoke
-```
+Preserve historical attestations with their revision/date and limitations. Recompile and
+rerun affected cases after contract changes; a past pass without current source identity
+does not certify the current tree. A stale fixture is a defect even if its metadata gate
+still passes. Check contracts-only and embedded builds separately when that packaging
+capability is claimed; Product does not currently publish a contracts-only build.
 
-Do not promote FBA readiness only because a type exists. Readiness requires consumer/provider
-metadata, error mapping, fallback policy and verification evidence.
+Use module-local verifier scripts for source consistency and list their actual results.
+For the existing Product read slice, the owner plan also lists conformance and process
+capture commands. Runtime capture requires migrated databases, authenticated fixtures and
+explicit operator configuration; do not manufacture a passing evidence packet.
+
+No status is promoted merely because this documentation is clarified. See
+[Product open results](../../crates/modules/rustok-product/docs/implementation-plan.md#open-results)
+and the [central policy](../modules/registry.md#ffafba-readiness-board-module-owned-ui).
 
 ## Documentation Checks
 

@@ -15,6 +15,20 @@ Typed tonic gRPC framing for the Product-owned `ProductCatalogReadPort`.
 - `ProductCatalogGrpcOperation` declares the three authorized read operations.
 - Generated `ProductCatalogReadService` protobuf types define RPC framing only.
 
+## Known Limitations / Pending Implementation
+
+The remote provider implements only `read_product_projection`,
+`read_variant_product_projection` and `list_published_products`. Other optional methods
+on the current read trait retain unavailable defaults. This package supplies neither
+Product commands nor the external runtime's missing identity/schema/HTTP/tag capabilities.
+It currently depends on the full Product crate, not a separate contracts-only package.
+
+The July 29 maintainer attestation is historical. Current source review found the
+conformance fixture missing the required `ProductResponse.brands` field; compilation and
+conformance must be rerun after that fixture is repaired. The implementation agent does
+not independently certify the current revision. See the
+[Product review](../rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
+
 ## Boundary
 
 This crate owns protobuf/tonic framing, transport deadlines, gRPC status mapping, connection validation, service authentication, and trusted-authority adaptation. It does not own Product DTOs, catalog policy, persistence, locale/channel semantics, fallback decisions, or consumer composition.
@@ -41,11 +55,13 @@ The standalone Product catalog service host in `crates/modules/rustok-product-ca
 
 ## Evidence
 
-The loopback conformance harness covers all three owner operations, typed not-found details, deadline-required semantics, and trusted actor replacement:
+The loopback conformance harness is intended to cover all three declared remote operations, typed not-found details, deadline-required semantics, and trusted actor replacement:
 
 ```bash
 cargo test -p rustok-product-transport --test port_conformance
 ```
+
+For this current-revision invocation, the implementation agent does not claim this command was executed. Historical maintainer-reported results remain bounded to their attestation.
 
 Authentication source and mutation guards are available separately:
 

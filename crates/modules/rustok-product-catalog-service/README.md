@@ -23,6 +23,19 @@ authenticated tonic gRPC
 
 It does not own Product DTOs, catalog policy, persistence queries, locale/channel rules, consumer fallback behavior, migrations, or an outbox relay. The exposed RPC surface is read-only. `CatalogService` receives an `OutboxTransport`-backed `TransactionalEventBus` so the owner constructor remains production-valid without introducing a no-op event transport.
 
+## Known Limitations / Pending Implementation
+
+This host exposes `ReadProductProjection`, `ReadVariantProductProjection` and
+`ListPublishedProducts` only. It is not a complete Product command/schema/identity or
+admin/storefront host. Selecting it on the consumer does not move local Product commands
+or their Pricing/Inventory transaction participants into this process.
+
+The current-revision conformance fixture needs repair and recompilation, and actual
+standalone PostgreSQL startup, authenticated mounted business paths and recovery evidence
+remain open in the [Product plan](../rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
+The configured owner database and any local command database must have an explicit
+authority/data-placement contract; this binary provides no replication mechanism.
+
 ## Required configuration
 
 | Variable | Purpose |
@@ -41,7 +54,7 @@ After the PostgreSQL pool connects and before tonic starts listening, the host p
 - `product_variants`;
 - `sys_events`.
 
-This verifies that the Product catalog and transactional outbox schema are visible to the configured database principal. A missing table, incompatible schema, or insufficient read permission aborts startup with a sanitized migration-precondition error. The host does not create, alter, or repair schema and does not silently continue with partial readiness.
+These bounded probes verify the listed Product and outbox entity reads for the configured database principal; they do not exercise every catalog join, dependency or RPC business path. A missing table, incompatible schema, or insufficient read permission aborts startup with a sanitized migration-precondition error. The host does not create, alter, or repair schema and does not silently continue with partial readiness.
 
 ## Listener and TLS
 
@@ -85,6 +98,8 @@ RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR='rustok-server' \
 RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true \
 cargo run -p rustok-product-catalog-service
 ```
+
+For the source-level invocation above, the implementation agent does not claim this command was executed.
 
 ## Retained separate-process evidence
 

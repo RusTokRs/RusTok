@@ -1,39 +1,48 @@
 # rustok-product-catalog-service / CRATE_API
 
-## Public surface
+## Executable interface
 
-### Service Host Configuration
-- `ServiceConfiguration`: parsed environment configuration for host address, database URL, credentials, and TLS parameters.
-- `ServiceTransport`: transport security mode (`Tls`, `InsecureLoopback`).
-- `RedactedSecret`: memory-safe secret container redacting sensitive bearer credentials in diagnostic output.
+This is a binary package with no public Rust library API. Its supported operator
+interface is the [environment/startup contract](README.md#required-configuration),
+authenticated gRPC endpoint, telemetry and shutdown behavior.
 
-### Entry Point
-- `main`: async service daemon entrypoint performing database pool setup, schema preflight verification, and tonic gRPC listener binding.
+The private implementation types `ServiceConfig`, `ServiceTransport` and
+`RedactedSecret` are not consumer APIs. `RedactedSecret(String)` redacts Debug output;
+it does not establish secure-memory storage or zeroization.
 
-## Platform Capability Bindings
-- **Standalone FBA Service Host**: Implements out-of-process provider execution for `ProductCatalogReadPort`.
-- **gRPC Protocol Endpoint**: Exposes authenticated tonic gRPC read endpoints (`GetProduct`, `GetVariant`, `ListCatalogProducts`).
-- **Telemetry Registration**: Initializes distributed tracing and metrics with service identity `rustok-product-catalog-service`.
+## Composition and exposed operations
 
-## Domain Collaborations
-- **`rustok-product`**: Core domain catalog queries and entity projections (`Product`, `ProductVariant`).
-- **`rustok-product-transport`**: Tonic gRPC service implementation and bearer authentication interceptor (`ProductCatalogGrpcBearerInterceptor`).
-- **`rustok-outbox`**: Read preflight verification of transactional outbox table schema (`sys_events`).
+The host composes PostgreSQL, Product's `CatalogService`, an Outbox-backed
+`TransactionalEventBus` and `ProductCatalogGrpcService` with bearer authentication.
+It exposes `ReadProductProjection`, `ReadVariantProductProjection` and
+`ListPublishedProducts`. It does not expose commands, schema administration, every
+read-trait capability or all Product UI routes.
 
-## Minimum Contract Set
+Product owns catalog rules and queries. The transport package owns wire framing and
+trusted authority adaptation. Outbox supplies the production event-bus constructor;
+the exposed read-only operations do not perform domain/outbox writes.
 
-### Input DTOs/Commands
-- Service configuration derived from standard environment variables (`RUSTOK_PRODUCT_CATALOG_DATABASE_URL`, `RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN`, `RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR`).
+## Startup and failure contract
 
-### Domain Invariants
-- **Read-Only Surface**: The standalone host exposes strictly read-only catalog query endpoints; mutations and schema alterations are excluded.
-- **Fail-Closed Schema Preflight**: Preflight checks query `products`, `product_variants`, and `sys_events` before binding the listener; missing schema aborts immediately.
-- **TLS by Default**: Insecure plaintext HTTP is rejected unless explicitly enabled for loopback development via `RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true`.
-- **Trusted Service Identity**: Callers cannot spoof actor identities; the host server enforces `RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR`.
+- Required database, credential and trusted-service-actor configuration is documented
+  in the README. Credentials and raw database URLs must not appear in diagnostics.
+- The private preflight performs entity reads of `products`, `product_variants` and
+  `sys_events` before the listener. It is a bounded prerequisite check, not complete
+  schema/dependency/business-path verification.
+- The host does not run migrations. Deployment must provide a migrated owner schema.
+- TLS is required unless explicitly permitted plaintext is bound to loopback.
+- Caller claims are admitted through the interceptor; the trusted actor is configured
+  server-side. Initialization failure aborts startup.
+- Platform telemetry uses service name `rustok-product-catalog-service`. Ctrl-C and
+  Unix SIGTERM request graceful tonic and telemetry shutdown.
 
-### Events / Outbox Side Effects
-- Emits telemetry spans and structured startup diagnostics.
-- Outbox write operations remain inactive on this read-only deployment unit.
+## Deployment limits and evidence
 
-### Errors / Failure Codes
-- Sanitized startup failure errors for database connection failures, missing schema tables, and invalid TLS credentials.
+The catalog selector in the consumer does not select remote Product commands. Native
+Product/Pricing/Inventory atomic participants remain a separate local contract. Sharing
+owner storage and independent storage/replication are different deployment choices.
+
+Current compilation, provider startup and mounted Commerce/AI business evidence remain
+open as described by the [Product plan](../rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
+Historical loopback attestation does not certify the current revision or a standalone
+production deployment.

@@ -21,7 +21,7 @@
 - `MediaPublicImageReadPort`, which returns one owner result containing the canonical `MediaItem` and the public descriptor selected by Media policy;
 - `MediaPublicImageService`, which turns only storage-relative image descriptors into `/api/media/public/images/{id}/{checksum_sha256}` capability URLs;
 - an unauthenticated Media-owned capability GET that derives tenant authority from `TenantContext`, verifies the active ready image blob and checksum, reads the object, and returns immutable bytes with ETag, content length/type, and `nosniff`;
-- loopback-verified `rustok-media-transport` tonic adapters for the existing generic metadata/control operations. Binary bodies remain outside gRPC; parity for the new public-image capability remains an explicit future extraction gate;
+- `rustok-media-transport` tonic adapter and conformance sources for metadata/control and public-image descriptors. Binary bodies remain outside gRPC; current-revision execution and production deployment evidence are separate gates;
 - GraphQL and REST adapters of the module;
 - upload validation by size/MIME policy, module-scoped storage namespace (`media/{zone}/tenants/{tenant_id}/modules/{owner_module}/...`), and tenant isolation before accessing storage;
 - module-scoped media management: `owner_module` tracking, filtering with `list_by_module`, and cascading cleanup with `purge_module_media` on module deactivation/uninstallation;
@@ -77,7 +77,7 @@ Direct-public media has the same public-delivery revocation model as before: onc
   active assets, counts only exact target-row values, and brackets the
   aggregate with its owner cursor. Translation writes, translated-asset
   deletion, and active-asset failure all append cursor evidence transactionally;
-- whole-module remote extraction must define how the Media-owned public URL and byte endpoint are reached before claiming provider parity. The current capability is embedded-runtime source-complete only.
+- the narrow `RUSTOK_PROFILE_MEDIA_PROVIDER=grpc` profile selects only Profiles public-image descriptors. The descriptor RPC source exists, while reachable Media HTTP byte delivery, provider authentication and deployment evidence remain required. No standalone `rustok-media-service` package or whole-module provider selector exists; see the [current scope](../README.md#known-limitations--pending-implementation).
 
 ## Verification
 
