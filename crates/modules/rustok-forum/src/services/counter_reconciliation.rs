@@ -1,4 +1,4 @@
-use std::time::Instant;
+// Instant moved to reconciliation_executor
 
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
@@ -9,6 +9,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::reconciliation_executor::ReconciliationExecutor;
 use super::rbac::enforce_scope;
 use crate::error::{ForumError, ForumResult};
 
@@ -117,35 +118,16 @@ impl ForumCounterReconciliationService {
         topic_after: Option<Uuid>,
         category_after: Option<Uuid>,
     ) -> ForumResult<ForumCounterReconciliationReport> {
-        rustok_telemetry::metrics::record_module_entrypoint_call(
-            "forum",
-            "counter_reconciliation_report",
-            "library",
-        );
-        let started_at = Instant::now();
-        let result = match enforce_operations_scope(security) {
-            Ok(()) => {
-                self.report_inner(tenant_id, requested_limit, topic_after, category_after)
-                    .await
-            }
-            Err(error) => Err(error),
-        };
-        rustok_telemetry::metrics::record_span_duration(
+        ReconciliationExecutor::new(
             FORUM_COUNTER_RECONCILIATION_OPERATION,
-            started_at.elapsed().as_secs_f64(),
-        );
-        if result.is_err() {
-            rustok_telemetry::metrics::record_span_error(
-                FORUM_COUNTER_RECONCILIATION_OPERATION,
-                "owner_report",
-            );
-            rustok_telemetry::metrics::record_module_error(
-                "forum",
-                "counter_reconciliation",
-                "error",
-            );
-        }
-        result
+            DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT,
+            MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
+        )
+        .execute(security, || async {
+            self.report_inner(tenant_id, requested_limit, topic_after, category_after)
+                .await
+        })
+        .await
     }
 
     async fn report_inner(
