@@ -1,4 +1,4 @@
-use std::time::Instant;
+// Instant via executor
 
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
@@ -143,32 +143,15 @@ impl ForumSubscriptionReconciliationService {
         requested_limit: Option<u64>,
         cursors: ForumSubscriptionReconciliationCursors,
     ) -> ForumResult<ForumSubscriptionReconciliationReport> {
-        rustok_telemetry::metrics::record_module_entrypoint_call(
-            "forum",
-            "subscription_reconciliation_report",
-            "library",
-        );
-        let started_at = Instant::now();
-        let result = match enforce_operations_scope(security) {
-            Ok(()) => self.report_inner(tenant_id, requested_limit, cursors).await,
-            Err(error) => Err(error),
-        };
-        rustok_telemetry::metrics::record_span_duration(
+        ReconciliationExecutor::new(
             FORUM_SUBSCRIPTION_RECONCILIATION_OPERATION,
-            started_at.elapsed().as_secs_f64(),
-        );
-        if result.is_err() {
-            rustok_telemetry::metrics::record_span_error(
-                FORUM_SUBSCRIPTION_RECONCILIATION_OPERATION,
-                "owner_report",
-            );
-            rustok_telemetry::metrics::record_module_error(
-                "forum",
-                "subscription_reconciliation",
-                "error",
-            );
-        }
-        result
+            DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT,
+            MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
+        )
+        .execute(security, || async {
+            self.report_inner(tenant_id, requested_limit, cursors).await
+        })
+        .await
     }
 
     async fn report_inner(
