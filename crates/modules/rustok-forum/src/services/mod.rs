@@ -1,3 +1,4 @@
+mod audience_policy;
 mod attachment_hold_reconciliation;
 mod attachment_relation;
 pub mod topic_routes;
