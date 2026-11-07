@@ -195,7 +195,7 @@ pub async fn inference_for_slug(
         ProviderIntegration::Anthropic => {
             let mut target = anthropic::AnthropicConfig::new(api_key.to_owned());
             if !base_url.is_empty() {
-                target = target.with_base_url(base_url.to_owned());
+                target = target.with_base_url(base_url);
             }
             rig_engine(target.client().completion(config.model.clone()), slug)
         }
@@ -229,7 +229,7 @@ pub async fn inference_for_slug(
         ProviderIntegration::Cohere => {
             let mut target = cohere::CohereConfig::new(api_key.to_owned());
             if !base_url.is_empty() {
-                target = target.with_base_url(base_url.to_owned());
+                target = target.with_base_url(base_url);
             }
             let mut model = target.client().completion(config.model.clone());
             model.wire = model.wire.with_route(cohere::ChatRoute::Native);
@@ -262,7 +262,7 @@ pub async fn inference_for_slug(
         ProviderIntegration::Ollama => {
             let mut target = ollama::OllamaConfig::new();
             if !base_url.is_empty() {
-                target = target.with_base_url(base_url.to_owned());
+                target = target.with_base_url(base_url);
             }
             rig_engine(
                 target.client().native_completion(config.model.clone()),

@@ -128,7 +128,7 @@ pub async fn embed(
         ProviderIntegration::Cohere => {
             let mut target = cohere::CohereConfig::new(api_key.to_owned());
             if !base_url.is_empty() {
-                target = target.with_base_url(base_url.to_owned());
+                target = target.with_base_url(base_url);
             }
             let mut model = target.client().embedding(request.model, request.dimensions);
             model.wire = model
@@ -154,7 +154,7 @@ pub async fn embed(
         ProviderIntegration::Ollama => {
             let mut target = ollama::OllamaConfig::new();
             if !base_url.is_empty() {
-                target = target.with_base_url(base_url.to_owned());
+                target = target.with_base_url(base_url);
             }
             embed_with(
                 target
@@ -170,7 +170,7 @@ pub async fn embed(
         ProviderIntegration::VoyageAi => {
             let mut target = voyageai::VoyageAiConfig::new(api_key.to_owned());
             if !base_url.is_empty() {
-                target = target.with_base_url(base_url.to_owned());
+                target = target.with_base_url(base_url);
             }
             let mut model = target.client().embedding(request.model, request.dimensions);
             if let Some(dimensions) = request.dimensions {
@@ -273,7 +273,7 @@ fn order_embedding_frame(frame: WireFrame) -> Result<WireFrame, ProviderError> {
         *slot = row;
     }
     *data = ordered;
-    Ok(WireFrame::Text(payload.to_string().into()))
+    Ok(WireFrame::Text(payload.to_string()))
 }
 
 #[cfg(feature = "fastembed")]
@@ -320,7 +320,7 @@ pub async fn rerank(
         ProviderIntegration::VoyageAi => {
             let mut target = voyageai::VoyageAiConfig::new(api_key.to_owned());
             if !base_url.is_empty() {
-                target = target.with_base_url(base_url.to_owned());
+                target = target.with_base_url(base_url);
             }
             rerank_with(
                 target.client().rerank(request.model.clone()).erase(),
@@ -446,7 +446,7 @@ mod tests {
             json!([{"index":0},{"index":0}]),
             json!([{"index":2},{"index":0}]),
         ] {
-            let frame = WireFrame::Text(json!({"data": data}).to_string().into());
+            let frame = WireFrame::Text(json!({"data": data}).to_string());
             assert!(order_embedding_frame(frame).is_err());
         }
     }

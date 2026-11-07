@@ -94,15 +94,16 @@ embeddings, and reranking. Rig owns protocol parsing and stream assembly. A fail
 filtered, truncated, or unfinished tool response cannot become an executable call.
 Provider token counters remain optional in embedding/rerank responses; chat accounting
 requires both input and output counters before it records complete usage evidence.
-An explicit zero is valid evidence; an absent counter is unavailable evidence.
+An explicit zero is valid evidence. An absent counter leaves usage unavailable.
 OpenAI-compatible gateways can omit embedding usage. The vector adapter aligns
 indexed OpenAI-family replies before Rig associates vectors with documents. A
 reply with duplicate, missing, or out-of-range indices is rejected when it
 supplies indices. A reply with no indices uses its returned order.
 
 The active provider inventory is `contracts/provider-catalog.json`. Galadriel is
-not advertised because the pinned SDK has no adapter; persisted profiles remain
-readable and can be deactivated. The stable `llamafile` integration uses Rig's
+absent because the pinned SDK has no adapter. Remove Galadriel targets from the
+deployment catalog before startup. Persisted profiles can be read and deactivated.
+The stable `llamafile` integration uses Rig's
 llama.cpp adapter. Official OpenAI uses Responses, OpenAI-compatible targets use
 Chat Completions, and Ollama/Cohere retain their native routes. Bedrock applies
 both the deployment-selected region and profile.

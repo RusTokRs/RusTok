@@ -30,8 +30,13 @@ arguments suppress peer execution and cannot be coerced into valid objects.
 The registry removes the unavailable Galadriel adapter without preventing reads
 or deactivation of persisted profiles. Active snapshot filenames are unversioned;
 their declared SDK version must match every exact workspace Rig dependency pin.
-Offline SDK tests and scoped Rust checks are required for this upgrade. Live
-cloud/authentication probes and billable provider runs remain operator-only.
+`cargo check --locked --offline -p rustok-ai --features graphql --tests` passed.
+The scoped GraphQL library test run passed 188 tests. Two live probes and the
+recovery child entrypoint are ignored in the default run. The offline protocol
+cases exercise three provider stream formats, fragmented calls, premature EOF,
+unknown usage, and indexed embedding alignment. Live cloud/authentication
+probes and billable provider runs remain operator-only.
+Clippy passed for the GraphQL and FastEmbed configuration with warnings denied.
 
 The platform now supplies a generic manifest/runtime contribution contract with
 no AI-specific imports in `apps/server`. AI GraphQL surfaces and runtime data
@@ -189,7 +194,7 @@ active.
 |---|---|---|---|
 | R0. Static contract repair | `completed` | Provider events are normalized before publication; native DTO conversion is canonical. `ProviderIntegration` owns compiler-exhaustive factory capability binding and target loading rejects unavailable integrations. | `engine::catalog::tests` passes 8/8, including compiled-catalog filtering, target-load rejection, and descriptor/factory parity. |
 | R1. Approval recovery and restart | `completed` | Durable approved outcomes, transactional finalization, batch compare-and-set ownership, recovery, and canonical-history restart are implemented. | `cargo test -p rustok-ai --features server --lib` passes 59 tests with one deployment-live probe intentionally ignored. |
-| R2. Provider protocol evidence | `in_progress` | Normalized owner-event fixtures cover five families. Rig 0.46 transport tests cover OpenAI-compatible, Anthropic, and Gemini protocol decoding; live cloud-auth and deployment-specific verification remain opt-in. | Rerun scoped server/GraphQL tests and the cutover guard for the SDK upgrade; retain operator deployment evidence separately. |
+| R2. Provider protocol evidence | `completed` | Normalized owner-event fixtures cover five families. Rig 0.46 transport tests cover OpenAI-compatible, Anthropic, and Gemini protocol decoding. Live cloud-auth and deployment-specific verification remain opt-in. | Scoped GraphQL library tests passed (188 passed, three ignored) and `verify-ai-rig-cutover.mjs` passed. |
 | R3. Security, migration, and transport parity | `in_progress` | Migration, secret validation, target/egress policy, safe GraphQL/native DTO contracts, and deployment-owned resolver composition are implemented. Explicit-JSON precedence and duplicate aliases are verified for offline/lazy resolver families; live Kubernetes/Azure identity and cloud-emulator coverage remain. | Run the dedicated secret resolver configuration tests, then rerun the existing secrets/server gates. |
 | R4. Final verification and evidence | `in_progress` | The generic runtime composition now publishes module extension values and invokes registered durable workers with no AI-specific server construction. The scheduler observes the shared stop signal before every new claim and exits cleanly while already-claimed work completes canonically. The remaining work is targeted static and later full Rust/frontend verification evidence. | Run the full requested gates in the separate verification pass. |
 
