@@ -875,7 +875,10 @@ impl TopicService {
             .exec(txn)
             .await?;
 
-        for channel_slug in normalize_channel_slugs(channel_slugs.unwrap_or(&[])) {
+        let channel_slugs = crate::audience::normalize_channel_slugs(
+            channel_slugs.unwrap_or(&[]).to_vec(),
+        )?;
+        for channel_slug in channel_slugs {
             forum_topic_channel_access::ActiveModel {
                 tenant_id: Set(tenant_id),
                 topic_id: Set(topic_id),
@@ -1314,16 +1317,7 @@ fn normalize_tags(tags: &[String]) -> Vec<String> {
     normalized
 }
 
-fn normalize_channel_slugs(channel_slugs: &[String]) -> Vec<String> {
-    let mut normalized = channel_slugs
-        .iter()
-        .map(|item| item.trim().to_ascii_lowercase())
-        .filter(|item| !item.is_empty())
-        .collect::<Vec<_>>();
-    normalized.sort();
-    normalized.dedup();
-    normalized
-}
+
 
 async fn load_topic_custom_fields_schema(
     db: &DatabaseConnection,

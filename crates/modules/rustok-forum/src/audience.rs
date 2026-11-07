@@ -391,7 +391,7 @@ impl ForumAudienceEvaluator {
     }
 }
 
-fn validate_raw_len(actual: usize, maximum: usize, label: &str) -> ForumResult<()> {
+pub(crate) fn validate_raw_len(actual: usize, maximum: usize, label: &str) -> ForumResult<()> {
     if actual > maximum {
         return Err(ForumError::Validation(format!(
             "Forum audience {label} must not exceed {maximum} candidates"
@@ -434,7 +434,7 @@ fn validate_port_context(context: &PortContext, tenant_id: Uuid, user_id: Uuid) 
     Ok(())
 }
 
-fn normalize_channel_slugs(slugs: Vec<String>) -> ForumResult<Vec<String>> {
+pub(crate) fn normalize_channel_slugs(slugs: Vec<String>) -> ForumResult<Vec<String>> {
     let mut normalized = Vec::with_capacity(slugs.len());
     let mut seen = HashSet::with_capacity(slugs.len());
     for slug in slugs {
@@ -458,7 +458,7 @@ fn normalize_channel_slugs(slugs: Vec<String>) -> ForumResult<Vec<String>> {
     Ok(normalized)
 }
 
-fn normalize_uuid_list(ids: &mut Vec<Uuid>, label: &str) -> ForumResult<()> {
+pub(crate) fn normalize_uuid_list(ids: &mut Vec<Uuid>, label: &str) -> ForumResult<()> {
     if ids.iter().any(Uuid::is_nil) {
         return Err(ForumError::Validation(format!(
             "Forum audience {label} must not contain nil identifiers"
