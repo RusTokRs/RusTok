@@ -24,6 +24,7 @@ use crate::entities::{
     forum_category_audience_user::{self, ForumCategoryAudienceUserEffect},
 };
 use crate::error::{ForumError, ForumResult};
+use crate::services::audience_policy::{AudienceLayer, AudiencePolicy, CategoryScope};
 use crate::services::rbac::enforce_scope;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -172,6 +173,30 @@ pub(crate) async fn load_category_audience_policy<C>(
 where
     C: ConnectionTrait,
 {
+    let generic = load_category_audience_policy_generic(db, tenant_id, category_id).await?;
+    Ok(ForumCategoryAudiencePolicy {
+        category_id: generic.subject_id,
+        configured_constraints: generic.configured_constraints,
+        effective_layers: generic
+            .effective_layers
+            .into_iter()
+            .map(|l| ForumCategoryAudiencePolicyLayer {
+                category_id: l.subject_id,
+                constraints: l.constraints,
+            })
+            .collect(),
+    })
+}
+
+/// Ideal generic store: single `AudiencePolicy<Scope>` replaces 4× copy-paste `ForumCategory*AudiencePolicy`.
+pub(crate) async fn load_category_audience_policy_generic<C>(
+    db: &C,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> ForumResult<AudiencePolicy<CategoryScope>>
+where
+    C: ConnectionTrait,
+{
     let ancestor_ids = load_category_ancestor_ids(db, tenant_id, category_id).await?;
     let layers = load_local_layers(db, tenant_id, &ancestor_ids).await?;
     let configured_constraints = layers.get(&category_id).cloned();
@@ -181,17 +206,14 @@ where
             layers
                 .get(&ancestor_id)
                 .cloned()
-                .map(|constraints| ForumCategoryAudiencePolicyLayer {
-                    category_id: ancestor_id,
-                    constraints,
-                })
+                .map(|constraints| AudienceLayer::new(ancestor_id, constraints))
         })
         .collect();
-
-    Ok(ForumCategoryAudiencePolicy {
-        category_id,
+    Ok(AudiencePolicy {
+        subject_id: category_id,
         configured_constraints,
         effective_layers,
+        _marker: std::marker::PhantomData,
     })
 }
 
