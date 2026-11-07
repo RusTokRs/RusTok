@@ -243,6 +243,8 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 - [Errors](./standards/errors.md)
 - [Security](./standards/security.md)
 - [Coding Standards](./standards/coding.md)
+- [Domain Logic, Invariant Integrity, and Anti-Slop Patterns](./standards/logic-hygiene-patterns.md)
+- [Patterns vs Antipatterns](./standards/patterns-vs-antipatterns.md)
 - [Continuous Code Review & Slop Remediation (ACRE)](./CONTINUOUS_CODE_REVIEW.md)
 - [Continuous Review Progress Ledger (Full-Stack / By-Module)](./standards/continuous-review-ledger.md)
 - [Cross-Cutting Architectural Review Ledger (Horizontal / CodeGraph)](./standards/cross-cutting-review-ledger.md)

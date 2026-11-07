@@ -110,6 +110,7 @@ Before changing repository content, contributors and agents MUST:
 8. Capture the current main commit SHA before starting work.
 9. Identify the affected change surface before implementation.
 10. For explicitly activated full-stack audit work, follow `docs/CONTINUOUS_CODE_REVIEW.md` and update `docs/standards/continuous-review-ledger.md`. Ordinary scoped quality improvements MUST follow the applicable engineering and verification rules without activating or advancing an audit ledger.
+11. Consult `docs/standards/logic-hygiene-patterns.md` for known domain patterns, anti-patterns ("косяки"), and remediation techniques before implementing or refactoring.
 
 The minimum change-surface review for a non-trivial change is:
 - canonical owner and source of truth;
@@ -204,6 +205,19 @@ Existing code, documentation, and ADRs describe prior implementations and decisi
 When a materially better approach is justified by concrete improvements in correctness, simplicity, maintainability, performance, or extensibility, agents MUST implement it within the assigned change boundary and synchronize affected code, tests, documentation, and architectural contracts. This includes correcting demonstrably flawed ADRs under §11; accepted decisions are subject to improvement, not unquestioning preservation.
 
 Agents MUST explain the engineering rationale and material tradeoffs. If an improvement materially expands beyond the assigned boundary, agents MUST proactively propose it with its impact and verification needs rather than silently launch unrelated work. Speculative abstractions, stylistic preferences, and task-scope arguments MUST NOT justify churn or an incomplete implementation.
+
+### Continuous discovery and cataloging of patterns and anti-patterns
+
+Contributors and AI agents MUST NOT merely fix discovered architectural defects, crooked patterns ("косяки"), and AI slop locally, but MUST actively capture recurring findings in the platform standards.
+
+When an agent identifies a recurring flawed pattern, anti-pattern, or a clean reusable remediation pattern across domain modules:
+1. Cross-check whether the pattern is already cataloged in [`docs/standards/logic-hygiene-patterns.md`](docs/standards/logic-hygiene-patterns.md) or [`docs/standards/patterns-vs-antipatterns.md`](docs/standards/patterns-vs-antipatterns.md).
+2. If it is a new or recurring defect (such as hidden TOCTOU races, N+1 transactional loops, panicking in production paths, database/code state desync, unvalidated DTO boundaries, or macro text-injection), the agent MUST update [`docs/standards/logic-hygiene-patterns.md`](docs/standards/logic-hygiene-patterns.md) in the same change set, adding:
+   - A standardized pattern ID (`P-XXXX`), category, and affected logic dimension.
+   - A concise description of the root cause and concrete failure mode ("косяк / антипаттерн").
+   - The canonical correct implementation ("эталонное решение") with code snippets.
+   - Fast detection command (`grep` / AST check).
+3. Grounding in empirical reality: additions to the pattern catalog MUST reflect concrete empirical evidence from actual codebase inspections or remediation passes, not hypothetical abstractions.
 
 ## 5. Ownership, boundaries, and dependency direction
 

@@ -80,4 +80,16 @@
 ### Errors / Failure Codes
 
 - `ContentError` and `ContentResult<T>` define the stable failure contract of the crate.
-- Variants: `Validation`, `Forbidden`, `Database`, `NotFound`, `Internal`.
+- `ContentError` variants:
+  - `Database(sea_orm::DbErr)`: mapped to HTTP 500 / `ErrorKind::Database`.
+  - `Core(rustok_core::Error)`: propagated domain kernel error.
+  - `NodeNotFound(Uuid)`: mapped to HTTP 404 / `ErrorKind::NotFound` (`NODE_NOT_FOUND`).
+  - `CategoryNotFound(Uuid)`: mapped to HTTP 404 / `ErrorKind::NotFound` (`CATEGORY_NOT_FOUND`).
+  - `TranslationNotFound { node_id, locale }`: mapped to HTTP 404 / `ErrorKind::NotFound` (`TRANSLATION_NOT_FOUND`).
+  - `DuplicateSlug { slug, locale }`: mapped to HTTP 409 / `ErrorKind::Conflict` (`DUPLICATE_SLUG`).
+  - `ConcurrentModification { expected, actual }`: mapped to HTTP 409 / `ErrorKind::Conflict` (`CONCURRENT_MODIFICATION`).
+  - `Forbidden(String)`: mapped to HTTP 403 / `ErrorKind::Forbidden`.
+  - `Validation(String)`: mapped to HTTP 400 / `ErrorKind::Validation`.
+  - `Rich(Box<RichError>)`: explicit rich error payload with error codes and contextual fields.
+- `InvalidStatusTransition`: typed state transition failure implementing `std::error::Error`, `Display`, and `From<InvalidStatusTransition> for ContentError`.
+- `RichTextError` and `RichTextErrorCode`: typed richtext parsing and schema validation failure taxonomy.

@@ -222,6 +222,7 @@ Each section contains: what to do correctly (✅), what is forbidden (❌), why,
 
 ## Related Documents
 
+- [Domain Logic, Invariant Integrity, and Anti-Slop Patterns](./logic-hygiene-patterns.md) — canonical catalog of domain patterns, invariant hygiene, and anti-slop remediation
 - [Forbidden Actions (NEVER DO)](./forbidden-actions.md) — hard prohibitions with consequences
 - [Code Standards](./coding.md) — detailed guide with examples
 - [Error Handling](./errors.md) — error handling patterns

@@ -63,6 +63,12 @@ pub fn normalize_route(route: &str) -> ContentResult<String> {
 #[derive(Clone)]
 pub struct SharedCanonicalRouteResolver(pub std::sync::Arc<dyn CanonicalRouteResolver>);
 
+impl std::fmt::Debug for SharedCanonicalRouteResolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SharedCanonicalRouteResolver").finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

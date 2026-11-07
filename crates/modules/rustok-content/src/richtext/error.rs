@@ -29,6 +29,32 @@ pub enum RichTextErrorCode {
     UnsafeLink,
 }
 
+impl RichTextErrorCode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::DocumentTooLarge => "document_too_large",
+            Self::InvalidJson => "invalid_json",
+            Self::UnsupportedProfile => "unsupported_profile",
+            Self::InvalidRoot => "invalid_root",
+            Self::UnsupportedNode => "unsupported_node",
+            Self::UnsupportedMark => "unsupported_mark",
+            Self::DuplicateMark => "duplicate_mark",
+            Self::UnsupportedAttribute => "unsupported_attribute",
+            Self::InvalidAttribute => "invalid_attribute",
+            Self::InvalidStructure => "invalid_structure",
+            Self::LimitExceeded => "limit_exceeded",
+            Self::EmptyDocument => "empty_document",
+            Self::UnsafeLink => "unsafe_link",
+        }
+    }
+}
+
+impl std::fmt::Display for RichTextErrorCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// Richtext validation error with a stable reason code and a structural path.
 ///
 /// Variants intentionally avoid retaining body text or attribute values so

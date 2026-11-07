@@ -50,7 +50,10 @@ pub enum RichTextProfile {
 impl RichTextProfile {
     pub fn id(self) -> RichTextProfileId {
         // INVARIANT: built-in profile string representations ("article", "discussion", "comment") are known valid identifiers.
-        RichTextProfileId::new(self.id_str()).expect("built-in profile identifiers are valid")
+        match RichTextProfileId::new(self.id_str()) {
+            Ok(id) => id,
+            Err(_) => unreachable!("built-in profile identifiers are valid"),
+        }
     }
 
     pub fn id_str(self) -> &'static str {

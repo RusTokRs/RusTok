@@ -46,9 +46,11 @@ fn render_node(node: &RichTextNode, profile: RichTextProfile, html: &mut String)
         "paragraph" => render_container("p", "richtext-paragraph", node, profile, html),
         "heading" => {
             // INVARIANT: node schema validation guarantees heading nodes carry a valid numeric "level" attribute.
-            let level = node.attrs["level"]
-                .as_u64()
-                .expect("validated heading level");
+            let level = node
+                .attrs
+                .get("level")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(2);
             let tag = format!("h{level}");
             let class = format!("richtext-heading richtext-heading-{level}");
             render_container(&tag, &class, node, profile, html);
@@ -121,7 +123,11 @@ fn render_inline(value: &str, marks: &[RichTextMark], profile: RichTextProfile, 
         match mark.kind.as_str() {
             "link" => {
                 // INVARIANT: mark schema validation guarantees link marks contain a valid string "href" attribute.
-                let href = mark.attrs["href"].as_str().expect("validated link href");
+                let href = mark
+                    .attrs
+                    .get("href")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("#");
                 html.push_str("<a href=\"");
                 escape_attribute(href, html);
                 html.push('"');

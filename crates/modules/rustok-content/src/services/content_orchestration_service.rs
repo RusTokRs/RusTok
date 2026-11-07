@@ -134,6 +134,14 @@ pub struct ContentOrchestrationService {
     bridge: Arc<dyn ContentOrchestrationBridge>,
 }
 
+impl std::fmt::Debug for ContentOrchestrationService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ContentOrchestrationService")
+            .field("db", &self.db)
+            .finish_non_exhaustive()
+    }
+}
+
 struct PersistOrchestrationRecordInput<'a> {
     tenant_id: Uuid,
     operation: &'a str,

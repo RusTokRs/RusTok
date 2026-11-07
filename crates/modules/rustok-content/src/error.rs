@@ -112,6 +112,12 @@ impl From<RichError> for ContentError {
     }
 }
 
+impl From<crate::state_machine::InvalidStatusTransition> for ContentError {
+    fn from(err: crate::state_machine::InvalidStatusTransition) -> Self {
+        ContentError::Validation(err.to_string())
+    }
+}
+
 impl From<ContentError> for rustok_core::Error {
     fn from(err: ContentError) -> Self {
         match err {

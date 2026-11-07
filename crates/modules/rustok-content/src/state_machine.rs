@@ -338,7 +338,7 @@ pub fn validate_status_transition(
 }
 
 /// Error returned when a status transition is not allowed.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvalidStatusTransition {
     pub from: ContentStatus,
     pub to: ContentStatus,
@@ -353,6 +353,8 @@ impl std::fmt::Display for InvalidStatusTransition {
         )
     }
 }
+
+impl std::error::Error for InvalidStatusTransition {}
 
 // ============================================================================
 // Tests

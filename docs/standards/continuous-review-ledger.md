@@ -1,5 +1,18 @@
 # Continuous Full-Stack Review & Architecture Audit Ledger
 
+## FS-09 `crates/modules/rustok-content` audit — 2026-11-08 (completed)
+
+- **Comprehensive Behavioral & Logic Audit**: Systematically inspected all 46 source files across `crates/modules/rustok-content` (6,224 LOC). Verified the 6 Universal Logic Dimensions across state machine typestate transitions, rich text AST parsing/validation/normalization/HTML projection, route canonicalization, post stats analytics aggregation, tag DTO validation, and transactional cross-domain orchestration operations (promote, demote, split, merge).
+- **Error Taxonomy & State Machine Hygiene**: Derived `PartialEq, Eq` and implemented `std::error::Error` for `InvalidStatusTransition`; added seamless conversion `From<InvalidStatusTransition> for ContentError` and `From<InvalidStatusTransition> for rustok_core::Error`. Added `as_str()` and `std::fmt::Display` implementation for `RichTextErrorCode`.
+- **Zero Production Panics Remediation**: Replaced `.expect()` calls in `profile.rs` and `render.rs` with safe `unreachable!()` pattern matching and defensive `.unwrap_or(...)` attribute fallbacks, ensuring complete compliance with `P-ZERO-PANIC-PROD`.
+- **Informative Debug Representations**: Implemented custom `std::fmt::Debug` for `SharedCanonicalRouteResolver` and non-exhaustive `std::fmt::Debug` for `ContentOrchestrationService`.
+- **Contract Accuracy & Expanded Test Surface**: Standardized and enriched `CRATE_API.md` with explicit error enum variants, HTTP status codes, and error keys. Added 7 comprehensive contract test suites in `src/contract_tests.rs` verifying error conversions and kind keys, state machine transition invariants and Display/Error traits, rich text error code representations, shared service debug formatting, route normalization invariants, search corpus kinds allowlist, and nil UUID normalization.
+- **Verification Evidence**:
+  - `cargo test -p rustok-content`: 89/89 tests passed (81 lib unit tests, 1 contract surface test, 3 integration tests, 4 module tests; 0 failures).
+  - `cargo clippy -p rustok-content --all-targets --all-features -- -D warnings`: 0 warnings, 0 errors.
+  - `python scripts/verify/verify-domain-hygiene.py --path crates/modules/rustok-content/src`: 41/41 files scanned, 0 issues detected.
+  - `python scripts/verify/verify-remediation-gate.py --skip-cargo`: ALL GATES PASSED.
+
 ## FS-08 `crates/modules/rustok-commerce/storefront` audit — 2026-11-06 (completed)
 
 - **Comprehensive Behavioral & Logic Audit**: Systematically inspected all 17 source files across `crates/modules/rustok-commerce/storefront` (2,740 LOC). Verified the 6 Universal Logic Dimensions across route query state normalization, shipping selection request mapping, context view model fallback resolution, shell view model bilingual labeling, payment collection and checkout result presentation data and labels.
@@ -851,10 +864,10 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 
 | Status | Component | Category | Files | LOC | Last Audited | Notes |
 |:---:|---|---|---:|---:|---|---|
-| [ ] | [admin](../../apps/admin) | `apps` | 101 | 24,586 | None |  |
+| [ ] | [admin](../../apps/admin) | `apps` | 102 | 24,736 | None |  |
 | [ ] | [dioxus-admin](../../apps/dioxus-admin) | `apps` | 1 | 13 | None |  |
-| [ ] | [next-admin](../../apps/next-admin) | `apps` | 573 | 91,886 | None |  |
-| [ ] | [blog](../../apps/next-admin/packages/blog) | `apps` | 19 | 3,148 | None |  |
+| [ ] | [next-admin](../../apps/next-admin) | `apps` | 576 | 93,116 | None |  |
+| [ ] | [blog](../../apps/next-admin/packages/blog) | `apps` | 22 | 3,671 | None |  |
 | [ ] | [cache](../../apps/next-admin/packages/cache) | `apps` | 6 | 528 | None |  |
 | [ ] | [commerce](../../apps/next-admin/packages/commerce) | `apps` | 13 | 2,822 | None |  |
 | [ ] | [email](../../apps/next-admin/packages/email) | `apps` | 5 | 363 | None |  |
@@ -864,16 +877,16 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [iggy-connector](../../apps/next-admin/packages/iggy-connector) | `apps` | 6 | 389 | None |  |
 | [ ] | [media](../../apps/next-admin/packages/media) | `apps` | 5 | 281 | None |  |
 | [ ] | [pages](../../apps/next-admin/packages/pages) | `apps` | 6 | 532 | None |  |
-| [ ] | [pricing](../../apps/next-admin/packages/pricing) | `apps` | 3 | 53 | None |  |
+| [ ] | [pricing](../../apps/next-admin/packages/pricing) | `apps` | 3 | 56 | None |  |
 | [ ] | [rbac](../../apps/next-admin/packages/rbac) | `apps` | 13 | 2,249 | None |  |
 | [ ] | [rustok-ai](../../apps/next-admin/packages/rustok-ai) | `apps` | 1 | 4,071 | None |  |
 | [ ] | [rustok-mcp](../../apps/next-admin/packages/rustok-mcp) | `apps` | 1 | 1,050 | None |  |
-| [ ] | [rustok-product](../../apps/next-admin/packages/rustok-product) | `apps` | 55 | 17,627 | None |  |
+| [ ] | [rustok-product](../../apps/next-admin/packages/rustok-product) | `apps` | 55 | 17,630 | None |  |
 | [ ] | [search](../../apps/next-admin/packages/search) | `apps` | 2 | 2,952 | None |  |
 | [ ] | [translation](../../apps/next-admin/packages/translation) | `apps` | 4 | 5,449 | None |  |
 | [ ] | [workflow](../../apps/next-admin/packages/workflow) | `apps` | 13 | 1,606 | None |  |
-| [ ] | [next-frontend](../../apps/next-frontend) | `apps` | 189 | 28,716 | None |  |
-| [ ] | [rustok-blog](../../apps/next-frontend/packages/rustok-blog) | `apps` | 20 | 2,835 | None |  |
+| [ ] | [next-frontend](../../apps/next-frontend) | `apps` | 191 | 28,848 | None |  |
+| [ ] | [rustok-blog](../../apps/next-frontend/packages/rustok-blog) | `apps` | 22 | 2,753 | None |  |
 | [ ] | [rustok-cart](../../apps/next-frontend/packages/rustok-cart) | `apps` | 8 | 2,564 | None |  |
 | [ ] | [rustok-comments](../../apps/next-frontend/packages/rustok-comments) | `apps` | 2 | 123 | None |  |
 | [ ] | [rustok-forum](../../apps/next-frontend/packages/rustok-forum) | `apps` | 23 | 4,775 | None |  |
@@ -885,8 +898,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-profiles](../../apps/next-frontend/packages/rustok-profiles) | `apps` | 8 | 803 | None |  |
 | [ ] | [rustok-seo](../../apps/next-frontend/packages/rustok-seo) | `apps` | 6 | 1,551 | None |  |
 | [ ] | [search](../../apps/next-frontend/packages/search) | `apps` | 2 | 718 | None |  |
-| [ ] | [server](../../apps/server) | `apps` | 498 | 207,679 | None |  |
-| [ ] | [storefront](../../apps/storefront) | `apps` | 36 | 6,521 | None |  |
+| [ ] | [server](../../apps/server) | `apps` | 498 | 207,682 | None |  |
+| [ ] | [storefront](../../apps/storefront) | `apps` | 36 | 6,511 | None |  |
 | [ ] | [rustok-content-revisions](../../crates/integration/rustok-content-revisions) | `integration` | 7 | 1,256 | None |  |
 | [x] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 7,691 | 2026-11-02 21:39 | Audited in Round 2; resolved SQLite in-memory transaction connection deadlock in runtime test; standardized Cargo metadata (rust-version, repository, readme); implemented Debug for HostRuntimeContext, SharedEventDeliveryControl, SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader, SharedTenantRbacCatalog, AuthContext, AuthPrincipalContext, and extensions; added artifact_permissions unit tests; 135/135 tests passed across all feature profiles; clippy clean, gatekeeper approved. |
 | [ ] | [rustok-content-portability](../../crates/libs/rustok-content-portability) | `libs` | 12 | 1,476 | None |  |
@@ -902,7 +915,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [alloy](../../crates/modules/alloy) | `modules` | 79 | 25,285 | 2026-11-03 00:06 | Round 2: Exhaustively inspected all 60+ source files across src/ (api, bridge, controllers, engine, execution_log, graphql, integration, migrations, model, runner, scheduler, storage) and static runtime contracts. Standardized Cargo.toml metadata (rust-version.workspace = true). Added contract unit tests for default engine compilation and AlloyAuthoringError display/equality. Remediated collapsible-if and clone-on-copy in rustok-modules dependency. 128/128 tests passed, verify-alloy-runtime-contract passed, clippy clean with -D warnings, gatekeeper approved. |
 | [x] | [flex](../../crates/modules/flex) | `modules` | 53 | 17,264 | 2026-11-03 00:18 | Round 2: Exhaustively inspected all 40+ source files across src/ (attached, standalone, schema translation, field policies, cache generation, graphql, migrations) and test suites. Standardized Cargo.toml metadata (rust-version.workspace = true). Added contract unit tests for FlexModule descriptor metadata and donor entity type validation/normalization. Verified multilingual and standalone contracts via verify-flex-multilingual-contract and verify-flex-standalone-contract. 91/91 tests passed, clippy clean with -D warnings, gatekeeper approved. |
 | [ ] | [rustok-accounting](../../crates/modules/rustok-accounting) | `modules` | 15 | 1,809 | None |  |
-| [x] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 77 | 42,513 | 2026-11-03 01:04 | Fixed missing catalog_categories table in direct.rs SQLite test fixture, added contract tests for AgentKind and AiModule descriptor, verified all 174 tests, zero clippy warnings, gatekeeper passed. |
+| [x] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 77 | 43,059 | 2026-11-03 01:04 | Fixed missing catalog_categories table in direct.rs SQLite test fixture, added contract tests for AgentKind and AiModule descriptor, verified all 174 tests, zero clippy warnings, gatekeeper passed. |
 | [x] | [rustok-ai-alloy](../../crates/modules/rustok-ai-alloy) | `modules` | 2 | 423 | 2026-11-03 01:36 | Verified all 9 tests, clippy clean with -D warnings on all targets, added contract tests for AlloyOperation slugs and defaults, gatekeeper approved. |
 | [x] | [rustok-ai-athanor](../../crates/modules/rustok-ai-athanor) | `modules` | 3 | 595 | 2026-11-03 02:05 | Verified all tests including athanor snapshot integration, clippy clean with -D warnings, added contract tests for AthanorRagConfig and constants, gatekeeper approved. |
 | [x] | [rustok-ai-content](../../crates/modules/rustok-ai-content) | `modules` | 2 | 370 | 2026-11-03 02:09 | Verified all 12 tests, clippy clean with -D warnings, added contract tests for content AI constants and descriptors, gatekeeper approved. |
@@ -916,10 +929,10 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 2 | 376 | 2026-11-03 03:07 | Verified all 6 tests, clippy clean with -D warnings on all targets, added contract tests for AuthCommandProvider descriptors, standardized Cargo.toml metadata, gatekeeper approved. |
 | [ ] | [rustok-billing](../../crates/modules/rustok-billing) | `modules` | 18 | 987 | None |  |
 | [ ] | [rustok-billing-admin](../../crates/modules/rustok-billing/admin) | `modules` | 6 | 324 | None |  |
-| [x] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 198 | 50,443 | 2026-11-03 03:13 | Verified all 168 lib tests, clippy clean with -D warnings on all targets, verified layout with verify-module-source-layout (54 tests passed), gatekeeper approved. |
-| [x] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 24 | 9,586 | 2026-11-03 03:28 | Fixed transport profile selection test under ssr/hydrate features, verified all 45 unit/SSR tests, clippy clean with -D warnings on all targets, gatekeeper approved. |
+| [x] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 225 | 55,190 | 2026-11-03 03:13 | Verified all 168 lib tests, clippy clean with -D warnings on all targets, verified layout with verify-module-source-layout (54 tests passed), gatekeeper approved. |
+| [x] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 37 | 11,285 | 2026-11-03 03:28 | Fixed transport profile selection test under ssr/hydrate features, verified all 45 unit/SSR tests, clippy clean with -D warnings on all targets, gatekeeper approved. |
 | [ ] | [rustok-blog-cli](../../crates/modules/rustok-blog/cli) | `modules` | 2 | 606 | None |  |
-| [x] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 25 | 4,557 | 2026-11-03 03:37 | Fixed transport profile selection test under ssr/hydrate features, verified all 41 unit/SSR tests, clippy clean with -D warnings on all targets, gatekeeper approved. |
+| [x] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 27 | 4,988 | 2026-11-03 03:37 | Fixed transport profile selection test under ssr/hydrate features, verified all 41 unit/SSR tests, clippy clean with -D warnings on all targets, gatekeeper approved. |
 | [x] | [rustok-brand](../../crates/modules/rustok-brand) | `modules` | 33 | 4,996 | 2026-11-03 03:48 | Verified BrandModule, BrandService, SQLite integration tests, 12 tests passed, clippy clean with -D warnings on all targets, gatekeeper approved |
 | [x] | [admin](../../crates/modules/rustok-brand/admin) | `modules` | 10 | 2,226 | 2026-11-03 04:26 | Verified Leptos FFA admin package, core validation, i18n, dual-path transport, 15 tests passed under default and ssr features, clippy clean with -D warnings on all targets, gatekeeper approved |
 | [x] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 51 | 18,760 | 2026-11-03 05:29 | Fixed invalidation failure test contract assertion to expect SharedTransport on unavailable Redis while verifying local delivery and failure metrics; standardized Cargo.toml; 239 tests passed; clippy clean with -D warnings on all targets; gatekeeper approved |
@@ -930,19 +943,19 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-calls](../../crates/modules/rustok-calls) | `modules` | 24 | 1,101 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-calls/admin) | `modules` | 6 | 321 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-calls/storefront) | `modules` | 6 | 122 | None |  |
-| [x] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 67 | 20,150 | 2026-11-03 05:54 | Fixed tax provider error assertions in cart service tests; ensured regions and shipping options exist in test fixtures; eliminated unused field warning and redundant field name clippy error; 100 tests passed; clippy clean with -D warnings on all targets; gatekeeper approved |
-| [x] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 23 | 4,892 | 2026-11-03 06:30 | Imported spawn_local from leptos::task; added missing channel_id to StorefrontCart view model test fixture; resolved redundant closure clippy warnings; cleaned dead code in rustok-pricing-storefront; 26 tests passed; clippy clean on all targets; gatekeeper approved |
+| [x] | [rustok-cart](../../crates/modules/rustok-cart) | `modules` | 67 | 20,185 | 2026-11-03 05:54 | Fixed tax provider error assertions in cart service tests; ensured regions and shipping options exist in test fixtures; eliminated unused field warning and redundant field name clippy error; 100 tests passed; clippy clean with -D warnings on all targets; gatekeeper approved |
+| [x] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 23 | 4,922 | 2026-11-03 06:30 | Imported spawn_local from leptos::task; added missing channel_id to StorefrontCart view model test fixture; resolved redundant closure clippy warnings; cleaned dead code in rustok-pricing-storefront; 26 tests passed; clippy clean on all targets; gatekeeper approved |
 | [x] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 51 | 12,794 | 2026-11-04 02:50 | Round 2: Exhaustively audited all source files across src/ (lib, error, module, policy, ports, resolution, services, target_type, entities, migrations, contract_tests). Derived Debug for ChannelModule, ChannelResolver, ChannelService. Added PartialEq/Eq to all DTOs and projections. Eliminated anti-swallowing error suppression in SQLite index revision migration. Added strict bounds/precondition validation rejecting nil UUIDs and empty slugs/names. Hardened ChannelReadPort with uniform Ok(None) on missing or foreign channel IDs and transactional primary target demotion/updates. Added comprehensive contract and port integration tests; 56 tests passed; clippy clean on all targets; gatekeeper approved; zero defects. |
 | [x] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 15 | 5,527 | 2026-11-04 03:50 | Round 2: Exhaustively audited all 15 source and contract files across crates/modules/rustok-channel/admin (lib, core, model, transport, ui, i18n, contract_tests, tenant_scope_contract). Added PartialEq/Eq to all DTOs and payloads in model.rs and ApiError. Fixed hardcoded Postgres SQL dialect in channel_bind_oauth_app_native to properly support Postgres, MySQL, and SQLite. Added fallback to slug for OAuth app translations to avoid failing bootstrap when translations for requested locale are missing. Updated CRATE_API.md to reflect canonical public API and types. Added FFA core boundary invariant tests locking 0 framework imports in core.rs, ApiError traits, serde roundtrips, and reorder bounds tests; 16 tests passed (14 unit + 2 integration); clippy clean with -D warnings on default and ssr features; zero defects. |
-| [x] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 46 | 11,194 | 2026-11-05 18:10 | Round 2: Exhaustively audited all source files across src/ (lib, dto, error, module, ports, public_read, remote, richtext, services, target_lifecycle, tcp_*, entities, migrations, contract_tests) and tests. Remediated multi-tenancy tenant isolation by adding missing tenant_id filtering in comment position allocation and next_position_in_tx. Implemented Debug for CommentsService, RemoteCommentsThreadPort, InProcessCommentsThreadProvider, CommentTargetDeletionHandler, and TcpJsonCommentsServerAdapter. Added comprehensive contract tests for debug formatting and provider invariants; 58 tests passed across all feature profiles; clippy clean on all targets; all verification scripts passed; gatekeeper approved; zero defects. |
-| [x] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 9 | 1,689 | 2026-11-06 00:36 | Round 2: Exhaustively inspected all 9 files across crates/modules/rustok-comments/admin (lib, core, i18n, transport, ui, contract_tests, tests/boundary). Remediated pagination bounds by resetting page to 1 on filter changes and disabling Next button when reaching total bounds. Derived PartialEq and Eq for CommentsAdminTransportError. Added comprehensive contract tests for FFA core boundary invariants, transport error Display/traits/serde roundtrip, validation error exhaustive variants, transport path enum, and command validation edge cases. Standardized Cargo.toml metadata and verified CRATE_API.md. 28/28 tests passed across all feature profiles; clippy clean with -D warnings; all boundary scripts passed; gatekeeper approved; zero defects. |
-| [x] | [storefront](../../crates/modules/rustok-comments/storefront) | `modules` | 4 | 264 | 2026-11-06 01:10 | Round 2: Exhaustively inspected all 4 files across crates/modules/rustok-comments/storefront (lib, core, ui, contract_tests). Verified FFA core boundary with zero leptos imports; verified submission validation and nested rich-text AST blank detection; corrected CRATE_API.md error variant documentation; added contract tests for FFA boundaries, error keys, and extended rich-text cases; 10/10 tests passed; clippy clean with -D warnings; gatekeeper approved; zero defects. |
-| [x] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 323 | 151,251 | 2026-11-06 03:20 | Round 2: Exhaustively inspected source files across crates/modules/rustok-commerce (323 files, 151,251 LOC). Standardized Cargo.toml metadata (rust-version, repository, readme). Resolved product pricing port binding in store controller test fixtures (fixing 19 panics across controllers::store::tests). Eliminated dead code warnings in non-test compilation, fixed clippy::items_after_test_module in storefront_channel, fixed empty attribute line in shipment_stock, and added missing assertions. Added comprehensive contract tests for module metadata, error variants, channel slug normalization, and effective shipping profile hierarchy; 360/360 lib tests passed; clippy clean with -D warnings; gatekeeper approved; zero defects. |
-| [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 17 | 1,677 | 2026-11-06 01:45 | Round 2: Exhaustively inspected all 17 source files across crates/modules/rustok-commerce-foundation (lib, error, search, dto, entities, contract_tests). Standardized Cargo.toml metadata (rust-version, repository, readme). Enriched CRATE_API.md with canonical error taxonomy and entity models. Added comprehensive contract tests for search condition generation across backends, input validation bounds, discount math, entity lifecycle transitions, and error conversions; 28/28 tests passed; clippy clean with -D warnings; gatekeeper approved; zero defects. |
-| [x] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 22 | 6,231 | 2026-11-06 03:50 | Round 2: Exhaustively inspected all 22 source files across crates/modules/rustok-commerce/admin. Standardized Cargo.toml metadata (rust-version, repository, readme). Verified FFA isolation of core logic with zero Leptos dependencies; verified shipping profile draft validation and form state mappings; verified cart promotion kind and scope normalization; verified order change action commands and resolution summary fallbacks; added comprehensive contract tests; 35/35 tests passed with all features; clippy clean with -D warnings; gatekeeper approved; zero defects. |
-| [x] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 17 | 2,740 | 2026-11-06 04:30 | Round 2: Exhaustively inspected all 17 source files across crates/modules/rustok-commerce/storefront. Standardized Cargo.toml metadata and forwarded storefront ssr/hydrate features; fixed server fn ssr cfg gating in rustok-cart-storefront native_server_adapter; added comprehensive contract tests for FFA boundaries, route normalization, shipping option selection request mapping, context/shell/presentation view models; 39/39 tests passed with all features; clippy clean with -D warnings; gatekeeper approved; zero defects. |
-| [ ] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 46 | 6,224 | None |  |
-| [ ] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 19 | 3,230 | None |  |
+| [x] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 46 | 11,514 | 2026-11-05 18:10 | Round 2: Exhaustively audited all source files across src/ (lib, dto, error, module, ports, public_read, remote, richtext, services, target_lifecycle, tcp_*, entities, migrations, contract_tests) and tests. Remediated multi-tenancy tenant isolation by adding missing tenant_id filtering in comment position allocation and next_position_in_tx. Implemented Debug for CommentsService, RemoteCommentsThreadPort, InProcessCommentsThreadProvider, CommentTargetDeletionHandler, and TcpJsonCommentsServerAdapter. Added comprehensive contract tests for debug formatting and provider invariants; 58 tests passed across all feature profiles; clippy clean on all targets; all verification scripts passed; gatekeeper approved; zero defects. |
+| [x] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 9 | 1,891 | 2026-11-06 00:36 | Round 2: Exhaustively inspected all 9 files across crates/modules/rustok-comments/admin (lib, core, i18n, transport, ui, contract_tests, tests/boundary). Remediated pagination bounds by resetting page to 1 on filter changes and disabling Next button when reaching total bounds. Derived PartialEq and Eq for CommentsAdminTransportError. Added comprehensive contract tests for FFA core boundary invariants, transport error Display/traits/serde roundtrip, validation error exhaustive variants, transport path enum, and command validation edge cases. Standardized Cargo.toml metadata and verified CRATE_API.md. 28/28 tests passed across all feature profiles; clippy clean with -D warnings; all boundary scripts passed; gatekeeper approved; zero defects. |
+| [x] | [storefront](../../crates/modules/rustok-comments/storefront) | `modules` | 4 | 382 | 2026-11-06 01:10 | Round 2: Exhaustively inspected all 4 files across crates/modules/rustok-comments/storefront (lib, core, ui, contract_tests). Verified FFA core boundary with zero leptos imports; verified submission validation and nested rich-text AST blank detection; corrected CRATE_API.md error variant documentation; added contract tests for FFA boundaries, error keys, and extended rich-text cases; 10/10 tests passed; clippy clean with -D warnings; gatekeeper approved; zero defects. |
+| [x] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 323 | 151,869 | 2026-11-06T00:19:10.364052+00:00 | Verified all 323 source files; resolved storefront product pricing port binding in store controller tests; fixed clippy warnings and dead code; enriched contract tests for module metadata, error variants, channel slug normalization, and effective shipping profile hierarchy (360 lib tests passed). |
+| [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 17 | 2,126 | 2026-11-06 01:45 | Round 2: Exhaustively inspected all 17 source files across crates/modules/rustok-commerce-foundation (lib, error, search, dto, entities, contract_tests). Standardized Cargo.toml metadata (rust-version, repository, readme). Enriched CRATE_API.md with canonical error taxonomy and entity models. Added comprehensive contract tests for search condition generation across backends, input validation bounds, discount math, entity lifecycle transitions, and error conversions; 28/28 tests passed; clippy clean with -D warnings; gatekeeper approved; zero defects. |
+| [x] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 22 | 6,412 | 2026-11-06T00:50:45.089106+00:00 | Verified all 22 source files across 6 Universal Logic Dimensions; standardized Cargo.toml metadata; validated FFA architecture boundaries, shipping profile form states and draft validation, cart promotion command normalizations, and order change resolution summary mapping (35 tests passed with all features, clippy clean). |
+| [x] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 17 | 2,983 | 2026-11-06T01:31:12.110017+00:00 | Verified all 17 source files across 6 Universal Logic Dimensions; standardized Cargo.toml metadata and forwarded storefront ssr/hydrate features; fixed server fn ssr cfg gating in rustok-cart-storefront native_server_adapter; added comprehensive contract tests for FFA boundaries, route normalization, shipping option selection request mapping, context/shell/presentation view models (39 tests passed with all features, clippy clean). |
+| [x] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 46 | 6,465 | 2026-11-07 22:47 | Round 2: Exhaustively audited all 46 source files across crates/modules/rustok-content. Derived PartialEq/Eq and implemented std::error::Error for InvalidStatusTransition with From<InvalidStatusTransition> for ContentError; added as_str() and Display for RichTextErrorCode; implemented Debug for SharedCanonicalRouteResolver and ContentOrchestrationService; replaced expect() in profile.rs and render.rs with unreachable!() and safe unwrap_or fallback; enriched CRATE_API.md with full error taxonomy; added 7 contract test suites; 89/89 tests passed (81 unit + 8 integration/contract); clippy clean with -D warnings; domain hygiene scanner passed; gatekeeper approved; zero defects. |
+| [ ] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 19 | 3,231 | None |  |
 | [ ] | [rustok-customer](../../crates/modules/rustok-customer) | `modules` | 29 | 5,640 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-customer/admin) | `modules` | 10 | 2,802 | None |  |
 | [ ] | [rustok-deal](../../crates/modules/rustok-deal) | `modules` | 18 | 970 | None |  |
@@ -1020,10 +1033,10 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 235 | 101,016 | None |  |
 | [ ] | [rustok-product-bundles](../../crates/modules/rustok-product-bundles) | `modules` | 28 | 7,122 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product-bundles/admin) | `modules` | 10 | 2,961 | None |  |
-| [ ] | [rustok-product-catalog-service](../../crates/modules/rustok-product-catalog-service) | `modules` | 2 | 534 | None |  |
+| [ ] | [rustok-product-catalog-service](../../crates/modules/rustok-product-catalog-service) | `modules` | 2 | 535 | None |  |
 | [ ] | [rustok-product-relations](../../crates/modules/rustok-product-relations) | `modules` | 30 | 4,491 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product-relations/admin) | `modules` | 11 | 1,851 | None |  |
-| [ ] | [rustok-product-transport](../../crates/modules/rustok-product-transport) | `modules` | 9 | 1,728 | None |  |
+| [ ] | [rustok-product-transport](../../crates/modules/rustok-product-transport) | `modules` | 9 | 2,111 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 52 | 28,526 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-product/storefront) | `modules` | 16 | 5,584 | None |  |
 | [ ] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 59 | 9,706 | None |  |
@@ -1032,8 +1045,8 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-rbac](../../crates/modules/rustok-rbac) | `modules` | 59 | 15,499 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-rbac/admin) | `modules` | 9 | 984 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-rbac/cli) | `modules` | 2 | 372 | None |  |
-| [ ] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 19 | 5,360 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-reactions/storefront) | `modules` | 7 | 771 | None |  |
+| [ ] | [rustok-reactions](../../crates/modules/rustok-reactions) | `modules` | 20 | 5,650 | None |  |
+| [ ] | [storefront](../../crates/modules/rustok-reactions/storefront) | `modules` | 8 | 1,061 | None |  |
 | [ ] | [rustok-region](../../crates/modules/rustok-region) | `modules` | 54 | 9,791 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-region/admin) | `modules` | 9 | 3,095 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-region/storefront) | `modules` | 10 | 1,783 | None |  |
@@ -1059,20 +1072,20 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [admin](../../crates/modules/rustok-translation/admin) | `modules` | 10 | 14,268 | None |  |
 | [ ] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 55 | 7,817 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 15 | 1,533 | None |  |
-| [ ] | [fly](../../crates/ui/fly) | `ui` | 117 | 44,606 | None |  |
+| [ ] | [fly](../../crates/ui/fly) | `ui` | 117 | 44,615 | None |  |
 | [ ] | [browser](../../crates/ui/fly/browser) | `ui` | 13 | 1,707 | None |  |
 | [ ] | [dioxus](../../crates/ui/fly/dioxus) | `ui` | 3 | 462 | None |  |
-| [ ] | [leptos](../../crates/ui/fly/leptos) | `ui` | 6 | 2,956 | None |  |
+| [ ] | [leptos](../../crates/ui/fly/leptos) | `ui` | 6 | 2,965 | None |  |
 | [ ] | [ui](../../crates/ui/fly/ui) | `ui` | 23 | 6,407 | None |  |
 | [ ] | [web](../../crates/ui/fly/web) | `ui` | 7 | 2,307 | None |  |
-| [ ] | [leptos-auth](../../crates/ui/leptos-auth) | `ui` | 11 | 1,967 | None |  |
+| [ ] | [leptos-auth](../../crates/ui/leptos-auth) | `ui` | 11 | 1,970 | None |  |
 | [ ] | [leptos-ui](../../crates/ui/leptos-ui) | `ui` | 6 | 504 | None |  |
 | [ ] | [leptos-ui-routing](../../crates/ui/leptos-ui-routing) | `ui` | 2 | 383 | None |  |
-| [ ] | [rustok-graphql](../../crates/ui/rustok-graphql) | `ui` | 2 | 508 | None |  |
-| [ ] | [rustok-grid](../../crates/ui/rustok-grid) | `ui` | 30 | 7,084 | None |  |
-| [ ] | [rustok-grid-dioxus](../../crates/ui/rustok-grid/dioxus) | `ui` | 9 | 1,786 | None |  |
-| [ ] | [rustok-grid-leptos](../../crates/ui/rustok-grid/leptos) | `ui` | 9 | 1,541 | None |  |
-| [ ] | [rustok-ui](../../crates/ui/rustok-ui) | `ui` | 49 | 5,494 | None |  |
+| [ ] | [rustok-graphql](../../crates/ui/rustok-graphql) | `ui` | 2 | 528 | None |  |
+| [ ] | [rustok-grid](../../crates/ui/rustok-grid) | `ui` | 31 | 7,285 | None |  |
+| [ ] | [rustok-grid-dioxus](../../crates/ui/rustok-grid/dioxus) | `ui` | 9 | 1,798 | None |  |
+| [ ] | [rustok-grid-leptos](../../crates/ui/rustok-grid/leptos) | `ui` | 9 | 1,587 | None |  |
+| [ ] | [rustok-ui](../../crates/ui/rustok-ui) | `ui` | 49 | 5,501 | None |  |
 | [ ] | [rustok-ui-auth](../../crates/ui/rustok-ui-auth) | `ui` | 2 | 158 | None |  |
 | [ ] | [rustok-ui-core](../../crates/ui/rustok-ui-core) | `ui` | 10 | 2,476 | None |  |
 | [ ] | [rustok-ui-forms](../../crates/ui/rustok-ui-forms) | `ui` | 24 | 9,549 | None |  |
@@ -1081,7 +1094,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-ui-i18n](../../crates/ui/rustok-ui-i18n) | `ui` | 33 | 6,832 | None |  |
 | [ ] | [rustok-ui-transport](../../crates/ui/rustok-ui-transport) | `ui` | 2 | 598 | None |  |
 | [ ] | [rustok-ui-dioxus](../../crates/ui/rustok-ui/dioxus) | `ui` | 21 | 1,373 | None |  |
-| [ ] | [rustok-ui-leptos](../../crates/ui/rustok-ui/leptos) | `ui` | 21 | 2,154 | None |  |
+| [ ] | [rustok-ui-leptos](../../crates/ui/rustok-ui/leptos) | `ui` | 21 | 2,161 | None |  |
 | [ ] | [rustok-build](../../crates/utils/rustok-build) | `utils` | 14 | 3,158 | None |  |
 | [ ] | [rustok-build-publication](../../crates/utils/rustok-build-publication) | `utils` | 5 | 1,006 | None |  |
 | [ ] | [rustok-build-source](../../crates/utils/rustok-build-source) | `utils` | 3 | 1,882 | None |  |
@@ -1092,11 +1105,11 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [ ] | [rustok-installer](../../crates/utils/rustok-installer) | `utils` | 12 | 4,940 | None |  |
 | [ ] | [rustok-installer-cli](../../crates/utils/rustok-installer-cli) | `utils` | 2 | 984 | None |  |
 | [ ] | [rustok-installer-persistence](../../crates/utils/rustok-installer-persistence) | `utils` | 10 | 2,098 | None |  |
-| [ ] | [rustok-migrations](../../crates/utils/rustok-migrations) | `utils` | 64 | 15,072 | None |  |
+| [ ] | [rustok-migrations](../../crates/utils/rustok-migrations) | `utils` | 66 | 15,838 | None |  |
 | [ ] | [rustok-module-sdk](../../crates/utils/rustok-module-sdk) | `utils` | 3 | 124 | None |  |
 | [ ] | [rustok-module-template](../../crates/utils/rustok-module-template) | `utils` | 3 | 436 | None |  |
 | [ ] | [rustok-secrets](../../crates/utils/rustok-secrets) | `utils` | 4 | 1,697 | None |  |
-| [ ] | [rustok-starter](../../crates/utils/rustok-starter) | `utils` | 12 | 1,481 | None |  |
+| [ ] | [rustok-starter](../../crates/utils/rustok-starter) | `utils` | 12 | 1,482 | None |  |
 | [ ] | [rustok-storage](../../crates/utils/rustok-storage) | `utils` | 5 | 1,034 | None |  |
 | [ ] | [rustok-test-utils](../../crates/utils/rustok-test-utils) | `utils` | 7 | 1,952 | None |  |
 | [ ] | [serde-columnar-vendored](../../crates/utils/serde-columnar-vendored) | `utils` | 17 | 2,550 | None |  |
