@@ -1,5 +1,5 @@
-mod audience_policy;
-mod audience_storage;
+pub mod audience_policy;
+pub mod audience_storage;
 mod attachment_hold_reconciliation;
 mod attachment_relation;
 pub mod topic_routes;
