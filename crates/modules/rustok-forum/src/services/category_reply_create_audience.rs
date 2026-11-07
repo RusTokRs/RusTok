@@ -122,118 +122,84 @@ impl ForumCategoryReplyCreateAudiencePolicyService {
 async fn insert_roles(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    category_id: Uuid,
+    subject_id: Uuid,
     constraints: &ForumAudienceConstraints,
 ) -> ForumResult<()> {
-    if constraints.roles_any.is_empty() {
-        return Ok(());
-    }
-    forum_category_reply_create_audience_role::Entity::insert_many(
-        constraints
+    crate::services::audience_storage::insert_roles_raw(
+        txn,
+        "forum_category_reply_create_audience_roles",
+        tenant_id,
+        subject_id,
+        "category_id",
+        &constraints
             .roles_any
             .iter()
-            .cloned()
-            .map(
-                |role| forum_category_reply_create_audience_role::ActiveModel {
-                    tenant_id: Set(tenant_id),
-                    category_id: Set(category_id),
-                    role: Set(role),
-                },
-            )
+            .map(|r| r.to_string())
             .collect::<Vec<_>>(),
     )
-    .exec(txn)
-    .await?;
-    Ok(())
+    .await
 }
 
 async fn insert_channels(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    category_id: Uuid,
+    subject_id: Uuid,
     constraints: &ForumAudienceConstraints,
 ) -> ForumResult<()> {
-    if constraints.channel_members_any.is_empty() {
-        return Ok(());
-    }
-    forum_category_reply_create_audience_channel::Entity::insert_many(
-        constraints
-            .channel_members_any
-            .iter()
-            .cloned()
-            .map(
-                |channel_slug| forum_category_reply_create_audience_channel::ActiveModel {
-                    tenant_id: Set(tenant_id),
-                    category_id: Set(category_id),
-                    channel_slug: Set(channel_slug),
-                },
-            )
-            .collect::<Vec<_>>(),
+    crate::services::audience_storage::insert_channels_raw(
+        txn,
+        "forum_category_reply_create_audience_channels",
+        tenant_id,
+        subject_id,
+        "category_id",
+        &constraints.channel_members_any,
     )
-    .exec(txn)
-    .await?;
-    Ok(())
+    .await
 }
 
 async fn insert_groups(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    category_id: Uuid,
+    subject_id: Uuid,
     constraints: &ForumAudienceConstraints,
 ) -> ForumResult<()> {
-    if constraints.group_members_any.is_empty() {
-        return Ok(());
-    }
-    forum_category_reply_create_audience_group::Entity::insert_many(
-        constraints
-            .group_members_any
-            .iter()
-            .copied()
-            .map(
-                |group_id| forum_category_reply_create_audience_group::ActiveModel {
-                    tenant_id: Set(tenant_id),
-                    category_id: Set(category_id),
-                    group_id: Set(group_id),
-                },
-            )
-            .collect::<Vec<_>>(),
+    crate::services::audience_storage::insert_groups_raw(
+        txn,
+        "forum_category_reply_create_audience_groups",
+        tenant_id,
+        subject_id,
+        "category_id",
+        &constraints.group_members_any,
     )
-    .exec(txn)
-    .await?;
-    Ok(())
+    .await
 }
 
 async fn insert_users(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    category_id: Uuid,
+    subject_id: Uuid,
     constraints: &ForumAudienceConstraints,
 ) -> ForumResult<()> {
-    let mut rows =
-        Vec::with_capacity(constraints.allow_user_ids.len() + constraints.deny_user_ids.len());
-    rows.extend(constraints.allow_user_ids.iter().copied().map(|user_id| {
-        forum_category_reply_create_audience_user::ActiveModel {
-            tenant_id: Set(tenant_id),
-            category_id: Set(category_id),
-            user_id: Set(user_id),
-            effect: Set(ForumCategoryAudienceUserEffect::Allow),
-        }
-    }));
-    rows.extend(constraints.deny_user_ids.iter().copied().map(|user_id| {
-        forum_category_reply_create_audience_user::ActiveModel {
-            tenant_id: Set(tenant_id),
-            category_id: Set(category_id),
-            user_id: Set(user_id),
-            effect: Set(ForumCategoryAudienceUserEffect::Deny),
-        }
-    }));
-    if rows.is_empty() {
-        return Ok(());
-    }
-    forum_category_reply_create_audience_user::Entity::insert_many(rows)
-        .exec(txn)
-        .await?;
-    Ok(())
+    crate::services::audience_storage::insert_users_raw(
+        txn,
+        "forum_category_reply_create_audience_users",
+        tenant_id,
+        subject_id,
+        "category_id",
+        &constraints.allow_user_ids,
+        "allow",
+    )
+    .await?;
+    crate::services::audience_storage::insert_users_raw(
+        txn,
+        "forum_category_reply_create_audience_users",
+        tenant_id,
+        subject_id,
+        "category_id",
+        &constraints.deny_user_ids,
+        "deny",
+    )
+    .await
 }
 
 pub(crate) async fn load_category_reply_create_audience_policy<C>(
