@@ -208,8 +208,7 @@ fn map_content_error(err: ContentError) -> FieldError {
         | ContentError::CategoryNotFound(_)
         | ContentError::TranslationNotFound { .. }
         | ContentError::DuplicateSlug { .. }
-        | ContentError::ConcurrentModification { .. }
-        | ContentError::InvalidStatusTransition(_) => FieldError::new(err.to_string()),
+        | ContentError::ConcurrentModification { .. } => FieldError::new(err.to_string()),
         ContentError::Database(inner) => {
             <FieldError as GraphQLError>::internal_error(&inner.to_string())
         }
