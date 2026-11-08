@@ -579,15 +579,15 @@ mod tests {
         let route: StorefrontForumTopicRouteResolution =
             serde_json::from_value(serde_json::json!({
                 "requestedLocale": "en",
-                "requestedShortId": "123456789abc",
+                "requestedShortId": "123456789abc1234",
                 "requestedSlug": "old-welcome",
                 "disposition": "REDIRECT",
                 "canonical": {
                     "topicId": "12345678-9abc-4def-8123-456789abcdef",
                     "locale": "en",
-                    "shortId": "123456789abc",
+                    "shortId": "123456789abc1234",
                     "slug": "welcome",
-                    "path": "/en/forum/t/123456789abc/welcome"
+                    "path": "/en/forum/t/123456789abc1234/welcome"
                 }
             }))
             .expect("route payload");
@@ -609,7 +609,7 @@ mod tests {
         let route: StorefrontForumTopicRouteResolution =
             serde_json::from_value(serde_json::json!({
                 "requestedLocale": "en",
-                "requestedShortId": "123456789abc",
+                "requestedShortId": "123456789abc1234",
                 "requestedSlug": "retired-topic",
                 "disposition": "GONE",
                 "canonical": null

@@ -71,10 +71,7 @@ mod user_stats {
     pub(super) use super::super::user_stats::UserStatsService;
 }
 
-mod implementation {
-    include!("topic_fork_owner.rs");
-    include!("topic_fork_storage.rs");
-}
+mod implementation;
 
 pub use implementation::{
     ForkForumReplyBranchInput, ForumTopicForkResult, ForumTopicForkService,

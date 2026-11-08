@@ -1115,11 +1115,11 @@ fn ensure_postgres(db: &DatabaseConnection) -> Result<(), IndexDriftRepairFailur
 }
 
 fn retryable_failure(code: &str) -> IndexDriftRepairFailure {
-    IndexDriftRepairFailure::retryable(code).expect("static orphan-link repair code is valid")
+    IndexDriftRepairFailure::retryable(code).expect("static orphan-link repair code is valid: invariant validated at startup")
 }
 
 fn permanent_failure(code: &str) -> IndexDriftRepairFailure {
-    IndexDriftRepairFailure::permanent(code).expect("static orphan-link repair code is valid")
+    IndexDriftRepairFailure::permanent(code).expect("static orphan-link repair code is valid: invariant validated at startup")
 }
 
 #[cfg(test)]

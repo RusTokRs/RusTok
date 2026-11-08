@@ -6,8 +6,10 @@ use uuid::Uuid;
 ///
 /// The tree is intentionally bounded independently from cursor page limits so
 /// one owner call can return a complete admin/storefront hierarchy without
-/// permitting unbounded tenant data to enter memory.
-pub const MAX_FORUM_CATEGORY_TREE_NODES: u64 = 512;
+/// permitting unbounded tenant data to enter memory. The bound was raised
+/// from 512 to 2048 (≈ 1–2 MiB payload) to cover large marketplace catalogs;
+/// tenants beyond this should use depth-limited or paginated children loading.
+pub const MAX_FORUM_CATEGORY_TREE_NODES: u64 = 2048;
 
 /// Maximum supported zero-based category depth.
 pub const MAX_FORUM_CATEGORY_TREE_DEPTH: usize = 16;

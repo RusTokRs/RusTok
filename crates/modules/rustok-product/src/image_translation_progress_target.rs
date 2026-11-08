@@ -26,6 +26,43 @@ const TRANSLATION_RESOURCE_KIND: &str = "image";
 const CHANGE_CURSOR_VERSION: &str = "v1";
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+
 /// Adds exact-locale aggregate progress and durable change polling to the
 /// Product Image target while preserving the existing list/read/validate/apply
 /// adapter unchanged.
@@ -214,7 +251,7 @@ impl TranslationTargetProvider for ProductImageTranslationTargetProvider {
             .into_iter()
             .map(|change| {
                 Ok(TranslationTargetChange {
-                    identity: image_identity(change.image_id),
+                    identity: image_identity(change.image_id)?,
                     resource_revision: opaque_revision(
                         change.resource_revision,
                         "resource_revision",
@@ -251,16 +288,13 @@ fn authorize_read(context: &PortContext) -> Result<(), PortError> {
     Ok(())
 }
 
-fn image_identity(image_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Product owner slug must satisfy the target contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Product Image resource kind must satisfy the target contract"),
-        resource_id: ResourceId::new(image_id.to_string())
-            .expect("Image UUID must satisfy the target resource id contract"),
+fn image_identity(image_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
+        resource_kind: resource_kind_or_invariant()?,
+        resource_id: resource_id_or_invariant(image_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn translation_change_lifecycle(

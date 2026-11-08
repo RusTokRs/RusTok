@@ -97,7 +97,7 @@ pub fn ForumTopicForkAdmin() -> impl IntoView {
     );
 
     let candidates = LocalResource::new(move || {
-        let _ = refresh_nonce.get();
+        refresh_nonce.track();
         let token = token.get();
         let tenant = tenant.get();
         let locale = candidates_locale.clone();

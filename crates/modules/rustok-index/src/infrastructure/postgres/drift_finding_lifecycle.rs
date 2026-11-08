@@ -310,10 +310,10 @@ fn receipt(command: &IndexDriftFindingLifecycleCommand) -> IndexDriftFindingLife
 
 fn retryable_failure(code: &str) -> IndexDriftFindingLifecycleFailure {
     IndexDriftFindingLifecycleFailure::retryable(code)
-        .expect("static lifecycle retryable code is valid")
+        .expect("static lifecycle retryable code is valid: invariant validated at startup")
 }
 
 fn permanent_failure(code: &str) -> IndexDriftFindingLifecycleFailure {
     IndexDriftFindingLifecycleFailure::permanent(code)
-        .expect("static lifecycle permanent code is valid")
+        .expect("static lifecycle permanent code is valid: invariant validated at startup")
 }

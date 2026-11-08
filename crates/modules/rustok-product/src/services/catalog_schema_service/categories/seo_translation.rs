@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -49,6 +49,43 @@ const OPERATION_APPLY_PATCH: &str = "translation_target_apply_category_seo_patch
 const CHANGE_CURSOR_VERSION: &str = "v1";
 const MAX_CHANGE_PAGE: u16 = 200;
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
+
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
 const RESOURCE_REVISION_PREFIX: &str = "product-category-seo-resource-v1:";
 const LOCALE_REVISION_NAMESPACE: &str = "rustok-product/category-seo-translation-locale/v1";
 const DELETED_REVISION_NAMESPACE: &str = "rustok-product/category-seo-translation-deleted/v1";
@@ -219,6 +256,28 @@ struct PreviousChangeRow {
     resource_revision: String,
     lifecycle: String,
 }
+
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
+            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
+                .expect("static Product owner slug must satisfy Translation contract: descriptor invariant validated at startup"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
+                "static Product Category SEO resource kind must satisfy Translation contract: descriptor invariant validated at startup",
+            ),
+            display_name: "Product Category SEO copy".to_string(),
+            capabilities: BTreeSet::from([
+                TranslationTargetCapability::ListResources,
+                TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::AggregateProgress,
+                TranslationTargetCapability::ValidatePatch,
+                TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
+            ]),
+            read_permission_floor: BTreeSet::from(["products:read".to_string()]),
+            apply_permission_floor: BTreeSet::from(["products:update".to_string()]),
+        }
+});
 
 #[derive(Clone)]
 struct ProductCategorySeoTranslationTargetProvider {
@@ -671,25 +730,8 @@ LIMIT 1
 
 #[async_trait]
 impl TranslationTargetProvider for ProductCategorySeoTranslationTargetProvider {
-    fn descriptor(&self) -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
-            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Product owner slug must satisfy Translation contract"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
-                "static Product Category SEO resource kind must satisfy Translation contract",
-            ),
-            display_name: "Product Category SEO copy".to_string(),
-            capabilities: BTreeSet::from([
-                TranslationTargetCapability::ListResources,
-                TranslationTargetCapability::ReadExactResource,
-                TranslationTargetCapability::AggregateProgress,
-                TranslationTargetCapability::ValidatePatch,
-                TranslationTargetCapability::ApplyPatch,
-                TranslationTargetCapability::ChangeCursor,
-            ]),
-            read_permission_floor: BTreeSet::from(["products:read".to_string()]),
-            apply_permission_floor: BTreeSet::from(["products:update".to_string()]),
-        }
+        fn descriptor(&self) -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn list_resources(
@@ -857,7 +899,7 @@ impl TranslationTargetProvider for ProductCategorySeoTranslationTargetProvider {
             .into_iter()
             .map(|change| {
                 Ok(TranslationTargetChange {
-                    identity: category_seo_identity(change.category_id),
+                    identity: category_seo_identity(change.category_id)?,
                     resource_revision: opaque_revision(
                         change.resource_revision,
                         "resource_revision",
@@ -1226,7 +1268,7 @@ fn summary_from_owner(
     owner: &ExactLocaleSnapshot,
 ) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
-        identity: category_seo_identity(owner.category_id),
+        identity: category_seo_identity(owner.category_id)?,
         display_label: owner.category_code.clone(),
         lifecycle: if owner.is_active {
             TranslationResourceLifecycle::Active
@@ -1268,13 +1310,13 @@ fn snapshot_from_owner(
             owner.source.meta_title.as_deref().unwrap_or_default(),
             target.and_then(|copy| copy.meta_title.clone()),
             Some(255),
-        ),
+        )?,
         seo_field(
             META_DESCRIPTION_FIELD,
             owner.source.meta_description.as_deref().unwrap_or_default(),
             target.and_then(|copy| copy.meta_description.clone()),
             Some(500),
-        ),
+        )?,
     ];
     let snapshot = TranslationResourceSnapshot {
         summary: summary_from_owner(owner)?,
@@ -1303,10 +1345,10 @@ fn seo_field(
     source_value: &str,
     exact_target_value: Option<String>,
     max_characters: Option<u32>,
-) -> TranslationFieldSnapshot {
-    TranslationFieldSnapshot {
+) -> Result<TranslationFieldSnapshot, PortError> {
+    Ok(TranslationFieldSnapshot {
         descriptor: TranslationFieldDescriptor {
-            key: FieldKey::new(key).expect("static Product Category SEO field must be valid"),
+            key: field_key_or_invariant(key)?,
             profile: TranslationValueProfile::SeoText,
             strategy: TranslationStrategy::Translate,
             classification: TranslationDataClassification::Public,
@@ -1319,7 +1361,7 @@ fn seo_field(
         exact_target_value,
         source_hash: field_hash(source_value),
         protected_tokens: Vec::new(),
-    }
+    })
 }
 
 fn merged_target(
@@ -1457,16 +1499,13 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
     })
 }
 
-fn category_seo_identity(category_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Product owner slug must satisfy Translation contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Product Category SEO resource kind must satisfy Translation contract"),
-        resource_id: ResourceId::new(category_id.to_string())
-            .expect("Product Category UUID must satisfy Translation resource id contract"),
+fn category_seo_identity(category_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
+        resource_kind: resource_kind_or_invariant()?,
+        resource_id: resource_id_or_invariant(category_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn resource_cursor(category_id: Uuid) -> Result<OpaqueCursor, PortError> {

@@ -43,7 +43,7 @@ impl IndexSource for ExactSource {
         IndexSourceLoadBatch::new(&request, self.mutation.clone().into_iter().collect()).map_err(
             |_| {
                 IndexSourceFailure::permanent("source_refresh_fixture_invalid")
-                    .expect("static failure code")
+                    .expect("static failure code: invariant validated at startup")
             },
         )
     }

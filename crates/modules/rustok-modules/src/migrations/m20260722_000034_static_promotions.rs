@@ -590,7 +590,7 @@ mod tests {
         Migration
             .up(&SchemaManager::new(&db))
             .await
-            .expect("static promotion migration");
+            .expect("static promotion migration: invariant validated at startup");
 
         let release_columns = column_names(&db, "module_static_distribution_releases").await;
         assert!(release_columns.contains("admitted_by"));

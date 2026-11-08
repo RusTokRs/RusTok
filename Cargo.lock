@@ -14838,6 +14838,7 @@ dependencies = [
  "axum",
  "chrono",
  "flex",
+ "futures-util",
  "hex",
  "proptest",
  "rust_decimal",

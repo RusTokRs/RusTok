@@ -50,6 +50,43 @@ const OPERATION_APPLY_PATCH: &str = "translation_target_apply_attribute_value_pa
 const CHANGE_CURSOR_VERSION: &str = "v1";
 const MAX_CHANGE_PAGE: u16 = 200;
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
+
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
 const LOCALE_REVISION_NAMESPACE: &str = "rustok-product/attribute-value-translation-locale/v1";
 const DELETED_REVISION_NAMESPACE: &str = "rustok-product/attribute-value-translation-deleted/v1";
 const RESOURCE_REVISION_PREFIX: &str = "product-attribute-value-resource-v1:";
@@ -654,7 +691,7 @@ impl TranslationTargetProvider for ProductAttributeValueTranslationTargetProvide
     fn descriptor(&self) -> TranslationTargetProviderDescriptor {
         TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Product owner slug must satisfy Translation contract"),
+                .expect("static Product owner slug must satisfy Translation contract: invariant validated at startup"),
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
                 "static Product Attribute Value resource kind must satisfy Translation contract",
             ),
@@ -837,7 +874,7 @@ impl TranslationTargetProvider for ProductAttributeValueTranslationTargetProvide
             .into_iter()
             .map(|change| {
                 Ok(TranslationTargetChange {
-                    identity: attribute_value_identity(change.value_id),
+                    identity: attribute_value_identity(change.value_id)?,
                     resource_revision: opaque_revision(
                         change.resource_revision,
                         "resource_revision",
@@ -1207,7 +1244,7 @@ fn summary_from_owner(
     owner: &ExactLocaleSnapshot,
 ) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
-        identity: attribute_value_identity(owner.value_id),
+        identity: attribute_value_identity(owner.value_id)?,
         display_label: owner.attribute_code.clone(),
         lifecycle: TranslationResourceLifecycle::Active,
         resource_revision: opaque_revision(owner.resource_revision.clone(), "resource_revision")?,
@@ -1251,7 +1288,7 @@ fn snapshot_from_owner(
             .transpose()?,
         fields: vec![TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
-                key: FieldKey::new(VALUE_FIELD).expect("static Product value field must be valid"),
+                key: field_key_or_invariant(VALUE_FIELD)?,
                 profile: TranslationValueProfile::PlainText,
                 strategy: TranslationStrategy::Translate,
                 classification: TranslationDataClassification::TenantPrivate,
@@ -1399,17 +1436,15 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
     })
 }
 
-fn attribute_value_identity(value_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Product owner slug must satisfy Translation contract"),
+fn attribute_value_identity(value_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
         resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
             "static Product Attribute Value resource kind must satisfy Translation contract",
         ),
-        resource_id: ResourceId::new(value_id.to_string())
-            .expect("Product attribute-value UUID must satisfy Translation resource id contract"),
+        resource_id: resource_id_or_invariant(value_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn resource_cursor(value_id: Uuid) -> Result<OpaqueCursor, PortError> {

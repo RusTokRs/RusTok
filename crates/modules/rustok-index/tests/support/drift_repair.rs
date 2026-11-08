@@ -586,7 +586,7 @@ pub fn recovery_command(
 
 pub fn actor() -> IndexDriftFindingLifecycleActor {
     IndexDriftFindingLifecycleActor::new("operator", "repair-evidence-owner")
-        .expect("static fixture actor is valid")
+        .expect("static fixture actor is valid: invariant validated at startup")
 }
 
 #[derive(Clone)]
@@ -896,8 +896,8 @@ async fn count_value(
 
 fn schema_ref(entity: &str) -> SchemaRef {
     SchemaRef {
-        module: ModuleName::new("repair-evidence").expect("static module"),
-        entity: EntityName::new(entity).expect("static entity"),
+        module: ModuleName::new("repair-evidence").expect("static module: invariant validated at startup"),
+        entity: EntityName::new(entity).expect("static entity: invariant validated at startup"),
         version: SchemaVersion::new(1),
     }
 }
@@ -916,7 +916,7 @@ fn uuid_field(name: FieldName, nullable: bool) -> IndexField {
 
 fn fixture_source_failure() -> IndexSourceFailure {
     IndexSourceFailure::permanent("repair_evidence_fixture_contract")
-        .expect("static source failure is valid")
+        .expect("static source failure is valid: invariant validated at startup")
 }
 
 fn missing_digest(

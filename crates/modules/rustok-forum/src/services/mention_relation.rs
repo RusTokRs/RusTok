@@ -1,8 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
-
 use chrono::Utc;
-use rustok_api::{Action, Resource, RichTextDocument, normalize_locale_tag};
+use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, RichTextDocument, normalize_locale_tag};
 use rustok_core::{PermissionScope, SecurityContext};
 use rustok_events::ForumMentionEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
@@ -15,7 +14,6 @@ use sea_orm::{
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
-
 use crate::entities::{
     forum_audience_mention, forum_domain_event, forum_quote, forum_relation_revision, forum_reply,
     forum_reply_body, forum_topic, forum_topic_translation, forum_user_mention,
@@ -27,6 +25,177 @@ use crate::mentions::{
     ForumRevisionIdentity, extract_forum_mention_candidates, resolve_forum_mentions,
     validate_forum_quote_references,
 };
+
+impl MentionRelationService {
+    /// Persist one already-admitted FORUM-34M relation projection inside an
+    /// existing Forum owner transaction.
+    ///
+    /// The bridge deliberately reuses the established relation persistence
+    /// path so source locking, persisted-body fingerprint validation, replay
+    /// detection and relation revision writes stay single-owned. Import callers
+    /// provide the historical actor explicitly; no operator security context is
+    /// consulted or substituted for the source author.
+    pub(crate) async fn persist_import_admitted_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        relation: &crate::import_relation_preparation::ForumPreparedImportContentRelations,
+        document: &RichTextDocument,
+        actor_id: Option<Uuid>,
+        event_mode: crate::import_relation_preparation::ForumImportRelationEventMode,
+    ) -> ForumResult<Option<MentionRelationSyncResult>> {
+        if tenant_id.is_nil() || relation.target.id().is_nil() {
+            return Err(ForumError::Validation(
+                "Forum import relation persistence requires non-nil tenant and target IDs"
+                    .to_string(),
+            ));
+        }
+        if actor_id.is_some_and(|actor_id| actor_id.is_nil()) {
+            return Err(ForumError::Validation(
+                "Forum import relation persistence actor ID cannot be nil".to_string(),
+            ));
+        }
+        validate_import_relation_source(relation)?;
+
+        let locale = normalize_locale_tag(&relation.locale).ok_or_else(|| {
+            ForumError::Validation(
+                "Forum import relation persistence requires a valid locale".to_string(),
+            )
+        })?;
+        if locale != relation.locale {
+            return Err(ForumError::Validation(
+                "Forum import relation persistence locale must already be normalized".to_string(),
+            ));
+        }
+        if !relation.quotes.is_empty() {
+            return Err(ForumError::Validation(
+                "Forum import relation persistence does not support admitted quote revisions yet"
+                    .to_string(),
+            ));
+        }
+
+        let policy = ForumMentionPolicy {
+            max_targets: crate::mentions::FORUM_MAX_MENTION_TARGETS_PER_REVISION,
+            allow_moderator_audience: true,
+        };
+        let extracted = extract_forum_mention_candidates(document, policy)?;
+
+        match relation.mode {
+            crate::import_relation_preparation::ForumImportRelationMode::SuppressRelations => {
+                if !relation.mentions.is_empty()
+                    || !relation.audiences.is_empty()
+                    || !relation.quotes.is_empty()
+                {
+                    return Err(ForumError::Validation(
+                        "Suppressed Forum import relations must not contain relation facts"
+                            .to_string(),
+                    ));
+                }
+                if event_mode
+                    == crate::import_relation_preparation::ForumImportRelationEventMode::EmitAddedTargetEvents
+                    && extracted.target_count() > 0
+                {
+                    return Err(ForumError::Validation(
+                        "Forum import relation event emission requires mention relation materialization"
+                            .to_string(),
+                    ));
+                }
+                Ok(None)
+            }
+            crate::import_relation_preparation::ForumImportRelationMode::MaterializeRelations => {
+                let resolved = ForumResolvedMentions::from_import_admission(
+                    relation
+                        .mentions
+                        .iter()
+                        .map(|mention| (mention.user_id, mention.handle.clone())),
+                    relation.audiences.iter().copied(),
+                )?;
+                let handles = resolved
+                    .users()
+                    .iter()
+                    .map(|mention| mention.handle().to_string())
+                    .collect::<Vec<_>>();
+                if handles.as_slice() != extracted.handles() {
+                    return Err(ForumError::Validation(
+                        "Forum import admitted mention handles do not match source RichText"
+                            .to_string(),
+                    ));
+                }
+                if resolved.audiences() != extracted.audiences() {
+                    return Err(ForumError::Validation(
+                        "Forum import admitted mention audiences do not match source RichText"
+                            .to_string(),
+                    ));
+                }
+
+                let quotes = Vec::new();
+                let canonical_body = crate::richtext::serialize_discussion(document.clone())?;
+                let projection_fingerprint = projection_fingerprint(
+                    &canonical_body,
+                    resolved.users(),
+                    resolved.audiences(),
+                    &quotes,
+                );
+                let prepared = PreparedMentionRelations {
+                    tenant_id,
+                    actor_id,
+                    target: relation.target,
+                    locale,
+                    projection_fingerprint,
+                    resolved,
+                    quotes,
+                };
+
+                let result = match event_mode {
+                    crate::import_relation_preparation::ForumImportRelationEventMode::SuppressAddedTargetEvents => {
+                        let persistence = MentionRelationService {
+                            profiles: self.profiles.clone(),
+                            event_bus: None,
+                        };
+                        persistence.persist_in_tx(txn, prepared).await?
+                    }
+                    crate::import_relation_preparation::ForumImportRelationEventMode::EmitAddedTargetEvents => {
+                        if extracted.target_count() > 0 && self.event_bus.is_none() {
+                            return Err(ForumError::Validation(
+                                "Forum import relation event emission requires an owner event bus"
+                                    .to_string(),
+                            ));
+                        }
+                        self.persist_in_tx(txn, prepared).await?
+                    }
+                };
+                Ok(Some(result))
+            }
+        }
+    }
+}
+
+fn validate_import_relation_source(
+    relation: &crate::import_relation_preparation::ForumPreparedImportContentRelations,
+) -> ForumResult<()> {
+    if relation.source.source != crate::import_mapping::FORUM_IMPORT_SOURCE_NODEBB {
+        return Err(ForumError::Validation(
+            "Forum import relation persistence requires a NodeBB source reference".to_string(),
+        ));
+    }
+    let expected_target_kind = match relation.source.kind {
+        crate::import_mapping::ForumImportEntityKind::Topic => ForumContentTargetKind::Topic,
+        crate::import_mapping::ForumImportEntityKind::Post => ForumContentTargetKind::Reply,
+        _ => {
+            return Err(ForumError::Validation(
+                "Forum import relation persistence source kind cannot target content relations"
+                    .to_string(),
+            ));
+        }
+    };
+    if relation.target.kind() != expected_target_kind {
+        return Err(ForumError::Validation(
+            "Forum import relation persistence source kind does not match owner target kind"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
 
 pub(crate) struct MentionRelationService {
     profiles: Arc<dyn ProfilesReader>,
@@ -100,6 +269,61 @@ impl MentionRelationService {
         }
     }
 
+    async fn revalidate_resolved(
+        &self,
+        prepared: &PreparedMentionRelations,
+    ) -> ForumResult<()> {
+        if prepared.resolved.users().is_empty() {
+            return Ok(());
+        }
+        let handles = prepared
+            .resolved
+            .users()
+            .iter()
+            .map(|m| m.handle().to_string())
+            .collect::<Vec<_>>();
+        let fresh = self
+            .profiles
+            .find_profile_records_by_handles(
+                prepared.tenant_id,
+                &handles,
+                Some(prepared.locale.as_str()),
+                Some(PLATFORM_FALLBACK_LOCALE),
+            )
+            .await
+            .map_err(|_| ForumError::MentionTargetUnavailable)?;
+        if fresh.len() != prepared.resolved.users().len() {
+            return Err(ForumError::MentionTargetUnavailable);
+        }
+        let mut expected: std::collections::BTreeMap<String, Uuid> = prepared
+            .resolved
+            .users()
+            .iter()
+            .map(|m| (m.handle().to_ascii_lowercase(), m.user_id()))
+            .collect();
+        for (handle_key, record) in fresh {
+            let key = handle_key.to_ascii_lowercase();
+            let Some(expected_id) = expected.remove(&key) else {
+                return Err(ForumError::MentionTargetUnavailable);
+            };
+            if record.user_id != expected_id {
+                return Err(ForumError::MentionTargetUnavailable);
+            }
+            if record.status != rustok_profiles::ProfileStatus::Active {
+                return Err(ForumError::MentionTargetUnavailable);
+            }
+            if record.visibility != rustok_profiles::ProfileVisibility::Public
+                && record.visibility != rustok_profiles::ProfileVisibility::Authenticated
+            {
+                return Err(ForumError::MentionTargetUnavailable);
+            }
+        }
+        if !expected.is_empty() {
+            return Err(ForumError::MentionTargetUnavailable);
+        }
+        Ok(())
+    }
+
     pub(crate) async fn prepare(
         &self,
         tenant_id: Uuid,
@@ -166,6 +390,10 @@ impl MentionRelationService {
     ) -> ForumResult<MentionRelationSyncResult> {
         lock_source_in_tx(txn, prepared.tenant_id, prepared.target).await?;
         ensure_prepared_matches_source_in_tx(txn, &prepared).await?;
+        // Re-validate resolved handles inside the write transaction window so a
+        // profile that became blocked/private/deleted between prepare and persist
+        // does not create a stale mention.
+        self.revalidate_resolved(&prepared).await?;
         validate_quote_targets_in_tx(txn, prepared.tenant_id, &prepared.quotes).await?;
         let latest =
             latest_revision_in_tx(txn, prepared.tenant_id, prepared.target, &prepared.locale)

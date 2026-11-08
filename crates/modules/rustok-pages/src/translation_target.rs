@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use async_trait::async_trait;
@@ -50,24 +50,50 @@ const REQUIRED_FIELD_COUNT: u64 = 2;
 const OPTIONAL_FIELD_COUNT: u64 = 2;
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
-#[derive(Clone)]
-/// Owner adapter for exact Page metadata localization. It delegates writes to
-/// `PageService`, so Translation never obtains direct write access to Pages rows.
-pub struct PagesMetadataTranslationTargetProvider {
-    service: Arc<PageService>,
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
 }
 
-impl PagesMetadataTranslationTargetProvider {
-    pub fn new(service: Arc<PageService>) -> Self {
-        Self { service }
-    }
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
 
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Pages owner slug must satisfy the target contract"),
+                .expect("static Pages owner slug must satisfy the target contract: descriptor invariant validated at startup"),
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Pages resource kind must satisfy the target contract"),
+                .expect("static Pages resource kind must satisfy the target contract: descriptor invariant validated at startup"),
             display_name: "Page metadata".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
@@ -80,6 +106,22 @@ impl PagesMetadataTranslationTargetProvider {
             read_permission_floor: BTreeSet::from(["pages:read".to_string()]),
             apply_permission_floor: BTreeSet::from(["pages:update".to_string()]),
         }
+});
+
+#[derive(Clone)]
+/// Owner adapter for exact Page metadata localization. It delegates writes to
+/// `PageService`, so Translation never obtains direct write access to Pages rows.
+pub struct PagesMetadataTranslationTargetProvider {
+    service: Arc<PageService>,
+}
+
+impl PagesMetadataTranslationTargetProvider {
+    pub fn new(service: Arc<PageService>) -> Self {
+        Self { service }
+    }
+
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(
@@ -635,7 +677,7 @@ fn summary_from_models(
         })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(TranslationResourceSummary {
-        identity: page_metadata_identity(page.id),
+        identity: page_metadata_identity(page.id)?,
         display_label: source.title.clone(),
         lifecycle: page_lifecycle(page)?,
         resource_revision: opaque_positive_revision(i64::from(page.version), "resource_revision")?,
@@ -670,7 +712,7 @@ fn snapshot_from_models(
         target_revision: target
             .map(|translation| opaque_positive_revision(translation.revision, "target_revision"))
             .transpose()?,
-        fields: translation_fields(source, target),
+        fields: translation_fields(source, target)?,
     };
     snapshot.validate().map_err(|error| {
         PortError::invariant_violation("pages.translation_snapshot_invalid", error.to_string())
@@ -689,22 +731,19 @@ fn page_lifecycle(page: &PageModel) -> Result<TranslationResourceLifecycle, Port
     }
 }
 
-fn page_metadata_identity(page_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Pages owner slug must satisfy the target contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Pages resource kind must satisfy the target contract"),
-        resource_id: ResourceId::new(page_id.to_string())
-            .expect("Pages UUID must satisfy the resource id contract"),
+fn page_metadata_identity(page_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
+        resource_kind: resource_kind_or_invariant()?,
+        resource_id: resource_id_or_invariant(page_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn translation_fields(
     source: &PageTranslationModel,
     target: Option<&PageTranslationModel>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
             "title",
@@ -750,10 +789,9 @@ fn translation_fields(
     .into_iter()
     .map(
         |(key, source_value, target_value, profile, strategy, required, ai_export_allowed, max)| {
-            TranslationFieldSnapshot {
+            Ok(TranslationFieldSnapshot {
                 descriptor: TranslationFieldDescriptor {
-                    key: FieldKey::new(key)
-                        .expect("static Pages field key must satisfy the target contract"),
+                    key: field_key_or_invariant(key)?,
                     profile,
                     strategy,
                     classification: TranslationDataClassification::Public,
@@ -804,7 +842,7 @@ fn merged_target(
 
 fn change_from_model(change: TranslationChangeModel) -> Result<TranslationTargetChange, PortError> {
     Ok(TranslationTargetChange {
-        identity: page_metadata_identity(change.resource_id),
+        identity: page_metadata_identity(change.resource_id)?,
         resource_revision: opaque_positive_revision(change.resource_revision, "resource_revision")?,
         lifecycle: parse_resource_lifecycle(&change.lifecycle)?,
     })

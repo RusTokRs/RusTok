@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale, sha256_digest};
@@ -47,6 +47,27 @@ const CHANGE_JOURNAL_TABLE: &str = "seo_translation_change_journal";
 const APPLY_RECEIPTS_TABLE: &str = "seo_translation_apply_receipts";
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
+            owner_slug: OwnerSlug::new(OWNER_SLUG)
+                .expect("static SEO owner slug must satisfy Translation target contract: invariant validated at startup"),
+            resource_kind: ResourceKind::new(RESOURCE_KIND)
+                .expect("static SEO resource kind must satisfy Translation target contract: invariant validated at startup"),
+            display_name: "SEO explicit copy".to_string(),
+            capabilities: BTreeSet::from([
+                TranslationTargetCapability::ListResources,
+                TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::AggregateProgress,
+                TranslationTargetCapability::ValidatePatch,
+                TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
+            ]),
+            read_permission_floor: BTreeSet::from(["seo:read".to_string()]),
+            apply_permission_floor: BTreeSet::from(["seo:update".to_string()]),
+        }
+});
+
 #[derive(Clone)]
 pub struct SeoTranslationTargetProvider {
     db: DatabaseConnection,
@@ -65,24 +86,8 @@ impl SeoTranslationTargetProvider {
         }
     }
 
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
-            owner_slug: OwnerSlug::new(OWNER_SLUG)
-                .expect("static SEO owner slug must satisfy Translation target contract"),
-            resource_kind: ResourceKind::new(RESOURCE_KIND)
-                .expect("static SEO resource kind must satisfy Translation target contract"),
-            display_name: "SEO explicit copy".to_string(),
-            capabilities: BTreeSet::from([
-                TranslationTargetCapability::ListResources,
-                TranslationTargetCapability::ReadExactResource,
-                TranslationTargetCapability::AggregateProgress,
-                TranslationTargetCapability::ValidatePatch,
-                TranslationTargetCapability::ApplyPatch,
-                TranslationTargetCapability::ChangeCursor,
-            ]),
-            read_permission_floor: BTreeSet::from(["seo:read".to_string()]),
-            apply_permission_floor: BTreeSet::from(["seo:update".to_string()]),
-        }
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn list_resources_in(
@@ -741,7 +746,7 @@ where
         rendered_fallback_locale: None,
         source_revision: seo_locale_revision(source_revision)?,
         target_revision: target_revision.map(seo_locale_revision).transpose()?,
-        fields: translation_fields(source, target),
+        fields: translation_fields(source, target)?,
     };
     snapshot
         .validate()
@@ -752,7 +757,7 @@ where
 fn translation_fields(
     source: &meta_translation::Model,
     target: Option<&meta_translation::Model>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
             "title",
@@ -783,10 +788,9 @@ fn translation_fields(
     .into_iter()
     .map(|(key, source_value, target_value)| {
         let source_value = source_value.unwrap_or_default().to_string();
-        TranslationFieldSnapshot {
+        Ok(TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
-                key: FieldKey::new(key)
-                    .expect("static SEO field key must satisfy Translation target contract"),
+                key: field_key_or_invariant(key)?,
                 profile: TranslationValueProfile::SeoText,
                 strategy: TranslationStrategy::Translate,
                 classification: TranslationDataClassification::Public,
@@ -799,9 +803,9 @@ fn translation_fields(
             source_value,
             exact_target_value: target_value.map(str::to_string),
             protected_tokens: Vec::new(),
-        }
+        })
     })
-    .collect()
+    .collect::<Result<Vec<_>, PortError>>()
 }
 
 fn validate_patch_for_snapshot(
@@ -1387,9 +1391,9 @@ fn resource_identity(
     })?;
     Ok(TranslationResourceIdentity {
         owner_slug: OwnerSlug::new(OWNER_SLUG)
-            .expect("static SEO owner slug must satisfy Translation target contract"),
+            .expect("static SEO owner slug must satisfy Translation target contract: invariant validated at startup"),
         resource_kind: ResourceKind::new(RESOURCE_KIND)
-            .expect("static SEO resource kind must satisfy Translation target contract"),
+            .expect("static SEO resource kind must satisfy Translation target contract: invariant validated at startup"),
         resource_id: ResourceId::new(target_id.to_string())
             .map_err(|error| contract_validation_error(error.to_string()))?,
         subresource_id: Some(

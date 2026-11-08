@@ -116,7 +116,7 @@ impl IndexMutationEventAcknowledger for ProductIndexRefreshAcknowledger {
     ) -> std::result::Result<(), IndexMutationAcknowledgeFailure> {
         self.group.acknowledge(token).await.map_err(|_| {
             IndexMutationAcknowledgeFailure::retryable(ACK_FAILURE_CODE)
-                .expect("static Product Index acknowledgement failure code is valid")
+                .expect("static Product Index acknowledgement failure code is valid: invariant validated at startup")
         })
     }
 }

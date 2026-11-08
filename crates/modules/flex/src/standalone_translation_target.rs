@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeMap, collections::BTreeSet, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -32,24 +32,15 @@ const TRANSLATION_OWNER_SLUG: &str = "flex";
 const TRANSLATION_RESOURCE_KIND: &str = "standalone_localized_value";
 const PATCH_FINGERPRINT_NAMESPACE: &str = "rustok-flex/standalone-neutral-patch/v1";
 
-#[derive(Clone)]
-pub struct FlexStandaloneTranslationTargetProvider {
-    owner: Arc<dyn FlexStandaloneTranslationOwnerPort>,
-}
 
-impl FlexStandaloneTranslationTargetProvider {
-    pub fn new(owner: Arc<dyn FlexStandaloneTranslationOwnerPort>) -> Self {
-        Self { owner }
-    }
-
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
             // INVARIANT: TRANSLATION_OWNER_SLUG ("flex") is a compile-time static ASCII identifier under 191 bytes.
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Flex owner slug must satisfy the target contract"),
+                .expect("static Flex owner slug must satisfy the target contract: descriptor invariant validated at startup"),
             // INVARIANT: TRANSLATION_RESOURCE_KIND ("standalone_entry_value") is a compile-time static ASCII identifier under 191 bytes.
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Flex standalone-value kind must satisfy the target contract"),
+                .expect("static Flex standalone-value kind must satisfy the target contract: descriptor invariant validated at startup"),
             display_name: "Flex standalone localized values".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
@@ -60,6 +51,20 @@ impl FlexStandaloneTranslationTargetProvider {
             read_permission_floor: BTreeSet::from(["flex_entries:read".to_string()]),
             apply_permission_floor: BTreeSet::from(["flex_entries:update".to_string()]),
         }
+});
+
+#[derive(Clone)]
+pub struct FlexStandaloneTranslationTargetProvider {
+    owner: Arc<dyn FlexStandaloneTranslationOwnerPort>,
+}
+
+impl FlexStandaloneTranslationTargetProvider {
+    pub fn new(owner: Arc<dyn FlexStandaloneTranslationOwnerPort>) -> Self {
+        Self { owner }
+    }
+
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_owner_snapshot(

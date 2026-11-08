@@ -83,7 +83,7 @@ impl IndexReplayCheckpointStore for FailOnceCheckpointStore {
         if self.fail_next_commit.swap(false, Ordering::SeqCst) {
             return Err(
                 IndexReplayFailure::retryable("injected_checkpoint_commit_failure")
-                    .expect("static replay failure code is valid"),
+                    .expect("static replay failure code is valid: invariant validated at startup"),
             );
         }
         *self

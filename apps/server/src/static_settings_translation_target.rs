@@ -64,10 +64,10 @@ impl StaticSettingsTranslationTargetProvider {
         TranslationTargetProviderDescriptor {
             // INVARIANT: STATIC_SETTINGS_TRANSLATION_OWNER_SLUG is a verified valid compile-time slug constant
             owner_slug: OwnerSlug::new(STATIC_SETTINGS_TRANSLATION_OWNER_SLUG)
-                .expect("static Settings Translation owner slug must be valid"),
+                .expect("static Settings Translation owner slug must be valid: invariant validated at startup"),
             // INVARIANT: STATIC_SETTINGS_TRANSLATION_RESOURCE_KIND is a verified valid compile-time resource kind constant
             resource_kind: ResourceKind::new(STATIC_SETTINGS_TRANSLATION_RESOURCE_KIND)
-                .expect("static Settings Translation resource kind must be valid"),
+                .expect("static Settings Translation resource kind must be valid: invariant validated at startup"),
             display_name: "Static module settings".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,

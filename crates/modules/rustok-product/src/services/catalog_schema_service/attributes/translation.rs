@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -53,6 +53,43 @@ const CHANGE_CURSOR_VERSION: &str = "v1";
 const MAX_CHANGE_PAGE: u16 = 200;
 const PROGRESS_PAGE_SIZE: u16 = 200;
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
+
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
 const RESOURCE_REVISION_NAMESPACE: &str = "rustok-product/attribute-translation-resource/v1";
 const LOCALE_REVISION_NAMESPACE: &str = "rustok-product/attribute-translation-locale/v1";
 const DELETED_REVISION_NAMESPACE: &str = "rustok-product/attribute-translation-deleted/v1";
@@ -235,6 +272,27 @@ struct Aggregate {
     translations: Vec<StoredTranslation>,
     options: Vec<StoredOption>,
 }
+
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
+            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
+                .expect("static Product owner slug must satisfy Translation contract: descriptor invariant validated at startup"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
+                .expect("static Product Attribute resource kind must satisfy Translation contract: descriptor invariant validated at startup"),
+            display_name: "Product attribute copy".to_string(),
+            capabilities: BTreeSet::from([
+                TranslationTargetCapability::ListResources,
+                TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::AggregateProgress,
+                TranslationTargetCapability::ValidatePatch,
+                TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
+            ]),
+            read_permission_floor: BTreeSet::from(["products:read".to_string()]),
+            apply_permission_floor: BTreeSet::from(["products:update".to_string()]),
+        }
+});
 
 #[derive(Clone)]
 struct ProductAttributeTranslationTargetProvider {
@@ -691,24 +749,8 @@ ON CONFLICT (root_event_id, attribute_id) DO NOTHING
 
 #[async_trait]
 impl TranslationTargetProvider for ProductAttributeTranslationTargetProvider {
-    fn descriptor(&self) -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
-            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Product owner slug must satisfy Translation contract"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Product Attribute resource kind must satisfy Translation contract"),
-            display_name: "Product attribute copy".to_string(),
-            capabilities: BTreeSet::from([
-                TranslationTargetCapability::ListResources,
-                TranslationTargetCapability::ReadExactResource,
-                TranslationTargetCapability::AggregateProgress,
-                TranslationTargetCapability::ValidatePatch,
-                TranslationTargetCapability::ApplyPatch,
-                TranslationTargetCapability::ChangeCursor,
-            ]),
-            read_permission_floor: BTreeSet::from(["products:read".to_string()]),
-            apply_permission_floor: BTreeSet::from(["products:update".to_string()]),
-        }
+        fn descriptor(&self) -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn list_resources(
@@ -876,7 +918,7 @@ impl TranslationTargetProvider for ProductAttributeTranslationTargetProvider {
             .into_iter()
             .map(|change| {
                 Ok(TranslationTargetChange {
-                    identity: attribute_identity(change.attribute_id),
+                    identity: attribute_identity(change.attribute_id)?,
                     resource_revision: opaque_revision(
                         change.resource_revision,
                         "resource_revision",
@@ -1407,7 +1449,7 @@ fn summary_from_owner(
     owner: &ExactLocaleSnapshot,
 ) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
-        identity: attribute_identity(owner.attribute_id),
+        identity: attribute_identity(owner.attribute_id)?,
         display_label: owner.source.label.clone().ok_or_else(|| {
             PortError::invariant_violation(
                 "product.attribute_translation_source_invalid",
@@ -1731,16 +1773,13 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
     })
 }
 
-fn attribute_identity(attribute_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Product owner slug must satisfy Translation contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Product Attribute resource kind must satisfy Translation contract"),
-        resource_id: ResourceId::new(attribute_id.to_string())
-            .expect("Product Attribute UUID must satisfy Translation resource id contract"),
+fn attribute_identity(attribute_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
+        resource_kind: resource_kind_or_invariant()?,
+        resource_id: resource_id_or_invariant(attribute_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn resource_cursor(attribute_id: Uuid) -> Result<OpaqueCursor, PortError> {

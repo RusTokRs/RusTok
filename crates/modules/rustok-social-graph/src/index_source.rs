@@ -259,11 +259,11 @@ fn relation_schema_ref() -> Result<SchemaRef, SocialGraphIndexError> {
 }
 
 fn retryable(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::retryable(code).expect("static retryable source failure code must be valid")
+    IndexSourceFailure::retryable(code).expect("static retryable source failure code must be valid: invariant validated at startup")
 }
 
 fn permanent(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::permanent(code).expect("static permanent source failure code must be valid")
+    IndexSourceFailure::permanent(code).expect("static permanent source failure code must be valid: invariant validated at startup")
 }
 
 #[cfg(test)]

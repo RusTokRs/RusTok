@@ -115,7 +115,7 @@ mod tests {
             revision: 4,
         };
 
-        let encoded = serde_json::to_value(view).expect("static lifecycle view serializes");
+        let encoded = serde_json::to_value(view).expect("static lifecycle view serializes: invariant validated at startup");
         assert_eq!(encoded["moduleSlug"], "forum");
         assert_eq!(encoded["settings"], r#"{\"visibility\":\"public\"}"#);
         assert_eq!(encoded["revision"], 4);

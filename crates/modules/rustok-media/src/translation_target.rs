@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use async_trait::async_trait;
@@ -52,6 +52,64 @@ const OPERATION_APPLY_PATCH: &str = "translation_target_apply_patch";
 const TRANSLATABLE_FIELD_COUNT: u64 = 3;
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
+            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
+                .expect("static owner slug must be valid: descriptor invariant validated at startup"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
+                .expect("static resource kind must be valid: descriptor invariant validated at startup"),
+            display_name: "Media asset metadata".to_string(),
+            capabilities: BTreeSet::from([
+                TranslationTargetCapability::ListResources,
+                TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::AggregateProgress,
+                TranslationTargetCapability::ValidatePatch,
+                TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
+            ]),
+            read_permission_floor: BTreeSet::from(["media:read".to_string()]),
+            apply_permission_floor: BTreeSet::from(["media:update".to_string()]),
+        }
+});
+
 #[derive(Clone)]
 /// Owner adapter that exposes Media localized metadata through the neutral
 /// translation-target SPI without granting direct access to Media tables.
@@ -65,24 +123,8 @@ impl MediaTranslationTargetProvider {
         Self { service }
     }
 
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
-            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static owner slug must be valid"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static resource kind must be valid"),
-            display_name: "Media asset metadata".to_string(),
-            capabilities: BTreeSet::from([
-                TranslationTargetCapability::ListResources,
-                TranslationTargetCapability::ReadExactResource,
-                TranslationTargetCapability::AggregateProgress,
-                TranslationTargetCapability::ValidatePatch,
-                TranslationTargetCapability::ApplyPatch,
-                TranslationTargetCapability::ChangeCursor,
-            ]),
-            read_permission_floor: BTreeSet::from(["media:read".to_string()]),
-            apply_permission_floor: BTreeSet::from(["media:update".to_string()]),
-        }
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(
@@ -583,7 +625,7 @@ fn change_from_model(change: TranslationChangeModel) -> Result<TranslationTarget
         }
     };
     Ok(TranslationTargetChange {
-        identity: media_identity(change.asset_id),
+        identity: media_identity(change.asset_id)?,
         resource_revision: OpaqueRevision::new(change.resource_revision).map_err(|error| {
             PortError::invariant_violation(
                 "media.translation_change_revision_invalid",
@@ -661,7 +703,7 @@ fn summary_from_models(
         .unwrap_or(asset.original_name.as_str())
         .to_string();
     Ok(TranslationResourceSummary {
-        identity: media_identity(asset.id),
+        identity: media_identity(asset.id)?,
         display_label,
         lifecycle: TranslationResourceLifecycle::Active,
         resource_revision: opaque_resource_revision(asset)?,
@@ -699,7 +741,7 @@ fn snapshot_from_models(
         target_revision: target
             .map(|translation| opaque_numeric_revision(translation.revision))
             .transpose()?,
-        fields: translation_fields(source, target),
+        fields: translation_fields(source, target)?,
     };
     snapshot.validate().map_err(|error| {
         PortError::invariant_violation("media.translation_snapshot_invalid", error.to_string())
@@ -707,16 +749,13 @@ fn snapshot_from_models(
     Ok(snapshot)
 }
 
-fn media_identity(media_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static owner slug must be valid"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static resource kind must be valid"),
-        resource_id: ResourceId::new(media_id.to_string())
-            .expect("media UUID must be a valid resource id"),
+fn media_identity(media_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
+        resource_kind: resource_kind_or_invariant()?,
+        resource_id: resource_id_or_invariant(media_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn opaque_resource_revision(asset: &AssetModel) -> Result<OpaqueRevision, PortError> {
@@ -740,7 +779,7 @@ fn opaque_numeric_revision(revision: i64) -> Result<OpaqueRevision, PortError> {
 fn translation_fields(
     source: &TranslationModel,
     target: Option<&TranslationModel>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
             "title",
@@ -761,9 +800,9 @@ fn translation_fields(
     .into_iter()
     .map(|(key, source_value, target_value)| {
         let source_value = source_value.unwrap_or_default().to_string();
-        TranslationFieldSnapshot {
+        Ok(TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
-                key: FieldKey::new(key).expect("static field key must be valid"),
+                key: field_key_or_invariant(key)?,
                 profile: TranslationValueProfile::PlainText,
                 strategy: TranslationStrategy::Translate,
                 classification: TranslationDataClassification::Public,
@@ -776,9 +815,9 @@ fn translation_fields(
             source_value,
             exact_target_value: target_value.map(str::to_string),
             protected_tokens: Vec::new(),
-        }
+        })
     })
-    .collect()
+    .collect::<Result<Vec<_>, PortError>>()
 }
 
 fn field_hash(value: &str) -> String {

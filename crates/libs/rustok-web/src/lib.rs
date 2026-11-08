@@ -94,6 +94,8 @@ pub struct HttpError {
     pub message: String,
     /// Exact owner retry advice, if known. This does not certify a durable write outcome.
     pub retryable: Option<bool>,
+    retry_after_seconds: Option<u64>,
+    extra_headers: Vec<(String, String)>,
 }
 
 impl HttpError {
@@ -103,6 +105,8 @@ impl HttpError {
             code: code.into(),
             message: message.into(),
             retryable: None,
+            retry_after_seconds: None,
+            extra_headers: Vec::new(),
         }
     }
 
@@ -111,6 +115,16 @@ impl HttpError {
     /// This is advice, not permission to replay a mutation or replace its idempotency key.
     pub fn with_retryable(mut self, retryable: bool) -> Self {
         self.retryable = Some(retryable);
+        self
+    }
+
+    pub fn with_retry_after(mut self, seconds: u64) -> Self {
+        self.retry_after_seconds = Some(seconds);
+        self
+    }
+
+    pub fn with_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.extra_headers.push((name.into(), value.into()));
         self
     }
 
@@ -157,7 +171,24 @@ impl HttpError {
 
 impl IntoResponse for HttpError {
     fn into_response(self) -> axum::response::Response {
-        (self.status, Json(self.body())).into_response()
+        let mut response = (self.status, Json(self.body())).into_response();
+        if let Some(seconds) = self.retry_after_seconds {
+            if let Ok(value) = axum::http::HeaderValue::from_str(&seconds.to_string()) {
+                response.headers_mut().insert(
+                    axum::http::header::RETRY_AFTER,
+                    value,
+                );
+            }
+        }
+        for (name, value) in self.extra_headers {
+            if let (Ok(header_name), Ok(header_value)) = (
+                axum::http::HeaderName::from_bytes(name.as_bytes()),
+                axum::http::HeaderValue::from_str(&value),
+            ) {
+                response.headers_mut().insert(header_name, header_value);
+            }
+        }
+        response
     }
 }
 

@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -38,22 +38,50 @@ const OPERATION_APPLY_PATCH: &str = "translation_target_apply_price_list_copy_pa
 const CHANGE_CURSOR_VERSION: &str = "v1";
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
-#[derive(Clone)]
-pub struct PriceListTranslationTargetProvider {
-    service: Arc<PriceListTranslationService>,
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
 }
 
-impl PriceListTranslationTargetProvider {
-    pub fn new(service: Arc<PriceListTranslationService>) -> Self {
-        Self { service }
-    }
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
 
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Pricing owner slug must satisfy the target contract"),
+                .expect("static Pricing owner slug must satisfy the target contract: descriptor invariant validated at startup"),
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Price List Copy resource kind must satisfy the target contract"),
+                .expect("static Price List Copy resource kind must satisfy the target contract: descriptor invariant validated at startup"),
             display_name: "Price Lists".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
@@ -66,6 +94,20 @@ impl PriceListTranslationTargetProvider {
             read_permission_floor: BTreeSet::from(["discounts:read".to_string()]),
             apply_permission_floor: BTreeSet::from(["discounts:update".to_string()]),
         }
+});
+
+#[derive(Clone)]
+pub struct PriceListTranslationTargetProvider {
+    service: Arc<PriceListTranslationService>,
+}
+
+impl PriceListTranslationTargetProvider {
+    pub fn new(service: Arc<PriceListTranslationService>) -> Self {
+        Self { service }
+    }
+
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(
@@ -405,7 +447,7 @@ impl TranslationTargetProvider for PriceListTranslationTargetProvider {
             .into_iter()
             .map(|change| {
                 Ok(TranslationTargetChange {
-                    identity: price_list_identity(change.price_list_id),
+                    identity: price_list_identity(change.price_list_id)?,
                     resource_revision: opaque_revision(
                         change.resource_revision,
                         "resource_revision",
@@ -460,23 +502,20 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
     })
 }
 
-fn price_list_identity(price_list_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Pricing owner slug must satisfy the target contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Price List Copy resource kind must satisfy the target contract"),
-        resource_id: ResourceId::new(price_list_id.to_string())
-            .expect("Price List UUID must satisfy the resource id contract"),
+fn price_list_identity(price_list_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
+        resource_kind: resource_kind_or_invariant()?,
+        resource_id: resource_id_or_invariant(price_list_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn summary_from_owner(
     snapshot: PriceListTranslationExactLocaleSnapshot,
 ) -> Result<TranslationResourceSummary, PortError> {
     Ok(TranslationResourceSummary {
-        identity: price_list_identity(snapshot.price_list_id),
+        identity: price_list_identity(snapshot.price_list_id)?,
         display_label: snapshot.source.name,
         lifecycle: TranslationResourceLifecycle::Active,
         resource_revision: opaque_revision(snapshot.resource_revision, "resource_revision")?,
@@ -489,7 +528,7 @@ fn snapshot_from_owner(
     request: &ReadTranslationResourceRequest,
 ) -> Result<TranslationResourceSnapshot, PortError> {
     let summary = TranslationResourceSummary {
-        identity: price_list_identity(snapshot.price_list_id),
+        identity: price_list_identity(snapshot.price_list_id)?,
         display_label: snapshot.source.name.clone(),
         lifecycle: TranslationResourceLifecycle::Active,
         resource_revision: opaque_revision(snapshot.resource_revision, "resource_revision")?,
@@ -505,7 +544,7 @@ fn snapshot_from_owner(
             .target_revision
             .map(|revision| opaque_revision(revision, "target_revision"))
             .transpose()?,
-        fields: translation_fields(&snapshot.source, snapshot.target.as_ref()),
+        fields: translation_fields(&snapshot.source, snapshot.target.as_ref())?,
     };
     resource.validate().map_err(|error| {
         PortError::invariant_violation("pricing.translation_snapshot_invalid", error.to_string())
@@ -530,7 +569,7 @@ fn exact_locales(locales: Vec<String>) -> Result<Vec<TenantLocale>, PortError> {
 fn translation_fields(
     source: &PriceListTranslationExactLocaleRecord,
     target: Option<&PriceListTranslationExactLocaleRecord>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
             "name",
@@ -549,10 +588,9 @@ fn translation_fields(
     ]
     .into_iter()
     .map(
-        |(key, source_value, target_value, required, max_characters)| TranslationFieldSnapshot {
+        |(key, source_value, target_value, required, max_characters)| Ok(TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
-                key: FieldKey::new(key)
-                    .expect("static Pricing field key must satisfy the target contract"),
+                key: field_key_or_invariant(key)?,
                 profile: TranslationValueProfile::PlainText,
                 strategy: TranslationStrategy::Translate,
                 classification: TranslationDataClassification::Public,
@@ -565,9 +603,9 @@ fn translation_fields(
             exact_target_value: target_value.map(str::to_string),
             source_hash: field_hash(source_value),
             protected_tokens: Vec::new(),
-        },
+        }),
     )
-    .collect()
+    .collect::<Result<Vec<_>, PortError>>()
 }
 
 fn merged_target(

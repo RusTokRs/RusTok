@@ -71,6 +71,9 @@ mod m20261008_000037_create_forum_topic_routes;
 mod m20261009_000038_allow_pending_forum_topic_status;
 mod m20261017_000039_add_forum_top_feed_indexes;
 mod m20261102_000040_remove_forum_auto_subscribe_triggers;
+mod m20261107_000041_enforce_forum_soft_delete_consistency;
+mod m20261109_000042_add_delete_snapshot_reason;
+mod m20261109_000043_enforce_archived_locked_invariant;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -150,6 +153,9 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261009_000038_allow_pending_forum_topic_status::Migration),
         Box::new(m20261017_000039_add_forum_top_feed_indexes::Migration),
         Box::new(m20261102_000040_remove_forum_auto_subscribe_triggers::Migration),
+        Box::new(m20261107_000041_enforce_forum_soft_delete_consistency::Migration),
+        Box::new(m20261109_000042_add_delete_snapshot_reason::Migration),
+        Box::new(m20261109_000043_enforce_archived_locked_invariant::Migration),
     ]
 }
 

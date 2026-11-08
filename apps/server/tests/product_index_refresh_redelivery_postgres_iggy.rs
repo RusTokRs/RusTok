@@ -166,7 +166,7 @@ impl IndexMutationEventAcknowledger for BrokerAcknowledger {
         }
         self.group.acknowledge(&attempted).await.map_err(|_| {
             IndexMutationAcknowledgeFailure::retryable(ACK_FAILURE_CODE)
-                .expect("static evidence acknowledgement failure code is valid")
+                .expect("static evidence acknowledgement failure code is valid: invariant validated at startup")
         })
     }
 }

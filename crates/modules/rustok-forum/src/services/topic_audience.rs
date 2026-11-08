@@ -83,112 +83,84 @@ impl ForumTopicAudiencePolicyService {
 async fn insert_roles(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    topic_id: Uuid,
+    subject_id: Uuid,
     constraints: &ForumAudienceConstraints,
 ) -> ForumResult<()> {
-    if constraints.roles_any.is_empty() {
-        return Ok(());
-    }
-    forum_topic_audience_role::Entity::insert_many(
-        constraints
+    crate::services::audience_storage::insert_roles_raw(
+        txn,
+        "forum_topic_audience_roles",
+        tenant_id,
+        subject_id,
+        "topic_id",
+        &constraints
             .roles_any
             .iter()
-            .cloned()
-            .map(|role| forum_topic_audience_role::ActiveModel {
-                tenant_id: Set(tenant_id),
-                topic_id: Set(topic_id),
-                role: Set(role),
-            })
+            .map(|r| r.to_string())
             .collect::<Vec<_>>(),
     )
-    .exec(txn)
-    .await?;
-    Ok(())
+    .await
 }
 
 async fn insert_channels(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    topic_id: Uuid,
+    subject_id: Uuid,
     constraints: &ForumAudienceConstraints,
 ) -> ForumResult<()> {
-    if constraints.channel_members_any.is_empty() {
-        return Ok(());
-    }
-    forum_topic_audience_channel::Entity::insert_many(
-        constraints
-            .channel_members_any
-            .iter()
-            .cloned()
-            .map(|channel_slug| forum_topic_audience_channel::ActiveModel {
-                tenant_id: Set(tenant_id),
-                topic_id: Set(topic_id),
-                channel_slug: Set(channel_slug),
-            })
-            .collect::<Vec<_>>(),
+    crate::services::audience_storage::insert_channels_raw(
+        txn,
+        "forum_topic_audience_channels",
+        tenant_id,
+        subject_id,
+        "topic_id",
+        &constraints.channel_members_any,
     )
-    .exec(txn)
-    .await?;
-    Ok(())
+    .await
 }
 
 async fn insert_groups(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    topic_id: Uuid,
+    subject_id: Uuid,
     constraints: &ForumAudienceConstraints,
 ) -> ForumResult<()> {
-    if constraints.group_members_any.is_empty() {
-        return Ok(());
-    }
-    forum_topic_audience_group::Entity::insert_many(
-        constraints
-            .group_members_any
-            .iter()
-            .copied()
-            .map(|group_id| forum_topic_audience_group::ActiveModel {
-                tenant_id: Set(tenant_id),
-                topic_id: Set(topic_id),
-                group_id: Set(group_id),
-            })
-            .collect::<Vec<_>>(),
+    crate::services::audience_storage::insert_groups_raw(
+        txn,
+        "forum_topic_audience_groups",
+        tenant_id,
+        subject_id,
+        "topic_id",
+        &constraints.group_members_any,
     )
-    .exec(txn)
-    .await?;
-    Ok(())
+    .await
 }
 
 async fn insert_users(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
-    topic_id: Uuid,
+    subject_id: Uuid,
     constraints: &ForumAudienceConstraints,
 ) -> ForumResult<()> {
-    let mut rows =
-        Vec::with_capacity(constraints.allow_user_ids.len() + constraints.deny_user_ids.len());
-    rows.extend(constraints.allow_user_ids.iter().copied().map(|user_id| {
-        forum_topic_audience_user::ActiveModel {
-            tenant_id: Set(tenant_id),
-            topic_id: Set(topic_id),
-            user_id: Set(user_id),
-            effect: Set(ForumCategoryAudienceUserEffect::Allow),
-        }
-    }));
-    rows.extend(constraints.deny_user_ids.iter().copied().map(|user_id| {
-        forum_topic_audience_user::ActiveModel {
-            tenant_id: Set(tenant_id),
-            topic_id: Set(topic_id),
-            user_id: Set(user_id),
-            effect: Set(ForumCategoryAudienceUserEffect::Deny),
-        }
-    }));
-    if rows.is_empty() {
-        return Ok(());
-    }
-    forum_topic_audience_user::Entity::insert_many(rows)
-        .exec(txn)
-        .await?;
-    Ok(())
+    crate::services::audience_storage::insert_users_raw(
+        txn,
+        "forum_topic_audience_users",
+        tenant_id,
+        subject_id,
+        "topic_id",
+        &constraints.allow_user_ids,
+        "allow",
+    )
+    .await?;
+    crate::services::audience_storage::insert_users_raw(
+        txn,
+        "forum_topic_audience_users",
+        tenant_id,
+        subject_id,
+        "topic_id",
+        &constraints.deny_user_ids,
+        "deny",
+    )
+    .await
 }
 
 pub(super) async fn load_policy_for_topic<C>(
@@ -362,3 +334,86 @@ async fn lock_topic_audience_in_tx(
         ))),
     }
 }
+
+/// Transactional owner facade for topic-local audience replacement.
+///
+/// The original service remains the read delegate. This facade uses the same
+/// private normalized persistence helpers and writes a topic projection
+/// invalidation before the policy transaction commits.
+pub struct ForumTopicAudiencePolicyOwnerService {
+    inner: ForumTopicAudiencePolicyService,
+    db: DatabaseConnection,
+}
+
+impl ForumTopicAudiencePolicyOwnerService {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self {
+            inner: ForumTopicAudiencePolicyService::new(db.clone()),
+            db,
+        }
+    }
+
+    pub async fn get(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: SecurityContext,
+    ) -> ForumResult<ForumTopicAudiencePolicy> {
+        self.inner.get(tenant_id, topic_id, security).await
+    }
+
+    pub async fn set(
+        &self,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+        security: SecurityContext,
+        input: SetForumTopicAudiencePolicyInput,
+    ) -> ForumResult<ForumTopicAudiencePolicy> {
+        enforce_scope(&security, Resource::ForumTopics, Action::Manage)?;
+        let constraints = input.constraints.normalize()?;
+
+        let txn = self.db.begin().await?;
+        lock_category_tree_in_tx(&txn, tenant_id).await?;
+        let topic = super::topic_audience_lock::lock_active_topic_audience_write_in_tx(
+            &txn, tenant_id, topic_id,
+        )
+        .await?;
+        super::topic_audience_lock::lock_topic_audience_scopes_in_tx(&txn, tenant_id, &[topic_id])
+            .await?;
+        load_category_audience_policy(&txn, tenant_id, topic.category_id).await?;
+
+        forum_topic_audience_policy::Entity::delete_many()
+            .filter(forum_topic_audience_policy::Column::TenantId.eq(tenant_id))
+            .filter(forum_topic_audience_policy::Column::TopicId.eq(topic_id))
+            .exec(&txn)
+            .await?;
+
+        if !constraints_are_empty(&constraints) {
+            forum_topic_audience_policy::ActiveModel {
+                tenant_id: Set(tenant_id),
+                topic_id: Set(topic_id),
+                minimum_trust_level: Set(constraints.minimum_trust_level.map(i16::from)),
+                updated_at: Set(Utc::now().into()),
+            }
+            .insert(&txn)
+            .await?;
+
+            insert_roles(&txn, tenant_id, topic_id, &constraints).await?;
+            insert_channels(&txn, tenant_id, topic_id, &constraints).await?;
+            insert_groups(&txn, tenant_id, topic_id, &constraints).await?;
+            insert_users(&txn, tenant_id, topic_id, &constraints).await?;
+        }
+
+        let result = load_policy_for_topic(&txn, tenant_id, &topic).await?;
+        super::projection_invalidation::publish_forum_topic_projection_direct_in_tx(
+            &txn,
+            tenant_id,
+            security.user_id,
+            topic_id,
+        )
+        .await?;
+        txn.commit().await?;
+        Ok(result)
+    }
+}
+

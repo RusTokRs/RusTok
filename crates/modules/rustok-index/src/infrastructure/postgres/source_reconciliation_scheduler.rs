@@ -82,9 +82,9 @@ impl IndexReconciliationSchedulerPolicy {
     ) -> Result<Self, IndexReconciliationRunError> {
         let schema = SchemaRef {
             module: ModuleName::new("index-scheduler-policy")
-                .expect("static scheduler module identifier must be valid"),
+                .expect("static scheduler module identifier must be valid: invariant validated at startup"),
             entity: EntityName::new("item")
-                .expect("static scheduler entity identifier must be valid"),
+                .expect("static scheduler entity identifier must be valid: invariant validated at startup"),
             version: SchemaVersion::INITIAL,
         };
         IndexReconciliationRunRequest::new(

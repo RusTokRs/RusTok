@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -44,6 +44,64 @@ const OPTIONAL_TRANSLATION_FIELD_COUNT: u64 = 3;
 const CHANGE_CURSOR_VERSION: &str = "v1";
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
+fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
+    OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
+    ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.owner_contract_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
+    ResourceId::new(value).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.resource_id_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
+    FieldKey::new(key).map_err(|error| {
+        PortError::invariant_violation(
+            "translation.field_key_invalid",
+            error.to_string(),
+        )
+    })
+}
+
+
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
+            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
+                .expect("static Product owner slug must satisfy the target contract: descriptor invariant validated at startup"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
+                .expect("static Product resource kind must satisfy the target contract: descriptor invariant validated at startup"),
+            display_name: "Product catalog".to_string(),
+            capabilities: BTreeSet::from([
+                TranslationTargetCapability::ListResources,
+                TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::AggregateProgress,
+                TranslationTargetCapability::ValidatePatch,
+                TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
+            ]),
+            read_permission_floor: BTreeSet::from(["products:read".to_string()]),
+            apply_permission_floor: BTreeSet::from(["products:update".to_string()]),
+        }
+});
+
 #[derive(Clone)]
 /// Product-owned adapter for exact catalog localization.
 ///
@@ -59,24 +117,8 @@ impl ProductTranslationTargetProvider {
         Self { service }
     }
 
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
-            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Product owner slug must satisfy the target contract"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Product resource kind must satisfy the target contract"),
-            display_name: "Product catalog".to_string(),
-            capabilities: BTreeSet::from([
-                TranslationTargetCapability::ListResources,
-                TranslationTargetCapability::ReadExactResource,
-                TranslationTargetCapability::AggregateProgress,
-                TranslationTargetCapability::ValidatePatch,
-                TranslationTargetCapability::ApplyPatch,
-                TranslationTargetCapability::ChangeCursor,
-            ]),
-            read_permission_floor: BTreeSet::from(["products:read".to_string()]),
-            apply_permission_floor: BTreeSet::from(["products:update".to_string()]),
-        }
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(
@@ -338,7 +380,7 @@ impl TranslationTargetProvider for ProductTranslationTargetProvider {
             .into_iter()
             .map(|change| {
                 Ok(TranslationTargetChange {
-                    identity: product_identity(change.product_id),
+                    identity: product_identity(change.product_id)?,
                     resource_revision: opaque_revision(
                         change.resource_revision,
                         "resource_revision",
@@ -492,16 +534,13 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
     })
 }
 
-fn product_identity(product_id: Uuid) -> TranslationResourceIdentity {
-    TranslationResourceIdentity {
-        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-            .expect("static Product owner slug must satisfy the target contract"),
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-            .expect("static Product resource kind must satisfy the target contract"),
-        resource_id: ResourceId::new(product_id.to_string())
-            .expect("Product UUID must satisfy the resource id contract"),
+fn product_identity(product_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+    Ok(TranslationResourceIdentity {
+        owner_slug: owner_slug_or_invariant()?,
+        resource_kind: resource_kind_or_invariant()?,
+        resource_id: resource_id_or_invariant(product_id.to_string())?,
         subresource_id: None,
-    }
+    })
 }
 
 fn summary_from_owner(
@@ -509,7 +548,7 @@ fn summary_from_owner(
 ) -> Result<TranslationResourceSummary, PortError> {
     let exact_locales = exact_locales(summary.exact_locales)?;
     Ok(TranslationResourceSummary {
-        identity: product_identity(summary.product_id),
+        identity: product_identity(summary.product_id)?,
         display_label: summary.source.title,
         lifecycle: product_lifecycle(&summary.product_status),
         resource_revision: opaque_revision(summary.resource_revision, "resource_revision")?,
@@ -522,7 +561,7 @@ fn snapshot_from_owner(
     request: &ReadTranslationResourceRequest,
 ) -> Result<TranslationResourceSnapshot, PortError> {
     let summary = TranslationResourceSummary {
-        identity: product_identity(snapshot.product_id),
+        identity: product_identity(snapshot.product_id)?,
         display_label: snapshot.source.title.clone(),
         lifecycle: product_lifecycle(&snapshot.product_status),
         resource_revision: opaque_revision(snapshot.resource_revision, "resource_revision")?,
@@ -538,7 +577,7 @@ fn snapshot_from_owner(
             .target_revision
             .map(|revision| opaque_revision(revision, "target_revision"))
             .transpose()?,
-        fields: translation_fields(&snapshot.source, snapshot.target.as_ref()),
+        fields: translation_fields(&snapshot.source, snapshot.target.as_ref())?,
     };
     resource.validate().map_err(|error| {
         PortError::invariant_violation("product.translation_snapshot_invalid", error.to_string())
@@ -615,7 +654,7 @@ fn parse_change_cursor(cursor: &OpaqueCursor) -> Result<(u64, u64), PortError> {
 fn translation_fields(
     source: &ProductTranslationExactLocaleRecord,
     target: Option<&ProductTranslationExactLocaleRecord>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
             "title",
@@ -671,10 +710,9 @@ fn translation_fields(
     .into_iter()
     .map(
         |(key, source_value, target_value, profile, strategy, required, ai_export_allowed, max)| {
-            TranslationFieldSnapshot {
+            Ok(TranslationFieldSnapshot {
                 descriptor: TranslationFieldDescriptor {
-                    key: FieldKey::new(key)
-                        .expect("static Product field key must satisfy the target contract"),
+                    key: field_key_or_invariant(key)?,
                     profile,
                     strategy,
                     classification: TranslationDataClassification::Public,
@@ -872,7 +910,7 @@ mod tests {
     #[test]
     fn product_fields_expose_reviewed_handle_and_bounded_seo_metadata() {
         let source = record("en", "Product");
-        let fields = translation_fields(&source, None);
+        let fields = translation_fields(&source, None)?;
         assert_eq!(fields.len(), 5);
         assert_eq!(
             fields
