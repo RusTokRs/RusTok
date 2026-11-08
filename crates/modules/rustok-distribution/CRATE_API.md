@@ -1,23 +1,26 @@
 # Crate API: rustok-distribution
 
-## Public surface
+## Public Surface
 
 ### Primary Public Functions
 
 - `build_registry`: Assembles compile-time selected module implementations into `ModuleRegistry`.
-- `build_runtime_extensions`: Seeds runtime extensions from active modules.
-- `composition_identity`: Computes stable deterministic fingerprint and module manifest of active distribution.
-- `generate_static_distribution`: Generates static distribution manifest and source files.
+- `build_runtime_extensions`: Seeds runtime extensions from active modules and registers selected cross-module bridges.
+- `composition_identity`: Computes stable deterministic fingerprint (`hash`, `revision`, `modules`) of active distribution.
+- `generate_static_distribution`: Generates static distribution manifest and source files for reviewed promotions.
 
 ### Public Constants & Types
 
-- `GENERATED_DISTRIBUTION_CARGO_MANIFEST_PATH`: Static cargo manifest path constant.
-- `GENERATED_DISTRIBUTION_MANIFEST_PATH`: Static distribution manifest path constant.
-- `GENERATED_DISTRIBUTION_REGISTRY_PATH`: Static registry path constant.
-- `GeneratedStaticDistributionFiles`: Manifest file collection DTO.
+- `GENERATED_DISTRIBUTION_CARGO_MANIFEST_PATH`: Static cargo manifest path constant (`crates/modules/rustok-distribution/Cargo.toml`).
+- `GENERATED_DISTRIBUTION_MANIFEST_PATH`: Static distribution manifest path constant (`.rustok/generated/static-distribution.json`).
+- `GENERATED_DISTRIBUTION_REGISTRY_PATH`: Static registry path constant (`crates/modules/rustok-distribution/src/generated_promotions.rs`).
+- `CompositionIdentity`: Immutable identity of compiled modules (`revision`, `hash`, `modules`).
+- `CompositionModule`: Canonical module metadata in composition (`slug`, `version`, `kind`, `dependencies`).
+- `CompositionModuleKind`: Classification of compiled module (`Core`, `Optional`).
+- `GeneratedStaticDistributionFiles`: Manifest file collection DTO (`manifest`, `manifest_json`, `cargo_dependencies_toml`, `registry_source`).
 - `GeneratedStaticDistributionManifest`: Static distribution metadata representation.
-- `GeneratedStaticDistributionSource`: Generated Rust code container.
-- `StaticDistributionGenerationError`: Errors arising during static distribution code generation.
+- `GeneratedStaticDistributionSource`: Generated Rust code container and build metadata.
+- `StaticDistributionGenerationError`: Errors arising during static distribution code generation (`InvalidWorkItem`, `Serialization`).
 
 ## Platform Capability Bindings
 
@@ -28,6 +31,7 @@
 
 - Registers all active platform domain modules into the core registry.
 - Bridges product indices when `mod-product` feature is enabled.
+- Bridges inventory stock index when `mod-inventory` feature is enabled.
 - Bridges AI translation factories when `ai-translation` feature is enabled.
 
 ## Minimum Contract Set
@@ -35,22 +39,27 @@
 ### Input DTOs/Commands
 
 - `build_registry`: Assembles and returns configured `ModuleRegistry`.
-- `generate_static_distribution`: Takes target output directory and serializes distribution artifacts.
+- `build_runtime_extensions`: Seeds and materializes runtime extensions from active module registry.
+- `composition_identity`: Calculates deterministic sha256 fingerprint from registered module metadata.
+- `generate_static_distribution`: Takes validated `ModuleStaticDistributionWorkItem` and generates distribution artifacts.
 
 ### Domain Invariants
 
-- Composition identity hash is deterministic and uniquely identifies active module set.
+- Composition identity hash is deterministic, 64-character lowercase hex string, and uniquely identifies active module set.
 - All registered modules maintain proper dependency order and invariant initialization.
 - Dynamic extension collisions are rejected at registration time.
+- All public models and errors implement `Debug`, `Clone`, and `PartialEq`.
 
 ### Events / Outbox Side Effects
 
 - Assembles event consumers and schema providers into shared runtime context.
+- Read and composition operations are side-effect free.
 
 ### Errors / Failure Codes
 
-- `StaticDistributionGenerationError::Io`: File system writing failures.
-- Registration errors returned when conflicting runtime ports are registered.
+- `StaticDistributionGenerationError::InvalidWorkItem`: Work item payload or build configuration is invalid.
+- `StaticDistributionGenerationError::Serialization`: JSON serialization error during artifact generation.
+- `rustok_core::Error::Validation`: Registration collision when identical port factory is already registered.
 
 ## Inventory stock Index bridge
 

@@ -29,6 +29,7 @@ const PRODUCT_VARIANT_SCHEMA_VERSION: u32 = 2;
 /// acknowledgement token. This type owns the canonical Product/ProductVariant -> `EntityKey`
 /// projection; the generic Index worker still owns authoritative source loading, durable mutation
 /// application, replay deduplication and commit-before-ack ordering.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProductIndexRefreshDelivery<T> {
     Locale {
         event_id: Uuid,

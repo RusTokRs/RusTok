@@ -1,5 +1,21 @@
 # Continuous Full-Stack Review & Architecture Audit Ledger
 
+## FS-13 `crates/modules/rustok-distribution` audit — 2026-11-08 (completed)
+
+- **Comprehensive Behavioral & Logic Audit**: Systematically inspected all 30 source, test, doc, and manifest files across `crates/modules/rustok-distribution` (17,090 LOC). Verified the 6 Universal Logic Dimensions across compile-time module composition registry assembly, deterministic 64-char hex SHA256 composition identity fingerprinting, static promotion code generation with validated work items, inventory stock index bridge and event listener lifecycles, product and product-variant index scan limits and cursors, channel relation resolvers, and query admission routes.
+- **Domain Hygiene & Zero Production Panics Remediation**: Remediated 20 domain hygiene defects across the crate:
+  - Fixed `P0-CRITICAL` transaction rollback swallowing in `src/product_index/channel_relation_resolver.rs` by logging failure diagnostics via `tracing::warn!` instead of `let _ = transaction.rollback().await;`.
+  - Fixed `P1-HIGH` error swallowing in `src/lib.rs` by safely omitting unused extensions in non-ai build configurations via `_extensions` parameter naming.
+  - Remediated 18 `P1-HIGH` production `.expect()` calls in `channel_index.rs`, `product_variant_index.rs`, `inventory_index/source.rs`, `product_index/absence.rs`, `product_index/product.rs`, `attribute_terms.rs`, `channel_relation_resolver.rs`, and `channel_visibility.rs` using safe fallback pattern matching and typed domain error returns (`IndexSourceFailure::retryable` / `permanent`, `ProductSalesChannelRelationResolverError::InvalidPage`, `i64::try_from`).
+  - Derived `Debug, Clone, PartialEq, Eq` on `ProductIndexRefreshDelivery<T>`.
+  - Added `features = ["server"]` to `rustok-notifications` dependency in `Cargo.toml`.
+- **Contract Accuracy & Expanded Test Surface**: Standardized `Cargo.toml` with `rust-version.workspace = true`, `repository.workspace = true`, and `readme = "README.md"`. Enriched `CRATE_API.md` with explicit `## Public Surface` and 7 mandatory contract sections. Expanded `src/contract_tests.rs` from 1 to 7 comprehensive contract test suites verifying `CRATE_API.md` section markers, composition identity hash stability, module trait derivations, static distribution constants, error formatting, manifest serialization roundtrips, and core module registry coverage (16 total tests passing).
+- **Verification Evidence**:
+  - `cargo test -p rustok-distribution`: 16/16 tests passed (15 lib + 1 integration, 0 failures).
+  - `cargo clippy --no-deps -p rustok-distribution --all-targets --all-features --target-dir target/audit -- -D warnings`: 0 warnings, 0 errors.
+  - `python scripts/verify/verify-domain-hygiene.py --path crates/modules/rustok-distribution/src`: 30/30 files scanned, 0 issues detected.
+  - `python scripts/verify/verify-remediation-gate.py --staged --skip-cargo`: ALL GATES PASSED.
+
 ## FS-12 `crates/modules/rustok-customer/admin` audit — 2026-11-08 (completed)
 
 - **Comprehensive Behavioral & Logic Audit**: Systematically inspected all 15 source, doc, and test files across `crates/modules/rustok-customer/admin` (3,177 LOC). Verified the 6 Universal Logic Dimensions across FFA boundary invariants (pure `core/` business logic without Leptos/UI imports, pure UI rendering without domain logic), customer administration shell view-models, list header view-models, form snapshots and draft inputs, validated submit command lifecycles (email presence precondition and effective host locale enforcement), and grid column filter models.
@@ -995,7 +1011,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [admin](../../crates/modules/rustok-customer/admin) | `modules` | 10 | 3,177 | 2026-11-08 05:09 | Round 2 FS-12 audit: standardized Cargo.toml, derived PartialEq/Eq for all models and ApiError, replaced let _ = with drop() in native_server_adapter, enriched CRATE_API.md, expanded contract_tests.rs to 19 tests, 0 clippy warnings |
 | [ ] | [rustok-deal](../../crates/modules/rustok-deal) | `modules` | 18 | 970 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-deal/admin) | `modules` | 6 | 312 | None |  |
-| [ ] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 41 | 17,090 | None |  |
+| [x] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 41 | 17,315 | 2026-11-08 06:30 | Round 2 FS-13 audit: standardized Cargo.toml, eliminated 20 domain hygiene issues (1 rollback swallow, 1 unused swallow, 18 expect panics), enriched CRATE_API.md, expanded contract_tests.rs to 16 passing tests, 0 clippy warnings |
 | [ ] | [rustok-docs](../../crates/modules/rustok-docs) | `modules` | 23 | 3,821 | None |  |
 | [ ] | [rustok-email](../../crates/modules/rustok-email) | `modules` | 8 | 1,131 | None |  |
 | [ ] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 13 | 883 | None |  |

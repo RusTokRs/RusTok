@@ -260,8 +260,10 @@ impl ProductVariantPostgresIndexSource {
         request: &IndexSourceScanRequest,
         cursor: Option<&ProductVariantCursor>,
     ) -> Result<Vec<QueryResult>, IndexSourceFailure> {
-        let fetch_limit = i64::try_from(request.limit() + 1)
-            .expect("Index source page limit is bounded below i64::MAX");
+        let fetch_limit = match i64::try_from(request.limit().saturating_add(1)) {
+            Ok(limit) => limit,
+            Err(_) => return Err(permanent("scan_limit_overflow")),
+        };
         let (sql, values): (String, Vec<Value>) = match cursor {
             Some(cursor) => (
                 format!(
@@ -620,11 +622,23 @@ fn optional_string_value(value: Option<String>) -> IndexValue {
 }
 
 fn retryable(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::retryable(code).expect("static ProductVariant source retry code is valid")
+    match IndexSourceFailure::retryable(code) {
+        Ok(failure) => failure,
+        Err(_) => match IndexSourceFailure::retryable("internal_error") {
+            Ok(fallback) => fallback,
+            Err(_) => unreachable!("internal_error is a valid machine name"),
+        },
+    }
 }
 
 fn permanent(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::permanent(code).expect("static ProductVariant source failure code is valid")
+    match IndexSourceFailure::permanent(code) {
+        Ok(failure) => failure,
+        Err(_) => match IndexSourceFailure::permanent("internal_error") {
+            Ok(fallback) => fallback,
+            Err(_) => unreachable!("internal_error is a valid machine name"),
+        },
+    }
 }
 
 #[cfg(test)]

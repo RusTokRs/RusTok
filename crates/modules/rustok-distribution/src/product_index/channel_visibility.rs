@@ -21,11 +21,13 @@ impl ProductChannelVisibility {
     pub(crate) fn freshness_key(&self) -> String {
         match self {
             Self::Unrestricted => "all".to_owned(),
-            Self::Restricted(slugs) => format!(
-                "restricted:{}",
-                serde_json::to_string(slugs)
-                    .expect("canonical Product channel visibility strings are serializable")
-            ),
+            Self::Restricted(slugs) => {
+                let serialized = match serde_json::to_string(slugs) {
+                    Ok(s) => s,
+                    Err(_) => "[]".to_owned(),
+                };
+                format!("restricted:{serialized}")
+            }
         }
     }
 }

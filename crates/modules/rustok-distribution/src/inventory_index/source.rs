@@ -11,7 +11,7 @@ use rustok_index::{
 use rustok_inventory::source_history::{
     InventorySourceError, InventorySourceHistory, InventorySourceRecord, MAX_SOURCE_PAGE,
 };
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend};
+use sea_orm::{DatabaseConnection, DbBackend};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -340,10 +340,21 @@ fn owner_failure(error: InventorySourceError) -> IndexSourceFailure {
 }
 
 fn permanent(code: &'static str) -> IndexSourceFailure {
-    // INVARIANT: every caller passes a bounded, literal machine code declared in this module.
-    IndexSourceFailure::permanent(code).expect("literal Inventory Index failure code is valid")
+    match IndexSourceFailure::permanent(code) {
+        Ok(failure) => failure,
+        Err(_) => match IndexSourceFailure::permanent("internal_error") {
+            Ok(fallback) => fallback,
+            Err(_) => unreachable!("internal_error is a valid machine name"),
+        },
+    }
 }
+
 fn retryable(code: &'static str) -> IndexSourceFailure {
-    // INVARIANT: every caller passes a bounded, literal machine code declared in this module.
-    IndexSourceFailure::retryable(code).expect("literal Inventory Index failure code is valid")
+    match IndexSourceFailure::retryable(code) {
+        Ok(failure) => failure,
+        Err(_) => match IndexSourceFailure::retryable("internal_error") {
+            Ok(fallback) => fallback,
+            Err(_) => unreachable!("internal_error is a valid machine name"),
+        },
+    }
 }

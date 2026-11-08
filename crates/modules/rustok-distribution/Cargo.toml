@@ -2,7 +2,10 @@
 name = "rustok-distribution"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
 description = "Selected RusToK distribution module composition"
 
 [package.metadata.docs.rs]
@@ -124,7 +127,7 @@ rustok-content-orchestration.workspace = true
 rustok-blog = { workspace = true, optional = true }
 rustok-reactions = { path = "../rustok-reactions", optional = true }
 rustok-forum = { workspace = true, optional = true }
-rustok-notifications = { workspace = true, optional = true }
+rustok-notifications = { workspace = true, optional = true, features = ["server"] }
 rustok-newsletter = { workspace = true, optional = true }
 rustok-comments = { workspace = true, optional = true }
 rustok-pages = { workspace = true, optional = true }
@@ -147,6 +150,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

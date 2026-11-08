@@ -151,11 +151,11 @@ impl ProductSalesChannelRelationResolver {
         if has_more {
             product_ids.truncate(limit);
         }
-        let next_product_id = has_more.then(|| {
-            *product_ids
-                .last()
-                .expect("lookahead implies at least one processed Product")
-        });
+        let next_product_id = if has_more {
+            product_ids.last().copied()
+        } else {
+            None
+        };
 
         for product_id in product_ids {
             match self.reconcile_product(tenant_id, product_id).await {
@@ -206,7 +206,9 @@ impl ProductSalesChannelRelationResolver {
                 Ok(observation)
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
+                if let Err(rb_err) = transaction.rollback().await {
+                    tracing::warn!(%rb_err, "failed to rollback transaction during channel relation resolution");
+                }
                 Err(error)
             }
         }
@@ -219,7 +221,7 @@ impl ProductSalesChannelRelationResolver {
         limit: usize,
     ) -> Result<Vec<Uuid>, ProductSalesChannelRelationResolverError> {
         let limit =
-            i64::try_from(limit).expect("resolver page lookahead is bounded below i64::MAX");
+            i64::try_from(limit).map_err(|_| ProductSalesChannelRelationResolverError::InvalidPage)?;
         let (sql, values) = match after_product_id {
             Some(after_product_id) => (
                 "SELECT id FROM products WHERE tenant_id = $1 AND id > $2 ORDER BY id ASC LIMIT $3",
@@ -316,8 +318,8 @@ async fn resolve_channel_ids(
     tenant_id: Uuid,
     visibility: &ProductChannelVisibility,
 ) -> Result<Vec<Uuid>, ProductSalesChannelRelationResolverError> {
-    let fetch_limit = i64::try_from(MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS + 1)
-        .expect("relation target limit is bounded below i64::MAX");
+    let fetch_limit = i64::try_from(MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS.saturating_add(1))
+        .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?;
     let (sql, values) = channel_resolution_query(tenant_id, visibility, fetch_limit);
     let rows = transaction
         .query_all_raw(Statement::from_sql_and_values(

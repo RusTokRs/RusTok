@@ -233,9 +233,21 @@ fn non_negative_u64(value: i64) -> Result<u64, IndexSourceFailure> {
 }
 
 fn retryable(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::retryable(code).expect("static Product absence retry code is valid")
+    match IndexSourceFailure::retryable(code) {
+        Ok(failure) => failure,
+        Err(_) => match IndexSourceFailure::retryable("internal_error") {
+            Ok(fallback) => fallback,
+            Err(_) => unreachable!("internal_error is a valid machine name"),
+        },
+    }
 }
 
 fn permanent(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::permanent(code).expect("static Product absence failure code is valid")
+    match IndexSourceFailure::permanent(code) {
+        Ok(failure) => failure,
+        Err(_) => match IndexSourceFailure::permanent("internal_error") {
+            Ok(fallback) => fallback,
+            Err(_) => unreachable!("internal_error is a valid machine name"),
+        },
+    }
 }

@@ -35,20 +35,18 @@ pub use generation::{
     StaticDistributionGenerationError, generate_static_distribution,
 };
 
-fn register_runtime_bridges(extensions: &mut ModuleRuntimeExtensions) -> rustok_core::Result<()> {
+fn register_runtime_bridges(_extensions: &mut ModuleRuntimeExtensions) -> rustok_core::Result<()> {
     #[cfg(feature = "ai-translation")]
     {
-        if extensions.contains::<rustok_translation::SharedMachineTranslationPortFactory>() {
+        if _extensions.contains::<rustok_translation::SharedMachineTranslationPortFactory>() {
             return Err(rustok_core::Error::Validation(
                 "machine translation runtime factory is already registered".to_string(),
             ));
         }
-        extensions.insert(rustok_translation::SharedMachineTranslationPortFactory(
+        _extensions.insert(rustok_translation::SharedMachineTranslationPortFactory(
             std::sync::Arc::new(rustok_ai_translation::AiMachineTranslationPortFactory),
         ));
     }
-    #[cfg(not(feature = "ai-translation"))]
-    let _ = extensions;
     Ok(())
 }
 

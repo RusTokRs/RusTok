@@ -267,10 +267,11 @@ pub(crate) fn localized_text_filter(
 
 #[cfg(test)]
 pub(crate) fn attribute_terms_path() -> FieldPath {
-    FieldPath::new(
-        FieldName::new(PRODUCT_ATTRIBUTE_TERMS_FIELD)
-            .expect("static Product attribute term field name must be valid"),
-    )
+    let field = match FieldName::new(PRODUCT_ATTRIBUTE_TERMS_FIELD) {
+        Ok(name) => name,
+        Err(_) => unreachable!("static Product attribute term field name must be valid"),
+    };
+    FieldPath::new(field)
 }
 
 #[cfg(test)]
