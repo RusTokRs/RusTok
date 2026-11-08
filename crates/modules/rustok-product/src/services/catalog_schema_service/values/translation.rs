@@ -1288,7 +1288,7 @@ fn snapshot_from_owner(
             .transpose()?,
         fields: vec![TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
-                key: FieldKey::new(VALUE_FIELD).expect("static Product value field must be valid: invariant validated at startup"),
+                key: field_key_or_invariant(VALUE_FIELD)?,
                 profile: TranslationValueProfile::PlainText,
                 strategy: TranslationStrategy::Translate,
                 classification: TranslationDataClassification::TenantPrivate,

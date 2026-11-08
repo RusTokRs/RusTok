@@ -898,7 +898,7 @@ fn translation_fields(
     let mut fields = Vec::with_capacity(items.len() + 1);
     fields.push(field_snapshot(
         // INVARIANT: static field key "name" is a valid non-empty ASCII identifier.
-        FieldKey::new(MENU_NAME_FIELD_KEY).expect("static Navigation field key must be valid: invariant validated at startup"),
+        field_key_or_invariant(MENU_NAME_FIELD_KEY)?,
         source.menu_translation.name.as_str(),
         target.map(|rows| rows.menu_translation.name.as_str()),
     ));

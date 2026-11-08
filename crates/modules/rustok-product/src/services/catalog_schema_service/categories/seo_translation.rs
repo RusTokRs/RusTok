@@ -1310,13 +1310,13 @@ fn snapshot_from_owner(
             owner.source.meta_title.as_deref().unwrap_or_default(),
             target.and_then(|copy| copy.meta_title.clone()),
             Some(255),
-        ),
+        )?,
         seo_field(
             META_DESCRIPTION_FIELD,
             owner.source.meta_description.as_deref().unwrap_or_default(),
             target.and_then(|copy| copy.meta_description.clone()),
             Some(500),
-        ),
+        )?,
     ];
     let snapshot = TranslationResourceSnapshot {
         summary: summary_from_owner(owner)?,
@@ -1345,10 +1345,10 @@ fn seo_field(
     source_value: &str,
     exact_target_value: Option<String>,
     max_characters: Option<u32>,
-) -> TranslationFieldSnapshot {
-    TranslationFieldSnapshot {
+) -> Result<TranslationFieldSnapshot, PortError> {
+    Ok(TranslationFieldSnapshot {
         descriptor: TranslationFieldDescriptor {
-            key: FieldKey::new(key).expect("static Product Category SEO field must be valid: invariant validated at startup"),
+            key: field_key_or_invariant(key)?,
             profile: TranslationValueProfile::SeoText,
             strategy: TranslationStrategy::Translate,
             classification: TranslationDataClassification::Public,
@@ -1361,7 +1361,7 @@ fn seo_field(
         exact_target_value,
         source_hash: field_hash(source_value),
         protected_tokens: Vec::new(),
-    }
+    })
 }
 
 fn merged_target(
