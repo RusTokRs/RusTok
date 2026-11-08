@@ -156,6 +156,8 @@ def scan_file(file_path: Path) -> list[Finding]:
 
     lines = content.splitlines()
     in_test_module_brace_depth: int | None = None
+    in_test_fn_brace_depth: int | None = None
+    pending_test_fn = False
     in_loop_brace_depth: int | None = None
     in_async_fn_brace_depth: int | None = None
     active_sync_guards: dict[str, tuple[int, str, int]] = {}  # guard_name -> (line_num, line_str, brace_depth)
@@ -193,6 +195,13 @@ def scan_file(file_path: Path) -> list[Finding]:
         open_braces = clean_for_braces.count("{")
         close_braces = clean_for_braces.count("}")
 
+        if "#[test]" in stripped or "#[tokio::test]" in stripped:
+            pending_test_fn = True
+
+        if pending_test_fn and ("fn " in stripped or "async fn " in stripped) and "{" in stripped:
+            in_test_fn_brace_depth = current_brace_depth
+            pending_test_fn = False
+
         if "#[cfg(test)]" in stripped or re.search(r'\bmod\s+tests?\b', stripped):
             in_test_module_brace_depth = current_brace_depth
 
@@ -202,6 +211,7 @@ def scan_file(file_path: Path) -> list[Finding]:
         is_test_context = (
             is_test_file
             or (in_test_module_brace_depth is not None and current_brace_depth >= in_test_module_brace_depth)
+            or (in_test_fn_brace_depth is not None and current_brace_depth >= in_test_fn_brace_depth)
         )
 
         # Track async function entry
@@ -501,9 +511,20 @@ def scan_file(file_path: Path) -> list[Finding]:
         if current_brace_depth < 0:
             current_brace_depth = 0
 
+        # Lexical scope exit: drop any lock guards declared in inner blocks that have closed
+        guards_to_drop = [
+            g_name for g_name, g_info in active_sync_guards.items()
+            if g_info[2] > current_brace_depth
+        ]
+        for g_name in guards_to_drop:
+            active_sync_guards.pop(g_name, None)
+
         # Clean up scopes
         if in_test_module_brace_depth is not None and current_brace_depth <= in_test_module_brace_depth:
             in_test_module_brace_depth = None
+
+        if in_test_fn_brace_depth is not None and current_brace_depth <= in_test_fn_brace_depth:
+            in_test_fn_brace_depth = None
 
         if in_loop_brace_depth is not None and current_brace_depth <= in_loop_brace_depth:
             in_loop_brace_depth = None

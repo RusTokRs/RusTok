@@ -283,54 +283,171 @@ flowchart TD
 
 ---
 
+---
+
+### Pattern 16: Transaction Rollback Swallowing & Advisory Lock Retention (`P-TXN-ROLLBACK-SWALLOW`)
+* **Category:** Concurrency, Resource Leaks & Transaction Integrity
+* **Problem:** Suppressing transaction rollback errors with `let _ = transaction.rollback().await;` causes serious concurrency anomalies. If rollback fails or is silently ignored, database locks (such as PostgreSQL session or transaction advisory locks `pg_advisory_xact_lock`) remain held until the connection is returned to the pool or dropped, leading to mysterious tenant-wide lock contention.
+* **Pattern Solution:**
+  1. Never suppress `rollback().await` with `let _ =`.
+  2. Explicitly inspect the rollback result and log errors with contextual fields:
+     ```rust
+     if let Err(rollback_err) = transaction.rollback().await {
+         tracing::warn!(%rollback_err, "failed to roll back transaction cleanly");
+     }
+     ```
+  3. Where appropriate, rely on SeaORM's automatic `Drop` implementation to trigger rollback without writing an unhandled expression.
+
+---
+
+### Pattern 17: Synchronous Lock Guard Across Await Points (`P-SYNC-LOCK-AWAIT`)
+* **Category:** Async Concurrency & Thread Pool Starvation
+* **Problem:** Acquiring a synchronous mutex or read/write lock (`std::sync::Mutex`, `parking_lot::Mutex`, `std::sync::RwLock`) and holding its guard across an `.await` boundary blocks the underlying OS thread in Tokio's multi-threaded runtime. This can starve the worker pool, cause circular deadlocks between tasks, and violate `Send` bounds on futures.
+* **Pattern Solution:**
+  1. Use asynchronous locks (`tokio::sync::Mutex`, `tokio::sync::RwLock`) when data must be accessed across `.await` points.
+  2. If using synchronous locks for in-memory structures, restrict the guard's lifetime to a narrow synchronous sub-block before awaiting:
+     ```rust
+     let snapshot = {
+         let guard = self.cache.lock().unwrap();
+         guard.clone()
+     }; // guard is dropped here
+     remote_client.send(snapshot).await?;
+     ```
+
+---
+
+### Pattern 18: Unprepared SQL String Interpolation (`P-RAW-SQL-INTERP`)
+* **Category:** Security, Preconditions & Injection Prevention
+* **Problem:** Calling `execute_unprepared(&format!(...))` or formatting query strings directly bypasses parameterization. Even when arguments appear internal, string interpolation creates SQL injection vulnerabilities, breaks query caching, and corrupts query semantics when strings contain unescaped characters.
+* **Pattern Solution:**
+  1. Never format raw values into SQL strings.
+  2. Use parameterized queries via SeaORM or SeaQuery:
+     ```rust
+     use sea_orm::{ConnectionTrait, Statement};
+
+     let stmt = Statement::from_sql_and_values(
+         db.get_database_backend(),
+         "UPDATE orders SET status = $1 WHERE id = $2 AND tenant_id = $3",
+         [status.into(), order_id.into(), tenant_id.into()],
+     );
+     db.execute(stmt).await?;
+     ```
+
+---
+
+### Pattern 19: Tenant Isolation Fallback & Identity Leaks (`P-TENANT-FALLBACK-LEAK`)
+* **Category:** Multi-Tenancy & Fail-Closed Security
+* **Problem:** Calling `.unwrap_or_default()` or using default UUIDs (`Uuid::nil()`) on optional tenant context variables silently coerces unauthenticated or cross-tenant requests into the default tenant or zero UUID. This breaks tenant isolation and leaks shared catalog, order, or user state.
+* **Pattern Solution:**
+  1. Multi-tenant operations must fail closed:
+     ```rust
+     let tenant_id = tenant_id.ok_or(DomainError::TenantNotFound)?;
+     ```
+  2. Do not use dummy nil UUIDs as wildcard or fallback selectors.
+
+---
+
+### Pattern 20: Transactional Outbox Decoupling (`P-OUTBOX-DETACHED`)
+* **Category:** Side-Effect Completeness & Atomicity
+* **Problem:** Invoking `event_bus.publish()` directly within transactional business workflows creates a two-phase commit defect. If the subsequent database transaction fails or is aborted, the event was already published to the message broker, causing orphan consumer processing and data inconsistencies across microservices.
+* **Pattern Solution:**
+  1. In transactional scopes, always write outbox events through the transaction handle using `publish_in_tx`:
+     ```rust
+     event_bus.publish_in_tx(&txn, domain_event).await?;
+     txn.commit().await?;
+     ```
+  2. The outbox relay worker guarantees that the event is dispatched only after the transaction successfully commits.
+
+---
+
+### Pattern 21: UI Reactive Signal Invalidation (`P-LEPTOS-DEAD-SIGNAL`)
+* **Category:** Client Architecture & UI Reactivity
+* **Problem:** Calling `let _ = signal.get();` outside of a reactive tracking context (such as `view!` or `create_effect`) reads the signal value without establishing a reactive subscriber dependency. Subsequent signal updates will not trigger UI rerendering, causing silent UI desynchronization.
+* **Pattern Solution:**
+  1. Bind signal dependencies inside `create_effect`:
+     ```rust
+     create_effect(move |_| {
+         signal.get();
+         // run dependent side-effect or data reload
+     });
+     ```
+  2. In Leptos views, reference signals directly within view macros: `move || signal.get()`.
+
+---
+
+### Pattern 22: Lingering Incomplete Code & Work Markers (`P-UNFINISHED-CODE`)
+* **Category:** Production Readiness & Maintenance Integrity
+* **Problem:** Leaving `todo!()`, `FIXME`, or `TODO` markers in production service code risks runtime panics (for `todo!()`) or signals unhandled edge cases that bypass platform invariants.
+* **Pattern Solution:**
+  1. Completely implement domain logic, error variants, and edge-case handling before merging.
+  2. If an architectural capability requires multi-phase rollout, track it formally in the owning ADR and `continuous-review-ledger.md` rather than scattering lingering inline stubs.
+
+---
+
 ## 3. Summary Matrix
 
-| ID | Pattern Name | Dimension | Detection Command |
+| ID | Pattern Name | Dimension | Detection / Verification |
 |---|---|---|---|
 | `P-SCOPE-GENERIC` | Scope-Generic Deduplication | Algorithmic / Structural | Multiple `insert_*_raw` or `load_*_layers` across services |
-| `P-DB-CHECK` | DB-Enforced State Invariants | State Transitions | Look for status/deleted_at without SQL `CHECK` |
+| `P-DB-CHECK` | DB-Enforced State Invariants | State Transitions | Look for status/deleted_at without SQL `CHECK` constraints |
 | `P-LOCK-ORDER` | Lock-Before-Check Concurrency | Concurrency / TOCTOU | Check before `lock_` or `pg_advisory_xact_lock` |
-| `P-FAIL-CLOSED` | Fail-Closed Security Floor | Bounds / Preconditions | `PermissionScope::None => Ok` or missing global check |
-| `P-ID-ENTROPY` | Bounded Identifier Entropy | Calculation Correctness | `grep -rn 'VARCHAR(12\|short_id.*12'` |
-| `P-ANTI-SWALLOW` | Zero Error Swallowing | Branch Completeness | `grep -rn 'let _ =' crates/modules/<domain>/src` |
-| `P-ZERO-INCLUDE` | Module Tree Decoupling | Code Quality | `grep -rn 'include!' crates/modules/<domain>/src` |
+| `P-FAIL-CLOSED` | Fail-Closed Security Floor | Bounds / Preconditions | `PermissionScope::None => Ok` or missing global authorization check |
+| `P-ID-ENTROPY` | Bounded Identifier Entropy | Calculation Correctness | `VARCHAR(12)` or `[..12]` short ID patterns |
+| `P-ANTI-SWALLOW` | Zero Error Swallowing | Branch Completeness | `let _ =` error suppression and `black_box` compiler abuse |
+| `P-TXN-ROLLBACK-SWALLOW` | Transaction Rollback Swallowing | Concurrency & Leaks | `let _ = txn.rollback().await;` holding advisory locks until drop |
+| `P-ZERO-INCLUDE` | Module Tree Decoupling | Code Quality | `include!("*.rs")` file-stitching macros |
 | `P-CONFIG-BOUND` | Configuration Bounding | Preconditions / Anti-DoS | `put_settings` handler missing `.validate()` |
-| `P-DEAD-TWIN` | Dead Twin Elimination | Maintenance Integrity | Two parallel services with overlapping responsibilities |
+| `P-DEAD-TWIN` | Dead Twin Elimination | Maintenance Integrity | Module-level `#[allow(dead_code)]` or parallel redundant services |
 | `P-BOUNDED-TREE` | Bounded Tree Projections | Memory Safety | Recursive query without depth cap or node limit |
-| `P-BATCH-QUERY` | Transactional Batching | Performance / Concurrency | `grep -rn "\.one(txn)" ... -B2 \| grep "for.*in"` |
-| `P-ZERO-PANIC-PROD` | Zero Runtime Panics | Preconditions / Reliability | `grep -rn "\.expect(" ... \| grep -v tests` |
-| `P-HOTPATH-ALLOC` | Allocation Hygiene | Performance / Memory | `.clone()` before validation calls in services |
-| `P-SQLSTATE-DISCRIM` | SQLSTATE Error Mapping | Error Robustness | `grep -rn "message.contains(" ... in error.rs` |
-| `P-STRUCTURED-TRACE` | Contextual Trace Spans | Observability | Missing `#[instrument]` with `%tenant_id` on services |
+| `P-BATCH-QUERY` | Transactional Batching | Performance / Concurrency | `.one(txn)` / `.all(txn)` queries executed inside loop bodies |
+| `P-ZERO-PANIC-PROD` | Zero Runtime Panics | Preconditions / Reliability | `.expect()` / `.unwrap()` in production execution paths |
+| `P-HOTPATH-ALLOC` | Allocation Hygiene | Performance / Memory | Input `.clone()` before validation gates in services |
+| `P-SQLSTATE-DISCRIM` | SQLSTATE Error Mapping | Error Robustness | Raw message substring checks (`msg.contains`) instead of SQLSTATE |
+| `P-STRUCTURED-TRACE` | Contextual Trace Spans | Observability | Missing `#[instrument]` with `%tenant_id` on mutation services |
+| `P-SYNC-LOCK-AWAIT` | Sync Lock Across Await | Concurrency & Deadlocks | Synchronous lock guard held across `.await` in async code |
+| `P-RAW-SQL-INTERP` | Unprepared SQL Interpolation | Security & Integrity | `execute_unprepared(&format!(...))` injection risk |
+| `P-TENANT-FALLBACK-LEAK` | Tenant Fallback Leakage | Multi-Tenancy & Security | `tenant.unwrap_or_default()` breaking tenant isolation |
+| `P-OUTBOX-DETACHED` | Transactional Outbox Decoupling | Side-Effect Completeness | `event_bus.publish()` without `_in_tx` in transactional contexts |
+| `P-LEPTOS-DEAD-SIGNAL` | Reactive Signal Invalidation | UI Reactivity | `let _ = signal.get()` outside reactive contexts |
+| `P-UNFINISHED-CODE` | Lingering Incomplete Markers | Production Readiness | `todo!()`, `FIXME`, or `TODO` markers in production code |
 
 ---
 
 ## 4. Automated Verification Scanner
 
-The platform provides a dedicated automated verification scanner to audit any domain module or crate against these patterns:
+The platform provides a dedicated automated verification scanner to audit any crate or module against these patterns:
 
 ```bash
-# Scan a specific domain module (e.g. rustok-commerce, rustok-forum, rustok-index)
-python scripts/verify/verify-domain-hygiene.py --crate rustok-commerce
+# Scan a specific domain module (smart resolution: forum -> crates/modules/rustok-forum)
+python scripts/verify/verify-domain-hygiene.py --crate forum
 
-# Scan a specific path
-python scripts/verify/verify-domain-hygiene.py --path crates/modules/rustok-commerce/src
+# Scan multiple crates at once
+python scripts/verify/verify-domain-hygiene.py --crate commerce,forum,index
 
-# Scan all platform domain modules
-python scripts/verify/verify-domain-hygiene.py --all-modules
+# Scan git staged files (instant pre-commit check)
+python scripts/verify/verify-domain-hygiene.py --staged
 
-# Enforce in CI / pre-commit (returns exit code 1 if any issues are detected)
-python scripts/verify/verify-domain-hygiene.py --crate rustok-commerce --strict
+# Scan all modified files in working tree
+python scripts/verify/verify-domain-hygiene.py --changed
+
+# Scan changes relative to a base branch
+python scripts/verify/verify-domain-hygiene.py --diff main
+
+# Filter by minimum severity (P0 = critical only, P1 = high+, P2 = all)
+python scripts/verify/verify-domain-hygiene.py --crate commerce --severity P0
+
+# Display ready-to-copy code remediation suggestions
+python scripts/verify/verify-domain-hygiene.py --crate commerce --suggest-fixes
+
+# Export machine-readable JSON or GitHub-flavored markdown report artifact
+python scripts/verify/verify-domain-hygiene.py --crate commerce --markdown-report commerce_hygiene.md
+python scripts/verify/verify-domain-hygiene.py --crate commerce --json
+
+# Enforce in CI / pre-commit (exits with code 1 if issues are detected)
+npm run verify:hygiene:strict
 ```
 
-The scanner continuously checks for:
-- File-stitching `include!("*.rs")` macros (`P-ZERO-INCLUDE`).
-- Error swallowing via `let _ =` and dummy `black_box` compiler suppressions (`P-ANTI-SWALLOW`).
-- Production runtime panics via `.expect()` or `.unwrap()` (`P-ZERO-PANIC-PROD`).
-- Deprecated 48-bit short IDs (`VARCHAR(12)` or `[..12]`) (`P-ID-ENTROPY`).
-- RBAC authorization leakages (`PermissionScope::None => Ok`) (`P-FAIL-CLOSED`).
-- Brittle error string matching in `error.rs` (`P-SQLSTATE-DISCRIM`).
-- Transactional N+1 loops (`.one(txn)` inside `for` loops) (`P-BATCH-QUERY`).
+The scanner runs out-of-the-box using the Python 3 standard library without third-party dependencies, making it universally available in developer terminals and CI runners.
 
 ---
 
