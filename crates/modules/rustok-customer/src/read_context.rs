@@ -104,6 +104,7 @@ impl CustomerReadDiagnosticFacts {
 }
 
 /// Canonical in-process customer read provider with retained local outcome context.
+#[derive(Clone, Debug)]
 pub struct InProcessCustomerReadPort {
     inner: CustomerService,
 }

@@ -61,7 +61,7 @@ pub struct CustomerListProjectionRequest {
     pub per_page: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CustomerListProjectionResponse {
     pub items: Vec<CustomerResponse>,
     pub total: u64,

@@ -21,3 +21,23 @@ pub enum CustomerError {
     #[error(transparent)]
     Database(#[from] DbErr),
 }
+
+impl CustomerError {
+    #[must_use]
+    pub fn validation(msg: impl Into<String>) -> Self {
+        Self::Validation(msg.into())
+    }
+
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Validation(_) => "customer.validation_failed",
+            Self::CustomerNotFound(_) => "customer.not_found",
+            Self::CustomerByUserNotFound(_) => "customer.user_not_found",
+            Self::DuplicateEmail(_) => "customer.duplicate_email",
+            Self::DuplicateUserLink(_) => "customer.duplicate_user_link",
+            Self::Profile(_) => "customer.profile_error",
+            Self::Database(_) => "customer.database_error",
+        }
+    }
+}

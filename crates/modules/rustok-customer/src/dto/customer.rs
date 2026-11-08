@@ -44,7 +44,7 @@ pub struct ListCustomersInput {
     pub per_page: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct CustomerResponse {
     pub id: Uuid,
     pub tenant_id: Uuid,
@@ -59,7 +59,7 @@ pub struct CustomerResponse {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CustomerWithProfileResponse {
     pub customer: CustomerResponse,
     pub profile: Option<ProfileSummary>,

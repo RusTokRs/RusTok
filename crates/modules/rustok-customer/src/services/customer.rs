@@ -17,6 +17,7 @@ use crate::dto::{
 use crate::entities;
 use crate::error::{CustomerError, CustomerResult};
 
+#[derive(Clone, Debug)]
 pub struct CustomerService {
     db: DatabaseConnection,
 }
@@ -252,6 +253,7 @@ impl CustomerService {
         Ok(CustomerWithProfileResponse { customer, profile })
     }
 
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, customer_id = %customer_id))]
     pub async fn update_customer(
         &self,
         tenant_id: Uuid,
@@ -311,6 +313,7 @@ impl CustomerService {
         self.get_customer(tenant_id, customer_id).await
     }
 
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, user_id = %user_id))]
     pub async fn upsert_customer_for_user(
         &self,
         tenant_id: Uuid,
