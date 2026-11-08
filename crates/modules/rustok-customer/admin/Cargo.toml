@@ -2,7 +2,10 @@
 name = "rustok-customer-admin"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
 description = "Leptos admin UI package for the rustok-customer module"
 
 [package.metadata.docs.rs]

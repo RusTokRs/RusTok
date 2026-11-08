@@ -14,7 +14,7 @@ const CUSTOMER_ADMIN_OWNER: &str = "rustok_customer.admin_transport";
 #[cfg(feature = "ssr")]
 const CUSTOMER_ADMIN_BOUNDARY: &str = "customer_admin_native_transport";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ApiError {
     ServerFn(String),
 }
@@ -527,7 +527,7 @@ async fn customer_list_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (search, page, per_page);
+        drop((search, page, per_page));
         Err(ServerFnError::new(
             "customer/list requires the `ssr` feature",
         ))
@@ -578,7 +578,7 @@ async fn customer_detail_native(customer_id: String) -> Result<CustomerDetail, S
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = customer_id;
+        drop(customer_id);
         Err(ServerFnError::new(
             "customer/detail requires the `ssr` feature",
         ))
@@ -659,7 +659,7 @@ async fn customer_create_native(payload: CustomerDraft) -> Result<CustomerDetail
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = payload;
+        drop(payload);
         Err(ServerFnError::new(
             "customer/create requires the `ssr` feature",
         ))
@@ -747,7 +747,7 @@ async fn customer_update_native(
     }
     #[cfg(not(feature = "ssr"))]
     {
-        let _ = (customer_id, payload);
+        drop((customer_id, payload));
         Err(ServerFnError::new(
             "customer/update requires the `ssr` feature",
         ))

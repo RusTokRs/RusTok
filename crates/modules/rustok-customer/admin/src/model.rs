@@ -1,18 +1,18 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CurrentTenant {
     pub id: String,
     pub slug: String,
     pub name: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CustomerAdminBootstrap {
     pub current_tenant: CurrentTenant,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CustomerList {
     pub items: Vec<CustomerListItem>,
     pub total: u64,
@@ -33,13 +33,13 @@ pub struct CustomerListItem {
     pub updated_at: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CustomerDetail {
     pub customer: CustomerRecord,
     pub profile: Option<CustomerProfileRecord>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CustomerRecord {
     pub id: String,
     pub tenant_id: String,
@@ -55,7 +55,7 @@ pub struct CustomerRecord {
     pub updated_at: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CustomerProfileRecord {
     pub handle: String,
     pub display_name: String,

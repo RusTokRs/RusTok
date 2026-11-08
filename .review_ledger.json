@@ -409,7 +409,7 @@
       "path": "crates/modules/rustok-customer",
       "category": "modules",
       "files": 29,
-      "loc": 5832,
+      "loc": 6207,
       "completed": true,
       "completed_at": "2026-11-08 00:31",
       "notes": "Exhaustive crate inspection of all 23 files, zero-defect remediation: Clone/Debug for CustomerService & InProcessCustomerReadPort, PartialEq for DTOs/projections, CustomerError constructor and code taxonomy, instrument spans on mutation services, CRATE_API enrichment, 28/28 tests passing, 0 clippy warnings"
@@ -419,10 +419,10 @@
       "path": "crates/modules/rustok-customer/admin",
       "category": "modules",
       "files": 10,
-      "loc": 2802,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "loc": 3177,
+      "completed": true,
+      "completed_at": "2026-11-08 05:09",
+      "notes": "Round 2 FS-12 audit: standardized Cargo.toml, derived PartialEq/Eq for all models and ApiError, replaced let _ = with drop() in native_server_adapter, enriched CRATE_API.md, expanded contract_tests.rs to 19 tests, 0 clippy warnings"
     },
     "crates/modules/rustok-distribution": {
       "name": "rustok-distribution",
