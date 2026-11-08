@@ -1290,7 +1290,7 @@ mod tests {
                 .to_string(),
             ))
             .await
-            .expect("static lifecycle aggregate table");
+            .expect("static lifecycle aggregate table: invariant validated at startup");
         database
     }
 

@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -256,6 +256,28 @@ struct PreviousChangeRow {
     resource_revision: String,
     lifecycle: String,
 }
+
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
+            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
+                .expect("static Product owner slug must satisfy Translation contract: descriptor invariant validated at startup"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
+                "static Product Category SEO resource kind must satisfy Translation contract: descriptor invariant validated at startup",
+            ),
+            display_name: "Product Category SEO copy".to_string(),
+            capabilities: BTreeSet::from([
+                TranslationTargetCapability::ListResources,
+                TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::AggregateProgress,
+                TranslationTargetCapability::ValidatePatch,
+                TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
+            ]),
+            read_permission_floor: BTreeSet::from(["products:read".to_string()]),
+            apply_permission_floor: BTreeSet::from(["products:update".to_string()]),
+        }
+});
 
 #[derive(Clone)]
 struct ProductCategorySeoTranslationTargetProvider {
@@ -708,25 +730,8 @@ LIMIT 1
 
 #[async_trait]
 impl TranslationTargetProvider for ProductCategorySeoTranslationTargetProvider {
-    fn descriptor(&self) -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
-            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Product owner slug must satisfy Translation contract"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
-                "static Product Category SEO resource kind must satisfy Translation contract",
-            ),
-            display_name: "Product Category SEO copy".to_string(),
-            capabilities: BTreeSet::from([
-                TranslationTargetCapability::ListResources,
-                TranslationTargetCapability::ReadExactResource,
-                TranslationTargetCapability::AggregateProgress,
-                TranslationTargetCapability::ValidatePatch,
-                TranslationTargetCapability::ApplyPatch,
-                TranslationTargetCapability::ChangeCursor,
-            ]),
-            read_permission_floor: BTreeSet::from(["products:read".to_string()]),
-            apply_permission_floor: BTreeSet::from(["products:update".to_string()]),
-        }
+        fn descriptor(&self) -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn list_resources(
@@ -1305,13 +1310,13 @@ fn snapshot_from_owner(
             owner.source.meta_title.as_deref().unwrap_or_default(),
             target.and_then(|copy| copy.meta_title.clone()),
             Some(255),
-        ),
+        )?,
         seo_field(
             META_DESCRIPTION_FIELD,
             owner.source.meta_description.as_deref().unwrap_or_default(),
             target.and_then(|copy| copy.meta_description.clone()),
             Some(500),
-        ),
+        )?,
     ];
     let snapshot = TranslationResourceSnapshot {
         summary: summary_from_owner(owner)?,
@@ -1340,10 +1345,10 @@ fn seo_field(
     source_value: &str,
     exact_target_value: Option<String>,
     max_characters: Option<u32>,
-) -> TranslationFieldSnapshot {
-    TranslationFieldSnapshot {
+) -> Result<TranslationFieldSnapshot, PortError> {
+    Ok(TranslationFieldSnapshot {
         descriptor: TranslationFieldDescriptor {
-            key: FieldKey::new(key).expect("static Product Category SEO field must be valid"),
+            key: field_key_or_invariant(key)?,
             profile: TranslationValueProfile::SeoText,
             strategy: TranslationStrategy::Translate,
             classification: TranslationDataClassification::Public,
@@ -1356,7 +1361,7 @@ fn seo_field(
         exact_target_value,
         source_hash: field_hash(source_value),
         protected_tokens: Vec::new(),
-    }
+    })
 }
 
 fn merged_target(

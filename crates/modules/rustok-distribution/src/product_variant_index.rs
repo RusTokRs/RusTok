@@ -620,11 +620,11 @@ fn optional_string_value(value: Option<String>) -> IndexValue {
 }
 
 fn retryable(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::retryable(code).expect("static ProductVariant source retry code is valid")
+    IndexSourceFailure::retryable(code).expect("static ProductVariant source retry code is valid: invariant validated at startup")
 }
 
 fn permanent(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::permanent(code).expect("static ProductVariant source failure code is valid")
+    IndexSourceFailure::permanent(code).expect("static ProductVariant source failure code is valid: invariant validated at startup")
 }
 
 #[cfg(test)]

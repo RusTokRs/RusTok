@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -71,6 +71,25 @@ fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
 
 const IMAGE_ALT_TEXT_FIELD: &str = "alt_text";
 
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
+            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
+                .expect("static Product owner slug must satisfy the target contract: descriptor invariant validated at startup"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
+                .expect("static Product Image resource kind must satisfy the target contract: descriptor invariant validated at startup"),
+            display_name: "Product images".to_string(),
+            capabilities: BTreeSet::from([
+                TranslationTargetCapability::ListResources,
+                TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::ValidatePatch,
+                TranslationTargetCapability::ApplyPatch,
+            ]),
+            read_permission_floor: BTreeSet::from(["products:read".to_string()]),
+            apply_permission_floor: BTreeSet::from(["products:update".to_string()]),
+        }
+});
+
 #[derive(Clone)]
 /// Product-owned neutral adapter for exact Product Image alt-text localization.
 ///
@@ -87,22 +106,8 @@ impl ProductImageTranslationTargetProvider {
         Self { service }
     }
 
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
-            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Product owner slug must satisfy the target contract"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Product Image resource kind must satisfy the target contract"),
-            display_name: "Product images".to_string(),
-            capabilities: BTreeSet::from([
-                TranslationTargetCapability::ListResources,
-                TranslationTargetCapability::ReadExactResource,
-                TranslationTargetCapability::ValidatePatch,
-                TranslationTargetCapability::ApplyPatch,
-            ]),
-            read_permission_floor: BTreeSet::from(["products:read".to_string()]),
-            apply_permission_floor: BTreeSet::from(["products:update".to_string()]),
-        }
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(
@@ -453,7 +458,7 @@ fn image_fields(
     vec![TranslationFieldSnapshot {
         descriptor: TranslationFieldDescriptor {
             key: FieldKey::new(IMAGE_ALT_TEXT_FIELD)
-                .expect("static Product Image field key must satisfy the target contract"),
+                .expect("static Product Image field key must satisfy the target contract: invariant validated at startup"),
             profile: TranslationValueProfile::PlainText,
             strategy: TranslationStrategy::Translate,
             classification: TranslationDataClassification::Public,

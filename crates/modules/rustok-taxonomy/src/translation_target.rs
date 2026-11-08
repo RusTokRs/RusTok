@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use async_trait::async_trait;
@@ -142,6 +142,27 @@ impl TaxonomyModuleTermTranslationOwnerRegistry {
     }
 }
 
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
+            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
+                .expect("static owner slug must satisfy the target contract: descriptor invariant validated at startup"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
+                .expect("static resource kind must satisfy the target contract: descriptor invariant validated at startup"),
+            display_name: "Taxonomy term".to_string(),
+            capabilities: BTreeSet::from([
+                TranslationTargetCapability::ListResources,
+                TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::AggregateProgress,
+                TranslationTargetCapability::ValidatePatch,
+                TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
+            ]),
+            read_permission_floor: BTreeSet::from(["taxonomy:read".to_string()]),
+            apply_permission_floor: BTreeSet::from(["taxonomy:update".to_string()]),
+        }
+});
+
 #[derive(Clone)]
 /// Owner adapter for exact taxonomy term localization. It calls the canonical
 /// Taxonomy service and never exposes owner tables to Translation directly.
@@ -208,24 +229,8 @@ impl TaxonomyTranslationTargetProvider {
         owner.authorize(context, tenant_id, term.kind, term.id, action)
     }
 
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
-            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static owner slug must satisfy the target contract"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static resource kind must satisfy the target contract"),
-            display_name: "Taxonomy term".to_string(),
-            capabilities: BTreeSet::from([
-                TranslationTargetCapability::ListResources,
-                TranslationTargetCapability::ReadExactResource,
-                TranslationTargetCapability::AggregateProgress,
-                TranslationTargetCapability::ValidatePatch,
-                TranslationTargetCapability::ApplyPatch,
-                TranslationTargetCapability::ChangeCursor,
-            ]),
-            read_permission_floor: BTreeSet::from(["taxonomy:read".to_string()]),
-            apply_permission_floor: BTreeSet::from(["taxonomy:update".to_string()]),
-        }
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(
@@ -862,7 +867,7 @@ fn snapshot_from_models(
         target_revision: target
             .map(|translation| opaque_positive_revision(translation.revision, "target_revision"))
             .transpose()?,
-        fields: translation_fields(source, target),
+        fields: translation_fields(source, target)?,
     };
     snapshot.validate().map_err(|error| {
         PortError::invariant_violation("taxonomy.translation_snapshot_invalid", error.to_string())
@@ -882,7 +887,7 @@ fn taxonomy_identity(term_id: Uuid) -> Result<TranslationResourceIdentity, PortE
 fn translation_fields(
     source: &TranslationModel,
     target: Option<&TranslationModel>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
             "name",
@@ -918,9 +923,9 @@ fn translation_fields(
     .into_iter()
     .map(
         |(key, source_value, target_value, profile, strategy, required, ai_export_allowed, max)| {
-            TranslationFieldSnapshot {
+            Ok(TranslationFieldSnapshot {
                 descriptor: TranslationFieldDescriptor {
-                    key: FieldKey::new(key).expect("static field key must satisfy the contract"),
+                    key: field_key_or_invariant(key)?,
                     profile,
                     strategy,
                     classification: TranslationDataClassification::Public,

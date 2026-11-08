@@ -394,9 +394,9 @@ async fn translation_target_applies_replays_and_tracks_exact_page_metadata() {
 fn page_identity(page_id: Uuid) -> rustok_translation_targets::TranslationResourceIdentity {
     rustok_translation_targets::TranslationResourceIdentity {
         owner_slug: rustok_translation_targets::OwnerSlug::new("pages")
-            .expect("static owner slug should be valid"),
+            .expect("static owner slug should be valid: invariant validated at startup"),
         resource_kind: rustok_translation_targets::ResourceKind::new("page_metadata")
-            .expect("static resource kind should be valid"),
+            .expect("static resource kind should be valid: invariant validated at startup"),
         resource_id: rustok_translation_targets::ResourceId::new(page_id.to_string())
             .expect("Page UUID should be a valid resource id"),
         subresource_id: None,

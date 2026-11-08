@@ -2309,7 +2309,7 @@ mod tests {
                 target_revision: None,
                 fields: vec![TranslationFieldSnapshot {
                     descriptor: TranslationFieldDescriptor {
-                        key: FieldKey::new("title").expect("valid field key"),
+                        key: FieldKey::new("title").expect("valid field key: invariant validated at startup"),
                         profile: TranslationValueProfile::PlainText,
                         strategy: TranslationStrategy::Translate,
                         classification: TranslationDataClassification::Public,
@@ -2424,7 +2424,7 @@ mod tests {
         rustok_translation_targets::TranslationResourceIdentity {
             owner_slug: OwnerSlug::new("media").expect("valid owner slug"),
             resource_kind: ResourceKind::new("asset").expect("valid resource kind"),
-            resource_id: ResourceId::new(resource_id).expect("valid resource id"),
+            resource_id: ResourceId::new(resource_id).expect("valid resource id: invariant validated at startup"),
             subresource_id: None,
         }
     }

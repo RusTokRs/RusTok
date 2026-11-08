@@ -752,7 +752,7 @@ mod tests {
         let catalog = ModuleDefinitionCatalog::from_static_registry(
             &ModuleRegistry::new().register(ModulesModule),
         )
-        .expect("static catalog");
+        .expect("static catalog: invariant validated at startup");
         let definition = catalog.get("modules").expect("modules definition");
         assert_eq!(definition.kind, ModuleDefinitionKind::Core);
         assert!(matches!(

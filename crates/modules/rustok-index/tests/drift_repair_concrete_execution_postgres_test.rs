@@ -45,7 +45,7 @@ impl IndexDriftRepairEvidenceReader for FailAfterOwnerEvidence {
     ) -> Result<IndexDriftRepairEvidence, IndexDriftRepairFailure> {
         Err(
             IndexDriftRepairFailure::retryable("repair_evidence_after_commit_crash")
-                .expect("static failure code"),
+                .expect("static failure code: invariant validated at startup"),
         )
     }
 }

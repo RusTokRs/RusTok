@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use async_trait::async_trait;
@@ -93,6 +93,29 @@ fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
 }
 
 
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
+            // INVARIANT: static owner slug "navigation" is a valid non-empty ASCII identifier.
+            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
+                .expect("static Navigation owner slug must satisfy the target contract: descriptor invariant validated at startup"),
+            // INVARIANT: static resource kind "menu" is a valid non-empty ASCII identifier.
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
+                .expect("static Navigation resource kind must satisfy the target contract: descriptor invariant validated at startup"),
+            display_name: "Navigation menu".to_string(),
+            capabilities: BTreeSet::from([
+                TranslationTargetCapability::ListResources,
+                TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::AggregateProgress,
+                TranslationTargetCapability::ValidatePatch,
+                TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
+            ]),
+            read_permission_floor: BTreeSet::from(["navigation:read".to_string()]),
+            apply_permission_floor: BTreeSet::from(["navigation:update".to_string()]),
+        }
+});
+
 #[derive(Clone)]
 /// Owner adapter for exact Navigation menu localization. It keeps a menu name
 /// and every item title in one atomic locale aggregate and calls the canonical
@@ -106,26 +129,8 @@ impl NavigationMenuTranslationTargetProvider {
         Self { service }
     }
 
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
-            // INVARIANT: static owner slug "navigation" is a valid non-empty ASCII identifier.
-            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Navigation owner slug must satisfy the target contract"),
-            // INVARIANT: static resource kind "menu" is a valid non-empty ASCII identifier.
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Navigation resource kind must satisfy the target contract"),
-            display_name: "Navigation menu".to_string(),
-            capabilities: BTreeSet::from([
-                TranslationTargetCapability::ListResources,
-                TranslationTargetCapability::ReadExactResource,
-                TranslationTargetCapability::AggregateProgress,
-                TranslationTargetCapability::ValidatePatch,
-                TranslationTargetCapability::ApplyPatch,
-                TranslationTargetCapability::ChangeCursor,
-            ]),
-            read_permission_floor: BTreeSet::from(["navigation:read".to_string()]),
-            apply_permission_floor: BTreeSet::from(["navigation:update".to_string()]),
-        }
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(
@@ -893,7 +898,7 @@ fn translation_fields(
     let mut fields = Vec::with_capacity(items.len() + 1);
     fields.push(field_snapshot(
         // INVARIANT: static field key "name" is a valid non-empty ASCII identifier.
-        FieldKey::new(MENU_NAME_FIELD_KEY).expect("static Navigation field key must be valid"),
+        field_key_or_invariant(MENU_NAME_FIELD_KEY)?,
         source.menu_translation.name.as_str(),
         target.map(|rows| rows.menu_translation.name.as_str()),
     ));

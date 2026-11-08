@@ -30,7 +30,7 @@ impl IndexDriftRepairEvidenceReader for StopBeforeEvidence {
     ) -> Result<IndexDriftRepairEvidence, IndexDriftRepairFailure> {
         Err(
             IndexDriftRepairFailure::retryable("repair_evidence_before_stop")
-                .expect("static failure code"),
+                .expect("static failure code: invariant validated at startup"),
         )
     }
 

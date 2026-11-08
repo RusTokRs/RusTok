@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -81,6 +81,27 @@ fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
 }
 
 
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
+            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
+                .expect("static Product owner slug must satisfy the target contract: descriptor invariant validated at startup"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
+                .expect("static Product resource kind must satisfy the target contract: descriptor invariant validated at startup"),
+            display_name: "Product catalog".to_string(),
+            capabilities: BTreeSet::from([
+                TranslationTargetCapability::ListResources,
+                TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::AggregateProgress,
+                TranslationTargetCapability::ValidatePatch,
+                TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
+            ]),
+            read_permission_floor: BTreeSet::from(["products:read".to_string()]),
+            apply_permission_floor: BTreeSet::from(["products:update".to_string()]),
+        }
+});
+
 #[derive(Clone)]
 /// Product-owned adapter for exact catalog localization.
 ///
@@ -96,24 +117,8 @@ impl ProductTranslationTargetProvider {
         Self { service }
     }
 
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
-            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Product owner slug must satisfy the target contract"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Product resource kind must satisfy the target contract"),
-            display_name: "Product catalog".to_string(),
-            capabilities: BTreeSet::from([
-                TranslationTargetCapability::ListResources,
-                TranslationTargetCapability::ReadExactResource,
-                TranslationTargetCapability::AggregateProgress,
-                TranslationTargetCapability::ValidatePatch,
-                TranslationTargetCapability::ApplyPatch,
-                TranslationTargetCapability::ChangeCursor,
-            ]),
-            read_permission_floor: BTreeSet::from(["products:read".to_string()]),
-            apply_permission_floor: BTreeSet::from(["products:update".to_string()]),
-        }
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(
@@ -572,7 +577,7 @@ fn snapshot_from_owner(
             .target_revision
             .map(|revision| opaque_revision(revision, "target_revision"))
             .transpose()?,
-        fields: translation_fields(&snapshot.source, snapshot.target.as_ref()),
+        fields: translation_fields(&snapshot.source, snapshot.target.as_ref())?,
     };
     resource.validate().map_err(|error| {
         PortError::invariant_violation("product.translation_snapshot_invalid", error.to_string())
@@ -649,7 +654,7 @@ fn parse_change_cursor(cursor: &OpaqueCursor) -> Result<(u64, u64), PortError> {
 fn translation_fields(
     source: &ProductTranslationExactLocaleRecord,
     target: Option<&ProductTranslationExactLocaleRecord>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
             "title",
@@ -705,10 +710,9 @@ fn translation_fields(
     .into_iter()
     .map(
         |(key, source_value, target_value, profile, strategy, required, ai_export_allowed, max)| {
-            TranslationFieldSnapshot {
+            Ok(TranslationFieldSnapshot {
                 descriptor: TranslationFieldDescriptor {
-                    key: FieldKey::new(key)
-                        .expect("static Product field key must satisfy the target contract"),
+                    key: field_key_or_invariant(key)?,
                     profile,
                     strategy,
                     classification: TranslationDataClassification::Public,
@@ -906,7 +910,7 @@ mod tests {
     #[test]
     fn product_fields_expose_reviewed_handle_and_bounded_seo_metadata() {
         let source = record("en", "Product");
-        let fields = translation_fields(&source, None);
+        let fields = translation_fields(&source, None)?;
         assert_eq!(fields.len(), 5);
         assert_eq!(
             fields

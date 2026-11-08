@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use async_trait::async_trait;
@@ -89,6 +89,27 @@ fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
 }
 
 
+
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
+            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
+                .expect("static owner slug must be valid: descriptor invariant validated at startup"),
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
+                .expect("static resource kind must be valid: descriptor invariant validated at startup"),
+            display_name: "Media asset metadata".to_string(),
+            capabilities: BTreeSet::from([
+                TranslationTargetCapability::ListResources,
+                TranslationTargetCapability::ReadExactResource,
+                TranslationTargetCapability::AggregateProgress,
+                TranslationTargetCapability::ValidatePatch,
+                TranslationTargetCapability::ApplyPatch,
+                TranslationTargetCapability::ChangeCursor,
+            ]),
+            read_permission_floor: BTreeSet::from(["media:read".to_string()]),
+            apply_permission_floor: BTreeSet::from(["media:update".to_string()]),
+        }
+});
+
 #[derive(Clone)]
 /// Owner adapter that exposes Media localized metadata through the neutral
 /// translation-target SPI without granting direct access to Media tables.
@@ -102,24 +123,8 @@ impl MediaTranslationTargetProvider {
         Self { service }
     }
 
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
-            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static owner slug must be valid"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static resource kind must be valid"),
-            display_name: "Media asset metadata".to_string(),
-            capabilities: BTreeSet::from([
-                TranslationTargetCapability::ListResources,
-                TranslationTargetCapability::ReadExactResource,
-                TranslationTargetCapability::AggregateProgress,
-                TranslationTargetCapability::ValidatePatch,
-                TranslationTargetCapability::ApplyPatch,
-                TranslationTargetCapability::ChangeCursor,
-            ]),
-            read_permission_floor: BTreeSet::from(["media:read".to_string()]),
-            apply_permission_floor: BTreeSet::from(["media:update".to_string()]),
-        }
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(
@@ -736,7 +741,7 @@ fn snapshot_from_models(
         target_revision: target
             .map(|translation| opaque_numeric_revision(translation.revision))
             .transpose()?,
-        fields: translation_fields(source, target),
+        fields: translation_fields(source, target)?,
     };
     snapshot.validate().map_err(|error| {
         PortError::invariant_violation("media.translation_snapshot_invalid", error.to_string())
@@ -774,7 +779,7 @@ fn opaque_numeric_revision(revision: i64) -> Result<OpaqueRevision, PortError> {
 fn translation_fields(
     source: &TranslationModel,
     target: Option<&TranslationModel>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
             "title",
@@ -795,9 +800,9 @@ fn translation_fields(
     .into_iter()
     .map(|(key, source_value, target_value)| {
         let source_value = source_value.unwrap_or_default().to_string();
-        TranslationFieldSnapshot {
+        Ok(TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
-                key: FieldKey::new(key).expect("static field key must be valid"),
+                key: field_key_or_invariant(key)?,
                 profile: TranslationValueProfile::PlainText,
                 strategy: TranslationStrategy::Translate,
                 classification: TranslationDataClassification::Public,
@@ -810,9 +815,9 @@ fn translation_fields(
             source_value,
             exact_target_value: target_value.map(str::to_string),
             protected_tokens: Vec::new(),
-        }
+        })
     })
-    .collect()
+    .collect::<Result<Vec<_>, PortError>>()
 }
 
 fn field_hash(value: &str) -> String {

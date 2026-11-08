@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -75,22 +75,13 @@ fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
 }
 
 
-#[derive(Clone)]
-pub struct ShippingOptionTranslationTargetProvider {
-    service: Arc<ShippingOptionTranslationService>,
-}
 
-impl ShippingOptionTranslationTargetProvider {
-    pub fn new(service: Arc<ShippingOptionTranslationService>) -> Self {
-        Self { service }
-    }
-
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Fulfillment owner slug must satisfy the target contract"),
+                .expect("static Fulfillment owner slug must satisfy the target contract: descriptor invariant validated at startup"),
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
-                "static Shipping Option Copy resource kind must satisfy the target contract",
+                "static Shipping Option Copy resource kind must satisfy the target contract: descriptor invariant validated at startup",
             ),
             display_name: "Shipping Options".to_string(),
             capabilities: BTreeSet::from([
@@ -104,6 +95,20 @@ impl ShippingOptionTranslationTargetProvider {
             read_permission_floor: BTreeSet::from(["fulfillments:read".to_string()]),
             apply_permission_floor: BTreeSet::from(["fulfillments:update".to_string()]),
         }
+});
+
+#[derive(Clone)]
+pub struct ShippingOptionTranslationTargetProvider {
+    service: Arc<ShippingOptionTranslationService>,
+}
+
+impl ShippingOptionTranslationTargetProvider {
+    pub fn new(service: Arc<ShippingOptionTranslationService>) -> Self {
+        Self { service }
+    }
+
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(
@@ -599,11 +604,10 @@ fn exact_locales(locales: Vec<String>) -> Result<Vec<TenantLocale>, PortError> {
 fn translation_fields(
     source: &ShippingOptionTranslationExactLocaleRecord,
     target: Option<&ShippingOptionTranslationExactLocaleRecord>,
-) -> Vec<TranslationFieldSnapshot> {
-    vec![TranslationFieldSnapshot {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
+    Ok(vec![TranslationFieldSnapshot {
         descriptor: TranslationFieldDescriptor {
-            key: FieldKey::new("name")
-                .expect("static Fulfillment field key must satisfy the target contract"),
+            key: field_key_or_invariant("name")?,
             profile: TranslationValueProfile::PlainText,
             strategy: TranslationStrategy::Translate,
             classification: TranslationDataClassification::Public,
@@ -616,7 +620,7 @@ fn translation_fields(
         exact_target_value: target.map(|value| value.name.clone()),
         source_hash: field_hash(&source.name),
         protected_tokens: Vec::new(),
-    }]
+    }])]
 }
 
 fn owner_patch_value_validation(
@@ -633,7 +637,7 @@ fn owner_patch_value_validation(
             issues: vec![TranslationPatchIssue {
                 field: Some(
                     FieldKey::new("name")
-                        .expect("static Fulfillment field key must satisfy the target contract"),
+                        .expect("static Fulfillment field key must satisfy the target contract: invariant validated at startup"),
                 ),
                 severity: TranslationPatchIssueSeverity::Error,
                 code: "target_value_too_long".to_string(),
@@ -645,7 +649,7 @@ fn owner_patch_value_validation(
             issues: vec![TranslationPatchIssue {
                 field: Some(
                     FieldKey::new("name")
-                        .expect("static Fulfillment field key must satisfy the target contract"),
+                        .expect("static Fulfillment field key must satisfy the target contract: invariant validated at startup"),
                 ),
                 severity: TranslationPatchIssueSeverity::Error,
                 code: "required_target_value_missing".to_string(),

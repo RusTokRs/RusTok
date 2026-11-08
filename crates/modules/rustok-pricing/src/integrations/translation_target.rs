@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -75,22 +75,13 @@ fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
 }
 
 
-#[derive(Clone)]
-pub struct PriceListTranslationTargetProvider {
-    service: Arc<PriceListTranslationService>,
-}
 
-impl PriceListTranslationTargetProvider {
-    pub fn new(service: Arc<PriceListTranslationService>) -> Self {
-        Self { service }
-    }
-
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Pricing owner slug must satisfy the target contract"),
+                .expect("static Pricing owner slug must satisfy the target contract: descriptor invariant validated at startup"),
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static Price List Copy resource kind must satisfy the target contract"),
+                .expect("static Price List Copy resource kind must satisfy the target contract: descriptor invariant validated at startup"),
             display_name: "Price Lists".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,
@@ -103,6 +94,20 @@ impl PriceListTranslationTargetProvider {
             read_permission_floor: BTreeSet::from(["discounts:read".to_string()]),
             apply_permission_floor: BTreeSet::from(["discounts:update".to_string()]),
         }
+});
+
+#[derive(Clone)]
+pub struct PriceListTranslationTargetProvider {
+    service: Arc<PriceListTranslationService>,
+}
+
+impl PriceListTranslationTargetProvider {
+    pub fn new(service: Arc<PriceListTranslationService>) -> Self {
+        Self { service }
+    }
+
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(
@@ -539,7 +544,7 @@ fn snapshot_from_owner(
             .target_revision
             .map(|revision| opaque_revision(revision, "target_revision"))
             .transpose()?,
-        fields: translation_fields(&snapshot.source, snapshot.target.as_ref()),
+        fields: translation_fields(&snapshot.source, snapshot.target.as_ref())?,
     };
     resource.validate().map_err(|error| {
         PortError::invariant_violation("pricing.translation_snapshot_invalid", error.to_string())
@@ -564,7 +569,7 @@ fn exact_locales(locales: Vec<String>) -> Result<Vec<TenantLocale>, PortError> {
 fn translation_fields(
     source: &PriceListTranslationExactLocaleRecord,
     target: Option<&PriceListTranslationExactLocaleRecord>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     [
         (
             "name",
@@ -583,10 +588,9 @@ fn translation_fields(
     ]
     .into_iter()
     .map(
-        |(key, source_value, target_value, required, max_characters)| TranslationFieldSnapshot {
+        |(key, source_value, target_value, required, max_characters)| Ok(TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
-                key: FieldKey::new(key)
-                    .expect("static Pricing field key must satisfy the target contract"),
+                key: field_key_or_invariant(key)?,
                 profile: TranslationValueProfile::PlainText,
                 strategy: TranslationStrategy::Translate,
                 classification: TranslationDataClassification::Public,
@@ -599,9 +603,9 @@ fn translation_fields(
             exact_target_value: target_value.map(str::to_string),
             source_hash: field_hash(source_value),
             protected_tokens: Vec::new(),
-        },
+        }),
     )
-    .collect()
+    .collect::<Result<Vec<_>, PortError>>()
 }
 
 fn merged_target(

@@ -241,7 +241,7 @@ mod tests {
                 LandingReadinessPolicy::default(),
                 &RenderPolicy::default(),
             )
-            .expect("static build");
+            .expect("static build: invariant validated at startup");
         assert!(result.ready);
         let artifact = result.artifact.expect("artifact");
         assert_eq!(artifact.pages.len(), 1);

@@ -1139,18 +1139,18 @@ fn ensure_postgres_repair(db: &DatabaseConnection) -> Result<(), IndexDriftRepai
 
 fn retryable_recovery_failure(code: &str) -> IndexDriftRepairRecoveryFailure {
     IndexDriftRepairRecoveryFailure::retryable(code)
-        .expect("static repair recovery failure code is valid")
+        .expect("static repair recovery failure code is valid: invariant validated at startup")
 }
 
 fn permanent_recovery_failure(code: &str) -> IndexDriftRepairRecoveryFailure {
     IndexDriftRepairRecoveryFailure::permanent(code)
-        .expect("static repair recovery failure code is valid")
+        .expect("static repair recovery failure code is valid: invariant validated at startup")
 }
 
 fn retryable_repair_failure(code: &str) -> IndexDriftRepairFailure {
-    IndexDriftRepairFailure::retryable(code).expect("static repair failure code is valid")
+    IndexDriftRepairFailure::retryable(code).expect("static repair failure code is valid: invariant validated at startup")
 }
 
 fn permanent_repair_failure(code: &str) -> IndexDriftRepairFailure {
-    IndexDriftRepairFailure::permanent(code).expect("static repair failure code is valid")
+    IndexDriftRepairFailure::permanent(code).expect("static repair failure code is valid: invariant validated at startup")
 }

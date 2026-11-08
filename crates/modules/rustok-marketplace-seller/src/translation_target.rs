@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -75,22 +75,13 @@ fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
 }
 
 
-#[derive(Clone)]
-pub struct MarketplaceSellerTranslationTargetProvider {
-    service: Arc<MarketplaceSellerTranslationService>,
-}
 
-impl MarketplaceSellerTranslationTargetProvider {
-    pub fn new(service: Arc<MarketplaceSellerTranslationService>) -> Self {
-        Self { service }
-    }
-
-    fn descriptor_value() -> TranslationTargetProviderDescriptor {
-        TranslationTargetProviderDescriptor {
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
+    TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Marketplace Seller owner slug must satisfy the target contract"),
+                .expect("static Marketplace Seller owner slug must satisfy the target contract: descriptor invariant validated at startup"),
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
-                "static Marketplace Seller presentation resource kind must satisfy the target contract",
+                "static Marketplace Seller presentation resource kind must satisfy the target contract: descriptor invariant validated at startup",
             ),
             display_name: "Marketplace Seller presentation".to_string(),
             capabilities: BTreeSet::from([
@@ -104,6 +95,20 @@ impl MarketplaceSellerTranslationTargetProvider {
             read_permission_floor: BTreeSet::from(["marketplace_sellers:read".to_string()]),
             apply_permission_floor: BTreeSet::from(["marketplace_sellers:update".to_string()]),
         }
+});
+
+#[derive(Clone)]
+pub struct MarketplaceSellerTranslationTargetProvider {
+    service: Arc<MarketplaceSellerTranslationService>,
+}
+
+impl MarketplaceSellerTranslationTargetProvider {
+    pub fn new(service: Arc<MarketplaceSellerTranslationService>) -> Self {
+        Self { service }
+    }
+
+        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+        DESCRIPTOR.clone()
     }
 
     async fn load_snapshot(
@@ -572,11 +577,10 @@ fn exact_locales(locales: Vec<String>) -> Result<Vec<TenantLocale>, PortError> {
 fn translation_fields(
     source: &MarketplaceSellerTranslationExactLocaleRecord,
     target: Option<&MarketplaceSellerTranslationExactLocaleRecord>,
-) -> Vec<TranslationFieldSnapshot> {
-    vec![TranslationFieldSnapshot {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
+    Ok(vec![TranslationFieldSnapshot {
         descriptor: TranslationFieldDescriptor {
-            key: FieldKey::new("display_name")
-                .expect("static Marketplace Seller field key must satisfy the target contract"),
+            key: field_key_or_invariant("display_name")?,
             profile: TranslationValueProfile::PlainText,
             strategy: TranslationStrategy::Translate,
             classification: TranslationDataClassification::Public,
@@ -589,7 +593,7 @@ fn translation_fields(
         exact_target_value: target.map(|value| value.display_name.clone()),
         source_hash: field_hash(&source.display_name),
         protected_tokens: Vec::new(),
-    }]
+    }])]
 }
 
 fn merged_target_display_name(

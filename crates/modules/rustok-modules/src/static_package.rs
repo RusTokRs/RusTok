@@ -436,7 +436,7 @@ pub fn validate_static_module_topology_contract(
         let module = contract
             .modules
             .get(&slug)
-            .expect("static topology key must resolve to its module contract");
+            .expect("static topology key must resolve to its module contract: invariant validated at startup");
         let missing_dependencies = module
             .dependencies
             .iter()

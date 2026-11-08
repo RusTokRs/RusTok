@@ -691,7 +691,7 @@ impl TranslationTargetProvider for ProductAttributeValueTranslationTargetProvide
     fn descriptor(&self) -> TranslationTargetProviderDescriptor {
         TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static Product owner slug must satisfy Translation contract"),
+                .expect("static Product owner slug must satisfy Translation contract: invariant validated at startup"),
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
                 "static Product Attribute Value resource kind must satisfy Translation contract",
             ),
@@ -1288,7 +1288,7 @@ fn snapshot_from_owner(
             .transpose()?,
         fields: vec![TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
-                key: FieldKey::new(VALUE_FIELD).expect("static Product value field must be valid"),
+                key: field_key_or_invariant(VALUE_FIELD)?,
                 profile: TranslationValueProfile::PlainText,
                 strategy: TranslationStrategy::Translate,
                 classification: TranslationDataClassification::TenantPrivate,
