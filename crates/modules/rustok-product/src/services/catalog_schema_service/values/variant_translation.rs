@@ -750,7 +750,9 @@ impl TranslationTargetProvider for ProductVariantAttributeValueTranslationTarget
         TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Product owner slug must satisfy Translation contract: invariant validated at startup"),
-            resource_kind: resource_kind_or_invariant()?,
+            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
+                "the static resource kind is 23 printable ASCII bytes with no surrounding whitespace",
+            ),
             display_name: "Product Variant localized attribute values".to_string(),
             capabilities: BTreeSet::from([
                 TranslationTargetCapability::ListResources,

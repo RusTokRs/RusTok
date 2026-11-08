@@ -53,15 +53,6 @@ fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
     })
 }
 
-fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
-    FieldKey::new(key).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.field_key_invalid",
-            error.to_string(),
-        )
-    })
-}
-
 
 /// Adds aggregate progress and durable change polling to the exact-locale
 /// Product Variant target while keeping inventory/read/validate/apply in the

@@ -725,7 +725,7 @@ fn translation_fields(
                 exact_target_value: target_value.map(str::to_string),
                 source_hash: field_hash(source_value),
                 protected_tokens: Vec::new(),
-            }
+            })
         },
     )
     .collect()

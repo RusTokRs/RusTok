@@ -545,7 +545,7 @@ fn snapshot_from_owner(
             .target_revision
             .map(|revision| opaque_revision(revision, "target_revision"))
             .transpose()?,
-        fields: translation_fields(&snapshot.source, snapshot.target.as_ref()),
+        fields: translation_fields(&snapshot.source, snapshot.target.as_ref())?,
     };
     resource.validate().map_err(|error| {
         PortError::invariant_violation("inventory.translation_snapshot_invalid", error.to_string())
@@ -586,7 +586,7 @@ fn translation_fields(
         exact_target_value: target.map(|value| value.name.clone()),
         source_hash: field_hash(&source.name),
         protected_tokens: Vec::new(),
-    }])]
+    }])
 }
 
 fn merged_target(

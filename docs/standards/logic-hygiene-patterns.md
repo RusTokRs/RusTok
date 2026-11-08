@@ -168,6 +168,7 @@ flowchart TD
   1. Use standard Rust module hierarchies and explicit exports, such as `mod category; pub use category::CategoryService;`.
   2. Break circular dependencies by defining narrow traits (e.g. `LockProvider`, `AncestorLoader`) implemented by the caller or foundation crate, rather than text-including source files.
   3. Keep handwritten Rust source in modules. Build output loaded through `concat!(env!("OUT_DIR"), ...)` is a separate use case. The scanner gates direct literal `include!("file.rs")` outside recognized test, example, and build contexts.
+  4. When replacing a file-stitching macro, register the existing source file as a module and move child declarations to their owner as needed. Pasting the file body at the call site can leave a second copy and a stray statement delimiter. Verify the resulting module tree with a scoped build.
 
 ---
 
