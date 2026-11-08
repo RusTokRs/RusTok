@@ -21,16 +21,19 @@ if hasattr(sys.stderr, "reconfigure"):
 ROOT = Path(__file__).resolve().parent.parent.parent
 
 # Disallowed patterns that must NEVER be added by an auto-remediation agent
-DISALLOWED_ADDITIONS = [
+RUST_ADDITIONS = [
     (r"^\+.*#\[allow\(dead_code\)\]", "Added #[allow(dead_code)] is prohibited by AGENTS.md §14"),
     (r"^\+.*#\[allow\(unused\)\]", "Added #[allow(unused)] is prohibited by AGENTS.md §14"),
     (r"^\+.*#\[allow\(unused_variables\)\]", "Added #[allow(unused_variables)] is prohibited by AGENTS.md §14"),
-    (r"^\+.*@ts-ignore", "Added @ts-ignore is prohibited by AGENTS.md §14"),
-    (r"^\+.*@ts-expect-error", "Added @ts-expect-error is prohibited by AGENTS.md §14"),
     (r"^\+.*todo!\(", "Added todo!() is prohibited by AGENTS.md §14"),
     (r"^\+.*unimplemented!\(", "Added unimplemented!() is prohibited by AGENTS.md §14"),
     (r"^\+.*include!\(\"[^\"]+\.rs\"\)", "Added include!(\"*.rs\") file stitching is prohibited (use canonical Rust modules)"),
 ]
+SCRIPT_ADDITIONS = [
+    (r"^\+.*@ts-ignore", "Added @ts-ignore is prohibited by AGENTS.md §14"),
+    (r"^\+.*@ts-expect-error", "Added @ts-expect-error is prohibited by AGENTS.md §14"),
+]
+SCRIPT_SUFFIXES = {".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs", ".mdx"}
 
 
 def get_git_diff(staged_only: bool = False) -> str:
@@ -58,20 +61,39 @@ def get_changed_files(staged_only: bool = False) -> list[str]:
 
 def check_diff_invariants(diff_text: str) -> list[str]:
     violations: list[str] = []
-    lines = diff_text.splitlines()
-
+    old_suffix = new_suffix = ""
+    in_hunk = False
     deleted_tests = 0
     added_tests = 0
-    for line in lines:
-        for pattern, reason in DISALLOWED_ADDITIONS:
+    for line in diff_text.splitlines():
+        if line.startswith("diff --git "):
+            old_suffix = new_suffix = ""
+            in_hunk = False
+        elif not in_hunk and line.startswith("--- "):
+            old_suffix = Path(line[4:].rstrip("\t").strip('"')).suffix
+        elif not in_hunk and line.startswith("+++ "):
+            new_suffix = Path(line[4:].rstrip("\t").strip('"')).suffix
+        elif line.startswith("@@ "):
+            in_hunk = True
+        if not in_hunk:
+            continue
+
+        # Rust or script examples in docs and fixtures are not source changes
+        # in the languages governed by these rules.
+        rules = (
+            RUST_ADDITIONS if new_suffix == ".rs"
+            else SCRIPT_ADDITIONS if new_suffix in SCRIPT_SUFFIXES
+            else ()
+        )
+        for pattern, reason in rules:
             if re.search(pattern, line):
                 violations.append(f"Forbidden diff line: '{line.strip()}' -> {reason}")
 
         # Guard against deleted tests
-        if line.startswith("-") and not line.startswith("---"):
+        if old_suffix == ".rs" and line.startswith("-"):
             if "#[test]" in line or "#[tokio::test]" in line:
                 deleted_tests += 1
-        if line.startswith("+") and not line.startswith("+++"):
+        if new_suffix == ".rs" and line.startswith("+"):
             if "#[test]" in line or "#[tokio::test]" in line:
                 added_tests += 1
 
