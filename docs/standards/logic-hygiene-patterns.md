@@ -17,7 +17,7 @@ This standard codifies systemic patterns and anti-patterns discovered across Rus
 
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
 
-Superficial code cleanup (fixing only scanner warnings or regex hits) is prohibited by [AGENTS.md §2.1](../../AGENTS.md). High-signal code quality requires systematic verification across the **6 Universal Logic Dimensions**:
+Under [AGENTS.md §4](../../AGENTS.md), verify the affected behavior and its owner contract across the **6 Universal Logic Dimensions**. Use source matches to find code to inspect. A match alone cannot establish a behavioral defect:
 
 ```mermaid
 flowchart TD
@@ -131,23 +131,16 @@ flowchart TD
   evaluate_resource_audience(&security, resource_policy)?;
   ```
 * **Anti-Pattern (Forbidden):**
-  * Returning `Ok(())` on `PermissionScope::None` in RBAC evaluation. Missing scope must strictly resolve to `Err(Forbidden)`.
+  * Treating `PermissionScope::None` as permission to proceed when the guard owns the access decision. Return a denial in the guard's own contract, such as `Err(Forbidden)` or `Ok(false)`. A secondary policy may return `Ok(())` to mean “no additional restriction” when an earlier guard already owns authorization.
+* **Verification:** Exercise a missing-scope caller against an otherwise public resource and verify the final outcome. The scanner flags explicit success branches for review.
 
 ---
 
 ### Pattern 5: Bounded Identifier Entropy (`P-ID-ENTROPY`)
 * **Category:** Calculation & Algorithmic Correctness
-* **Problem:** 12-hex character short identifiers provide only 48 bits of entropy. At scale ($10^7$ records), the birthday paradox results in a ~1.7% collision rate, triggering unexpected `500 Conflict` errors for end-users.
-* **Pattern Solution:**
-  1. Standardize on 16-hex characters (`VARCHAR(16)`, 64 bits of entropy) for public routes and short identifiers.
-  2. Implement an explicit deterministic collision-fallback resolution:
-     ```rust
-     pub const ROUTE_SHORT_ID_LEN: usize = 16;
-
-     // Primary: lower hex string truncated to 16 chars
-     // Fallback upon collision: deterministic HMAC/SHA256 slice
-     ```
-  3. Ensure database queries check with `LIMIT 2` to verify uniqueness unambiguously.
+* **Problem:** The probability of at least one collision among 10 million identifiers in one uniqueness namespace is about 16.3% at 48 bits and 0.000271% at 64 bits, assuming independent, uniform draws. Twelve hex characters encode at most 48 bits. A 12-character prefix of the simple form of UUIDv7 is its timestamp, as defined by [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-version-7), so the uniform-random assumption does not apply.
+* **Pattern Solution:** Choose the entropy budget for the namespace and expected volume. Enforce uniqueness at the owner persistence boundary and define an explicit collision outcome, such as retry on the relevant uniqueness conflict. A lookup with `LIMIT 2` detects ambiguity but cannot enforce uniqueness. Preserve existing public route compatibility when changing an identifier scheme.
+* **Verification:** Inspect the generator, effective random bits, uniqueness scope, and collision path. The scanner recognizes narrow short-ID declarations, UUID compaction, and short-ID SQL column hints.
 
 ---
 
@@ -162,7 +155,7 @@ flowchart TD
          tracing::warn!(error = %err, %tenant_id, "Transaction rollback failed during error recovery");
      }
      ```
-  3. If a variable is extracted (e.g. `target_entity_id`), verify its active existence rather than discarding it with `let _ = target_entity_id;`.
+  3. Check the discarded expression’s type and its failure contract. The scanner flags discarded calls for review and skips plain values. Verify any required existence check at the owner boundary.
 * **Anti-Pattern (Forbidden):**
   * Using `std::hint::black_box` in production service code to suppress unused variable or must-use warnings.
 
@@ -172,9 +165,9 @@ flowchart TD
 * **Category:** Compilation Hygiene & Zero AI Slop
 * **Problem:** The `include!("...")` macro is abused to merge multiple files into one module to bypass circular dependencies or file-count limits. This breaks `rust-analyzer`, `goto-definition`, incremental compilation, and cargo documentation.
 * **Pattern Solution:**
-  1. Use standard Rust module hierarchies: `mod category; pub use category::*;`.
+  1. Use standard Rust module hierarchies and explicit exports, such as `mod category; pub use category::CategoryService;`.
   2. Break circular dependencies by defining narrow traits (e.g. `LockProvider`, `AncestorLoader`) implemented by the caller or foundation crate, rather than text-including source files.
-  3. Zero `include!()` directives in `src/` (excluding build-time `OUT_DIR` code generation).
+  3. Keep handwritten Rust source in modules. Build output loaded through `concat!(env!("OUT_DIR"), ...)` is a separate use case. The scanner gates direct literal `include!("file.rs")` outside recognized test, example, and build contexts.
 
 ---
 
@@ -230,7 +223,7 @@ flowchart TD
          .all(txn)
          .await?;
      ```
-  2. Materialize rows into a `HashMap<Uuid, Entity>` in memory before iterating.
+  2. Bound the batch size and index the results for lookup. Preserve the caller’s ordering, missing-ID behavior, and lock semantics when replacing per-item queries.
 
 ---
 
@@ -261,15 +254,15 @@ flowchart TD
      * `23505`: Unique constraint violation (`Conflict`).
      * `23503`: Foreign key violation (`BadRequest` / `NotFound`).
      * `P0001`: PostgreSQL user-defined trigger exception (`RAISE EXCEPTION`).
-  2. Fall back to secondary message token checks only when discriminating between multiple trigger branches sharing code `P0001`.
+  2. Prefer structured constraint identity or distinct owner-defined SQLSTATEs for failures that share a generic code. Where a legacy contract exposes only a stable message token, keep the fallback at that boundary and test it against the actual database error.
 
 ---
 
 ### Pattern 15: Contextual Observability Spans (`P-STRUCTURED-TRACE`)
 * **Category:** Observability & Production Diagnostics
-* **Problem:** Entrypoint and service methods that lack `#[tracing::instrument]` or omit tenant/user context produce uncorrelatable logs. When an authorization or storage error occurs, operators cannot determine which tenant, actor, or entity caused the failure.
+* **Problem:** When the effective span lacks tenant, actor, or operation context, operators cannot correlate authorization or storage failures with the affected request.
 * **Pattern Solution:**
-  1. Decorate all public domain service methods with `#[instrument]`:
+  1. Establish context at the owner entry point or inherit it from the caller. Exclude sensitive inputs from span fields:
      ```rust
      #[tracing::instrument(
          skip(self, security, input),
@@ -279,48 +272,44 @@ flowchart TD
          // ...
      }
      ```
-  2. Explicitly record span errors and durations on failure branches.
+  2. Verify the emitted span or trace for the failing operation. A function name and nearby span marker are lexical hints and cannot prove inherited context.
 
 ---
 
----
-
-### Pattern 16: Transaction Rollback Swallowing & Advisory Lock Retention (`P-TXN-ROLLBACK-SWALLOW`)
-* **Category:** Concurrency, Resource Leaks & Transaction Integrity
-* **Problem:** Suppressing transaction rollback errors with `let _ = transaction.rollback().await;` causes serious concurrency anomalies. If rollback fails or is silently ignored, database locks (such as PostgreSQL session or transaction advisory locks `pg_advisory_xact_lock`) remain held until the connection is returned to the pool or dropped, leading to mysterious tenant-wide lock contention.
-* **Pattern Solution:**
-  1. Never suppress `rollback().await` with `let _ =`.
-  2. Explicitly inspect the rollback result and log errors with contextual fields:
-     ```rust
-     if let Err(rollback_err) = transaction.rollback().await {
-         tracing::warn!(%rollback_err, "failed to roll back transaction cleanly");
-     }
-     ```
-  3. Where appropriate, rely on SeaORM's automatic `Drop` implementation to trigger rollback without writing an unhandled expression.
+### Pattern 16: Ignored Transaction Finalization (`P-TXN-ROLLBACK-SWALLOW`)
+* **Category:** Branch Completeness & Transaction Integrity
+* **Problem:** Discarding a commit result can report success for a failed or uncertain write. Discarding a rollback result hides cleanup failure. PostgreSQL [transaction advisory locks](https://www.postgresql.org/docs/current/explicit-locking.html#ADVISORY-LOCKS) are released at transaction end. Session advisory locks survive rollback and require explicit release or session termination.
+* **Pattern Solution:** Propagate commit failure and use the owner’s idempotency or reconciliation contract when the outcome is uncertain. On failure recovery, report explicit rollback errors with context while preserving the primary error:
+  ```rust
+  if let Err(rollback_err) = transaction.rollback().await {
+      tracing::warn!(%rollback_err, "transaction rollback failed");
+  }
+  return Err(primary_error);
+  ```
+* **Verification:** Identify the actual transaction and lock kind. Test that callers never receive false success and that cleanup failures remain observable. The scanner flags discarded `commit` and `rollback` calls.
 
 ---
 
 ### Pattern 17: Synchronous Lock Guard Across Await Points (`P-SYNC-LOCK-AWAIT`)
 * **Category:** Async Concurrency & Thread Pool Starvation
-* **Problem:** Acquiring a synchronous mutex or read/write lock (`std::sync::Mutex`, `parking_lot::Mutex`, `std::sync::RwLock`) and holding its guard across an `.await` boundary blocks the underlying OS thread in Tokio's multi-threaded runtime. This can starve the worker pool, cause circular deadlocks between tasks, and violate `Send` bounds on futures.
-* **Pattern Solution:**
-  1. Use asynchronous locks (`tokio::sync::Mutex`, `tokio::sync::RwLock`) when data must be accessed across `.await` points.
-  2. If using synchronous locks for in-memory structures, restrict the guard's lifetime to a narrow synchronous sub-block before awaiting:
-     ```rust
-     let snapshot = {
-         let guard = self.cache.lock().unwrap();
-         guard.clone()
-     }; // guard is dropped here
-     remote_client.send(snapshot).await?;
-     ```
+* **Problem:** A synchronous guard retained across suspension keeps the lock held. A competing synchronous acquisition can then block an executor thread or deadlock with the suspended task. Some guards also make a future non-`Send`.
+* **Pattern Solution:** Prefer a short synchronous scope that releases the guard before awaiting. Use an async lock when the owner genuinely requires a critical section that spans suspension.
+  ```rust
+  let snapshot = {
+      let guard = self.cache.lock(); // parking_lot::Mutex
+      guard.clone()
+  };
+  remote_client.send(snapshot).await?;
+  ```
+* **Verification:** Inspect the guard type and all reachable suspension paths, including conditional drops. Where supported, run [Clippy’s `await_holding_lock`](https://clippy.rust-lang.org/master/index.html#await_holding_lock) on the owning crate. The scanner uses lexical acquisition and scope cues.
 
 ---
 
 ### Pattern 18: Unprepared SQL String Interpolation (`P-RAW-SQL-INTERP`)
 * **Category:** Security, Preconditions & Injection Prevention
-* **Problem:** Calling `execute_unprepared(&format!(...))` or formatting query strings directly bypasses parameterization. Even when arguments appear internal, string interpolation creates SQL injection vulnerabilities, breaks query caching, and corrupts query semantics when strings contain unescaped characters.
+* **Problem:** Formatting runtime values into SQL can change query semantics and permit injection. Fixed SQL fragments and identifiers selected from a closed set have a different trust boundary from request values.
 * **Pattern Solution:**
-  1. Never format raw values into SQL strings.
+  1. Bind runtime values as parameters. For identifiers that cannot be bound, use a typed query builder or a fixed allowlist. The scanner traces direct formatting and simple local bindings; verify the origin of each interpolated value.
   2. Use parameterized queries via SeaORM or SeaQuery:
      ```rust
      use sea_orm::{ConnectionTrait, Statement};
@@ -343,20 +332,20 @@ flowchart TD
      ```rust
      let tenant_id = tenant_id.ok_or(DomainError::TenantNotFound)?;
      ```
-  2. Do not use dummy nil UUIDs as wildcard or fallback selectors.
+  2. Do not use dummy nil UUIDs as wildcard or fallback selectors. Verify that absent and wrong-tenant requests cannot reach another tenant’s rows. The scanner recognizes explicit tenant selectors and assignments, and cannot establish identity flow through wrappers.
 
 ---
 
 ### Pattern 20: Transactional Outbox Decoupling (`P-OUTBOX-DETACHED`)
 * **Category:** Side-Effect Completeness & Atomicity
-* **Problem:** Invoking `event_bus.publish()` directly within transactional business workflows creates a two-phase commit defect. If the subsequent database transaction fails or is aborted, the event was already published to the message broker, causing orphan consumer processing and data inconsistencies across microservices.
+* **Problem:** Publishing independently of the owner’s mutation can emit an event for a rolled-back change or lose the event after a successful commit.
 * **Pattern Solution:**
   1. In transactional scopes, always write outbox events through the transaction handle using `publish_in_tx`:
      ```rust
      event_bus.publish_in_tx(&txn, domain_event).await?;
      txn.commit().await?;
      ```
-  2. The outbox relay worker guarantees that the event is dispatched only after the transaction successfully commits.
+  2. Verify that commit makes both rows durable and rollback leaves neither the change nor its outbox row. The scanner flags direct publication when it sees transaction evidence in the same function. Verify the publisher implementation and transaction handle at the owner boundary.
 
 ---
 
@@ -364,11 +353,11 @@ flowchart TD
 * **Category:** Client Architecture & UI Reactivity
 * **Problem:** Calling `let _ = signal.get();` outside of a reactive tracking context (such as `view!` or `create_effect`) reads the signal value without establishing a reactive subscriber dependency. Subsequent signal updates will not trigger UI rerendering, causing silent UI desynchronization.
 * **Pattern Solution:**
-  1. Bind signal dependencies inside `create_effect`:
+  1. Bind signal dependencies inside an effect when the operation needs reactive tracking:
      ```rust
-     create_effect(move |_| {
-         signal.get();
-         // run dependent side-effect or data reload
+     Effect::new(move |_| {
+         let value = signal.get();
+         update_view_model(value);
      });
      ```
   2. In Leptos views, reference signals directly within view macros: `move || signal.get()`.
@@ -377,45 +366,57 @@ flowchart TD
 
 ### Pattern 22: Lingering Incomplete Code & Work Markers (`P-UNFINISHED-CODE`)
 * **Category:** Production Readiness & Maintenance Integrity
-* **Problem:** Leaving `todo!()`, `FIXME`, or `TODO` markers in production service code risks runtime panics (for `todo!()`) or signals unhandled edge cases that bypass platform invariants.
-* **Pattern Solution:**
-  1. Completely implement domain logic, error variants, and edge-case handling before merging.
-  2. If an architectural capability requires multi-phase rollout, track it formally in the owning ADR and `continuous-review-ledger.md` rather than scattering lingering inline stubs.
+* **Problem:** Reachable `todo!()` and `unimplemented!()` can panic in production. A `TODO` or `FIXME` comment identifies work to review; it does not establish that an invariant is broken.
+* **Pattern Solution:** Complete runtime paths with typed error and edge-case behavior. Track agreed follow-up work in the owning plan or ADR. Check that affected inputs cannot reach incomplete execution paths.
+
+---
+
+### Pattern 23: Blocking Sleep in Async Functions (`P-SYNC-SLEEP-AWAIT`)
+* **Category:** Async Concurrency & Thread Pool Starvation
+* **Problem:** Calling `std::thread::sleep` on an executor worker occupies the thread for the whole delay. Concurrent waits can starve requests and timers.
+* **Pattern Solution:** Use the runtime timer for async waiting. Keep necessary blocking work on a blocking executor.
+  ```rust
+  tokio::time::sleep(delay).await;
+  ```
+* **Detection:** Start with `rg -n 'std::thread::sleep' crates apps -g '*.rs'`. Verify the execution context, including `spawn_blocking` and dedicated threads. The scanner recognizes direct synchronous sleep calls in lexically async functions.
 
 ---
 
 ## 3. Summary Matrix
 
-| ID | Pattern Name | Dimension | Detection / Verification |
+The evidence column describes how to verify the invariant at its owner. “Manual” means the Python scanner has no rule for that pattern.
+
+| ID | Dimension | Evidence to verify | Python scanner |
 |---|---|---|---|
-| `P-SCOPE-GENERIC` | Scope-Generic Deduplication | Algorithmic / Structural | Multiple `insert_*_raw` or `load_*_layers` across services |
-| `P-DB-CHECK` | DB-Enforced State Invariants | State Transitions | Look for status/deleted_at without SQL `CHECK` constraints |
-| `P-LOCK-ORDER` | Lock-Before-Check Concurrency | Concurrency / TOCTOU | Check before `lock_` or `pg_advisory_xact_lock` |
-| `P-FAIL-CLOSED` | Fail-Closed Security Floor | Bounds / Preconditions | `PermissionScope::None => Ok` or missing global authorization check |
-| `P-ID-ENTROPY` | Bounded Identifier Entropy | Calculation Correctness | `VARCHAR(12)` or `[..12]` short ID patterns |
-| `P-ANTI-SWALLOW` | Zero Error Swallowing | Branch Completeness | `let _ =` error suppression and `black_box` compiler abuse |
-| `P-TXN-ROLLBACK-SWALLOW` | Transaction Rollback Swallowing | Concurrency & Leaks | `let _ = txn.rollback().await;` holding advisory locks until drop |
-| `P-ZERO-INCLUDE` | Module Tree Decoupling | Code Quality | `include!("*.rs")` file-stitching macros |
-| `P-CONFIG-BOUND` | Configuration Bounding | Preconditions / Anti-DoS | `put_settings` handler missing `.validate()` |
-| `P-DEAD-TWIN` | Dead Twin Elimination | Maintenance Integrity | Module-level `#[allow(dead_code)]` or parallel redundant services |
-| `P-BOUNDED-TREE` | Bounded Tree Projections | Memory Safety | Recursive query without depth cap or node limit |
-| `P-BATCH-QUERY` | Transactional Batching | Performance / Concurrency | `.one(txn)` / `.all(txn)` queries executed inside loop bodies |
-| `P-ZERO-PANIC-PROD` | Zero Runtime Panics | Preconditions / Reliability | `.expect()` / `.unwrap()` in production execution paths |
-| `P-HOTPATH-ALLOC` | Allocation Hygiene | Performance / Memory | Input `.clone()` before validation gates in services |
-| `P-SQLSTATE-DISCRIM` | SQLSTATE Error Mapping | Error Robustness | Raw message substring checks (`msg.contains`) instead of SQLSTATE |
-| `P-STRUCTURED-TRACE` | Contextual Trace Spans | Observability | Missing `#[instrument]` with `%tenant_id` on mutation services |
-| `P-SYNC-LOCK-AWAIT` | Sync Lock Across Await | Concurrency & Deadlocks | Synchronous lock guard held across `.await` in async code |
-| `P-RAW-SQL-INTERP` | Unprepared SQL Interpolation | Security & Integrity | `execute_unprepared(&format!(...))` injection risk |
-| `P-TENANT-FALLBACK-LEAK` | Tenant Fallback Leakage | Multi-Tenancy & Security | `tenant.unwrap_or_default()` breaking tenant isolation |
-| `P-OUTBOX-DETACHED` | Transactional Outbox Decoupling | Side-Effect Completeness | `event_bus.publish()` without `_in_tx` in transactional contexts |
-| `P-LEPTOS-DEAD-SIGNAL` | Reactive Signal Invalidation | UI Reactivity | `let _ = signal.get()` outside reactive contexts |
-| `P-UNFINISHED-CODE` | Lingering Incomplete Markers | Production Readiness | `todo!()`, `FIXME`, or `TODO` markers in production code |
+| `P-SCOPE-GENERIC` | Structure | Equivalent behavior and one owner across scopes | Manual |
+| `P-DB-CHECK` | State integrity | Database rejects invalid state transitions or combinations | Manual |
+| `P-LOCK-ORDER` | Concurrency | Competing writers cannot invalidate a checked precondition | Manual |
+| `P-FAIL-CLOSED` | Authorization | Missing scope is denied even for an otherwise public resource | Heuristic: explicit success for absent scope |
+| `P-ID-ENTROPY` | Calculation | Effective entropy, uniqueness scope, and collision handling | Heuristic: named widths, UUID compaction, short-ID schema |
+| `P-ANTI-SWALLOW` | Failure paths | Required failures propagate or are handled and observable | Heuristic: discarded call or `black_box` |
+| `P-ZERO-INCLUDE` | Module structure | Handwritten Rust is wired with explicit modules | High: direct literal Rust inclusion outside recognized exemptions |
+| `P-CONFIG-BOUND` | Preconditions | All writers reject invalid combinations and limits | Manual |
+| `P-DEAD-TWIN` | Ownership | Active callers and exports show whether an implementation is redundant | Heuristic: broad inner lint suppression |
+| `P-BOUNDED-TREE` | Algorithmic bounds | Deep, wide, and cyclic input respects the declared budget | Manual |
+| `P-BATCH-QUERY` | Performance and concurrency | Query count stays bounded without changing lock or result semantics | Heuristic: transaction query in a loop |
+| `P-ZERO-PANIC-PROD` | Reliability | Runtime inputs cannot trigger panic paths | Heuristic: panic-prone calls |
+| `P-HOTPATH-ALLOC` | Allocation | Invalid requests avoid unnecessary allocations on the affected path | Heuristic: early clone |
+| `P-SQLSTATE-DISCRIM` | Error mapping | Real SQLSTATE and constraint failures map correctly | Heuristic: error-message substring match |
+| `P-STRUCTURED-TRACE` | Observability | Emitted or inherited spans contain required context | Heuristic: mutation name and nearby span marker |
+| `P-TXN-ROLLBACK-SWALLOW` | Failure paths | Commit errors propagate and rollback errors remain observable | Heuristic: discarded finalization call |
+| `P-SYNC-LOCK-AWAIT` | Concurrency | Actual synchronous guard lifetimes exclude suspension | Heuristic: lock and await in lexical scope |
+| `P-RAW-SQL-INTERP` | Security | Runtime values are bound and interpolated identifiers are trusted | Heuristic: formatted direct SQL or local binding |
+| `P-TENANT-FALLBACK-LEAK` | Tenant isolation | Missing and wrong-tenant identities fail closed | Heuristic: fallback on a tenant selector |
+| `P-OUTBOX-DETACHED` | Side effects | Domain write and outbox write commit or roll back together | Heuristic: direct publish with transaction evidence in the same function |
+| `P-LEPTOS-DEAD-SIGNAL` | UI reactivity | An update reruns the intended reactive consumer | Heuristic: discarded signal read outside known reactive scopes |
+| `P-UNFINISHED-CODE` | Runtime completeness | Affected runtime paths cannot reach incomplete code | Heuristic: work marker or incomplete-code macro |
+| `P-SYNC-SLEEP-AWAIT` | Concurrency | Blocking delay runs outside executor workers | Heuristic: direct blocking sleep in async function |
 
 ---
 
 ## 4. Automated Verification Scanner
 
-The platform provides a dedicated automated verification scanner to audit any crate or module against these patterns:
+The scanner inspects Rust source and reports candidates from the matrix above:
 
 ```bash
 # Scan a specific domain module (smart resolution: forum -> crates/modules/rustok-forum)
@@ -424,8 +425,8 @@ python scripts/verify/verify-domain-hygiene.py --crate forum
 # Scan multiple crates at once
 python scripts/verify/verify-domain-hygiene.py --crate commerce,forum,index
 
-# Scan git staged files (instant pre-commit check)
-python scripts/verify/verify-domain-hygiene.py --staged
+# Scan staged Rust blobs directly from the Git index
+python scripts/verify/verify-domain-hygiene.py --staged --strict
 
 # Scan all modified files in working tree
 python scripts/verify/verify-domain-hygiene.py --changed
@@ -436,18 +437,45 @@ python scripts/verify/verify-domain-hygiene.py --diff main
 # Filter by minimum severity (P0 = critical only, P1 = high+, P2 = all)
 python scripts/verify/verify-domain-hygiene.py --crate commerce --severity P0
 
-# Display ready-to-copy code remediation suggestions
+# Display remediation guidance
 python scripts/verify/verify-domain-hygiene.py --crate commerce --suggest-fixes
 
 # Export machine-readable JSON or GitHub-flavored markdown report artifact
 python scripts/verify/verify-domain-hygiene.py --crate commerce --markdown-report commerce_hygiene.md
-python scripts/verify/verify-domain-hygiene.py --crate commerce --json
+python scripts/verify/verify-domain-hygiene.py --crate commerce --json --fail-on P1
 
-# Enforce in CI / pre-commit (exits with code 1 if issues are detected)
+# Generate a patch that appends advisory comments to the scanned source
+python scripts/verify/verify-domain-hygiene.py --crate commerce --patch commerce_hygiene.patch
+
+# Enforce high-confidence findings in CI / pre-commit
 npm run verify:hygiene:strict
+
+# Run regression tests for the scanner
+npm run test:verify:hygiene
 ```
 
-The scanner runs out-of-the-box using the Python 3 standard library without third-party dependencies, making it universally available in developer terminals and CI runners.
+The scanner uses the Python 3 standard library. Git modes require Git.
+Severity (`P0` through `P2`) describes potential impact. The separate `confidence`
+field is `high` for a direct source-level violation or `heuristic` for a candidate
+that needs review. Text, JSON, CSV, and Markdown reports show both. `--severity`
+filters findings by impact. `--strict` is equivalent to `--fail-on P2`: the scanner
+returns `1` only for high-confidence findings at or above the threshold, in text
+and JSON modes. The current high-confidence rule has severity `P1`, so
+`--fail-on P0` does not block on any current rule. A target-selection or
+source-read error returns `2`.
+
+Git modes select files and scan their full contents. A pre-existing match in a
+selected file can fail a gate even when the matching line was not edited.
+
+The patch keeps flagged Rust statements intact and appends advisory comments with
+their original line numbers. Check a working-tree patch with `git apply --check`
+and a `--staged` patch with `git apply --cached --check`.
+
+Rules use lexical scope and preserve literal contents for checks that need them.
+They do not resolve Rust types, expand macros, or follow calls between functions.
+The Leptos rule recognizes effect, memo, and `view!` delimiters. An empty report
+means the scanner found no matches in the selected sources; verify behavioral
+invariants with the owner’s tests and runtime evidence.
 
 ---
 

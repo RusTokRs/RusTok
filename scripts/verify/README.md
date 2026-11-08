@@ -106,6 +106,18 @@ npm run test:verify:ecommerce:fba-registries
 
 ## Script Descriptions
 
+### `verify-domain-hygiene.py`
+
+Run `npm run test:verify:hygiene` to exercise the scanner and its CLI against
+isolated fixtures. See the [scanner contract](../../docs/standards/logic-hygiene-patterns.md#4-automated-verification-scanner)
+for scan targets, exit codes, and patch verification commands. Reports separate
+potential impact from confidence. Only high-confidence findings can fail
+`--strict` or `--fail-on`. Heuristic matches remain available for review.
+
+The remediation gate applies Rust and JavaScript/TypeScript diff rules to source
+files of the corresponding language. Documentation and Python fixtures can
+quote the patterns they describe or test.
+
 ### `verify:ffa:ui:migration` / `verify-ffa-ui-boundary-sweep.mjs`
 **FFA UI migration gate** — large source-level gate for module-owned UI migration to `core/transport/ui`.
 

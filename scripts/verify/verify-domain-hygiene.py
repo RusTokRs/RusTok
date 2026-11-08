@@ -5,19 +5,20 @@ Codified against docs/standards/logic-hygiene-patterns.md.
 Scans Rust crates and modules for known anti-patterns, slop, and logic bugs:
   - P-ZERO-INCLUDE: file-stitching macros include!("*.rs")
   - P-ANTI-SWALLOW: swallowed errors let _ =, dummy black_box suppression
-  - P-TXN-ROLLBACK-SWALLOW: swallowed transaction rollback/commit holding locks until drop
+  - P-TXN-ROLLBACK-SWALLOW: ignored rollback or commit result on a transaction-like value
   - P-ZERO-PANIC-PROD: unwrap() and expect() in production service paths
-  - P-ID-ENTROPY: obsolete 48-bit short_id (VARCHAR(12), [..12], left(..., 12))
-  - P-FAIL-CLOSED: RBAC PermissionScope::None => Ok / true leakage
+  - P-ID-ENTROPY: possible 12-hex route identifiers
+  - P-FAIL-CLOSED: possible allow decision on PermissionScope::None
   - P-SQLSTATE-DISCRIM: brittle string matching on database error messages
   - P-BATCH-QUERY: N+1 queries in loops (.one(txn) / .all(txn) inside loops)
   - P-DEAD-TWIN: module-level #[allow(dead_code)] / #[allow(unused)] slop
   - P-RAW-SQL-INTERP: execute_unprepared(&format!(...)) SQL injection risk
   - P-LEPTOS-DEAD-SIGNAL: let _ = signal.get() dead reactive read in UI
-  - P-TENANT-FALLBACK-LEAK: unwrap_or_default() on tenant_id / security context
+  - P-TENANT-FALLBACK-LEAK: default UUID fallback on a tenant selector
   - P-UNFINISHED-CODE: lingering todo!(), FIXME, or TODO markers in production
-  - P-OUTBOX-DETACHED: event_bus.publish() in transactional contexts (missing _in_tx)
+  - P-OUTBOX-DETACHED: direct event_bus.publish() in a function with transaction evidence
   - P-SYNC-LOCK-AWAIT: std::sync::Mutex or parking_lot guard held across .await points
+  - P-SYNC-SLEEP-AWAIT: std::thread::sleep() in async functions
   - P-HOTPATH-ALLOC: premature clone of input before validation gates
   - P-STRUCTURED-TRACE: uninstrumented domain service mutation entrypoints
 """
@@ -29,9 +30,12 @@ import os
 import re
 import subprocess
 import sys
-from collections import defaultdict
-from dataclasses import dataclass
+from bisect import bisect_left, bisect_right
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
+from difflib import unified_diff
 from enum import Enum
+from io import StringIO
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Iterator
@@ -51,6 +55,11 @@ class Severity(str, Enum):
     P2_MEDIUM = "P2-MEDIUM"
 
 
+class Confidence(str, Enum):
+    HIGH = "high"
+    HEURISTIC = "heuristic"
+
+
 @dataclass
 class Finding:
     pattern_id: str
@@ -61,23 +70,30 @@ class Finding:
     line_content: str
     message: str
     suggested_fix: str | None = None
+    confidence: Confidence = Confidence.HEURISTIC
 
 
 # Compiled regex patterns for AST-lite inspection
-RE_INCLUDE = re.compile(r'include!\s*\(\s*"([^"]+\.rs)"\s*\)')
+RE_INCLUDE = re.compile(r'\binclude\s*!\s*\(\s*"([^"\\]+\.rs)"\s*\)')
 RE_LET_UNDERSCORE = re.compile(r'^\s*let\s+_\s*=')
 RE_TXN_ROLLBACK_COMMIT = re.compile(
-    r'\blet\s+_\s*=\s*(?:\w+\.)?(?:transaction|txn|tx|lock)\s*\.\s*(?:rollback|commit)\s*\('
+    r'\blet\s+_\s*=\s*(?:\w+\.)?(?:transaction|txn|tx)\s*\.\s*(rollback|commit)\s*\(\s*\)\s*\.\s*await\b'
 )
+RE_DISCARDED_CALL = re.compile(r'\b(?:\w+\s*\(|await\b)')
 RE_BLACK_BOX_SUPPRESS = re.compile(r'\b(?:std::hint::)?black_box\s*\(')
 RE_EXPECT_UNWRAP = re.compile(r'\.(?:expect|unwrap)\s*\(')
 RE_UNWRAP_ERR = re.compile(r'\.unwrap_err\s*\(')
 RE_EXPLICIT_PANIC = re.compile(r'\bpanic!\s*\(')
 RE_STATIC_CONST_DECL = re.compile(r'^\s*(?:pub(?:\s*\([^)]*\))?\s+)?(?:static|const)\b')
 RE_SHORT_ID_12 = re.compile(
-    r'(?:VARCHAR\s*\(\s*12\s*\)|\[\s*0?\s*\.\.\s*12\s*\]|\"000000000000\"|left\s*\([^,]+,\s*12\s*\)|SHORT_ID_LEN(?:GTH)?\s*(?::\s*usize)?\s*=\s*12\b)'
+    r'\b(?:[A-Z0-9_]+_)?SHORT_ID_LEN(?:GTH)?\s*(?::\s*usize)?\s*=\s*12\b'
+    r'|\.\s*simple\s*\(\s*\)\s*\.\s*to_string\s*\(\s*\)\s*\[\s*0?\s*\.\.\s*12\s*\]'
 )
-RE_RBAC_LEAK = re.compile(r'PermissionScope::None\s*=>\s*(?:\{?\s*(?:return\s+)?)?(?:Ok\b|true\b)')
+RE_SHORT_ID_SQL = re.compile(r'\b(?:route_)?short_(?:id|identity)"?\s+VARCHAR\s*\(\s*12\s*\)', re.IGNORECASE)
+RE_RBAC_LEAK = re.compile(
+    r'\bPermissionScope::None\s*=>\s*(?:\{\s*)?(?:return\s+)?'
+    r'(?:Ok\s*\(\s*(?:true\b|\(\s*\))\s*\)|true\b)(?=\s*[,;}]|\s*$)'
+)
 RE_ERR_VAR_CONTAINS = re.compile(
     r'\b(?:err|error|db_err|sql_err|query_err)\s*(?:\.\s*to_string\s*\(\s*\))?\s*\.\s*contains\s*\(\s*"([^"]+)"'
 )
@@ -92,25 +108,61 @@ RE_QUERY_IN_TXN = re.compile(
     r'\.(?:one|all|one_by_id|query_one|query_all)\s*\(\s*&?(?:(?:\w+\.)?\w*(?:txn|tx|transaction|db|conn|pool)\w*)\s*\)\.await'
 )
 RE_FOR_OR_WHILE_LOOP = re.compile(r'\b(?:for\s+[^;{]+?\s+in\b|while\b)')
-RE_ALLOW_DEAD_CODE = re.compile(r'^\s*#!?\[allow\((?:dead_code|unused|unused_variables)\)\]')
-RE_RAW_SQL_INTERP = re.compile(r'\.execute_unprepared\s*\(\s*&?format!\s*\(')
-RE_LEPTOS_DEAD_SIGNAL = re.compile(r'let\s+_\s*=\s*(?:\w+_)?(?:nonce|signal|state)\.get\(\);')
-RE_TENANT_FALLBACK = re.compile(
-    r'\btenant(?:_id)?(?:\.[a-zA-Z_]\w*\(\))*\.unwrap_or(?:_default\(\)|_else\s*\(\s*(?:\|\|)?\s*(?:Uuid::nil\(\)?|Uuid::default\(\)?|Default::default\(\)?)\s*\)|\(\s*(?:Uuid::nil\(\)|Uuid::default\(\)|Default::default\(\))\s*\))'
+RE_TEST_ATTRIBUTE = re.compile(r'#\s*\[\s*(?:cfg\s*\(\s*test\s*\)|(?:tokio::)?test(?:\s*\([^]]*\))?)\s*\]')
+RE_TEST_MODULE = re.compile(r'\bmod\s+tests?\b')
+RE_ALLOW_DEAD_CODE = re.compile(r'^#!\s*\[\s*allow\s*\([^)]*\b(?:dead_code|unused|unused_variables)\b')
+RE_EXECUTE_UNPREPARED = re.compile(r'\.\s*execute_unprepared\s*\(\s*&?\s*')
+RE_FORMAT_CALL = re.compile(r'(?:std::)?format\s*!\s*[({\[]')
+RE_LOCAL_BINDING = re.compile(r'^\s*let\s+(?:mut\s+)?([A-Za-z_]\w*)(?:\s*:\s*[^=;]+)?\s*=\s*')
+RE_LOCAL_ASSIGNMENT = re.compile(r'^\s*([A-Za-z_]\w*)\s*=(?!=|>)\s*')
+RE_LOCAL_SQL_ARG = re.compile(r'([A-Za-z_]\w*)\s*,?\s*\)')
+RE_FORMAT_LITERAL = re.compile(
+    r'r(?P<hashes>#*)".*"(?P=hashes)|"(?:\\.|[^"\\])*"|true|false|[+-]?\d[\d_]*(?:[iu](?:\d+|size))?',
+    re.DOTALL,
 )
-RE_TODO_MARKER = re.compile(r'\b(?:to' + r'do!\(|FIXME\b|TODO\b)')
-RE_OUTBOX_DETACHED = re.compile(r'(?:event_bus|event_publisher)\.publish\s*\(')
+RE_FORMAT_CAPTURE = re.compile(r'\{([A-Za-z_]\w*)(?=[:}])')
+RE_LEPTOS_DEAD_SIGNAL = re.compile(r'let\s+_\s*=\s*(?:\w+_)?(?:nonce|signal|state)\.get\(\);')
+TENANT_FALLBACK_METHOD = (
+    r'(?:\s*\.\s*(?:as_ref|as_deref|copied|cloned)\s*\(\s*\))*\s*\.\s*unwrap_or'
+    r'(?:_default\s*\(\s*\)|_else\s*\(\s*(?:\|\|\s*)?(?:Uuid::nil|Uuid::default|Default::default)'
+    r'\s*(?:\(\s*\))?\s*\)|\s*\(\s*(?:Uuid::nil|Uuid::default|Default::default)\s*\(\s*\)\s*\))'
+)
+RE_TENANT_FALLBACK = re.compile(r'\btenant(?:_id)?' + TENANT_FALLBACK_METHOD)
+RE_TENANT_BINDING_FALLBACK = re.compile(
+    r'^\s*let\s+(?:mut\s+)?tenant_id(?:\s*:\s*[^=;]+)?\s*=\s*(?:[A-Za-z_]\w*\s*\.\s*)*[A-Za-z_]\w*'
+    + TENANT_FALLBACK_METHOD
+)
+RE_INCOMPLETE_MACRO = re.compile(r'\b(?:todo|unimplemented)\s*!\s*[(\[{]')
+RE_WORK_COMMENT = re.compile(r'\b(?:FIXME|TODO)\b')
+RE_OUTBOX_DETACHED = re.compile(r'\b(?:event_bus|event_publisher)\s*\.\s*publish\s*\(')
+RE_TRANSACTION_TOKEN = re.compile(
+    r'(?P<function>\bfn\s+(?:r#)?[A-Za-z_]\w*)'
+    r'|(?P<transaction>\bDatabaseTransaction\b|\.\s*begin(?:_with_config)?\s*\()'
+    r'|(?P<publish>' + RE_OUTBOX_DETACHED.pattern + r')|[(){}\[\];]'
+)
 RE_ASYNC_FN = re.compile(r'^\s*(?:pub(?:\s*\([^)]*\))?\s+)?async\s+fn\s+([a-zA-Z_]\w*)')
 RE_PUB_ASYNC_FN = re.compile(r'^\s*pub(?:\s*\([^)]*\))?\s+async\s+fn\s+([a-zA-Z_]\w*)')
 RE_SYNC_LOCK_ACQUIRE = re.compile(
     r'\blet\s+(?:mut\s+)?([a-zA-Z_]\w*)\s*=\s*([^;\n]+?\.(?:lock|read|write)\s*\([^;\n]*\))'
 )
 RE_AWAIT = re.compile(r'\.await\b')
+RE_EXPLICIT_DROP = re.compile(r'^(?:std::mem::)?drop\s*\(\s*([A-Za-z_]\w*)\s*\)\s*;')
 RE_EARLY_CLONE = re.compile(
     r'\b(?:let\s+(?:mut\s+)?\w+\s*=|if\s+let\s+Some\(\w+\)\s*=)\s*input\.\w+\.(?:clone\(\)|to_string\(\))'
 )
 RE_MUTATION_FN_NAME = re.compile(r'^(?:create|update|delete|set|reconcile|merge|publish|execute|handle|dispatch)')
 RE_SYNC_SLEEP = re.compile(r'\bstd::thread::sleep\s*\(')
+RE_RUST_TOKEN = re.compile(
+    r'''//|/\*|\b(?:br|cr|r)(?P<hashes>\#*)"|"|'''
+    r"'(?:[^'\\\r\n]|\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F_]+\}|[^\r\n]))'"
+)
+RE_BLOCK_COMMENT_DELIMITER = re.compile(r'/\*|\*/')
+RE_STRING_DELIMITER = re.compile(r'\\[\s\S]|"')
+RE_REACTIVE_TOKEN = re.compile(
+    r'(?P<reactive>\b(?:create_effect|create_memo|Effect::new|Memo::new)\s*\('
+    r'|\bview!\s*[{(\[])|[(){}\[\]]'
+)
+DELIMITER_PAIRS = {"(": ")", "[": "]", "{": "}"}
 
 
 def is_test_or_bench(file_path: Path) -> bool:
@@ -146,131 +198,225 @@ def extract_module_name(file_path: Path) -> str:
     return "root"
 
 
-def strip_string_literals(line: str) -> str:
-    """Strip character and string literals using strict backreference matching."""
-    # 1. Byte raw strings br#"..."#
-    s = re.sub(r'br(#*)".*?"\1', 'b""', line)
-    # 2. Raw strings r#"..."#
-    s = re.sub(r'r(#*)".*?"\1', '""', s)
-    # 3. Byte strings b"..."
-    s = re.sub(r'b"(?:\\.|[^"\\])*"', 'b""', s)
-    # 4. Double quoted strings "..."
-    s = re.sub(r'"(?:\\.|[^"\\])*"', '""', s)
-    # 5. Byte char literals b'...'
-    s = re.sub(r"b'(?:\\.|[^'\\])'", "b''", s)
-    # 6. Char literals '...'
-    s = re.sub(r"'(?:\\.|[^'\\])'", "''", s)
-    return s
-
-
-def split_code_and_comment(line: str) -> tuple[str, str]:
-    """Split line into code and comment parts, ignoring // inside string/char literals."""
-    in_quote: str | None = None  # '"' or "'"
-    in_raw_hashes: int | None = None
-    i = 0
-    n = len(line)
-    while i < n:
-        c = line[i]
-        # Check raw string start: r#*" or br#*"
-        if in_quote is None and in_raw_hashes is None:
-            idx = i
-            if c == 'b' and i + 1 < n and line[i + 1] in ('r', '"', "'"):
-                idx = i + 1
-                c = line[idx]
-
-            if c == 'r' and idx + 1 < n and (line[idx + 1] == '"' or line[idx + 1] == '#'):
-                j = idx + 1
-                while j < n and line[j] == '#':
-                    j += 1
-                if j < n and line[j] == '"':
-                    in_raw_hashes = j - (idx + 1)
-                    i = j + 1
-                    continue
-            elif c == '"':
-                in_quote = '"'
-                i = idx + 1
-                continue
-            elif c == "'":
-                is_char_lit = False
-                if idx + 2 < n and line[idx + 2] == "'":
-                    is_char_lit = True
-                elif idx + 3 < n and line[idx + 1] == '\\' and line[idx + 3] == "'":
-                    is_char_lit = True
-
-                if is_char_lit:
-                    in_quote = "'"
-                    i = idx + 1
-                    continue
-                else:
-                    i = idx + 1
-                    continue
-            elif c == '/' and i + 1 < n and line[i + 1] == '/':
-                return line[:i].strip(), line[i + 2:].strip()
-            i += 1
+def rust_source_lines(content: str) -> list[tuple[str, str, str]]:
+    """Return aligned code, syntax without literals, and line comments for each line."""
+    code_parts: list[str] = []
+    syntax_parts: list[str] = []
+    copied_until = 0
+    position = 0
+    while token := RE_RUST_TOKEN.search(content, position):
+        position = token.end()
+        delimiter = token.group()
+        if delimiter == "//":
+            line_end = content.find("\n", position)
+            position = len(content) if line_end == -1 else line_end + 1
             continue
 
-        if in_raw_hashes is not None:
-            if c == '"':
-                hashes = 0
-                j = i + 1
-                while j < n and line[j] == '#' and hashes < in_raw_hashes:
-                    hashes += 1
-                    j += 1
-                if hashes == in_raw_hashes:
-                    in_raw_hashes = None
-                    i = j
-                    continue
-            i += 1
-            continue
+        if delimiter == "/*":
+            depth = 1
+            for boundary in RE_BLOCK_COMMENT_DELIMITER.finditer(content, position):
+                depth += 1 if boundary.group() == "/*" else -1
+                if depth == 0:
+                    position = boundary.end()
+                    break
+            else:
+                position = len(content)
+        elif token["hashes"] is not None:
+            closing = '"' + token["hashes"]
+            literal_end = content.find(closing, position)
+            position = len(content) if literal_end == -1 else literal_end + len(closing)
+        elif delimiter == '"':
+            for boundary in RE_STRING_DELIMITER.finditer(content, position):
+                if boundary.group() == '"':
+                    position = boundary.end()
+                    break
+            else:
+                position = len(content)
 
-        if in_quote == '"':
-            if c == '\\':
-                i += 2
-                continue
-            if c == '"':
-                in_quote = None
-            i += 1
-            continue
+        prefix = content[copied_until:token.start()]
+        literal = content[token.start():position]
+        masked = re.sub(r"[^\r\n]+", lambda match: " " * len(match.group()), literal)
+        code_parts.extend((prefix, masked if delimiter == "/*" else literal))
+        syntax_parts.extend((prefix, masked))
+        copied_until = position
 
-        if in_quote == "'":
-            if c == '\\':
-                i += 2
-                continue
-            if c == "'":
-                in_quote = None
-            i += 1
-            continue
+    tail = content[copied_until:]
+    code_parts.append(tail)
+    syntax_parts.append(tail)
+    lines = []
+    for code, syntax in zip("".join(code_parts).split("\n"), "".join(syntax_parts).split("\n")):
+        syntax, _, comment = syntax.partition("//")
+        lines.append((code[:len(syntax)], syntax, comment))
+    return lines
 
-    return line.strip(), ""
+
+def match_with_literals(pattern: re.Pattern[str], code: str, syntax: str) -> re.Match[str] | None:
+    """Match a construct with literal arguments only if it starts in Rust code."""
+    return next((match for match in pattern.finditer(code) if not syntax[match.start()].isspace()), None)
+
+
+def reactive_scope_boundaries(syntax: str) -> list[int]:
+    """Track entry and exit offsets of recognized Leptos calls and macros."""
+    closings: list[str] = []
+    reactive_depth = None
+    boundaries: list[int] = []
+    for token in RE_REACTIVE_TOKEN.finditer(syntax):
+        delimiter = token.group()[-1]
+        if delimiter in DELIMITER_PAIRS:
+            closings.append(DELIMITER_PAIRS[delimiter])
+            if token.lastgroup == "reactive" and reactive_depth is None:
+                reactive_depth = len(closings)
+                boundaries.append(token.end())
+        elif closings and delimiter == closings[-1]:
+            if len(closings) == reactive_depth:
+                boundaries.append(token.start())
+                reactive_depth = None
+            closings.pop()
+    return boundaries
+
+
+@dataclass
+class TransactionScope:
+    depth: int
+    has_transaction: bool = False
+    publications: list[int] = field(default_factory=list)
+
+
+def transactional_publications(syntax: str) -> list[int]:
+    """Find publication offsets in functions with their own transaction evidence."""
+    if not RE_OUTBOX_DETACHED.search(syntax):
+        return []
+
+    pending: TransactionScope | None = None
+    functions: list[TransactionScope] = []
+    closings: list[str] = []
+    publications: list[int] = []
+    for token in RE_TRANSACTION_TOKEN.finditer(syntax):
+        delimiter = token.group()[-1]
+        if token.lastgroup == "function":
+            pending = TransactionScope(len(closings))
+            continue
+        if token.lastgroup == "transaction":
+            scope = pending or (functions[-1] if functions else None)
+            if scope is not None:
+                scope.has_transaction = True
+        if token.lastgroup == "publish" and functions and pending is None:
+            functions[-1].publications.append(token.start())
+
+        if delimiter in DELIMITER_PAIRS:
+            if delimiter == "{" and pending is not None and pending.depth == len(closings):
+                functions.append(pending)
+                pending = None
+            closings.append(DELIMITER_PAIRS[delimiter])
+        elif closings and delimiter == closings[-1]:
+            closings.pop()
+            if functions and functions[-1].depth == len(closings):
+                scope = functions.pop()
+                if scope.has_transaction:
+                    publications.extend(scope.publications)
+        elif delimiter == ";" and pending is not None and pending.depth == len(closings):
+            pending = None
+    return sorted(publications)
+
+
+def format_uses_dynamic_values(code: str, syntax: str, opening: int) -> bool:
+    """Inspect arguments of a single format! call in a bounded source window."""
+    closings = [DELIMITER_PAIRS[syntax[opening]]]
+    arguments: list[str] = []
+    start = opening + 1
+    for token in re.finditer(r"[(){}\[\],]", syntax[start:]):
+        delimiter = token.group()
+        offset = opening + 1 + token.start()
+        if delimiter in DELIMITER_PAIRS:
+            closings.append(DELIMITER_PAIRS[delimiter])
+        elif delimiter == closings[-1]:
+            closings.pop()
+            if not closings:
+                arguments.append(code[start:offset].strip())
+                break
+        elif delimiter == "," and len(closings) == 1:
+            arguments.append(code[start:offset].strip())
+            start = offset + 1
+    else:
+        return False
+
+    template, *values = arguments
+    explicit_names = set()
+    for value in values:
+        if not value:
+            continue  # Optional trailing comma
+        name = RE_LOCAL_ASSIGNMENT.match(value)
+        if name:
+            explicit_names.add(name.group(1))
+            value = value[name.end():]
+        if not RE_FORMAT_LITERAL.fullmatch(value):
+            return True
+
+    template = template.replace("{{", "").replace("}}", "")
+    return any(capture not in explicit_names for capture in RE_FORMAT_CAPTURE.findall(template))
+
+
+def check_interpolated_sql(
+    code: str, syntax: str, depth: int, bindings: dict[int, dict[str, bool]]
+) -> bool:
+    """Track direct format! bindings and uses within lexical blocks."""
+    assignment = RE_LOCAL_BINDING.match(syntax) or RE_LOCAL_ASSIGNMENT.match(syntax)
+    if assignment:
+        name = assignment.group(1)
+        format_call = RE_FORMAT_CALL.match(syntax, assignment.end())
+        if format_call or any(name in scope for scope in bindings.values()):
+            bindings.setdefault(depth, {})[name] = (
+                format_call is not None and format_uses_dynamic_values(code, syntax, format_call.end() - 1)
+            )
+
+    first_line_end = syntax.find("\n")
+    for call in RE_EXECUTE_UNPREPARED.finditer(syntax):
+        if first_line_end != -1 and call.start() > first_line_end:
+            break
+        format_call = RE_FORMAT_CALL.match(syntax, call.end())
+        if format_call and format_uses_dynamic_values(code, syntax, format_call.end() - 1):
+            return True
+        argument = RE_LOCAL_SQL_ARG.match(syntax, call.end())
+        if argument:
+            name = argument.group(1)
+            for binding_depth in sorted(bindings, reverse=True):
+                if name in bindings[binding_depth]:
+                    if bindings[binding_depth][name]:
+                        return True
+                    break
+    return False
 
 
 def scan_file(file_path: Path) -> list[Finding]:
+    return scan_source(file_path, file_path.read_bytes().decode("utf-8"))
+
+
+def scan_source(file_path: Path, content: str) -> list[Finding]:
     findings: list[Finding] = []
     try:
         rel_path = file_path.relative_to(ROOT)
     except ValueError:
         rel_path = file_path
 
-    try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
-    except Exception as e:
-        print(f"[WARN] Failed to read {rel_path}: {e}", file=sys.stderr)
-        return []
-
-    lines = content.splitlines()
-    in_test_module_brace_depth: int | None = None
-    in_test_fn_brace_depth: int | None = None
-    pending_test_fn = False
+    source_lines = content.split("\n")
+    lines = rust_source_lines(content)
+    code_lines = [syntax.strip() for _, syntax, _ in lines]
+    syntax = "\n".join(syntax for _, syntax, _ in lines)
+    reactive_boundaries = reactive_scope_boundaries(syntax)
+    outbox_publications = transactional_publications(syntax)
+    line_offset = 0
+    test_scopes: list[int] = []
+    pending_test_item = False
     in_loop_brace_depth: int | None = None
     pending_loop = False
     in_async_fn_brace_depth: int | None = None
     pending_async_fn_name: str | None = None
     in_static_brace_depth: int | None = None
     pending_static = False
-    active_sync_guards: dict[str, tuple[int, str, int]] = {}  # guard_name -> (line_num, line_str, brace_depth)
-    in_block_comment = False
+    active_sync_guards: dict[str, tuple[int, int]] = {}  # guard name -> (line, scope depth)
     current_brace_depth = 0
-    file_has_txn_scope = "txn" in content or "DatabaseTransaction" in content
+    sql_bindings: dict[int, dict[str, bool]] = {}
+    has_unprepared_sql = "execute_unprepared" in syntax
 
     is_test_file = is_test_or_bench(file_path)
     is_build_file = is_build_or_example(file_path)
@@ -282,54 +428,17 @@ def scan_file(file_path: Path) -> list[Finding]:
         or file_path.name in ("service.rs", "services.rs")
         or file_path.name.endswith("_service.rs")
     )
-    in_raw_hashes: int | None = None
-    in_multiline_str = False
 
-    for idx, line in enumerate(lines, start=1):
-        stripped = line.strip()
+    for idx, (literal_code, syntax_line, comment) in enumerate(lines, start=1):
+        code_part = code_lines[idx - 1]
+        snippet = literal_code.strip()
+        line_start = line_offset
+        statement_offset = line_start + len(syntax_line) - len(syntax_line.lstrip())
+        line_offset += len(syntax_line) + 1
 
-        # Handle multi-line block comments /* ... */
-        if in_block_comment:
-            if "*/" in stripped:
-                in_block_comment = False
-                stripped = stripped.split("*/", 1)[1].strip()
-            else:
-                continue
-
-        if "/*" in stripped:
-            if "*/" in stripped:
-                stripped = re.sub(r'/\*.*?\*/', '', stripped).strip()
-            else:
-                in_block_comment = True
-                stripped = stripped.split("/*", 1)[0].strip()
-
-        # Handle multi-line raw string literals r#" ... "#
-        if in_raw_hashes is not None:
-            close_pat = '"' + '#' * in_raw_hashes
-            if close_pat in stripped:
-                in_raw_hashes = None
-                stripped = stripped.split(close_pat, 1)[1].strip()
-            else:
-                continue
-
-        # Handle multi-line standard strings " ... "
-        if in_multiline_str:
-            m_close = re.search(r'^(?:\\.|[^"\\])*"', stripped)
-            if m_close:
-                in_multiline_str = False
-                stripped = stripped[m_close.end():].strip()
-            else:
-                continue
-
-        if not stripped:
-            continue
-
-        # Separate code portion from line-comment portion using quote-aware parser
-        code_part, comment_part = split_code_and_comment(stripped)
-
-        # 12. P-UNFINISHED-CODE: lingering todo!(), FIXME, or TODO markers (check both code and comments)
+        # 12. P-UNFINISHED-CODE: incomplete macros in code and work markers in comments
         if not is_test_file and not is_build_file:
-            m_todo = RE_TODO_MARKER.search(stripped)
+            m_todo = RE_INCOMPLETE_MACRO.search(code_part) or RE_WORK_COMMENT.search(comment)
             if m_todo:
                 findings.append(Finding(
                     pattern_id="P-UNFINISHED-CODE",
@@ -337,69 +446,54 @@ def scan_file(file_path: Path) -> list[Finding]:
                     severity=Severity.P2_MEDIUM,
                     file_path=rel_path,
                     line_number=idx,
-                    line_content=stripped,
-                    message=f"Found unfinished work marker '{m_todo.group(0)}'. Resolve before shipping or record in ledger.",
-                    suggested_fix="Implement missing logic or record in continuous-review-ledger.md."
+                    line_content=source_lines[idx - 1].strip(),
+                    message=f"Found unfinished work marker '{m_todo.group(0)}'. Check the reachable behavior.",
+                    suggested_fix="Implement required behavior and track agreed follow-up in the owner plan."
                 ))
 
         # Skip further inspection if the line is purely a comment
         if not code_part:
             continue
 
-        clean_for_braces = strip_string_literals(code_part)
+        open_braces = code_part.count("{")
+        close_braces = code_part.count("}")
 
-        # Check if line opened an unclosed raw string
-        m_raw_open = re.search(r'\br(#*)"', clean_for_braces)
-        if m_raw_open:
-            in_raw_hashes = len(m_raw_open.group(1))
-        elif clean_for_braces.count('"') % 2 == 1:
-            in_multiline_str = True
-
-        open_braces = clean_for_braces.count("{")
-        close_braces = clean_for_braces.count("}")
-
-        # Test attribute tracking (supporting multiline signatures)
-        if "#[test]" in stripped or "#[tokio::test]" in stripped:
-            pending_test_fn = True
-
-        if pending_test_fn and "{" in clean_for_braces:
-            in_test_fn_brace_depth = current_brace_depth
-            pending_test_fn = False
-
-        if "#[cfg(test)]" in stripped or re.search(r'\bmod\s+tests?\b', code_part):
-            in_test_module_brace_depth = current_brace_depth
+        # A test attribute can precede a multiline item of any name.
+        if RE_TEST_ATTRIBUTE.search(code_part) or RE_TEST_MODULE.search(code_part):
+            pending_test_item = True
+        is_test_context = is_test_file or bool(test_scopes) or pending_test_item
+        if pending_test_item:
+            if open_braces:
+                test_scopes.append(current_brace_depth)
+                pending_test_item = False
+            elif ";" in code_part:
+                pending_test_item = False
 
         # Loop tracking (supporting multiline headers)
         if RE_FOR_OR_WHILE_LOOP.search(code_part):
-            if "{" in clean_for_braces:
+            if "{" in code_part:
                 in_loop_brace_depth = current_brace_depth
             else:
                 pending_loop = True
-        elif pending_loop and "{" in clean_for_braces:
+        elif pending_loop and "{" in code_part:
             in_loop_brace_depth = current_brace_depth
             pending_loop = False
 
         # Static / LazyLock block tracking
         if RE_STATIC_CONST_DECL.search(code_part) or "Lazy::new" in code_part or "LazyLock::new" in code_part or "lazy_static!" in code_part:
-            if "{" in clean_for_braces:
+            if "{" in code_part:
                 in_static_brace_depth = current_brace_depth
             else:
                 pending_static = True
-        elif pending_static and "{" in clean_for_braces:
+        elif pending_static and "{" in code_part:
             in_static_brace_depth = current_brace_depth
             pending_static = False
-
-        is_test_context = (
-            is_test_file
-            or (in_test_module_brace_depth is not None and current_brace_depth >= in_test_module_brace_depth)
-            or (in_test_fn_brace_depth is not None and current_brace_depth >= in_test_fn_brace_depth)
-        )
 
         # Track async function entry (supporting multiline signatures)
         m_async_fn = RE_ASYNC_FN.match(code_part)
         if m_async_fn:
             fn_name = m_async_fn.group(1)
-            if "{" in clean_for_braces:
+            if "{" in code_part:
                 in_async_fn_brace_depth = current_brace_depth
             else:
                 pending_async_fn_name = fn_name
@@ -408,7 +502,7 @@ def scan_file(file_path: Path) -> list[Finding]:
             is_pub_fn = RE_PUB_ASYNC_FN.match(code_part) is not None
             if is_services_file and not is_test_context and is_pub_fn and RE_MUTATION_FN_NAME.match(fn_name):
                 has_instrument = any(
-                    "instrument" in lines[j]
+                    "instrument" in code_lines[j]
                     for j in range(max(0, idx - 16), idx - 1)
                 )
                 if not has_instrument:
@@ -418,11 +512,11 @@ def scan_file(file_path: Path) -> list[Finding]:
                         severity=Severity.P2_MEDIUM,
                         file_path=rel_path,
                         line_number=idx,
-                        line_content=code_part,
-                        message=f"Public mutation service '{fn_name}' lacks #[tracing::instrument]. Missing contextual trace span.",
-                        suggested_fix=f"#[tracing::instrument(skip(self, security), fields(tenant_id = %tenant_id))]"
+                        line_content=snippet,
+                        message=f"Candidate mutation '{fn_name}' has no nearby instrumentation marker.",
+                        suggested_fix="Verify that the owner entry point has the required operation and tenant context."
                     ))
-        elif pending_async_fn_name is not None and "{" in clean_for_braces:
+        elif pending_async_fn_name is not None and "{" in code_part:
             in_async_fn_brace_depth = current_brace_depth
             pending_async_fn_name = None
 
@@ -435,28 +529,31 @@ def scan_file(file_path: Path) -> list[Finding]:
                     severity=Severity.P0_CRITICAL,
                     file_path=rel_path,
                     line_number=idx,
-                    line_content=code_part,
-                    message="Calling std::thread::sleep in async code blocks executor threads. Use tokio::time::sleep(...).await.",
-                    suggested_fix="tokio::time::sleep(duration).await;"
+                    line_content=snippet,
+                    message="Blocking sleep appears in an async function. Verify which thread executes it.",
+                    suggested_fix="Use tokio::time::sleep(duration).await on executor workers."
                 ))
 
             m_lock = RE_SYNC_LOCK_ACQUIRE.search(code_part)
-            if m_lock and ".await" not in code_part and "tokio::sync" not in code_part:
-                guard_name = m_lock.group(1)
-                active_sync_guards[guard_name] = (idx, code_part, current_brace_depth)
+            if m_lock and "tokio::sync" not in code_part:
+                acquisition = " ".join(code_lines[idx - 1:idx + 5]).partition(";")[0]
+                if not RE_AWAIT.search(acquisition):
+                    active_sync_guards[m_lock.group(1)] = (idx, current_brace_depth)
 
-            # Drop explicitly
-            m_drop = re.search(r'\bdrop\s*\(\s*([a-zA-Z_]\w*)\s*\)', code_part)
+            # An inner branch can drop an outer guard on only some paths.
+            m_drop = RE_EXPLICIT_DROP.match(code_part)
             if m_drop:
-                dropped_var = m_drop.group(1)
-                active_sync_guards.pop(dropped_var, None)
+                guard_name = m_drop.group(1)
+                guard = active_sync_guards.get(guard_name)
+                if guard is not None and guard[1] == current_brace_depth:
+                    active_sync_guards.pop(guard_name)
 
             # 15. P-SYNC-LOCK-AWAIT: synchronous lock guard held across .await point
             if RE_AWAIT.search(code_part) and active_sync_guards:
                 in_scope_guards = [
                     (g_name, g_info)
                     for g_name, g_info in list(active_sync_guards.items())
-                    if current_brace_depth >= g_info[2]
+                    if current_brace_depth >= g_info[1]
                 ]
                 for g_name, g_info in in_scope_guards:
                     findings.append(Finding(
@@ -465,15 +562,15 @@ def scan_file(file_path: Path) -> list[Finding]:
                         severity=Severity.P0_CRITICAL,
                         file_path=rel_path,
                         line_number=idx,
-                        line_content=code_part,
-                        message=f"Holding synchronous lock guard '{g_name}' (acquired at line {g_info[0]}) across an .await point. This blocks executor threads and can cause deadlocks.",
-                        suggested_fix=f"Scope '{g_name}' inside a synchronous block or migrate lock to tokio::sync::Mutex."
+                        line_content=snippet,
+                        message=f"Possible synchronous guard '{g_name}' from line {g_info[0]} across .await.",
+                        suggested_fix=f"Verify the guard type and end '{g_name}' scope before awaiting when possible."
                     ))
                     active_sync_guards.pop(g_name, None)
 
         # 1. P-ZERO-INCLUDE: file-stitching macro
-        m_inc = RE_INCLUDE.search(code_part)
-        if m_inc and "OUT_DIR" not in code_part:
+        m_inc = match_with_literals(RE_INCLUDE, literal_code, syntax_line)
+        if m_inc and not is_test_context and not is_build_file:
             included_file = m_inc.group(1)
             mod_name = Path(included_file).stem
             findings.append(Finding(
@@ -482,9 +579,10 @@ def scan_file(file_path: Path) -> list[Finding]:
                 severity=Severity.P1_HIGH,
                 file_path=rel_path,
                 line_number=idx,
-                line_content=code_part,
+                line_content=snippet,
                 message=f"Forbidden file-stitching macro '{m_inc.group(0)}'. Use canonical 'mod ...;' and public exports.",
-                suggested_fix=f"mod {mod_name}; pub use {mod_name}::*;"
+                suggested_fix=f"Declare mod {mod_name}; and expose only the required items.",
+                confidence=Confidence.HIGH,
             ))
 
         # 2 & 3. P-ANTI-SWALLOW & P-TXN-ROLLBACK-SWALLOW: swallowed errors (supporting multiline expressions)
@@ -494,51 +592,53 @@ def scan_file(file_path: Path) -> list[Finding]:
                 full_stmt = code_part
                 if ";" not in code_part:
                     for k in range(idx, min(idx + 5, len(lines))):
-                        sub, _ = split_code_and_comment(lines[k])
+                        sub = code_lines[k]
                         if sub.startswith("pub ") or sub.startswith("fn ") or sub.startswith("async "):
                             break
                         full_stmt += " " + sub
                         if ";" in sub:
                             break
 
-                if RE_TXN_ROLLBACK_COMMIT.search(full_stmt):
+                transaction_end = RE_TXN_ROLLBACK_COMMIT.search(full_stmt)
+                if transaction_end:
+                    operation = transaction_end.group(1)
+                    suggested_fix = (
+                        "Propagate the commit failure and preserve the operation's retry contract."
+                        if operation == "commit" else
+                        "Handle the rollback failure while preserving the primary operation error."
+                    )
                     findings.append(Finding(
                         pattern_id="P-TXN-ROLLBACK-SWALLOW",
-                        rule_name="Transaction Rollback Swallowing",
+                        rule_name="Ignored Transaction Finalization Result",
                         severity=Severity.P0_CRITICAL,
                         file_path=rel_path,
                         line_number=idx,
-                        line_content=code_part,
-                        message="Swallowing transaction rollback or commit via 'let _ = ... .rollback().await'. Swallowed failures keep locks (pg_advisory_xact_lock) or uncommitted state held until drop.",
-                        suggested_fix="if let Err(rollback_err) = txn.rollback().await { tracing::warn!(%rollback_err, \"transaction rollback failed\"); }"
+                        line_content=snippet,
+                        message=f"Ignored {operation} result on a transaction-like value.",
+                        suggested_fix=suggested_fix,
                     ))
                 elif RE_LEPTOS_DEAD_SIGNAL.search(full_stmt):
-                    # Check if inside create_effect or view! block
-                    is_reactive_block = any(
-                        "create_effect" in lines[j] or "create_memo" in lines[j] or "view!" in lines[j]
-                        for j in range(max(0, idx - 8), idx)
-                    )
-                    if not is_reactive_block:
+                    if bisect_right(reactive_boundaries, statement_offset) % 2 == 0:
                         findings.append(Finding(
                             pattern_id="P-LEPTOS-DEAD-SIGNAL",
                             rule_name="Dead Reactive Signal Read",
                             severity=Severity.P1_HIGH,
                             file_path=rel_path,
                             line_number=idx,
-                            line_content=code_part,
+                            line_content=snippet,
                             message="Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
                             suggested_fix="create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
                         ))
-                else:
+                elif RE_DISCARDED_CALL.search(full_stmt):
                     findings.append(Finding(
                         pattern_id="P-ANTI-SWALLOW",
                         rule_name="Zero Error Swallowing",
                         severity=Severity.P1_HIGH,
                         file_path=rel_path,
                         line_number=idx,
-                        line_content=code_part,
-                        message="Swallowed error or variable via 'let _ ='. Propagate typed Result or log with warn!(%err).",
-                        suggested_fix="if let Err(err) = ... { tracing::warn!(%err, \"operation failed\"); }"
+                        line_content=snippet,
+                        message="Discarded call result via 'let _ ='. Verify whether it can fail.",
+                        suggested_fix="Propagate a required failure or record an explicitly best-effort failure."
                     ))
 
             if RE_BLACK_BOX_SUPPRESS.search(code_part):
@@ -548,7 +648,7 @@ def scan_file(file_path: Path) -> list[Finding]:
                     severity=Severity.P1_HIGH,
                     file_path=rel_path,
                     line_number=idx,
-                    line_content=code_part,
+                    line_content=snippet,
                     message="Abuse of 'black_box' in production service code. Do not fake variable usage to silence linter.",
                     suggested_fix="Remove black_box and handle or return the underlying value."
                 ))
@@ -571,7 +671,7 @@ def scan_file(file_path: Path) -> list[Finding]:
                         severity=Severity.P1_HIGH,
                         file_path=rel_path,
                         line_number=idx,
-                        line_content=code_part,
+                        line_content=snippet,
                         message="Calling .expect() or .unwrap() in production path. Return typed DomainError / PortError.",
                         suggested_fix="Use '?' operator with .map_err(DomainError::from) or return Result."
                     ))
@@ -583,7 +683,7 @@ def scan_file(file_path: Path) -> list[Finding]:
                     severity=Severity.P1_HIGH,
                     file_path=rel_path,
                     line_number=idx,
-                    line_content=code_part,
+                    line_content=snippet,
                     message="Calling .unwrap_err() in production path. Match on Result explicitly.",
                     suggested_fix="match result { Err(e) => ..., Ok(_) => return Err(...) }"
                 ))
@@ -595,22 +695,22 @@ def scan_file(file_path: Path) -> list[Finding]:
                     severity=Severity.P1_HIGH,
                     file_path=rel_path,
                     line_number=idx,
-                    line_content=code_part,
+                    line_content=snippet,
                     message="Calling panic!(...) in production path. Return typed DomainError / PortError.",
                     suggested_fix="return Err(DomainError::from(...));"
                 ))
 
-        # 5. P-ID-ENTROPY: obsolete 48-bit short_id
-        if not is_test_context and RE_SHORT_ID_12.search(code_part):
+        # 5. P-ID-ENTROPY: possible 12-hex route identifiers
+        if not is_test_context and (RE_SHORT_ID_12.search(code_part) or RE_SHORT_ID_SQL.search(literal_code)):
             findings.append(Finding(
                 pattern_id="P-ID-ENTROPY",
                 rule_name="Bounded Identifier Entropy",
                 severity=Severity.P2_MEDIUM,
                 file_path=rel_path,
                 line_number=idx,
-                line_content=code_part,
-                message="Deprecated 12-char identifier (48-bit entropy). Standardize on 16-hex characters (VARCHAR(16)).",
-                suggested_fix="VARCHAR(16), [..16], and 64-bit entropy with deterministic collision fallback."
+                line_content=snippet,
+                message="Possible 12-hex identifier. Verify generator entropy and the uniqueness scope.",
+                suggested_fix="Use an owner-defined collision policy and preserve existing route compatibility."
             ))
 
         # 6. P-FAIL-CLOSED: RBAC PermissionScope::None => Ok leakage
@@ -618,7 +718,7 @@ def scan_file(file_path: Path) -> list[Finding]:
             full_rbac = code_part
             if "PermissionScope::None" in code_part and "=>" in code_part and ";" not in code_part and "}" not in code_part:
                 for k in range(idx, min(idx + 3, len(lines))):
-                    sub_code, _ = split_code_and_comment(lines[k])
+                    sub_code = code_lines[k]
                     full_rbac += " " + sub_code
                     if ";" in sub_code or "}" in sub_code or "," in sub_code:
                         break
@@ -629,15 +729,15 @@ def scan_file(file_path: Path) -> list[Finding]:
                     severity=Severity.P0_CRITICAL,
                     file_path=rel_path,
                     line_number=idx,
-                    line_content=code_part,
-                    message="PermissionScope::None must resolve to Err(Forbidden), never Ok(()) or true.",
-                    suggested_fix="PermissionScope::None => Err(DomainError::Forbidden)"
+                    line_content=snippet,
+                    message="PermissionScope::None may grant access. Verify the caller's decision contract.",
+                    suggested_fix="Return the owner-defined denial value at the authorization boundary."
                 ))
 
         # 7. P-SQLSTATE-DISCRIM: brittle string matching in error.rs or services
         if not is_test_context and ("error" in file_path.name or is_services_file):
-            m_err_var = RE_ERR_VAR_CONTAINS.search(code_part)
-            m_gen_var = RE_GENERIC_CONTAINS.search(code_part)
+            m_err_var = match_with_literals(RE_ERR_VAR_CONTAINS, literal_code, syntax_line)
+            m_gen_var = match_with_literals(RE_GENERIC_CONTAINS, literal_code, syntax_line)
             is_sql_discrim = False
             if m_err_var:
                 is_sql_discrim = True
@@ -653,7 +753,7 @@ def scan_file(file_path: Path) -> list[Finding]:
                     severity=Severity.P1_HIGH,
                     file_path=rel_path,
                     line_number=idx,
-                    line_content=code_part,
+                    line_content=snippet,
                     message="Brittle string matching on error message. Discriminate using SQLSTATE (23505, P0001).",
                     suggested_fix="Match on db_err.sql_state() == Some(\"23505\") or \"P0001\"."
                 ))
@@ -667,77 +767,82 @@ def scan_file(file_path: Path) -> list[Finding]:
                     severity=Severity.P1_HIGH,
                     file_path=rel_path,
                     line_number=idx,
-                    line_content=code_part,
+                    line_content=snippet,
                     message="Suspected N+1 query: database query inside loop body. Batch with Column::Id.is_in(ids).all().",
                     suggested_fix="Collect IDs and perform one Entity::find().filter(Column::Id.is_in(ids)).all(txn) before loop."
                 ))
 
         # 9. P-DEAD-TWIN: module-level #[allow(dead_code)] slop
-        if idx <= 15 and RE_ALLOW_DEAD_CODE.match(code_part) and not is_test_context and not is_migr_file:
+        if RE_ALLOW_DEAD_CODE.match(code_part) and not is_test_context and not is_migr_file:
             findings.append(Finding(
                 pattern_id="P-DEAD-TWIN",
                 rule_name="File-Level Slop Suppression",
                 severity=Severity.P2_MEDIUM,
                 file_path=rel_path,
                 line_number=idx,
-                line_content=code_part,
-                message="Module-level #[allow(dead_code|unused)]. AGENTS.md §14 forbids broad suppression of dead code.",
-                suggested_fix="Delete unused code completely or implement canonical consumer."
+                line_content=snippet,
+                message="Module-wide dead-code or unused lint suppression may hide unused implementations.",
+                suggested_fix="Verify reachability and remove dormant implementations."
             ))
 
-        # 10. P-RAW-SQL-INTERP: execute_unprepared with format! string interpolation
-        if not is_test_context and not is_migr_file:
-            full_sql = code_part
-            if "execute_unprepared" in code_part and ";" not in code_part:
-                for k in range(idx, min(idx + 4, len(lines))):
-                    sub_code, _ = split_code_and_comment(lines[k])
-                    full_sql += " " + sub_code
-                    if ";" in sub_code or ")" in sub_code:
-                        break
-            if RE_RAW_SQL_INTERP.search(full_sql):
+        # 10. P-RAW-SQL-INTERP: direct or locally bound format! used as unprepared SQL
+        if has_unprepared_sql and not is_test_context and not is_migr_file:
+            sql_line = (
+                "execute_unprepared" in code_part
+                or RE_LOCAL_BINDING.match(code_part)
+                or RE_LOCAL_ASSIGNMENT.match(code_part)
+            )
+            window = lines[idx - 1:idx + 15] if sql_line else []
+            if window and check_interpolated_sql(
+                "\n".join(code for code, _, _ in window),
+                "\n".join(syntax for _, syntax, _ in window),
+                current_brace_depth,
+                sql_bindings,
+            ):
                 findings.append(Finding(
                     pattern_id="P-RAW-SQL-INTERP",
                     rule_name="Unprepared SQL Interpolation",
                     severity=Severity.P0_CRITICAL,
                     file_path=rel_path,
                     line_number=idx,
-                    line_content=code_part,
-                    message="Calling execute_unprepared(&format!(...)) in service code. Use Statement::from_sql_and_values.",
+                    line_content=snippet,
+                    message="Unprepared SQL contains formatted values. Verify their origin and parameterize query data.",
                     suggested_fix="Statement::from_sql_and_values(db.get_database_backend(), sql, values)"
                 ))
 
         # 11. P-TENANT-FALLBACK-LEAK: unwrap_or_default on tenant_id
         if not is_test_context:
-            if RE_TENANT_FALLBACK.search(code_part):
+            if RE_TENANT_FALLBACK.search(code_part) or RE_TENANT_BINDING_FALLBACK.search(code_part):
                 findings.append(Finding(
                     pattern_id="P-TENANT-FALLBACK-LEAK",
                     rule_name="Tenant Fallback Leakage",
                     severity=Severity.P0_CRITICAL,
                     file_path=rel_path,
                     line_number=idx,
-                    line_content=code_part,
-                    message="Calling unwrap_or_default() on tenant context. Tenant isolation must fail closed.",
+                    line_content=snippet,
+                    message="Possible default tenant selector. Verify that missing tenant authority fails closed.",
                     suggested_fix="tenant_id.ok_or(DomainError::TenantNotFound)?"
                 ))
 
         # 13. P-OUTBOX-DETACHED: event_bus.publish() in transactional contexts
-        if not is_test_context and file_has_txn_scope:
-            if RE_OUTBOX_DETACHED.search(code_part):
+        if not is_test_context and outbox_publications:
+            publication = bisect_left(outbox_publications, line_start)
+            if publication < len(outbox_publications) and outbox_publications[publication] < line_offset:
                 findings.append(Finding(
                     pattern_id="P-OUTBOX-DETACHED",
                     rule_name="Transactional Outbox Decoupling",
                     severity=Severity.P1_HIGH,
                     file_path=rel_path,
                     line_number=idx,
-                    line_content=code_part,
-                    message="Calling event_bus.publish() in a transaction-aware file. Use event_bus.publish_in_tx(&txn, ...).",
-                    suggested_fix="event_bus.publish_in_tx(&txn, event).await? to guarantee atomic delivery."
+                    line_content=snippet,
+                    message="Direct publication in a function with transaction evidence. Verify which mutation the event represents.",
+                    suggested_fix="Write events for the mutation through the owner outbox in the same transaction."
                 ))
 
         # 16. P-HOTPATH-ALLOC: premature clone of input before validation gates
         if is_services_file and not is_test_context and RE_EARLY_CLONE.search(code_part):
             for next_idx in range(idx, min(idx + 5, len(lines))):
-                next_code, _ = split_code_and_comment(lines[next_idx])
+                next_code = code_lines[next_idx]
                 if "validate_" in next_code or "check_" in next_code:
                     findings.append(Finding(
                         pattern_id="P-HOTPATH-ALLOC",
@@ -745,7 +850,7 @@ def scan_file(file_path: Path) -> list[Finding]:
                         severity=Severity.P2_MEDIUM,
                         file_path=rel_path,
                         line_number=idx,
-                        line_content=code_part,
+                        line_content=snippet,
                         message="Cloning input field immediately before a validation check. Validate borrowed reference first.",
                         suggested_fix="Validate with &input.field or .as_deref() first, clone only after validation passes."
                     ))
@@ -758,17 +863,17 @@ def scan_file(file_path: Path) -> list[Finding]:
         # Lexical scope exit: drop any lock guards declared in inner blocks that have closed
         guards_to_drop = [
             g_name for g_name, g_info in active_sync_guards.items()
-            if g_info[2] > current_brace_depth
+            if g_info[1] > current_brace_depth
         ]
         for g_name in guards_to_drop:
             active_sync_guards.pop(g_name, None)
 
-        # Clean up scopes
-        if in_test_module_brace_depth is not None and current_brace_depth <= in_test_module_brace_depth:
-            in_test_module_brace_depth = None
+        for depth in list(sql_bindings):
+            if depth > current_brace_depth:
+                del sql_bindings[depth]
 
-        if in_test_fn_brace_depth is not None and current_brace_depth <= in_test_fn_brace_depth:
-            in_test_fn_brace_depth = None
+        while test_scopes and current_brace_depth <= test_scopes[-1]:
+            test_scopes.pop()
 
         if in_loop_brace_depth is not None and current_brace_depth <= in_loop_brace_depth:
             in_loop_brace_depth = None
@@ -835,110 +940,95 @@ def resolve_crate_paths(crate_arg: str) -> list[Path]:
     return list(dict.fromkeys(resolved))
 
 
-def discover_git_files(mode: str, base_ref: str | None = None) -> list[Path]:
-    """Discover modified Rust files from git index, working tree, or branch diff."""
-    files: set[Path] = set()
-    git_base = ["git", "-c", "core.quotepath=false"]
+def git_output(*args: str) -> bytes:
     try:
-        if mode == "staged":
-            cmd = git_base + ["diff", "--cached", "--name-only", "--diff-filter=ACMR"]
-            out = subprocess.check_output(cmd, cwd=ROOT, text=True, stderr=subprocess.DEVNULL)
-            for line in out.splitlines():
-                clean_line = line.strip().strip('"')
-                if clean_line.endswith(".rs"):
-                    p = ROOT / clean_line
-                    if p.is_file():
-                        files.add(p)
-        elif mode == "changed":
-            cmd = git_base + ["diff", "--name-only", "HEAD", "--diff-filter=ACMR"]
-            out = subprocess.check_output(cmd, cwd=ROOT, text=True, stderr=subprocess.DEVNULL)
-            for line in out.splitlines():
-                clean_line = line.strip().strip('"')
-                if clean_line.endswith(".rs"):
-                    p = ROOT / clean_line
-                    if p.is_file():
-                        files.add(p)
-            cmd_status = git_base + ["status", "--porcelain", "-uall"]
-            out_status = subprocess.check_output(cmd_status, cwd=ROOT, text=True, stderr=subprocess.DEVNULL)
-            for line in out_status.splitlines():
-                if line.startswith("?? "):
-                    clean_line = line[3:].strip().strip('"')
-                    p = ROOT / clean_line
-                    if p.is_file() and p.name.endswith(".rs"):
-                        files.add(p)
-                    elif p.is_dir():
-                        files.update(discover_rust_files(p))
-        elif mode == "diff" and base_ref:
-            cmd = git_base + ["diff", "--name-only", base_ref, "--diff-filter=ACMR"]
-            out = subprocess.check_output(cmd, cwd=ROOT, text=True, stderr=subprocess.DEVNULL)
-            for line in out.splitlines():
-                clean_line = line.strip().strip('"')
-                if clean_line.endswith(".rs"):
-                    p = ROOT / clean_line
-                    if p.is_file():
-                        files.add(p)
-    except Exception as e:
-        print(f"[WARN] Failed to query git status: {e}", file=sys.stderr)
+        return subprocess.run(
+            ["git", *args], cwd=ROOT, capture_output=True, check=True
+        ).stdout
+    except subprocess.CalledProcessError as error:
+        detail = error.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"git {' '.join(args)} failed: {detail or error.returncode}") from error
 
-    return sorted(files)
+
+def staged_rust_blobs() -> dict[Path, str]:
+    """Capture staged paths and blob IDs from the same index snapshot."""
+    records = git_output(
+        "diff", "--cached", "--raw", "--no-abbrev", "--no-renames",
+        "--diff-filter=AMTU", "-z", "--"
+    ).split(b"\0")
+    blobs = {}
+    for metadata, filename in zip(records[0:-1:2], records[1:-1:2]):
+        if not filename.endswith(b".rs"):
+            continue
+        file_path = ROOT / os.fsdecode(filename)
+        _, mode, _, oid, status = metadata.split()
+        if status == b"U":
+            raise RuntimeError(f"Unmerged Rust file in Git index: {file_path}")
+        if mode in (b"100644", b"100755"):
+            blobs[file_path] = oid.decode("ascii")
+    return blobs
+
+
+def discover_git_files(base_ref: str | None = None) -> list[Path]:
+    """Select working-tree files changed relative to a commit."""
+    if base_ref is None:
+        base = "HEAD"
+    else:
+        base = git_output("rev-parse", "--verify", "--end-of-options", f"{base_ref}^{{commit}}").decode("ascii").strip()
+    filenames = git_output("diff", "--name-only", "--diff-filter=ACMRT", "-z", base, "--").split(b"\0")
+    if base_ref is None:
+        filenames.extend(git_output("ls-files", "--others", "--exclude-standard", "-z", "--").split(b"\0"))
+    files = {ROOT / os.fsdecode(name) for name in filenames if name.endswith(b".rs")}
+    return sorted(path for path in files if path.is_file())
+
+
+def module_scorecard(findings: list[Finding]) -> list[tuple[str, Counter[str]]]:
+    counts: dict[str, Counter[str]] = defaultdict(Counter)
+    for finding in findings:
+        stats = counts[extract_module_name(finding.file_path)]
+        stats[finding.severity.value[:2]] += 1
+        stats[finding.confidence.value] += 1
+    return sorted(
+        counts.items(),
+        key=lambda item: (-item[1]["high"], -item[1]["P0"], -item[1]["P1"], item[0]),
+    )
 
 
 def print_scorecard(findings: list[Finding]) -> None:
-    by_module: dict[str, dict[str, int]] = defaultdict(lambda: {"P0": 0, "P1": 0, "P2": 0, "total": 0})
-    for f in findings:
-        mod_name = extract_module_name(f.file_path)
-        sev_key = f.severity.value[:2]  # "P0", "P1", "P2"
-        by_module[mod_name][sev_key] += 1
-        by_module[mod_name]["total"] += 1
-
-    print("\n" + "=" * 80)
-    print(" 📊 PLATFORM HYGIENE SCORECARD (BY MODULE)")
-    print("=" * 80)
-    header = f"{'Module / Component':<34} | {'P0 Crit':<8} | {'P1 High':<8} | {'P2 Med':<8} | {'Total':<6} | {'Status'}"
-    print(header)
-    print("-" * 80)
-
-    for mod, stats in sorted(by_module.items(), key=lambda x: (x[1]["P0"], x[1]["P1"], x[1]["total"]), reverse=True):
-        if stats["P0"] > 0:
-            status = "🔴 Action Required"
-        elif stats["P1"] > 0:
-            status = "🟡 Logic Warnings"
-        else:
-            status = "🟢 Tech Debt Only"
-        row = f"{mod:<34} | {stats['P0']:<8} | {stats['P1']:<8} | {stats['P2']:<8} | {stats['total']:<6} | {status}"
-        print(row)
-    print("=" * 80 + "\n")
+    print("\nPLATFORM HYGIENE SCORECARD (BY MODULE)")
+    print(f"{'Module / Component':<34} | {'P0':>4} | {'P1':>4} | {'P2':>4} | {'High confidence':>15} | Heuristic")
+    for mod, stats in module_scorecard(findings):
+        print(
+            f"{mod:<34} | {stats['P0']:>4} | {stats['P1']:>4} | {stats['P2']:>4}"
+            f" | {stats['high']:>15} | {stats['heuristic']}"
+        )
 
 
 def generate_markdown_report(findings: list[Finding], scanned_files: int, target_desc: str) -> str:
     """Generate a clean GitHub Flavored Markdown report suitable for PR descriptions or audit evidence."""
-    by_sev: dict[str, int] = {"P0-CRITICAL": 0, "P1-HIGH": 0, "P2-MEDIUM": 0}
     by_pattern: dict[str, list[Finding]] = defaultdict(list)
-    by_module: dict[str, dict[str, int]] = defaultdict(lambda: {"P0": 0, "P1": 0, "P2": 0, "total": 0})
-
-    for f in findings:
-        by_sev[f.severity.value] += 1
-        by_pattern[f.pattern_id].append(f)
-        mod_name = extract_module_name(f.file_path)
-        by_module[mod_name][f.severity.value[:2]] += 1
-        by_module[mod_name]["total"] += 1
+    confidence_counts = Counter(finding.confidence for finding in findings)
+    for finding in findings:
+        by_pattern[finding.pattern_id].append(finding)
 
     lines = [
         "# RusToK Domain Hygiene & Invariant Verification Report",
         "",
         f"- **Target:** `{target_desc}`",
         f"- **Files Scanned:** {scanned_files}",
-        f"- **Total Issues:** {len(findings)} (🔴 Critical: {by_sev['P0-CRITICAL']}, 🟡 High: {by_sev['P1-HIGH']}, 🟢 Medium: {by_sev['P2-MEDIUM']})",
+        f"- **Findings:** {len(findings)} ({confidence_counts[Confidence.HIGH]} high confidence, "
+        f"{confidence_counts[Confidence.HEURISTIC]} heuristic)",
         "",
         "## Module Scorecard",
         "",
-        "| Module | P0 Critical | P1 High | P2 Medium | Total | Status |",
+        "| Module | P0 Critical | P1 High | P2 Medium | High confidence | Heuristic |",
         "|---|---|---|---|---|---|",
     ]
 
-    for mod, stats in sorted(by_module.items(), key=lambda x: (x[1]["P0"], x[1]["P1"], x[1]["total"]), reverse=True):
-        status = "🔴 Action Required" if stats["P0"] > 0 else ("🟡 Logic Warnings" if stats["P1"] > 0 else "🟢 Clean / Minor")
-        lines.append(f"| `{mod}` | {stats['P0']} | {stats['P1']} | {stats['P2']} | {stats['total']} | {status} |")
+    for mod, stats in module_scorecard(findings):
+        lines.append(
+            f"| `{mod}` | {stats['P0']} | {stats['P1']} | {stats['P2']} | {stats['high']} | {stats['heuristic']} |"
+        )
 
     lines.append("")
     lines.append("## Discovered Findings by Pattern")
@@ -949,16 +1039,16 @@ def generate_markdown_report(findings: list[Finding], scanned_files: int, target
         sev = f_list[0].severity.value
         lines.append(f"### `[{sev}]` {pid}: {rule_name} ({len(f_list)} occurrence(s))")
         lines.append("")
-        lines.append("| File | Line | Snippet | Recommendation |")
-        lines.append("|---|---|---|---|")
+        lines.append("| File | Line | Confidence | Snippet | Recommendation |")
+        lines.append("|---|---|---|---|---|")
         for item in f_list[:15]:
             snippet = item.line_content.replace("|", "\\|").replace("`", "'").strip()
             fix = item.suggested_fix or item.message
             fix_escaped = fix.replace("|", "\\|").replace("`", "'")
             file_link = f"`{item.file_path.as_posix()}:{item.line_number}`"
-            lines.append(f"| {file_link} | {item.line_number} | `{snippet[:60]}` | {fix_escaped} |")
+            lines.append(f"| {file_link} | {item.line_number} | {item.confidence.value} | `{snippet[:60]}` | {fix_escaped} |")
         if len(f_list) > 15:
-            lines.append(f"| *... and {len(f_list) - 15} more occurrences* | | | |")
+            lines.append(f"| *... and {len(f_list) - 15} more occurrences* | | | | |")
         lines.append("")
 
     lines.append("---")
@@ -972,7 +1062,7 @@ def generate_csv_report(findings: list[Finding]) -> str:
     import io
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["pattern_id", "rule_name", "severity", "file", "line", "snippet", "message", "suggested_fix"])
+    writer.writerow(["pattern_id", "rule_name", "severity", "file", "line", "snippet", "message", "suggested_fix", "confidence"])
     for f in findings:
         writer.writerow([
             f.pattern_id,
@@ -983,36 +1073,66 @@ def generate_csv_report(findings: list[Finding]) -> str:
             f.line_content.strip(),
             f.message,
             f.suggested_fix or "",
+            f.confidence.value,
         ])
     return output.getvalue()
 
 
-def generate_unified_patch(findings: list[Finding]) -> str:
-    """Generate a unified diff (.patch) containing comments and proposed fixes."""
+def diff_path(prefix: str, path: Path) -> str:
+    name = f"{prefix}/{path.as_posix()}"
+    if not re.search(r'[\x00-\x1f"\\]', name):
+        return name
+    quoted = "".join(
+        chr(byte) if 32 <= byte < 127 and byte not in (34, 92) else f"\\{byte:03o}"
+        for byte in os.fsencode(name)
+    )
+    return f'"{quoted}"'
+
+
+def generate_unified_patch(findings: list[Finding], sources: dict[Path, str]) -> str:
+    """Append advisory comments without editing the flagged Rust code."""
     patches: list[str] = []
     by_file: dict[Path, list[Finding]] = defaultdict(list)
-    for f in findings:
-        if f.suggested_fix:
-            by_file[f.file_path].append(f)
+    for finding in findings:
+        if finding.suggested_fix:
+            by_file[finding.file_path].append(finding)
 
-    for file_path, f_list in sorted(by_file.items(), key=lambda x: str(x[0])):
-        rel_str = str(file_path).replace("\\", "/")
-        patches.append(f"--- a/{rel_str}")
-        patches.append(f"+++ b/{rel_str}")
-        for item in sorted(f_list, key=lambda x: x.line_number):
-            patches.append(f"@@ -{item.line_number},1 +{item.line_number},1 @@")
-            patches.append(f"-{item.line_content}")
-            patches.append(f"+// REMEDIATION ({item.pattern_id}): {item.suggested_fix}")
-    return "\n".join(patches) + "\n" if patches else ""
+    for file_path, file_findings in sorted(by_file.items()):
+        if file_path.is_absolute() or ".." in file_path.parts:
+            raise ValueError(f"--patch requires files inside the repository: {file_path}")
+
+        content = sources[file_path]
+        newline = "\r\n" if "\r\n" in content else "\n"
+        notes = []
+        # A finding can be reported on a line that starts inside a string or block comment.
+        # Place notes at EOF so insertion cannot change the content of those tokens.
+        for finding in sorted(file_findings, key=lambda item: item.line_number):
+            fix = " ".join(finding.suggested_fix.splitlines())
+            notes.append(f"// REMEDIATION ({finding.pattern_id}, line {finding.line_number}): {fix}{newline}")
+        updated = content + ("" if content.endswith("\n") else newline) + newline + "".join(notes)
+        diff = unified_diff(
+            StringIO(content, newline="\n").readlines(),
+            StringIO(updated, newline="\n").readlines(),
+            fromfile=diff_path("a", file_path),
+            tofile=diff_path("b", file_path),
+        )
+        for line in diff:
+            patches.append(line if line.endswith("\n") else line + "\n\\ No newline at end of file\n")
+    return "".join(patches)
 
 
 def print_github_annotations(findings: list[Finding]) -> None:
     """Emit GitHub Actions workflow commands for inline pull request annotations."""
     for f in findings:
-        level = "error" if f.severity == Severity.P0_CRITICAL else ("warning" if f.severity == Severity.P1_HIGH else "notice")
+        if f.confidence == Confidence.HIGH and f.severity == Severity.P0_CRITICAL:
+            level = "error"
+        elif f.severity in (Severity.P0_CRITICAL, Severity.P1_HIGH):
+            level = "warning"
+        else:
+            level = "notice"
         file_str = str(f.file_path).replace("\\", "/")
         msg = f.message.replace("\n", " ").replace("%", "%25").replace("\r", "")
-        print(f"::{level} file={file_str},line={f.line_number},title={f.pattern_id}::{msg}")
+        print(f"::{level} file={file_str},line={f.line_number},title={f.pattern_id}::[{f.confidence.value}] {msg}")
 
 
 def main() -> int:
@@ -1047,7 +1167,7 @@ def main() -> int:
     parser.add_argument(
         "--staged",
         action="store_true",
-        help="Scan only git staged .rs files (ideal for pre-commit hooks)",
+        help="Scan .rs file contents from the Git index (ideal for pre-commit hooks)",
     )
     parser.add_argument(
         "--changed",
@@ -1063,7 +1183,7 @@ def main() -> int:
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="Exit with code 1 if any finding is discovered (useful for CI/pre-commit)",
+        help="Exit with code 1 for any high-confidence finding (equivalent to --fail-on P2)",
     )
     parser.add_argument(
         "--severity",
@@ -1096,7 +1216,7 @@ def main() -> int:
         "--patch",
         type=str,
         metavar="FILE",
-        help="Generate a unified diff (.patch) containing proposed remediations",
+        help="Generate an applicable unified diff (.patch) with advisory comments",
     )
     parser.add_argument(
         "--github-annotations",
@@ -1106,7 +1226,7 @@ def main() -> int:
     parser.add_argument(
         "--fail-on",
         choices=["P0", "P1", "P2"],
-        help="Exit with code 1 if findings meet or exceed this severity (P0 = critical only, P1 = high or critical, P2 = any)",
+        help="Exit with code 1 for high-confidence findings at or above this severity",
     )
     parser.add_argument(
         "--ignore-rule",
@@ -1124,52 +1244,58 @@ def main() -> int:
     files_to_scan: list[Path] = []
     target_description = ""
 
-    if args.staged:
-        files_to_scan = discover_git_files("staged")
-        target_description = "git staged files"
-    elif args.changed:
-        files_to_scan = discover_git_files("changed")
-        target_description = "working tree modified files"
-    elif args.diff:
-        files_to_scan = discover_git_files("diff", args.diff)
-        target_description = f"git diff against {args.diff}"
-    elif args.crate:
-        paths = resolve_crate_paths(args.crate)
-        if not paths:
-            print(f"[ERROR] Could not resolve any paths for --crate '{args.crate}'", file=sys.stderr)
-            return 2
-        for p in paths:
-            files_to_scan.extend(discover_rust_files(p))
-        target_description = f"crates: {args.crate}"
-    elif args.path:
-        p = ROOT / args.path
-        if not p.exists():
-            print(f"[ERROR] Path does not exist: {p}", file=sys.stderr)
-            return 2
-        if p.is_file() and p.name.endswith(".rs"):
-            files_to_scan.append(p)
-        elif p.is_dir():
-            files_to_scan.extend(discover_rust_files(p))
-        target_description = f"path: {args.path}"
-    elif args.all:
-        for folder_name in ("crates", "apps"):
-            target_dir = ROOT / folder_name
-            if target_dir.exists():
-                files_to_scan.extend(discover_rust_files(target_dir))
-        target_description = "workspace (all crates & apps)"
-    elif args.all_modules:
-        target_dir = ROOT / "crates" / "modules"
-        files_to_scan.extend(discover_rust_files(target_dir))
-        target_description = "crates/modules (all)"
-    else:
-        cwd = Path.cwd()
-        if cwd.resolve() == ROOT.resolve():
+    staged_blobs: dict[Path, str] = {}
+    try:
+        if args.staged:
+            staged_blobs = staged_rust_blobs()
+            files_to_scan = sorted(staged_blobs)
+            target_description = "git staged files"
+        elif args.changed:
+            files_to_scan = discover_git_files()
+            target_description = "working tree modified files"
+        elif args.diff is not None:
+            files_to_scan = discover_git_files(args.diff)
+            target_description = f"git diff against {args.diff}"
+        elif args.crate:
+            paths = resolve_crate_paths(args.crate)
+            if not paths:
+                print(f"[ERROR] Could not resolve any paths for --crate '{args.crate}'", file=sys.stderr)
+                return 2
+            for p in paths:
+                files_to_scan.extend(discover_rust_files(p))
+            target_description = f"crates: {args.crate}"
+        elif args.path:
+            p = ROOT / args.path
+            if not p.exists():
+                print(f"[ERROR] Path does not exist: {p}", file=sys.stderr)
+                return 2
+            if p.is_file() and p.name.endswith(".rs"):
+                files_to_scan.append(p)
+            elif p.is_dir():
+                files_to_scan.extend(discover_rust_files(p))
+            target_description = f"path: {args.path}"
+        elif args.all:
+            for folder_name in ("crates", "apps"):
+                target_dir = ROOT / folder_name
+                if target_dir.exists():
+                    files_to_scan.extend(discover_rust_files(target_dir))
+            target_description = "workspace (all crates & apps)"
+        elif args.all_modules:
             target_dir = ROOT / "crates" / "modules"
             files_to_scan.extend(discover_rust_files(target_dir))
-            target_description = "crates/modules (default)"
+            target_description = "crates/modules (all)"
         else:
-            files_to_scan.extend(discover_rust_files(cwd))
-            target_description = f"directory: {cwd.relative_to(ROOT)}"
+            cwd = Path.cwd()
+            if cwd.resolve() == ROOT.resolve():
+                target_dir = ROOT / "crates" / "modules"
+                files_to_scan.extend(discover_rust_files(target_dir))
+                target_description = "crates/modules (default)"
+            else:
+                files_to_scan.extend(discover_rust_files(cwd))
+                target_description = f"directory: {cwd.relative_to(ROOT)}"
+    except (OSError, RuntimeError) as error:
+        print(f"[ERROR] Could not select scan targets: {error}", file=sys.stderr)
+        return 2
 
     all_findings: list[Finding] = []
     scanned_file_count = len(files_to_scan)
@@ -1185,14 +1311,31 @@ def main() -> int:
     if args.ignore_rule:
         ignored_rules = {r.strip() for r in args.ignore_rule.split(",") if r.strip()}
 
-    if args.threads > 1 and len(files_to_scan) > 20:
-        with ThreadPoolExecutor(max_workers=args.threads) as executor:
-            for file_findings in executor.map(scan_file, files_to_scan):
-                all_findings.extend(file_findings)
-    else:
-        for rs_file in files_to_scan:
-            findings = scan_file(rs_file)
+    def scan_target(path: Path) -> tuple[list[Finding], str]:
+        if path in staged_blobs:
+            data = git_output("cat-file", "blob", staged_blobs[path])
+        else:
+            data = path.read_bytes()
+        content = data.decode("utf-8")
+        return scan_source(path, content), content
+
+    patch_sources: dict[Path, str] = {}
+
+    def collect_results(results: Iterator[tuple[list[Finding], str]]) -> None:
+        for findings, content in results:
             all_findings.extend(findings)
+            if args.patch and findings:
+                patch_sources[findings[0].file_path] = content
+
+    try:
+        if args.threads > 1 and len(files_to_scan) > 20:
+            with ThreadPoolExecutor(max_workers=args.threads) as executor:
+                collect_results(executor.map(scan_target, files_to_scan))
+        else:
+            collect_results(map(scan_target, files_to_scan))
+    except (OSError, RuntimeError, UnicodeError) as error:
+        print(f"[ERROR] Could not read scan targets: {error}", file=sys.stderr)
+        return 2
 
     if ignored_rules:
         all_findings = [f for f in all_findings if f.pattern_id not in ignored_rules]
@@ -1202,6 +1345,12 @@ def main() -> int:
         all_findings = [f for f in all_findings if f.severity == Severity.P0_CRITICAL]
     elif args.severity == "P1":
         all_findings = [f for f in all_findings if f.severity in (Severity.P0_CRITICAL, Severity.P1_HIGH)]
+
+    fail_on = "P2" if args.strict else args.fail_on
+    exit_code = int(fail_on is not None and any(
+        finding.confidence == Confidence.HIGH and finding.severity.value[:2] <= fail_on
+        for finding in all_findings
+    ))
 
     if args.json:
         out_data = {
@@ -1213,6 +1362,7 @@ def main() -> int:
                     "pattern_id": f.pattern_id,
                     "rule_name": f.rule_name,
                     "severity": f.severity.value,
+                    "confidence": f.confidence.value,
                     "file": str(f.file_path).replace("\\", "/"),
                     "line": f.line_number,
                     "content": f.line_content,
@@ -1223,12 +1373,12 @@ def main() -> int:
             ],
         }
         print(json.dumps(out_data, indent=2))
-        return 1 if (args.strict and all_findings) else 0
+        return exit_code
 
     print(f"Scanned {scanned_file_count} Rust file(s). Found {len(all_findings)} issue(s).\n")
 
     if not all_findings:
-        print("✅ No domain logic defects, slop, or anti-patterns detected! Clean code.")
+        print("No findings for the selected rules and source files.")
         return 0
 
     # Display high-level scorecard if multiple files/modules were scanned or requested
@@ -1246,7 +1396,7 @@ def main() -> int:
             print(f"=== [{sev}] {pid}: {findings[0].rule_name} ({len(findings)} occurrence(s)) ===")
             for item in findings[:10]:
                 posix_file = str(item.file_path).replace("\\", "/")
-                print(f"  {posix_file}:{item.line_number}")
+                print(f"  {posix_file}:{item.line_number} [{item.confidence.value}]")
                 print(f"    Line:    {item.line_content}")
                 print(f"    Fix:     {item.message}")
                 if args.suggest_fixes and item.suggested_fix:
@@ -1280,8 +1430,12 @@ def main() -> int:
     # Optional Patch export
     if args.patch:
         patch_path = ROOT / args.patch
-        patch_content = generate_unified_patch(all_findings)
-        patch_path.write_text(patch_content, encoding="utf-8")
+        try:
+            patch_content = generate_unified_patch(all_findings, patch_sources)
+            patch_path.write_bytes(patch_content.encode("utf-8"))
+        except (OSError, ValueError) as error:
+            print(f"[ERROR] Could not write patch: {error}", file=sys.stderr)
+            return 2
         try:
             rel_display = patch_path.relative_to(ROOT)
         except ValueError:
@@ -1297,19 +1451,7 @@ def main() -> int:
     print("   docs/standards/logic-hygiene-patterns.md")
     print("----------------------------------------------------------------------")
 
-    should_fail = False
-    if args.strict:
-        should_fail = bool(all_findings)
-    elif args.fail_on == "P0":
-        should_fail = any(f.severity == Severity.P0_CRITICAL for f in all_findings)
-    elif args.fail_on == "P1":
-        should_fail = any(f.severity in (Severity.P0_CRITICAL, Severity.P1_HIGH) for f in all_findings)
-    elif args.fail_on == "P2":
-        should_fail = bool(all_findings)
-
-    if should_fail:
-        return 1
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":
