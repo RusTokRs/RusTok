@@ -6,6 +6,10 @@ pub struct Migration;
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
+    fn use_transaction(&self) -> Option<bool> {
+        Some(true)
+    }
+
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         match manager.get_database_backend() {
             DatabaseBackend::Postgres => up_postgres(manager).await,
@@ -166,7 +170,9 @@ async fn ensure_no_invalid_deleted_rows(
             query.to_string(),
         ))
         .await?
-        .ok_or_else(|| DbErr::Custom("failed to validate forum soft-delete consistency".to_string()))?;
+        .ok_or_else(|| {
+            DbErr::Custom("failed to validate forum soft-delete consistency".to_string())
+        })?;
     let invalid_count: i64 = row.try_get("", "invalid_count")?;
     if invalid_count != 0 {
         return Err(DbErr::Custom(message.to_string()));

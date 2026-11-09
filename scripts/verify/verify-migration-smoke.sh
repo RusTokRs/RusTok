@@ -7,8 +7,7 @@ set -euo pipefail
 # existing database, which supports base-to-head upgrade verification.
 #
 # Configuration:
-#   RUSTOK_MIGRATION_SMOKE_ADMIN_URL  Admin database URL used for CREATE/DROP DATABASE.
-#                                     Defaults to postgres://postgres:postgres@localhost:5432/postgres.
+#   RUSTOK_MIGRATION_SMOKE_ADMIN_URL  Required admin URL for an isolated PostgreSQL instance.
 #   RUSTOK_MIGRATION_SMOKE_DB_NAME    Optional temporary or existing database name.
 #   RUSTOK_MIGRATION_SMOKE_KEEP_DB    Set to 1 to skip cleanup after the run.
 #   RUSTOK_MIGRATION_SMOKE_INCREMENTAL
@@ -19,7 +18,8 @@ set -euo pipefail
 #                                     Set to 1 to roll back and reapply the latest migration.
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-export RUSTOK_MIGRATION_SMOKE_ADMIN_URL=${RUSTOK_MIGRATION_SMOKE_ADMIN_URL:-postgres://postgres:postgres@localhost:5432/postgres}
+: "${RUSTOK_MIGRATION_SMOKE_ADMIN_URL:?Set RUSTOK_MIGRATION_SMOKE_ADMIN_URL to an isolated PostgreSQL instance}"
+export RUSTOK_MIGRATION_SMOKE_ADMIN_URL
 export RUSTOK_MIGRATION_SMOKE_DB_NAME=${RUSTOK_MIGRATION_SMOKE_DB_NAME:-rustok_migration_smoke_$(date +%Y%m%d%H%M%S)_$$}
 export RUSTOK_MIGRATION_SMOKE_KEEP_DB=${RUSTOK_MIGRATION_SMOKE_KEEP_DB:-0}
 export RUSTOK_MIGRATION_SMOKE_INCREMENTAL=${RUSTOK_MIGRATION_SMOKE_INCREMENTAL:-0}

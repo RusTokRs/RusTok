@@ -375,7 +375,7 @@ Rules for new migrations:
 5. For PostgreSQL smoke, use apply-from-zero and, for critical changes,
    incremental mode.
 
-Minimum checks:
+Set `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to an isolated PostgreSQL instance before running the migration checks.
 
 ```bash
 ./scripts/verify/verify-migration-smoke.sh

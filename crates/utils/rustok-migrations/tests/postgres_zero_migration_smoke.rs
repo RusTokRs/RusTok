@@ -3,6 +3,7 @@ mod support;
 use std::{sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortErrorKind};
+use rustok_core::MigrationSource;
 use rustok_migrations::{Migrator, execution::StepRunner};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_product::{
@@ -41,8 +42,7 @@ async fn postgres_zero_migration_smoke_applies_from_empty_database() {
 #[ignore = "requires isolated PostgreSQL and RUSTOK_MIGRATION_SMOKE_ADMIN_URL"]
 async fn postgres_backfill_assertion_stops_at_its_boundary()
 -> Result<(), Box<dyn std::error::Error>> {
-    let admin_url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL")?;
-    assert_postgres_url(&admin_url);
+    let admin_url = smoke_admin_url()?;
     let name = unique_postgres_database_name("rustok_backfill_boundary");
     let url = database_url_from_admin_url(&admin_url, &name);
     let admin = connect_postgres(&admin_url).await?;
@@ -131,14 +131,7 @@ async fn postgres_backfill_assertion_stops_at_its_boundary()
         check
     }
     .await;
-    let cleanup = drop_database_if_exists(&admin, &name).await;
-    admin.close().await?;
-    match (result, cleanup) {
-        (Err(error), Err(cleanup)) => Err(format!("{error}; fixture cleanup: {cleanup}").into()),
-        (Err(error), _) => Err(error),
-        (_, Err(error)) => Err(error.into()),
-        _ => Ok(()),
-    }
+    finish_fixture(&admin, &name, result).await
 }
 
 struct ProductMigrator;
@@ -183,9 +176,7 @@ async fn product_catalog_read_port_executes_against_postgres() {
 }
 
 async fn run_product_postgres_migration_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
-    let admin_url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
-    assert_postgres_url(&admin_url);
+    let admin_url = smoke_admin_url()?;
 
     let database_name = format!("{}_product", default_database_name());
     assert_valid_database_name(&database_name);
@@ -194,7 +185,6 @@ async fn run_product_postgres_migration_lifecycle() -> Result<(), Box<dyn std::e
         .await
         .map_err(|error| format!("admin database must be reachable: {error}"))?;
 
-    drop_database_if_exists(&admin, &database_name).await?;
     create_database(&admin, &database_name).await?;
 
     let lifecycle_result = async {
@@ -219,14 +209,11 @@ async fn run_product_postgres_migration_lifecycle() -> Result<(), Box<dyn std::e
     }
     .await;
 
-    drop_database_if_exists(&admin, &database_name).await?;
-    lifecycle_result
+    finish_fixture(&admin, &database_name, lifecycle_result).await
 }
 
 async fn run_product_postgres_constraint_checks() -> Result<(), Box<dyn std::error::Error>> {
-    let admin_url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
-    assert_postgres_url(&admin_url);
+    let admin_url = smoke_admin_url()?;
 
     let database_name = format!("{}_product_constraints", default_database_name());
     assert_valid_database_name(&database_name);
@@ -235,7 +222,6 @@ async fn run_product_postgres_constraint_checks() -> Result<(), Box<dyn std::err
         .await
         .map_err(|error| format!("admin database must be reachable: {error}"))?;
 
-    drop_database_if_exists(&admin, &database_name).await?;
     create_database(&admin, &database_name).await?;
 
     let constraint_result = async {
@@ -370,14 +356,11 @@ VALUES (
     }
     .await;
 
-    drop_database_if_exists(&admin, &database_name).await?;
-    constraint_result
+    finish_fixture(&admin, &database_name, constraint_result).await
 }
 
 async fn run_product_dirty_data_migration_checks() -> Result<(), Box<dyn std::error::Error>> {
-    let admin_url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
-    assert_postgres_url(&admin_url);
+    let admin_url = smoke_admin_url()?;
 
     let database_name = format!("{}_product_dirty_data", default_database_name());
     assert_valid_database_name(&database_name);
@@ -386,7 +369,6 @@ async fn run_product_dirty_data_migration_checks() -> Result<(), Box<dyn std::er
         .await
         .map_err(|error| format!("admin database must be reachable: {error}"))?;
 
-    drop_database_if_exists(&admin, &database_name).await?;
     create_database(&admin, &database_name).await?;
 
     let migration_result = async {
@@ -432,14 +414,11 @@ async fn run_product_dirty_data_migration_checks() -> Result<(), Box<dyn std::er
     }
     .await;
 
-    drop_database_if_exists(&admin, &database_name).await?;
-    migration_result
+    finish_fixture(&admin, &database_name, migration_result).await
 }
 
 async fn run_product_catalog_read_port_checks() -> Result<(), Box<dyn std::error::Error>> {
-    let admin_url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
-    assert_postgres_url(&admin_url);
+    let admin_url = smoke_admin_url()?;
 
     let database_name = format!("{}_product_read_port", default_database_name());
     assert_valid_database_name(&database_name);
@@ -448,7 +427,6 @@ async fn run_product_catalog_read_port_checks() -> Result<(), Box<dyn std::error
         .await
         .map_err(|error| format!("admin database must be reachable: {error}"))?;
 
-    drop_database_if_exists(&admin, &database_name).await?;
     create_database(&admin, &database_name).await?;
 
     let port_result = async {
@@ -472,8 +450,7 @@ async fn run_product_catalog_read_port_checks() -> Result<(), Box<dyn std::error
     }
     .await;
 
-    drop_database_if_exists(&admin, &database_name).await?;
-    port_result
+    finish_fixture(&admin, &database_name, port_result).await
 }
 
 fn product_read_context(tenant_id: &str, correlation_id: &str) -> PortContext {
@@ -992,10 +969,11 @@ INSERT INTO products (id, tenant_id) VALUES
         '00000000-0000-0000-0000-000000000001'
     );
 
-INSERT INTO taxonomy_terms (id, tenant_id)
+INSERT INTO taxonomy_terms (id, tenant_id, kind, scope_type, canonical_key)
 VALUES (
     '00000000-0000-0000-0000-000000000201',
-    '00000000-0000-0000-0000-000000000002'
+    '00000000-0000-0000-0000-000000000002',
+    'tag', 'global', 'other-tenant-tag'
 );
 
 INSERT INTO product_attributes (id, tenant_id, code, value_type)
@@ -1167,15 +1145,17 @@ async fn create_product_migration_prerequisites(
 CREATE TABLE tenants (
     id UUID PRIMARY KEY
 );
-CREATE TABLE taxonomy_terms (
-    id UUID PRIMARY KEY,
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    UNIQUE (tenant_id, id)
-);
 "#,
     )
     .await?;
     let manager = SchemaManager::new(db);
+    for migration in rustok_outbox::OutboxModule
+        .migrations()
+        .into_iter()
+        .chain(rustok_taxonomy::TaxonomyModule.migrations())
+    {
+        migration.up(&manager).await?;
+    }
     flex::cache_generation::create_field_definition_cache_generation_table(&manager).await?;
     Ok(())
 }
@@ -1260,10 +1240,7 @@ async fn assert_product_migration_schema(
 }
 
 async fn run_postgres_zero_migration_smoke() -> Result<(), Box<dyn std::error::Error>> {
-    let admin_url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL").map_err(
-        |_| "RUSTOK_MIGRATION_SMOKE_ADMIN_URL must name an isolated PostgreSQL instance",
-    )?;
-    assert_postgres_url(&admin_url);
+    let admin_url = smoke_admin_url()?;
 
     let database_name =
         std::env::var("RUSTOK_MIGRATION_SMOKE_DB_NAME").unwrap_or_else(|_| default_database_name());
@@ -1313,8 +1290,24 @@ async fn run_postgres_zero_migration_smoke() -> Result<(), Box<dyn std::error::E
         return smoke_result;
     }
 
-    let cleanup = drop_database_if_exists(&admin, &database_name).await;
-    match (smoke_result, cleanup) {
+    finish_fixture(&admin, &database_name, smoke_result).await
+}
+
+fn smoke_admin_url() -> Result<String, Box<dyn std::error::Error>> {
+    let url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL").map_err(
+        |_| "RUSTOK_MIGRATION_SMOKE_ADMIN_URL must name an isolated PostgreSQL instance",
+    )?;
+    assert_postgres_url(&url);
+    Ok(url)
+}
+
+async fn finish_fixture(
+    admin: &DatabaseConnection,
+    name: &str,
+    result: Result<(), Box<dyn std::error::Error>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let cleanup = drop_database_if_exists(admin, name).await;
+    match (result, cleanup) {
         (Err(error), Err(cleanup)) => Err(format!("{error}; database cleanup: {cleanup}").into()),
         (Err(error), Ok(())) => Err(error),
         (Ok(()), Err(error)) => Err(error.into()),

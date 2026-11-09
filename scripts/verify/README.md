@@ -19,6 +19,7 @@ Automated platform checks integrated into the common verification workflow. Entr
 # Run a script directly (always full output)
 ./scripts/verify/verify-tenant-isolation.sh
 ./scripts/verify/verify-deployment-profiles.sh
+# Set RUSTOK_MIGRATION_SMOKE_ADMIN_URL to an isolated PostgreSQL instance first.
 ./scripts/verify/verify-migration-smoke.sh
 node scripts/verify/verify-flex-multilingual-contract.mjs
 node scripts/verify/verify-flex-standalone-contract.mjs
@@ -163,8 +164,10 @@ Unit guardrail for the verifier itself: `node scripts/verify/verify-ecommerce-fb
 ### `verify-migration-smoke.sh`
 **Wave 4 migration-safety smoke** — PostgreSQL apply-from-zero for server migrator.
 
+The script requires `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` for an isolated PostgreSQL instance.
+
 What it does:
-- creates a temporary PostgreSQL database via `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` inside a Rust integration test, without depending on local `psql`;
+- creates a temporary PostgreSQL database inside a Rust integration test and rejects an existing fixture name;
 - runs the ignored integration test `postgres_zero_migration_smoke_applies_from_empty_database`;
 - applies `rustok_migrations::Migrator` from scratch and checks that no pending migrations remain;
 - when `RUSTOK_MIGRATION_SMOKE_INCREMENTAL=1`, applies migrations one by one to separately check the incremental apply path; the shell script and Rust test both accept only `0`/`1`, so direct test runs do not bypass this validation;

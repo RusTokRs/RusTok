@@ -328,6 +328,13 @@ sequences and final journals matched the executable plan. The schema observation
 agreed. The existing fresh PostgreSQL smoke test also passed on this cluster,
 including its independent schema assertions.
 
+On 2026-11-09, the composed PostgreSQL 16.13 smoke applied all 586 migrations
+from an empty fixture with the Forum snapshot changes. It rolled back exactly
+`m20261109_000044_allow_pending_topic_snapshots`, reapplied it and verified the
+schema again. Separate checks rejected an omitted admin URL and a fresh database
+name collision. The existing database's sentinel row survived and the successful
+smoke removed its own fixture.
+
 The strict data comparison remains blocked by `updated_at` in eight bootstrap
 singletons. The affected owner tables are:
 

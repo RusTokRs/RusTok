@@ -12,6 +12,7 @@ use rustok_outbox::{OutboxModule, OutboxTransport, TransactionalEventBus};
 use rustok_taxonomy::TaxonomyModule;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, Statement,
+    TransactionTrait,
 };
 use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
@@ -192,6 +193,14 @@ async fn pending_approval_emits_creation_only_at_first_publication() -> TestResu
 
     moderation.archive_topic(tenant, id, author.clone()).await?;
     assert_eq!(
+        scalar(
+            &db,
+            format!("SELECT is_locked FROM forum_topics WHERE id = '{id}'")
+        )
+        .await?,
+        1
+    );
+    assert_eq!(
         category_count(&db, tenant, category_id, "topic_count").await?,
         0
     );
@@ -202,6 +211,66 @@ async fn pending_approval_emits_creation_only_at_first_publication() -> TestResu
         1
     );
     assert_eq!(created_events(&db).await?, 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn pending_topic_restores_without_publication_and_blocks_lossy_rollback() -> TestResult<()> {
+    let (db, events) = setup().await?;
+    let tenant = Uuid::new_v4();
+    let admin = security(UserRole::Admin, Uuid::new_v4());
+    let author = security(UserRole::Customer, Uuid::new_v4());
+    let category_id = category(&db, tenant, admin.clone(), false).await?;
+    let topic_id = topic(&db, &events, tenant, author.clone(), category_id, true).await?;
+    let service = TopicService::new(db.clone(), events).with_settings_providers(
+        posting_cooldown::zero_cooldown_providers_with(
+            serde_json::json!({ "allow_user_content_deletion": true }),
+        ),
+    );
+
+    service.delete(tenant, topic_id, author).await?;
+    let snapshot = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            "SELECT previous_status, reason FROM forum_topic_delete_snapshots WHERE tenant_id = ? AND topic_id = ?",
+            [tenant.into(), topic_id.into()],
+        ))
+        .await?
+        .ok_or("pending topic delete must retain a snapshot")?;
+    assert_eq!(
+        snapshot.try_get::<String>("", "previous_status")?,
+        "pending"
+    );
+    assert_eq!(snapshot.try_get::<String>("", "reason")?, "user_request");
+
+    let migration = ForumModule
+        .migrations()
+        .into_iter()
+        .find(|migration| migration.name() == "m20261109_000044_allow_pending_topic_snapshots")
+        .ok_or("pending snapshot migration must be registered")?;
+    let txn = db.begin().await?;
+    let error = migration
+        .down(&SchemaManager::new(&txn))
+        .await
+        .expect_err("rollback must preserve pending snapshots");
+    assert!(error.to_string().contains("pending Forum topic snapshots"));
+    txn.rollback().await?;
+
+    service.restore(tenant, topic_id, admin).await?;
+    assert_eq!(created_events(&db).await?, 0);
+    assert_eq!(
+        category_count(&db, tenant, category_id, "topic_count").await?,
+        1
+    );
+    assert_eq!(
+        scalar(&db, format!("SELECT count(*) FROM forum_topics WHERE id = '{topic_id}' AND status = 'pending' AND deleted_at IS NULL")).await?,
+        1
+    );
+
+    let txn = db.begin().await?;
+    migration.down(&SchemaManager::new(&txn)).await?;
+    migration.up(&SchemaManager::new(&txn)).await?;
+    txn.commit().await?;
     Ok(())
 }
 #[tokio::test]

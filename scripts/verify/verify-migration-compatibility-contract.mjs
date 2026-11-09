@@ -63,8 +63,11 @@ requireMarkers(smokeTest, [
   "if reuse_database {",
   "reused migration smoke database",
   "must already exist and be reachable",
-  "drop_database_if_exists(&admin, &database_name).await?;",
-  "create_database(&admin, &database_name).await?;",
+  "fresh migration smoke database {database_name} must be created",
+  "create_database(&admin, &database_name)",
+  "finish_fixture(&admin, &database_name, smoke_result).await",
+  "drop_database_if_exists(admin, name).await",
+  "RUSTOK_MIGRATION_SMOKE_ADMIN_URL must name an isolated PostgreSQL instance",
   "apply_migrations_and_assert_schema(",
   "&backfill_fixtures,",
   "apply_backfill_setup(initial.database(), backfill_fixtures).await?;",
@@ -74,6 +77,8 @@ requireMarkers(smokeTest, [
   "assert_backfill_results(current.database(), std::slice::from_ref(fixture)).await?;",
   "rollback_latest_and_reapply(current.database())",
   "Migrator::down(db, Some(1))",
+  "Migrator::get_applied_migrations_read_only(db).await?",
+  "if names != [rolled_back_name]",
   "one-step rollback must expose exactly one pending migration",
   "rolled-back migration {rolled_back_name} must reapply successfully",
   'assert_no_pending_migrations(db, "rollback reapply")',
@@ -81,6 +86,10 @@ requireMarkers(smokeTest, [
   "Migrator::get_pending_migrations(db)",
   'assert_trigger_exists(db, "trg_products_normalize_channel_visibility")',
   'parse_binary_flag("RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST", Some("1"))',
+]);
+forbidMarkers(smokeTest, [
+  "drop_database_if_exists(&admin, &database_name)",
+  "postgres://postgres:postgres@localhost:5432/postgres",
 ]);
 
 requireMarkers("crates/utils/rustok-migrations/tests/support/mod.rs", ["pub mod backfill_fixtures;"]);
@@ -103,6 +112,7 @@ requireMarkers("crates/utils/rustok-migrations/tests/support/backfill_fixtures.r
 
 const smokeScript = "scripts/verify/verify-migration-smoke.sh";
 requireMarkers(smokeScript, [
+  'RUSTOK_MIGRATION_SMOKE_ADMIN_URL:?Set RUSTOK_MIGRATION_SMOKE_ADMIN_URL',
   "RUSTOK_MIGRATION_SMOKE_REUSE_DB",
   "RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST",
   'mode="reuse-upgrade-stepwise"',
@@ -111,7 +121,7 @@ requireMarkers(smokeScript, [
   "cargo test --locked -p rustok-migrations",
   "postgres_zero_migration_smoke_applies_from_empty_database",
 ]);
-forbidMarkers(smokeScript, ["-p migration ", "|| true"]);
+forbidMarkers(smokeScript, ["-p migration ", "|| true", "postgres://postgres:postgres@localhost:5432/postgres"]);
 
 requireMarkers("crates/utils/rustok-migrations/src/bin/export_migration_plan.rs", [
   "Migrator::inventory()?",

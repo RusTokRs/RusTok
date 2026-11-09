@@ -199,7 +199,7 @@ Symptoms:
 - a dependency descriptor references a missing migration;
 - order/cycle validation fails after adding a module migration.
 
-Quick diagnostics:
+Set `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to an isolated PostgreSQL instance before running the migration diagnostics.
 
 ```bash
 ./scripts/verify/verify-migration-smoke.sh

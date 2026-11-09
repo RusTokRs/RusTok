@@ -25,7 +25,9 @@ use super::category_lifecycle::ensure_category_restore_target_is_active_in_tx;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
-use super::rbac::{DeleteSnapshotReason, enforce_author_deletion_policy, enforce_owned_scope, enforce_scope};
+use super::rbac::{
+    DeleteSnapshotReason, enforce_author_deletion_policy, enforce_owned_scope, enforce_scope,
+};
 use super::topic;
 use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthorizationService;
 use super::topic_route::{
@@ -249,8 +251,14 @@ impl TopicService {
             None => None,
         };
 
-        record_topic_delete_snapshot_in_tx(&txn, tenant_id, &topic, solution.as_ref(), delete_reason)
-            .await?;
+        record_topic_delete_snapshot_in_tx(
+            &txn,
+            tenant_id,
+            &topic,
+            solution.as_ref(),
+            delete_reason,
+        )
+        .await?;
         ForumTopicRouteTombstoneVisibilityService::record_locked_delete_snapshot_in_tx(
             &txn, tenant_id, &topic,
         )
@@ -369,7 +377,7 @@ impl TopicService {
             return Err(ForumError::TopicRestoreUnavailable(topic_id));
         }
         ensure_category_restore_target_is_active_in_tx(&txn, tenant_id, topic.category_id).await?;
-        if !topic_is_deleted_in_tx(&txn, tenant_id, topic_id).await? {
+        if topic::TopicService::is_topic_deleted(&txn, tenant_id, topic_id).await? != Some(true) {
             return Err(ForumError::TopicRestoreUnavailable(topic_id));
         }
 
@@ -697,40 +705,6 @@ async fn record_topic_delete_snapshot_in_tx(
     Ok(())
 }
 
-async fn topic_is_deleted_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    topic_id: Uuid,
-) -> ForumResult<bool> {
-    let statement = match txn.get_database_backend() {
-        DatabaseBackend::Postgres => Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END AS is_deleted FROM forum_topics WHERE tenant_id = $1 AND id = $2",
-            vec![tenant_id.into(), topic_id.into()],
-        ),
-        DatabaseBackend::Sqlite => Statement::from_sql_and_values(
-            DatabaseBackend::Sqlite,
-            "SELECT CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END AS is_deleted FROM forum_topics WHERE tenant_id = ? AND id = ?",
-            vec![tenant_id.into(), topic_id.into()],
-        ),
-        backend => {
-            return Err(ForumError::Validation(format!(
-                "Forum topic restore does not support database backend {backend:?}"
-            )));
-        }
-    };
-    let row = txn
-        .query_one_raw(statement)
-        .await?
-        .ok_or(ForumError::TopicRestoreUnavailable(topic_id))?;
-    let is_deleted = row
-        .try_get::<i32>("", "is_deleted")
-        .map(|v| v == 1)
-        .or_else(|_| row.try_get::<i64>("", "is_deleted").map(|v| v == 1))
-        .or_else(|_| row.try_get::<bool>("", "is_deleted"))?;
-    Ok(is_deleted)
-}
-
 async fn load_topic_delete_snapshot_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -740,8 +714,7 @@ async fn load_topic_delete_snapshot_in_tx(
         DatabaseBackend::Postgres => Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"
-            SELECT previous_status,
-                   CASE WHEN previous_is_locked THEN 1 ELSE 0 END AS previous_is_locked,
+            SELECT previous_status, previous_is_locked,
                    solution_reply_id, solution_author_id,
                    solution_marked_by_user_id, solution_marked_at
             FROM forum_topic_delete_snapshots
@@ -752,8 +725,7 @@ async fn load_topic_delete_snapshot_in_tx(
         DatabaseBackend::Sqlite => Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             r#"
-            SELECT previous_status,
-                   CASE WHEN previous_is_locked <> 0 THEN 1 ELSE 0 END AS previous_is_locked,
+            SELECT previous_status, previous_is_locked,
                    solution_reply_id, solution_author_id,
                    solution_marked_by_user_id, solution_marked_at
             FROM forum_topic_delete_snapshots
@@ -774,10 +746,9 @@ async fn load_topic_delete_snapshot_in_tx(
     let previous_status_value: String = row.try_get("", "previous_status")?;
     let previous_status = TopicStatus::from_str_value(&previous_status_value)
         .ok_or(ForumError::TopicRestoreUnavailable(topic_id))?;
-    let previous_is_locked: i64 = row.try_get("", "previous_is_locked")?;
     Ok(Some(TopicDeleteSnapshot {
         previous_status,
-        previous_is_locked: previous_is_locked != 0,
+        previous_is_locked: row.try_get("", "previous_is_locked")?,
         solution_reply_id: row.try_get("", "solution_reply_id")?,
         solution_author_id: row.try_get("", "solution_author_id")?,
         solution_marked_by_user_id: row.try_get("", "solution_marked_by_user_id")?,
@@ -1283,4 +1254,3 @@ impl TopicService {
             .await
     }
 }
-

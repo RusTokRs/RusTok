@@ -1,14 +1,19 @@
-use sea_orm::{ConnectionTrait, DatabaseTransaction, Statement};
-use uuid::Uuid;
-use crate::audience::ForumAudienceConstraints;
+use std::collections::HashMap;
+
+use crate::audience::{
+    ForumAudienceConstraints, MAX_FORUM_AUDIENCE_CHANNELS, MAX_FORUM_AUDIENCE_EXPLICIT_USERS,
+    MAX_FORUM_AUDIENCE_GROUPS, MAX_FORUM_AUDIENCE_ROLES,
+};
 use crate::error::{ForumError, ForumResult};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, QueryResult, Statement};
+use uuid::Uuid;
 
 /// Ideal helper: one place for the 4× `insert_roles/channels/groups/users` copy-paste
 /// across `category_audience*`, `category_moderation_audience`, `topic_audience*`.
 /// Tables are `{prefix}_roles|_channels|_groups|_users` with `(tenant_id, subject_id)` PK.
 /// `subject_column` is `category_id` or `topic_id` depending on scope — passed by caller
 /// so the generic does not need a full EntityTrait bound.
-pub async fn insert_roles_raw(
+pub(super) async fn insert_roles_raw(
     txn: &DatabaseTransaction,
     table: &str,
     tenant_id: Uuid,
@@ -16,20 +21,36 @@ pub async fn insert_roles_raw(
     subject_column: &str,
     roles: &[String],
 ) -> ForumResult<()> {
-    if roles.is_empty() { return Ok(()); }
+    if roles.is_empty() {
+        return Ok(());
+    }
     let mut sql = format!("INSERT INTO {table} (tenant_id, {subject_column}, role) VALUES ");
     let mut vals: Vec<sea_orm::Value> = Vec::new();
     for (i, role) in roles.iter().enumerate() {
-        if i > 0 { sql.push_str(", "); }
-        sql.push_str(&format!("(${}, ${}, ${})", vals.len()+1, vals.len()+2, vals.len()+3));
-        vals.push(tenant_id.into()); vals.push(subject_id.into()); vals.push(role.clone().into());
+        if i > 0 {
+            sql.push_str(", ");
+        }
+        sql.push_str(&format!(
+            "(${}, ${}, ${})",
+            vals.len() + 1,
+            vals.len() + 2,
+            vals.len() + 3
+        ));
+        vals.push(tenant_id.into());
+        vals.push(subject_id.into());
+        vals.push(role.clone().into());
     }
     txn.execute_raw(Statement::from_sql_and_values(
-        txn.get_database_backend(), sql, vals,
-    )).await.map(|_| ()).map_err(ForumError::from)
+        txn.get_database_backend(),
+        sql,
+        vals,
+    ))
+    .await
+    .map(|_| ())
+    .map_err(ForumError::from)
 }
 
-pub async fn insert_channels_raw(
+pub(super) async fn insert_channels_raw(
     txn: &DatabaseTransaction,
     table: &str,
     tenant_id: Uuid,
@@ -37,18 +58,37 @@ pub async fn insert_channels_raw(
     subject_column: &str,
     channels: &[String],
 ) -> ForumResult<()> {
-    if channels.is_empty() { return Ok(()); }
-    let mut sql = format!("INSERT INTO {table} (tenant_id, {subject_column}, channel_slug) VALUES ");
+    if channels.is_empty() {
+        return Ok(());
+    }
+    let mut sql =
+        format!("INSERT INTO {table} (tenant_id, {subject_column}, channel_slug) VALUES ");
     let mut vals: Vec<sea_orm::Value> = Vec::new();
     for (i, ch) in channels.iter().enumerate() {
-        if i > 0 { sql.push_str(", "); }
-        sql.push_str(&format!("(${}, ${}, ${})", vals.len()+1, vals.len()+2, vals.len()+3));
-        vals.push(tenant_id.into()); vals.push(subject_id.into()); vals.push(ch.clone().into());
+        if i > 0 {
+            sql.push_str(", ");
+        }
+        sql.push_str(&format!(
+            "(${}, ${}, ${})",
+            vals.len() + 1,
+            vals.len() + 2,
+            vals.len() + 3
+        ));
+        vals.push(tenant_id.into());
+        vals.push(subject_id.into());
+        vals.push(ch.clone().into());
     }
-    txn.execute_raw(Statement::from_sql_and_values(txn.get_database_backend(), sql, vals)).await.map(|_| ()).map_err(ForumError::from)
+    txn.execute_raw(Statement::from_sql_and_values(
+        txn.get_database_backend(),
+        sql,
+        vals,
+    ))
+    .await
+    .map(|_| ())
+    .map_err(ForumError::from)
 }
 
-pub async fn insert_groups_raw(
+pub(super) async fn insert_groups_raw(
     txn: &DatabaseTransaction,
     table: &str,
     tenant_id: Uuid,
@@ -56,18 +96,36 @@ pub async fn insert_groups_raw(
     subject_column: &str,
     groups: &[Uuid],
 ) -> ForumResult<()> {
-    if groups.is_empty() { return Ok(()); }
+    if groups.is_empty() {
+        return Ok(());
+    }
     let mut sql = format!("INSERT INTO {table} (tenant_id, {subject_column}, group_id) VALUES ");
     let mut vals: Vec<sea_orm::Value> = Vec::new();
     for (i, g) in groups.iter().enumerate() {
-        if i > 0 { sql.push_str(", "); }
-        sql.push_str(&format!("(${}, ${}, ${})", vals.len()+1, vals.len()+2, vals.len()+3));
-        vals.push(tenant_id.into()); vals.push(subject_id.into()); vals.push((*g).into());
+        if i > 0 {
+            sql.push_str(", ");
+        }
+        sql.push_str(&format!(
+            "(${}, ${}, ${})",
+            vals.len() + 1,
+            vals.len() + 2,
+            vals.len() + 3
+        ));
+        vals.push(tenant_id.into());
+        vals.push(subject_id.into());
+        vals.push((*g).into());
     }
-    txn.execute_raw(Statement::from_sql_and_values(txn.get_database_backend(), sql, vals)).await.map(|_| ()).map_err(ForumError::from)
+    txn.execute_raw(Statement::from_sql_and_values(
+        txn.get_database_backend(),
+        sql,
+        vals,
+    ))
+    .await
+    .map(|_| ())
+    .map_err(ForumError::from)
 }
 
-pub async fn insert_users_raw(
+pub(super) async fn insert_users_raw(
     txn: &DatabaseTransaction,
     table: &str,
     tenant_id: Uuid,
@@ -76,186 +134,218 @@ pub async fn insert_users_raw(
     user_ids: &[Uuid],
     effect: &str,
 ) -> ForumResult<()> {
-    if user_ids.is_empty() { return Ok(()); }
-    let mut sql = format!("INSERT INTO {table} (tenant_id, {subject_column}, user_id, effect) VALUES ");
+    if user_ids.is_empty() {
+        return Ok(());
+    }
+    let mut sql =
+        format!("INSERT INTO {table} (tenant_id, {subject_column}, user_id, effect) VALUES ");
     let mut vals: Vec<sea_orm::Value> = Vec::new();
     for (i, uid) in user_ids.iter().enumerate() {
-        if i > 0 { sql.push_str(", "); }
-        sql.push_str(&format!("(${}, ${}, ${}, ${})", vals.len()+1, vals.len()+2, vals.len()+3, vals.len()+4));
-        vals.push(tenant_id.into()); vals.push(subject_id.into()); vals.push((*uid).into()); vals.push(effect.to_string().into());
+        if i > 0 {
+            sql.push_str(", ");
+        }
+        sql.push_str(&format!(
+            "(${}, ${}, ${}, ${})",
+            vals.len() + 1,
+            vals.len() + 2,
+            vals.len() + 3,
+            vals.len() + 4
+        ));
+        vals.push(tenant_id.into());
+        vals.push(subject_id.into());
+        vals.push((*uid).into());
+        vals.push(effect.to_string().into());
     }
-    txn.execute_raw(Statement::from_sql_and_values(txn.get_database_backend(), sql, vals)).await.map(|_| ()).map_err(ForumError::from)
+    txn.execute_raw(Statement::from_sql_and_values(
+        txn.get_database_backend(),
+        sql,
+        vals,
+    ))
+    .await
+    .map(|_| ())
+    .map_err(ForumError::from)
 }
 
-pub async fn clear_audience_raw(
-    txn: &DatabaseTransaction,
-    table_prefix: &str,
-    tenant_id: Uuid,
-    subject_id: Uuid,
-    subject_column: &str,
-) -> ForumResult<()> {
-    // Real tables are pluralised: _policies, _roles, _channels, _groups, _users
-    for suffix in ["_policies", "_roles", "_channels", "_groups", "_users"] {
-        let table = format!("{table_prefix}{suffix}");
-        let sql = format!("DELETE FROM {table} WHERE tenant_id = $1 AND {subject_column} = $2");
-        // Postgres vs SQLite placeholder handled by SeaORM's Statement builder
-        txn.execute_raw(Statement::from_sql_and_values(
-            txn.get_database_backend(),
-            sql,
-            vec![tenant_id.into(), subject_id.into()],
-        )).await?;
-    }
-    Ok(())
-}
-
-/// Generic raw loader for the 6× `load_local_layers` copy-paste.
-/// Each subject (category/topic) has at most one policy row + 0..N role/channel/group/user rows.
-/// Returns `HashMap<subject_id, constraints>` with normalized constraints.
-/// Stored via raw `query_all` so no EntityTrait bound is needed — table name drives the read.
-pub async fn load_audience_layers_raw<C>(
+/// Reads normalized constraints only from the Forum-owned tables of one audience scope.
+pub(super) async fn load_audience_layers_raw<C: ConnectionTrait>(
     db: &C,
     tenant_id: Uuid,
     subject_ids: &[Uuid],
     table_prefix: &str,
     subject_column: &str,
-) -> ForumResult<std::collections::HashMap<Uuid, ForumAudienceConstraints>>
-where
-    C: ConnectionTrait,
-{
-    use sea_orm::Statement;
+) -> ForumResult<HashMap<Uuid, ForumAudienceConstraints>> {
     if subject_ids.is_empty() {
-        return Ok(std::collections::HashMap::new());
-    }
-    let mut layers = std::collections::HashMap::new();
-
-    // 1) policies
-    {
-        let table = format!("{table_prefix}_policies");
-        let mut sql = format!("SELECT {subject_column}, minimum_trust_level FROM {table} WHERE tenant_id = $1 AND {subject_column} IN (");
-        for (i, _) in subject_ids.iter().enumerate() {
-            if i > 0 { sql.push_str(", "); }
-            sql.push_str(&format!("${}", i + 2));
-        }
-        sql.push(')');
-        let mut vals: Vec<sea_orm::Value> = vec![tenant_id.into()];
-        vals.extend(subject_ids.iter().map(|id| (*id).into()));
-        let rows = db.query_all_raw(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
-        for row in rows {
-            let sid: Uuid = row.try_get_by_index(0)?;
-            let trust: Option<i16> = row.try_get_by_index(1)?;
-            let level = trust.map(|v| u8::try_from(v).map_err(|_| crate::error::ForumError::Validation("Forum audience storage contains an invalid trust level".to_string()))).transpose()?;
-            layers.insert(sid, ForumAudienceConstraints { minimum_trust_level: level, ..Default::default() });
-        }
+        return Ok(HashMap::new());
     }
 
-    // 2) roles
+    let mut layers = HashMap::new();
+    for row in load_rows(
+        db,
+        tenant_id,
+        subject_ids,
+        subject_column,
+        &format!("{table_prefix}_policies"),
+        "minimum_trust_level",
+        1,
+    )
+    .await?
     {
-        let table = format!("{table_prefix}_roles");
-        let mut sql = format!("SELECT {subject_column}, role FROM {table} WHERE tenant_id = $1 AND {subject_column} IN (");
-        for (i, _) in subject_ids.iter().enumerate() { if i > 0 { sql.push_str(", "); } sql.push_str(&format!("${}", i+2)); }
-        sql.push(')');
-        let mut vals: Vec<sea_orm::Value> = vec![tenant_id.into()];
-        vals.extend(subject_ids.iter().map(|id| (*id).into()));
-        let rows = db.query_all_raw(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
-        if rows.len() > subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_ROLES {
-            return Err(crate::error::ForumError::Validation(format!("Forum audience storage exceeds the bounded role relations limit of {}", subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_ROLES)));
-        }
-        for row in rows {
-            let sid: Uuid = row.try_get_by_index(0)?;
-            let val: String = row.try_get_by_index(1)?;
-            let entry = layers.get_mut(&sid).ok_or_else(|| crate::error::ForumError::Validation("Forum audience relation is missing its local policy layer".to_string()))?;
-            let role = val.parse().map_err(|_| {
-                ForumError::Validation("Forum audience storage contains an invalid role".to_string())
-            })?;
-            entry.roles_any.push(role);
+        let subject_id = row.try_get_by_index(0)?;
+        let trust: Option<i16> = row.try_get_by_index(1)?;
+        let minimum_trust_level = trust.map(u8::try_from).transpose().map_err(|_| {
+            ForumError::Validation("Forum audience storage contains an invalid trust level".into())
+        })?;
+        let previous = layers.insert(
+            subject_id,
+            ForumAudienceConstraints {
+                minimum_trust_level,
+                ..Default::default()
+            },
+        );
+        if previous.is_some() {
+            return Err(ForumError::Validation(
+                "Forum audience contains duplicate local policies".into(),
+            ));
         }
     }
-
-    // 3) channels
+    for row in load_rows(
+        db,
+        tenant_id,
+        subject_ids,
+        subject_column,
+        &format!("{table_prefix}_roles"),
+        "role",
+        MAX_FORUM_AUDIENCE_ROLES,
+    )
+    .await?
     {
-        let table = format!("{table_prefix}_channels");
-        let mut sql = format!("SELECT {subject_column}, channel_slug FROM {table} WHERE tenant_id = $1 AND {subject_column} IN (");
-        for (i, _) in subject_ids.iter().enumerate() { if i > 0 { sql.push_str(", "); } sql.push_str(&format!("${}", i+2)); }
-        sql.push(')');
-        let mut vals: Vec<sea_orm::Value> = vec![tenant_id.into()];
-        vals.extend(subject_ids.iter().map(|id| (*id).into()));
-        let rows = db.query_all_raw(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
-        if rows.len() > subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_CHANNELS {
-            return Err(crate::error::ForumError::Validation(format!("Forum audience storage exceeds the bounded channel relations limit of {}", subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_CHANNELS)));
-        }
-        for row in rows {
-            let sid: Uuid = row.try_get_by_index(0)?;
-            let val: String = row.try_get_by_index(1)?;
-            let entry = layers.get_mut(&sid).ok_or_else(|| crate::error::ForumError::Validation("Forum audience relation is missing its local policy layer".to_string()))?;
-            entry.channel_members_any.push(val);
-        }
+        let role: String = row.try_get_by_index(1)?;
+        let role = role.parse().map_err(|_| {
+            ForumError::Validation("Forum audience storage contains an invalid role".into())
+        })?;
+        local_layer(&mut layers, &row)?.roles_any.push(role);
     }
-
-    // 4) groups
+    for row in load_rows(
+        db,
+        tenant_id,
+        subject_ids,
+        subject_column,
+        &format!("{table_prefix}_channels"),
+        "channel_slug",
+        MAX_FORUM_AUDIENCE_CHANNELS,
+    )
+    .await?
     {
-        let table = format!("{table_prefix}_groups");
-        let mut sql = format!("SELECT {subject_column}, group_id FROM {table} WHERE tenant_id = $1 AND {subject_column} IN (");
-        for (i, _) in subject_ids.iter().enumerate() { if i > 0 { sql.push_str(", "); } sql.push_str(&format!("${}", i+2)); }
-        sql.push(')');
-        let mut vals: Vec<sea_orm::Value> = vec![tenant_id.into()];
-        vals.extend(subject_ids.iter().map(|id| (*id).into()));
-        let rows = db.query_all_raw(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
-        if rows.len() > subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_GROUPS {
-            return Err(crate::error::ForumError::Validation(format!("Forum audience storage exceeds the bounded group relations limit of {}", subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_GROUPS)));
-        }
-        for row in rows {
-            let sid: Uuid = row.try_get_by_index(0)?;
-            let val: Uuid = row.try_get_by_index(1)?;
-            let entry = layers.get_mut(&sid).ok_or_else(|| crate::error::ForumError::Validation("Forum audience relation is missing its local policy layer".to_string()))?;
-            entry.group_members_any.push(val);
-        }
+        let channel = row.try_get_by_index(1)?;
+        local_layer(&mut layers, &row)?
+            .channel_members_any
+            .push(channel);
     }
-
-    // 5) users: (subject_id, user_id, effect)
+    for row in load_rows(
+        db,
+        tenant_id,
+        subject_ids,
+        subject_column,
+        &format!("{table_prefix}_groups"),
+        "group_id",
+        MAX_FORUM_AUDIENCE_GROUPS,
+    )
+    .await?
     {
-        let table = format!("{table_prefix}_users");
-        let mut sql = format!("SELECT {subject_column}, user_id, effect FROM {table} WHERE tenant_id = $1 AND {subject_column} IN (");
-        for (i, _) in subject_ids.iter().enumerate() { if i > 0 { sql.push_str(", "); } sql.push_str(&format!("${}", i+2)); }
-        sql.push(')');
-        let mut vals: Vec<sea_orm::Value> = vec![tenant_id.into()];
-        vals.extend(subject_ids.iter().map(|id| (*id).into()));
-        let rows = db.query_all_raw(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
-        if rows.len() > subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_EXPLICIT_USERS * 2 {
-            return Err(crate::error::ForumError::Validation(format!("Forum audience storage exceeds the bounded explicit user relations limit of {}", subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_EXPLICIT_USERS * 2)));
-        }
-        for row in rows {
-            let sid: Uuid = row.try_get_by_index(0)?;
-            let uid: Uuid = row.try_get_by_index(1)?;
-            let effect: String = row.try_get_by_index(2)?;
-            let entry = layers.get_mut(&sid).ok_or_else(|| crate::error::ForumError::Validation("Forum audience relation is missing its local policy layer".to_string()))?;
-            match effect.as_str() {
-                "allow" => entry.allow_user_ids.push(uid),
-                "deny" => entry.deny_user_ids.push(uid),
-                _ => {
-                    return Err(ForumError::Validation(
-                        "Forum audience storage contains an invalid user effect".to_string(),
-                    ));
-                }
+        let group = row.try_get_by_index(1)?;
+        local_layer(&mut layers, &row)?
+            .group_members_any
+            .push(group);
+    }
+    for row in load_rows(
+        db,
+        tenant_id,
+        subject_ids,
+        subject_column,
+        &format!("{table_prefix}_users"),
+        "user_id, effect",
+        MAX_FORUM_AUDIENCE_EXPLICIT_USERS * 2,
+    )
+    .await?
+    {
+        let user_id = row.try_get_by_index(1)?;
+        let effect: String = row.try_get_by_index(2)?;
+        let layer = local_layer(&mut layers, &row)?;
+        match effect.as_str() {
+            "allow" => layer.allow_user_ids.push(user_id),
+            "deny" => layer.deny_user_ids.push(user_id),
+            _ => {
+                return Err(ForumError::Validation(
+                    "Forum audience storage contains an invalid user effect".into(),
+                ));
             }
         }
     }
 
-    for constraints in layers.values_mut() {
-        *constraints = constraints.clone().normalize()?;
-        if constraints.roles_any.is_empty() && constraints.minimum_trust_level.is_none() && constraints.channel_members_any.is_empty() && constraints.group_members_any.is_empty() && constraints.allow_user_ids.is_empty() && constraints.deny_user_ids.is_empty() {
-            return Err(crate::error::ForumError::Validation("Forum audience storage contains an empty local layer".to_string()));
-        }
-    }
-    Ok(layers)
+    layers
+        .into_iter()
+        .map(|(id, constraints)| {
+            let constraints = constraints.normalize()?;
+            if !constraints.has_positive_selectors() && constraints.deny_user_ids.is_empty() {
+                return Err(ForumError::Validation(
+                    "Forum audience storage contains an empty local layer".into(),
+                ));
+            }
+            Ok((id, constraints))
+        })
+        .collect()
 }
 
-/// Normalizes constraints via `audience.rs` central helpers (already `pub(crate)`).
-/// This is the second-level dedup: 4 services no longer reimplement `normalize_*`.
-pub fn audience_constraints_needs_storage(constraints: &ForumAudienceConstraints) -> bool {
-    !constraints.roles_any.is_empty()
-        || !constraints.channel_members_any.is_empty()
-        || !constraints.group_members_any.is_empty()
-        || !constraints.allow_user_ids.is_empty()
-        || !constraints.deny_user_ids.is_empty()
-        || constraints.minimum_trust_level.is_some()
+fn local_layer<'a>(
+    layers: &'a mut HashMap<Uuid, ForumAudienceConstraints>,
+    row: &QueryResult,
+) -> ForumResult<&'a mut ForumAudienceConstraints> {
+    let subject_id = row.try_get_by_index::<Uuid>(0)?;
+    layers.get_mut(&subject_id).ok_or_else(|| {
+        ForumError::Validation("Forum audience relation is missing its local policy layer".into())
+    })
+}
+
+async fn load_rows<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    subject_ids: &[Uuid],
+    subject_column: &str,
+    table: &str,
+    columns: &str,
+    max_per_subject: usize,
+) -> ForumResult<Vec<QueryResult>> {
+    let fetch_limit = subject_ids
+        .len()
+        .checked_mul(max_per_subject)
+        .and_then(|limit| limit.checked_add(1))
+        .ok_or_else(|| {
+            ForumError::Validation("Forum audience query exceeds the row bound".into())
+        })?;
+    let placeholders = subject_ids
+        .iter()
+        .enumerate()
+        .map(|(index, _)| format!("${}", index + 2))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT {subject_column}, {columns} FROM {table}
+         WHERE tenant_id = $1 AND {subject_column} IN ({placeholders}) LIMIT {fetch_limit}"
+    );
+    let mut values = Vec::with_capacity(subject_ids.len() + 1);
+    values.push(sea_orm::Value::from(tenant_id));
+    values.extend(subject_ids.iter().copied().map(sea_orm::Value::from));
+    let rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            db.get_database_backend(),
+            sql,
+            values,
+        ))
+        .await?;
+    if rows.len() == fetch_limit {
+        return Err(ForumError::Validation(format!(
+            "Forum audience rows in {table} exceed the bound"
+        )));
+    }
+    Ok(rows)
 }

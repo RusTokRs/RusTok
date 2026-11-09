@@ -217,7 +217,8 @@ impl TopicService {
         let topic = Self::find_topic_in_tx(txn, tenant_id, prepared.record.id).await?;
         let mut active: forum_topic::ActiveModel = topic.into();
         active.status = Set(prepared.record.status);
-        active.is_locked = Set(prepared.record.is_locked);
+        active.is_locked =
+            Set(prepared.record.is_locked || prepared.record.status == TopicStatus::Archived);
         active.reply_count = Set(approved_reply_count.max(0));
         active.last_reply_at = Set(last_reply_at.map(Into::into));
         active.updated_at = Set(prepared.created_at.into());
@@ -357,7 +358,9 @@ impl TopicService {
         let locale = normalize_locale(locale)?;
         let fallback_locale = fallback_locale.map(normalize_locale).transpose()?;
         let topic = self.find_topic(tenant_id, topic_id).await?;
-        let is_deleted = self.is_topic_deleted(tenant_id, topic_id).await?;
+        let is_deleted = Self::is_topic_deleted(&self.db, tenant_id, topic_id)
+            .await?
+            .ok_or(ForumError::TopicNotFound(topic_id))?;
         let translations = self.load_translations(tenant_id, topic_id).await?;
         let channel_slugs = self.load_channel_slugs(tenant_id, topic_id).await?;
         let metadata = self
@@ -449,28 +452,8 @@ impl TopicService {
         };
 
         if txn.execute_raw(statement).await?.rows_affected() != 1 {
-            let deleted_statement = match txn.get_database_backend() {
-                DatabaseBackend::Postgres => Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "SELECT deleted_at FROM forum_topics WHERE tenant_id = $1 AND id = $2",
-                    vec![tenant_id.into(), topic_id.into()],
-                ),
-                DatabaseBackend::Sqlite => Statement::from_sql_and_values(
-                    DatabaseBackend::Sqlite,
-                    "SELECT deleted_at FROM forum_topics WHERE tenant_id = ?1 AND id = ?2",
-                    vec![tenant_id.into(), topic_id.into()],
-                ),
-                backend => {
-                    return Err(ForumError::Validation(format!(
-                        "Forum topic deleted-state lookup does not support database backend {backend:?}"
-                    )));
-                }
-            };
-            if let Some(row) = txn.query_one_raw(deleted_statement).await? {
-                let deleted_at: Option<String> = row.try_get("", "deleted_at")?;
-                if deleted_at.is_some() {
-                    return Err(ForumError::TopicDeleted);
-                }
+            if Self::is_topic_deleted(txn, tenant_id, topic_id).await? == Some(true) {
+                return Err(ForumError::TopicDeleted);
             }
             return Err(ForumError::TopicNotFound(topic_id));
         }
@@ -635,6 +618,9 @@ impl TopicService {
         let topic = Self::find_topic_for_update_in_tx(txn, tenant_id, topic_id).await?;
         let mut active: forum_topic::ActiveModel = topic.into();
         active.status = Set(status);
+        if status == TopicStatus::Archived {
+            active.is_locked = Set(true);
+        }
         active.updated_at = Set(Utc::now().into());
         active.update(txn).await?;
         Ok(())
@@ -798,16 +784,20 @@ impl TopicService {
         Ok(result)
     }
 
-    async fn is_topic_deleted(&self, tenant_id: Uuid, topic_id: Uuid) -> ForumResult<bool> {
-        let statement = match self.db.get_database_backend() {
+    pub(super) async fn is_topic_deleted<C: ConnectionTrait>(
+        db: &C,
+        tenant_id: Uuid,
+        topic_id: Uuid,
+    ) -> ForumResult<Option<bool>> {
+        let statement = match db.get_database_backend() {
             DatabaseBackend::Postgres => Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "SELECT CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END AS is_deleted FROM forum_topics WHERE tenant_id = $1 AND id = $2",
+                "SELECT deleted_at IS NOT NULL AS is_deleted FROM forum_topics WHERE tenant_id = $1 AND id = $2",
                 vec![tenant_id.into(), topic_id.into()],
             ),
             DatabaseBackend::Sqlite => Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
-                "SELECT CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END AS is_deleted FROM forum_topics WHERE tenant_id = ?1 AND id = ?2",
+                "SELECT deleted_at IS NOT NULL AS is_deleted FROM forum_topics WHERE tenant_id = ?1 AND id = ?2",
                 vec![tenant_id.into(), topic_id.into()],
             ),
             backend => {
@@ -816,17 +806,11 @@ impl TopicService {
                 )));
             }
         };
-        let row = self
-            .db
+        Ok(db
             .query_one_raw(statement)
             .await?
-            .ok_or(ForumError::TopicNotFound(topic_id))?;
-        let is_deleted = row
-            .try_get::<i32>("", "is_deleted")
-            .map(|v| v == 1)
-            .or_else(|_| row.try_get::<i64>("", "is_deleted").map(|v| v == 1))
-            .or_else(|_| row.try_get::<bool>("", "is_deleted"))?;
-        Ok(is_deleted)
+            .map(|row| row.try_get("", "is_deleted"))
+            .transpose()?)
     }
 
     async fn load_deleted_topic_ids(
@@ -927,9 +911,8 @@ impl TopicService {
             .exec(txn)
             .await?;
 
-        let channel_slugs = crate::audience::normalize_channel_slugs(
-            channel_slugs.unwrap_or(&[]).to_vec(),
-        )?;
+        let channel_slugs =
+            crate::audience::normalize_channel_slugs(channel_slugs.unwrap_or(&[]).to_vec())?;
         for channel_slug in channel_slugs {
             forum_topic_channel_access::ActiveModel {
                 tenant_id: Set(tenant_id),
@@ -1368,8 +1351,6 @@ fn normalize_tags(tags: &[String]) -> Vec<String> {
     normalized.dedup();
     normalized
 }
-
-
 
 async fn load_topic_custom_fields_schema(
     db: &DatabaseConnection,
@@ -2416,4 +2397,3 @@ impl TopicService {
         Ok((items, visible_total))
     }
 }
-

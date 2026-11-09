@@ -195,7 +195,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires isolated PostgreSQL and RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL"]
     async fn assertions_are_read_only_and_strict() -> Result<(), Box<dyn std::error::Error>> {
-        use sea_orm_migration::sea_orm::{Database, DbBackend, Statement};
+        use sea_orm_migration::sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
         let admin_url = std::env::var("RUSTOK_MIGRATION_VERIFY_TEST_ADMIN_URL")?;
         let mut url = url::Url::parse(&admin_url)?;
         assert!(matches!(

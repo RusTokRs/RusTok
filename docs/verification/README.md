@@ -338,7 +338,7 @@ Additionally:
 - Python-dependent checks are run via the installed Python.
 - Bash-only scripts are allowed as legacy/perimeter checks, but not as the sole way to confirm a module contract on this machine.
 - Fast source-level runtime invariant checks that do not require full Rust compilation may live in `scripts/verify/*.mjs`; current example is `node scripts/verify/verify-runtime-context-invariants.mjs` for channel context/cache-key, locale-cache metrics and evidence `pages -> page_builder`.
-- Migration-safety gate is enforced in CI as a separate job `migration-smoke`: it uses a PostgreSQL service and runs `./scripts/verify/verify-migration-smoke.sh` in apply-from-zero and incremental modes.
+- The CI job `migration-smoke` sets `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to its isolated PostgreSQL service and runs `./scripts/verify/verify-migration-smoke.sh` in apply-from-zero and incremental modes. Set the same variable to an isolated instance before local runs.
 
 ## Runtime/Backend Regression Runbook
 

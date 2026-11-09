@@ -31,6 +31,21 @@ notifications module, and cross-module release gates.
 - visibility, moderation and user-facing derived fields in Forum read/write contracts;
 - attachment relation heads/rows and Media owner-reference retention coordination; canonical Category presentation is consumed from Taxonomy rather than reimplemented in Forum.
 
+## Topic and reply restoration
+
+Archiving a topic locks it in the same write. Reopening keeps the lock until an
+authorized operator unlocks it. The archive-lock migration also normalizes the
+saved lock on archived restore snapshots. Rollback removes enforcement and
+preserves those normalized values.
+
+Delete snapshots preserve the exact prior topic status, including `pending`,
+and record the authorized path for new deletions. Author requests, moderation,
+and internal service operations have distinct reasons. A topic's delete reason
+also applies to replies deleted with its thread. Historical snapshots with no
+recorded reason remain unset. Restoring a pending topic leaves its first
+publication to moderation. Migration rollback refuses to discard a recorded
+reason or a pending snapshot.
+
 ## Integration
 
 - uses `rustok-content` only as a shared helper/orchestration dependency;

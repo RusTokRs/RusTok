@@ -296,8 +296,8 @@ transaction immediately after that migration and again at the end of the range.
 Missing, NULL, nonboolean or multiple assertion results fail verification.
 This is not yet complete owner-assertion or crash-recovery coverage of the chain.
 
-Direct smoke test runs require `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to point to an
-isolated PostgreSQL instance. Fresh runs create a new fixture database and fail
+The smoke script and direct tests require `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to
+point to an isolated PostgreSQL instance. Fresh runs create a new database and fail
 if its name already exists. `RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST=1` checks
 that the last applied migration is the only pending migration after rollback,
 then reapplies it and checks the schema again.
