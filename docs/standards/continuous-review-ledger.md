@@ -13,7 +13,6 @@
 - **Verification Evidence**:
   - `cargo test -p rustok-distribution`: 16/16 tests passed (15 lib + 1 integration, 0 failures).
   - `cargo clippy --no-deps -p rustok-distribution --all-targets --all-features --target-dir target/audit -- -D warnings`: 0 warnings, 0 errors.
-  - `python scripts/verify/verify-domain-hygiene.py --path crates/modules/rustok-distribution/src`: 30/30 files scanned, 0 issues detected.
   - `python scripts/verify/verify-remediation-gate.py --staged --skip-cargo`: ALL GATES PASSED.
 
 ## FS-12 `crates/modules/rustok-customer/admin` audit — 2026-11-08 (completed)
@@ -24,7 +23,6 @@
 - **Verification Evidence**:
   - `cargo test -p rustok-customer-admin --features ssr --target-dir target/audit`: 19/19 tests passed (0 failures).
   - `cargo clippy --no-deps -p rustok-customer-admin --all-targets --all-features --target-dir target/audit -- -D warnings`: 0 warnings, 0 errors.
-  - `python scripts/verify/verify-domain-hygiene.py --path crates/modules/rustok-customer/admin/src`: 10/10 files scanned, 0 issues detected.
   - `python scripts/verify/verify-remediation-gate.py --staged --skip-cargo`: ALL GATES PASSED.
 
 ## FS-11 `crates/modules/rustok-customer` audit — 2026-11-08 (completed)
@@ -35,7 +33,6 @@
 - **Verification Evidence**:
   - `cargo test -p rustok-customer`: 28/28 tests passed (9 lib + 17 integration + 2 module, 0 failures).
   - `cargo clippy --no-deps -p rustok-customer --all-targets --all-features --target-dir target/audit -- -D warnings`: 0 warnings, 0 errors.
-  - `python scripts/verify/verify-domain-hygiene.py --path crates/modules/rustok-customer/src`: 16/16 files scanned, 0 issues detected.
   - `python scripts/verify/verify-remediation-gate.py --staged --skip-cargo`: ALL GATES PASSED.
 
 
@@ -47,7 +44,6 @@
 - **Verification Evidence**:
   - `cargo test -p rustok-content-orchestration --all-features`: 14/14 tests passed (0 failures).
   - `cargo clippy --no-deps -p rustok-content-orchestration --all-targets --all-features -- -D warnings`: 0 warnings, 0 errors.
-  - `python scripts/verify/verify-domain-hygiene.py --path crates/modules/rustok-content-orchestration/src`: 19/19 files scanned, 0 issues detected.
   - `python scripts/verify/verify-remediation-gate.py --staged --skip-cargo`: ALL GATES PASSED.
 
 
@@ -61,7 +57,6 @@
 - **Verification Evidence**:
   - `cargo test -p rustok-content`: 89/89 tests passed (81 lib unit tests, 1 contract surface test, 3 integration tests, 4 module tests; 0 failures).
   - `cargo clippy -p rustok-content --all-targets --all-features -- -D warnings`: 0 warnings, 0 errors.
-  - `python scripts/verify/verify-domain-hygiene.py --path crates/modules/rustok-content/src`: 41/41 files scanned, 0 issues detected.
   - `python scripts/verify/verify-remediation-gate.py --skip-cargo`: ALL GATES PASSED.
 
 ## FS-08 `crates/modules/rustok-commerce/storefront` audit — 2026-11-06 (completed)
@@ -1005,7 +1000,7 @@ No sequential phase/component is marked complete and the active FS-03 sequence i
 | [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 17 | 2,126 | 2026-11-06 01:45 | Round 2: Exhaustively inspected all 17 source files across crates/modules/rustok-commerce-foundation (lib, error, search, dto, entities, contract_tests). Standardized Cargo.toml metadata (rust-version, repository, readme). Enriched CRATE_API.md with canonical error taxonomy and entity models. Added comprehensive contract tests for search condition generation across backends, input validation bounds, discount math, entity lifecycle transitions, and error conversions; 28/28 tests passed; clippy clean with -D warnings; gatekeeper approved; zero defects. |
 | [x] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 22 | 6,412 | 2026-11-06T00:50:45.089106+00:00 | Verified all 22 source files across 6 Universal Logic Dimensions; standardized Cargo.toml metadata; validated FFA architecture boundaries, shipping profile form states and draft validation, cart promotion command normalizations, and order change resolution summary mapping (35 tests passed with all features, clippy clean). |
 | [x] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 17 | 2,983 | 2026-11-06T01:31:12.110017+00:00 | Verified all 17 source files across 6 Universal Logic Dimensions; standardized Cargo.toml metadata and forwarded storefront ssr/hydrate features; fixed server fn ssr cfg gating in rustok-cart-storefront native_server_adapter; added comprehensive contract tests for FFA boundaries, route normalization, shipping option selection request mapping, context/shell/presentation view models (39 tests passed with all features, clippy clean). |
-| [x] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 46 | 6,465 | 2026-11-07 22:47 | Round 2: Exhaustively audited all 46 source files across crates/modules/rustok-content. Derived PartialEq/Eq and implemented std::error::Error for InvalidStatusTransition with From<InvalidStatusTransition> for ContentError; added as_str() and Display for RichTextErrorCode; implemented Debug for SharedCanonicalRouteResolver and ContentOrchestrationService; replaced expect() in profile.rs and render.rs with unreachable!() and safe unwrap_or fallback; enriched CRATE_API.md with full error taxonomy; added 7 contract test suites; 89/89 tests passed (81 unit + 8 integration/contract); clippy clean with -D warnings; domain hygiene scanner passed; gatekeeper approved; zero defects. |
+| [x] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 46 | 6,465 | 2026-11-07 22:47 | Round 2: Exhaustively audited all 46 source files across crates/modules/rustok-content. Derived PartialEq/Eq and implemented std::error::Error for InvalidStatusTransition with From<InvalidStatusTransition> for ContentError; added as_str() and Display for RichTextErrorCode; implemented Debug for SharedCanonicalRouteResolver and ContentOrchestrationService; replaced expect() in profile.rs and render.rs with unreachable!() and safe unwrap_or fallback; enriched CRATE_API.md with full error taxonomy; added 7 contract test suites; 89/89 tests passed (81 unit + 8 integration/contract); clippy clean with -D warnings; gatekeeper approved; zero defects. |
 | [x] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 19 | 3,412 | 2026-11-08 00:00 | Complete Round 2 full-stack audit across 6 Universal Logic Dimensions: derived Debug on SharedContentOrchestrationService, OwnerCanonicalRouteResolver, ServerContentOrchestrationBridge; enriched CRATE_API.md with typed contracts; expanded contract_tests.rs with 14 passing unit/integration tests; verified multi-tenant isolation and nil UUID guards |
 | [x] | [rustok-customer](../../crates/modules/rustok-customer) | `modules` | 29 | 6,207 | 2026-11-08 00:31 | Exhaustive crate inspection of all 23 files, zero-defect remediation: Clone/Debug for CustomerService & InProcessCustomerReadPort, PartialEq for DTOs/projections, CustomerError constructor and code taxonomy, instrument spans on mutation services, CRATE_API enrichment, 28/28 tests passing, 0 clippy warnings |
 | [x] | [admin](../../crates/modules/rustok-customer/admin) | `modules` | 10 | 3,177 | 2026-11-08 05:09 | Round 2 FS-12 audit: standardized Cargo.toml, derived PartialEq/Eq for all models and ApiError, replaced let _ = with drop() in native_server_adapter, enriched CRATE_API.md, expanded contract_tests.rs to 19 tests, 0 clippy warnings |
