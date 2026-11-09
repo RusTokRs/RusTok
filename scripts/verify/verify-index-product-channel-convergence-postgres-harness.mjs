@@ -59,7 +59,7 @@ const harness = requireMarkers(harnessPath, [
   'assert_reclaimed_progress',
   'run_scheduler_until_idle(&runtime.scheduler_b, 32)',
   'for _ in 0..maximum_iterations',
-  'assert_no_relation_or_freshness(&database.writer, MALFORMED_PRODUCT_ID)',
+  'relation_evidence_counts(&database.writer, MALFORMED_PRODUCT_ID)',
   'VALID_AFTER_MALFORMED_PRODUCT_ID',
   'let delayed_visibility = load_product_mutation',
   'update_restricted_visibility(&database.writer, "beta")',

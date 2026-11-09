@@ -26,7 +26,10 @@
 - Own the durable database generation used to recover channel-resolution caches across serving replicas.
 - Own a positive monotonic `channels.index_revision` storage column and retained `channel_index_tombstones`. Every Channel update advances the live revision exactly once; hard deletion retains an exact source version strictly above the final live row. These values remain storage-internal and are not exposed through Channel DTOs or the SeaORM write model.
 - Own tenant-scoped `channel_index_identity_generations` for cross-owner Index relation freshness. This generation advances transactionally only when Channel identity resolution can change: insert, delete, id movement, tenant movement, or canonical slug change. `is_active`, targets, OAuth bindings, and resolution-policy changes do not advance this identity watermark.
-- Publish only a neutral `ChannelRuntimeSelected` marker for selected cross-module composition. The Channel crate does not depend on `rustok-index` and does not construct generic Index mutations.
+- Publish the neutral `ChannelRuntimeSelected` marker and the owner-defined
+  `index_projection` PostgreSQL read contracts for replay, live revision
+  admission, and tenant-scoped identity resolution. Channel has no Rust
+  dependency on Index. Distribution maps the owner projections into Index mutations.
 - The selected `rustok-distribution` bridge publishes the non-localized `rustok-channel::sales_channel@1` schema and one bounded source. Replay enumeration uses stable `channel_id` ordering and returns live upserts or retained hard-delete mutations from the same source identity; `index_revision` is used only as generic mutation `source_version`. The canonical Product graph separately consumes the tenant identity generation as a freshness watermark for Product-to-SalesChannel resolution.
 - Ship the module-owned Leptos admin UI package for channel management.
 - Expose `ChannelReadPort` / `channel.read_projection.v1` as the FBA provider boundary for channel/default/host-target read projections, with deadline-aware read semantics and no-compile executable fallback smoke evidence until executable runtime smoke is available.

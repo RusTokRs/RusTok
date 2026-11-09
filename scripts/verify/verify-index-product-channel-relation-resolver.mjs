@@ -18,16 +18,20 @@ const requireMarkers = (relative, markers) => {
   return source;
 };
 
-const visibilityPath = 'crates/modules/rustok-distribution/src/product_index/channel_visibility.rs';
+const visibilityPath = 'crates/modules/rustok-product/src/index_channel_visibility.rs';
 requireMarkers(visibilityPath, [
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS: usize = 1024',
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUG_BYTES: usize = 100',
-  'pub(crate) fn freshness_key(&self) -> String',
+  'pub fn freshness_key(&self) -> String',
   'decode_product_visibility(',
 ]);
 
 const resolverPath =
   'crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs';
+requireMarkers('crates/modules/rustok-channel/src/index_projection.rs', [
+  'channel_index_identity_generations',
+  'SELECT id FROM channels WHERE tenant_id = $1 ORDER BY id ASC LIMIT $2',
+]);
 const resolver = requireMarkers(resolverPath, [
   'MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE: usize = 64',
   'MAX_PRODUCT_SALES_CHANNEL_STABILIZATION_ATTEMPTS: usize = 3',
@@ -40,9 +44,7 @@ const resolver = requireMarkers(resolverPath, [
   'ProductSalesChannelIndexRelationFreshnessStore::new',
   '.replace(tenant_id, product_id',
   'load_channel_identity_generation(&transaction, tenant_id).await?',
-  'channel_index_identity_generations',
   'lower(btrim(slug)) IN',
-  'SELECT id FROM channels WHERE tenant_id = $1 ORDER BY id ASC LIMIT $2',
   'ProductChannelVisibility::Unrestricted',
   'verified.channel_ids == outcome.record().channel_ids()',
   'verified.product_source_version',
@@ -85,7 +87,6 @@ for (const ownerPath of [
 requireMarkers('crates/modules/rustok-distribution/src/product_index/mod.rs', [
   'pub(crate) mod channel_relation_resolver;',
   'mod channel_relation_convergence;',
-  'mod channel_visibility;',
   'mod query_admission;',
 ]);
 

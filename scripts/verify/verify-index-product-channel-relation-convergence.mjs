@@ -131,6 +131,9 @@ requireMarkers('crates/modules/rustok-product/src/lib.rs', [
 
 const workerPath =
   'crates/modules/rustok-distribution/src/product_index/channel_relation_convergence.rs';
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
+  'state.available_at <= CURRENT_TIMESTAMP',
+]);
 const worker = requireMarkers(workerPath, [
   'PRODUCT_SALES_CHANNEL_RELATION_CONVERGENCE_WORKER',
   'product_sales_channel_relation_convergence',
@@ -144,7 +147,6 @@ const worker = requireMarkers(workerPath, [
   'product_sales_channel_index_relation_convergence_state',
   'channel_index_identity_generations',
   'product_sales_channel_index_relation_convergence_requests',
-  'state.available_at <= CURRENT_TIMESTAMP',
   'state.sweep_generation IS NOT NULL',
   'state.channel_identity_generation IS NULL',
   'request.sequence_no > state.visibility_cursor',
@@ -153,7 +155,7 @@ const worker = requireMarkers(workerPath, [
   'ProductSalesChannelIndexRelationConvergenceClaim::restore',
   'async fn reconcile_sweep_page(',
   'reconcile_product(',
-  'owner_rejected(&error)',
+  'error.is_owner_rejection()',
   'head-of-line block valid Products later in the same tenant',
   'ProductSalesChannelRelationResolverError::ProductNotFound',
   '.complete_visibility(&claim)',
@@ -165,9 +167,12 @@ const worker = requireMarkers(workerPath, [
   'owner_rejection_isolated_from_retryable_storage_failures',
 ]);
 
-requireMarkers('crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
   'SELECT id FROM products WHERE tenant_id = $1',
+]);
+requireMarkers('crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
   'reconcile_product(tenant_id, product_id)',
+  'error.is_owner_rejection()',
   'MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE',
 ]);
 forbidMarkers(workerPath, worker, [

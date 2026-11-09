@@ -19,9 +19,8 @@ const requireMarkers = (relative, markers) => {
 };
 
 const modulePath = 'crates/modules/rustok-distribution/src/product_index/attribute_terms.rs';
-const source = requireMarkers(modulePath, [
-  'pub(crate) const PRODUCT_ATTRIBUTE_TERMS_FIELD: &str = "attribute_terms";',
-  'pub(crate) const PRODUCT_ATTRIBUTE_TERMS_CTE: &str',
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
+  'pub const PRODUCT_ATTRIBUTE_TERMS_CTE: &str',
   "pa.archived_at IS NULL",
   'pa.is_filterable = TRUE',
   "pa.scope IN ('product', 'both')",
@@ -41,6 +40,9 @@ const source = requireMarkers(modulePath, [
   'product_attribute_value_options option_value',
   'SELECT DISTINCT product_id, term',
   'jsonb_agg(term ORDER BY term)',
+]);
+const source = requireMarkers(modulePath, [
+  'pub(crate) const PRODUCT_ATTRIBUTE_TERMS_FIELD: &str = "attribute_terms";',
   'rustok_product::product_attribute_text_term(',
   'rustok_product::product_attribute_localized_text_term(',
   'rustok_product::product_attribute_decimal_term(',

@@ -25,12 +25,26 @@ const forbidMarkers = (relative, source, markers) => {
 };
 
 const productCargo = read('crates/modules/rustok-product/Cargo.toml');
+for (const adapter of [
+  'channel_index.rs',
+  'product_variant_index.rs',
+  'product_index/product.rs',
+  'product_index/absence.rs',
+  'product_index/query_admission.rs',
+  'product_index/channel_relation_resolver.rs',
+  'product_index/channel_relation_convergence.rs',
+]) {
+  const relative = `crates/modules/rustok-distribution/src/${adapter}`;
+  const production = read(relative).split(/^#\[cfg\(test\)\]\r?\nmod tests/m, 1)[0];
+  if (/\b(?:FROM|JOIN)\s+(?:products\b|product_(?!index_(?:union|rows)\b|tag_ids\b|graph_projection\b|attribute_terms\b)\w+|channels\b|channel_index_\w+)/i.test(production)) {
+    fail(`${relative} queries owner storage directly. Use Product or Channel index_projection.`);
+  }
+}
 forbidMarkers('crates/modules/rustok-product/Cargo.toml', productCargo, ['rustok-index', 'rustok-channel']);
 
 const modulePath = 'crates/modules/rustok-distribution/src/product_index/mod.rs';
 const moduleSource = requireMarkers(modulePath, [
   'mod attribute_terms;',
-  'mod channel_visibility;',
   'mod product;',
   'mod variant;',
   'PRODUCT_SCHEMA_ROUTING_KEY: u32 = 4',
@@ -55,6 +69,12 @@ for (const removed of [
 }
 
 const sourcePath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
+  'FROM products p',
+  'JOIN product_translations t',
+  'FROM product_index_tombstones tombstone',
+  'jsonb_agg(v.id ORDER BY v.id)',
+]);
 const source = requireMarkers(sourcePath, [
   'PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary"',
   'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay"',
@@ -91,10 +111,6 @@ const source = requireMarkers(sourcePath, [
   'freshness_product_source_version > observed_product_source_version',
   'projected_product_source_version != observed_product_source_version',
   'does not require live Storefront fields or a live freshness witness',
-  'FROM products p',
-  'JOIN product_translations t',
-  'FROM product_index_tombstones tombstone',
-  'jsonb_agg(v.id ORDER BY v.id)',
   '(row.product_id, row.locale) > ($2, $3)',
   'WITH requested(product_id, locale) AS (VALUES {})',
   'IndexMutation::Delete {',
@@ -133,10 +149,12 @@ for (const currentConsumer of [
   forbidMarkers(currentConsumer, consumer, ['SchemaVersion::new(3)']);
 }
 
-requireMarkers('crates/modules/rustok-distribution/src/product_index/attribute_terms.rs', [
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
   'PRODUCT_ATTRIBUTE_TERMS_CTE',
-  'localized_text_filter(',
   'localized_present',
+]);
+requireMarkers('crates/modules/rustok-distribution/src/product_index/attribute_terms.rs', [
+  'localized_text_filter(',
 ]);
 
 const graphDocPath = 'crates/modules/rustok-index/docs/m7-product-graph-source.md';

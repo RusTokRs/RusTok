@@ -5,83 +5,12 @@ use rustok_index::{
     register_postgres_index_query_link_target_availability,
 };
 
-use super::PRODUCT_SCHEMA_ROUTING_KEY;
+use rustok_channel::index_projection::SALES_CHANNEL_QUERY_MATERIALIZED_FRESHNESS;
+use rustok_product::index_projection::{
+    PRODUCT_QUERY_MATERIALIZED_FRESHNESS, PRODUCT_VARIANT_QUERY_MATERIALIZED_FRESHNESS,
+};
 
-const PRODUCT_QUERY_MATERIALIZED_FRESHNESS: &str = r#"
-EXISTS (
-    SELECT 1
-    FROM products owner_product
-    JOIN LATERAL (
-        SELECT
-            projection.projection_epoch,
-            projection.product_source_version,
-            projection.relation_epoch
-        FROM product_index_graph_projection_snapshots projection
-        WHERE projection.tenant_id = {{entity}}.tenant_id
-          AND projection.product_id = {{entity}}.entity_id
-        ORDER BY projection.projection_epoch DESC
-        LIMIT 1
-    ) current_projection ON TRUE
-    JOIN LATERAL (
-        SELECT
-            witness.product_source_version,
-            witness.channel_identity_generation
-        FROM product_sales_channel_index_relation_freshness_snapshots witness
-        WHERE witness.tenant_id = {{entity}}.tenant_id
-          AND witness.product_id = {{entity}}.entity_id
-          AND witness.relation_epoch = current_projection.relation_epoch
-        ORDER BY witness.sequence_no DESC
-        LIMIT 1
-    ) current_freshness ON TRUE
-    WHERE owner_product.tenant_id = {{entity}}.tenant_id
-      AND owner_product.id = {{entity}}.entity_id
-      AND {{entity}}.source_version = current_projection.projection_epoch
-      AND current_projection.product_source_version = owner_product.index_revision
-      AND current_freshness.product_source_version <= owner_product.index_revision
-      AND current_freshness.channel_identity_generation = COALESCE(
-          (
-              SELECT channel_generation.generation
-              FROM channel_index_identity_generations channel_generation
-              WHERE channel_generation.tenant_id = {{entity}}.tenant_id
-          ),
-          0
-      )
-      AND NOT EXISTS (
-          SELECT 1
-          FROM product_sales_channel_index_relation_convergence_requests request
-          WHERE request.tenant_id = {{entity}}.tenant_id
-            AND request.product_id = {{entity}}.entity_id
-            AND request.product_source_version > current_freshness.product_source_version
-      )
-      AND EXISTS (
-          SELECT 1
-          FROM product_translations translation
-          WHERE translation.tenant_id = {{entity}}.tenant_id
-            AND translation.product_id = {{entity}}.entity_id
-            AND translation.locale = {{entity}}.locale_key
-      )
-)
-"#;
-
-const PRODUCT_VARIANT_QUERY_MATERIALIZED_FRESHNESS: &str = r#"
-EXISTS (
-    SELECT 1
-    FROM product_variants owner_variant
-    WHERE owner_variant.tenant_id = {{entity}}.tenant_id
-      AND owner_variant.id = {{entity}}.entity_id
-      AND owner_variant.index_revision = {{entity}}.source_version
-)
-"#;
-
-const SALES_CHANNEL_QUERY_MATERIALIZED_FRESHNESS: &str = r#"
-EXISTS (
-    SELECT 1
-    FROM channels owner_channel
-    WHERE owner_channel.tenant_id = {{entity}}.tenant_id
-      AND owner_channel.id = {{entity}}.entity_id
-      AND owner_channel.index_revision = {{entity}}.source_version
-)
-"#;
+use super::{PRODUCT_SCHEMA_ROUTING_KEY, with_channel_identity_source};
 
 pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) -> rustok_core::Result<()> {
     if !extensions.contains::<rustok_product::ProductRuntimeSelected>() {
@@ -93,7 +22,7 @@ pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) -> rustok_core:
         extensions,
         "product",
         product_schema.clone(),
-        PRODUCT_QUERY_MATERIALIZED_FRESHNESS,
+        &with_channel_identity_source(PRODUCT_QUERY_MATERIALIZED_FRESHNESS),
         "Product",
     )?;
     register_postgres_index_query_link_target_availability(extensions, "product", product_schema)
@@ -205,7 +134,7 @@ mod tests {
             "LIMIT 1",
         ] {
             assert!(
-                PRODUCT_QUERY_MATERIALIZED_FRESHNESS.contains(marker),
+                with_channel_identity_source(PRODUCT_QUERY_MATERIALIZED_FRESHNESS).contains(marker),
                 "missing {marker}"
             );
         }
@@ -234,7 +163,7 @@ mod tests {
     #[test]
     fn owner_admission_predicates_do_not_read_materialized_index_storage() {
         for template in [
-            PRODUCT_QUERY_MATERIALIZED_FRESHNESS,
+            &with_channel_identity_source(PRODUCT_QUERY_MATERIALIZED_FRESHNESS),
             PRODUCT_VARIANT_QUERY_MATERIALIZED_FRESHNESS,
             SALES_CHANNEL_QUERY_MATERIALIZED_FRESHNESS,
         ] {

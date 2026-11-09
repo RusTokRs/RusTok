@@ -21,11 +21,9 @@ const genericWorker = read('crates/modules/rustok-index/src/application/source_r
 const workflow = read('.github/workflows/index-contract-ci.yml');
 
 for (const marker of [
-  'pub enum ProductIndexRefreshDelivery<T>',
-  'pub struct ProductIndexRefreshDeliveryWorker<M, A>',
-  'pub fn locale(',
-  'pub fn variant(',
-  'pub async fn process(',
+  'register_index_mutation_event(',
+  'PRODUCT_INDEX_LOCALE_REFRESH_REQUESTED_EVENT_TYPE',
+  'PRODUCT_INDEX_VARIANT_REFRESH_REQUESTED_EVENT_TYPE',
 ]) {
   requireMarker(bridge, marker, 'distribution Product refresh host bridge');
 }
@@ -40,9 +38,8 @@ for (const marker of [
   'type Token = ConsumedContractEvent;',
   'ProductIndexRefreshEvent::LocaleRefreshRequested',
   'ProductIndexRefreshEvent::VariantRefreshRequested',
-  'ProductIndexRefreshDelivery::locale(',
-  'ProductIndexRefreshDelivery::variant(',
-  'ProductIndexRefreshDeliveryWorker::new(',
+  'IndexSourceRefreshEventWorker::new(',
+  'product_index_refresh_delivery_from_envelope(',
   'PostgresMutationStore::new(',
   'SharedIndexSchemaRegistry',
   'SharedIndexSourceRegistry',
@@ -57,6 +54,7 @@ for (const marker of [
 }
 
 for (const forbidden of [
+  'rustok_distribution::product_index',
   'move_to_dlq(',
   'legacy',
   'fallback',
@@ -74,9 +72,12 @@ requireMarker(
   'server bootstrap',
 );
 
-const applyPosition = genericWorker.indexOf('.apply_replay_mutation(');
+const persistPosition = genericWorker.indexOf('let outcome = persist_index_source_refresh(');
 const acknowledgePosition = genericWorker.indexOf('.acknowledge(');
-if (applyPosition === -1 || acknowledgePosition === -1 || applyPosition > acknowledgePosition) {
+const persistImplementation = genericWorker.indexOf('pub async fn persist_index_source_refresh');
+if (persistPosition === -1 || acknowledgePosition <= persistPosition
+    || persistImplementation === -1
+    || genericWorker.indexOf('.apply_replay_mutation(', persistImplementation) === -1) {
   fail('generic source refresh worker no longer preserves durable apply-before-ack ordering');
 }
 

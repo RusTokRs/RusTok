@@ -56,7 +56,7 @@ const ownerTags = requireMarkers(ownerTagsPath, [
   'product_tag::Column::ProductId.is_in(product_ids.clone())',
   'TaxonomyService::new(self.db.clone())',
   '.resolve_term_names(tenant_id, &ordered_term_ids, locale, fallback_locale)',
-  'pub(crate) async fn load_product_tags(',
+  'pub(crate) async fn load_product_tags_in<',
   'pub(crate) async fn sync_product_tags_in_tx(',
 ]);
 for (const forbidden of [
@@ -133,10 +133,12 @@ if (productTagEvidence.includes('legacy_metadata_tags_are_used_as_read_fallback'
 }
 
 const sourcePath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
-const productSource = requireMarkers(sourcePath, [
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
   'product_tag_ids AS (',
   'jsonb_agg(product_tag.term_id ORDER BY product_tag.term_id) AS tag_ids',
   'LEFT JOIN product_tag_ids tags',
+]);
+const productSource = requireMarkers(sourcePath, [
   "COALESCE(tags.tag_ids, '[]'::jsonb) AS tag_ids",
   'many_field("tag_ids", IndexValueType::Uuid, true, false)',
 ]);
@@ -148,7 +150,7 @@ const runtimePath = 'crates/modules/rustok-product/src/runtime.rs';
 const runtime = requireMarkers(runtimePath, [
   'storefront_tag_read_port: Option<Arc<dyn ProductStorefrontTagReadPort>>',
   'storefront_tag_read_port: None',
-  '.with_storefront_tag_read_port(catalog)',
+  '.with_storefront_tag_read_port(catalog.clone())',
   'pub fn with_storefront_tag_read_port(',
   'pub fn storefront_tag_read_port(&self)',
   'pub fn external(read_port: Arc<dyn ProductCatalogReadPort>)',

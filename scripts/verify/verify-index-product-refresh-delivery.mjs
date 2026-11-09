@@ -26,7 +26,6 @@ for (const eventDomain of [
   'product.index.variant_refresh_requested',
 ]) {
   requireMarker(canonicalFamily, eventDomain, 'canonical Product refresh family');
-  requireMarker(delivery, eventDomain, 'distribution Product refresh delivery');
 }
 
 for (const marker of [
@@ -38,13 +37,8 @@ for (const marker of [
   'EntityName::new("product_variant")',
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
   'SchemaVersion::new(PRODUCT_VARIANT_SCHEMA_VERSION)',
-  'LocaleKey::new(locale)',
-  'entity_id: product_id',
-  'entity_id: variant_id',
-  'locale: None',
-  'IndexSourceRefreshEventDelivery::new(',
-  'IndexSourceRefreshEventWorker::new(',
-  '.into_index_delivery()?',
+  'PRODUCT_INDEX_LOCALE_REFRESH_REQUESTED_EVENT_TYPE',
+  'PRODUCT_INDEX_VARIANT_REFRESH_REQUESTED_EVENT_TYPE',
 ]) {
   requireMarker(delivery, marker, 'distribution Product refresh delivery');
 }
@@ -54,14 +48,17 @@ requireMarker(productIndexModule, 'refresh_event::register(extensions)?;', 'Prod
 requireMarker(variantSource, 'const PRODUCT_VARIANT_SCHEMA_VERSION: u32 = 2;', 'ProductVariant Index source');
 requireMarker(delivery, 'const PRODUCT_VARIANT_SCHEMA_VERSION: u32 = 2;', 'distribution Product refresh delivery');
 
-const applyPosition = genericWorker.indexOf('.apply_replay_mutation(');
+const persistPosition = genericWorker.indexOf('let outcome = persist_index_source_refresh(');
 const acknowledgePosition = genericWorker.indexOf('.acknowledge(');
-if (applyPosition === -1 || acknowledgePosition === -1 || applyPosition > acknowledgePosition) {
+const persistImplementation = genericWorker.indexOf('pub async fn persist_index_source_refresh');
+if (persistPosition === -1 || acknowledgePosition <= persistPosition
+    || persistImplementation === -1
+    || genericWorker.indexOf('.apply_replay_mutation(', persistImplementation) === -1) {
   fail('generic source refresh worker no longer preserves durable apply-before-ack ordering');
 }
 
 for (const marker of [
-  'canonical_source_mutation_is_rebound_committed_and_then_acknowledged',
+  'canonical_source_mutation_identity_is_preserved_before_acknowledgement',
   'missing_or_behind_source_state_suppresses_apply_and_ack',
   'schema_mismatch_fails_before_source_load_apply_or_ack',
 ]) {
@@ -80,4 +77,4 @@ for (const forbidden of [
   }
 }
 
-console.log('[verify-index-product-refresh-delivery] typed Product/ProductVariant refresh delivery verified');
+console.log('[verify-index-product-refresh-delivery] selected Product and ProductVariant refresh routes verified');

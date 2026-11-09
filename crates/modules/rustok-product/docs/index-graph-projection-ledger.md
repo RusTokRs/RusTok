@@ -45,7 +45,9 @@ empty SalesChannel membership.
 
 ## Canonical source
 
-`rustok-distribution::product_index::product` uses the projection ledger to emit one current Product
+`rustok-product::index_projection` owns the PostgreSQL replay and absence read
+contracts. The Distribution adapter combines the Product replay projection
+with the Channel identity generation relation in one statement to emit one current Product
 contract containing Product scalars, the `variants` link, and the `sales_channels` link. Live Product
 rows require the projection Product watermark to equal current `products.index_revision`.
 

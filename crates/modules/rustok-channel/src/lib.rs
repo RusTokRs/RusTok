@@ -10,6 +10,7 @@
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod index_projection;
 pub mod invalidation_generation;
 pub mod migrations;
 pub mod module;

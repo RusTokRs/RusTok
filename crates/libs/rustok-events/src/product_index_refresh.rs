@@ -207,6 +207,19 @@ mod tests {
     }
 
     #[test]
+    fn variant_refresh_envelope_rejects_nil_product_or_variant() {
+        let id = Uuid::from_u128(1);
+        for (product_id, variant_id) in [(Uuid::nil(), id), (id, Uuid::nil())] {
+            let event = ProductIndexRefreshEvent::VariantRefreshRequested {
+                product_id,
+                variant_id,
+                source_version: 1,
+            };
+            assert!(ContractEventEnvelope::new_with_envelope_id(id, id, None, event).is_err());
+        }
+    }
+
+    #[test]
     fn locale_refresh_rejects_noncanonical_outer_whitespace() {
         let event = ProductIndexRefreshEvent::LocaleRefreshRequested {
             product_id: Uuid::new_v4(),

@@ -62,7 +62,7 @@ const catalog = requireMarkers(catalogPath, [
   'pub(crate) fn apply_link_target_availability(',
   'fn rebuild_owner_composite(',
   'fn referenced_first_hop_links(query: &IndexQuery)',
-  'query.referenced_paths()',
+  '.referenced_paths()',
   '{link}.source_version = {root}.source_version',
   '{target}.is_deleted = FALSE',
 ]);
@@ -108,19 +108,23 @@ requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/query_ru
 ]);
 
 const productAdmissionPath = 'crates/modules/rustok-distribution/src/product_index/query_admission.rs';
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
+  'FROM products owner_product',
+  'FROM product_variants owner_variant',
+  'owner_variant.index_revision = {{entity}}.source_version',
+]);
+requireMarkers('crates/modules/rustok-channel/src/index_projection.rs', [
+  'FROM channels owner_channel',
+  'owner_channel.index_revision = {{entity}}.source_version',
+]);
 const productAdmission = requireMarkers(productAdmissionPath, [
   'PRODUCT_QUERY_MATERIALIZED_FRESHNESS',
   'PRODUCT_VARIANT_QUERY_MATERIALIZED_FRESHNESS',
   'SALES_CHANNEL_QUERY_MATERIALIZED_FRESHNESS',
-  'FROM products owner_product',
   'product_index_graph_projection_snapshots',
   'product_sales_channel_index_relation_freshness_snapshots',
   '{{entity}}.source_version = current_projection.projection_epoch',
   'translation.locale = {{entity}}.locale_key',
-  'FROM product_variants owner_variant',
-  'owner_variant.index_revision = {{entity}}.source_version',
-  'FROM channels owner_channel',
-  'owner_channel.index_revision = {{entity}}.source_version',
   'register_postgres_index_query_link_target_availability',
   'PostgresQueryEntityAdmission::new(template)',
   'PRODUCT_SCHEMA_ROUTING_KEY',

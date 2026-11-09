@@ -73,9 +73,10 @@ invoke reconciliation. The detailed owner/runtime contract is documented in
 
 ## Materialized freshness boundary
 
-The witness and convergence worker do not make source observation and Index mutation application one
-cross-owner atomic transaction. Instead, the canonical Index query boundary now supplies the separate
-materialized/query freshness fence.
+Source observation and Index mutation application are separate operations.
+The Index query boundary enforces a materialized freshness fence in the same
+statement as the query. Distribution composes the Product-owned predicate
+with the Channel-owned identity generation relation.
 
 A Product root row is query-admissible only when the materialized Product `projection_epoch` matches the
 latest owner projection, the projection Product component matches current Product revision, the live

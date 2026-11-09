@@ -14,6 +14,9 @@
 //! custom attribute schemas, faceted search projections, and media attachments.
 
 pub use async_trait::async_trait;
+pub use rustok_events::{
+    PRODUCT_INDEX_LOCALE_REFRESH_REQUESTED_EVENT_TYPE, PRODUCT_INDEX_VARIANT_REFRESH_REQUESTED_EVENT_TYPE,
+};
 
 mod catalog_command_port;
 mod catalog_schema_read_port;
@@ -24,6 +27,8 @@ pub mod error;
 pub mod fulfillment;
 mod image_translation_progress_target;
 mod image_translation_target;
+pub mod index_channel_visibility;
+pub mod index_projection;
 mod media_reference;
 pub mod migrations;
 pub mod ports;

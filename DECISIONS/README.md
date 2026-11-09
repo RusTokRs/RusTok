@@ -52,6 +52,7 @@ Non-ADR plans and research documents do not belong in this registry.
 ## Index
 
 | ADR | Title | Decision status | Implementation status | Relations |
+| [2026-11-08](./2026-11-08-distribution-index-owner-read-contracts.md) | Distribution Index owner read contracts | Accepted | In progress | Extends [Index PostgreSQL storage model](./2026-07-24-index-storage-layout.md) |
 | [2026-11-05](./2026-11-05-pricing-entity-sovereignty-and-product-decoupling.md) | Pricing storage sovereignty and Product port decoupling | Accepted | Implemented | Extends [native module reference contract](./2026-09-18-canonical-native-module-reference-contract.md), [initial commerce split](./2026-03-25-commerce-module-split-product-pricing-inventory.md) |
 | [2026-11-05](./2026-11-05-migration-safety-assessment.md) | Shared migration safety assessment | Accepted | Implemented | Extends [migration consolidation](./2026-11-03-migration-consolidation.md), [release safety](./2026-08-06-module-release-rollback-safety.md) |
 | [2026-11-05](./2026-11-05-bounded-migration-execution.md) | Bounded execution through the shared migration runner | Accepted | Implemented | Extends [migration consolidation](./2026-11-03-migration-consolidation.md), [release safety](./2026-08-06-module-release-rollback-safety.md) |

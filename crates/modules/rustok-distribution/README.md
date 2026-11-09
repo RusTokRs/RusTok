@@ -21,6 +21,10 @@ distribution build.
 - Keep routing, lifecycle, command providers and domain logic outside this crate.
 - Keep executable hosts capability-neutral: they call
   `build_runtime_extensions(...)` and never import selected bridge types.
+- Compose the native Product and Channel Index projections published by their
+  owners. Distribution owns the adapter registration and maps published rows
+  into Index records. The owner SQL is composed in the same PostgreSQL
+  statement or existing repeatable-read transaction.
 
 ## Interactions
 

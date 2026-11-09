@@ -5,13 +5,13 @@ use rustok_product::{
 };
 use sea_orm::{
     AccessMode, ConnectionTrait, DatabaseConnection, DbBackend, IsolationLevel, QueryResult,
-    Statement, TransactionTrait, Value,
+    TransactionTrait,
 };
 use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::channel_visibility::{
+use rustok_product::index_channel_visibility::{
     ProductChannelVisibility, ProductChannelVisibilityError, decode_product_visibility,
 };
 
@@ -44,6 +44,17 @@ pub(crate) enum ProductSalesChannelRelationResolverError {
     RelationOwner(#[from] ProductSalesChannelIndexRelationError),
     #[error(transparent)]
     FreshnessOwner(#[from] ProductSalesChannelIndexRelationFreshnessError),
+}
+
+impl ProductSalesChannelRelationResolverError {
+    pub(super) fn is_owner_rejection(&self) -> bool {
+        matches!(
+            self,
+            Self::InvalidProductVisibility
+                | Self::TooManyVisibilitySlugs
+                | Self::TooManyResolvedChannels
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -160,6 +171,9 @@ impl ProductSalesChannelRelationResolver {
         for product_id in product_ids {
             match self.reconcile_product(tenant_id, product_id).await {
                 Ok(_) | Err(ProductSalesChannelRelationResolverError::ProductNotFound) => {}
+                Err(error) if error.is_owner_rejection() => {
+                    tracing::warn!(%tenant_id, %product_id, %error, "Product visibility rejected during Channel sweep");
+                }
                 Err(error) => return Err(error),
             }
         }
@@ -220,24 +234,13 @@ impl ProductSalesChannelRelationResolver {
         after_product_id: Option<Uuid>,
         limit: usize,
     ) -> Result<Vec<Uuid>, ProductSalesChannelRelationResolverError> {
-        let limit =
-            i64::try_from(limit).map_err(|_| ProductSalesChannelRelationResolverError::InvalidPage)?;
-        let (sql, values) = match after_product_id {
-            Some(after_product_id) => (
-                "SELECT id FROM products WHERE tenant_id = $1 AND id > $2 ORDER BY id ASC LIMIT $3",
-                vec![tenant_id.into(), after_product_id.into(), limit.into()],
-            ),
-            None => (
-                "SELECT id FROM products WHERE tenant_id = $1 ORDER BY id ASC LIMIT $2",
-                vec![tenant_id.into(), limit.into()],
-            ),
-        };
-
+        let limit = i64::try_from(limit)
+            .map_err(|_| ProductSalesChannelRelationResolverError::InvalidPage)?;
         self.db
-            .query_all_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                sql,
-                values,
+            .query_all_raw(rustok_product::index_projection::relation_product_ids(
+                tenant_id,
+                after_product_id,
+                limit,
             ))
             .await
             .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?
@@ -260,10 +263,8 @@ async fn load_product_visibility(
     product_id: Uuid,
 ) -> Result<(ProductChannelVisibility, u64), ProductSalesChannelRelationResolverError> {
     let row = transaction
-        .query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT metadata, index_revision FROM products WHERE tenant_id = $1 AND id = $2",
-            vec![tenant_id.into(), product_id.into()],
+        .query_one_raw(rustok_product::index_projection::relation_visibility(
+            tenant_id, product_id,
         ))
         .await
         .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?
@@ -290,14 +291,8 @@ async fn load_channel_identity_generation(
     tenant_id: Uuid,
 ) -> Result<u64, ProductSalesChannelRelationResolverError> {
     let row = transaction
-        .query_one_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            r#"
-            SELECT generation
-            FROM channel_index_identity_generations
-            WHERE tenant_id = $1
-            "#,
-            vec![tenant_id.into()],
+        .query_one_raw(rustok_channel::index_projection::identity_generation(
+            tenant_id,
         ))
         .await
         .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?;
@@ -320,12 +315,15 @@ async fn resolve_channel_ids(
 ) -> Result<Vec<Uuid>, ProductSalesChannelRelationResolverError> {
     let fetch_limit = i64::try_from(MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS.saturating_add(1))
         .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?;
-    let (sql, values) = channel_resolution_query(tenant_id, visibility, fetch_limit);
+    let slugs = match visibility {
+        ProductChannelVisibility::Unrestricted => None,
+        ProductChannelVisibility::Restricted(slugs) => Some(slugs.as_slice()),
+    };
     let rows = transaction
-        .query_all_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            sql,
-            values,
+        .query_all_raw(rustok_channel::index_projection::relation_channel_ids(
+            tenant_id,
+            slugs,
+            fetch_limit,
         ))
         .await
         .map_err(|_| ProductSalesChannelRelationResolverError::Unavailable)?;
@@ -348,37 +346,6 @@ async fn resolve_channel_ids(
         channel_ids.push(channel_id);
     }
     Ok(channel_ids)
-}
-
-fn channel_resolution_query(
-    tenant_id: Uuid,
-    visibility: &ProductChannelVisibility,
-    fetch_limit: i64,
-) -> (String, Vec<Value>) {
-    match visibility {
-        ProductChannelVisibility::Unrestricted => (
-            "SELECT id FROM channels WHERE tenant_id = $1 ORDER BY id ASC LIMIT $2".to_owned(),
-            vec![tenant_id.into(), fetch_limit.into()],
-        ),
-        ProductChannelVisibility::Restricted(slugs) => {
-            let mut values = Vec::<Value>::with_capacity(slugs.len() + 2);
-            values.push(tenant_id.into());
-            let mut placeholders = Vec::with_capacity(slugs.len());
-            for (offset, slug) in slugs.iter().enumerate() {
-                placeholders.push(format!("${}", offset + 2));
-                values.push(slug.clone().into());
-            }
-            let limit_parameter = slugs.len() + 2;
-            values.push(fetch_limit.into());
-            (
-                format!(
-                    "SELECT id FROM channels WHERE tenant_id = $1 AND lower(btrim(slug)) IN ({}) ORDER BY id ASC LIMIT ${limit_parameter}",
-                    placeholders.join(", ")
-                ),
-                values,
-            )
-        }
-    }
 }
 
 fn decode_product_id(
@@ -439,19 +406,20 @@ fn map_relation_error(
 
 #[cfg(test)]
 mod tests {
-    use super::super::channel_visibility::MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS;
     use super::*;
+    use rustok_product::index_channel_visibility::MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS;
 
     #[test]
     fn restricted_resolution_matches_normalized_channel_slug_without_active_filter() {
         let tenant_id = Uuid::from_u128(1);
-        let visibility =
-            ProductChannelVisibility::Restricted(vec!["mobile".to_owned(), "web".to_owned()]);
-        let (sql, values) = channel_resolution_query(tenant_id, &visibility, 1025);
+        let slugs = ["mobile".to_owned(), "web".to_owned()];
+        let statement =
+            rustok_channel::index_projection::relation_channel_ids(tenant_id, Some(&slugs), 1025);
+        let sql = statement.sql;
         assert!(sql.contains("lower(btrim(slug)) IN ($2, $3)"));
         assert!(!sql.contains("is_active"));
         assert!(sql.contains("ORDER BY id ASC LIMIT $4"));
-        assert_eq!(values.len(), 4);
+        assert_eq!(statement.values.unwrap().0.len(), 4);
     }
 
     #[test]
@@ -463,7 +431,7 @@ mod tests {
 
     #[test]
     fn channel_identity_generation_is_tenant_scoped_and_zero_when_absent() {
-        let sql = "SELECT generation FROM channel_index_identity_generations WHERE tenant_id = $1";
+        let sql = rustok_channel::index_projection::identity_generation(Uuid::from_u128(1)).sql;
         assert!(sql.contains("tenant_id = $1"));
         assert!(!sql.contains("channels.is_active"));
     }

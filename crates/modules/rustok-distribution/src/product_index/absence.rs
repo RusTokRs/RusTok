@@ -8,7 +8,13 @@ use rustok_index::{
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde_json::Value as JsonValue;
 
-use super::{PRODUCT_SCHEMA_ROUTING_KEY, channel_visibility::decode_product_visibility};
+use rustok_product::index_channel_visibility::decode_product_visibility;
+
+use super::{PRODUCT_SCHEMA_ROUTING_KEY, with_channel_identity_source};
+
+static PRODUCT_LOCALE_ABSENCE_SQL: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    with_channel_identity_source(rustok_product::index_projection::PRODUCT_LOCALE_ABSENCE_SQL)
+});
 
 pub(crate) const PRODUCT_ABSENCE_WATERMARK_FACTORY: &str = "product-locale-absence-watermark";
 const PRODUCT_ABSENCE_PROVIDER: &str = "product-locale-absence-postgres";
@@ -74,69 +80,7 @@ impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider {
             .db
             .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Postgres,
-                r#"
-SELECT
-    CAST(projection.projection_epoch AS TEXT) AS source_version_text,
-    product.index_revision AS observed_product_source_version,
-    product.metadata,
-    freshness.product_source_version AS freshness_product_source_version,
-    freshness.visibility_key AS freshness_visibility_key,
-    freshness.channel_identity_generation AS freshness_channel_identity_generation,
-    COALESCE(
-        (
-            SELECT generation
-            FROM channel_index_identity_generations
-            WHERE tenant_id = product.tenant_id
-        ),
-        0
-    )::bigint AS current_channel_identity_generation
-FROM products product
-JOIN LATERAL (
-    SELECT
-        projection.projection_epoch,
-        projection.product_source_version,
-        projection.relation_epoch
-    FROM product_index_graph_projection_snapshots projection
-    WHERE projection.tenant_id = product.tenant_id
-      AND projection.product_id = product.id
-    ORDER BY projection.projection_epoch DESC
-    LIMIT 1
-) projection
-  ON projection.product_source_version = product.index_revision
-JOIN product_sales_channel_index_relation_snapshots relation
-  ON relation.tenant_id = product.tenant_id
- AND relation.product_id = product.id
- AND relation.relation_epoch = projection.relation_epoch
-JOIN LATERAL (
-    SELECT
-        witness.product_source_version,
-        witness.visibility_key,
-        witness.channel_identity_generation
-    FROM product_sales_channel_index_relation_freshness_snapshots witness
-    WHERE witness.tenant_id = product.tenant_id
-      AND witness.product_id = product.id
-      AND witness.relation_epoch = projection.relation_epoch
-    ORDER BY witness.sequence_no DESC
-    LIMIT 1
-) freshness ON TRUE
-WHERE product.tenant_id = $1
-  AND product.id = $2
-  AND NOT EXISTS (
-      SELECT 1
-      FROM product_translations translation
-      WHERE translation.tenant_id = product.tenant_id
-        AND translation.product_id = product.id
-        AND translation.locale = $3
-  )
-  AND NOT EXISTS (
-      SELECT 1
-      FROM product_index_tombstones tombstone
-      WHERE tombstone.tenant_id = product.tenant_id
-        AND tombstone.product_id = product.id
-        AND tombstone.locale = $3
-  )
-LIMIT 1
-"#,
+                PRODUCT_LOCALE_ABSENCE_SQL.as_str(),
                 vec![
                     key.tenant_id.into(),
                     key.entity_id.into(),

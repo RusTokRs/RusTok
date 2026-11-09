@@ -383,6 +383,20 @@ flowchart TD
 
 ---
 
+### Pattern 24: Owner SQL Read Boundaries (`P-OWNER-READ-BOUNDARY`)
+* **Category:** Module Isolation & Concurrency
+* **Problem:** Distribution's Product and Channel Index adapters read owner-private tables. A storage change can break the adapter despite an unchanged owner API. Splitting freshness checks into separate reads can admit stale rows or produce the wrong page or count.
+* **Pattern Solution:** Put the projection and selection rules in the owner. Compose the published SQL in the existing transaction or query when the consumer needs one snapshot. For example, the relation resolver uses the Channel owner's statement:
+  ```rust
+  let statement = rustok_channel::index_projection::relation_channel_ids(
+      tenant_id, selected_slugs, fetch_limit,
+  );
+  let rows = transaction.query_all_raw(statement).await?;
+  ```
+* **Detection:** Start with `rg -ni '(from|join) (products|product_[a-z_]+|channels|channel_index_[a-z_]+)' crates/modules/rustok-distribution/src`. Review ownership and verify that delayed or deleted owner state is rejected before pagination and exact count.
+
+---
+
 ## 3. Summary Matrix
 
 The evidence column describes how to verify the invariant at its owner. “Manual” means the Python scanner has no rule for that pattern.
@@ -412,6 +426,7 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-LEPTOS-DEAD-SIGNAL` | UI reactivity | An update reruns the intended reactive consumer | Heuristic: discarded signal read outside known reactive scopes |
 | `P-UNFINISHED-CODE` | Runtime completeness | Affected runtime paths cannot reach incomplete code | Heuristic: work marker or incomplete-code macro |
 | `P-SYNC-SLEEP-AWAIT` | Concurrency | Blocking delay runs outside executor workers | Heuristic: direct blocking sleep in async function |
+| `P-OWNER-READ-BOUNDARY` | Ownership and concurrency | Owner controls storage reads and the adapter preserves snapshot and admission semantics | Manual |
 
 ---
 

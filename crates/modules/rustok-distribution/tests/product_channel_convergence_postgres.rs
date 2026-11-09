@@ -171,6 +171,8 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     let runtime = build_product_runtime(database).await?;
     let initial_generation = current_channel_generation(&database.writer).await?;
     assert!(initial_generation > 0);
+    let malformed_baseline = relation_evidence_counts(&database.writer, MALFORMED_PRODUCT_ID).await?;
+    assert_eq!(malformed_baseline.1, 0);
 
     // Host A claims through the same Product-owned store used by the registered ModuleWork source,
     // then disappears before handler execution. Host B must not claim while the lease is live and
@@ -212,7 +214,10 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     let baseline_generation = current_channel_generation(&database.writer).await?;
     assert_eq!(baseline_generation, initial_generation);
     assert_state_checkpoint(&database.writer, baseline_generation).await?;
-    assert_no_relation_or_freshness(&database.writer, MALFORMED_PRODUCT_ID).await?;
+    assert_eq!(
+        relation_evidence_counts(&database.writer, MALFORMED_PRODUCT_ID).await?,
+        malformed_baseline
+    );
     assert_freshness_generation(
         &database.writer,
         VALID_AFTER_MALFORMED_PRODUCT_ID,
@@ -233,8 +238,8 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
         vec![ALPHA_CHANNEL_ID]
     );
 
-    // Materialize only query-valid baseline Products. The malformed Product deliberately has no
-    // Product relation/freshness evidence and is never allowed to become an Index authority.
+    // Materialize only query-valid baseline Products. The malformed Product must remain without
+    // a freshness witness even when the Product owner has initialized an empty relation.
     for product_id in [UNRESTRICTED_PRODUCT_ID, VALID_AFTER_MALFORMED_PRODUCT_ID] {
         let mutation = load_product_mutation(&runtime.sources, product_id).await?;
         apply_product_mutation(&runtime, mutation).await?;
@@ -250,10 +255,7 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     let before_visibility_projection =
         latest_projection_epoch(&database.writer, RESTRICTED_PRODUCT_ID).await?;
     update_restricted_visibility(&database.writer, "beta").await?;
-    assert!(
-        latest_projection_epoch(&database.writer, RESTRICTED_PRODUCT_ID).await?
-            > delayed_visibility_version
-    );
+    // The query must fence the old mutation even before the scheduler publishes the new graph.
     apply_product_mutation(&runtime, delayed_visibility).await?;
     assert_materialized_source_version(
         &database.mutation,
@@ -314,7 +316,10 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
         generation_after_alpha_rename,
     )
     .await?;
-    assert_no_relation_or_freshness(&database.writer, MALFORMED_PRODUCT_ID).await?;
+    assert_eq!(
+        relation_evidence_counts(&database.writer, MALFORMED_PRODUCT_ID).await?,
+        malformed_baseline
+    );
     assert_product_visible(&runtime.query, UNRESTRICTED_PRODUCT_ID, true).await?;
 
     // A second Channel rename removes beta from the restricted visibility result. Convergence must
@@ -624,28 +629,25 @@ LIMIT 1
     Ok(())
 }
 
-async fn assert_no_relation_or_freshness(
+async fn relation_evidence_counts(
     db: &DatabaseConnection,
     product_id: Uuid,
-) -> TestResult<()> {
-    for table in [
-        "product_sales_channel_index_relation_snapshots",
-        "product_sales_channel_index_relation_freshness_snapshots",
-    ] {
-        let row = db
-            .query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                format!(
-                    "SELECT COUNT(*)::bigint AS row_count FROM {table} WHERE tenant_id = $1 AND product_id = $2"
-                ),
-                vec![TENANT_ID.into(), product_id.into()],
-            ))
-            .await?
-            .ok_or_else(|| std::io::Error::other("count query returned no row"))?;
-        let count: i64 = row.try_get("", "row_count")?;
-        assert_eq!(count, 0, "malformed Product unexpectedly wrote {table}");
-    }
-    Ok(())
+) -> TestResult<(i64, i64)> {
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
+SELECT
+    (SELECT COUNT(*) FROM product_sales_channel_index_relation_snapshots
+     WHERE tenant_id = $1 AND product_id = $2) AS relations,
+    (SELECT COUNT(*) FROM product_sales_channel_index_relation_freshness_snapshots
+     WHERE tenant_id = $1 AND product_id = $2) AS witnesses
+"#,
+            [TENANT_ID.into(), product_id.into()],
+        ))
+        .await?
+        .ok_or_else(|| std::io::Error::other("count query returned no row"))?;
+    Ok((row.try_get("", "relations")?, row.try_get("", "witnesses")?))
 }
 
 async fn assert_active_lease(
@@ -761,11 +763,6 @@ async fn create_migration_prerequisites(db: &DatabaseConnection) -> TestResult<(
 CREATE TABLE tenants (
     id UUID PRIMARY KEY
 );
-CREATE TABLE taxonomy_terms (
-    id UUID PRIMARY KEY,
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    UNIQUE (tenant_id, id)
-);
 CREATE TABLE oauth_apps (
     id UUID PRIMARY KEY
 );
@@ -773,6 +770,9 @@ CREATE TABLE oauth_apps (
     )
     .await?;
     let manager = SchemaManager::new(db);
+    for migration in rustok_taxonomy::migrations::migrations() {
+        migration.up(&manager).await?;
+    }
     flex::cache_generation::create_field_definition_cache_generation_table(&manager).await?;
     Ok(())
 }
@@ -788,8 +788,13 @@ INSERT INTO channels (id, tenant_id, slug, name) VALUES
 
 INSERT INTO products (id, tenant_id, metadata) VALUES
     ('{UNRESTRICTED_PRODUCT_ID}', '{TENANT_ID}', '{{}}'::jsonb),
+    -- The owner trigger normalizes whitespace and casing. An oversized slug
+    -- survives that normalization and exercises the resolver's fail-closed bound.
     ('{MALFORMED_PRODUCT_ID}', '{TENANT_ID}',
-        '{{"channel_visibility":{{"allowed_channel_slugs":[" Alpha "]}}}}'::jsonb),
+        jsonb_build_object(
+            'channel_visibility',
+            jsonb_build_object('allowed_channel_slugs', jsonb_build_array(repeat('x', 101)))
+        )),
     ('{VALID_AFTER_MALFORMED_PRODUCT_ID}', '{TENANT_ID}', '{{}}'::jsonb),
     ('{RESTRICTED_PRODUCT_ID}', '{TENANT_ID}',
         '{{"channel_visibility":{{"allowed_channel_slugs":["alpha"]}}}}'::jsonb);

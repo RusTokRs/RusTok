@@ -38,29 +38,9 @@ const RETRY_DELAY: Duration = Duration::from_secs(5);
 const REJECTED_RETRY_DELAY: Duration = Duration::from_secs(60);
 const LEASE_DURATION: Duration = Duration::from_secs(300);
 
-const DUE_TENANT_SQL: &str = r#"
-SELECT
-    state.tenant_id,
-    COALESCE(channel_generation.generation, 0)::bigint AS current_channel_identity_generation
-FROM product_sales_channel_index_relation_convergence_state state
-LEFT JOIN channel_index_identity_generations channel_generation
-  ON channel_generation.tenant_id = state.tenant_id
-WHERE state.available_at <= CURRENT_TIMESTAMP
-  AND (state.lease_token IS NULL OR state.lease_expires_at <= CURRENT_TIMESTAMP)
-  AND (
-      state.sweep_generation IS NOT NULL
-      OR state.channel_identity_generation IS NULL
-      OR state.channel_identity_generation < COALESCE(channel_generation.generation, 0)
-      OR EXISTS (
-          SELECT 1
-          FROM product_sales_channel_index_relation_convergence_requests request
-          WHERE request.tenant_id = state.tenant_id
-            AND request.sequence_no > state.visibility_cursor
-      )
-  )
-ORDER BY state.available_at, state.updated_at, state.tenant_id
-LIMIT 1
-"#;
+static DUE_TENANT_SQL: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    super::with_channel_identity_source(rustok_product::index_projection::DUE_TENANT_SQL)
+});
 
 #[derive(Clone)]
 struct ProductSalesChannelRelationConvergenceRegistrationMarker;
@@ -286,8 +266,9 @@ impl ModuleWorkHandler for ProductSalesChannelRelationConvergenceAdapter {
                 Ok(_) | Err(ProductSalesChannelRelationResolverError::ProductNotFound) => {
                     self.complete_visibility(&claim).await
                 }
-                Err(error) if owner_rejected(&error) => {
+                Err(error) if error.is_owner_rejection() => {
                     // Owner rejection must not head-of-line block valid Products later in the same tenant.
+                    tracing::warn!(tenant_id = %claim.tenant_id(), %product_id, %error, "Product visibility rejected during relation refresh");
                     self.complete_visibility(&claim).await
                 }
                 Err(error) => Ok(classify_resolver_error(error)),
@@ -391,15 +372,6 @@ impl ConvergencePayloadWork {
     }
 }
 
-fn owner_rejected(error: &ProductSalesChannelRelationResolverError) -> bool {
-    matches!(
-        error,
-        ProductSalesChannelRelationResolverError::InvalidProductVisibility
-            | ProductSalesChannelRelationResolverError::TooManyVisibilitySlugs
-            | ProductSalesChannelRelationResolverError::TooManyResolvedChannels
-    )
-}
-
 fn classify_resolver_error(error: ProductSalesChannelRelationResolverError) -> ModuleWorkOutcome {
     match error {
         ProductSalesChannelRelationResolverError::InvalidTenant
@@ -460,14 +432,10 @@ mod tests {
 
     #[test]
     fn owner_rejection_isolated_from_retryable_storage_failures() {
-        assert!(owner_rejected(
-            &ProductSalesChannelRelationResolverError::InvalidProductVisibility
-        ));
-        assert!(!owner_rejected(
-            &ProductSalesChannelRelationResolverError::ConcurrentChange
-        ));
-        assert!(!owner_rejected(
-            &ProductSalesChannelRelationResolverError::Unavailable
-        ));
+        assert!(
+            ProductSalesChannelRelationResolverError::InvalidProductVisibility.is_owner_rejection()
+        );
+        assert!(!ProductSalesChannelRelationResolverError::ConcurrentChange.is_owner_rejection());
+        assert!(!ProductSalesChannelRelationResolverError::Unavailable.is_owner_rejection());
     }
 }

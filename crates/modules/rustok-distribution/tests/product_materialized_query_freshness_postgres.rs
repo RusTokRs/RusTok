@@ -74,8 +74,11 @@ impl TestDatabase {
         )
         .await?;
         create_product_migration_prerequisites(&migration).await?;
-        ProductMigrator::up(&migration, None).await?;
         let manager = SchemaManager::new(&migration);
+        for migration in rustok_channel::migrations::migrations() {
+            migration.up(&manager).await?;
+        }
+        ProductMigrator::up(&migration, None).await?;
         for migration_step in IndexModule.migrations() {
             migration_step.up(&manager).await?;
         }
@@ -162,8 +165,6 @@ async fn run_materialized_freshness_scenarios(database: &TestDatabase) -> TestRe
     let delayed = load_product_mutation(&runtime.sources, STALE_PRODUCT_ID, "en").await?;
     let delayed_source_version = delayed.source_version();
     bump_stale_product_owner_revision(&database.writer).await?;
-    assert_owner_projection_advanced(&database.writer, STALE_PRODUCT_ID, delayed_source_version)
-        .await?;
     apply_product_mutation(&runtime, delayed).await?;
     assert_materialized_source_version(
         &database.mutation,
@@ -189,6 +190,16 @@ async fn run_materialized_freshness_scenarios(database: &TestDatabase) -> TestRe
 
     // Once the corrective current projection is materialized, A becomes query-admissible again.
     // Cursor pagination must then retain ordinary semantics with the same admission predicate.
+    database
+        .writer
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT rustok_product_reconcile_index_graph_projection($1, $2)",
+            [TENANT_ID.into(), STALE_PRODUCT_ID.into()],
+        ))
+        .await?;
+    assert_owner_projection_advanced(&database.writer, STALE_PRODUCT_ID, delayed_source_version)
+        .await?;
     let current = load_product_mutation(&runtime.sources, STALE_PRODUCT_ID, "en").await?;
     assert!(current.source_version() > delayed_source_version);
     apply_product_mutation(&runtime, current).await?;
@@ -477,21 +488,16 @@ async fn create_product_migration_prerequisites(db: &DatabaseConnection) -> Test
 CREATE TABLE tenants (
     id UUID PRIMARY KEY
 );
-CREATE TABLE taxonomy_terms (
-    id UUID PRIMARY KEY,
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    UNIQUE (tenant_id, id)
-);
--- Product query admission reads the Channel-owned tenant identity watermark. This focused packet does
--- not exercise Channel convergence yet, so an empty owner-shaped table represents generation 0.
-CREATE TABLE channel_index_identity_generations (
-    tenant_id UUID PRIMARY KEY,
-    generation BIGINT NOT NULL CHECK (generation > 0)
+CREATE TABLE oauth_apps (
+    id UUID PRIMARY KEY
 );
 "#,
     )
     .await?;
     let manager = SchemaManager::new(db);
+    for migration in rustok_taxonomy::migrations::migrations() {
+        migration.up(&manager).await?;
+    }
     flex::cache_generation::create_field_definition_cache_generation_table(&manager).await?;
     Ok(())
 }

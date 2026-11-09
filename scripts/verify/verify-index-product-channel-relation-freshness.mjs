@@ -119,24 +119,26 @@ forbidMarkers(freshnessStorePath, freshnessStore, [
 const productCargo = read('crates/modules/rustok-product/Cargo.toml');
 forbidMarkers('crates/modules/rustok-product/Cargo.toml', productCargo, ['rustok-channel', 'rustok-index']);
 
-const visibilityPath = 'crates/modules/rustok-distribution/src/product_index/channel_visibility.rs';
+const visibilityPath = 'crates/modules/rustok-product/src/index_channel_visibility.rs';
 const visibility = requireMarkers(visibilityPath, [
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS: usize = 1024',
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUG_BYTES: usize = 100',
   'ProductChannelVisibility::Unrestricted',
   'ProductChannelVisibility::Restricted',
-  'pub(crate) fn freshness_key(&self) -> String',
+  'pub fn freshness_key(&self) -> String',
   '"all".to_owned()',
-  '"restricted:{}"',
+  '"restricted:{serialized}"',
   'decode_product_visibility(',
 ]);
 forbidMarkers(visibilityPath, visibility, ['IndexMutation', 'FROM channels', 'JOIN channels']);
 
 const resolverPath = 'crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs';
+requireMarkers('crates/modules/rustok-channel/src/index_projection.rs', [
+  'channel_index_identity_generations',
+]);
 const resolver = requireMarkers(resolverPath, [
   'ProductSalesChannelIndexRelationFreshnessStore::new',
   'load_channel_identity_generation(&transaction, tenant_id).await?',
-  'channel_index_identity_generations',
   'verified.channel_ids == outcome.record().channel_ids()',
   '.record(',
   'verified.product_source_version',
@@ -154,11 +156,13 @@ forbidMarkers(resolverPath, resolver, [
 ]);
 
 const productSourcePath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
+  'freshness.visibility_key AS freshness_visibility_key',
+  'freshness.channel_identity_generation AS freshness_channel_identity_generation',
+]);
 requireMarkers(productSourcePath, [
   'product_sales_channel_index_relation_freshness_snapshots',
   'channel_index_identity_generations',
-  'freshness.visibility_key AS freshness_visibility_key',
-  'freshness.channel_identity_generation AS freshness_channel_identity_generation',
   'decode_product_visibility(&metadata)',
   'freshness_visibility_key != current_visibility_key',
   'freshness_channel_identity_generation != current_channel_identity_generation',
@@ -167,9 +171,13 @@ requireMarkers(productSourcePath, [
 ]);
 
 const absencePath = 'crates/modules/rustok-distribution/src/product_index/absence.rs';
-const absence = requireMarkers(absencePath, [
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
   'product_sales_channel_index_relation_freshness_snapshots',
+]);
+requireMarkers('crates/modules/rustok-channel/src/index_projection.rs', [
   'channel_index_identity_generations',
+]);
+const absence = requireMarkers(absencePath, [
   'decode_product_visibility(&metadata)',
   'freshness_visibility_key != current_visibility_key',
   'freshness_channel_identity_generation != current_channel_identity_generation',
@@ -185,7 +193,7 @@ requireMarkers('crates/modules/rustok-product/docs/index-sales-channel-relation-
   '## Automatic convergence',
   'generic ModuleWork scheduler',
   '## Materialized freshness boundary',
-  'canonical Index query boundary now supplies the separate',
+  'The Index query boundary enforces a materialized freshness fence in the same',
   'cannot become query-authoritative',
   'first retained PostgreSQL materialized-freshness packet is source-ready',
 ]);

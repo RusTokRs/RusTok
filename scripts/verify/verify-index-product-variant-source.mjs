@@ -35,6 +35,10 @@ const moduleSource = requireMarkers(modulePath, [
 forbidMarkers(modulePath, moduleSource, ['mod graph;', 'graph::', 'four_schemas']);
 
 const sourcePath = 'crates/modules/rustok-distribution/src/product_variant_index.rs';
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
+  'FROM product_variants v',
+  'FROM product_variant_index_tombstones tombstone',
+]);
 const source = requireMarkers(sourcePath, [
   'PRODUCT_VARIANT_INDEX_SOURCE: &str = "product-variant-postgres-primary"',
   'PRODUCT_VARIANT_EVENT_DOMAIN: &str = "rustok-product.product-variant-replay"',
@@ -46,8 +50,6 @@ const source = requireMarkers(sourcePath, [
   '[product_variant_schema_ref().map_err(|error| error.to_string())?]',
   'ProductVariantPostgresIndexSource { db }',
   'impl IndexSource for ProductVariantPostgresIndexSource',
-  'FROM product_variants v',
-  'FROM product_variant_index_tombstones tombstone',
   'row.variant_id > $2',
   'ORDER BY row.variant_id ASC',
   'WITH requested(variant_id) AS (VALUES {})',

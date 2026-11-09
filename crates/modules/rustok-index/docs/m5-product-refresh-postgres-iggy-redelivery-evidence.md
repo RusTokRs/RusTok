@@ -90,7 +90,7 @@ The static verifier pins the harness to the server worker and generic Index work
 - exact topic `domain` and group `rustok-product-index-refresh`;
 - exact `ProductIndexRefreshEvent` locale/variant mapping;
 - `ConsumedContractEvent` as the acknowledgement token;
-- `ProductIndexRefreshDeliveryWorker` plus materialized schema/source/event registries;
+- `IndexSourceRefreshEventWorker` plus materialized schema/source/event registries;
 - production `PostgresMutationStore`;
 - generic apply-before-ack ordering;
 - no Product refresh DLQ/fallback path;

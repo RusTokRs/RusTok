@@ -24,10 +24,12 @@ const forbidMarkers = (relative, source, markers) => {
 };
 
 const productPath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
-const product = requireMarkers(productPath, [
-  'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay"',
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
   'FROM product_index_tombstones tombstone',
   'COUNT(*) OVER (',
+]);
+const product = requireMarkers(productPath, [
+  'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay"',
   'identity_count != 1',
   'ProductRowState::Deleted',
   'IndexMutation::Delete {',
@@ -45,10 +47,12 @@ forbidMarkers(productPath, product, [
 ]);
 
 const variantPath = 'crates/modules/rustok-distribution/src/product_variant_index.rs';
-const variant = requireMarkers(variantPath, [
-  'PRODUCT_VARIANT_EVENT_DOMAIN: &str = "rustok-product.product-variant-replay"',
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
   'FROM product_variant_index_tombstones tombstone',
   'COUNT(*) OVER (',
+]);
+const variant = requireMarkers(variantPath, [
+  'PRODUCT_VARIANT_EVENT_DOMAIN: &str = "rustok-product.product-variant-replay"',
   'identity_count != 1',
   'ProductVariantRowState::Deleted',
   'IndexMutation::Delete {',

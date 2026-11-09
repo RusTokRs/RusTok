@@ -36,8 +36,11 @@ Detailed freshness contract:
 
 ## Cross-owner composition
 
-`rustok-distribution::product_index::channel_relation_resolver` owns Product visibility to current
-Channel UUID resolution. It writes membership through `ProductSalesChannelIndexRelationStore`, then
+`rustok-distribution::product_index::channel_relation_resolver` coordinates
+Product visibility to current Channel UUID resolution. Product owns visibility
+decoding and its read projections. Channel owns the identity and generation
+reads. The resolver uses the owner statements in one repeatable-read
+transaction. It writes membership through `ProductSalesChannelIndexRelationStore`, then
 after a fresh repeatable-read observation writes the freshness witness through
 `ProductSalesChannelIndexRelationFreshnessStore`.
 

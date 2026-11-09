@@ -67,8 +67,11 @@ impl TestDatabase {
         )
         .await?;
         create_product_migration_prerequisites(&migration).await?;
-        ProductMigrator::up(&migration, None).await?;
         let manager = SchemaManager::new(&migration);
+        for migration in rustok_channel::migrations::migrations() {
+            migration.up(&manager).await?;
+        }
+        ProductMigrator::up(&migration, None).await?;
         for migration in IndexModule.migrations() {
             migration.up(&manager).await?;
         }
@@ -192,6 +195,7 @@ fn product_reader(
 ) -> TestResult<rustok_index::PostgresIndexDriftSnapshotReader> {
     let registry = ModuleRegistry::new()
         .register(IndexModule)
+        .register(rustok_channel::ChannelModule)
         .register(rustok_product::ProductModule);
     let mut extensions = rustok_distribution::build_runtime_extensions(&registry)?;
 
@@ -213,21 +217,16 @@ async fn create_product_migration_prerequisites(db: &DatabaseConnection) -> Test
 CREATE TABLE tenants (
     id UUID PRIMARY KEY
 );
-CREATE TABLE taxonomy_terms (
-    id UUID PRIMARY KEY,
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    UNIQUE (tenant_id, id)
-);
--- This Product-only harness does not run Channel migrations, but the canonical Product source reads
--- the Channel-owned tenant identity watermark. An empty table represents a tenant with no Channels.
-CREATE TABLE channel_index_identity_generations (
-    tenant_id UUID PRIMARY KEY,
-    generation BIGINT NOT NULL CHECK (generation > 0)
+CREATE TABLE oauth_apps (
+    id UUID PRIMARY KEY
 );
 "#,
     )
     .await?;
     let manager = SchemaManager::new(db);
+    for migration in rustok_taxonomy::migrations::migrations() {
+        migration.up(&manager).await?;
+    }
     flex::cache_generation::create_field_definition_cache_generation_table(&manager).await?;
     Ok(())
 }

@@ -103,10 +103,13 @@ requireMarkers(
     'rustok_channel_clear_inserted_index_tombstone',
   ],
 );
-requireMarkers('crates/modules/rustok-distribution/src/product_index/query_admission.rs', [
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
   'owner_variant.index_revision = {{entity}}.source_version',
+]);
+requireMarkers('crates/modules/rustok-channel/src/index_projection.rs', [
   'owner_channel.index_revision = {{entity}}.source_version',
 ]);
+
 requireMarkers('crates/modules/rustok-index/docs/m7-linked-target-recreate-postgres-harness.md', [
   'Status: `source_ready_execution_pending`',
   'It adds no owner clock, no Index schema, and no compatibility version.',

@@ -3,6 +3,8 @@
 import { readFile } from "node:fs/promises";
 
 const files = {
+  channelProjection: "crates/modules/rustok-channel/src/index_projection.rs",
+  productProjection: "crates/modules/rustok-product/src/index_projection.rs",
   test: "crates/modules/rustok-distribution/tests/product_locale_absence_postgres.rs",
   provider: "crates/modules/rustok-distribution/src/product_index/absence.rs",
   reader: "crates/modules/rustok-index/src/infrastructure/postgres/drift_snapshot_reader.rs",
@@ -38,7 +40,8 @@ requireMarkers("test", [
   "for migration in IndexModule.migrations()",
   "create_product_migration_prerequisites",
   "flex::cache_generation::create_field_definition_cache_generation_table",
-  "CREATE TABLE channel_index_identity_generations",
+  "rustok_channel::migrations::migrations()",
+  ".register(rustok_channel::ChannelModule)",
   "rustok_distribution::build_runtime_extensions(&registry)",
   "materialize_postgres_index_sources",
   "materialize_index_source_registry",
@@ -78,19 +81,23 @@ for (const forbidden of [
   }
 }
 
-requireMarkers("provider", [
-  "impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider",
+requireMarkers("productProjection", [
   "CAST(projection.projection_epoch AS TEXT) AS source_version_text",
   "FROM product_index_graph_projection_snapshots projection",
   "projection.product_source_version = product.index_revision",
   "JOIN product_sales_channel_index_relation_snapshots relation",
   "product_sales_channel_index_relation_freshness_snapshots",
+  "FROM product_translations translation",
+  "FROM product_index_tombstones tombstone",
+]);
+requireMarkers("channelProjection", [
   "channel_index_identity_generations",
+]);
+requireMarkers("provider", [
+  "impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider",
   "decode_product_visibility(&metadata)",
   "freshness_visibility_key != current_visibility_key",
   "freshness_channel_identity_generation != current_channel_identity_generation",
-  "FROM product_translations translation",
-  "FROM product_index_tombstones tombstone",
 ]);
 requireMarkers("reader", [
   "load_source_observation",

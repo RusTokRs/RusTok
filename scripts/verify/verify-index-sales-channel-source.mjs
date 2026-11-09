@@ -30,7 +30,7 @@ forbidMarkers('crates/modules/rustok-channel/Cargo.toml', channelCargo, [
   'register_index_schema_source',
 ]);
 
-const channelRootPath = 'crates/modules/rustok-channel/src/lib.rs';
+const channelRootPath = 'crates/modules/rustok-channel/src/module.rs';
 const channelRoot = requireMarkers(channelRootPath, [
   'pub struct ChannelRuntimeSelected;',
   'fn register_runtime_extensions(',
@@ -159,10 +159,7 @@ if (distributionRoot.includes('#[cfg(feature = "mod-product")]\nmod channel_inde
 }
 
 const sourcePath = 'crates/modules/rustok-distribution/src/channel_index.rs';
-const source = requireMarkers(sourcePath, [
-  'SALES_CHANNEL_INDEX_SOURCE: &str = "sales-channel-postgres-primary"',
-  'SALES_CHANNEL_EVENT_DOMAIN: &str = "rustok-channel.sales-channel-replay-v1"',
-  'SALES_CHANNEL_ROWS_CTE',
+requireMarkers('crates/modules/rustok-channel/src/index_projection.rs', [
   'sales_channel_index_union AS (',
   'FALSE AS is_deleted',
   'TRUE AS is_deleted',
@@ -171,6 +168,11 @@ const source = requireMarkers(sourcePath, [
   'COUNT(*) OVER (',
   'PARTITION BY row.tenant_id, row.channel_id',
   'row.identity_count',
+]);
+const source = requireMarkers(sourcePath, [
+  'SALES_CHANNEL_INDEX_SOURCE: &str = "sales-channel-postgres-primary"',
+  'SALES_CHANNEL_EVENT_DOMAIN: &str = "rustok-channel.sales-channel-replay-v1"',
+  'SALES_CHANNEL_ROWS_CTE',
   'extensions.contains::<rustok_channel::ChannelRuntimeSelected>()',
   'register_index_schema_source(extensions, "channel", schema)',
   'register_postgres_index_source_factory(',
@@ -183,7 +185,7 @@ const source = requireMarkers(sourcePath, [
   'impl IndexSource for SalesChannelPostgresIndexSource',
   'row.channel_id > $2',
   'ORDER BY row.channel_id ASC',
-  'request.limit() + 1',
+  'request.limit().saturating_add(1)',
   'WITH requested(channel_id) AS (VALUES {})',
   'JOIN requested requested_key ON requested_key.channel_id = row.channel_id',
   'sales_channel_index_locale_forbidden',
@@ -237,7 +239,7 @@ requireMarkers('crates/modules/rustok-channel/README.md', [
   'stable `channel_id` ordering',
   'retained hard-delete mutations',
   'tenant identity generation',
-  'does not depend on `rustok-index`',
+  'has no Rust\n  dependency on Index',
 ]);
 requireMarkers('crates/modules/rustok-index/docs/m7-sales-channel-source.md', [
   'Status: `source_complete_owner_execution_pending`',

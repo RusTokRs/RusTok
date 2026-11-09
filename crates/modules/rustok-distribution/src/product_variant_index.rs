@@ -10,6 +10,7 @@ use rustok_index::{
     SchemaVersion, derive_index_source_event_id, register_index_schema_source,
     register_index_source, register_postgres_index_source_factory,
 };
+use rustok_product::index_projection::{PRODUCT_VARIANT_ROW_SELECT, PRODUCT_VARIANT_ROWS_CTE};
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, Value};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -21,82 +22,6 @@ const PRODUCT_VARIANT_EVENT_DOMAIN: &str = "rustok-product.product-variant-repla
 // Index core requires a numeric SchemaVersion. Only this one current ProductVariant contract is
 // registered; there is no runtime compatibility branch for the removed historical contract.
 const PRODUCT_VARIANT_SCHEMA_VERSION: u32 = 2;
-
-const PRODUCT_VARIANT_ROWS_CTE: &str = r#"
-product_variant_index_union AS (
-    SELECT
-        FALSE AS is_deleted,
-        v.tenant_id,
-        v.id AS variant_id,
-        v.product_id,
-        v.index_revision,
-        v.sku,
-        v.barcode,
-        v.shipping_profile_slug,
-        v.ean,
-        v.upc,
-        v.inventory_policy,
-        v.inventory_management,
-        v.inventory_quantity,
-        v.weight_unit,
-        v.combination_identity,
-        v.position
-    FROM product_variants v
-    WHERE v.tenant_id = $1
-
-    UNION ALL
-
-    SELECT
-        TRUE AS is_deleted,
-        tombstone.tenant_id,
-        tombstone.variant_id,
-        NULL::uuid AS product_id,
-        tombstone.source_version AS index_revision,
-        NULL::text AS sku,
-        NULL::text AS barcode,
-        NULL::text AS shipping_profile_slug,
-        NULL::text AS ean,
-        NULL::text AS upc,
-        NULL::text AS inventory_policy,
-        NULL::text AS inventory_management,
-        NULL::integer AS inventory_quantity,
-        NULL::text AS weight_unit,
-        NULL::text AS combination_identity,
-        NULL::integer AS position
-    FROM product_variant_index_tombstones tombstone
-    WHERE tombstone.tenant_id = $1
-),
-product_variant_index_rows AS (
-    SELECT
-        row.*,
-        COUNT(*) OVER (
-            PARTITION BY row.tenant_id, row.variant_id
-        ) AS identity_count
-    FROM product_variant_index_union row
-)
-"#;
-
-const PRODUCT_VARIANT_ROW_SELECT: &str = r#"
-SELECT
-    row.is_deleted,
-    row.identity_count,
-    row.tenant_id,
-    row.variant_id,
-    row.product_id,
-    row.index_revision,
-    row.sku,
-    row.barcode,
-    row.shipping_profile_slug,
-    row.ean,
-    row.upc,
-    row.inventory_policy,
-    row.inventory_management,
-    row.inventory_quantity,
-    row.weight_unit,
-    row.combination_identity,
-    row.position
-FROM product_variant_index_rows row
-"#;
 
 #[derive(Debug, Error)]
 enum ProductVariantIndexBridgeError {

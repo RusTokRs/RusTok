@@ -1,15 +1,21 @@
 mod absence;
+
+fn with_channel_identity_source(template: &'static str) -> String {
+    template.replace(
+        "__channel_identity_source__",
+        rustok_channel::index_projection::POSTGRES_IDENTITY_GENERATIONS,
+    )
+}
 pub mod attribute_terms;
 mod channel_relation_convergence;
 pub(crate) mod channel_relation_resolver;
-mod channel_visibility;
 #[cfg(test)]
 pub(crate) use absence::PRODUCT_ABSENCE_WATERMARK_FACTORY;
 mod product;
 #[cfg(test)]
 pub(crate) use product::PRODUCT_INDEX_SOURCE;
 mod query_admission;
-pub mod refresh_event;
+mod refresh_event;
 #[cfg(test)]
 pub(crate) mod relation_admission;
 #[cfg(test)]

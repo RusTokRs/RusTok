@@ -678,11 +678,6 @@ async fn create_migration_prerequisites(db: &DatabaseConnection) -> TestResult<(
 CREATE TABLE tenants (
     id UUID PRIMARY KEY
 );
-CREATE TABLE taxonomy_terms (
-    id UUID PRIMARY KEY,
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    UNIQUE (tenant_id, id)
-);
 CREATE TABLE oauth_apps (
     id UUID PRIMARY KEY
 );
@@ -690,6 +685,9 @@ CREATE TABLE oauth_apps (
     )
     .await?;
     let manager = SchemaManager::new(db);
+    for migration in rustok_taxonomy::migrations::migrations() {
+        migration.up(&manager).await?;
+    }
     flex::cache_generation::create_field_definition_cache_generation_table(&manager).await?;
     Ok(())
 }

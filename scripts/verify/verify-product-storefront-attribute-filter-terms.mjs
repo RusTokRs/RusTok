@@ -84,14 +84,16 @@ requireMarkers('crates/modules/rustok-product/src/catalog_schema_read_port.rs', 
   'request.fallback_locale.as_str()',
 ]);
 
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
+  'PRODUCT_ATTRIBUTE_TERMS_CTE',
+  "value.attribute_id::text || '|localized_text|'",
+  "value.attribute_id::text || '|option||'",
+]);
 const distribution = requireMarkers('crates/modules/rustok-distribution/src/product_index/attribute_terms.rs', [
   'pub(crate) use rustok_product::ProductAttributeTermError;',
   'rustok_product::product_attribute_text_term(',
   'rustok_product::product_attribute_localized_text_term(',
   'rustok_product::product_attribute_option_term(',
-  'PRODUCT_ATTRIBUTE_TERMS_CTE',
-  "value.attribute_id::text || '|localized_text|'",
-  "value.attribute_id::text || '|option||'",
 ]);
 if (distribution.includes('fn product_attribute_term(')) {
   fail('distribution must not own a second Rust canonical Product term encoder');

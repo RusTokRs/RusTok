@@ -4,21 +4,20 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_distribution::product_index::refresh_event::{
-    PRODUCT_INDEX_LOCALE_REFRESH_EVENT_DOMAIN, PRODUCT_INDEX_VARIANT_REFRESH_EVENT_DOMAIN,
-    ProductIndexRefreshDelivery, ProductIndexRefreshDeliveryWorker,
-};
 use rustok_events::{
     ContractEventEnvelope, ContractEventPayload, EventContractEnvelopeError,
-    ProductIndexRefreshEvent,
+    PRODUCT_INDEX_LOCALE_REFRESH_REQUESTED_EVENT_TYPE,
+    PRODUCT_INDEX_VARIANT_REFRESH_REQUESTED_EVENT_TYPE, ProductIndexRefreshEvent,
 };
 use rustok_iggy::{
     ConsumedContractEvent, IggyTransport, PersistentContractConsumerGroup,
     PersistentContractDelivery,
 };
 use rustok_index::{
-    IndexMutationAcknowledgeFailure, IndexMutationEventAcknowledger, PostgresMutationStore,
-    SharedIndexMutationEventRegistry, SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
+    DomainError, EntityKey, IndexMutationAcknowledgeFailure, IndexMutationEventAcknowledger,
+    IndexSourceRefreshEventDelivery, IndexSourceRefreshEventError, IndexSourceRefreshEventWorker,
+    LocaleKey, PostgresMutationStore, SchemaRef, SharedIndexMutationEventRegistry,
+    SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
 };
 use rustok_telemetry::runtime_consumer_metrics;
 use tokio::task::JoinHandle;
@@ -123,8 +122,7 @@ impl IndexMutationEventAcknowledger for ProductIndexRefreshAcknowledger {
 
 struct ProductIndexRefreshRuntime {
     group: Arc<PersistentContractConsumerGroup>,
-    worker:
-        ProductIndexRefreshDeliveryWorker<PostgresMutationStore, ProductIndexRefreshAcknowledger>,
+    worker: IndexSourceRefreshEventWorker<PostgresMutationStore, ProductIndexRefreshAcknowledger>,
     schemas: SharedIndexSchemaRegistry,
     sources: SharedIndexSourceRegistry,
     events: SharedIndexMutationEventRegistry,
@@ -196,8 +194,8 @@ pub async fn start_product_index_refresh_worker_if_enabled(
         .cloned()
         .ok_or_else(|| Error::Message("Product Index event registry is unavailable".to_string()))?;
     for event_domain in [
-        PRODUCT_INDEX_LOCALE_REFRESH_EVENT_DOMAIN,
-        PRODUCT_INDEX_VARIANT_REFRESH_EVENT_DOMAIN,
+        PRODUCT_INDEX_LOCALE_REFRESH_REQUESTED_EVENT_TYPE,
+        PRODUCT_INDEX_VARIANT_REFRESH_REQUESTED_EVENT_TYPE,
     ] {
         if events.get(event_domain).is_none() {
             runtime_consumer_metrics::record_failure(
@@ -234,7 +232,7 @@ pub async fn start_product_index_refresh_worker_if_enabled(
     };
     let runtime = ProductIndexRefreshRuntime {
         group,
-        worker: ProductIndexRefreshDeliveryWorker::new(
+        worker: IndexSourceRefreshEventWorker::new(
             PostgresMutationStore::new(ctx.db_clone()),
             acknowledger,
         ),
@@ -339,6 +337,12 @@ async fn process_consumed_delivery(
     let delivery = match product_index_refresh_delivery_from_envelope(
         &consumed.envelope,
         consumed.clone(),
+        |domain| {
+            runtime
+                .events
+                .get(domain)
+                .map(|route| route.schema().clone())
+        },
     ) {
         Ok(delivery) => delivery,
         Err(error) => {
@@ -358,7 +362,7 @@ async fn process_consumed_delivery(
         }
     };
 
-    let Some(mut delivery) = delivery else {
+    let Some(delivery) = delivery else {
         return acknowledge_unrelated(runtime, config, stop_rx, &consumed).await;
     };
 
@@ -370,7 +374,7 @@ async fn process_consumed_delivery(
                 runtime.schemas.registry(),
                 &runtime.sources,
                 &runtime.events,
-                delivery,
+                delivery.clone(),
             )
             .await
         {
@@ -407,8 +411,6 @@ async fn process_consumed_delivery(
                     return false;
                 }
                 attempt += 1;
-                delivery = delivery_from_consumed(&consumed)
-                    .expect("validated Product refresh redelivery");
             }
             Err(error) => {
                 runtime_consumer_metrics::record_failure(
@@ -430,52 +432,63 @@ async fn process_consumed_delivery(
     }
 }
 
-fn delivery_from_consumed(
-    consumed: &ConsumedContractEvent,
-) -> std::result::Result<
-    ProductIndexRefreshDelivery<ConsumedContractEvent>,
-    EventContractEnvelopeError,
-> {
-    product_index_refresh_delivery_from_envelope(&consumed.envelope, consumed.clone())
-        .map(|value| value.expect("caller established canonical Product Index refresh payload"))
+#[derive(Debug, thiserror::Error)]
+pub enum ProductIndexRefreshProjectionError {
+    #[error(transparent)]
+    Envelope(#[from] EventContractEnvelopeError),
+    #[error(transparent)]
+    Locale(#[from] DomainError),
+    #[error("Product Index refresh route is unavailable: {0}")]
+    MissingRoute(String),
+    #[error(transparent)]
+    Delivery(#[from] IndexSourceRefreshEventError),
 }
 
-fn product_index_refresh_delivery_from_envelope<T>(
+pub fn product_index_refresh_delivery_from_envelope<T>(
     envelope: &ContractEventEnvelope,
     acknowledgement_token: T,
-) -> std::result::Result<Option<ProductIndexRefreshDelivery<T>>, EventContractEnvelopeError> {
-    let delivery = match envelope.payload()? {
+    route_schema: impl FnOnce(&str) -> Option<SchemaRef>,
+) -> std::result::Result<
+    Option<IndexSourceRefreshEventDelivery<T>>,
+    ProductIndexRefreshProjectionError,
+> {
+    let (entity_id, locale, source_version) = match envelope.payload()? {
         ContractEventPayload::ProductIndexRefresh(
             ProductIndexRefreshEvent::LocaleRefreshRequested {
                 product_id,
                 locale,
                 source_version,
             },
-        ) => ProductIndexRefreshDelivery::locale(
-            envelope.id(),
-            envelope.tenant_id(),
+        ) => (
             *product_id,
-            locale.clone(),
+            Some(LocaleKey::new(locale.clone())?),
             *source_version,
-            acknowledgement_token,
         ),
         ContractEventPayload::ProductIndexRefresh(
             ProductIndexRefreshEvent::VariantRefreshRequested {
-                product_id,
                 variant_id,
                 source_version,
+                ..
             },
-        ) => ProductIndexRefreshDelivery::variant(
-            envelope.id(),
-            envelope.tenant_id(),
-            *product_id,
-            *variant_id,
-            *source_version,
-            acknowledgement_token,
-        ),
+        ) => (*variant_id, None, *source_version),
         _ => return Ok(None),
     };
-    Ok(Some(delivery))
+    let event_domain = envelope.event_type();
+    let schema = route_schema(event_domain)
+        .ok_or_else(|| ProductIndexRefreshProjectionError::MissingRoute(event_domain.to_owned()))?;
+    let key = EntityKey {
+        tenant_id: envelope.tenant_id(),
+        schema,
+        entity_id,
+        locale,
+    };
+    Ok(Some(IndexSourceRefreshEventDelivery::new(
+        event_domain,
+        envelope.id(),
+        key,
+        source_version,
+        acknowledgement_token,
+    )?))
 }
 
 async fn acknowledge_unrelated(
@@ -578,6 +591,20 @@ mod tests {
 
     use super::*;
 
+    fn fixture_route(event_domain: &str) -> Option<SchemaRef> {
+        use rustok_index::{EntityName, ModuleName, SchemaVersion};
+        let (entity, version) = match event_domain {
+            PRODUCT_INDEX_LOCALE_REFRESH_REQUESTED_EVENT_TYPE => ("product", 4),
+            PRODUCT_INDEX_VARIANT_REFRESH_REQUESTED_EVENT_TYPE => ("product_variant", 2),
+            _ => return None,
+        };
+        Some(SchemaRef {
+            module: ModuleName::new("rustok-product").unwrap(),
+            entity: EntityName::new(entity).unwrap(),
+            version: SchemaVersion::new(version),
+        })
+    }
+
     #[test]
     fn canonical_locale_envelope_maps_to_product_delivery_with_same_identity() {
         let tenant_id = Uuid::from_u128(20);
@@ -595,11 +622,10 @@ mod tests {
         )
         .unwrap();
 
-        let delivery = product_index_refresh_delivery_from_envelope(&envelope, "opaque-ack")
-            .unwrap()
-            .unwrap()
-            .into_index_delivery()
-            .unwrap();
+        let delivery =
+            product_index_refresh_delivery_from_envelope(&envelope, "opaque-ack", fixture_route)
+                .unwrap()
+                .unwrap();
 
         assert_eq!(delivery.event_id(), event_id);
         assert_eq!(delivery.key().tenant_id, tenant_id);
@@ -627,17 +653,38 @@ mod tests {
         )
         .unwrap();
 
-        let delivery = product_index_refresh_delivery_from_envelope(&envelope, "opaque-ack")
-            .unwrap()
-            .unwrap()
-            .into_index_delivery()
-            .unwrap();
+        let delivery =
+            product_index_refresh_delivery_from_envelope(&envelope, "opaque-ack", fixture_route)
+                .unwrap()
+                .unwrap();
 
         assert_eq!(delivery.event_id(), event_id);
         assert_eq!(delivery.key().tenant_id, tenant_id);
         assert_eq!(delivery.key().entity_id, variant_id);
         assert!(delivery.key().locale.is_none());
         assert_eq!(delivery.minimum_source_version(), 9);
+    }
+
+    #[test]
+    fn canonical_refresh_without_a_registered_route_fails_closed() {
+        let id = Uuid::from_u128(1);
+        let envelope = ContractEventEnvelope::new_with_envelope_id(
+            id,
+            id,
+            None,
+            ProductIndexRefreshEvent::VariantRefreshRequested {
+                product_id: id,
+                variant_id: Uuid::from_u128(2),
+                source_version: 1,
+            },
+        )
+        .unwrap();
+
+        assert!(matches!(
+            product_index_refresh_delivery_from_envelope(&envelope, "opaque-ack", |_| None),
+            Err(ProductIndexRefreshProjectionError::MissingRoute(domain))
+                if domain == PRODUCT_INDEX_VARIANT_REFRESH_REQUESTED_EVENT_TYPE
+        ));
     }
 
     #[test]

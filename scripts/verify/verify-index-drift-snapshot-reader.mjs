@@ -3,6 +3,7 @@
 import { readFile } from "node:fs/promises";
 
 const files = {
+  productProjection: "crates/modules/rustok-product/src/index_projection.rs",
   reader: "crates/modules/rustok-index/src/infrastructure/postgres/drift_snapshot_reader.rs",
   test: "crates/modules/rustok-index/tests/drift_snapshot_reader_postgres_test.rs",
   diagnosis: "apps/server/src/services/index_drift_diagnosis_operator.rs",
@@ -90,11 +91,13 @@ requireMarkers("diagnosis", [
   "authorize_for(&context, key.tenant_id)?;",
   "IndexDriftDigestRequest::new(key)?;",
 ]);
-requireMarkers("productProvider", [
-  "impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider",
+requireMarkers("productProjection", [
   "CAST(projection.projection_epoch AS TEXT) AS source_version_text",
   "FROM product_translations translation",
   "FROM product_index_tombstones tombstone",
+]);
+requireMarkers("productProvider", [
+  "impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider",
 ]);
 requireMarkers("doc", [
   "source_complete_owner_execution_pending",

@@ -3,6 +3,7 @@
 import { readFile } from "node:fs/promises";
 
 const files = {
+  productProjection: "crates/modules/rustok-product/src/index_projection.rs",
   contract: "crates/modules/rustok-index/src/application/source_absence.rs",
   applicationMod: "crates/modules/rustok-index/src/application/mod.rs",
   productProvider: "crates/modules/rustok-distribution/src/product_index/absence.rs",
@@ -71,11 +72,7 @@ for (const forbidden of [
   }
 }
 
-requireMarkers("productProvider", [
-  '"product-locale-absence-watermark"',
-  '"product-locale-absence-postgres"',
-  "impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider",
-  "register_index_source_absence_provider(",
+requireMarkers("productProjection", [
   "products product",
   "CAST(projection.projection_epoch AS TEXT) AS source_version_text",
   "NOT EXISTS (",
@@ -83,6 +80,12 @@ requireMarkers("productProvider", [
   "translation.locale = $3",
   "FROM product_index_tombstones tombstone",
   "tombstone.locale = $3",
+]);
+requireMarkers("productProvider", [
+  '"product-locale-absence-watermark"',
+  '"product-locale-absence-postgres"',
+  "impl IndexSourceAbsenceProvider for ProductLocaleAbsenceProvider",
+  "register_index_source_absence_provider(",
   "IndexSourceAbsenceWatermark::new(key, source_version)",
   'retryable("product_index_absence_storage_unavailable")',
 ]);

@@ -13,11 +13,7 @@ use std::{
 
 use async_trait::async_trait;
 use rustok_core::{MigrationSource, ModuleRegistry, events::EventTransport};
-use rustok_distribution::product_index::refresh_event::{
-    ProductIndexRefreshDelivery, ProductIndexRefreshDeliveryProcessError,
-    ProductIndexRefreshDeliveryWorker,
-};
-use rustok_events::{ContractEventEnvelope, ContractEventPayload, ProductIndexRefreshEvent};
+use rustok_events::{ContractEventEnvelope, ProductIndexRefreshEvent};
 use rustok_iggy::{
     ConsumedContractEvent, ExternalConfig, IggyConfig, IggyMode, IggyTransport,
     PersistentContractConsumerGroup, PersistentContractDelivery, SerializationFormat,
@@ -26,12 +22,14 @@ use rustok_iggy::{
 use rustok_index::{
     EntityKey, EntityName, IndexModule, IndexMutation, IndexMutationAcknowledgeFailure,
     IndexMutationEventAcknowledger, IndexReplayMutationOutcome, IndexSourceLoadRequest,
-    IndexSourceRefreshEventProcessError, LocaleKey, ModuleName, PostgresMutationStore,
+    IndexSourceRefreshEventDelivery, IndexSourceRefreshEventProcessError,
+    IndexSourceRefreshEventWorker, LocaleKey, ModuleName, PostgresMutationStore,
     PostgresSchemaRegistrationStore, SchemaRef, SchemaVersion, SharedIndexMutationEventRegistry,
     SharedIndexSchemaRegistry, SharedIndexSourceRegistry,
     materialize_index_mutation_event_registry, materialize_index_source_registry,
     materialize_postgres_index_sources,
 };
+use rustok_server::services::product_index_refresh_worker::product_index_refresh_delivery_from_envelope;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
 };
@@ -229,20 +227,18 @@ async fn run_ack_failure_redelivery(
         let first_raw = first.raw_payload().to_vec();
 
         let fail_once = BrokerAcknowledger::new(Arc::clone(&first_group), true);
-        let worker = ProductIndexRefreshDeliveryWorker::new(runtime.mutations.clone(), fail_once);
+        let worker = IndexSourceRefreshEventWorker::new(runtime.mutations.clone(), fail_once);
         let first_result = worker
             .process(
                 runtime.schemas.registry(),
                 &runtime.sources,
                 &runtime.events,
-                delivery_from_consumed(&first)?,
+                delivery_from_consumed(&first, &runtime.events)?,
             )
             .await;
         if !matches!(
             first_result,
-            Err(ProductIndexRefreshDeliveryProcessError::Process(
-                IndexSourceRefreshEventProcessError::Acknowledge(_)
-            ))
+            Err(IndexSourceRefreshEventProcessError::Acknowledge(_))
         ) {
             return Err(invalid_data(format!(
                 "injected post-persistence acknowledgement failure returned {first_result:?}"
@@ -289,7 +285,7 @@ async fn run_ack_failure_redelivery(
             );
         }
 
-        let restarted_worker = ProductIndexRefreshDeliveryWorker::new(
+        let restarted_worker = IndexSourceRefreshEventWorker::new(
             runtime.mutations.clone(),
             BrokerAcknowledger::new(Arc::clone(&restarted_group), false),
         );
@@ -298,7 +294,7 @@ async fn run_ack_failure_redelivery(
                 runtime.schemas.registry(),
                 &runtime.sources,
                 &runtime.events,
-                delivery_from_consumed(&redelivered)?,
+                delivery_from_consumed(&redelivered, &runtime.events)?,
             )
             .await?;
         if duplicate.mutation_outcome() != IndexReplayMutationOutcome::Duplicate {
@@ -324,7 +320,7 @@ async fn run_ack_failure_redelivery(
                 runtime.schemas.registry(),
                 &runtime.sources,
                 &runtime.events,
-                delivery_from_consumed(&variant)?,
+                delivery_from_consumed(&variant, &runtime.events)?,
             )
             .await?;
         if applied_variant.mutation_outcome() != IndexReplayMutationOutcome::Applied {
@@ -387,7 +383,7 @@ async fn run_behind_source_redelivery(
         ensure_delivery_identity(&first, event_id)?;
         let first_offset = required_offset(&first)?;
         let first_raw = first.raw_payload().to_vec();
-        let worker = ProductIndexRefreshDeliveryWorker::new(
+        let worker = IndexSourceRefreshEventWorker::new(
             runtime.mutations.clone(),
             BrokerAcknowledger::new(Arc::clone(&first_group), false),
         );
@@ -396,14 +392,12 @@ async fn run_behind_source_redelivery(
                 runtime.schemas.registry(),
                 &runtime.sources,
                 &runtime.events,
-                delivery_from_consumed(&first)?,
+                delivery_from_consumed(&first, &runtime.events)?,
             )
             .await;
         if !matches!(
             result,
-            Err(ProductIndexRefreshDeliveryProcessError::Process(
-                IndexSourceRefreshEventProcessError::SourceVersionBehind { .. }
-            ))
+            Err(IndexSourceRefreshEventProcessError::SourceVersionBehind { .. })
         ) {
             return Err(invalid_data(format!(
                 "behind Product source did not fail closed before acknowledgement: {result:?}"
@@ -490,44 +484,14 @@ async fn load_current_source_mutation(
 
 fn delivery_from_consumed(
     consumed: &ConsumedContractEvent,
-) -> TestResult<ProductIndexRefreshDelivery<ConsumedContractEvent>> {
-    let delivery = match consumed.envelope.payload()? {
-        ContractEventPayload::ProductIndexRefresh(
-            ProductIndexRefreshEvent::LocaleRefreshRequested {
-                product_id,
-                locale,
-                source_version,
-            },
-        ) => ProductIndexRefreshDelivery::locale(
-            consumed.envelope.id(),
-            consumed.envelope.tenant_id(),
-            *product_id,
-            locale.clone(),
-            *source_version,
-            consumed.clone(),
-        ),
-        ContractEventPayload::ProductIndexRefresh(
-            ProductIndexRefreshEvent::VariantRefreshRequested {
-                product_id,
-                variant_id,
-                source_version,
-            },
-        ) => ProductIndexRefreshDelivery::variant(
-            consumed.envelope.id(),
-            consumed.envelope.tenant_id(),
-            *product_id,
-            *variant_id,
-            *source_version,
-            consumed.clone(),
-        ),
-        other => {
-            return Err(invalid_data(format!(
-                "unexpected contract payload on Product refresh evidence cursor: {other:?}"
-            ))
-            .into());
-        }
-    };
-    Ok(delivery)
+    events: &SharedIndexMutationEventRegistry,
+) -> TestResult<IndexSourceRefreshEventDelivery<ConsumedContractEvent>> {
+    product_index_refresh_delivery_from_envelope(&consumed.envelope, consumed.clone(), |domain| {
+        events.get(domain).map(|route| route.schema().clone())
+    })?
+    .ok_or_else(|| {
+        invalid_data("unexpected contract payload on Product refresh evidence cursor").into()
+    })
 }
 
 fn locale_envelope(event_id: Uuid, source_version: u64) -> TestResult<ContractEventEnvelope> {
@@ -739,11 +703,6 @@ async fn create_migration_prerequisites(db: &DatabaseConnection) -> TestResult<(
 CREATE TABLE tenants (
     id UUID PRIMARY KEY
 );
-CREATE TABLE taxonomy_terms (
-    id UUID PRIMARY KEY,
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    UNIQUE (tenant_id, id)
-);
 CREATE TABLE oauth_apps (
     id UUID PRIMARY KEY
 );
@@ -751,6 +710,9 @@ CREATE TABLE oauth_apps (
     )
     .await?;
     let manager = SchemaManager::new(db);
+    for migration in rustok_taxonomy::migrations::migrations() {
+        migration.up(&manager).await?;
+    }
     flex::cache_generation::create_field_definition_cache_generation_table(&manager).await?;
     Ok(())
 }

@@ -18,195 +18,20 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
 
-use super::{
-    PRODUCT_SCHEMA_ROUTING_KEY, attribute_terms::PRODUCT_ATTRIBUTE_TERMS_CTE,
-    channel_visibility::decode_product_visibility,
+use rustok_product::{
+    index_channel_visibility::decode_product_visibility,
+    index_projection::{PRODUCT_ATTRIBUTE_TERMS_CTE, PRODUCT_ROW_SELECT},
 };
+
+use super::{PRODUCT_SCHEMA_ROUTING_KEY, with_channel_identity_source};
+
+static PRODUCT_ROWS_CTE: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    with_channel_identity_source(rustok_product::index_projection::PRODUCT_ROWS_CTE)
+});
 
 pub(crate) const PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary";
 const PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay";
 const PRODUCT_RELATION_FRESHNESS_PENDING_CODE: &str = "product_index_relation_freshness_pending";
-
-const PRODUCT_ROWS_CTE: &str = r#"
-product_tag_ids AS (
-    SELECT
-        product_tag.product_id,
-        jsonb_agg(product_tag.term_id ORDER BY product_tag.term_id) AS tag_ids
-    FROM product_tags product_tag
-    WHERE product_tag.tenant_id = $1
-    GROUP BY product_tag.product_id
-),
-channel_identity_generation AS (
-    SELECT COALESCE(
-        (
-            SELECT generation
-            FROM channel_index_identity_generations
-            WHERE tenant_id = $1
-        ),
-        0
-    )::bigint AS generation
-),
-product_graph_projection AS (
-    SELECT DISTINCT ON (projection.tenant_id, projection.product_id)
-        projection.tenant_id,
-        projection.product_id,
-        projection.projection_epoch,
-        projection.product_source_version,
-        projection.relation_epoch,
-        relation.channel_ids,
-        freshness.product_source_version AS freshness_product_source_version,
-        freshness.visibility_key AS freshness_visibility_key,
-        freshness.channel_identity_generation AS freshness_channel_identity_generation,
-        channel_generation.generation AS current_channel_identity_generation
-    FROM product_index_graph_projection_snapshots projection
-    JOIN product_sales_channel_index_relation_snapshots relation
-      ON relation.tenant_id = projection.tenant_id
-     AND relation.product_id = projection.product_id
-     AND relation.relation_epoch = projection.relation_epoch
-    LEFT JOIN LATERAL (
-        SELECT
-            witness.product_source_version,
-            witness.visibility_key,
-            witness.channel_identity_generation
-        FROM product_sales_channel_index_relation_freshness_snapshots witness
-        WHERE witness.tenant_id = projection.tenant_id
-          AND witness.product_id = projection.product_id
-          AND witness.relation_epoch = projection.relation_epoch
-        ORDER BY witness.sequence_no DESC
-        LIMIT 1
-    ) freshness ON TRUE
-    CROSS JOIN channel_identity_generation channel_generation
-    WHERE projection.tenant_id = $1
-    ORDER BY projection.tenant_id, projection.product_id, projection.projection_epoch DESC
-),
-product_index_union AS (
-    SELECT
-        FALSE AS is_deleted,
-        p.tenant_id,
-        p.id AS product_id,
-        projection.projection_epoch AS source_version,
-        p.index_revision AS observed_product_source_version,
-        projection.product_source_version AS projected_product_source_version,
-        projection.relation_epoch,
-        projection.freshness_product_source_version,
-        projection.freshness_visibility_key,
-        projection.freshness_channel_identity_generation,
-        projection.current_channel_identity_generation,
-        p.metadata,
-        p.status::text AS status,
-        p.seller_id,
-        p.vendor,
-        p.product_type,
-        p.primary_category_id,
-        p.created_at,
-        p.published_at,
-        t.locale,
-        t.title,
-        t.handle,
-        t.description,
-        COALESCE(tags.tag_ids, '[]'::jsonb) AS tag_ids,
-        COALESCE(attributes.attribute_terms, '[]'::jsonb) AS attribute_terms,
-        COALESCE(
-            (
-                SELECT jsonb_agg(v.id ORDER BY v.id)
-                FROM product_variants v
-                WHERE v.tenant_id = p.tenant_id
-                  AND v.product_id = p.id
-            ),
-            '[]'::jsonb
-        ) AS variant_ids,
-        projection.channel_ids AS sales_channel_ids
-    FROM products p
-    JOIN product_translations t
-      ON t.product_id = p.id
-     AND t.tenant_id = p.tenant_id
-    LEFT JOIN product_graph_projection projection
-      ON projection.tenant_id = p.tenant_id
-     AND projection.product_id = p.id
-    LEFT JOIN product_tag_ids tags
-      ON tags.product_id = p.id
-    LEFT JOIN product_attribute_terms attributes
-      ON attributes.product_id = p.id
-    WHERE p.tenant_id = $1
-
-    UNION ALL
-
-    SELECT
-        TRUE AS is_deleted,
-        tombstone.tenant_id,
-        tombstone.product_id,
-        projection.projection_epoch AS source_version,
-        tombstone.source_version AS observed_product_source_version,
-        projection.product_source_version AS projected_product_source_version,
-        projection.relation_epoch,
-        projection.freshness_product_source_version,
-        projection.freshness_visibility_key,
-        projection.freshness_channel_identity_generation,
-        projection.current_channel_identity_generation,
-        NULL::jsonb AS metadata,
-        NULL::text AS status,
-        NULL::text AS seller_id,
-        NULL::text AS vendor,
-        NULL::text AS product_type,
-        NULL::uuid AS primary_category_id,
-        NULL::timestamptz AS created_at,
-        NULL::timestamptz AS published_at,
-        tombstone.locale,
-        NULL::text AS title,
-        NULL::text AS handle,
-        NULL::text AS description,
-        '[]'::jsonb AS tag_ids,
-        '[]'::jsonb AS attribute_terms,
-        '[]'::jsonb AS variant_ids,
-        projection.channel_ids AS sales_channel_ids
-    FROM product_index_tombstones tombstone
-    LEFT JOIN product_graph_projection projection
-      ON projection.tenant_id = tombstone.tenant_id
-     AND projection.product_id = tombstone.product_id
-    WHERE tombstone.tenant_id = $1
-),
-product_index_rows AS (
-    SELECT
-        row.*,
-        COUNT(*) OVER (
-            PARTITION BY row.tenant_id, row.product_id, row.locale
-        ) AS identity_count
-    FROM product_index_union row
-)
-"#;
-
-const PRODUCT_ROW_SELECT: &str = r#"
-SELECT
-    row.is_deleted,
-    row.identity_count,
-    row.tenant_id,
-    row.product_id,
-    row.source_version,
-    row.observed_product_source_version,
-    row.projected_product_source_version,
-    row.relation_epoch,
-    row.freshness_product_source_version,
-    row.freshness_visibility_key,
-    row.freshness_channel_identity_generation,
-    row.current_channel_identity_generation,
-    row.metadata,
-    row.status,
-    row.seller_id,
-    row.vendor,
-    row.product_type,
-    row.primary_category_id,
-    row.created_at,
-    row.published_at,
-    row.locale,
-    row.title,
-    row.handle,
-    row.description,
-    row.tag_ids,
-    row.attribute_terms,
-    row.variant_ids,
-    row.sales_channel_ids
-FROM product_index_rows row
-"#;
 
 #[derive(Debug, Error)]
 enum ProductIndexBridgeError {
@@ -408,10 +233,11 @@ impl ProductPostgresIndexSource {
             Ok(limit) => limit,
             Err(_) => return Err(permanent("scan_limit_overflow")),
         };
+        let rows_cte = PRODUCT_ROWS_CTE.as_str();
         let (sql, values): (String, Vec<Value>) = match (request.locale(), cursor) {
             (Some(locale), Some(cursor)) => (
                 format!(
-                    "WITH {PRODUCT_ATTRIBUTE_TERMS_CTE},\n{PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nWHERE row.locale = $2 AND row.product_id > $3\nORDER BY row.product_id ASC\nLIMIT $4"
+                    "WITH {PRODUCT_ATTRIBUTE_TERMS_CTE},\n{rows_cte}\n{PRODUCT_ROW_SELECT}\nWHERE row.locale = $2 AND row.product_id > $3\nORDER BY row.product_id ASC\nLIMIT $4"
                 ),
                 vec![
                     request.tenant_id().into(),
@@ -422,7 +248,7 @@ impl ProductPostgresIndexSource {
             ),
             (Some(locale), None) => (
                 format!(
-                    "WITH {PRODUCT_ATTRIBUTE_TERMS_CTE},\n{PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nWHERE row.locale = $2\nORDER BY row.product_id ASC\nLIMIT $3"
+                    "WITH {PRODUCT_ATTRIBUTE_TERMS_CTE},\n{rows_cte}\n{PRODUCT_ROW_SELECT}\nWHERE row.locale = $2\nORDER BY row.product_id ASC\nLIMIT $3"
                 ),
                 vec![
                     request.tenant_id().into(),
@@ -432,7 +258,7 @@ impl ProductPostgresIndexSource {
             ),
             (None, Some(cursor)) => (
                 format!(
-                    "WITH {PRODUCT_ATTRIBUTE_TERMS_CTE},\n{PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nWHERE (row.product_id, row.locale) > ($2, $3)\nORDER BY row.product_id ASC, row.locale ASC\nLIMIT $4"
+                    "WITH {PRODUCT_ATTRIBUTE_TERMS_CTE},\n{rows_cte}\n{PRODUCT_ROW_SELECT}\nWHERE (row.product_id, row.locale) > ($2, $3)\nORDER BY row.product_id ASC, row.locale ASC\nLIMIT $4"
                 ),
                 vec![
                     request.tenant_id().into(),
@@ -443,7 +269,7 @@ impl ProductPostgresIndexSource {
             ),
             (None, None) => (
                 format!(
-                    "WITH {PRODUCT_ATTRIBUTE_TERMS_CTE},\n{PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nORDER BY row.product_id ASC, row.locale ASC\nLIMIT $2"
+                    "WITH {PRODUCT_ATTRIBUTE_TERMS_CTE},\n{rows_cte}\n{PRODUCT_ROW_SELECT}\nORDER BY row.product_id ASC, row.locale ASC\nLIMIT $2"
                 ),
                 vec![request.tenant_id().into(), fetch_limit.into()],
             ),
@@ -476,8 +302,9 @@ impl ProductPostgresIndexSource {
             values.push(locale.as_str().to_owned().into());
             parameter += 2;
         }
+        let rows_cte = PRODUCT_ROWS_CTE.as_str();
         let sql = format!(
-            "WITH requested(product_id, locale) AS (VALUES {}),\n{PRODUCT_ATTRIBUTE_TERMS_CTE},\n{PRODUCT_ROWS_CTE}\n{PRODUCT_ROW_SELECT}\nJOIN requested requested_key ON requested_key.product_id = row.product_id AND requested_key.locale = row.locale\nORDER BY row.product_id ASC, row.locale ASC",
+            "WITH requested(product_id, locale) AS (VALUES {}),\n{PRODUCT_ATTRIBUTE_TERMS_CTE},\n{rows_cte}\n{PRODUCT_ROW_SELECT}\nJOIN requested requested_key ON requested_key.product_id = row.product_id AND requested_key.locale = row.locale\nORDER BY row.product_id ASC, row.locale ASC",
             tuples.join(", ")
         );
         self.db

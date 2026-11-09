@@ -70,8 +70,8 @@ requireMarkers(catalogPath, [
   'pub fn require_current_link_targets(',
   'pub(crate) fn apply_link_target_availability(',
   'fn referenced_first_hop_links(query: &IndexQuery)',
-  'query.referenced_paths()',
-  'path.links().first()',
+  '.referenced_paths()',
+  '.links().first()',
   '{link}.source_version = {root}.source_version',
   '{link}.link_name IN ({requested_links})',
   '{target}.is_deleted = FALSE',
@@ -90,29 +90,37 @@ requireMarkers('crates/modules/rustok-index/src/infrastructure/postgres/query_ru
 ]);
 
 const ownerPath = 'crates/modules/rustok-distribution/src/product_index/query_admission.rs';
-const owner = requireMarkers(ownerPath, [
-  'PRODUCT_VARIANT_QUERY_MATERIALIZED_FRESHNESS',
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
   'FROM product_variants owner_variant',
   'owner_variant.tenant_id = {{entity}}.tenant_id',
   'owner_variant.id = {{entity}}.entity_id',
   'owner_variant.index_revision = {{entity}}.source_version',
-  'SALES_CHANNEL_QUERY_MATERIALIZED_FRESHNESS',
+]);
+requireMarkers('crates/modules/rustok-channel/src/index_projection.rs', [
   'FROM channels owner_channel',
   'owner_channel.tenant_id = {{entity}}.tenant_id',
   'owner_channel.id = {{entity}}.entity_id',
   'owner_channel.index_revision = {{entity}}.source_version',
+]);
+const owner = requireMarkers(ownerPath, [
+  'PRODUCT_VARIANT_QUERY_MATERIALIZED_FRESHNESS',
+  'SALES_CHANNEL_QUERY_MATERIALIZED_FRESHNESS',
   'register_postgres_index_query_link_target_availability',
 ]);
 forbidMarkers(ownerPath, owner, ['index_entities', 'index_links', '$1']);
 
-requireMarkers('crates/modules/rustok-distribution/src/product_variant_index.rs', [
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
   'v.index_revision',
   'tombstone.source_version AS index_revision',
+]);
+requireMarkers('crates/modules/rustok-distribution/src/product_variant_index.rs', [
   'PRODUCT_VARIANT_SCHEMA_VERSION: u32 = 2',
 ]);
-requireMarkers('crates/modules/rustok-distribution/src/channel_index.rs', [
+requireMarkers('crates/modules/rustok-channel/src/index_projection.rs', [
   'c.index_revision',
   'tombstone.source_version AS index_revision',
+]);
+requireMarkers('crates/modules/rustok-distribution/src/channel_index.rs', [
   'SchemaVersion::INITIAL',
 ]);
 

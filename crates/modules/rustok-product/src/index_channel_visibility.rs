@@ -3,22 +3,22 @@ use std::collections::BTreeSet;
 use serde_json::Value as JsonValue;
 use thiserror::Error;
 
-pub(crate) const MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS: usize = 1024;
-pub(crate) const MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUG_BYTES: usize = 100;
+pub const MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUGS: usize = 1024;
+pub const MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_SLUG_BYTES: usize = 100;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ProductChannelVisibility {
+pub enum ProductChannelVisibility {
     Unrestricted,
     Restricted(Vec<String>),
 }
 
 impl ProductChannelVisibility {
-    pub(crate) fn is_unrestricted(&self) -> bool {
+    pub fn is_unrestricted(&self) -> bool {
         matches!(self, Self::Unrestricted)
     }
 
     /// Stable opaque witness stored by the Product owner. It is deliberately not an Index field.
-    pub(crate) fn freshness_key(&self) -> String {
+    pub fn freshness_key(&self) -> String {
         match self {
             Self::Unrestricted => "all".to_owned(),
             Self::Restricted(slugs) => {
@@ -33,7 +33,7 @@ impl ProductChannelVisibility {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub(crate) enum ProductChannelVisibilityError {
+pub enum ProductChannelVisibilityError {
     #[error("Product channel visibility is invalid")]
     Invalid,
     #[error("Product channel visibility contains too many slugs")]
@@ -42,7 +42,7 @@ pub(crate) enum ProductChannelVisibilityError {
     SlugTooLong,
 }
 
-pub(crate) fn decode_product_visibility(
+pub fn decode_product_visibility(
     metadata: &JsonValue,
 ) -> Result<ProductChannelVisibility, ProductChannelVisibilityError> {
     let object = metadata

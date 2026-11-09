@@ -17,6 +17,7 @@ const MAX_EVENT_DOMAIN_BYTES: usize = 128;
 /// current upsert or tombstone mutation. `minimum_source_version` fences replica lag or an owner
 /// publication bug: acknowledgement is withheld until the source exposes at least the revision
 /// committed by the owner event.
+#[derive(Clone)]
 pub struct IndexSourceRefreshEventDelivery<T> {
     event_domain: String,
     event_id: Uuid,
