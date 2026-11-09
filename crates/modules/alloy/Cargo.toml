@@ -38,6 +38,6 @@ rustok-module-template.workspace = true
 semver = "1.0"
 sha2.workspace = true
 hex.workspace = true
-parking_lot = "0.12"
+parking_lot = "0.13"
 cron = "0.17"
 rhai = { workspace = true, features = ["sync", "metadata"] }
