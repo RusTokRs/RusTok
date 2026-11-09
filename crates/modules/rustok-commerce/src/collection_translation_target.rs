@@ -11,7 +11,8 @@ use rustok_translation_targets::{
     TranslationPatchRequest, TranslationPatchValidation, TranslationResourceIdentity,
     TranslationResourceLifecycle, TranslationResourcePage, TranslationResourceSnapshot,
     TranslationResourceSummary, TranslationStrategy, TranslationTargetCapability,
-    TranslationTargetProvider, TranslationTargetProviderDescriptor, TranslationValueProfile,
+    TranslationTargetContractError, TranslationTargetProvider, TranslationTargetProviderDescriptor,
+    TranslationValueProfile,
     provider_support::{
         contract_validation_error, field_hash, merged_patch_values,
         normalize_optional_target_value, read_request_from_patch, required_target_value,

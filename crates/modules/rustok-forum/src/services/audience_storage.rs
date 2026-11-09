@@ -1,4 +1,4 @@
-use sea_orm::{ConnectionTrait, DatabaseTransaction, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, Statement};
 use uuid::Uuid;
 use crate::audience::ForumAudienceConstraints;
 use crate::error::{ForumError, ForumResult};
@@ -24,7 +24,7 @@ pub async fn insert_roles_raw(
         sql.push_str(&format!("(${}, ${}, ${})", vals.len()+1, vals.len()+2, vals.len()+3));
         vals.push(tenant_id.into()); vals.push(subject_id.into()); vals.push(role.clone().into());
     }
-    txn.execute(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         txn.get_database_backend(), sql, vals,
     )).await.map(|_| ()).map_err(ForumError::from)
 }
@@ -45,7 +45,7 @@ pub async fn insert_channels_raw(
         sql.push_str(&format!("(${}, ${}, ${})", vals.len()+1, vals.len()+2, vals.len()+3));
         vals.push(tenant_id.into()); vals.push(subject_id.into()); vals.push(ch.clone().into());
     }
-    txn.execute(Statement::from_sql_and_values(txn.get_database_backend(), sql, vals)).await.map(|_| ()).map_err(ForumError::from)
+    txn.execute_raw(Statement::from_sql_and_values(txn.get_database_backend(), sql, vals)).await.map(|_| ()).map_err(ForumError::from)
 }
 
 pub async fn insert_groups_raw(
@@ -64,7 +64,7 @@ pub async fn insert_groups_raw(
         sql.push_str(&format!("(${}, ${}, ${})", vals.len()+1, vals.len()+2, vals.len()+3));
         vals.push(tenant_id.into()); vals.push(subject_id.into()); vals.push((*g).into());
     }
-    txn.execute(Statement::from_sql_and_values(txn.get_database_backend(), sql, vals)).await.map(|_| ()).map_err(ForumError::from)
+    txn.execute_raw(Statement::from_sql_and_values(txn.get_database_backend(), sql, vals)).await.map(|_| ()).map_err(ForumError::from)
 }
 
 pub async fn insert_users_raw(
@@ -84,7 +84,7 @@ pub async fn insert_users_raw(
         sql.push_str(&format!("(${}, ${}, ${}, ${})", vals.len()+1, vals.len()+2, vals.len()+3, vals.len()+4));
         vals.push(tenant_id.into()); vals.push(subject_id.into()); vals.push((*uid).into()); vals.push(effect.to_string().into());
     }
-    txn.execute(Statement::from_sql_and_values(txn.get_database_backend(), sql, vals)).await.map(|_| ()).map_err(ForumError::from)
+    txn.execute_raw(Statement::from_sql_and_values(txn.get_database_backend(), sql, vals)).await.map(|_| ()).map_err(ForumError::from)
 }
 
 pub async fn clear_audience_raw(
@@ -99,7 +99,7 @@ pub async fn clear_audience_raw(
         let table = format!("{table_prefix}{suffix}");
         let sql = format!("DELETE FROM {table} WHERE tenant_id = $1 AND {subject_column} = $2");
         // Postgres vs SQLite placeholder handled by SeaORM's Statement builder
-        txn.execute(Statement::from_sql_and_values(
+        txn.execute_raw(Statement::from_sql_and_values(
             txn.get_database_backend(),
             sql,
             vec![tenant_id.into(), subject_id.into()],
@@ -139,7 +139,7 @@ where
         sql.push(')');
         let mut vals: Vec<sea_orm::Value> = vec![tenant_id.into()];
         vals.extend(subject_ids.iter().map(|id| (*id).into()));
-        let rows = db.query_all(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
+        let rows = db.query_all_raw(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
         for row in rows {
             let sid: Uuid = row.try_get_by_index(0)?;
             let trust: Option<i16> = row.try_get_by_index(1)?;
@@ -156,7 +156,7 @@ where
         sql.push(')');
         let mut vals: Vec<sea_orm::Value> = vec![tenant_id.into()];
         vals.extend(subject_ids.iter().map(|id| (*id).into()));
-        let rows = db.query_all(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
+        let rows = db.query_all_raw(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
         if rows.len() > subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_ROLES {
             return Err(crate::error::ForumError::Validation(format!("Forum audience storage exceeds the bounded role relations limit of {}", subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_ROLES)));
         }
@@ -164,7 +164,10 @@ where
             let sid: Uuid = row.try_get_by_index(0)?;
             let val: String = row.try_get_by_index(1)?;
             let entry = layers.get_mut(&sid).ok_or_else(|| crate::error::ForumError::Validation("Forum audience relation is missing its local policy layer".to_string()))?;
-            if let Ok(role) = val.parse() { entry.roles_any.push(role); }
+            let role = val.parse().map_err(|_| {
+                ForumError::Validation("Forum audience storage contains an invalid role".to_string())
+            })?;
+            entry.roles_any.push(role);
         }
     }
 
@@ -176,7 +179,7 @@ where
         sql.push(')');
         let mut vals: Vec<sea_orm::Value> = vec![tenant_id.into()];
         vals.extend(subject_ids.iter().map(|id| (*id).into()));
-        let rows = db.query_all(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
+        let rows = db.query_all_raw(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
         if rows.len() > subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_CHANNELS {
             return Err(crate::error::ForumError::Validation(format!("Forum audience storage exceeds the bounded channel relations limit of {}", subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_CHANNELS)));
         }
@@ -196,7 +199,7 @@ where
         sql.push(')');
         let mut vals: Vec<sea_orm::Value> = vec![tenant_id.into()];
         vals.extend(subject_ids.iter().map(|id| (*id).into()));
-        let rows = db.query_all(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
+        let rows = db.query_all_raw(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
         if rows.len() > subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_GROUPS {
             return Err(crate::error::ForumError::Validation(format!("Forum audience storage exceeds the bounded group relations limit of {}", subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_GROUPS)));
         }
@@ -216,7 +219,7 @@ where
         sql.push(')');
         let mut vals: Vec<sea_orm::Value> = vec![tenant_id.into()];
         vals.extend(subject_ids.iter().map(|id| (*id).into()));
-        let rows = db.query_all(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
+        let rows = db.query_all_raw(Statement::from_sql_and_values(db.get_database_backend(), sql, vals)).await?;
         if rows.len() > subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_EXPLICIT_USERS * 2 {
             return Err(crate::error::ForumError::Validation(format!("Forum audience storage exceeds the bounded explicit user relations limit of {}", subject_ids.len() * crate::audience::MAX_FORUM_AUDIENCE_EXPLICIT_USERS * 2)));
         }
@@ -228,7 +231,11 @@ where
             match effect.as_str() {
                 "allow" => entry.allow_user_ids.push(uid),
                 "deny" => entry.deny_user_ids.push(uid),
-                _ => {}
+                _ => {
+                    return Err(ForumError::Validation(
+                        "Forum audience storage contains an invalid user effect".to_string(),
+                    ));
+                }
             }
         }
     }

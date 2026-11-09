@@ -15,7 +15,7 @@ use crate::error::{ForumError, ForumResult};
 use crate::state_machine::ReplyStatus;
 
 use super::engagement_mode::ForumSettingsProviders;
-use super::rbac::enforce_scope;
+use super::rbac::{DeleteSnapshotReason, enforce_scope};
 use super::reply_create_audience_authorization::ForumReplyCreateAudienceAuthorizationService;
 use super::reply_owner;
 use super::topic_visibility::ForumTopicVisibilityService;
@@ -395,8 +395,9 @@ impl ReplyService {
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
         reply_id: Uuid,
+        reason: DeleteSnapshotReason,
     ) -> ForumResult<reply_owner::ReplyRemovalOutcome> {
-        reply_owner::ReplyService::remove_in_tx(txn, tenant_id, reply_id).await
+        reply_owner::ReplyService::remove_in_tx(txn, tenant_id, reply_id, reason).await
     }
 }
 

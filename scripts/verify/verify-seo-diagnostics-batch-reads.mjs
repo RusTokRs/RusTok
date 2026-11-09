@@ -11,8 +11,8 @@ const root = configuredRoot
 const read = (relativePath) => readFileSync(new URL(relativePath, root), 'utf8');
 const failures = [];
 
-const wrapper = read('crates/modules/rustok-seo/src/services/diagnostics.rs');
-const batch = read('crates/modules/rustok-seo/src/services/diagnostics_batch.rs');
+const services = read('crates/modules/rustok-seo/src/services/mod.rs');
+const batch = read('crates/modules/rustok-seo/src/services/diagnostics.rs');
 const routing = read('crates/modules/rustok-seo/src/services/routing.rs');
 const targets = read('crates/modules/rustok-seo/src/services/targets.rs');
 
@@ -23,9 +23,7 @@ const forbidText = (content, value, label) => {
   if (content.includes(value)) failures.push(`${label}: forbidden ${value}`);
 };
 
-if (wrapper.trim() !== 'include!("diagnostics_batch.rs");') {
-  failures.push('diagnostics wrapper must activate only the batched implementation');
-}
+requireText(services, 'mod diagnostics;', 'diagnostics implementation registration');
 
 const legacyPath = new URL('crates/modules/rustok-seo/src/services/diagnostics_legacy.rs', root);
 if (existsSync(legacyPath)) {

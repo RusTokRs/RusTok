@@ -18,7 +18,7 @@ fn redirect_targets_reject_unsafe_absolute_urls() {
 
 #[test]
 fn persisted_settings_fail_closed() {
-    let source = include_str!("../src/services/services_base.rs");
+    let source = include_str!("../src/services/mod.rs");
 
     assert!(source.contains("SEO_SETTINGS_KEYS"));
     assert!(source.contains("unknown persisted SEO setting"));

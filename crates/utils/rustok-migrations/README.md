@@ -296,6 +296,12 @@ transaction immediately after that migration and again at the end of the range.
 Missing, NULL, nonboolean or multiple assertion results fail verification.
 This is not yet complete owner-assertion or crash-recovery coverage of the chain.
 
+Direct smoke test runs require `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to point to an
+isolated PostgreSQL instance. Fresh runs create a new fixture database and fail
+if its name already exists. `RUSTOK_MIGRATION_SMOKE_ROLLBACK_LATEST=1` checks
+that the last applied migration is the only pending migration after rollback,
+then reapplies it and checks the schema again.
+
 The ignored PostgreSQL regression is explicit about its required environment:
 
 ```powershell
@@ -314,9 +320,6 @@ See [the database architecture](../../../docs/architecture/database.md) and the
 The executable inventory contains owner declarations only; most migrations
 currently have no safety metadata. Trusted immutable source/build coverage,
 stable release seals and production authorization remain unimplemented.
-The composed inventory regression and pre/post exporter comparison are blocked
-by the AI Rig adapter compilation errors described above; this is not a passing
-composition check.
 
 The stepwise runner currently supports PostgreSQL transactional execution only;
 selected phase steps must all support its recovery policy.

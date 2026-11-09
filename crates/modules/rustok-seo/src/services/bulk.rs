@@ -2495,7 +2495,6 @@ impl SeoService {
         Ok(map)
     }
 }
-;
 const BULK_APPLY_CHUNK_SIZE: usize = 50;
 const MAX_BULK_TARGETS: usize = 100_000;
 
@@ -3097,7 +3096,6 @@ mod bounded_execution_tests {
         assert_eq!(BULK_APPLY_CHUNK_SIZE, 50);
     }
 }
-;
 use crate::dto::SeoModuleSettings;
 use crate::entities::{self as seo_meta, meta_translation};
 
@@ -4021,7 +4019,6 @@ mod bounded_io_execution_tests {
         assert_eq!(rows, 1);
     }
 }
-;
 impl SeoService {
     #[allow(dead_code)]
     pub(super) async fn execute_next_bulk_job_with_bounded_io(
@@ -4275,7 +4272,6 @@ impl SeoService {
         active.update(&self.db).await.map_err(Into::into)
     }
 }
-;
 use super::sitemaps::{
     SitemapUrlRecord, index_generation, sitemaps_enabled, submission_adapters,
     submission_aggregation,
@@ -5101,7 +5097,6 @@ mod sitemap_background_tests {
         assert_ne!(SITEMAP_JOB_SUBMITTING, SITEMAP_JOB_COMPLETED);
     }
 }
-;
 mod index_repair_background_impl {
     use super::*;
     use sea_orm::ActiveValue::Set;
@@ -5446,7 +5441,6 @@ mod index_repair_background_impl {
         }
     }
 }
-;
 
 #[cfg(test)]
 mod bulk_read_model {

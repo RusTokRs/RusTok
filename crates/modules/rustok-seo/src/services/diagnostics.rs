@@ -1392,4 +1392,3 @@ mod tests {
         assert!(duplicate_hreflang_locales(&distinct).is_empty());
     }
 }
-;

@@ -1,92 +1,74 @@
-use sea_orm::DatabaseBackend;
+use sea_orm::{DatabaseBackend, Statement};
 use sea_orm_migration::prelude::*;
 
-/// P1 3.2 ideal: `ReplyStatus::Deleted` snapshot should distinguish `user-initiated` vs
-/// `moderator` delete for GDPR vs moderation compliance. Add `reason` to both
-/// `forum_topic_delete_snapshots` and `forum_topic_reply_delete_snapshots`.
+const SNAPSHOT_TABLES: [&str; 3] = [
+    "forum_topic_delete_snapshots",
+    "forum_topic_reply_delete_snapshots",
+    "forum_reply_delete_snapshots",
+];
+
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
+    fn use_transaction(&self) -> Option<bool> {
+        Some(true)
+    }
+
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        match manager.get_database_backend() {
-            DatabaseBackend::Postgres => up_postgres(manager).await,
-            DatabaseBackend::Sqlite => up_sqlite(manager).await,
-            backend => Err(DbErr::Custom(format!(
-                "delete_snapshot reason does not support {backend:?}"
-            ))),
+        let backend = manager.get_database_backend();
+        if !matches!(backend, DatabaseBackend::Postgres | DatabaseBackend::Sqlite) {
+            return Err(DbErr::Custom(format!(
+                "delete snapshot reasons do not support {backend:?}"
+            )));
         }
+
+        // Predecessor snapshots have no recorded provenance.
+        for table in SNAPSHOT_TABLES {
+            manager
+                .get_connection()
+                .execute_unprepared(&format!(
+                    "ALTER TABLE {table} ADD COLUMN reason TEXT CHECK (reason IN ('user_request', 'moderation', 'system'))"
+                ))
+                .await?;
+        }
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        match manager.get_database_backend() {
-            DatabaseBackend::Postgres => down_postgres(manager).await,
-            DatabaseBackend::Sqlite => down_sqlite(manager).await,
-            backend => Err(DbErr::Custom(format!(
-                "delete_snapshot reason rollback does not support {backend:?}"
-            ))),
-        }
-    }
-}
-
-async fn up_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute_unprepared(
-            r#"
-            ALTER TABLE forum_topic_delete_snapshots
-                ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT 'moderation'
-                CHECK (reason IN ('user_request', 'moderation', 'system'));
-
-            ALTER TABLE forum_topic_reply_delete_snapshots
-                ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT 'moderation'
-                CHECK (reason IN ('user_request', 'moderation', 'system'));
-
-            ALTER TABLE forum_reply_delete_snapshots
-                ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT 'moderation'
-                CHECK (reason IN ('user_request', 'moderation', 'system'));
-            "#,
-        )
-        .await?;
-    Ok(())
-}
-
-async fn up_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    let conn = manager.get_connection();
-    for stmt in [
-        r#"ALTER TABLE forum_topic_delete_snapshots ADD COLUMN reason TEXT NOT NULL DEFAULT 'moderation' CHECK (reason IN ('user_request', 'moderation', 'system'))"#,
-        r#"ALTER TABLE forum_topic_reply_delete_snapshots ADD COLUMN reason TEXT NOT NULL DEFAULT 'moderation' CHECK (reason IN ('user_request', 'moderation', 'system'))"#,
-        r#"ALTER TABLE forum_reply_delete_snapshots ADD COLUMN reason TEXT NOT NULL DEFAULT 'moderation' CHECK (reason IN ('user_request', 'moderation', 'system'))"#,
-    ] {
-        // SQLite before 3.35 has no IF NOT EXISTS for ADD COLUMN — ignore "duplicate column name"
-        let res = conn.execute_unprepared(stmt).await;
-        if let Err(DbErr::Exec(msg)) = &res {
-            if msg.contains("duplicate column name") {
-                continue;
+        let db = manager.get_connection();
+        let backend = manager.get_database_backend();
+        match backend {
+            DatabaseBackend::Postgres => {
+                db.execute_unprepared(
+                    "LOCK TABLE forum_topic_delete_snapshots, forum_topic_reply_delete_snapshots, forum_reply_delete_snapshots IN ACCESS EXCLUSIVE MODE",
+                )
+                .await?;
+            }
+            DatabaseBackend::Sqlite => {}
+            backend => {
+                return Err(DbErr::Custom(format!(
+                    "delete snapshot reason rollback does not support {backend:?}"
+                )));
             }
         }
-        res?;
+
+        for table in SNAPSHOT_TABLES {
+            let statement = Statement::from_string(
+                backend,
+                format!("SELECT 1 FROM {table} WHERE reason IS NOT NULL LIMIT 1"),
+            );
+            if db.query_one_raw(statement).await?.is_some() {
+                return Err(DbErr::Custom(format!(
+                    "cannot remove recorded deletion reasons from {table}"
+                )));
+            }
+        }
+        for table in SNAPSHOT_TABLES {
+            db.execute_unprepared(&format!("ALTER TABLE {table} DROP COLUMN reason"))
+                .await?;
+        }
+        Ok(())
     }
-    Ok(())
-}
-
-async fn down_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    manager
-        .get_connection()
-        .execute_unprepared(
-            r#"
-            ALTER TABLE forum_topic_delete_snapshots DROP COLUMN IF EXISTS reason;
-            ALTER TABLE forum_topic_reply_delete_snapshots DROP COLUMN IF EXISTS reason;
-            ALTER TABLE forum_reply_delete_snapshots DROP COLUMN IF EXISTS reason;
-            "#,
-        )
-        .await?;
-    Ok(())
-}
-
-async fn down_sqlite(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    // SQLite DROP COLUMN requires 3.35+; keep down as no-op to stay ideal without legacy rewrite
-    let _ = manager;
-    Ok(())
 }

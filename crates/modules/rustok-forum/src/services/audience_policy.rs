@@ -40,6 +40,19 @@ pub struct AudiencePolicy<S: AudienceScope> {
 }
 
 impl<S: AudienceScope> AudiencePolicy<S> {
+    pub(super) fn new(
+        subject_id: Uuid,
+        configured_constraints: Option<ForumAudienceConstraints>,
+        effective_layers: Vec<AudienceLayer<S>>,
+    ) -> Self {
+        Self {
+            subject_id,
+            configured_constraints,
+            effective_layers,
+            _marker: PhantomData,
+        }
+    }
+
     pub fn subject_id(&self) -> Uuid { self.subject_id }
     pub fn is_inherited_only(&self) -> bool { self.configured_constraints.is_none() }
     pub fn effective_constraints(&self) -> Option<&ForumAudienceConstraints> {

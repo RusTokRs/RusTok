@@ -27,7 +27,6 @@ fn seo_redirect_cache_reconciles_from_transactional_delivery_rows() {
     assert!(commit < local_invalidate);
     assert!(redirects.contains("source_kind: Set(Some(\"redirect\".to_string()))"));
 
-    assert!(services.contains("include!(\"services_base.rs\")"));
     assert!(services.contains("pub struct SeoRedirectCacheCursor"));
     assert!(services.contains("pub async fn redirect_cache_change_count"));
     assert!(services.contains(".count(db)"));

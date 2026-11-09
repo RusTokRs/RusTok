@@ -20,14 +20,14 @@ const forbidText = (source, value, label) => {
 
 const applications = read('crates/modules/rustok-seo/src/services/applications.rs');
 const bulkModule = read('crates/modules/rustok-seo/src/services/bulk.rs');
-const worker = read('crates/modules/rustok-seo/src/services/sitemap_background.rs');
+const sitemapStart = bulkModule.indexOf('use super::sitemaps::{');
+const indexRepairStart = bulkModule.indexOf('mod index_repair_background_impl {');
+if (sitemapStart < 0 || indexRepairStart <= sitemapStart) {
+  failures.push('sitemap worker implementation section is missing');
+}
+const worker = bulkModule.slice(sitemapStart, indexRepairStart);
 const graphql = read('crates/modules/rustok-seo/src/graphql/mod.rs');
 
-requireText(
-  bulkModule,
-  'include!("sitemap_background.rs");',
-  'background sitemap include',
-);
 requireText(
   applications,
   'self.runtime.queue_sitemap_generation_background(tenant).await',

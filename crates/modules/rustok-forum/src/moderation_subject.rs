@@ -22,7 +22,7 @@ use crate::services::projection_invalidation::{
     publish_forum_category_projection_direct_in_tx, publish_forum_topic_projection_direct_in_tx,
 };
 use crate::services::user_stats::UserStatsService;
-use crate::services::{CategoryService, ReplyService, TopicService};
+use crate::services::{CategoryService, DeleteSnapshotReason, ReplyService, TopicService};
 use crate::state_machine::ReplyStatus;
 
 pub const FORUM_MODERATION_MODULE: &str = "forum";
@@ -370,7 +370,13 @@ async fn apply_reply_removed_effect_in_tx(
     actor_id: Option<Uuid>,
     reply_id: Uuid,
 ) -> ForumResult<bool> {
-    let outcome = ReplyService::remove_in_tx(transaction, tenant_id, reply_id).await?;
+    let outcome = ReplyService::remove_in_tx(
+        transaction,
+        tenant_id,
+        reply_id,
+        DeleteSnapshotReason::Moderation,
+    )
+    .await?;
 
     TransactionalEventBus::publish_root_in_tx(
         transaction,

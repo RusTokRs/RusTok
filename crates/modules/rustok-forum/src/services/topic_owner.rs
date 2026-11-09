@@ -25,7 +25,7 @@ use super::category_lifecycle::ensure_category_restore_target_is_active_in_tx;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
-use super::rbac::{enforce_author_deletion_policy, enforce_owned_scope, enforce_scope};
+use super::rbac::{DeleteSnapshotReason, enforce_author_deletion_policy, enforce_owned_scope, enforce_scope};
 use super::topic;
 use super::topic_create_audience_authorization::ForumTopicCreateAudienceAuthorizationService;
 use super::topic_route::{
@@ -206,7 +206,7 @@ impl TopicService {
             existing.author_id,
         )?;
         let settings = self.settings.module_settings(tenant_id).await?;
-        enforce_author_deletion_policy(
+        let delete_reason = enforce_author_deletion_policy(
             &security,
             Resource::ForumTopics,
             settings.allow_user_content_deletion,
@@ -249,7 +249,8 @@ impl TopicService {
             None => None,
         };
 
-        record_topic_delete_snapshot_in_tx(&txn, tenant_id, &topic, solution.as_ref()).await?;
+        record_topic_delete_snapshot_in_tx(&txn, tenant_id, &topic, solution.as_ref(), delete_reason)
+            .await?;
         ForumTopicRouteTombstoneVisibilityService::record_locked_delete_snapshot_in_tx(
             &txn, tenant_id, &topic,
         )
@@ -589,6 +590,7 @@ async fn record_topic_delete_snapshot_in_tx(
     tenant_id: Uuid,
     topic: &forum_topic::Model,
     solution: Option<&forum_solution::Model>,
+    reason: DeleteSnapshotReason,
 ) -> ForumResult<()> {
     let solution_author_id = match solution {
         Some(solution) => forum_reply::Entity::find_by_id(solution.reply_id)
@@ -608,9 +610,9 @@ async fn record_topic_delete_snapshot_in_tx(
             INSERT INTO forum_topic_delete_snapshots (
                 tenant_id, topic_id, previous_status, previous_is_locked,
                 solution_reply_id, solution_author_id,
-                solution_marked_by_user_id, solution_marked_at, created_at
+                solution_marked_by_user_id, solution_marked_at, reason, created_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
             "#,
             vec![
                 tenant_id.into(),
@@ -621,6 +623,7 @@ async fn record_topic_delete_snapshot_in_tx(
                 solution_author_id.into(),
                 solution.and_then(|value| value.marked_by_user_id).into(),
                 solution_marked_at.clone().into(),
+                reason.as_str().into(),
             ],
         ),
         DatabaseBackend::Sqlite => Statement::from_sql_and_values(
@@ -629,9 +632,9 @@ async fn record_topic_delete_snapshot_in_tx(
             INSERT INTO forum_topic_delete_snapshots (
                 tenant_id, topic_id, previous_status, previous_is_locked,
                 solution_reply_id, solution_author_id,
-                solution_marked_by_user_id, solution_marked_at, created_at
+                solution_marked_by_user_id, solution_marked_at, reason, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             "#,
             vec![
                 tenant_id.into(),
@@ -642,6 +645,7 @@ async fn record_topic_delete_snapshot_in_tx(
                 solution_author_id.into(),
                 solution.and_then(|value| value.marked_by_user_id).into(),
                 solution_marked_at.into(),
+                reason.as_str().into(),
             ],
         ),
         backend => {
@@ -657,31 +661,31 @@ async fn record_topic_delete_snapshot_in_tx(
             DatabaseBackend::Postgres,
             r#"
             INSERT INTO forum_topic_reply_delete_snapshots (
-                tenant_id, topic_id, reply_id, author_id, previous_status
+                tenant_id, topic_id, reply_id, author_id, previous_status, reason
             )
-            SELECT tenant_id, topic_id, id, author_id, status
+            SELECT tenant_id, topic_id, id, author_id, status, $3
             FROM forum_replies
             WHERE tenant_id = $1
               AND topic_id = $2
               AND deleted_at IS NULL
               AND status <> 'deleted'
             "#,
-            vec![tenant_id.into(), topic.id.into()],
+            vec![tenant_id.into(), topic.id.into(), reason.as_str().into()],
         ),
         DatabaseBackend::Sqlite => Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             r#"
             INSERT INTO forum_topic_reply_delete_snapshots (
-                tenant_id, topic_id, reply_id, author_id, previous_status
+                tenant_id, topic_id, reply_id, author_id, previous_status, reason
             )
-            SELECT tenant_id, topic_id, id, author_id, status
+            SELECT tenant_id, topic_id, id, author_id, status, ?
             FROM forum_replies
             WHERE tenant_id = ?
               AND topic_id = ?
               AND deleted_at IS NULL
               AND status <> 'deleted'
             "#,
-            vec![tenant_id.into(), topic.id.into()],
+            vec![reason.as_str().into(), tenant_id.into(), topic.id.into()],
         ),
         backend => {
             return Err(ForumError::Validation(format!(

@@ -14,12 +14,21 @@ const exists = (relativePath) => existsSync(fileURLToPath(new URL(relativePath, 
 const applications = read('crates/modules/rustok-seo/src/services/applications.rs');
 const services = read('crates/modules/rustok-seo/src/services/mod.rs');
 const bulkModule = read('crates/modules/rustok-seo/src/services/bulk.rs');
-const legacy = read('crates/modules/rustok-seo/src/services/bulk_legacy.rs');
 const readModel = read('crates/modules/rustok-seo/src/services/bulk_read_model.rs');
-const applyExecution = read('crates/modules/rustok-seo/src/services/bulk_bounded_execution.rs');
-const ioExecution = read('crates/modules/rustok-seo/src/services/bulk_io_bounded_execution.rs');
-const ioCompatibility = read('crates/modules/rustok-seo/src/services/bulk_io_bounded_compat.rs');
 const failures = [];
+const [applyStart, ioStart, compatibilityStart, workerStart] = [
+  'const BULK_APPLY_CHUNK_SIZE:',
+  'use crate::dto::SeoModuleSettings;',
+  'pub(super) async fn execute_next_bulk_job_with_bounded_io(',
+  'use super::sitemaps::{',
+].map((marker) => bulkModule.indexOf(marker));
+if (!(applyStart > 0 && applyStart < ioStart && ioStart < compatibilityStart && compatibilityStart < workerStart)) {
+  failures.push('bulk implementation sections are missing or out of order');
+}
+const legacy = bulkModule.slice(0, applyStart);
+const applyExecution = bulkModule.slice(applyStart, ioStart);
+const ioExecution = bulkModule.slice(ioStart, compatibilityStart);
+const ioCompatibility = bulkModule.slice(compatibilityStart, workerStart);
 
 const requireText = (source, value, label) => {
   if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
@@ -29,10 +38,7 @@ const forbidText = (source, value, label) => {
 };
 
 requireText(services, 'mod bulk_read_model;', 'shared read-model registration');
-requireText(bulkModule, 'include!("bulk_legacy.rs");', 'legacy bulk include');
-requireText(bulkModule, 'include!("bulk_bounded_execution.rs");', 'bounded apply include');
-requireText(bulkModule, 'include!("bulk_io_bounded_execution.rs");', 'bounded IO include');
-requireText(bulkModule, 'include!("bulk_io_bounded_compat.rs");', 'bounded IO compatibility include');
+requireText(services, 'mod bulk;', 'bulk implementation registration');
 requireText(legacy, 'pub async fn execute_next_bulk_job(', 'legacy implementation preservation');
 if (exists('crates/modules/rustok-seo/src/services/applications/bulk_reads.rs')) {
   failures.push('application-local bulk reader must be removed after shared extraction');

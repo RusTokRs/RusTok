@@ -551,7 +551,7 @@ use super::mention_relation::MentionRelationService;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
-use super::rbac::{enforce_author_deletion_policy, enforce_owned_scope, enforce_scope};
+use super::rbac::{DeleteSnapshotReason, enforce_author_deletion_policy, enforce_owned_scope, enforce_scope};
 use super::reply;
 use super::reply_create_audience_authorization::ForumReplyCreateAudienceAuthorizationService;
 use super::topic_owner::TopicService;
@@ -692,14 +692,14 @@ impl ReplyService {
             existing.author_id,
         )?;
         let settings = self.settings.module_settings(tenant_id).await?;
-        enforce_author_deletion_policy(
+        let delete_reason = enforce_author_deletion_policy(
             &security,
             Resource::ForumReplies,
             settings.allow_user_content_deletion,
         )?;
 
         let txn = self.db.begin().await?;
-        let outcome = Self::remove_in_tx(&txn, tenant_id, reply_id).await?;
+        let outcome = Self::remove_in_tx(&txn, tenant_id, reply_id, delete_reason).await?;
 
         self.event_bus
             .publish_in_tx(
@@ -881,6 +881,7 @@ impl ReplyService {
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
         reply_id: Uuid,
+        reason: DeleteSnapshotReason,
     ) -> ForumResult<ReplyRemovalOutcome> {
         // Keep reply deletion behind the same category-tree lifecycle boundary as
         // topic delete/restore and category archive/restore. This prevents a reply
@@ -913,7 +914,8 @@ impl ReplyService {
             .filter(|solution| solution.reply_id == reply_id);
         let solution_removed = solution_for_snapshot.is_some();
 
-        record_reply_delete_snapshot_in_tx(txn, tenant_id, &reply, solution_for_snapshot).await?;
+        record_reply_delete_snapshot_in_tx(txn, tenant_id, &reply, solution_for_snapshot, reason)
+            .await?;
 
         forum_solution::Entity::delete_many()
             .filter(forum_solution::Column::TenantId.eq(tenant_id))
@@ -1027,6 +1029,7 @@ async fn record_reply_delete_snapshot_in_tx(
     tenant_id: Uuid,
     reply: &forum_reply::Model,
     solution: Option<&forum_solution::Model>,
+    reason: DeleteSnapshotReason,
 ) -> ForumResult<()> {
     let statement = match txn.get_database_backend() {
         DatabaseBackend::Postgres => Statement::from_sql_and_values(
@@ -1034,9 +1037,9 @@ async fn record_reply_delete_snapshot_in_tx(
             r#"
             INSERT INTO forum_reply_delete_snapshots (
                 tenant_id, reply_id, topic_id, author_id,
-                previous_status, solution_marked_by_user_id, solution_marked_at, created_at
+                previous_status, solution_marked_by_user_id, solution_marked_at, reason, created_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
             "#,
             vec![
                 tenant_id.into(),
@@ -1046,6 +1049,7 @@ async fn record_reply_delete_snapshot_in_tx(
                 reply.status.to_string().into(),
                 solution.and_then(|value| value.marked_by_user_id).into(),
                 solution.map(|value| value.marked_at.to_rfc3339()).into(),
+                reason.as_str().into(),
             ],
         ),
         DatabaseBackend::Sqlite => Statement::from_sql_and_values(
@@ -1053,9 +1057,9 @@ async fn record_reply_delete_snapshot_in_tx(
             r#"
             INSERT INTO forum_reply_delete_snapshots (
                 tenant_id, reply_id, topic_id, author_id,
-                previous_status, solution_marked_by_user_id, solution_marked_at, created_at
+                previous_status, solution_marked_by_user_id, solution_marked_at, reason, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             "#,
             vec![
                 tenant_id.into(),
@@ -1065,6 +1069,7 @@ async fn record_reply_delete_snapshot_in_tx(
                 reply.status.to_string().into(),
                 solution.and_then(|value| value.marked_by_user_id).into(),
                 solution.map(|value| value.marked_at.to_rfc3339()).into(),
+                reason.as_str().into(),
             ],
         ),
         backend => {

@@ -19,10 +19,14 @@ const forbidText = (source, value, label) => {
 
 const applications = read('crates/modules/rustok-seo/src/services/applications.rs');
 const bulkModule = read('crates/modules/rustok-seo/src/services/bulk.rs');
-const compatibilityPoller = read(
-  'crates/modules/rustok-seo/src/services/bulk_io_bounded_compat.rs',
-);
-const worker = read('crates/modules/rustok-seo/src/services/index_repair_background.rs');
+const compatibilityStart = bulkModule.indexOf('pub(super) async fn execute_next_bulk_job_with_bounded_io(');
+const sitemapStart = bulkModule.indexOf('use super::sitemaps::{');
+const indexRepairStart = bulkModule.indexOf('mod index_repair_background_impl {');
+if (!(compatibilityStart >= 0 && compatibilityStart < sitemapStart && sitemapStart < indexRepairStart)) {
+  failures.push('index repair or compatibility implementation section is missing');
+}
+const compatibilityPoller = bulkModule.slice(compatibilityStart, sitemapStart);
+const worker = bulkModule.slice(indexRepairStart);
 const migrations = read('crates/modules/rustok-seo/src/migrations/mod.rs');
 const migration = read(
   'crates/modules/rustok-seo/src/migrations/m20260724_000008_create_seo_index_repair_jobs.rs',
@@ -30,11 +34,6 @@ const migration = read(
 const graphql = read('crates/modules/rustok-seo/src/graphql/mod.rs');
 const hostLifecycle = read('apps/server/src/services/app_lifecycle.rs');
 
-requireText(
-  bulkModule,
-  'include!("index_repair_background.rs");',
-  'background index repair include',
-);
 requireText(
   applications,
   '.queue_index_repair_replay_background(',

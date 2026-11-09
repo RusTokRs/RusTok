@@ -1,5 +1,5 @@
 pub mod audience_policy;
-pub mod audience_storage;
+mod audience_storage;
 mod attachment_hold_reconciliation;
 mod attachment_relation;
 pub mod topic_routes;
@@ -20,7 +20,6 @@ mod category_topic_create_audience;
 mod category_visibility;
 mod content_limits;
 mod counter_reconciliation;
-mod merge_reconciliation_executor;
 mod reconciliation_executor;
 mod edit_window;
 mod engagement_mode;
@@ -38,11 +37,18 @@ pub mod moderation {
 }
 mod moderation_audience_authorization;
 mod pending_visibility;
+mod posting_policy;
+mod posting_policy_approved_facts;
+mod posting_policy_create_window_facts;
+mod posting_policy_evaluator;
+mod posting_policy_facts;
+mod posting_policy_reading_facts;
 mod posting_rate;
 pub(crate) mod projection_invalidation;
 mod public_discovery;
 mod quote_command;
 mod rbac;
+pub(crate) use rbac::DeleteSnapshotReason;
 mod read_model_owner;
 pub mod read_model {
     pub use super::read_model_owner::ForumReadModelService;
@@ -159,6 +165,30 @@ pub use moderation::ModerationService;
 pub use moderation_audience_authorization::{
     ForumModerationAudienceAuthorization, ForumModerationAudienceAuthorizationService,
 };
+pub use posting_policy::{
+    ForumPostingAction, ForumPostingCandidateMetrics, ForumPostingPolicyDecision,
+    ForumPostingPolicyDecisionReason, ForumPostingPolicyEvaluationInput,
+    ForumPostingPolicyEvidence, ForumPostingPolicyFactKind, ForumPostingPolicyFacts,
+    ForumPostingPolicyMeasureUnit, ForumPostingPolicyOutcome, ForumPostingPolicyUnavailableFact,
+    ForumPostingWindowCount, MAX_FORUM_POSTING_POLICY_FACTS,
+    MAX_FORUM_POSTING_UNAVAILABLE_REASON_CODE_LENGTH,
+};
+pub use posting_policy_approved_facts::ForumApprovedPostsFactPort;
+pub use posting_policy_create_window_facts::{
+    ForumReplyCreatesWindowFactPort, ForumTopicCreatesWindowFactPort,
+};
+pub use posting_policy_evaluator::{
+    FORUM_POSTING_POLICY_PRECEDENCE, ForumPostingPolicyEvaluator, ForumPostingPolicyRules,
+    ForumPostingWindowLimit,
+};
+pub use posting_policy_facts::{
+    FORUM_POSTING_POLICY_FACTS_CAPABILITY, FORUM_POSTING_POLICY_FACTS_CAPABILITY_UNAVAILABLE,
+    ForumPostingPolicyCompositionRequest, ForumPostingPolicyFactsComposer,
+    ForumPostingPolicyOwnerFactPort, ForumPostingPolicyOwnerFactRequest,
+    ForumPostingPolicyOwnerFactResponse, ForumPostingPolicyOwnerFactValue,
+    ForumPostingTrustFactPort, SharedForumPostingPolicyOwnerFactPort,
+};
+pub use posting_policy_reading_facts::ForumTopicReadPostingFactPort;
 pub use public_discovery::ForumPublicDiscoveryService;
 pub use quote_command::ForumQuoteCommandService;
 pub use read_model::ForumReadModelService;

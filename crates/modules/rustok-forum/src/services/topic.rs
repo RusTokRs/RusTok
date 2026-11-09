@@ -423,32 +423,6 @@ impl TopicService {
             .ok_or(ForumError::TopicNotFound(topic_id))
     }
 
-    /// Public read: soft-deleted topics are invisible — they behave as `TopicNotFound`
-    /// so the denial reason is not leaked through the API.
-    pub(crate) async fn find_topic_for_public(
-        &self,
-        tenant_id: Uuid,
-        topic_id: Uuid,
-    ) -> ForumResult<forum_topic::Model> {
-        forum_topic::Entity::find_by_id(topic_id)
-            .filter(forum_topic::Column::TenantId.eq(tenant_id))
-            .filter(forum_topic::Column::DeletedAt.is_null())
-            .one(&self.db)
-            .await?
-            .ok_or(ForumError::TopicNotFound(topic_id))
-    }
-
-    /// Admin/owner read: returns the row even when `deleted_at` is set.
-    /// Callers must apply their own RBAC (`Manage`) and decide whether to
-    /// expose `status = archived` + `deleted_at`.
-    pub(crate) async fn find_topic_for_admin(
-        &self,
-        tenant_id: Uuid,
-        topic_id: Uuid,
-    ) -> ForumResult<forum_topic::Model> {
-        self.find_topic(tenant_id, topic_id).await
-    }
-
     pub(crate) async fn find_topic_for_update_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: Uuid,

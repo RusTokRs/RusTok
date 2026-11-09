@@ -27,7 +27,10 @@ const readModel = read('crates/modules/rustok-seo/src/services/bulk_read_model.r
 const dto = read('crates/modules/rustok-seo/src/dto.rs');
 const adminCore = read('crates/modules/rustok-seo/admin/src/core.rs');
 const adminBulk = read('crates/modules/rustok-seo/admin/src/sections/bulk.rs');
-const legacy = read('crates/modules/rustok-seo/src/services/bulk_legacy.rs');
+const bulk = read('crates/modules/rustok-seo/src/services/bulk.rs');
+const boundedApply = bulk.indexOf('const BULK_APPLY_CHUNK_SIZE:');
+if (boundedApply <= 0) failures.push('bulk implementation sections are missing');
+const legacy = bulk.slice(0, boundedApply);
 
 // Trait contract: one keyset page per call, walk provided once for batch readers.
 for (const [value, label] of [

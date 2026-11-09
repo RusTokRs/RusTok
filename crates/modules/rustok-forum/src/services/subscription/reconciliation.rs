@@ -1,6 +1,3 @@
-// Instant via executor
-
-use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 use sea_orm::{
     AccessMode, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
@@ -10,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{ForumError, ForumResult};
-use crate::services::rbac::enforce_scope;
+use crate::services::reconciliation_executor::ReconciliationExecutor;
 use crate::services::{
     DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
 };
@@ -355,11 +352,6 @@ fn collect_common_drifts(
         });
     }
     Ok(())
-}
-
-fn enforce_operations_scope(security: &SecurityContext) -> ForumResult<()> {
-    enforce_scope(security, Resource::ForumCategories, Action::Manage)?;
-    enforce_scope(security, Resource::ForumTopics, Action::Manage)
 }
 
 fn subscription_cursor(

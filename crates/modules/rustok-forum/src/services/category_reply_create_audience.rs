@@ -247,12 +247,7 @@ where
                 .map(|constraints| AudienceLayer::new(ancestor_id, constraints))
         })
         .collect();
-    Ok(AudiencePolicy {
-        subject_id: category_id,
-        configured_constraints,
-        effective_layers,
-        _marker: std::marker::PhantomData,
-    })
+    Ok(AudiencePolicy::new(category_id, configured_constraints, effective_layers))
 }
 
 async fn load_local_layers<C>(

@@ -1260,8 +1260,9 @@ async fn assert_product_migration_schema(
 }
 
 async fn run_postgres_zero_migration_smoke() -> Result<(), Box<dyn std::error::Error>> {
-    let admin_url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
+    let admin_url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL").map_err(
+        |_| "RUSTOK_MIGRATION_SMOKE_ADMIN_URL must name an isolated PostgreSQL instance",
+    )?;
     assert_postgres_url(&admin_url);
 
     let database_name =
@@ -1291,8 +1292,12 @@ async fn run_postgres_zero_migration_smoke() -> Result<(), Box<dyn std::error::E
                 )
             })?;
     } else {
-        drop_database_if_exists(&admin, &database_name).await?;
-        create_database(&admin, &database_name).await?;
+        // A name collision must fail before the fixture can affect an existing database.
+        create_database(&admin, &database_name)
+            .await
+            .map_err(|error| {
+                format!("fresh migration smoke database {database_name} must be created: {error}")
+            })?;
     }
 
     let smoke_result = apply_migrations_and_assert_schema(
@@ -1305,11 +1310,16 @@ async fn run_postgres_zero_migration_smoke() -> Result<(), Box<dyn std::error::E
 
     if keep_database {
         eprintln!("Keeping migration smoke database '{database_name}'");
-    } else {
-        drop_database_if_exists(&admin, &database_name).await?;
+        return smoke_result;
     }
 
-    smoke_result
+    let cleanup = drop_database_if_exists(&admin, &database_name).await;
+    match (smoke_result, cleanup) {
+        (Err(error), Err(cleanup)) => Err(format!("{error}; database cleanup: {cleanup}").into()),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(()), Err(error)) => Err(error.into()),
+        (Ok(()), Ok(())) => Ok(()),
+    }
 }
 
 async fn apply_migrations_and_assert_schema(
@@ -1374,6 +1384,10 @@ async fn apply_migrations_and_assert_schema(
 async fn rollback_latest_and_reapply(
     db: &DatabaseConnection,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let applied = Migrator::get_applied_migrations_read_only(db).await?;
+    let latest = applied
+        .last()
+        .ok_or("rollback requires an applied migration")?;
     Migrator::down(db, Some(1))
         .await
         .map_err(|error| format!("latest migration must support one-step rollback: {error}"))?;
@@ -1381,23 +1395,26 @@ async fn rollback_latest_and_reapply(
     let pending = Migrator::get_pending_migrations(db)
         .await
         .map_err(|error| format!("pending list after rollback must be readable: {error}"))?;
-    if pending.len() != 1 {
-        let names = pending
-            .iter()
-            .map(|migration| migration.name().to_string())
-            .collect::<Vec<_>>();
+    let names = pending
+        .iter()
+        .map(|migration| migration.name())
+        .collect::<Vec<_>>();
+    let rolled_back_name = latest.name();
+    if names != [rolled_back_name] {
         return Err(format!(
-            "one-step rollback must expose exactly one pending migration, found {names:?}"
+            "one-step rollback must expose exactly one pending migration ({rolled_back_name}), found {names:?}"
         )
         .into());
     }
-    let rolled_back_name = pending[0].name().to_string();
 
     Migrator::up(db, Some(1)).await.map_err(|error| {
         format!("rolled-back migration {rolled_back_name} must reapply successfully: {error}")
     })?;
     assert_no_pending_migrations(db, "rollback reapply").await?;
-    eprintln!("Rehearsed rollback and reapply for migration {rolled_back_name}");
+    eprintln!(
+        "Rehearsed rollback and reapply for migration {rolled_back_name} with {} migrations applied",
+        applied.len()
+    );
     Ok(())
 }
 

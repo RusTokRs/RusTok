@@ -168,7 +168,7 @@ flowchart TD
   1. Use standard Rust module hierarchies and explicit exports, such as `mod category; pub use category::CategoryService;`.
   2. Break circular dependencies by defining narrow traits (e.g. `LockProvider`, `AncestorLoader`) implemented by the caller or foundation crate, rather than text-including source files.
   3. Keep handwritten Rust source in modules. Build output loaded through `concat!(env!("OUT_DIR"), ...)` is a separate use case. The scanner gates direct literal `include!("file.rs")` outside recognized test, example, and build contexts.
-  4. When replacing a file-stitching macro, register the existing source file as a module and move child declarations to their owner as needed. Pasting the file body at the call site can leave a second copy and a stray statement delimiter. Verify the resulting module tree with a scoped build.
+  4. When replacing a file-stitching macro, register the existing source file as a module and move child declarations to their owner as needed. Pasting the file body at the call site can leave a second copy and a stray statement delimiter. Retarget source guards to the compiled modules and verify the resulting tree with a scoped build.
 
 ---
 
@@ -196,9 +196,9 @@ flowchart TD
 
 ### Pattern 9: Elimination of Dead Twins (`P-DEAD-TWIN`)
 * **Category:** Maintenance Integrity & Zero AI Slop
-* **Problem:** Keeping two parallel implementations of a capability (such as an active `posting_rate.rs` and an abandoned 2500-line `posting_policy.rs` prototype) causes new contributors and AI agents to waste effort fixing the wrong files.
+* **Problem:** An unused implementation can obscure the active owner. For example, Forum's experimental merge reconciliation executor added a second lock while each reconciliation path already acquired its owner-defined transaction lock. Removing an implementation based only on local callers can also break public consumers. Forum's posting policy fact providers and its create cooldown have distinct callers and responsibilities.
 * **Pattern Solution:**
-  * Delete uncalled and dormant duplicates completely.
+  * Trace reexports, host composition and tests before deleting a duplicate. Preserve the transaction and idempotency contracts of active callers.
   * If a prototype is planned for future delivery, preserve it in an ADR or design specification, not as dead code inside `src/`.
 
 ---

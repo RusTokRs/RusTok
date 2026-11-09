@@ -24,7 +24,6 @@ use crate::error::{ForumError, ForumResult};
 use crate::state_machine::TopicStatus;
 
 use super::projection_invalidation::publish_forum_topic_projection_in_tx;
-use super::merge_reconciliation_executor::{MergeReconciliationExecutor, TagScope};
 use super::rbac::enforce_scope;
 use super::topic_tag_lock::{lock_topic_rows_for_tags_in_tx, lock_topic_tag_scopes_in_tx};
 
@@ -88,7 +87,6 @@ impl ForumTopicMergeTagReconciliationService {
         let reason = validate_input(tenant_id, merge_operation_id, actor_id, &input)?;
 
         let txn = self.db.begin().await?;
-        MergeReconciliationExecutor::<TagScope>::advisory_lock(&txn, tenant_id, merge_operation_id).await?;
         let operation = self
             .reconcile_in_tx(
                 &txn,

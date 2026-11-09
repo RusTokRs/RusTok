@@ -790,7 +790,12 @@ fn translation_fields(
         let source_value = source_value.unwrap_or_default().to_string();
         Ok(TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
-                key: field_key_or_invariant(key)?,
+                key: FieldKey::new(key).map_err(|error| {
+                    PortError::invariant_violation(
+                        "seo.translation_field_contract_invalid",
+                        error.to_string(),
+                    )
+                })?,
                 profile: TranslationValueProfile::SeoText,
                 strategy: TranslationStrategy::Translate,
                 classification: TranslationDataClassification::Public,

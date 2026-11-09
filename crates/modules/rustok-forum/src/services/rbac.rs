@@ -1,10 +1,27 @@
 use uuid::Uuid;
 
-use rustok_core::{PermissionScope, SecurityContext};
+use rustok_core::{PermissionScope, SecurityActorKind, SecurityContext};
 
 use rustok_api::{Action, Resource};
 
 use crate::error::{ForumError, ForumResult};
+
+#[derive(Clone, Copy)]
+pub(crate) enum DeleteSnapshotReason {
+    UserRequest,
+    Moderation,
+    System,
+}
+
+impl DeleteSnapshotReason {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::UserRequest => "user_request",
+            Self::Moderation => "moderation",
+            Self::System => "system",
+        }
+    }
+}
 
 pub(crate) fn enforce_scope(
     security: &SecurityContext,
@@ -24,12 +41,17 @@ pub(crate) fn enforce_author_deletion_policy(
     security: &SecurityContext,
     resource: Resource,
     author_deletion_allowed: bool,
-) -> ForumResult<()> {
+) -> ForumResult<DeleteSnapshotReason> {
     match security.get_scope(resource, Action::Delete) {
         PermissionScope::Own if !author_deletion_allowed => Err(ForumError::forbidden(
             "Authors cannot delete their own content in this forum",
         )),
-        PermissionScope::All | PermissionScope::Own => Ok(()),
+        PermissionScope::Own => Ok(DeleteSnapshotReason::UserRequest),
+        PermissionScope::All => match security.actor_kind {
+            SecurityActorKind::User => Ok(DeleteSnapshotReason::Moderation),
+            SecurityActorKind::Service | SecurityActorKind::System => Ok(DeleteSnapshotReason::System),
+            SecurityActorKind::Public => Err(ForumError::forbidden("Permission denied")),
+        },
         PermissionScope::None => Err(ForumError::forbidden("Permission denied")),
     }
 }

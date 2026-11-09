@@ -806,7 +806,6 @@ mod cache_weight_tests {
         );
     }
 }
-;
 
 /// Durable cursor for the transactionally persisted SEO redirect delivery log.
 #[derive(Debug, Clone, PartialEq, Eq)]
