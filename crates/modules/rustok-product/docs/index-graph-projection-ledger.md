@@ -43,6 +43,38 @@ Reconciliation runs after Product insert, Product `index_revision` changes, Prod
 relation snapshot inserts. Hard-delete ordering ensures final projection state observes the retained
 empty SalesChannel membership.
 
+The Product update trigger uses `AFTER UPDATE` and compares the final old and new revisions.
+The Product `BEFORE UPDATE` trigger increments `index_revision` even when the statement only
+sets a field such as `vendor` or `metadata`. The graph captures that revision in the same
+transaction. Its relation watermark can advance independently when channel membership changes.
+
+### Recovery after upgrading the update trigger
+
+Apply `m20261109_000040_fix_index_graph_update_trigger` in a maintenance window. The trigger
+replacement takes a short lock that excludes concurrent Product writers. Recovery of older
+revisions is separate so that a catalog scan cannot extend that lock.
+
+For each affected tenant, connect to the database with the Product tables on the session's
+search path. From the repository root, load the [repair query](../scripts/repair_index_graph.sql)
+in `psql` and execute it in autocommit mode, once per page:
+
+```sql
+\i crates/modules/rustok-product/scripts/repair_index_graph.sql
+EXECUTE repair_product_index_graph('<tenant-uuid>', '00000000-0000-0000-0000-000000000000');
+```
+
+Pass each returned `next_cursor` as the second argument for the next call. Stop when
+`next_cursor` is NULL, even if intermediate pages return zero `candidates`. Each call examines
+up to 250 tenant-scoped Products and uses the same reconciler as the triggers for outdated or
+missing graph rows that already have a relation snapshot. Retry a failed page with its original
+cursor. The reconciler rechecks the current owner state and skips unchanged component versions.
+It leaves source rows and retained history intact. The trigger rollback restores the old trigger
+definition and keeps all appended projection history.
+
+After the graph repair, use the [Index replay runtime](../../rustok-index/docs/m6-replay-runtime-composition.md)
+for the affected Product scope to refresh previously materialized rows. Products whose relation
+snapshot or witness is missing still go through normal Channel relation convergence.
+
 ## Canonical source
 
 `rustok-product::index_projection` owns the PostgreSQL replay and absence read
@@ -73,7 +105,7 @@ cutover evidence.
 
 ## Maintainer verification
 
-Suggested commands, intentionally not run by the implementation agent:
+Scoped verification commands:
 
 ```bash
 node scripts/verify/verify-index-product-graph-projection-ledger.mjs
@@ -85,5 +117,5 @@ cargo check -p rustok-distribution --all-targets
 git diff --check
 ```
 
-No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, or CI
-were executed by the implementation agent.
+The Distribution PostgreSQL freshness fixture exercises scalar updates, trigger upgrade and rollback,
+repair of an older committed revision, and readmission after Index materializes the repaired source.

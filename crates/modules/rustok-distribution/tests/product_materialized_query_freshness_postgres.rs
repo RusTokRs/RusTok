@@ -165,6 +165,8 @@ async fn run_materialized_freshness_scenarios(database: &TestDatabase) -> TestRe
     let delayed = load_product_mutation(&runtime.sources, STALE_PRODUCT_ID, "en").await?;
     let delayed_source_version = delayed.source_version();
     bump_stale_product_owner_revision(&database.writer).await?;
+    assert_owner_projection_advanced(&database.writer, STALE_PRODUCT_ID, delayed_source_version)
+        .await?;
     apply_product_mutation(&runtime, delayed).await?;
     assert_materialized_source_version(
         &database.mutation,
@@ -190,18 +192,8 @@ async fn run_materialized_freshness_scenarios(database: &TestDatabase) -> TestRe
 
     // Once the corrective current projection is materialized, A becomes query-admissible again.
     // Cursor pagination must then retain ordinary semantics with the same admission predicate.
-    database
-        .writer
-        .execute_raw(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            "SELECT rustok_product_reconcile_index_graph_projection($1, $2)",
-            [TENANT_ID.into(), STALE_PRODUCT_ID.into()],
-        ))
-        .await?;
-    assert_owner_projection_advanced(&database.writer, STALE_PRODUCT_ID, delayed_source_version)
-        .await?;
     let current = load_product_mutation(&runtime.sources, STALE_PRODUCT_ID, "en").await?;
-    assert!(current.source_version() > delayed_source_version);
+    assert_eq!(current.source_version(), delayed_source_version + 1);
     apply_product_mutation(&runtime, current).await?;
 
     let first = runtime
@@ -257,6 +249,90 @@ async fn run_materialized_freshness_scenarios(database: &TestDatabase) -> TestRe
     assert!(deleted_locale.items.is_empty());
     assert_eq!(deleted_locale.exact_count, Some(0));
     assert!(!deleted_locale.has_more);
+
+    verify_existing_projection_repair(database, &runtime).await
+}
+
+async fn verify_existing_projection_repair(
+    database: &TestDatabase,
+    runtime: &ProductIndexRuntime,
+) -> TestResult<()> {
+    let control = load_product_mutation(&runtime.sources, CONTROL_PRODUCT_ID, "en").await?;
+    let previous_epoch = control.source_version();
+
+    // Recreate a write that committed against the predecessor's trigger before upgrading.
+    ProductMigrator::down(&database.writer, Some(1)).await?;
+    database
+        .writer
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "UPDATE products SET vendor = 'before-trigger-fix' WHERE tenant_id = $1 AND id = $2",
+            [TENANT_ID.into(), CONTROL_PRODUCT_ID.into()],
+        ))
+        .await?;
+    ProductMigrator::up(&database.writer, Some(1)).await?;
+
+    let mut query = product_identity_query(CONTROL_PRODUCT_ID)?;
+    query.fields.push(field_path("vendor")?);
+    assert!(
+        runtime
+            .query
+            .execute_query(query.clone())
+            .await?
+            .items
+            .is_empty()
+    );
+
+    database
+        .writer
+        .execute_unprepared(include_str!(
+            "../../rustok-product/scripts/repair_index_graph.sql"
+        ))
+        .await?;
+    let start = Uuid::nil();
+    let repair_page = format!("EXECUTE repair_product_index_graph('{TENANT_ID}', '{start}')");
+    let first = database
+        .writer
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            repair_page.clone(),
+        ))
+        .await?
+        .ok_or_else(|| std::io::Error::other("expected repair page result"))?;
+    assert_eq!(first.try_get::<i64>("", "candidates")?, 1);
+    assert_eq!(
+        first.try_get::<Uuid>("", "next_cursor")?,
+        LOCALE_DELETE_PRODUCT_ID
+    );
+
+    assert_owner_projection_advanced(&database.writer, CONTROL_PRODUCT_ID, previous_epoch).await?;
+    let repaired = load_product_mutation(&runtime.sources, CONTROL_PRODUCT_ID, "en").await?;
+    assert_eq!(repaired.source_version(), previous_epoch + 1);
+    apply_product_mutation(runtime, repaired).await?;
+    let admitted = runtime.query.execute_query(query).await?;
+    assert_eq!(admitted.items.len(), 1);
+    assert_eq!(admitted.items[0].entity_id, CONTROL_PRODUCT_ID);
+    assert_eq!(
+        projected_string(&admitted.items[0], "vendor")?,
+        "before-trigger-fix"
+    );
+
+    let retry = database
+        .writer
+        .query_one_raw(Statement::from_string(DbBackend::Postgres, repair_page))
+        .await?
+        .ok_or_else(|| std::io::Error::other("expected repair retry result"))?;
+    assert_eq!(retry.try_get::<i64>("", "candidates")?, 0);
+    let after = LOCALE_DELETE_PRODUCT_ID;
+    let exhausted = database
+        .writer
+        .query_one_raw(Statement::from_string(
+            DbBackend::Postgres,
+            format!("EXECUTE repair_product_index_graph('{TENANT_ID}', '{after}')"),
+        ))
+        .await?
+        .ok_or_else(|| std::io::Error::other("expected exhausted repair page result"))?;
+    assert_eq!(exhausted.try_get::<Option<Uuid>>("", "next_cursor")?, None);
 
     Ok(())
 }
@@ -429,19 +505,26 @@ async fn assert_owner_projection_advanced(
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
-SELECT CAST(projection_epoch AS TEXT) AS projection_epoch_text
-FROM product_index_graph_projection_snapshots
-WHERE tenant_id = $1
-  AND product_id = $2
-ORDER BY projection_epoch DESC
+SELECT projection.projection_epoch, projection.product_source_version, product.index_revision
+FROM product_index_graph_projection_snapshots projection
+JOIN products product
+  ON product.tenant_id = projection.tenant_id
+ AND product.id = projection.product_id
+WHERE projection.tenant_id = $1
+  AND projection.product_id = $2
+ORDER BY projection.projection_epoch DESC
 LIMIT 1
 "#,
             vec![TENANT_ID.into(), product_id.into()],
         ))
         .await?
         .ok_or_else(|| std::io::Error::other("expected current Product projection"))?;
-    let projection_epoch: String = row.try_get("", "projection_epoch_text")?;
-    let projection_epoch = projection_epoch.parse::<u64>()?;
+    let projection_epoch = u64::try_from(row.try_get::<i64>("", "projection_epoch")?)?;
+    assert_eq!(
+        row.try_get::<i64>("", "product_source_version")?,
+        row.try_get::<i64>("", "index_revision")?,
+        "projection must publish the new Product revision in the owner write"
+    );
     assert!(
         projection_epoch > delayed_source_version,
         "owner projection {projection_epoch} must be newer than delayed mutation {delayed_source_version}"

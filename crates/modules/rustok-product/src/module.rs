@@ -11,8 +11,8 @@
 use async_trait::async_trait;
 use rustok_api::Permission;
 use rustok_core::{
-    HealthStatus, MigrationDependencyDescriptor, MigrationSource, ModuleKind,
-    ModuleRuntimeExtensions, RusToKModule,
+    HealthStatus, MigrationDependencyDescriptor, MigrationPhaseConstraint, MigrationSafetyClass,
+    MigrationSafetyMetadata, MigrationSource, ModuleKind, ModuleRuntimeExtensions, RusToKModule,
 };
 use rustok_seo_targets::register_seo_target_provider;
 use sea_orm_migration::MigrationTrait;
@@ -97,6 +97,14 @@ impl MigrationSource for ProductModule {
 
     fn migration_dependencies(&self) -> Vec<MigrationDependencyDescriptor> {
         migrations::migration_dependencies()
+    }
+
+    fn migration_safety_metadata(&self) -> Vec<MigrationSafetyMetadata> {
+        vec![MigrationSafetyMetadata::new(
+            "m20261109_000040_fix_index_graph_update_trigger",
+            MigrationSafetyClass::MaintenanceOnly,
+            MigrationPhaseConstraint::MaintenanceWindow,
+        )]
     }
 }
 

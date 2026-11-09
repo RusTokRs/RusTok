@@ -52,9 +52,12 @@ requireMarkers('crates/modules/rustok-product/src/migrations/m20260730_000001_ad
   "RAISE EXCEPTION 'product index revision exhausted",
 ]);
 requireMarkers('crates/modules/rustok-product/src/migrations/m20260807_000010_canonicalize_product_index_graph_projection.rs', [
-  'CREATE TRIGGER trg_products_index_graph_projection_update',
-  'AFTER UPDATE OF index_revision ON products',
   'rustok_product_reconcile_index_graph_projection',
+]);
+requireMarkers('crates/modules/rustok-product/src/migrations/m20261109_000040_fix_index_graph_update_trigger.rs', [
+  'CREATE OR REPLACE TRIGGER trg_products_index_graph_projection_update',
+  'AFTER UPDATE ON products',
+  'WHEN (OLD.index_revision IS DISTINCT FROM NEW.index_revision)',
 ]);
 requireMarkers('crates/modules/rustok-product/src/migrations/m20260807_000012_add_product_sales_channel_relation_convergence.rs', [
   'CREATE TRIGGER trg_products_enqueue_channel_relation_convergence_update',

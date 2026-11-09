@@ -42,7 +42,6 @@ const migration = requireMarkers(canonicalMigrationPath, [
   'FROM product_index_tombstones tombstone',
   'FROM product_sales_channel_index_relation_snapshots relation',
   'trg_products_index_graph_projection_insert',
-  'AFTER UPDATE OF index_revision ON products',
   'trg_products_zz_index_graph_projection_delete',
   'trg_product_channel_relation_index_graph_projection_insert',
 ]);
@@ -68,9 +67,20 @@ if (!(migration.includes('trg_products_zz_index_graph_projection_delete') &&
   fail('Product hard-delete projection ordering markers are incomplete');
 }
 
+requireMarkers(
+  'crates/modules/rustok-product/src/migrations/m20261109_000040_fix_index_graph_update_trigger.rs',
+  [
+    'CREATE OR REPLACE TRIGGER trg_products_index_graph_projection_update',
+    'AFTER UPDATE ON products',
+    'WHEN (OLD.index_revision IS DISTINCT FROM NEW.index_revision)',
+    'EXECUTE FUNCTION rustok_product_capture_index_graph_projection_from_product()',
+  ],
+);
+
 requireMarkers('crates/modules/rustok-product/src/migrations/mod.rs', [
   'mod m20260807_000010_canonicalize_product_index_graph_projection;',
   'Box::new(m20260807_000010_canonicalize_product_index_graph_projection::Migration)',
+  'Box::new(m20261109_000040_fix_index_graph_update_trigger::Migration)',
 ]);
 
 requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [

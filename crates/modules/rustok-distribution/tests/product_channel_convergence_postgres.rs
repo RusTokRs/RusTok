@@ -255,7 +255,11 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     let before_visibility_projection =
         latest_projection_epoch(&database.writer, RESTRICTED_PRODUCT_ID).await?;
     update_restricted_visibility(&database.writer, "beta").await?;
-    // The query must fence the old mutation even before the scheduler publishes the new graph.
+    assert_eq!(
+        latest_projection_epoch(&database.writer, RESTRICTED_PRODUCT_ID).await?,
+        delayed_visibility_version + 1,
+        "metadata changes must publish their Product revision before relation reconciliation"
+    );
     apply_product_mutation(&runtime, delayed_visibility).await?;
     assert_materialized_source_version(
         &database.mutation,

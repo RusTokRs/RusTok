@@ -397,6 +397,22 @@ flowchart TD
 
 ---
 
+### Pattern 25: Observe Trigger-Derived Revisions (`P-TRIGGER-ROW-CHANGE`)
+
+* **Category:** Transactional integrity. **Dimension:** Side-effect completeness.
+* **Problem:** A PostgreSQL `AFTER UPDATE OF revision` trigger checks the statement's target columns. An earlier `BEFORE UPDATE` trigger can change the revision on a scalar edit, leaving the append-only projection at its previous watermark. Both the initial Product graph ledger and its canonical successor contained this defect.
+* **Pattern Solution:** Match the row transition after the write. Reuse the owner reconciler so the source and derived watermark commit together.
+  ```sql
+  CREATE OR REPLACE TRIGGER trg_products_index_graph_projection_update
+  AFTER UPDATE ON products
+  FOR EACH ROW
+  WHEN (OLD.index_revision IS DISTINCT FROM NEW.index_revision)
+  EXECUTE FUNCTION rustok_product_capture_index_graph_projection_from_product();
+  ```
+* **Detection:** Run `rg -ni 'AFTER UPDATE OF .*revision|NEW\\.[a-z_]*revision\\s*:=' crates/modules` and compare each live update trigger with the preceding triggers on its table. On PostgreSQL, update an indexed scalar alone and verify that the projection records the final revision.
+
+---
+
 ## 3. Summary Matrix
 
 The evidence column describes how to verify the invariant at its owner. “Manual” means the Python scanner has no rule for that pattern.
@@ -427,6 +443,7 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-UNFINISHED-CODE` | Runtime completeness | Affected runtime paths cannot reach incomplete code | Heuristic: work marker or incomplete-code macro |
 | `P-SYNC-SLEEP-AWAIT` | Concurrency | Blocking delay runs outside executor workers | Heuristic: direct blocking sleep in async function |
 | `P-OWNER-READ-BOUNDARY` | Ownership and concurrency | Owner controls storage reads and the adapter preserves snapshot and admission semantics | Manual |
+| `P-TRIGGER-ROW-CHANGE` | Side effects | An update that derives a revision in a trigger commits the matching projection | Manual |
 
 ---
 
