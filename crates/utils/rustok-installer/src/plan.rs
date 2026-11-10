@@ -595,9 +595,11 @@ impl InstallPlan {
 
 #[cfg(test)]
 mod tests {
+    use super::{DatabaseEngine, InstallEnvironment, InstallProfile, SeedProfile};
+    #[cfg(feature = "host-runtime")]
     use super::{
-        DatabaseEngine, InstallDistributionBinding, InstallEnvironment, InstallProfile,
-        InstallRole, InstallSurface, InstallTopology, InstallTopologyMode, SeedProfile,
+        InstallDistributionBinding, InstallRole, InstallSurface, InstallTopology,
+        InstallTopologyMode,
     };
 
     #[test]

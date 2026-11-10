@@ -229,7 +229,7 @@ impl ProductCatalogSchemaService {
         tenant_id: Uuid,
         category_ids: &[Uuid],
         next: &AxisPolicySnapshot,
-        violations: &mut Vec<CatalogViolation>,
+        violations: &mut Vec<VariantAxisPolicyViolation>,
     ) -> CommerceResult<()> {
         let mut cursor: Option<Uuid> = None;
         loop {

@@ -3,9 +3,14 @@ use std::{collections::HashSet, fmt, sync::Arc};
 use bytes::Bytes;
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use rustok_product::{
-    ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentityReadPort,
-    PublishedProductsRequest, StorefrontVariantProductProjectionRequest,
-    VariantProductProjectionRequest,
+    FilteredPublishedProductsRequest, ProductCatalogCommandPort, ProductCatalogReadPort,
+    ProductProjectionRequest, ProductVariantIdentityReadPort, PublishedProductsRequest,
+    StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
+    StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,
+    dto::{
+        AddProductImageInput, CreateProductInput, CreateVariantInput, SetVariantAxesInput,
+        UpdateProductInput, UpdateVariantInput,
+    },
 };
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::service::Interceptor;
@@ -16,6 +21,11 @@ use crate::auth::{
     AUTHORIZATION_METADATA, ProductCatalogGrpcAuthenticationError, ProductCatalogGrpcBearerToken,
     TENANT_ID_METADATA,
 };
+use crate::client::{
+    ProductIdPayload, ProductImageIdPayload, ProductInputPayload, ReorderProductImagesPayload,
+    UpdateProductImagePayload, VariantIdPayload, VariantInputPayload,
+};
+use crate::proto::product_catalog_command_service_server::ProductCatalogCommandService;
 use crate::proto::product_catalog_read_service_server::ProductCatalogReadService;
 use crate::proto::{JsonRequest, JsonResponse};
 
@@ -47,16 +57,52 @@ pub enum ProductCatalogGrpcOperation {
     ReadVariantIdentities,
     ListProductVariantIdentities,
     ReadStorefrontVariantProductProjection,
+    ListFilteredPublishedProducts,
+    LoadStorefrontCatalogFacets,
+    ReadStorefrontProductProjection,
+    CreateProduct,
+    UpdateProduct,
+    PublishProduct,
+    UnpublishProduct,
+    ArchiveProduct,
+    DeleteProduct,
+    CreateVariant,
+    UpdateVariant,
+    DeleteVariant,
+    SetVariantAxes,
+    PreviewVariantAxes,
+    AddProductImage,
+    UpdateProductImage,
+    DeleteProductImage,
+    ReorderProductImages,
 }
 
 impl ProductCatalogGrpcOperation {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 24] = [
         Self::ReadProductProjection,
         Self::ReadVariantProductProjection,
         Self::ListPublishedProducts,
         Self::ReadVariantIdentities,
         Self::ListProductVariantIdentities,
         Self::ReadStorefrontVariantProductProjection,
+        Self::ListFilteredPublishedProducts,
+        Self::LoadStorefrontCatalogFacets,
+        Self::ReadStorefrontProductProjection,
+        Self::CreateProduct,
+        Self::UpdateProduct,
+        Self::PublishProduct,
+        Self::UnpublishProduct,
+        Self::ArchiveProduct,
+        Self::DeleteProduct,
+        Self::CreateVariant,
+        Self::UpdateVariant,
+        Self::DeleteVariant,
+        Self::SetVariantAxes,
+        Self::PreviewVariantAxes,
+        Self::AddProductImage,
+        Self::UpdateProductImage,
+        Self::DeleteProductImage,
+        Self::ReorderProductImages,
     ];
 }
 
@@ -363,6 +409,352 @@ where
             .await
             .map_err(port_error_to_status)?;
         json_response(&identities)
+    }
+
+    async fn list_filtered_published_products(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::ListFilteredPublishedProducts,
+        )?;
+        let request = request.into_inner();
+        let input: FilteredPublishedProductsRequest = decode_input(&request.input_json)?;
+        let value = self
+            .provider
+            .list_filtered_published_products(context, input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn load_storefront_catalog_facets(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::LoadStorefrontCatalogFacets,
+        )?;
+        let request = request.into_inner();
+        let input: StorefrontCatalogFacetsRequest = decode_input(&request.input_json)?;
+        let value = self
+            .provider
+            .load_storefront_catalog_facets(context, input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn read_storefront_product_projection(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::ReadStorefrontProductProjection,
+        )?;
+        let request = request.into_inner();
+        let input: StorefrontProductProjectionRequest = decode_input(&request.input_json)?;
+        let value = self
+            .provider
+            .read_storefront_product_projection(context, input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+}
+
+/// Provider-side adapter for the Product catalog command boundary.
+pub struct ProductCatalogCommandGrpcService<P> {
+    provider: Arc<P>,
+}
+
+impl<P> ProductCatalogCommandGrpcService<P> {
+    pub fn new(provider: Arc<P>) -> Self {
+        Self { provider }
+    }
+}
+
+#[tonic::async_trait]
+impl<P> ProductCatalogCommandService for ProductCatalogCommandGrpcService<P>
+where
+    P: ProductCatalogCommandPort + 'static,
+{
+    async fn create_product(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::CreateProduct,
+        )?;
+        let input: CreateProductInput = decode_input(&request.into_inner().input_json)?;
+        let value = self
+            .provider
+            .create_product(context, input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn preview_variant_axes(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::PreviewVariantAxes,
+        )?;
+        let payload: ProductInputPayload<SetVariantAxesInput> =
+            decode_input(&request.into_inner().input_json)?;
+        let value = self
+            .provider
+            .preview_variant_axes(context, payload.product_id, payload.input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn set_variant_axes(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::SetVariantAxes,
+        )?;
+        let payload: ProductInputPayload<SetVariantAxesInput> =
+            decode_input(&request.into_inner().input_json)?;
+        let value = self
+            .provider
+            .set_variant_axes(context, payload.product_id, payload.input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn update_product(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::UpdateProduct,
+        )?;
+        let payload: ProductInputPayload<UpdateProductInput> =
+            decode_input(&request.into_inner().input_json)?;
+        let value = self
+            .provider
+            .update_product(context, payload.product_id, payload.input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn delete_product(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::DeleteProduct,
+        )?;
+        let payload: ProductIdPayload = decode_input(&request.into_inner().input_json)?;
+        self.provider
+            .delete_product(context, payload.product_id)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&())
+    }
+
+    async fn publish_product(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::PublishProduct,
+        )?;
+        let payload: ProductIdPayload = decode_input(&request.into_inner().input_json)?;
+        let value = self
+            .provider
+            .publish_product(context, payload.product_id)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn unpublish_product(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::UnpublishProduct,
+        )?;
+        let payload: ProductIdPayload = decode_input(&request.into_inner().input_json)?;
+        let value = self
+            .provider
+            .unpublish_product(context, payload.product_id)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn archive_product(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::ArchiveProduct,
+        )?;
+        let payload: ProductIdPayload = decode_input(&request.into_inner().input_json)?;
+        let value = self
+            .provider
+            .archive_product(context, payload.product_id)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn create_variant(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::CreateVariant,
+        )?;
+        let payload: ProductInputPayload<CreateVariantInput> =
+            decode_input(&request.into_inner().input_json)?;
+        let value = self
+            .provider
+            .create_variant(context, payload.product_id, payload.input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn update_variant(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::UpdateVariant,
+        )?;
+        let payload: VariantInputPayload<UpdateVariantInput> =
+            decode_input(&request.into_inner().input_json)?;
+        let value = self
+            .provider
+            .update_variant(context, payload.variant_id, payload.input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn delete_variant(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::DeleteVariant,
+        )?;
+        let payload: VariantIdPayload = decode_input(&request.into_inner().input_json)?;
+        self.provider
+            .delete_variant(context, payload.variant_id)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&())
+    }
+
+    async fn add_product_image(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::AddProductImage,
+        )?;
+        let payload: ProductInputPayload<AddProductImageInput> =
+            decode_input(&request.into_inner().input_json)?;
+        let value = self
+            .provider
+            .add_product_image(context, payload.product_id, payload.input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn update_product_image(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::UpdateProductImage,
+        )?;
+        let payload: UpdateProductImagePayload = decode_input(&request.into_inner().input_json)?;
+        let value = self
+            .provider
+            .update_product_image(context, payload.product_id, payload.image_id, payload.input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
+    async fn delete_product_image(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::DeleteProductImage,
+        )?;
+        let payload: ProductImageIdPayload = decode_input(&request.into_inner().input_json)?;
+        self.provider
+            .delete_product_image(context, payload.product_id, payload.image_id)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&())
+    }
+
+    async fn reorder_product_images(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::ReorderProductImages,
+        )?;
+        let payload: ReorderProductImagesPayload = decode_input(&request.into_inner().input_json)?;
+        self.provider
+            .reorder_product_images(context, payload.product_id, payload.image_ids)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&())
     }
 }
 

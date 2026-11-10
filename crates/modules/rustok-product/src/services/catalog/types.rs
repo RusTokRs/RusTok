@@ -15,7 +15,7 @@ const MAX_ATTRIBUTE_FILTER_VALUE_LENGTH: usize = 512;
 /// representable without truncation in the non-serving Index shadow path.
 pub const MAX_STOREFRONT_PRODUCT_SEARCH_BYTES: usize = 1022;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StorefrontProductSortBy {
     #[default]
     PublishedAt,
@@ -38,7 +38,7 @@ impl StorefrontProductSortBy {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StorefrontProductSortDirection {
     Asc,
     #[default]
@@ -207,7 +207,7 @@ fn parse_attribute_filters(values: Vec<String>) -> CommerceResult<Vec<ProductAtt
     Ok(filters)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StorefrontProductListQuery {
     pub search: Option<String>,
     pub category_id: Option<Uuid>,

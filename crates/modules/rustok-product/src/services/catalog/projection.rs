@@ -588,7 +588,7 @@ impl CatalogService {
                 }
             },
             async {
-                BootstrapService::load_available_quantities(conn, &variant_ids)
+                rustok_inventory::BootstrapService::load_available_quantities(conn, &variant_ids)
                     .await
                     .map_err(CommerceError::from)
             },
@@ -835,7 +835,7 @@ impl CatalogService {
                 )
             },
             async {
-                BootstrapService::load_available_quantities(conn, &variant_ids)
+                rustok_inventory::BootstrapService::load_available_quantities(conn, &variant_ids)
                     .await
                     .map_err(CommerceError::from)
             },

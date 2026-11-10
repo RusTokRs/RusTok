@@ -30,7 +30,7 @@ pub struct PublishedProductsRequest {
     pub per_page: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FilteredPublishedProductsRequest {
     pub locale: Option<String>,
     pub fallback_locale: Option<String>,
@@ -42,7 +42,7 @@ pub struct FilteredPublishedProductsRequest {
 ///
 /// Facets are counted for the whole filtered catalog, so the pagination fields of `query` are
 /// ignored by the owner.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StorefrontCatalogFacetsRequest {
     pub locale: Option<String>,
     pub fallback_locale: Option<String>,
@@ -65,7 +65,7 @@ pub struct AdminCatalogFacetsRequest {
     pub facet_codes: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StorefrontProductProjectionSubject {
     ProductId { product_id: Uuid },
     Handle { handle: String },
@@ -79,7 +79,7 @@ pub struct StorefrontVariantProductProjectionRequest {
     pub public_channel_slug: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StorefrontProductProjectionRequest {
     pub subject: StorefrontProductProjectionSubject,
     pub locale: Option<String>,

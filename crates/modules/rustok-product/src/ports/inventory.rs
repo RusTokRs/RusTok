@@ -129,3 +129,4 @@ impl ProductInventoryBootstrapPort for EmbeddedInventoryBootstrapAdapter {
         .map_err(Into::into)
     }
 }
+
