@@ -185,6 +185,11 @@ def is_build_or_example(file_path: Path) -> bool:
     return file_path.name == "build.rs" or "examples" in parts
 
 
+def is_vendored(file_path: Path) -> bool:
+    parts = [p.lower() for p in file_path.parts]
+    return any("vendored" in p for p in parts)
+
+
 def is_migration(file_path: Path) -> bool:
     parts = [p.lower() for p in file_path.parts]
     return any("migration" in p for p in parts) or file_path.name.startswith("m202")
@@ -421,6 +426,7 @@ def scan_source(file_path: Path, content: str) -> list[Finding]:
     is_test_file = is_test_or_bench(file_path)
     is_build_file = is_build_or_example(file_path)
     is_migr_file = is_migration(file_path)
+    is_vendored_file = is_vendored(file_path)
     path_parts = [p.lower() for p in file_path.parts]
     is_services_file = (
         "services" in path_parts
@@ -437,7 +443,7 @@ def scan_source(file_path: Path, content: str) -> list[Finding]:
         line_offset += len(syntax_line) + 1
 
         # 12. P-UNFINISHED-CODE: incomplete macros in code and work markers in comments
-        if not is_test_file and not is_build_file:
+        if not is_test_file and not is_build_file and not is_vendored_file:
             m_todo = RE_INCOMPLETE_MACRO.search(code_part) or RE_WORK_COMMENT.search(comment)
             if m_todo:
                 findings.append(Finding(

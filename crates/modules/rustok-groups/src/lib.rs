@@ -1709,7 +1709,6 @@ mod tests {
         assert!(actor_user_id(&system_actor_ctx).is_err());
     }
 }
-;
 #[async_trait]
 pub trait GroupApplicationReviewCommandPort: Send + Sync {
     async fn review_group_membership_application(
@@ -1867,7 +1866,6 @@ impl GroupApplicationService {
         Ok(result)
     }
 }
-;
 const MAX_BULK_REVIEW_ITEMS: usize = 50;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -2011,7 +2009,6 @@ fn bulk_review_item_idempotency_key(base_idempotency_key: &str, application_id: 
     }
     format!("groups-bulk-review:{encoded}")
 }
-;
 const UPSERT_POLICY_IF_CURRENT_COMMAND: &str =
     "groups.upsert_membership_application_policy_if_current.v1";
 const SUBMIT_APPLICATION_IF_CURRENT_COMMAND: &str =
@@ -2583,7 +2580,6 @@ fn map_application_cas_error(error: GroupsError) -> PortError {
         other => other.into(),
     }
 }
-;
 const CANCEL_APPLICATION_COMMAND: &str = "groups.cancel_membership_application.v1";
 const REOPEN_APPLICATION_COMMAND: &str = "groups.reopen_membership_application.v1";
 
@@ -2947,7 +2943,6 @@ impl GroupApplicationLifecycleCommandPort for GroupApplicationService {
             .map_err(Into::into)
     }
 }
-;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ListGroupApplicationPolicyLocalesRequest {
     pub group_id: Uuid,
@@ -3151,8 +3146,6 @@ impl GroupApplicationPolicyManagementReadPort for GroupApplicationService {
             .map_err(Into::into)
     }
 }
-;
-;
     impl GroupApplicationService {
     pub(crate) async fn upsert_policy_effective_owned(
         &self,
@@ -3645,7 +3638,6 @@ impl GroupApplicationPolicyManagementReadPort for GroupApplicationService {
         Ok(result)
     }
 }
-;
     impl GroupApplicationService {
     pub(crate) async fn upsert_policy_if_current_effective_owned(
         &self,
@@ -4039,11 +4031,9 @@ impl GroupApplicationPolicyManagementReadPort for GroupApplicationService {
         Ok(result)
     }
 }
-;
     pub(crate) fn map_effective_application_cas_error(error: GroupsError) -> PortError {
     map_application_cas_error(error)
 }
-;
     impl GroupApplicationService {
     pub(crate) async fn cancel_application_effective_owned(
         &self,
@@ -4300,7 +4290,6 @@ impl GroupApplicationPolicyManagementReadPort for GroupApplicationService {
         Ok(result)
     }
 }
-;
 }
 pub mod domain;
 pub mod dto;
@@ -5398,7 +5387,6 @@ fn has_platform_manage(context: &PortContext) -> bool {
         .iter()
         .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*"))
 }
-;
     impl GroupInvitationService {
     pub(crate) async fn create_group_invitation_effective_owned(
         &self,
@@ -5745,7 +5733,6 @@ fn has_platform_manage(context: &PortContext) -> bool {
         Ok(result)
     }
 }
-;
 }
 pub mod localization;
 pub mod membership_enforcement;
@@ -6231,7 +6218,6 @@ fn idempotency_key(context: &PortContext) -> GroupsResult<String> {
 fn targeted_invitation_unavailable() -> GroupsError {
     GroupsError::NotFound
 }
-;
     impl GroupTargetedInvitationService {
     pub(crate) async fn accept_targeted_group_invitation_effective_owned(
         &self,
@@ -6378,7 +6364,6 @@ fn targeted_invitation_unavailable() -> GroupsError {
         Ok(result)
     }
 }
-;
 }
 
 /// Compatibility module preserving the public application types and paths while sealing the

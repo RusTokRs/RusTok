@@ -311,9 +311,9 @@ impl TaxonomyService {
                     .await?;
                     active.slug = Set(slug);
                 }
-                if let Some(description) = input.description.clone() {
-                    validate_optional_description(Some(&description))?;
-                    active.description = Set(Some(description));
+                if let Some(description) = input.description.as_deref() {
+                    validate_optional_description(Some(description))?;
+                    active.description = Set(input.description);
                 }
                 active.revision = Set(revision);
                 active.updated_at = Set(now.into());
@@ -321,12 +321,12 @@ impl TaxonomyService {
                 revision
             }
             None => {
-                let name = input.name.clone().ok_or_else(|| {
+                let name = input.name.as_deref().ok_or_else(|| {
                     TaxonomyError::validation("Name is required when adding a new locale")
                 })?;
-                validate_term_name(&name)?;
+                validate_term_name(name)?;
                 validate_optional_description(input.description.as_deref())?;
-                let slug = normalize_non_empty_slug(input.slug.as_deref().unwrap_or(&name))?;
+                let slug = normalize_non_empty_slug(input.slug.as_deref().unwrap_or(name))?;
                 ensure_route_key_available_in_tx(
                     &txn,
                     tenant_id,
@@ -344,9 +344,9 @@ impl TaxonomyService {
                     term_id: Set(term_id),
                     tenant_id: Set(tenant_id),
                     locale: Set(locale.clone()),
-                    name: Set(name),
+                    name: Set(input.name.unwrap()),
                     slug: Set(slug),
-                    description: Set(input.description.clone()),
+                    description: Set(input.description),
                     revision: Set(1),
                     created_at: Set(now.into()),
                     updated_at: Set(now.into()),

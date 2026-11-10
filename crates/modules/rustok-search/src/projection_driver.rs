@@ -85,7 +85,7 @@ impl SearchProjectionDriver {
             }
 
             self.delete_scope(&tx, tenant_id).await?;
-            tx.execute(&Statement::from_string(
+            tx.execute_raw(Statement::from_string(
                 DbBackend::Postgres,
                 r#"
                 INSERT INTO search_documents (
@@ -211,7 +211,7 @@ impl SearchProjectionDriver {
     }
 
     async fn create_stage(&self, tx: &DatabaseTransaction) -> Result<()> {
-        tx.execute(&Statement::from_string(
+        tx.execute_raw(Statement::from_string(
             DbBackend::Postgres,
             r#"
             CREATE TEMP TABLE search_projection_stage

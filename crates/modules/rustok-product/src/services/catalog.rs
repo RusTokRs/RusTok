@@ -82,7 +82,6 @@ use crate::error::{CommerceError, CommerceResult};
 use crate::ports::pricing::{CatalogBasePriceSnapshot, InitialPrice, ProductPricingPort};
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_events::DomainEvent;
-use rustok_inventory::{BootstrapService, InitialInventory};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::ProductCatalogSchemaService;
@@ -100,18 +99,11 @@ fn map_product_unique_violation(
     locale: &str,
     sku: Option<&str>,
 ) -> CommerceError {
-    let debug = format!("{error:?}");
-    let message = error.to_string();
-    let is_unique_violation = debug.contains("23505")
-        || message.contains("23505")
-        || debug.contains("UNIQUE")
-        || message.contains("UNIQUE");
-
-    if !is_unique_violation {
+    let Some(sea_orm::SqlErr::UniqueConstraintViolation(details)) = error.sql_err() else {
         return CommerceError::Database(error);
-    }
+    };
 
-    let constraint = &message;
+    let constraint = &details;
     if constraint.contains("product_variants_tenant_sku") {
         return CommerceError::DuplicateSku(sku.unwrap_or_default().to_owned());
     }
@@ -148,6 +140,8 @@ pub struct CatalogService {
     pub(crate) shipping_profile_port: Option<std::sync::Arc<dyn crate::ProductShippingProfilePort>>,
     pub(crate) media_reference_port: Option<std::sync::Arc<dyn crate::ProductMediaReferencePort>>,
     pub(crate) pricing_port: Option<std::sync::Arc<dyn ProductPricingPort>>,
+    pub(crate) inventory_bootstrap_port:
+        Option<std::sync::Arc<dyn crate::ports::ProductInventoryBootstrapPort>>,
 }
 
 impl CatalogService {
@@ -158,6 +152,7 @@ impl CatalogService {
             media_reference_port: None,
             shipping_profile_port: None,
             pricing_port: None,
+            inventory_bootstrap_port: None,
         }
     }
 
@@ -172,6 +167,22 @@ impl CatalogService {
     pub fn with_pricing_port(mut self, port: std::sync::Arc<dyn ProductPricingPort>) -> Self {
         self.pricing_port = Some(port);
         self
+    }
+
+    pub fn with_inventory_bootstrap_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ports::ProductInventoryBootstrapPort>,
+    ) -> Self {
+        self.inventory_bootstrap_port = Some(port);
+        self
+    }
+
+    pub(crate) fn inventory_bootstrap(
+        &self,
+    ) -> std::sync::Arc<dyn crate::ports::ProductInventoryBootstrapPort> {
+        self.inventory_bootstrap_port
+            .clone()
+            .unwrap_or_else(|| std::sync::Arc::new(crate::ports::EmbeddedInventoryBootstrapAdapter))
     }
 
     pub(crate) fn database(&self) -> &DatabaseConnection {

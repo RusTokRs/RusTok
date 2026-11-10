@@ -204,68 +204,14 @@ impl ProductCatalogSchemaService {
         changed.sort();
         let mut violations = Vec::new();
         for category_ids in changed.chunks(IMPACT_PAGE_SIZE) {
-            let mut cursor: Option<Uuid> = None;
-            loop {
-                let (placeholders, mut values) = uuid_filter_values(tenant_id, category_ids);
-                let cursor_clause = match cursor {
-                    Some(id) => {
-                        values.push(id.into());
-                        format!(" AND id > ${}", values.len())
-                    }
-                    None => String::new(),
-                };
-                let products = PolicyProductRow::find_by_statement(Statement::from_sql_and_values(
-                    txn.get_database_backend(),
-                    format!("SELECT id, primary_category_id FROM products WHERE tenant_id = $1 AND primary_category_id IN ({placeholders}){cursor_clause} ORDER BY id LIMIT {IMPACT_PAGE_SIZE}"),
-                    values,
-                )).all(txn).await?;
-                if products.is_empty() {
-                    break;
-                }
-                let product_ids = products
-                    .iter()
-                    .map(|product| product.id)
-                    .collect::<Vec<_>>();
-                let (placeholders, values) = uuid_filter_values(tenant_id, &product_ids);
-                let rows = PolicyAxisRow::find_by_statement(Statement::from_sql_and_values(
-                    txn.get_database_backend(),
-                    format!("SELECT product_id, attribute_id FROM product_variant_axes WHERE tenant_id = $1 AND product_id IN ({placeholders}) ORDER BY product_id, attribute_id"),
-                    values,
-                )).all(txn).await?;
-                let mut axes = HashMap::<Uuid, HashSet<Uuid>>::new();
-                for row in rows {
-                    axes.entry(row.product_id)
-                        .or_default()
-                        .insert(row.attribute_id);
-                }
-                for product in &products {
-                    let configured = axes.remove(&product.id).unwrap_or_default();
-                    let policies = next.get(&product.primary_category_id).ok_or_else(|| {
-                        CommerceError::Core(rustok_core::error::Error::Internal(
-                            "Effective category policy disappeared".into(),
-                        ))
-                    })?;
-                    violations.extend(policy_violations(
-                        product.id,
-                        product.primary_category_id,
-                        policies,
-                        &configured,
-                    ));
-                    if violations.len() > MAX_POLICY_VIOLATIONS {
-                        violations.truncate(MAX_POLICY_VIOLATIONS);
-                        return Err(CommerceError::VariantAxisPolicyConflict(
-                            VariantAxisPolicyConflict {
-                                violations,
-                                has_more: true,
-                            },
-                        ));
-                    }
-                }
-                cursor = products.last().map(|product| product.id);
-                if products.len() < IMPACT_PAGE_SIZE {
-                    break;
-                }
-            }
+            Self::validate_category_chunk_impacts(
+                txn,
+                tenant_id,
+                category_ids,
+                next,
+                &mut violations,
+            )
+            .await?;
         }
         if !violations.is_empty() {
             return Err(CommerceError::VariantAxisPolicyConflict(
@@ -274,6 +220,78 @@ impl ProductCatalogSchemaService {
                     has_more: false,
                 },
             ));
+        }
+        Ok(())
+    }
+
+    async fn validate_category_chunk_impacts(
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        category_ids: &[Uuid],
+        next: &AxisPolicySnapshot,
+        violations: &mut Vec<VariantAxisPolicyViolation>,
+    ) -> CommerceResult<()> {
+        let mut cursor: Option<Uuid> = None;
+        loop {
+            let (placeholders, mut values) = uuid_filter_values(tenant_id, category_ids);
+            let cursor_clause = match cursor {
+                Some(id) => {
+                    values.push(id.into());
+                    format!(" AND id > ${}", values.len())
+                }
+                None => String::new(),
+            };
+            let products = PolicyProductRow::find_by_statement(Statement::from_sql_and_values(
+                txn.get_database_backend(),
+                format!("SELECT id, primary_category_id FROM products WHERE tenant_id = $1 AND primary_category_id IN ({placeholders}){cursor_clause} ORDER BY id LIMIT {IMPACT_PAGE_SIZE}"),
+                values,
+            )).all(txn).await?;
+            if products.is_empty() {
+                break;
+            }
+            let product_ids = products
+                .iter()
+                .map(|product| product.id)
+                .collect::<Vec<_>>();
+            let (placeholders, values) = uuid_filter_values(tenant_id, &product_ids);
+            let rows = PolicyAxisRow::find_by_statement(Statement::from_sql_and_values(
+                txn.get_database_backend(),
+                format!("SELECT product_id, attribute_id FROM product_variant_axes WHERE tenant_id = $1 AND product_id IN ({placeholders}) ORDER BY product_id, attribute_id"),
+                values,
+            )).all(txn).await?;
+            let mut axes = HashMap::<Uuid, HashSet<Uuid>>::new();
+            for row in rows {
+                axes.entry(row.product_id)
+                    .or_default()
+                    .insert(row.attribute_id);
+            }
+            for product in &products {
+                let configured = axes.remove(&product.id).unwrap_or_default();
+                let policies = next.get(&product.primary_category_id).ok_or_else(|| {
+                    CommerceError::Core(rustok_core::error::Error::Internal(
+                        "Effective category policy disappeared".into(),
+                    ))
+                })?;
+                violations.extend(policy_violations(
+                    product.id,
+                    product.primary_category_id,
+                    policies,
+                    &configured,
+                ));
+                if violations.len() > MAX_POLICY_VIOLATIONS {
+                    violations.truncate(MAX_POLICY_VIOLATIONS);
+                    return Err(CommerceError::VariantAxisPolicyConflict(
+                        VariantAxisPolicyConflict {
+                            violations: violations.clone(),
+                            has_more: true,
+                        },
+                    ));
+                }
+            }
+            cursor = products.last().map(|product| product.id);
+            if products.len() < IMPACT_PAGE_SIZE {
+                break;
+            }
         }
         Ok(())
     }

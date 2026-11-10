@@ -5,7 +5,7 @@ use chrono::Utc;
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait,
+    DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
@@ -524,29 +524,31 @@ async fn lock_membership_set(
     user_ids.sort_unstable();
     user_ids.dedup();
 
-    let mut memberships = Vec::with_capacity(user_ids.len());
-    for user_id in user_ids {
+    let memberships = if user_ids.is_empty() {
+        Vec::new()
+    } else {
         let mut query = membership::Entity::find()
             .filter(membership::Column::TenantId.eq(tenant_id))
             .filter(membership::Column::GroupId.eq(group_id))
-            .filter(membership::Column::UserId.eq(user_id));
+            .filter(membership::Column::UserId.is_in(user_ids))
+            .order_by_asc(membership::Column::UserId);
         if transaction.get_database_backend() != DatabaseBackend::Sqlite {
             query = query.lock_exclusive();
         }
-        if let Some(row) = query.one(transaction).await? {
-            memberships.push(row);
-        }
-    }
+        query.all(transaction).await?
+    };
 
     let mut membership_ids = memberships.iter().map(|row| row.id).collect::<Vec<_>>();
     membership_ids.sort_unstable();
-    for membership_id in membership_ids {
-        let mut query = membership_enforcement::Entity::find_by_id(membership_id)
-            .filter(membership_enforcement::Column::TenantId.eq(tenant_id));
+    if !membership_ids.is_empty() {
+        let mut query = membership_enforcement::Entity::find()
+            .filter(membership_enforcement::Column::TenantId.eq(tenant_id))
+            .filter(membership_enforcement::Column::MembershipId.is_in(membership_ids))
+            .order_by_asc(membership_enforcement::Column::MembershipId);
         if transaction.get_database_backend() != DatabaseBackend::Sqlite {
             query = query.lock_exclusive();
         }
-        query.one(transaction).await?;
+        query.all(transaction).await?;
     }
 
     Ok(LockedGovernanceState { memberships })

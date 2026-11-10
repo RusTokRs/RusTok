@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use rustok_graphql::{GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, Serialize};
 

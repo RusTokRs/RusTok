@@ -868,14 +868,16 @@ fn owner_error_to_port_error(error: &FlexStandaloneTranslationError) -> PortErro
 }
 
 fn database_error(error: sea_orm::DbErr) -> FlexStandaloneTranslationError {
-    let debug = format!("{error:?}");
+    if matches!(
+        error.sql_err(),
+        Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+    ) {
+        return FlexStandaloneTranslationError::RevisionConflict {
+            revision: "resource",
+        };
+    }
     let message = error.to_string();
-    if message.contains("40001")
-        || debug.contains("40001")
-        || message.contains("23505")
-        || debug.contains("23505")
-        || message.contains("could not serialize access")
-    {
+    if message.contains("could not serialize access") {
         return FlexStandaloneTranslationError::RevisionConflict {
             revision: "resource",
         };

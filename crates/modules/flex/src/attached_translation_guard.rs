@@ -74,7 +74,7 @@ pub async fn lock_attached_translation_schema_in_tx(
 
     let backend = txn.get_database_backend();
     if backend == DatabaseBackend::Sqlite {
-        txn.execute(&Statement::from_string(
+        txn.execute_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
                 "UPDATE {FIELD_DEFINITION_CACHE_GENERATION_TABLE} \

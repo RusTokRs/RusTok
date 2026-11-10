@@ -156,6 +156,18 @@ flowchart TD
      }
      ```
   3. Check the discarded expression’s type and its failure contract. The scanner flags discarded calls for review and skips plain values. Verify any required existence check at the owner boundary.
+  4. For batch or adapter outcomes, inspect both typed errors and successful
+     return values containing failure counts or error details. In the installer
+     seed workflow, a loader failure with an unknown item count was previously
+     stored with `failed_count = 0`; checking that count alone reported success.
+     Preserve the unknown count and treat the diagnostic as a failed outcome:
+     ```rust
+     let succeeded = outcome.failed_count == 0 && outcome.errors.is_empty();
+     ```
+     When continuation is disabled, a partial outcome must fail the enclosing
+     operation. Validate known missing dependencies before invoking owner ports.
+     Find candidates with `rg -n 'failed_count == 0|continue_on_content_error' crates`;
+     inspect each owner's semantics rather than treating the match as a defect.
 * **Anti-Pattern (Forbidden):**
   * Using `std::hint::black_box` in production service code to suppress unused variable or must-use warnings.
 

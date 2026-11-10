@@ -2360,7 +2360,8 @@ impl MediaService {
         if let Some(tenant_id) = tenant_id {
             query = query.filter(AssetCol::TenantId.eq(tenant_id));
         }
-        for asset in query.all(&self.db).await? {
+        let pending_assets = query.all(&self.db).await?;
+        for asset in pending_assets {
             self.finalize_asset_deletion(asset.tenant_id, asset.id)
                 .await?;
         }

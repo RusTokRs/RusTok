@@ -100,20 +100,23 @@ impl SeedContentOutcome {
         }
     }
 
+    /// A loader-level failure can have no known number of failed records.
     pub fn is_success(&self) -> bool {
-        self.failed_count == 0
+        self.failed_count == 0 && self.errors.is_empty()
     }
 
     pub fn total_count(&self) -> usize {
-        self.imported_count + self.failed_count
+        self.imported_count.saturating_add(self.failed_count)
     }
 
+    /// Percentage of counted records imported. Inspect `is_success` separately
+    /// for loader-level errors whose affected record count is unknown.
     pub fn success_rate(&self) -> f64 {
-        let total = self.total_count();
-        if total == 0 {
+        if self.imported_count == 0 && self.failed_count == 0 {
             0.0
         } else {
-            (self.imported_count as f64 / total as f64) * 100.0
+            (self.imported_count as f64 / (self.imported_count as f64 + self.failed_count as f64))
+                * 100.0
         }
     }
 }
@@ -204,7 +207,7 @@ pub async fn execute_seed_profile(
     module_port: &dyn SeedModulePort,
     content_port: Option<&dyn SeedContentPort>,
 ) -> Result<SeedExecutionOutcome, SeedExecutionError> {
-    validate_request(&request)?;
+    validate_request(&request, content_port.is_some())?;
     let tenant = tenant_port.ensure_seed_tenant(request.tenant).await?;
 
     let mut enabled_modules = request.enabled_modules;
@@ -288,7 +291,23 @@ pub async fn execute_seed_profile(
             };
 
             match content_port.load_seed_content(content_request).await {
-                Ok(outcome) => content_outcomes.push(outcome),
+                Ok(outcome) => {
+                    if outcome.module_slug != *module_slug {
+                        return Err(SeedExecutionError::ContentLoading(format!(
+                            "seed content loader returned an outcome for a different module: {}",
+                            module_slug
+                        )));
+                    }
+                    if !request.continue_on_content_error && !outcome.is_success() {
+                        return Err(SeedExecutionError::ContentLoading(format!(
+                            "seed content loading failed for {}: {} records failed, {} errors reported",
+                            module_slug,
+                            outcome.failed_count,
+                            outcome.errors.len()
+                        )));
+                    }
+                    content_outcomes.push(outcome);
+                }
                 Err(e) => {
                     let error_msg =
                         format!("failed to load seed content for {}: {}", module_slug, e);
@@ -319,7 +338,10 @@ pub async fn execute_seed_profile(
     })
 }
 
-fn validate_request(request: &SeedExecutionRequest) -> Result<(), SeedExecutionError> {
+fn validate_request(
+    request: &SeedExecutionRequest,
+    has_content_port: bool,
+) -> Result<(), SeedExecutionError> {
     if request.tenant.name.trim().is_empty() || request.tenant.slug.trim().is_empty() {
         return Err(SeedExecutionError::Validation(
             "seed tenant requires non-empty name and slug".to_string(),
@@ -329,6 +351,38 @@ fn validate_request(request: &SeedExecutionRequest) -> Result<(), SeedExecutionE
         return Err(SeedExecutionError::Validation(
             "seed request requires a non-empty actor".to_string(),
         ));
+    }
+    if request.profile == SeedProfile::Dev
+        && request
+            .demo_customer_password
+            .as_deref()
+            .is_none_or(|password| password.trim().is_empty())
+    {
+        return Err(SeedExecutionError::Validation(
+            "development seed profile requires a demo customer password".to_string(),
+        ));
+    }
+    if let Some(path) = &request.seed_data_path {
+        if path.trim().is_empty() {
+            return Err(SeedExecutionError::Validation(
+                "seed content path must not be empty".to_string(),
+            ));
+        }
+        if request.profile != SeedProfile::Dev {
+            return Err(SeedExecutionError::Validation(
+                "seed content loading requires the development profile".to_string(),
+            ));
+        }
+        if !has_content_port {
+            return Err(SeedExecutionError::Validation(
+                "seed content loading requires a content loader".to_string(),
+            ));
+        }
+        if request.admin.is_none() {
+            return Err(SeedExecutionError::Validation(
+                "seed content loading requires an admin user to be created".to_string(),
+            ));
+        }
     }
     Ok(())
 }
@@ -577,5 +631,185 @@ mod tests {
         assert_eq!(outcome.content_outcomes.len(), 2);
         assert!(!outcome.content_outcomes[0].errors.is_empty());
         assert!(!outcome.content_outcomes[1].errors.is_empty());
+        assert!(
+            outcome
+                .content_outcomes
+                .iter()
+                .all(|outcome| !outcome.is_success())
+        );
     }
-}
+
+    #[tokio::test]
+    async fn invalid_seed_content_configuration_fails_before_owner_calls() {
+        struct NoCalls;
+        #[async_trait]
+        impl SeedTenantPort for NoCalls {
+            async fn ensure_seed_tenant(
+                &self,
+                _: SeedTenantRequest,
+            ) -> Result<SeedTenant, SeedExecutionError> {
+                panic!("validation must run before tenant mutation")
+            }
+        }
+        #[async_trait]
+        impl SeedPrincipalPort for NoCalls {
+            async fn ensure_seed_principal(
+                &self,
+                _: SeedUserRequest,
+                _: rustok_core::UserRole,
+            ) -> Result<SeedUser, SeedExecutionError> {
+                panic!("validation must run before identity mutation")
+            }
+        }
+        #[async_trait]
+        impl SeedModulePort for NoCalls {
+            async fn set_seed_module_enabled(
+                &self,
+                _: Uuid,
+                _: &str,
+                _: bool,
+                _: &str,
+            ) -> Result<(), SeedExecutionError> {
+                panic!("validation must run before module mutation")
+            }
+        }
+        struct Content;
+        #[async_trait]
+        impl SeedContentPort for Content {
+            async fn load_seed_content(
+                &self,
+                _: SeedContentRequest,
+            ) -> Result<SeedContentOutcome, SeedContentError> {
+                panic!("validation must run before content import")
+            }
+            fn has_seed_data(&self, _: &str) -> bool {
+                true
+            }
+        }
+        let request = SeedExecutionRequest {
+            profile: SeedProfile::Dev,
+            tenant: SeedTenantRequest {
+                name: "Demo".into(),
+                slug: "demo".into(),
+                domain: None,
+            },
+            enabled_modules: vec!["blog".into()],
+            disabled_modules: vec![],
+            admin: None,
+            demo_customer_password: Some("password".into()),
+            actor: "installer".into(),
+            seed_data_path: Some("seeds".into()),
+            continue_on_content_error: false,
+        };
+        for (request, loader) in [
+            (
+                SeedExecutionRequest {
+                    demo_customer_password: None,
+                    ..request.clone()
+                },
+                Some(&Content as &dyn SeedContentPort),
+            ),
+            (request.clone(), None),
+            (request.clone(), Some(&Content as &dyn SeedContentPort)),
+            (
+                SeedExecutionRequest {
+                    seed_data_path: Some(" ".into()),
+                    ..request.clone()
+                },
+                Some(&Content as &dyn SeedContentPort),
+            ),
+            (
+                SeedExecutionRequest {
+                    profile: SeedProfile::Minimal,
+                    ..request.clone()
+                },
+                Some(&Content as &dyn SeedContentPort),
+            ),
+        ] {
+            assert!(matches!(
+                execute_seed_profile(request, &NoCalls, &NoCalls, &NoCalls, loader).await,
+                Err(SeedExecutionError::Validation(_))
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn partial_content_outcomes_respect_failure_policy_and_module_identity() {
+        struct Content {
+            wrong_module: bool,
+        }
+        #[async_trait]
+        impl SeedContentPort for Content {
+            async fn load_seed_content(
+                &self,
+                request: SeedContentRequest,
+            ) -> Result<SeedContentOutcome, SeedContentError> {
+                Ok(SeedContentOutcome {
+                    module_slug: if self.wrong_module {
+                        "other".into()
+                    } else {
+                        request.module_slug
+                    },
+                    imported_count: 3,
+                    failed_count: 1,
+                    errors: vec!["failed item".into()],
+                })
+            }
+            fn has_seed_data(&self, _: &str) -> bool {
+                true
+            }
+        }
+        let request = SeedExecutionRequest {
+            profile: SeedProfile::Dev,
+            tenant: SeedTenantRequest {
+                name: "Demo".into(),
+                slug: "demo".into(),
+                domain: None,
+            },
+            enabled_modules: vec!["blog".into()],
+            disabled_modules: vec![],
+            admin: Some(SeedUserRequest {
+                tenant_id: Uuid::nil(),
+                email: "admin@example.test".into(),
+                name: "Admin".into(),
+                password: "password".into(),
+            }),
+            demo_customer_password: Some("password".into()),
+            actor: "installer".into(),
+            seed_data_path: Some("seeds".into()),
+            continue_on_content_error: false,
+        };
+        assert!(matches!(
+            execute_seed_profile(
+                request.clone(),
+                &TenantPort,
+                &PrincipalPort,
+                &ModulePort,
+                Some(&Content {
+                    wrong_module: false
+                })
+            )
+            .await,
+            Err(SeedExecutionError::ContentLoading(_))
+        ));
+        let continued = SeedExecutionRequest {
+            continue_on_content_error: true,
+            ..request
+        };
+        let result = execute_seed_profile(
+            continued.clone(),
+            &TenantPort,
+            &PrincipalPort,
+            &ModulePort,
+            Some(&Content {
+                wrong_module: false,
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.content_outcomes[0].failed_count, 1);
+        assert!(!result.content_outcomes[0].is_success());
+        assert!(matches!(
+            execute_seed_profile(
+                continued,
+                &TenantPor

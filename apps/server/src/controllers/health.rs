@@ -662,7 +662,7 @@ async fn check_required_database_schema(
     let backend = ctx.db().get_database_backend();
     for table in required_database_schema_tables(settings) {
         let stmt = Statement::from_string(backend, format!("SELECT 1 FROM {table} LIMIT 1"));
-        if ctx.db().execute(&stmt).await.is_err() {
+        if ctx.db().execute_raw(stmt).await.is_err() {
             return Err(format!("required table `{table}` is unavailable"));
         }
     }
