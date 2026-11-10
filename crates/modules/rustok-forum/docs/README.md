@@ -46,6 +46,11 @@ recorded reason remain unset. Restoring a pending topic leaves its first
 publication to moderation. Migration rollback refuses to discard a recorded
 reason or a pending snapshot.
 
+Category and author counters exclude archived topics and their replies and
+solutions. They continue to count pending topics and approved replies in active
+threads. The counter migration reconciles rows affected by archived topics, and
+solution reconciliation uses the same topic visibility rule.
+
 ## Integration
 
 - uses `rustok-content` only as a shared helper/orchestration dependency;

@@ -19,23 +19,13 @@
 use rustok_product::{
     AdminProductListQuery, CatalogService, StorefrontCatalogFacet, StorefrontProductListQuery,
 };
-use rustok_test_utils::{
-    assert_postgres_url, connect_postgres, create_postgres_database,
-    drop_postgres_database_if_exists, mock_transactional_event_bus, postgres_database_url,
-    unique_postgres_database_name,
-};
+use rustok_test_utils::mock_transactional_event_bus;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
-use sea_orm_migration::{MigrationTrait, MigratorTrait, SchemaManager};
 use uuid::Uuid;
 
-struct ProductMigrator;
-
-#[async_trait::async_trait]
-impl MigratorTrait for ProductMigrator {
-    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        rustok_product::migrations::migrations()
-    }
-}
+#[path = "support/postgres.rs"]
+mod postgres;
+use postgres::with_product_postgres_database;
 
 // ── fixed identifiers of the seeded catalog ─────────────────────────────────────────────────────
 
@@ -120,61 +110,6 @@ async fn enumerable_facets_are_truncated_at_the_value_limit() {
     }
 }
 
-async fn with_product_postgres_database<T, F, Fut>(
-    prefix: &str,
-    test: F,
-) -> Result<T, Box<dyn std::error::Error>>
-where
-    F: FnOnce(DatabaseConnection) -> Fut,
-    Fut: std::future::Future<Output = Result<T, Box<dyn std::error::Error>>>,
-{
-    let admin_url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_owned());
-    assert_postgres_url(&admin_url);
-
-    let database_name = unique_postgres_database_name(prefix);
-    let target_url = postgres_database_url(&admin_url, &database_name);
-    let admin = connect_postgres(&admin_url)
-        .await
-        .map_err(|error| format!("admin database must be reachable: {error}"))?;
-
-    drop_postgres_database_if_exists(&admin, &database_name).await?;
-    create_postgres_database(&admin, &database_name).await?;
-
-    let test_result = async {
-        let db = connect_postgres(&target_url).await?;
-        create_prerequisites(&db).await?;
-
-        ProductMigrator::up(&db, None).await?;
-        let result = test(db.clone()).await;
-        db.close().await?;
-        result
-    }
-    .await;
-
-    drop_postgres_database_if_exists(&admin, &database_name).await?;
-    test_result
-}
-
-async fn create_prerequisites(db: &DatabaseConnection) -> Result<(), Box<dyn std::error::Error>> {
-    db.execute_unprepared(
-        r#"
-CREATE TABLE tenants (
-    id UUID PRIMARY KEY
-);
-CREATE TABLE taxonomy_terms (
-    id UUID PRIMARY KEY,
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    UNIQUE (tenant_id, id)
-);
-"#,
-    )
-    .await?;
-    let manager = SchemaManager::new(db);
-    flex::cache_generation::create_field_definition_cache_generation_table(&manager).await?;
-    Ok(())
-}
-
 // ── seeding ─────────────────────────────────────────────────────────────────────────────────────
 
 /// Publishes the shared facet fixture: two tenants, one category, seven attributes and ten products
@@ -184,9 +119,10 @@ async fn seed_catalog(db: &DatabaseConnection) -> Result<(), Box<dyn std::error:
         r#"
 INSERT INTO tenants (id) VALUES ('{TENANT_A}'), ('{TENANT_B}');
 
-INSERT INTO taxonomy_terms (id, tenant_id) VALUES ('{CATEGORY_A}', '{TENANT_A}');
-INSERT INTO catalog_categories (id, tenant_id, code, slug, path) VALUES
-    ('{CATEGORY_A}', '{TENANT_A}', 'lamps', 'lamps', 'lamps');
+INSERT INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key)
+VALUES ('{CATEGORY_A}', '{TENANT_A}', 'category', 'module', 'product', 'lamps');
+INSERT INTO catalog_categories (id, tenant_id, code, path) VALUES
+    ('{CATEGORY_A}', '{TENANT_A}', 'lamps', 'lamps');
 
 INSERT INTO product_attributes
     (id, tenant_id, code, value_type, scope, is_filterable, show_on_storefront, position)
@@ -414,7 +350,6 @@ async fn seed_dictionary_attribute(
         let option_id = Uuid::from_u128(option_prefix + index as u128);
         let product_id = Uuid::from_u128(product_prefix + index as u128);
         let value_id = Uuid::from_u128(value_prefix + index as u128);
-        let title_id = Uuid::from_u128(0x30000000_0000_0000_0000_000000000000 + index as u128);
         db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             "INSERT INTO product_attribute_options (id, tenant_id, attribute_id, code, position) \
@@ -440,7 +375,7 @@ async fn seed_dictionary_attribute(
             "INSERT INTO product_translations (id, product_id, tenant_id, locale, title, handle) \
              VALUES ($1, $2, $3, 'en-US', $4, $5)",
             vec![
-                title_id.into(),
+                product_id.into(),
                 product_id.into(),
                 TENANT_A.into(),
                 format!("{code} bucket {index:02}").into(),
@@ -663,12 +598,12 @@ async fn run_storefront_population_checks() -> Result<(), Box<dyn std::error::Er
             "a product restricted to another channel stays out"
         );
 
-        // Search and category narrow the same population the list shows.
+        // Search narrows the same channel-visible population the list shows.
         let searched = storefront_facets(
             &db,
             "en-US",
             Some("en-US"),
-            None,
+            Some("eu-store"),
             &storefront_query(Some("Lamp"), None, &[]),
             &["color"],
         )
@@ -823,7 +758,7 @@ async fn run_drill_down_checks() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(narrowed.total_products, 2);
         assert_eq!(
             buckets(narrowed),
-            vec![("true".to_string(), 1), ("false".to_string(), 1)]
+            vec![("false".to_string(), 1), ("true".to_string(), 1)]
         );
 
         // Several values of one attribute are an OR inside that attribute (`PROD-FACET-SELECT-001`):

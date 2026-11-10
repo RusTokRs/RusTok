@@ -195,7 +195,10 @@ async fn pending_approval_emits_creation_only_at_first_publication() -> TestResu
     assert_eq!(
         scalar(
             &db,
-            format!("SELECT is_locked FROM forum_topics WHERE id = '{id}'")
+            format!(
+                "SELECT is_locked AS value FROM forum_topics WHERE id = X'{}'",
+                hex::encode(id.as_bytes())
+            )
         )
         .await?,
         1
@@ -263,7 +266,7 @@ async fn pending_topic_restores_without_publication_and_blocks_lossy_rollback() 
         1
     );
     assert_eq!(
-        scalar(&db, format!("SELECT count(*) FROM forum_topics WHERE id = '{topic_id}' AND status = 'pending' AND deleted_at IS NULL")).await?,
+        scalar(&db, format!("SELECT count(*) AS value FROM forum_topics WHERE id = X'{}' AND status = 'pending' AND deleted_at IS NULL", hex::encode(topic_id.as_bytes()))).await?,
         1
     );
 

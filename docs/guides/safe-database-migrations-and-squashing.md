@@ -335,6 +335,16 @@ schema again. Separate checks rejected an omitted admin URL and a fresh database
 name collision. The existing database's sentinel row survived and the successful
 smoke removed its own fixture.
 
+On 2026-11-10, the PostgreSQL 16.13 suite passed all 13 checks. It applied 587
+migrations from an empty fixture and rolled back and reapplied exactly
+`m20261110_000045_reconcile_archived_counters`. It also verified bounded backfill
+assertions, the current Product catalog read port, Product tenant integrity and
+database constraints. The Product owner rollback rehearsal reverted and replayed
+only its latest migration. The historical category tree constraints were tested
+at the migration boundary where Product still owned that tree.
+Separate owner tests verified counter repair for an existing archived Forum
+thread, Product tenant constraints and catalog facet behavior on PostgreSQL.
+
 The strict data comparison remains blocked by `updated_at` in eight bootstrap
 singletons. The affected owner tables are:
 

@@ -1,8 +1,9 @@
 mod support;
 
-use rustok_core::{SecurityContext, UserRole};
-use rustok_forum::RevisionService;
-use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+use rustok_core::{MigrationSource, SecurityContext, UserRole};
+use rustok_forum::{ForumModule, RevisionService};
+use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, TransactionTrait};
+use sea_orm_migration::SchemaManager;
 use uuid::Uuid;
 
 use support::postgres::{PostgresForumTestDb, execute, expect_rejected};
@@ -128,6 +129,64 @@ async fn postgres_preserves_forum_tombstones_and_revision_history() -> TestResul
 
     context.cleanup().await?;
     outcome
+}
+
+#[tokio::test]
+async fn postgres_reconciles_counters_for_preexisting_archived_threads() -> TestResult<()> {
+    let Some(context) = PostgresForumTestDb::setup("archive_counters").await? else {
+        return Ok(());
+    };
+    let outcome = async {
+        let db = &context.db;
+        let seed = seed_thread(db, "archived-counters").await?;
+        let migration = ForumModule
+            .migrations()
+            .into_iter()
+            .find(|migration| migration.name() == "m20261110_000045_reconcile_archived_counters")
+            .ok_or_else(|| test_error("missing Forum archive counter migration"))?;
+
+        let txn = db.begin().await?;
+        migration.down(&SchemaManager::new(&txn)).await?;
+        txn.commit().await?;
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE forum_topics SET status = 'archived', is_locked = TRUE WHERE tenant_id = $1 AND id = $2",
+            [seed.tenant_id.into(), seed.topic_id.into()],
+        )).await?;
+        refresh_counters(db, &seed).await?;
+
+        for expected in [1, 0] {
+            let counters = db.query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT category.topic_count AS category_topics, category.reply_count AS category_replies,
+                        stats.topic_count AS author_topics, stats.reply_count AS author_replies,
+                        stats.solution_count AS author_solutions, topic.reply_count AS thread_replies
+                 FROM forum_topics topic
+                 JOIN forum_categories category ON category.tenant_id = topic.tenant_id AND category.id = topic.category_id
+                 JOIN forum_user_stats stats ON stats.tenant_id = topic.tenant_id AND stats.user_id = topic.author_id
+                 WHERE topic.tenant_id = $1 AND topic.id = $2",
+                [seed.tenant_id.into(), seed.topic_id.into()],
+            )).await?.ok_or_else(|| test_error("missing archived thread counters"))?;
+            for column in ["category_topics", "category_replies", "author_topics", "author_replies", "author_solutions"] {
+                assert_eq!(counters.try_get::<i32>("", column)?, expected, "{column}");
+            }
+            assert_eq!(counters.try_get::<i32>("", "thread_replies")?, 1);
+            if expected == 1 {
+                let txn = db.begin().await?;
+                migration.up(&SchemaManager::new(&txn)).await?;
+                txn.commit().await?;
+            }
+        }
+        Ok(())
+    }.await;
+    let cleanup = context.cleanup().await;
+    match (outcome, cleanup) {
+        (Err(error), Err(cleanup)) => {
+            Err(test_error(format!("{error}; fixture cleanup: {cleanup}")))
+        }
+        (Err(error), _) | (_, Err(error)) => Err(error),
+        _ => Ok(()),
+    }
 }
 
 #[derive(Clone, Copy)]

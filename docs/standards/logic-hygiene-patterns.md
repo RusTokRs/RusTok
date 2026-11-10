@@ -65,7 +65,7 @@ flowchart TD
 
 ### Pattern 2: Database-Enforced State Invariants (`P-DB-CHECK`)
 * **Category:** State Transition & Data Integrity
-* **Problem:** Application-level validation is fragile. Migrations, raw SQL updates, or missed application branches can leave rows in corrupted states (e.g. `status = 'archived'` while `is_locked = false`, or `deleted_at IS NOT NULL` while `status = 'active'`).
+* **Problem:** Application-level validation is fragile. Migrations, raw SQL updates, or missed application branches can leave rows in corrupted states (e.g. `status = 'archived'` while `is_locked = false`, or `deleted_at IS NOT NULL` while `status = 'active'`). A database trigger can also overwrite a valid application update when it uses an older predicate. Forum's counter guards counted archived threads after the owner began excluding them. Inspect the trigger, command and reconciliation predicates together (`rg -n 'forum_enforce_.*reply_count|topic.status.*archived' crates/modules/rustok-forum/src`).
 * **Pattern Solution:**
   Make invalid states unrepresentable in PostgreSQL and SQLite using DDL `CHECK` constraints.
   ```sql

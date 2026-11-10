@@ -58,7 +58,18 @@ impl ProductCatalogReadRuntime {
     }
 
     pub fn in_process(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        let catalog = Arc::new(CatalogService::new(db.clone(), event_bus.clone()));
+        Self::in_process_with_pricing(db, event_bus, None)
+    }
+
+    /// Composes the embedded read owner with the Pricing capability selected by the host.
+    pub fn in_process_with_pricing(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        pricing_port: Option<Arc<dyn crate::ProductPricingPort>>,
+    ) -> Self {
+        let mut catalog = CatalogService::new(db.clone(), event_bus.clone());
+        catalog.pricing_port = pricing_port;
+        let catalog = Arc::new(catalog);
         Self::new(catalog.clone(), ProductCatalogReadProfile::EmbeddedNative)
             .with_schema_read_port(Arc::new(ProductCatalogSchemaService::new(db, event_bus)))
             .with_storefront_http_read_port(catalog.clone())
@@ -175,7 +186,17 @@ impl ProductCatalogCommandRuntime {
     }
 
     pub fn in_process(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        let catalog = CatalogService::new(db.clone(), event_bus.clone());
+        Self::in_process_with_pricing(db, event_bus, None)
+    }
+
+    /// Composes the embedded command owner with same-transaction Pricing operations.
+    pub fn in_process_with_pricing(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        pricing_port: Option<Arc<dyn crate::ProductPricingPort>>,
+    ) -> Self {
+        let mut catalog = CatalogService::new(db.clone(), event_bus.clone());
+        catalog.pricing_port = pricing_port;
         let mut runtime = Self::new(
             Arc::new(catalog.clone()),
             ProductCatalogCommandProfile::EmbeddedNative,

@@ -107,14 +107,23 @@ impl CommerceHttpRuntime {
                 db.clone(),
                 payment_provider_registry.clone(),
             );
+        let product_pricing = rustok_pricing::in_process_product_pricing_port(db.clone());
         let product_catalog_read_runtime =
-            rustok_product::ProductCatalogReadRuntime::in_process(db.clone(), event_bus.clone());
+            rustok_product::ProductCatalogReadRuntime::in_process_with_pricing(
+                db.clone(),
+                event_bus.clone(),
+                Some(product_pricing.clone()),
+            );
         let product_catalog_command_runtime =
-            rustok_product::ProductCatalogCommandRuntime::in_process(db.clone(), event_bus.clone())
-                .with_shipping_profile_port(std::sync::Arc::new(
-                    crate::ShippingProfileService::new(db.clone()),
-                ))
-                .expect("embedded Product owner accepts Shipping Profile admission");
+            rustok_product::ProductCatalogCommandRuntime::in_process_with_pricing(
+                db.clone(),
+                event_bus.clone(),
+                Some(product_pricing),
+            )
+            .with_shipping_profile_port(std::sync::Arc::new(crate::ShippingProfileService::new(
+                db.clone(),
+            )))
+            .expect("embedded Product owner accepts Shipping Profile admission");
         #[cfg(feature = "marketplace-financial")]
         let marketplace_financial_runtime =
             crate::MarketplaceFinancialRuntime::in_process(db.clone());

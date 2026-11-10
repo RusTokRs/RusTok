@@ -56,7 +56,8 @@ for (const required of [
 for (const required of [
   "ProductCatalogCommandRuntime",
   ".shared_get::<rustok_product::ProductCatalogCommandRuntime>()",
-  "ProductCatalogCommandRuntime::in_process(",
+  "ProductCatalogCommandRuntime::in_process_with_pricing(",
+  "rustok_pricing::in_process_product_pricing_port(",
   "host.with_shared_value(runtime)",
 ]) {
   requireText(hostComposition, required, "host Product command composition");
@@ -67,7 +68,8 @@ for (const required of [
   "CURRENT_COMMERCE_PRODUCT_CATALOG_COMMAND_RUNTIME",
   "runtime_data.product_catalog_command_runtime()",
   "product_catalog_command_runtime_for_current_graphql_scope(",
-  "ProductCatalogCommandRuntime::in_process(db.clone(), event_bus)",
+  "ProductCatalogCommandRuntime::in_process_with_pricing(",
+  "rustok_pricing::in_process_product_pricing_port(db.clone())",
   "product_catalog_command_runtime: ProductCatalogCommandRuntime",
   "pub fn product_catalog_command_runtime(&self) -> ProductCatalogCommandRuntime",
   ".shared_get::<ProductCatalogCommandRuntime>()",

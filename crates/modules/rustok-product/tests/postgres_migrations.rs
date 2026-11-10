@@ -2,22 +2,15 @@ use rust_decimal::Decimal;
 use rustok_test_utils::{
     assert_postgres_column_contract as assert_column_contract,
     assert_postgres_column_missing as assert_column_missing,
-    assert_postgres_table_missing as assert_table_missing, assert_postgres_url, connect_postgres,
-    create_postgres_database, drop_postgres_database_if_exists, postgres_database_url,
-    unique_postgres_database_name,
+    assert_postgres_table_missing as assert_table_missing,
 };
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
-use sea_orm_migration::{MigrationTrait, MigratorTrait, SchemaManager};
+use sea_orm_migration::MigratorTrait;
 use serde_json::Value;
 
-struct ProductMigrator;
-
-#[async_trait::async_trait]
-impl MigratorTrait for ProductMigrator {
-    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-        rustok_product::migrations::migrations()
-    }
-}
+#[path = "support/postgres.rs"]
+mod postgres;
+use postgres::{ProductMigrator, with_product_postgres_database};
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL admin access"]
@@ -48,10 +41,18 @@ async fn run_target_schema_checks() -> Result<(), Box<dyn std::error::Error>> {
         assert_target_schema(&db).await?;
         assert_target_values(&db).await?;
 
-        ProductMigrator::down(&db, None).await?;
-        assert_table_missing(&db, "products").await?;
+        let latest = ProductMigrator::migrations()
+            .pop()
+            .ok_or("Product migration plan must not be empty")?;
+        ProductMigrator::down(&db, Some(1)).await?;
+        let pending = ProductMigrator::get_pending_migrations(&db).await?;
+        if pending.len() != 1 || pending[0].name() != latest.name() {
+            return Err(
+                format!("Product rollback must leave only {} pending", latest.name()).into(),
+            );
+        }
 
-        ProductMigrator::up(&db, None).await?;
+        ProductMigrator::up(&db, Some(1)).await?;
         assert_target_schema(&db).await
     })
     .await
@@ -120,9 +121,10 @@ INSERT INTO products (id, tenant_id) VALUES
     ('10000000-0000-0000-0000-000000000101', '10000000-0000-0000-0000-000000000001'),
     ('20000000-0000-0000-0000-000000000202', '20000000-0000-0000-0000-000000000002');
 
-INSERT INTO taxonomy_terms (id, tenant_id) VALUES
-    ('10000000-0000-0000-0000-000000000111', '10000000-0000-0000-0000-000000000001'),
-    ('20000000-0000-0000-0000-000000000222', '20000000-0000-0000-0000-000000000002');
+INSERT INTO taxonomy_terms (id, tenant_id, kind, scope_type, scope_value, canonical_key) VALUES
+    ('10000000-0000-0000-0000-000000000111', '10000000-0000-0000-0000-000000000001', 'category', 'module', 'product', 'root'),
+    ('10000000-0000-0000-0000-000000000113', '10000000-0000-0000-0000-000000000001', 'category', 'module', 'product', 'unbound'),
+    ('20000000-0000-0000-0000-000000000222', '20000000-0000-0000-0000-000000000002', 'category', 'module', 'product', 'root');
 
 INSERT INTO catalog_categories (id, tenant_id, code, path) VALUES
     ('10000000-0000-0000-0000-000000000111', '10000000-0000-0000-0000-000000000001', 'root', 'root'),
@@ -140,9 +142,9 @@ INSERT INTO product_translations (id, product_id, tenant_id, locale, title, hand
     ('10000000-0000-0000-0000-000000000141', '10000000-0000-0000-0000-000000000101', '10000000-0000-0000-0000-000000000001', 'en-US', 'Tenant one', 'shared'),
     ('20000000-0000-0000-0000-000000000282', '20000000-0000-0000-0000-000000000202', '20000000-0000-0000-0000-000000000002', 'en-US', 'Tenant two', 'shared');
 
-INSERT INTO catalog_category_seo_translations (id, category_id, tenant_id, locale, meta_title) VALUES
-    ('10000000-0000-0000-0000-000000000151', '10000000-0000-0000-0000-000000000111', '10000000-0000-0000-0000-000000000001', 'en-US', 'Shared'),
-    ('20000000-0000-0000-0000-000000000292', '20000000-0000-0000-0000-000000000222', '20000000-0000-0000-0000-000000000002', 'en-US', 'Shared');
+INSERT INTO catalog_category_seo_translations (category_id, tenant_id, locale, meta_title) VALUES
+    ('10000000-0000-0000-0000-000000000111', '10000000-0000-0000-0000-000000000001', 'en-US', 'Shared'),
+    ('20000000-0000-0000-0000-000000000222', '20000000-0000-0000-0000-000000000002', 'en-US', 'Shared');
 INSERT INTO product_attribute_translations (id, attribute_id, locale, label) VALUES
     ('10000000-0000-0000-0000-000000000161', '10000000-0000-0000-0000-000000000121', 'en-US', 'Shared'),
     ('20000000-0000-0000-0000-000000000302', '20000000-0000-0000-0000-000000000242', 'en-US', 'Shared');
@@ -163,7 +165,7 @@ INSERT INTO product_attribute_schema_translations (id, schema_id, locale, name) 
             ),
             (
                 "INSERT INTO catalog_categories (id, tenant_id, code, path, level) \
-                 VALUES ('10000000-0000-0000-0000-000000000111', \
+                 VALUES ('10000000-0000-0000-0000-000000000113', \
                  '20000000-0000-0000-0000-000000000002', \
                  'cross', 'root/cross', 1)",
                 "fk_catalog_categories_taxonomy_term",
@@ -255,42 +257,6 @@ async fn assert_constraint_rejection(
         .into());
     }
     Ok(())
-}
-
-async fn with_product_postgres_database<T, F, Fut>(
-    prefix: &str,
-    test: F,
-) -> Result<T, Box<dyn std::error::Error>>
-where
-    F: FnOnce(DatabaseConnection) -> Fut,
-    Fut: std::future::Future<Output = Result<T, Box<dyn std::error::Error>>>,
-{
-    let admin_url = std::env::var("RUSTOK_MIGRATION_SMOKE_ADMIN_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_owned());
-    assert_postgres_url(&admin_url);
-
-    let database_name = unique_postgres_database_name(prefix);
-    let target_url = postgres_database_url(&admin_url, &database_name);
-    let admin = connect_postgres(&admin_url)
-        .await
-        .map_err(|error| format!("admin database must be reachable: {error}"))?;
-
-    drop_postgres_database_if_exists(&admin, &database_name).await?;
-    create_postgres_database(&admin, &database_name).await?;
-
-    let test_result = async {
-        let db = connect_postgres(&target_url).await?;
-        create_prerequisites(&db).await?;
-
-        ProductMigrator::up(&db, None).await?;
-        let result = test(db.clone()).await;
-        db.close().await?;
-        result
-    }
-    .await;
-
-    drop_postgres_database_if_exists(&admin, &database_name).await?;
-    test_result
 }
 
 async fn seed_products(
@@ -398,25 +364,6 @@ fn execution_time_ms(plan: &Value) -> Result<f64, Box<dyn std::error::Error>> {
         .and_then(|item| item.get("Execution Time"))
         .and_then(Value::as_f64)
         .ok_or_else(|| "EXPLAIN plan is missing Execution Time".into())
-}
-
-async fn create_prerequisites(db: &DatabaseConnection) -> Result<(), Box<dyn std::error::Error>> {
-    db.execute_unprepared(
-        r#"
-CREATE TABLE tenants (
-    id UUID PRIMARY KEY
-);
-CREATE TABLE taxonomy_terms (
-    id UUID PRIMARY KEY,
-    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    UNIQUE (tenant_id, id)
-);
-"#,
-    )
-    .await?;
-    let manager = SchemaManager::new(db);
-    flex::cache_generation::create_field_definition_cache_generation_table(&manager).await?;
-    Ok(())
 }
 
 async fn assert_target_schema(db: &DatabaseConnection) -> Result<(), Box<dyn std::error::Error>> {

@@ -45,6 +45,10 @@
   Pricing ORM projections and atomic price lifecycle operations come
   from the consumer-owned `ProductPricingPort` port boundary; Product does
   not depend on `rustok-commerce-foundation` or foreign pricing persistence.
+  The server attaches the Pricing adapter to its embedded Product read and
+  command runtimes when Pricing is compiled. Commerce's embedded catalog
+  fallbacks use the same adapter. Price mutations participate in the Product
+  transaction, and a host-selected external runtime keeps its own provider.
 - FBA boundary is published as `ProductCatalogReadPort` / `product.catalog_read.v1`.
   Registry `contracts/product-fba-registry.json`, static matrix,
   no-compile runtime contract smoke, source-locked runtime fallback smoke, and
@@ -209,8 +213,10 @@ is governed by
 - `npm.cmd run test:verify:ecommerce:fba`
 - cargo xtask module validate product
 - cargo xtask module test product
-- ignored owner-local PostgreSQL lifecycle and 10k/100k/1M query-plan tests in
-  `tests/postgres_migrations.rs`
+- ignored owner-local PostgreSQL schema, latest-step rollback and reapply, and
+  10k/100k/1M query-plan tests in `tests/postgres_migrations.rs`. The isolated
+  fixture installs the Taxonomy owner schema. The category cutover and other
+  irreversible steps bound the supported rollback range.
 - targeted commerce tests for the product domain when changing runtime wiring
 
 Cargo checks remain a targeted/live evidence step before promoting product FBA to `transport_verified`; the current fast gate for boundary evidence does not require Rust compilation.

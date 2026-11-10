@@ -340,6 +340,20 @@ pub fn attach_commerce_provider_registries(
     };
 
     #[cfg(feature = "mod-product")]
+    let product_pricing = {
+        #[cfg(feature = "mod-pricing")]
+        {
+            Some(rustok_pricing::in_process_product_pricing_port(
+                server.db_clone(),
+            ))
+        }
+        #[cfg(not(feature = "mod-pricing"))]
+        {
+            None
+        }
+    };
+
+    #[cfg(feature = "mod-product")]
     let host = {
         let runtime = host
             .shared_get::<rustok_product::ProductCatalogReadRuntime>()
@@ -348,9 +362,10 @@ pub fn attach_commerce_provider_registries(
                 server
                     .shared_get::<rustok_outbox::TransactionalEventBus>()
                     .map(|event_bus| {
-                        rustok_product::ProductCatalogReadRuntime::in_process(
+                        rustok_product::ProductCatalogReadRuntime::in_process_with_pricing(
                             server.db_clone(),
                             event_bus,
+                            product_pricing.clone(),
                         )
                     })
             });
@@ -372,9 +387,10 @@ pub fn attach_commerce_provider_registries(
                 server
                     .shared_get::<rustok_outbox::TransactionalEventBus>()
                     .map(|event_bus| {
-                        rustok_product::ProductCatalogCommandRuntime::in_process(
+                        rustok_product::ProductCatalogCommandRuntime::in_process_with_pricing(
                             server.db_clone(),
                             event_bus,
+                            product_pricing,
                         )
                     })
             });

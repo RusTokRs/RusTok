@@ -320,7 +320,10 @@ pub(crate) fn product_catalog_read_runtime_for_current_graphql_scope(
 ) -> ProductCatalogReadRuntime {
     CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME
         .try_with(Clone::clone)
-        .unwrap_or_else(|_| ProductCatalogReadRuntime::in_process(db, event_bus))
+        .unwrap_or_else(|_| {
+            let pricing = rustok_pricing::in_process_product_pricing_port(db.clone());
+            ProductCatalogReadRuntime::in_process_with_pricing(db, event_bus, Some(pricing))
+        })
 }
 
 pub(crate) fn product_catalog_command_runtime_for_current_graphql_scope(
@@ -330,11 +333,14 @@ pub(crate) fn product_catalog_command_runtime_for_current_graphql_scope(
     CURRENT_COMMERCE_PRODUCT_CATALOG_COMMAND_RUNTIME
         .try_with(Clone::clone)
         .unwrap_or_else(|_| {
-            ProductCatalogCommandRuntime::in_process(db.clone(), event_bus)
-                .with_shipping_profile_port(std::sync::Arc::new(
-                    crate::ShippingProfileService::new(db),
-                ))
-                .expect("embedded Product owner accepts Shipping Profile admission")
+            let pricing = rustok_pricing::in_process_product_pricing_port(db.clone());
+            ProductCatalogCommandRuntime::in_process_with_pricing(
+                db.clone(),
+                event_bus,
+                Some(pricing),
+            )
+            .with_shipping_profile_port(std::sync::Arc::new(crate::ShippingProfileService::new(db)))
+            .expect("embedded Product owner accepts Shipping Profile admission")
         })
 }
 

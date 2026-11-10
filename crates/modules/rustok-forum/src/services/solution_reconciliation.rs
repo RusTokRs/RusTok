@@ -154,7 +154,9 @@ impl ForumSolutionReconciliationService {
                 Ok(report)
             }
             Err(error) => {
-                if let Err(rollback_err) = transaction.rollback().await { tracing::warn!(error = %rollback_err, "forum reconciliation rollback failed; transaction will be dropped"); }
+                if let Err(rollback_err) = transaction.rollback().await {
+                    tracing::warn!(error = %rollback_err, "forum reconciliation rollback failed; transaction will be dropped");
+                }
                 Err(error)
             }
         }
@@ -437,6 +439,11 @@ WITH bounded_stats AS (
      AND r.topic_id = s.topic_id
      AND r.id = s.reply_id
      AND r.status = 'approved'
+    JOIN forum_topics topic
+      ON topic.tenant_id = s.tenant_id
+     AND topic.id = s.topic_id
+     AND topic.deleted_at IS NULL
+     AND topic.status <> 'archived'
     WHERE s.tenant_id = ?1
       AND r.author_id IN (SELECT user_id FROM bounded_stats)
     GROUP BY r.author_id
@@ -466,6 +473,11 @@ WITH bounded_stats AS (
      AND r.topic_id = s.topic_id
      AND r.id = s.reply_id
      AND r.status = 'approved'
+    JOIN forum_topics topic
+      ON topic.tenant_id = s.tenant_id
+     AND topic.id = s.topic_id
+     AND topic.deleted_at IS NULL
+     AND topic.status <> 'archived'
     WHERE s.tenant_id = ?1
       AND r.author_id IN (SELECT user_id FROM bounded_stats)
     GROUP BY r.author_id
@@ -494,6 +506,11 @@ WITH bounded_stats AS (
      AND r.topic_id = s.topic_id
      AND r.id = s.reply_id
      AND r.status = 'approved'
+    JOIN forum_topics topic
+      ON topic.tenant_id = s.tenant_id
+     AND topic.id = s.topic_id
+     AND topic.deleted_at IS NULL
+     AND topic.status <> 'archived'
     WHERE s.tenant_id = $1
       AND r.author_id IN (SELECT user_id FROM bounded_stats)
     GROUP BY r.author_id
@@ -523,6 +540,11 @@ WITH bounded_stats AS (
      AND r.topic_id = s.topic_id
      AND r.id = s.reply_id
      AND r.status = 'approved'
+    JOIN forum_topics topic
+      ON topic.tenant_id = s.tenant_id
+     AND topic.id = s.topic_id
+     AND topic.deleted_at IS NULL
+     AND topic.status <> 'archived'
     WHERE s.tenant_id = $1
       AND r.author_id IN (SELECT user_id FROM bounded_stats)
     GROUP BY r.author_id
