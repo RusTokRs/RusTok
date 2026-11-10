@@ -2,7 +2,7 @@ use rustok_api::HostRuntimeContext;
 #[cfg(any(
     feature = "mod-marketplace_seller",
     feature = "mod-marketplace_listing",
-    all(feature = "mod-commerce", feature = "mod-product")
+    feature = "mod-product"
 ))]
 use std::sync::Arc;
 
