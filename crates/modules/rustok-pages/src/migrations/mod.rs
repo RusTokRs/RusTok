@@ -24,6 +24,7 @@ mod m20261009_000002_create_page_publish_jobs;
 mod m20261009_000003_create_site_symbols;
 mod m20261009_000004_create_page_templates;
 mod m20261017_000001_create_page_starters;
+mod m20261110_000001_add_page_publish_job_lease_until;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -53,6 +54,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261009_000003_create_site_symbols::Migration),
         Box::new(m20261009_000004_create_page_templates::Migration),
         Box::new(m20261017_000001_create_page_starters::Migration),
+        Box::new(m20261110_000001_add_page_publish_job_lease_until::Migration),
     ]
 }
 

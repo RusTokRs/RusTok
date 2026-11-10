@@ -8,6 +8,7 @@ use axum::{
     http::header::USER_AGENT,
     routing::{delete, get, post},
 };
+use rustok_api::Permission;
 use rustok_telemetry::metrics;
 use rustok_web::json_response;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
@@ -34,23 +35,42 @@ pub use rustok_auth::{
     SessionsResponse, UpdateProfileParams, UserInfo, UserResponse, VerificationRequestResponse,
 };
 
-fn user_info_from_model(user: users::Model, role: rustok_core::UserRole) -> UserInfo {
+fn user_info_from_model(
+    user: users::Model,
+    role: rustok_core::UserRole,
+    permissions: Vec<String>,
+) -> UserInfo {
     UserInfo {
         id: user.id,
         email: user.email,
         name: user.name,
         role,
         status: user.status,
+        permissions,
     }
 }
 
-fn user_response_from_model(user: users::Model, role: rustok_core::UserRole) -> UserResponse {
+fn user_response_from_model(
+    user: users::Model,
+    role: rustok_core::UserRole,
+    permissions: Vec<String>,
+) -> UserResponse {
     UserResponse {
         id: user.id,
         email: user.email,
         name: user.name,
         role: role.to_string(),
+        permissions,
     }
+}
+
+/// Stable display form of an effective permission snapshot: sorted and
+/// deduplicated `"{resource}:{action}"` strings.
+fn permission_strings(permissions: &[Permission]) -> Vec<String> {
+    let mut values = permissions.iter().map(ToString::to_string).collect::<Vec<_>>();
+    values.sort();
+    values.dedup();
+    values
 }
 
 fn ensure_registration_enabled(settings: &RustokSettings) -> Result<()> {
@@ -110,7 +130,7 @@ async fn register(
         refresh_token: tokens.refresh_token,
         token_type: "Bearer",
         expires_in: tokens.expires_in,
-        user: user_info_from_model(user, user_role),
+        user: user_info_from_model(user, user_role, tokens.permissions.clone()),
     }))
 }
 
@@ -169,7 +189,7 @@ async fn login(
         refresh_token: tokens.refresh_token,
         token_type: "Bearer",
         expires_in: tokens.expires_in,
-        user: user_info_from_model(user, user_role),
+        user: user_info_from_model(user, user_role, tokens.permissions.clone()),
     }))
 }
 
@@ -202,7 +222,7 @@ async fn refresh(
         refresh_token: tokens.refresh_token,
         token_type: "Bearer",
         expires_in: tokens.expires_in,
-        user: user_info_from_model(user, user_role),
+        user: user_info_from_model(user, user_role, tokens.permissions.clone()),
     }))
 }
 
@@ -306,7 +326,11 @@ fn require_session_request_header(headers: &axum::http::HeaderMap) -> Result<()>
 }
 
 fn cookie_session_response(user: users::Model, tokens: AuthTokens, cookie: String) -> Response {
-    let user_info = user_info_from_model(user, tokens.effective_role.clone());
+    let user_info = user_info_from_model(
+        user,
+        tokens.effective_role.clone(),
+        tokens.permissions.clone(),
+    );
     let mut response = json_response(CookieSessionResponse {
         access_token: tokens.access_token,
         token_type: "Bearer",
@@ -509,11 +533,16 @@ async fn me(
     CurrentUser {
         user,
         inferred_role,
+        permissions,
         ..
     }: CurrentUser,
 ) -> Result<Response> {
     tracing::debug!(user_id = %user.id, "auth::me entry");
-    Ok(json_response(user_response_from_model(user, inferred_role)))
+    Ok(json_response(user_response_from_model(
+        user,
+        inferred_role,
+        permission_strings(&permissions),
+    )))
 }
 
 #[utoipa::path(post, path = "/api/auth/invite/accept", tag = "auth", request_body = AcceptInviteParams,
@@ -859,6 +888,7 @@ async fn update_profile(
     Ok(json_response(user_response_from_model(
         user,
         current.inferred_role,
+        permission_strings(&current.permissions),
     )))
 }
 

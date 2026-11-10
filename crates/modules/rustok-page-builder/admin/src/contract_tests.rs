@@ -64,7 +64,7 @@ fn test_in_memory_ssr_draft_session_store_lifecycle() {
     );
     assert!(
         store
-            .load("page-1", "non-existent")
+            .load("page-1", "non-existent", None)
             .expect("load should return Ok")
             .is_none()
     );

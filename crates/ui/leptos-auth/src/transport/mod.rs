@@ -32,6 +32,7 @@ query CurrentUser {
         name
         role
         status
+        permissions
     }
 }
 "#;
@@ -69,6 +70,8 @@ struct AuthUserGraphql {
     role: String,
     #[allow(dead_code)]
     status: String,
+    #[serde(default)]
+    permissions: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,6 +103,8 @@ struct RestUserInfo {
     role: String,
     #[allow(dead_code)]
     status: String,
+    #[serde(default)]
+    permissions: Vec<String>,
 }
 
 #[cfg(feature = "ssr")]
@@ -109,6 +114,8 @@ struct RestUserResponse {
     email: String,
     name: Option<String>,
     role: String,
+    #[serde(default)]
+    permissions: Vec<String>,
 }
 
 #[cfg(feature = "ssr")]
@@ -176,6 +183,7 @@ fn rest_payload_to_native(payload: RestAuthResponse, tenant: String) -> NativeAu
             email: payload.user.email,
             name: payload.user.name,
             role: payload.user.role,
+            permissions: payload.user.permissions,
         },
         session: AuthSession {
             token: payload.access_token,

@@ -29,6 +29,12 @@ pub struct AuthTokens {
     pub refresh_token: String,
     pub expires_in: u64,
     pub effective_role: rustok_core::UserRole,
+    /// Effective RBAC permission snapshot (`"{resource}:{action}"` strings)
+    /// resolved on the same transaction that issued the session, so every
+    /// user payload returned at authentication time carries the grants the
+    /// backend will enforce for the session. Display-level only: request
+    /// authorization re-resolves per-request.
+    pub permissions: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -832,6 +838,8 @@ impl AuthLifecycleService {
             .map_err(AuthLifecycleError::from)?;
 
         let effective_role = Self::resolve_effective_role(&txn, tenant_id, user.id).await?;
+        let effective_permissions =
+            Self::resolve_effective_permission_strings(&txn, tenant_id, user.id).await?;
         let access_token = encode_access_token(
             config,
             user.id,
@@ -850,6 +858,7 @@ impl AuthLifecycleService {
                 refresh_token: new_refresh_token,
                 expires_in: config.access_expiration,
                 effective_role,
+                permissions: effective_permissions,
             },
         ))
     }
@@ -1293,6 +1302,8 @@ impl AuthLifecycleService {
         .map_err(AuthLifecycleError::from)?;
 
         let effective_role = Self::resolve_effective_role(db, tenant_id, user.id).await?;
+        let effective_permissions =
+            Self::resolve_effective_permission_strings(db, tenant_id, user.id).await?;
         let access_token = encode_access_token(
             config,
             user.id,
@@ -1307,6 +1318,7 @@ impl AuthLifecycleService {
             refresh_token,
             expires_in: config.access_expiration,
             effective_role,
+            permissions: effective_permissions,
         })
     }
 
@@ -1333,6 +1345,27 @@ impl AuthLifecycleService {
         RbacService::get_user_role_authoritative(db, &tenant_id, &user_id)
             .await
             .map_err(AuthLifecycleError::from)
+    }
+
+    /// Effective permission snapshot for the user, resolved on the same
+    /// connection/transaction that issues the session — never through the
+    /// process-local authorization cache, matching the authentication-time
+    /// role resolution above. Sorted and deduplicated for a stable payload.
+    pub(crate) async fn resolve_effective_permission_strings<C>(
+        db: &C,
+        tenant_id: uuid::Uuid,
+        user_id: uuid::Uuid,
+    ) -> std::result::Result<Vec<String>, AuthLifecycleError>
+    where
+        C: ConnectionTrait,
+    {
+        let permissions = RbacService::get_user_permissions_authoritative(db, &tenant_id, &user_id)
+            .await
+            .map_err(AuthLifecycleError::from)?;
+        let mut values = permissions.iter().map(ToString::to_string).collect::<Vec<_>>();
+        values.sort();
+        values.dedup();
+        Ok(values)
     }
 
     fn clamp_session_list_limit(limit: u64) -> u64 {

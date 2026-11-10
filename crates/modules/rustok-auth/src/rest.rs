@@ -114,6 +114,9 @@ pub struct UserResponse {
     pub email: String,
     pub name: Option<String>,
     pub role: String,
+    /// Effective RBAC permission snapshot (`"{resource}:{action}"` strings)
+    /// resolved authoritatively for this request.
+    pub permissions: Vec<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -148,6 +151,11 @@ pub struct UserInfo {
     pub name: Option<String>,
     pub role: rustok_core::UserRole,
     pub status: rustok_core::UserStatus,
+    /// Effective RBAC permission snapshot (`"{resource}:{action}"` strings)
+    /// resolved at authentication time. UI capability decisions read this
+    /// list instead of the role string; server-side enforcement stays
+    /// per-request and authoritative.
+    pub permissions: Vec<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -367,6 +375,7 @@ mod tests {
                 name: Some("Admin".to_string()),
                 role: rustok_core::UserRole::Admin,
                 status: rustok_core::UserStatus::Active,
+                permissions: Vec::new(),
             },
         };
         let auth_dbg = format!("{auth:?}");

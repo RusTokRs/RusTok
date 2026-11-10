@@ -315,6 +315,7 @@ pub(super) async fn current_user_native(
                 email: response.email,
                 name: response.name,
                 role: response.role,
+                permissions: response.permissions,
             }),
         })
     }

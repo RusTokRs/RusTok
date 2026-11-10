@@ -6,10 +6,12 @@
 
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, Condition, EntityTrait, QueryFilter,
+    QueryOrder, QuerySelect, sea_query::Expr,
 };
 use serde_json::from_value;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -36,9 +38,38 @@ pub const MAX_PAGE_PUBLISH_JOB_ATTEMPTS: i32 = 5;
 /// Upper bound of jobs one sweep executes.
 pub const MAX_PAGE_PUBLISH_JOBS_PER_SWEEP: u64 = 50;
 
+/// How long a claimed (`executing`) job holds its lease. The lease must exceed
+/// the worst-case `publish_reviewed` execution time with a wide margin; a
+/// worker that crashes mid-publish leaves the job `executing` until the reaper
+/// requeues it after this deadline. Replays are safe: the captured command
+/// carries the publish `idempotency_key`.
+pub const PAGE_PUBLISH_JOB_LEASE_SECS: i64 = 600;
+
 pub const PAGE_PUBLISH_SCHEDULE_NOT_FOUND: &str = "PAGE_PUBLISH_SCHEDULE_NOT_FOUND";
 pub const PAGE_PUBLISH_SCHEDULE_NOT_CANCELABLE: &str = "PAGE_PUBLISH_SCHEDULE_NOT_CANCELABLE";
 pub const PAGE_PUBLISH_SCHEDULE_TIME_INVALID: &str = "PAGE_PUBLISH_SCHEDULE_TIME_INVALID";
+pub const PAGE_PUBLISH_JOB_LEASE_EXPIRED: &str = "PAGE_PUBLISH_JOB_LEASE_EXPIRED";
+
+/// What one reaper pass did with expired `executing` jobs.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PagePublishReapOutcome {
+    /// Expired jobs returned to `scheduled` for the next sweep to reclaim.
+    pub requeued: u64,
+    /// Expired jobs whose attempts were exhausted: terminal `failed`.
+    pub failed: u64,
+    /// Expired jobs superseded by a newer `scheduled` job for the same page:
+    /// terminal `canceled`, the newer schedule wins.
+    pub superseded: u64,
+}
+
+/// What one due-sweep (reap + claim + execute) accomplished.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PagePublishSweepOutcome {
+    /// Jobs that reached `published` in this sweep.
+    pub published: u64,
+    /// Reaper output for expired `executing` jobs found before claiming.
+    pub reaped: PagePublishReapOutcome,
+}
 
 fn schedule_time_invalid(message: impl Into<String>) -> PagesError {
     PagesError::Rich(Box::new(
@@ -143,6 +174,7 @@ impl PageService {
             active.publish_at = Set(publish_at);
             active.command = Set(command);
             active.attempts = Set(0);
+            active.lease_until = Set(None);
             active.last_error_code = Set(None);
             active.last_error_message = Set(None);
             active.updated_at = Set(now);
@@ -156,6 +188,7 @@ impl PageService {
                 state: Set(PagePublishJobState::Scheduled.as_str().to_string()),
                 command: Set(command),
                 attempts: Set(0),
+                lease_until: Set(None),
                 last_error_code: Set(None),
                 last_error_message: Set(None),
                 publish_operation_id: Set(None),
@@ -221,16 +254,33 @@ impl PageService {
             .await
     }
 
-    /// Claims and executes at most `limit` scheduled jobs that are due at `now`.
-    ///
-    /// Returns how many jobs reached `published`. Safe to run from concurrent workers:
-    /// the claim is an optimistic `scheduled -> executing` transition.
-    #[instrument(skip(self))]
+    /// Reaps expired `executing` jobs, then claims and executes due jobs; see
+    /// [`Self::sweep_due_publish_jobs_as_of`].
     pub async fn process_due_publish_jobs_as_of(
         &self,
         now: sea_orm::prelude::DateTimeWithTimeZone,
         limit: u64,
     ) -> PagesResult<u64> {
+        self.sweep_due_publish_jobs_as_of(now, limit)
+            .await
+            .map(|outcome| outcome.published)
+    }
+
+    /// Reaps expired `executing` jobs and claims and executes at most `limit`
+    /// scheduled jobs that are due at `now`.
+    ///
+    /// Returns what the sweep accomplished. Safe to run from concurrent workers:
+    /// the claim is an optimistic `scheduled -> executing` transition that also
+    /// takes the reaper lease, and the reaper only touches `executing` jobs
+    /// whose lease has expired, so a live worker's job is never requeued
+    /// underneath it.
+    #[instrument(skip(self))]
+    pub async fn sweep_due_publish_jobs_as_of(
+        &self,
+        now: sea_orm::prelude::DateTimeWithTimeZone,
+        limit: u64,
+    ) -> PagesResult<PagePublishSweepOutcome> {
+        let reaped = self.reap_expired_publish_jobs_as_of(now).await?;
         let limit = limit.clamp(1, MAX_PAGE_PUBLISH_JOBS_PER_SWEEP);
         let due = page_publish_job::Entity::find()
             .filter(page_publish_job::Column::State.eq("scheduled"))
@@ -240,6 +290,9 @@ impl PageService {
             .all(&self.db)
             .await?;
 
+        let lease_until = body_revision_timestamp(
+            (now + chrono::Duration::seconds(PAGE_PUBLISH_JOB_LEASE_SECS)).with_timezone(&Utc),
+        );
         let mut published = 0_u64;
         for job in due {
             let claimed = page_publish_job::Entity::update_many()
@@ -250,6 +303,10 @@ impl PageService {
                 .col_expr(
                     page_publish_job::Column::Attempts,
                     Expr::value(job.attempts + 1),
+                )
+                .col_expr(
+                    page_publish_job::Column::LeaseUntil,
+                    Expr::value(lease_until),
                 )
                 .col_expr(
                     page_publish_job::Column::UpdatedAt,
@@ -284,6 +341,10 @@ impl PageService {
                         .col_expr(
                             page_publish_job::Column::State,
                             Expr::value(PagePublishJobState::Published.as_str()),
+                        )
+                        .col_expr(
+                            page_publish_job::Column::LeaseUntil,
+                            Expr::value(None::<sea_orm::prelude::DateTimeWithTimeZone>),
                         )
                         .col_expr(
                             page_publish_job::Column::LastErrorCode,
@@ -321,6 +382,10 @@ impl PageService {
                             page_publish_job::Column::State,
                             Expr::value(next_state.as_str()),
                         )
+                        .col_expr(
+                            page_publish_job::Column::LeaseUntil,
+                            Expr::value(None::<sea_orm::prelude::DateTimeWithTimeZone>),
+                        )
                         .col_expr(page_publish_job::Column::LastErrorCode, Expr::value(code))
                         .col_expr(
                             page_publish_job::Column::LastErrorMessage,
@@ -337,7 +402,100 @@ impl PageService {
                 }
             }
         }
-        Ok(published)
+        Ok(PagePublishSweepOutcome { published, reaped })
+    }
+
+    /// Returns expired `executing` jobs to a runnable or terminal state so a
+    /// crashed worker cannot strand a publication forever.
+    ///
+    /// - attempts exhausted -> terminal `failed` (operator attention needed);
+    /// - a newer `scheduled` job exists for the same page -> terminal
+    ///   `canceled`: the newer schedule wins, and requeueing would violate
+    ///   `uq_page_publish_jobs_active`;
+    /// - otherwise -> back to `scheduled` with the lease cleared; the next
+    ///   sweep reclaims it. Replays stay safe: the captured command carries the
+    ///   publish `idempotency_key`.
+    ///
+    /// `lease_until IS NULL` counts as expired — only rows that predate the
+    /// lease column (or were edited manually) can be `executing` without one.
+    /// Safe to run concurrently with live workers: every transition re-checks
+    /// the state and the lease expiry, so a job reclaimed between the select
+    /// and the update is left untouched (`rows_affected == 0`).
+    #[instrument(skip(self))]
+    pub async fn reap_expired_publish_jobs_as_of(
+        &self,
+        now: sea_orm::prelude::DateTimeWithTimeZone,
+    ) -> PagesResult<PagePublishReapOutcome> {
+        let expired = Condition::any()
+            .add(page_publish_job::Column::LeaseUntil.lte(now))
+            .add(page_publish_job::Column::LeaseUntil.is_null());
+
+        let stranded = page_publish_job::Entity::find()
+            .filter(page_publish_job::Column::State.eq("executing"))
+            .filter(expired.clone())
+            .order_by_asc(page_publish_job::Column::PublishAt)
+            .all(&self.db)
+            .await?;
+
+        let mut outcome = PagePublishReapOutcome::default();
+        for job in stranded {
+            let superseded_by_newer_schedule = page_publish_job::Entity::find()
+                .filter(page_publish_job::Column::TenantId.eq(job.tenant_id))
+                .filter(page_publish_job::Column::PageId.eq(job.page_id))
+                .filter(page_publish_job::Column::State.eq("scheduled"))
+                .one(&self.db)
+                .await?
+                .is_some();
+            let next_state = if job.attempts >= MAX_PAGE_PUBLISH_JOB_ATTEMPTS {
+                PagePublishJobState::Failed
+            } else if superseded_by_newer_schedule {
+                PagePublishJobState::Canceled
+            } else {
+                PagePublishJobState::Scheduled
+            };
+            let message = format!(
+                "Publish job `{}` was left `executing` past its lease by a worker that \
+                 never reported an outcome; the reaper moved it to `{}`.",
+                job.id,
+                next_state.as_str(),
+            );
+            let updated = page_publish_job::Entity::update_many()
+                .col_expr(
+                    page_publish_job::Column::State,
+                    Expr::value(next_state.as_str()),
+                )
+                .col_expr(
+                    page_publish_job::Column::LeaseUntil,
+                    Expr::value(None::<sea_orm::prelude::DateTimeWithTimeZone>),
+                )
+                .col_expr(
+                    page_publish_job::Column::LastErrorCode,
+                    Expr::value(Some(PAGE_PUBLISH_JOB_LEASE_EXPIRED.to_string())),
+                )
+                .col_expr(
+                    page_publish_job::Column::LastErrorMessage,
+                    Expr::value(Some(message)),
+                )
+                .col_expr(
+                    page_publish_job::Column::UpdatedAt,
+                    Expr::value(body_revision_timestamp(Utc::now())),
+                )
+                .filter(page_publish_job::Column::Id.eq(job.id))
+                .filter(page_publish_job::Column::State.eq("executing"))
+                .filter(expired.clone())
+                .exec(&self.db)
+                .await?;
+            if updated.rows_affected == 0 {
+                continue;
+            }
+            match next_state {
+                PagePublishJobState::Failed => outcome.failed += 1,
+                PagePublishJobState::Canceled => outcome.superseded += 1,
+                PagePublishJobState::Scheduled => outcome.requeued += 1,
+                PagePublishJobState::Published | PagePublishJobState::Executing => {}
+            }
+        }
+        Ok(outcome)
     }
 
     async fn latest_publish_job(
@@ -382,6 +540,51 @@ pub struct PagePublishScheduler {
     service: PageService,
     interval: std::time::Duration,
     batch: u64,
+    metrics: Arc<PagePublishSchedulerMetrics>,
+}
+
+/// In-process sweep counters, mirroring the outbox relay metrics surface.
+#[derive(Default)]
+struct PagePublishSchedulerMetrics {
+    sweeps_total: AtomicU64,
+    published_total: AtomicU64,
+    requeued_total: AtomicU64,
+    reaped_failed_total: AtomicU64,
+    superseded_total: AtomicU64,
+}
+
+/// Point-in-time view of the scheduler counters.
+///
+/// `requeued_total` counts crash recoveries (expired leases returned to
+/// `scheduled`); `reaped_failed_total` counts stranded publications that
+/// exhausted their attempts and need operator attention.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PagePublishSchedulerMetricsSnapshot {
+    pub sweeps_total: u64,
+    pub published_total: u64,
+    pub requeued_total: u64,
+    pub reaped_failed_total: u64,
+    pub superseded_total: u64,
+}
+
+impl PagePublishSchedulerMetrics {
+    fn record(&self, outcome: &PagePublishSweepOutcome) {
+        self.sweeps_total.fetch_add(1, Ordering::Relaxed);
+        self.published_total.fetch_add(outcome.published, Ordering::Relaxed);
+        self.requeued_total.fetch_add(outcome.reaped.requeued, Ordering::Relaxed);
+        self.reaped_failed_total.fetch_add(outcome.reaped.failed, Ordering::Relaxed);
+        self.superseded_total.fetch_add(outcome.reaped.superseded, Ordering::Relaxed);
+    }
+
+    fn snapshot(&self) -> PagePublishSchedulerMetricsSnapshot {
+        PagePublishSchedulerMetricsSnapshot {
+            sweeps_total: self.sweeps_total.load(Ordering::Relaxed),
+            published_total: self.published_total.load(Ordering::Relaxed),
+            requeued_total: self.requeued_total.load(Ordering::Relaxed),
+            reaped_failed_total: self.reaped_failed_total.load(Ordering::Relaxed),
+            superseded_total: self.superseded_total.load(Ordering::Relaxed),
+        }
+    }
 }
 
 impl PagePublishScheduler {
@@ -390,12 +593,18 @@ impl PagePublishScheduler {
             service,
             interval: std::time::Duration::from_secs(30),
             batch: MAX_PAGE_PUBLISH_JOBS_PER_SWEEP,
+            metrics: Arc::new(PagePublishSchedulerMetrics::default()),
         }
     }
 
     pub fn with_interval(mut self, interval: std::time::Duration) -> Self {
         self.interval = interval;
         self
+    }
+
+    /// Current sweep counters; see [`PagePublishSchedulerMetricsSnapshot`].
+    pub fn metrics(&self) -> PagePublishSchedulerMetricsSnapshot {
+        self.metrics.snapshot()
     }
 
     /// Runs sweeps until the process stops.
@@ -406,8 +615,13 @@ impl PagePublishScheduler {
         }
     }
 
-    /// One bounded sweep; returns how many jobs reached `published`.
-    pub async fn process_due_once(&self) -> PagesResult<u64> {
-        self.service.process_due_publish_jobs(self.batch).await
+    /// One bounded sweep (reap expired leases, then claim and execute due jobs).
+    pub async fn process_due_once(&self) -> PagesResult<PagePublishSweepOutcome> {
+        let outcome = self
+            .service
+            .sweep_due_publish_jobs_as_of(body_revision_timestamp(Utc::now()), self.batch)
+            .await?;
+        self.metrics.record(&outcome);
+        Ok(outcome)
     }
 }

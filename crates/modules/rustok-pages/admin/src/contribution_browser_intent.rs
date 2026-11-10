@@ -47,7 +47,10 @@ pub async fn dispatch_pages_browser_intent_with_capabilities(
     capabilities: CapabilityState,
 ) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentAccessError> {
     let envelope = preflight_pages_intent(envelope, capabilities)?;
-    Ok(browser_intent::dispatch_pages_browser_intent(snapshot, envelope).await?)
+    Ok(
+        browser_intent::dispatch_pages_browser_intent(snapshot, envelope, capabilities)
+            .await?,
+    )
 }
 
 pub async fn dispatch_pages_browser_intent_with_store(
@@ -72,8 +75,13 @@ pub async fn dispatch_pages_browser_intent_with_store_and_capabilities(
 ) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentAccessError> {
     let envelope = preflight_pages_intent(envelope, capabilities)?;
     Ok(
-        browser_intent::dispatch_pages_browser_intent_with_store(snapshot, envelope, draft_store)
-            .await?,
+        browser_intent::dispatch_pages_browser_intent_with_store(
+            snapshot,
+            envelope,
+            draft_store,
+            capabilities,
+        )
+        .await?,
     )
 }
 
@@ -166,15 +174,27 @@ mod tests {
 
     #[test]
     fn pages_preflight_preserves_typed_capability_denial() {
-        let capabilities = CapabilityState {
+        // Saving a draft is an authoring action: a manager-style profile
+        // (authoring without publish) passes the save preflight…
+        let author = CapabilityState {
             publish: false,
             ..CapabilityState::full()
         };
+        assert!(
+            preflight_pages_intent(envelope("save", json!({})), author).is_ok(),
+            "authoring profiles must be able to save drafts"
+        );
+
+        // …while a profile without authoring receives the typed denial.
+        let capabilities = CapabilityState {
+            edit: false,
+            ..CapabilityState::full()
+        };
         let error = preflight_pages_intent(envelope("save", json!({})), capabilities)
-            .expect_err("publish capability denial");
+            .expect_err("edit capability denial");
         assert_eq!(
             error.capability_denial().map(|denial| denial.capability),
-            Some(EditorCapability::Publish)
+            Some(EditorCapability::Edit)
         );
         assert!(matches!(
             error,

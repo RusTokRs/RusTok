@@ -135,7 +135,11 @@ fn capability_requirements(
         | BrowserIntentKind::Cut
         | BrowserIntentKind::Paste
         | BrowserIntentKind::Duplicate => vec![EditorCapability::Clipboard],
-        BrowserIntentKind::Save => vec![EditorCapability::Publish],
+        // Saving the working draft is an authoring action gated by the
+        // edit capability (pages:update at the permission layer). The
+        // publish capability stays reserved for the real publication
+        // flow, which the editor does not trigger via `save`.
+        BrowserIntentKind::Save => vec![EditorCapability::Edit],
         BrowserIntentKind::BeginPaletteDrag
         | BrowserIntentKind::BeginSelectedMove
         | BrowserIntentKind::Drop
@@ -197,7 +201,7 @@ fn shortcut_requirements(
         .ok_or_else(|| BrowserIntentDispatchError::Unsupported("key_stroke".to_string()))?;
     Ok(match shortcut {
         EditorShortcut::Undo | EditorShortcut::Redo => vec![EditorCapability::History],
-        EditorShortcut::Save => vec![EditorCapability::Publish],
+        EditorShortcut::Save => vec![EditorCapability::Edit],
         EditorShortcut::Copy
         | EditorShortcut::Cut
         | EditorShortcut::Paste
@@ -294,15 +298,25 @@ mod tests {
     }
 
     #[test]
-    fn publish_history_and_clipboard_intents_use_specific_capabilities() {
-        let capabilities = CapabilityState {
+    fn save_is_an_authoring_intent_and_publish_stays_independent() {
+        let author = CapabilityState {
             publish: false,
+            ..CapabilityState::full()
+        };
+        assert!(
+            validate_browser_capability_access(&envelope("save", json!({})), author).is_ok(),
+            "authoring profiles must be able to save drafts"
+        );
+        // Profiles without authoring are denied the save with a typed
+        // denial, exactly like history- and clipboard-gated intents.
+        let capabilities = CapabilityState {
+            edit: false,
             history: false,
             clipboard: false,
             ..CapabilityState::full()
         };
         for (intent, kind, capability) in [
-            ("save", BrowserIntentKind::Save, EditorCapability::Publish),
+            ("save", BrowserIntentKind::Save, EditorCapability::Edit),
             ("undo", BrowserIntentKind::Undo, EditorCapability::History),
             ("copy", BrowserIntentKind::Copy, EditorCapability::Clipboard),
         ] {
@@ -476,7 +490,7 @@ mod tests {
     #[test]
     fn keyboard_shortcuts_share_the_same_capability_table() {
         let capabilities = CapabilityState {
-            publish: false,
+            edit: false,
             ..CapabilityState::full()
         };
         let error = validate_browser_capability_access(
@@ -499,10 +513,10 @@ mod tests {
             ),
             capabilities,
         )
-        .expect_err("publish shortcut capability denial");
+        .expect_err("save shortcut capability denial");
         let denial = browser_capability_denial(&error).expect("typed denial");
         assert_eq!(denial.intent, BrowserIntentKind::KeyStroke);
-        assert_eq!(denial.capability, EditorCapability::Publish);
+        assert_eq!(denial.capability, EditorCapability::Edit);
     }
 
     #[test]

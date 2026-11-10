@@ -8,7 +8,7 @@ use rustok_auth::{
     AuthUserBackfillReadRequest, AuthUserBackfillRecord, AuthUserRecord,
 };
 
-use crate::auth::{AuthConfig, decode_access_token, encode_password_reset_token};
+use crate::auth::{AuthConfig, encode_password_reset_token};
 use crate::common::RustokSettings;
 use crate::models::users;
 use crate::services::auth_invite::InviteAcceptanceError;
@@ -17,7 +17,6 @@ use crate::services::email::{
     PASSWORD_RESET_TOKEN_TTL_SECS, PasswordResetEmail, email_service_from_ctx, password_reset_url,
     spawn_email_verification,
 };
-use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 fn internal_lifecycle_error<E>(error: E) -> AuthLifecycleMutationError
@@ -96,38 +95,16 @@ impl ServerAuthLifecycleProvider {
         Ok(())
     }
 
-    async fn permission_strings(
-        &self,
-        tenant_id: uuid::Uuid,
-        user_id: uuid::Uuid,
-    ) -> Result<Vec<String>, AuthLifecycleMutationError> {
-        let permissions =
-            RbacService::get_user_permissions(self.runtime_ctx.db(), &tenant_id, &user_id)
-                .await
-                .map_err(internal_lifecycle_error)?;
-        let mut values = permissions
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>();
-        values.sort();
-        values.dedup();
-        Ok(values)
-    }
-
     async fn token_record(
         &self,
-        tenant_id: uuid::Uuid,
         user: users::Model,
         tokens: AuthTokens,
     ) -> Result<AuthTokenRecord, AuthLifecycleMutationError> {
-        let permissions = match self.permission_strings(tenant_id, user.id).await {
-            Ok(permissions) => permissions,
-            Err(error) => {
-                self.compensate_issued_session(tenant_id, &tokens.access_token)
-                    .await;
-                return Err(error);
-            }
-        };
+        // The permission snapshot travels with the issued tokens: the
+        // lifecycle service resolves it on the same transaction that
+        // created the session, so a resolution failure aborts the
+        // authentication before anything is persisted and no
+        // post-issuance compensation is needed here.
         Ok(AuthTokenRecord {
             access_token: tokens.access_token,
             refresh_token: tokens.refresh_token,
@@ -138,43 +115,9 @@ impl ServerAuthLifecycleProvider {
                 name: user.name,
                 role: tokens.effective_role,
                 status: user.status.to_string(),
-                permissions,
+                permissions: tokens.permissions,
             },
         })
-    }
-
-    async fn compensate_issued_session(&self, tenant_id: uuid::Uuid, access_token: &str) {
-        let claims = match decode_access_token(&self.auth_config, access_token) {
-            Ok(claims) => claims,
-            Err(_) => {
-                tracing::error!(
-                    %tenant_id,
-                    "Auth token response failed after issuance and issued session could not be decoded for compensation"
-                );
-                return;
-            }
-        };
-
-        if claims.tenant_id != tenant_id {
-            tracing::error!(
-                %tenant_id,
-                token_tenant_id = %claims.tenant_id,
-                "Auth token response failed after issuance and token tenant did not match provider tenant"
-            );
-            return;
-        }
-
-        if let Err(error) =
-            AuthLifecycleService::logout_runtime(&self.runtime_ctx, tenant_id, claims.session_id)
-                .await
-        {
-            tracing::error!(
-                error = ?error,
-                %tenant_id,
-                session_id = %claims.session_id,
-                "Auth token response failed after issuance and issued session compensation failed"
-            );
-        }
     }
 
     fn require_direct_user_id(
@@ -293,7 +236,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         )
         .await
         .map_err(map_lifecycle_error)?;
-        self.token_record(context.tenant_id, user, tokens).await
+        self.token_record(user, tokens).await
     }
 
     async fn sign_up(
@@ -324,7 +267,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
                 context.locale.as_str(),
             );
         }
-        self.token_record(context.tenant_id, user, tokens).await
+        self.token_record(user, tokens).await
     }
 
     async fn refresh_token(
@@ -341,7 +284,7 @@ impl AuthLifecyclePort for ServerAuthLifecycleProvider {
         )
         .await
         .map_err(map_lifecycle_error)?;
-        self.token_record(context.tenant_id, user, tokens).await
+        self.token_record(user, tokens).await
     }
 
     async fn forgot_password(

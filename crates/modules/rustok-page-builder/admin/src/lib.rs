@@ -737,8 +737,9 @@ pub use contribution_host::{
 };
 pub use core::{EditorSessionAction, EditorSessionEffect, EditorSessionState, gate_error_message};
 pub use draft_session::{
-    DraftSessionKvDriver, DurableSsrDraftSessionStore, ExternalKvDraftSessionBackend,
-    FileSsrDraftSessionStore, InMemorySsrDraftSessionStore, MemoryKvDriver,
+    DraftSessionKvDriver, DraftSessionOwner, DurableSsrDraftSessionStore,
+    ExternalKvDraftSessionBackend, FileSsrDraftSessionStore, InMemorySsrDraftSessionStore,
+    MAX_DRAFT_SESSION_RECORD_BYTES, MAX_DRAFT_SESSIONS_PER_OWNER, MemoryKvDriver,
     PersistentDraftSessionBackend, PersistentDraftSessionRecord, SsrDraftSessionError,
     SsrDraftSessionSnapshot, SsrDraftSessionStore,
 };

@@ -110,6 +110,7 @@ mod tests {
                 email: "verified@example.test".to_string(),
                 name: Some("Verified".to_string()),
                 role: "admin".to_string(),
+                permissions: Vec::new(),
             }),
         });
         let (parts, ()) = request.into_parts();

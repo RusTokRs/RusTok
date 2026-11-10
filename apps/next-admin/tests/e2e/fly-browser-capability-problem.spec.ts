@@ -105,12 +105,12 @@ async function mountProblemContract(page: Page) {
         return new Response(
           JSON.stringify({
             status: 403,
-            error: 'browser intent `save` requires editor capability `publish`',
+            error: 'browser intent `save` requires editor capability `edit`',
             code: 'FLY_CAPABILITY_DENIED',
             intent: 'save',
-            capability: 'publish',
-            required: ['publish'],
-            missing: ['publish']
+            capability: 'edit',
+            required: ['edit'],
+            missing: ['edit']
           }),
           {
             status: 403,
@@ -173,7 +173,7 @@ test('capability denial is typed, accessible and cleared by success', async ({
   await expect(alert).toHaveAttribute('role', 'alert');
   await expect(alert).toHaveAttribute('aria-live', 'assertive');
   await expect(alert).toHaveText(
-    'browser intent `save` requires editor capability `publish`'
+    'browser intent `save` requires editor capability `edit`'
   );
 
   let state = await page.evaluate(() => {
@@ -188,11 +188,11 @@ test('capability denial is typed, accessible and cleared by success', async ({
     {
       status: 403,
       code: 'FLY_CAPABILITY_DENIED',
-      error: 'browser intent `save` requires editor capability `publish`',
+      error: 'browser intent `save` requires editor capability `edit`',
       intent: 'save',
-      capability: 'publish',
-      required: ['publish'],
-      missing: ['publish'],
+      capability: 'edit',
+      required: ['edit'],
+      missing: ['edit'],
       instanceId: 'canvas-a',
       pageId: 'home'
     }

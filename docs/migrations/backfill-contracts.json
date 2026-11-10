@@ -392,6 +392,13 @@
       "mode": "none",
       "owner": "rustok-modules",
       "reason": "Creates the executor pools table as new owner storage for durable pool generations; pools are deployment facts registered by the host after upgrade, so no historical rows exist to backfill"
+    },
+    {
+      "id": "pages-page-publish-job-lease",
+      "migration": "m20261110_000001_add_page_publish_job_lease_until",
+      "mode": "none",
+      "owner": "rustok-pages",
+      "reason": "Adds the nullable reaper lease column and a partial index over executing rows to page_publish_jobs; existing rows keep NULL leases, which the reaper deliberately treats as expired claims, so no historical data is converted or backfilled"
     }
   ]
 }
