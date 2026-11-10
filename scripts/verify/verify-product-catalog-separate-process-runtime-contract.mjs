@@ -302,7 +302,7 @@ function verifyRegistryAndPlan() {
     "separate-process runtime capture contract is source-complete",
     "raw database URLs, bearer credentials, tenant IDs, product IDs, variant IDs, and process logs are not retained",
     "Mounted business requests have separate evidence",
-    "Product remains `boundary_ready` rather than `transport_verified`",
+    "Product remains `boundary_ready` pending the combined deployment capture",
     "- [x] Lock a reproducible separate-process Product runtime evidence capture contract.",
     "- [ ] Execute the separate-process Product runtime capture and retain its sanitized evidence packet.",
     "- [ ] Retain authenticated separate-process Commerce and AI end-to-end evidence.",
