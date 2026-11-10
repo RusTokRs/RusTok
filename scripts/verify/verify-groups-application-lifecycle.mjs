@@ -3,7 +3,20 @@ import path from "node:path";
 
 const root = process.cwd();
 const failures = [];
-const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const readRaw = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const read = (relative) => {
+  let source = readRaw(relative);
+  if (relative.endsWith("/applications.rs")) {
+    for (const child of source.matchAll(/#\[path = "([^"\n]+\.rs)"\]/g)) {
+      source += "\n" + readRaw(path.join(path.dirname(relative), child[1]));
+    }
+  } else if (relative.endsWith("/applications_cas.rs")) {
+    source += "\n" + readRaw(relative.replace("applications_cas.rs", "applications_transactional_cas.rs"));
+  } else if (relative.endsWith("/applications_lifecycle.rs")) {
+    source += "\n" + readRaw(relative.replace("applications_lifecycle.rs", "applications_transactional_lifecycle.rs"));
+  }
+  return source;
+};
 const exists = (relative) => fs.existsSync(path.join(root, relative));
 
 const requireFile = (relative) => {
@@ -52,7 +65,7 @@ for (const relative of [
 ]) requireFile(relative);
 
 requireMarkers("crates/modules/rustok-groups/src/applications.rs", [
-  'include!("applications_lifecycle.rs")',
+  '#[path = "applications_lifecycle.rs"]',
 ]);
 requireMarkers("crates/modules/rustok-groups/src/applications_lifecycle.rs", [
   "GroupApplicationLifecycleReadPort",
@@ -64,7 +77,7 @@ requireMarkers("crates/modules/rustok-groups/src/applications_lifecycle.rs", [
   "GroupMembershipStatus::Left",
   "GroupApplicationStatus::Cancelled",
   "GroupApplicationStatus::Rejected | GroupApplicationStatus::Cancelled",
-  "authorize_application_review",
+  "require_effective_manager_owned",
   '"group.membership_application_cancelled"',
   '"group.membership_application_reopened"',
   '"snapshot_preserved": true',
@@ -78,22 +91,22 @@ forbidMarkers("crates/modules/rustok-groups/src/applications_lifecycle.rs", [
 ]);
 
 const lifecycle = read("crates/modules/rustok-groups/src/applications_lifecycle.rs");
-for (const method of ["cancel_application_owned", "reopen_application_owned"]) {
+for (const method of ["cancel_application_effective_owned", "reopen_application_effective_owned"]) {
   const start = lifecycle.indexOf(`async fn ${method}`);
   const applicationLock = lifecycle.indexOf("find_application_for_update", start);
   const groupLock = lifecycle.indexOf("find_group_for_update", start);
   const stateWrite = lifecycle.indexOf("ActiveModel", groupLock);
   if (!(start >= 0 && applicationLock > start && groupLock > applicationLock && stateWrite > groupLock)) {
-    failures.push(`${method}: lifecycle lock order must be application then group before state writes`);
+    failures.push(`${method}: lifecycle locator must resolve the group before re-reading child state`);
   }
   const replay = lifecycle.indexOf("replay_receipt::<GroupApplicationLifecycleResult>", start);
   if (!(replay > start && replay < applicationLock)) {
     failures.push(`${method}: idempotent replay must precede lifecycle state locks`);
   }
 }
-const reopenStart = lifecycle.indexOf("async fn reopen_application_owned");
+const reopenStart = lifecycle.indexOf("async fn reopen_application_effective_owned");
 const reopenGroupLock = lifecycle.indexOf("find_group_for_update", reopenStart);
-const reopenAuthorization = lifecycle.indexOf("authorize_application_review", reopenGroupLock);
+const reopenAuthorization = lifecycle.indexOf("require_effective_manager_owned", reopenGroupLock);
 const reopenStatusRead = lifecycle.indexOf("let previous_status", reopenAuthorization);
 if (!(reopenStart >= 0 && reopenGroupLock > reopenStart && reopenAuthorization > reopenGroupLock && reopenStatusRead > reopenAuthorization)) {
   failures.push("manager reopen must authorize before exposing or validating application status");
@@ -102,10 +115,10 @@ if (!(reopenStart >= 0 && reopenGroupLock > reopenStart && reopenAuthorization >
 requireMarkers("crates/modules/rustok-groups/src/applications_cas.rs", [
   "find_candidate_application_for_update",
   "prelocked_application",
-  '"application_lock_order": "application_then_group_when_existing"',
+  '"application_lock_order": "group_then_application"',
 ]);
 const cas = read("crates/modules/rustok-groups/src/applications_cas.rs");
-const submitStart = cas.indexOf("async fn submit_application_if_current_owned");
+const submitStart = cas.indexOf("async fn submit_application_if_current_effective_owned");
 const firstCandidateLock = cas.indexOf("find_candidate_application_for_update", submitStart);
 const submitGroupLock = cas.indexOf("find_group_for_update", firstCandidateLock);
 const submitPrecondition = cas.indexOf("ensure_loaded_policy_precondition", submitGroupLock);
@@ -125,7 +138,7 @@ requireMarkers("crates/modules/rustok-groups/src/graphql_application_lifecycle.r
 requireMarkers("crates/modules/rustok-groups/src/graphql_application_cas.rs", [
   "GroupsApplicationLifecycleQuery",
   "GroupsApplicationLifecycleMutation",
-  "GroupsBaseQueryRoot, GroupsApplicationLifecycleQuery",
+  "GroupsApplicationLifecycleQuery,",
   "GroupsApplicationCasMutation,",
   "GroupsApplicationLifecycleMutation,",
 ]);

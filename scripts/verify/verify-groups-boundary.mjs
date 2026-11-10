@@ -3,7 +3,20 @@ import path from "node:path";
 
 const root = process.cwd();
 const failures = [];
-const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const readRaw = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const read = (relative) => {
+  let source = readRaw(relative);
+  if (relative.endsWith("/applications.rs")) {
+    for (const child of source.matchAll(/#\[path = "([^"\n]+\.rs)"\]/g)) {
+      source += "\n" + readRaw(path.join(path.dirname(relative), child[1]));
+    }
+  } else if (relative.endsWith("/applications_cas.rs")) {
+    source += "\n" + readRaw(relative.replace("applications_cas.rs", "applications_transactional_cas.rs"));
+  } else if (relative.endsWith("/applications_lifecycle.rs")) {
+    source += "\n" + readRaw(relative.replace("applications_lifecycle.rs", "applications_transactional_lifecycle.rs"));
+  }
+  return source;
+};
 const exists = (relative) => fs.existsSync(path.join(root, relative));
 
 const required = [
@@ -20,7 +33,6 @@ const required = [
   "crates/modules/rustok-groups/src/invitations.rs",
   "crates/modules/rustok-groups/src/targeted_invitations.rs",
   "crates/modules/rustok-groups/src/applications.rs",
-  "crates/modules/rustok-groups/src/applications_legacy.rs",
   "crates/modules/rustok-groups/src/applications_cas.rs",
   "crates/modules/rustok-groups/src/policy_history.rs",
   "crates/modules/rustok-groups/src/governance.rs",
@@ -87,7 +99,6 @@ const serviceFiles = [
   "crates/modules/rustok-groups/src/localization.rs",
   "crates/modules/rustok-groups/src/invitations.rs",
   "crates/modules/rustok-groups/src/targeted_invitations.rs",
-  "crates/modules/rustok-groups/src/applications_legacy.rs",
   "crates/modules/rustok-groups/src/applications_cas.rs",
   "crates/modules/rustok-groups/src/policy_history.rs",
   "crates/modules/rustok-groups/src/governance.rs",
@@ -131,7 +142,8 @@ if (exists("crates/modules/rustok-groups/src/policy_history.rs")) {
     "GroupApplicationPolicyHistoryReadPort",
     "GroupApplicationPolicyHistoryService",
     "PortCallPolicy::read()",
-    "GroupApplicationReadPort::list_group_membership_applications",
+    "require_effective_manager_direct_owned",
+    "GroupManagerCapability::Moderate",
   ]) {
     if (!history.includes(marker)) failures.push(`Groups policy history boundary is missing marker: ${marker}`);
   }
@@ -238,6 +250,23 @@ for (const localePath of [
   "crates/modules/rustok-groups/storefront/locales/ru.ftl",
 ]) {
   if (exists(localePath) && !read(localePath).trim()) failures.push(`${localePath}: empty locale file`);
+}
+
+// Verify the compiled ownership graph, not just matching text in disconnected copies.
+const ownerRoot = readRaw("crates/modules/rustok-groups/src/lib.rs");
+for (const file of ["applications.rs", "invitations.rs", "targeted_invitations.rs"]) {
+  if (!ownerRoot.includes(`#[path = "${file}"]`)) failures.push(`owner module is not connected: ${file}`);
+}
+if (ownerRoot.includes('include!(') || /mod (?:application_owner|invitation_owner|targeted_invitation_owner)\s*\{/.test(ownerRoot)) {
+  failures.push("owner implementations must be ordinary modules, not inline/source-stitched copies");
+}
+const commands = readRaw("crates/modules/rustok-groups/src/commands.rs");
+for (const marker of ["pg_advisory_xact_lock", "UPDATE group_command_receipts", "row.actor_user_id != self.actor_id", "row.request_hash != self.hash"]) {
+  if (!commands.includes(marker)) failures.push(`command admission/receipt invariant is missing: ${marker}`);
+}
+const regressions = readRaw("crates/modules/rustok-groups/tests/command_lifecycle.rs");
+for (const marker of ["delayed_leave_replay", "request_join_does_not_create_orphan", "approved_candidate_can_apply_again", "invitation_completes_pending_application", "concurrent_invitation_replay", "roster_hides_candidates", "feature_replay", "translation_delete_replays"]) {
+  if (!regressions.includes(marker)) failures.push(`behavioral regression test is missing: ${marker}`);
 }
 
 if (failures.length > 0) {

@@ -1,4 +1,6 @@
-const MAX_BULK_REVIEW_ITEMS: usize = 50;
+use super::*;
+
+pub(super) const MAX_BULK_REVIEW_ITEMS: usize = 50;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BulkReviewGroupMembershipApplicationsRequest {
@@ -99,7 +101,7 @@ impl GroupApplicationBulkReviewCommandPort for GroupApplicationService {
                 note: normalized_note.clone(),
             };
             match self
-                .review_application_authorized_owned(&item_context, item_request)
+                .review_application_effective_owned(&item_context, item_request)
                 .await
             {
                 Ok(result) => {
@@ -129,15 +131,11 @@ impl GroupApplicationBulkReviewCommandPort for GroupApplicationService {
     }
 }
 
-fn bulk_review_item_idempotency_key(base_idempotency_key: &str, application_id: Uuid) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(base_idempotency_key.as_bytes());
-    hasher.update(application_id.as_bytes());
-    let digest = hasher.finalize();
-    let mut encoded = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        use std::fmt::Write as _;
-        let _ = write!(&mut encoded, "{byte:02x}");
-    }
-    format!("groups-bulk-review:{encoded}")
+pub(super) fn bulk_review_item_idempotency_key(
+    base_idempotency_key: &str,
+    application_id: Uuid,
+) -> String {
+    let mut bytes = base_idempotency_key.as_bytes().to_vec();
+    bytes.extend_from_slice(application_id.as_bytes());
+    format!("groups-bulk-review:{}", crate::domain::sha256_hex(&bytes))
 }

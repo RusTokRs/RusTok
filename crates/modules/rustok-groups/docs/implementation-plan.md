@@ -10,7 +10,7 @@ status: active
 owners:
   - rustok-groups
   - platform-community
-last_reviewed: 2026-08-08
+last_reviewed: 2026-11-10
 ---
 
 # `rustok-groups` canonical implementation plan
@@ -52,8 +52,10 @@ Cross-module composition uses typed IDs, neutral ports, semantic events, and hos
 appeals, and cross-domain history. Groups remains authoritative for group and group-membership
 mutations.
 
-Compatibility uses `rustok-moderation-api`; Groups never depends on moderation entities, migrations,
-or owner services. Subject identity is fixed:
+Compatibility uses the neutral contracts exported by `rustok-moderation`; Groups
+does not access moderation entities, migrations, or owner services. The dependency
+name is `rustok-moderation` in the current manifest, not a separate API crate.
+Subject identity is fixed:
 
 - group: module `groups`, kind `Group`, ID `groups.id`, revision `groups.version`;
 - membership: module `groups`, kind `GroupMembership`, ID `group_memberships.id`, revision
@@ -79,12 +81,10 @@ subject revision must conflict and must never be retargeted.
 
 ### Commands, replay, and locking
 
-Writes require deadline and idempotency key. Established command lock ordering is preserved. A
-command may lock the identity/serialization row needed to locate its owner aggregate before receipt
-lookup, such as the group on invitation create or the invitation on revoke.
-
-After those required pre-replay locks, an identical receipt is returned before current effective
-authorization, CAS, lifecycle validation, or domain mutation. A changed request using the same key
+Writes require deadline and idempotency key. Tenant/key command admission occurs
+before owner reads. Matching receipt replay precedes current aggregate/subject
+lookup and locking, effective authorization, CAS, lifecycle validation, or mutation.
+A missing or changed current subject cannot invalidate a committed receipt. A changed request using the same key
 conflicts. Replay is never denied because membership authority changed after the original commit.
 
 The canonical membership lock sequence is:
@@ -98,10 +98,11 @@ already resolved group before membership/enforcement reads. Authorization runs a
 and owner locking but before the first domain mutation. Commands that lock multiple memberships use
 deterministic user UUID order, followed by deterministic membership-ID enforcement-row order.
 
-Application CAS preserves existing application-before-group ordering where an application row
-already exists. Invitation/application identity locks do not create a cycle with enforcement because
-the enforcement command never locks invitation or application rows. Bulk review remains one
-transaction, audit, receipt, and result per item.
+All commands admit the tenant/key before reads. Application and invitation locators
+resolve the owning group, then the group is locked before the child row is
+re-read and locked. This prevents cycles when invitation acceptance or leave also
+settles application state. Bulk review remains one transaction, audit, receipt,
+and result per item.
 
 ## Current state
 
@@ -227,7 +228,7 @@ management UX, legacy API deprecation, and executed parity/replay/race/security/
 
 The database trigger bridge remains transitional for revision maintenance, but the owner write
 architecture now has an explicit shared Groups enforcement mutation used by the direct command and
-reserved for the neutral moderation adapter.
+used by the neutral moderation adapter.
 
 ### Transactional invitation/application cutover
 
@@ -245,9 +246,9 @@ Each path:
 
 1. validates stateless request/deadline/idempotency inputs;
 2. starts the owner transaction;
-3. acquires any established identity/serialization row required before receipt lookup;
+3. acquires tenant/key command admission before opening any owner read snapshot;
 4. returns matching receipt replay or changed-request conflict;
-5. acquires the remaining group/membership/enforcement locks;
+5. locates the aggregate and acquires group/membership/enforcement locks;
 6. evaluates effective manager/candidate state using the Groups clock;
 7. performs authorization-first lifecycle/CAS validation and mutation;
 8. commits state, version/revision effects, audit, and receipt together.
@@ -286,12 +287,12 @@ Direct enforcement additionally exposes stable fail-closed errors:
 - a real user actor and bounded idempotency key;
 - expected membership revision CAS;
 - owner/admin/moderator hierarchy plus platform moderate/manage authority and hard owner protection;
-- receipt-first replay after the required group serialization lock, with actor/group/request binding;
+- receipt-first replay after tenant/key admission and before group lookup/locking, with actor/group/request binding;
 - deterministic membership/enforcement lock ordering;
 - canonical reason codes and optional owner-clock expiry;
 - stored lifecycle status preserved as restoration state;
 - direct-local provenance with no Moderation decision identity;
-- shared crate-private suspension/revocation owner mutations for the later neutral adapter;
+- shared crate-private suspension/revocation owner mutations used by the neutral adapter;
 - trigger-owned membership revision advance plus explicit group-version advance;
 - unchanged stored lifecycle member count on temporary suspend/revoke;
 - atomic audit, exact append-only membership semantic event and command receipt;
@@ -420,8 +421,9 @@ parity evidence remain open.
 ### Source-complete governance effective authorization
 
 `GroupGovernanceCommandPort` now follows the same owner serialization and effective-membership
-boundary as enforcement/localization. Both `change_group_role` and `transfer_group_ownership` lock
-the group before receipt lookup. Replay identity is bound to tenant + group + actor + command + request hash,
+boundary as enforcement/localization. Both `change_group_role` and `transfer_group_ownership`
+admit the command and check receipt replay before locating/locking the group.
+Replay identity is bound to tenant + group + actor + command + request hash,
 so a caller cannot reuse another actor's completed governance receipt. Matching replay returns before
 current membership/enforcement authorization, preserving lost-response semantics when authority has
 changed after the original commit.
@@ -503,8 +505,8 @@ Implemented bounded mapping:
 - unsupported effects and account sanctions are rejected without mutation;
 - moderation records applied evidence only after a matching adapter result.
 
-The adapter now depends only on neutral `rustok-moderation-api` plus shared `rustok-outbox`
-producer receipts. Moderation carries the already-validated immutable case scope as a versioned
+The adapter consumes neutral contracts exported by `rustok-moderation` plus shared
+`rustok-outbox` producer receipts; it does not access Moderation owner persistence. Moderation carries the already-validated immutable case scope as a versioned
 trusted `PortContext` claim without changing the historical `ApplyModerationDecisionCommand` receipt
 shape. Groups binds that exact scope together with the command in its own receipt, then reuses the
 owner mutation above rather than introducing a second enforcement state path. Runtime/replay/race
@@ -590,3 +592,358 @@ slice. All affected runtime evidence remains `null`.
 ## Change rules
 
 Follow AGENTS.md rules.
+
+## Owner consistency remediation — 2026-11-10
+
+Group membership is social participation, not a commercial subscription.
+The owner now uses ordinary Rust modules rather than inline copies or source
+stitching. `application_owner`, `invitation_owner`, and `targeted_invitation_owner`
+are private implementation modules; public facade paths remain unchanged.
+
+Implemented source changes:
+
+- Core create/join/leave/feature and localization commands persist receipts and
+  command audit atomically. Admission serializes an exact tenant/key before reads;
+  receipt replay is checked before the precondition and effective authorization.
+- PostgreSQL admission uses a transaction advisory lock; SQLite reserves its writer
+  before opening a snapshot. Group locks precede application/invitation row locks.
+- Request joins return `groups.application_required` without pending membership.
+- Approved candidates can resubmit after leaving. Invitation acceptance completes
+  a pending application; leaving cancels it and advances aggregate version even
+  when the stored active member count does not change.
+- Exact membership lookup requires self/service/management authority. Public
+  rosters expose active lifecycle members only; management rosters remain broader.
+- Catalog locale/search filtering uses a database subquery with stable ID ordering.
+
+Existing transport boundaries remain mandatory:
+`GroupApplicationPolicyManagementReadPort` carries the selected exact locale in a
+typed request and returns an empty management view for a missing translation.
+`GroupApplicationCasCommandPort` owns CAS saves/submissions; the final GraphQL root does not expose legacy unconditional policy/submission writes.
+`GroupApplicationLifecycleReadPort` and `GroupApplicationLifecycleCommandPort`
+remain shared native/GraphQL owner contracts.
+
+Verification commands include `verify-groups-application-policy-locales.mjs` and
+`cargo test -p rustok-groups --test command_lifecycle`. The new behavioral tests use
+production migrations and public ports, including file-backed SQLite replay.
+They are source-complete but NOT executed here: Cargo is unavailable.
+PostgreSQL contention/replay, GraphQL execution, client/browser parity and recovery
+remain required before integration. `membership_application_policy_cas` remains `null`,
+`membership_application_policy_locale_management` remains `null`, and
+`membership_application_lifecycle` remains `null` as runtime evidence gates.
+No audit phase is marked complete by this scoped remediation.
+
+Prior verification outcome before the privacy/finalization follow-up: 13 targeted Node source guards passed
+(boundary, membership applications, policy CAS/locales, lifecycle, bulk review,
+native no-bypass, both effective membership contracts, join, leave, feature and
+governance authorization). All 117 module Rust files parsed without syntax errors;
+changed Rust sources were formatted with WASM rustfmt and `git diff --check` passed.
+A two-connection Python SQLite probe confirmed that the empty receipt UPDATE
+reserves the writer and that the next admitted transaction sees the committed
+receipt; this is primitive-level evidence, not execution of the Rust owner tests.
+The remediation gate's diff invariants passed, but its architecture stage is
+blocked by missing Cargo (`cargo metadata`). The nine new Rust behavioral tests,
+crate compilation and PostgreSQL tests remain unexecuted. No runtime evidence
+field or readiness phase has been promoted.
+
+
+### Privacy and finalization follow-up
+
+- Candidate application surfaces hide secret group lifecycle and join policy before
+  business-state checks, including CAS submission. Missing groups are not-found;
+  nil candidate group IDs are validation failures before database lookup.
+- Shared SQLite writer reservation now uses an empty receipt UPDATE and covers the
+  initial exact membership-subject locator, not only command admission. This also
+  covers Moderation and exact-subject helpers without Groups core command receipts.
+- Moderation no longer discards rollback or terminal producer receipt failures.
+  Application/receipt completion failures share explicit rollback. Uncertain
+  finalization is retryable and preserves both diagnostic causes.
+- Five regression tests added for secret active/archived/suspended groups, cancellation
+  of a historical application after the group became secret, missing/nil targets,
+  independent-connection SQLite writer exclusion without receipt mutation,
+  and finalization error classification. No tests or verifier suites were executed
+  in this follow-up, per the maintainer's instruction to defer execution.
+
+### Revision and counter bounds follow-up
+
+- Shared private domain helpers reject non-positive stored revisions, signed
+  revision overflow, negative member counts and member-count overflow.
+- Core join/leave/features, translations, governance, applications and both
+  invitation owners now use checked increments rather than saturation/clamping.
+  Membership enforcement uses the same revision helper. Policy upserts cannot
+  produce a new policy body with an unchanged revision at the storage limit.
+- Invitation redemption checks use-count advancement against the configured limit.
+- Added boundary unit cases and a public-port regression for atomic join failure
+  on version/count exhaustion, including successful retry under the same key once
+  the fixture is restored. These tests remain unexecuted; no compilation or test
+  suite was run in this follow-up.
+
+### Stored revision projection follow-up
+
+Policy reads, management locale catalogs, application snapshots, mutation results
+and policy history now validate positive stored revisions instead of projecting
+invalid values as revision 1. Policy update CAS validates the current stored
+revision before comparing preconditions, even when the caller supplied no expected
+policy or a mismatching identifier. Corrupt storage is an invariant failure, not a
+normal stale-policy conflict. The existing public unsigned revision DTOs and
+valid-state CAS behavior remain unchanged. Two focused unit tests cover projection
+bounds and corrupt-current versus genuinely stale preconditions; unexecuted.
+
+### Cumulative change recheck (2026-11-10)
+
+Re-inspected the canonical module graph, core receipt implementation, changed
+mutation owners, authorization delegation, locking helpers, stored arithmetic,
+GraphQL wiring and new regression fixtures against the task base. This is a
+static review, not typechecking or runtime certification.
+
+Corrections made during recheck:
+
+- Core join of a stored `invited` membership now settles a pending application in
+  the same transaction. Settlement uses a typed cause to distinguish invitation,
+  direct join and leave audit provenance. Added direct-join/replay regression.
+- Invitation create/revoke, governance and direct enforcement now consult admitted
+  receipts before aggregate/subject lookup and locks. A replay must not depend on
+  the current subject still existing. Added revoke/delete/replay regression.
+- Updated localization and policy-locale source guards that still demanded the
+  removed saturating arithmetic and revision clamping.
+
+Verification obtained: all 50 `verify-groups-*.mjs` source guards were run; 38 pass,
+12 fail. All 12 remaining failures also reproduce in a separate extraction of the
+unchanged task base. They involve stale source/documentation/migration-count
+markers or existing evidence assertions, not an executed database failure. They
+are not silently waived and the overall gate is NOT green. Before guard fixes,
+one previously passing base guard regressed solely because it demanded saturation;
+that guard now passes. The policy-locale guard is also green again after updating
+its projection marker. Tree-sitter parsed 117 module Rust files without syntax
+errors before the final added regression; final syntax/whitespace results are
+recorded below. Rust compilation and behavioral tests remain unexecuted by
+maintainer request. Earlier selected-guard success does not describe the full
+50-guard suite or subsequent intermediate edits.
+
+Final recheck: 117 Rust files parse without syntax errors; `git diff --check`
+passes. Final source-guard rerun remains 38/50, with no remaining failure that
+passes on the task base. No Rust tests were run.
+
+
+### Invitation and Moderation source-guard follow-up
+
+Updated three pre-existing failing source guards to inspect the canonical owner
+files instead of former inline copies or old module-layout markers:
+
+- Invitation boundary checks hash delegation to the shared SHA-256 implementation,
+  checks token removal in the transactional create/replay code, and scans both
+  owner files for forbidden plaintext persistence patterns.
+- Targeted delivery checks the transactional redemption/audit/admission path,
+  checked member-count arithmetic, the effective public facade, and Notifications
+  registration in `module.rs`. Migration registration now references the current
+  nine-migration module contract, not an obsolete seven-migration inline test.
+- Moderation adapter checks public export in `lib.rs` and runtime registration in
+  `module.rs` separately, and explicitly rejects ignored rollback/receipt-failure
+  finalization patterns.
+
+Seven in-memory negative source probes confirmed that removing token redaction,
+replacing SHA-256 delegation, restoring saturated member counts, removing factory
+registrations or introducing the ignored-rollback marker makes these guards fail.
+These are verifier checks only, not Rust behavior tests. No runtime readiness or
+registry evidence field is promoted. The old pre-replay-lock and API-crate wording
+in this plan was reconciled with the current source as part of the same follow-up.
+
+Final guard follow-up result: 41/50 Groups source guards pass; the remaining nine
+failures remain open. Rust compilation and behavioral tests were not run.
+
+
+### Enforcement, history and invitation-UI source-guard follow-up
+
+Four further guards now follow the canonical source boundary:
+
+- Enforcement read-path migration registration is checked in `module.rs`, not
+  among crate-root exports. The nine-migration contract is retained.
+- Policy history checks explicit public reexports rather than requiring a glob
+  export, checks checked stored revision projection, and retains append-only
+  trigger, manager-authorization, CAS, editor and null-runtime-evidence checks.
+- Invitation acceptance checks the actual GROUPS-05 status row for `in_progress`,
+  invitation source scope and pending parity/Notifications evidence instead of
+  obsolete prose sentences.
+- Direct enforcement checks command admission and checked aggregate revisions;
+  documentation checks follow the current shared owner mutation/provenance terms.
+  The enforcement command contract now documents admission-before-replay-before-
+  aggregate-lock order and the existing neutral adapter, not an unimplemented
+  future API-crate split. Historical MySQL row-lock helper branches are explicitly
+  distinguished from supported PostgreSQL/SQLite command admission.
+
+Five negative in-memory source probes rejected removed migration registration,
+removed public history exports, restored revision clamping, premature GROUPS-05
+promotion to done, and removed enforcement admission. These are lexical verifier
+checks, not executed Rust behavior tests.
+
+Final source-guard result: 45/50 pass. Remaining failures:
+
+- `verify-groups-localization-enforcement-expiry-postgres.mjs`
+- `verify-groups-localization-graphql-postgres-parity.mjs`
+- `verify-groups-localization-graphql-sqlite-parity.mjs`
+- `verify-groups-membership-enforcement-graphql.mjs`
+- `verify-groups-moderation-subject-postgres.mjs`
+
+Rust compilation and behavioral tests remain deferred to the maintainer.
+
+
+### Final five source-guard reconciliation
+
+- Localization SQLite/PostgreSQL parity guards require complete aggregate-version
+  equality assertions while tolerating rustfmt line wrapping and an optional
+  trailing comma. They no longer require operands to occupy one source line.
+- Enforcement GraphQL parity similarly requires the exact `+ 1` revoke version
+  assertion on both backends. No assertion was removed or rewritten in Rust tests.
+- Moderation PostgreSQL evidence permits only an explicit set of neutral root
+  contract imports from `rustok-moderation`; extra service/entity/wildcard/qualified
+  imports remain rejected. Persistence table-name prohibitions are retained.
+- Localization expiry checks null parity/concurrency evidence directly in the FBA
+  registry instead of demanding those field names in handoff prose. Missing or
+  non-null evidence fields fail the guard.
+
+Eight negative in-memory source probes rejected wrong equality expectations,
+incorrect revoke version increments on both backends, a Moderation service import,
+a qualified entity import and premature promotion of either localization runtime
+field. These probes validate lexical guards only; they do not execute the Rust
+assertions, prove behavioral parity, or establish runtime owner isolation.
+
+Final rerun: all 50 Groups Node source guards pass. `git diff --check` passes.
+No Rust source/tests were changed in this final guard slice, no Rust compilation
+or tests were run, and no runtime evidence/readiness field was promoted. Earlier
+38/50, 41/50 and 45/50 figures above describe historical intermediate states.
+
+### Policy-history authorization decoupling
+
+The history reader previously authorized by invoking the application-list port
+with a one-row page, which decoded an unrelated candidate application payload.
+A malformed application could therefore deny an authorized manager access to
+otherwise valid policy history. The reader now validates tenant/user context and
+calls the shared read-only owner-clock manager guard directly with `Moderate`.
+No write locks, application queries or answer/snapshot decoding are required to
+read history. Manager capability, effective suspension/ban denial, platform-manage
+bypass and tenant-scoped history filtering remain owner-controlled. Invalid
+actor/tenant errors use the shared context validators.
+
+Two public-port regression tests were added: history remains readable when an
+application's JSON answers violate the typed string-map contract, while application
+listing itself still rejects that corruption; candidate and cross-tenant history
+reads remain denied. These tests are not executed. The policy-history and boundary
+source verifiers now require direct capability authorization; the history verifier
+also forbids reintroducing application-list authorization. All 50 Groups source
+guards pass after this change. Compilation and behavioral proof remain pending.
+
+### Application/invitation pagination tie-breakers
+
+Manager application lists now order by `(submitted_at DESC, id DESC)`, and manager
+invitation lists by `(created_at DESC, id DESC)`. The unique identifier resolves
+equal timestamps, giving each unchanged filtered dataset a total order. Existing
+tenant/group/status/active-invitation filtering, page validation and public DTOs
+are unchanged. This is still offset pagination: concurrent insertions, deletions,
+resubmissions or time-driven invitation expiry can change page boundaries and are
+not made snapshot-consistent by adding a tie-breaker.
+
+Two unexecuted public-port regressions construct three rows with identical times,
+assert exact descending UUID order across one-row pages and an empty final page,
+and cover repeated application reads and both invitation activity filters. Source
+guards require the unique tie-breakers, and two negative source probes reject
+removing them. All 50 Groups source guards pass; no Rust tests or compilation were
+run in this follow-up.
+
+### Manager authorization before lifecycle disclosure
+
+Invitation creation, compatibility/CAS policy upsert, application review and
+manager reopen now evaluate effective manager authority under the retained owner
+locks before group lifecycle/join-policy validation. Previously these commands
+could disclose an archived group through `group is not active` before verifying
+that the caller could manage it. Matching committed receipts still replay before
+current authority or state checks. Authorized managers retain the real lifecycle
+errors; candidate submission/cancellation visibility ordering is unchanged.
+This closes lifecycle error-order disclosure, not every possible group-existence
+side channel: aggregate location and missing-subject errors remain separate owner
+lookup concerns.
+
+An unexecuted public-port regression covers all five manager command paths against
+an archived group: outsiders receive manager-required, while an authorized owner
+review receives the lifecycle conflict. The effective invitation/application guard
+now checks authorization-before-lifecycle within each affected function rather
+than searching across adjacent implementations. All 50 source guards pass; Rust
+compilation and behavioral tests remain deferred to the maintainer.
+
+### Review membership-state precondition
+
+Review now requires both the application and its linked stored membership to be
+pending. Previously review checked pending application plus non-active/non-denied
+effective membership, which allowed inconsistent left/invited membership rows to
+be rewritten by approval/rejection. Approval could then reactivate a stale subject
+and advance the active count from an inappropriate source state. Such mismatches
+now return `groups.conflict` before any domain write; manager authorization and
+enforcement denial still precede this state disclosure, and committed replay is
+unchanged. Candidate activation through invitation/direct invited join retains its
+separate atomic settlement path.
+
+Added an unexecuted public-port regression covering left and invited memberships,
+both approval and rejection, unchanged application/group/count on rejection, and
+retry under the same key after restoring the pending fixture. The source guard
+requires the pending-membership check within the review function before writing.
+Rust compilation and behavioral tests remain deferred to the maintainer.
+
+### Closed/open admission dead-end correction
+
+Closed visibility and request admission are independent settings. Previously
+`Closed + Open` returned application-required from join, while application
+submission rejected the group because its policy was not Request. Core join now
+admits both Public/Open and Closed/Open as active membership. Closed content stays
+redacted before admission; Secret groups still require invitation authority, and
+InviteOnly/Request retain their distinct admission paths. Existing invited-row
+activation and suspension/ban checks remain unchanged. The owning ADR records
+this contract explicitly.
+
+Added an unexecuted public-port regression for all nine visibility/join-policy
+combinations, including closed body redaction before entry, content visibility
+after successful open join, success replay, exact member counts, and absence of
+orphan memberships on denied/application-required entry. The join source guard
+requires the corrected branch and now isolates only join, excluding the following
+leave implementation from its source scan. Rust compilation and behavior tests
+remain deferred to the maintainer.
+
+### Raw application DTO validation at the transactional owner
+
+Compatibility/CAS policy upsert, compatibility/CAS submission and focused/shared
+review now invoke their existing DTO validators after context validation and
+before normalization, receipt admission or owner storage access. This restores
+nil-ID and raw collection/text bounds for native callers as well as GraphQL
+adapters. In particular, more than 20 rule acknowledgements cannot bypass the
+input bound by collapsing duplicates during normalization, and an oversized
+all-whitespace review note cannot disappear before its raw bound is checked.
+Valid normalized request hashing and successful receipt replay are unchanged.
+
+An unexecuted public-port regression uses a database deliberately lacking the
+owner schema, so invalid nil IDs, oversized duplicate acknowledgement lists and
+oversized whitespace notes must fail with `groups.validation` without requiring
+receipt or subject storage. It covers both submission modes, both upsert modes
+and both review ports. The source guard checks each owner's validator precedes
+normalization and transaction start. Rust compilation/tests remain deferred to
+the maintainer.
+
+### Lifecycle/invitation owner-entry validation
+
+The same DTO-validation review found that the public effective facades invoke
+transactional owner methods directly, bypassing validation in older private port
+implementations. Invitation revoke and targeted accept now call their existing
+validators at the transactional owner entry. Application cancel/reopen have typed
+request validators and call them before idempotency lookup or transaction start.
+Nil subject IDs are `groups.validation`, not receipt-table failures or
+missing-subject lookups. Valid request normalization/hashing, actor validation,
+receipt replay and authorization remain unchanged.
+
+Added an unexecuted no-schema public-port regression for all four paths; the
+source guard checks validator placement within each owner method before key
+admission/storage. No migration or dependency changes were required. Rust tests
+and compilation remain deferred to the maintainer.
+
+### Acceptance corruption boundary follow-up
+
+Token and targeted invitation acceptance now share the invitation owner's stored-use validator
+with read projections. Negative counts and invalid limits cannot be normalized by activation.
+Added an unexecuted SQLite regression for no membership/redemption/aggregate mutation on failure,
+explicit storage repair followed by retry with the same key, and committed-result replay.
+Compilation and PostgreSQL/SQLite runtime proof remain open; source guards are not runtime evidence.

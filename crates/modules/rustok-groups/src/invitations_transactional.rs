@@ -1,3 +1,5 @@
+use super::*;
+
 impl GroupInvitationService {
     pub(crate) async fn create_group_invitation_effective_owned(
         &self,
@@ -11,7 +13,7 @@ impl GroupInvitationService {
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
         let transaction = self.db.begin().await?;
-        let group_model = find_group_for_update(&transaction, tenant_id, request.group_id).await?;
+        crate::commands::reserve_command(&transaction, tenant_id, &idempotency_key).await?;
 
         if let Some(mut replayed) = replay_receipt::<CreateGroupInvitationResult>(
             &transaction,
@@ -29,7 +31,8 @@ impl GroupInvitationService {
             return Ok(replayed);
         }
 
-        require_active_group(&group_model)?;
+        let group_model = find_group_for_update(&transaction, tenant_id, request.group_id).await?;
+
         crate::effective_membership_guard::require_effective_manager_owned(
             &transaction,
             context,
@@ -39,6 +42,7 @@ impl GroupInvitationService {
             crate::effective_membership_guard::GroupManagerCapability::Moderate,
         )
         .await?;
+        require_active_group(&group_model)?;
 
         let now = Utc::now();
         let expires_at = now + Duration::seconds(request.expires_in_seconds as i64);
@@ -111,11 +115,11 @@ impl GroupInvitationService {
         require_write(context)?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
+        request.validate()?;
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
         let transaction = self.db.begin().await?;
-        let invitation_model =
-            find_invitation_for_update(&transaction, tenant_id, request.invitation_id).await?;
+        crate::commands::reserve_command(&transaction, tenant_id, &idempotency_key).await?;
 
         if let Some(mut replayed) = replay_receipt::<RevokeGroupInvitationResult>(
             &transaction,
@@ -131,6 +135,9 @@ impl GroupInvitationService {
             transaction.commit().await?;
             return Ok(replayed);
         }
+
+        let invitation_model =
+            find_invitation_for_update(&transaction, tenant_id, request.invitation_id).await?;
 
         let group_model =
             find_group_for_update(&transaction, tenant_id, invitation_model.group_id).await?;
@@ -205,6 +212,7 @@ impl GroupInvitationService {
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
         let transaction = self.db.begin().await?;
+        crate::commands::reserve_command(&transaction, tenant_id, &idempotency_key).await?;
 
         if let Some(mut replayed) = replay_receipt::<AcceptGroupInvitationResult>(
             &transaction,
@@ -286,6 +294,17 @@ impl GroupInvitationService {
             .await?
         };
 
+        crate::application_owner::settle_pending_application(
+            &transaction,
+            context,
+            tenant_id,
+            invitation_model.group_id,
+            actor_user_id,
+            invitation_model.invited_by_user_id,
+            crate::application_owner::ApplicationSettlement::Invitation,
+        )
+        .await?;
+
         redemption::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
@@ -299,7 +318,13 @@ impl GroupInvitationService {
 
         let invitation_id = invitation_model.id;
         let group_id = invitation_model.group_id;
-        let next_use_count = invitation_model.use_count.saturating_add(1);
+        let next_use_count = invitation_model
+            .use_count
+            .checked_add(1)
+            .filter(|count| *count > 0 && *count <= invitation_model.max_uses)
+            .ok_or_else(|| {
+                GroupsError::Invariant("invitation use count is invalid or exhausted".into())
+            })?;
         let mut invitation_active: invitation::ActiveModel = invitation_model.into();
         invitation_active.use_count = Set(next_use_count);
         invitation_active.updated_at = Set(now.fixed_offset());

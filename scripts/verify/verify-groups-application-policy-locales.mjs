@@ -3,7 +3,20 @@ import path from "node:path";
 
 const root = process.cwd();
 const failures = [];
-const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const readRaw = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const read = (relative) => {
+  let source = readRaw(relative);
+  if (relative.endsWith("/applications.rs")) {
+    for (const child of source.matchAll(/#\[path = "([^"\n]+\.rs)"\]/g)) {
+      source += "\n" + readRaw(path.join(path.dirname(relative), child[1]));
+    }
+  } else if (relative.endsWith("/applications_cas.rs")) {
+    source += "\n" + readRaw(relative.replace("applications_cas.rs", "applications_transactional_cas.rs"));
+  } else if (relative.endsWith("/applications_lifecycle.rs")) {
+    source += "\n" + readRaw(relative.replace("applications_lifecycle.rs", "applications_transactional_lifecycle.rs"));
+  }
+  return source;
+};
 const exists = (relative) => fs.existsSync(path.join(root, relative));
 
 const requireFile = (relative) => {
@@ -47,7 +60,7 @@ for (const relative of [
 ]) requireFile(relative);
 
 requireMarkers("crates/modules/rustok-groups/src/applications.rs", [
-  'include!("applications_policy_management.rs")',
+  '#[path = "applications_policy_management.rs"]',
 ]);
 requireMarkers("crates/modules/rustok-groups/src/applications_policy_management.rs", [
   "GroupApplicationPolicyManagementReadPort",
@@ -57,7 +70,7 @@ requireMarkers("crates/modules/rustok-groups/src/applications_policy_management.
   "authorize_policy_management",
   "translation_exists: false",
   "policy_id: Some(policy.id)",
-  "revision: Some(policy.revision.max(1) as u64)",
+  "revision: Some(crate::domain::stored_revision(policy.revision)?)",
   "questions: Vec::new()",
   "rules: Vec::new()",
 ]);
@@ -108,7 +121,7 @@ forbidMarkers("crates/modules/rustok-groups/admin/src/policy_locale_compat.rs", 
 ]);
 requireMarkers("crates/modules/rustok-groups/admin/src/lib.rs", [
   "mod policy_locale_compat;",
-  "pub use policy_locale_compat::*;",
+  "pub mod policy_locale_compat;",
 ]);
 requireMarkers("crates/modules/rustok-groups/admin/src/transport.rs", [
   "load_group_admin_application_policy_locale_catalog",

@@ -44,6 +44,8 @@ for (const marker of [
   "lock_command_memberships",
   "sort_unstable",
   "replay_receipt",
+  "crate::commands::reserve_command",
+  "crate::domain::next_revision(group_model.version)?",
   "receipt.actor_user_id != actor_user_id",
   "apply_membership_suspension_in_tx",
   "revoke_membership_suspension_in_tx",
@@ -104,7 +106,7 @@ for (const marker of [
 for (const marker of [
   "stored lifecycle active count",
   "Source-complete direct enforcement command",
-  "shared Groups enforcement command",
+  "shared Groups enforcement mutation",
   "neutral moderation subject adapter",
 ]) {
   requireText(plan, marker, `Canonical Groups plan is missing ${marker}`);
@@ -114,7 +116,7 @@ for (const marker of [
   "Member-count semantics",
   "stored lifecycle active count",
   "receipt replay",
-  "local moderation cannot erase moderation-decision provenance",
+  "It cannot remove an active `moderation_decision` enforcement row.",
   "m20260808_000009_extend_group_domain_events_for_membership_enforcement",
   "cargo test -p rustok-groups",
 ]) {

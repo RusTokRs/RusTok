@@ -2,6 +2,37 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
+/// Convert a stored revision without inventing a valid token for corrupted state.
+pub(crate) fn stored_revision(current: i64) -> crate::error::GroupsResult<u64> {
+    if current < 1 {
+        return Err(crate::error::GroupsError::Invariant(
+            "stored revision must be positive".into(),
+        ));
+    }
+    Ok(current as u64)
+}
+
+/// Stored revisions are positive and must advance on every actual mutation.
+/// Saturation would let distinct states share a CAS token.
+pub(crate) fn next_revision(current: i64) -> crate::error::GroupsResult<i64> {
+    stored_revision(current)?;
+    current
+        .checked_add(1)
+        .ok_or_else(|| crate::error::GroupsError::Invariant("stored revision overflow".into()))
+}
+
+/// Counts cannot be repaired by clamping: corrupt/overflowed values abort the transaction.
+pub(crate) fn increment_member_count(current: i64) -> crate::error::GroupsResult<i64> {
+    if current < 0 {
+        return Err(crate::error::GroupsError::Invariant(
+            "stored member count cannot be negative".into(),
+        ));
+    }
+    current
+        .checked_add(1)
+        .ok_or_else(|| crate::error::GroupsError::Invariant("member count overflow".into()))
+}
+
 macro_rules! string_enum {
     ($(#[$meta:meta])* $name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
         $(#[$meta])*
@@ -196,6 +227,29 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stored_revisions_are_never_clamped() {
+        assert_eq!(stored_revision(1).unwrap(), 1);
+        assert_eq!(stored_revision(i64::MAX).unwrap(), i64::MAX as u64);
+        for invalid in [i64::MIN, -1, 0] {
+            assert!(stored_revision(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn revisions_and_counts_fail_closed_at_storage_bounds() {
+        assert_eq!(next_revision(1).unwrap(), 2);
+        assert_eq!(next_revision(i64::MAX - 1).unwrap(), i64::MAX);
+        for invalid in [i64::MIN, -1, 0, i64::MAX] {
+            assert!(next_revision(invalid).is_err());
+        }
+        assert_eq!(increment_member_count(0).unwrap(), 1);
+        assert_eq!(increment_member_count(i64::MAX - 1).unwrap(), i64::MAX);
+        for invalid in [i64::MIN, -1, i64::MAX] {
+            assert!(increment_member_count(invalid).is_err());
+        }
+    }
 
     #[test]
     fn handles_are_normalized_without_locale_rules() {

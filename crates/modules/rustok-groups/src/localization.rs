@@ -59,6 +59,7 @@ impl GroupLocalizationService {
     ) -> GroupsResult<GroupTranslationMutationResult> {
         require_write(context)?;
         request.validate()?;
+        let command_input = request.clone();
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         let (locale, title, summary, body) = normalize_translation_input(
@@ -69,6 +70,22 @@ impl GroupLocalizationService {
         )?;
 
         let transaction = self.db.begin().await?;
+        let command = crate::commands::Command::admit(
+            &transaction,
+            context,
+            tenant_id,
+            actor_user_id,
+            "groups.translation_upsert.v1",
+            &command_input,
+        )
+        .await?;
+        if let Some(result) = command
+            .replay::<GroupTranslationMutationResult>(&transaction)
+            .await?
+        {
+            transaction.commit().await?;
+            return Ok(result);
+        }
         let group_model = self
             .require_manage_in_transaction(
                 &transaction,
@@ -109,18 +126,21 @@ impl GroupLocalizationService {
             .await?
         };
 
-        let next_version = group_model.version.saturating_add(1);
+        let next_version = crate::domain::next_revision(group_model.version)?;
         let mut active_group: group::ActiveModel = group_model.into();
         active_group.version = Set(next_version);
         active_group.updated_at = Set(now);
         active_group.update(&transaction).await?;
-        transaction.commit().await?;
-
-        Ok(GroupTranslationMutationResult {
+        let result = GroupTranslationMutationResult {
             translation: map_translation(translation_model)?,
-            group_version: next_version.max(0) as u64,
+            group_version: next_version as u64,
             created,
-        })
+        };
+        command
+            .finish(&transaction, context, request.group_id, &result)
+            .await?;
+        transaction.commit().await?;
+        Ok(result)
     }
 
     async fn delete_group_translation_owned(
@@ -130,12 +150,29 @@ impl GroupLocalizationService {
     ) -> GroupsResult<DeleteGroupTranslationResult> {
         require_write(context)?;
         request.validate()?;
+        let command_input = request.clone();
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
         let locale = normalize_locale_tag(&request.locale)
             .ok_or_else(|| GroupsError::Validation("invalid group locale".to_string()))?;
 
         let transaction = self.db.begin().await?;
+        let command = crate::commands::Command::admit(
+            &transaction,
+            context,
+            tenant_id,
+            actor_user_id,
+            "groups.translation_delete.v1",
+            &command_input,
+        )
+        .await?;
+        if let Some(result) = command
+            .replay::<DeleteGroupTranslationResult>(&transaction)
+            .await?
+        {
+            transaction.commit().await?;
+            return Ok(result);
+        }
         let group_model = self
             .require_manage_in_transaction(
                 &transaction,
@@ -167,18 +204,21 @@ impl GroupLocalizationService {
             .exec(&transaction)
             .await?;
         let now = Utc::now().fixed_offset();
-        let next_version = group_model.version.saturating_add(1);
+        let next_version = crate::domain::next_revision(group_model.version)?;
         let mut active_group: group::ActiveModel = group_model.into();
         active_group.version = Set(next_version);
         active_group.updated_at = Set(now);
         active_group.update(&transaction).await?;
-        transaction.commit().await?;
-
-        Ok(DeleteGroupTranslationResult {
+        let result = DeleteGroupTranslationResult {
             group_id: request.group_id,
             locale,
-            group_version: next_version.max(0) as u64,
-        })
+            group_version: next_version as u64,
+        };
+        command
+            .finish(&transaction, context, request.group_id, &result)
+            .await?;
+        transaction.commit().await?;
+        Ok(result)
     }
 
     async fn require_manage_direct(

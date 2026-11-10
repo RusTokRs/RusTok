@@ -43,8 +43,27 @@ for (const marker of [
   requireMarker(test, marker, "Groups moderation PostgreSQL evidence test");
 }
 
+// This evidence needs neutral root contracts, not Moderation owner services/entities.
+// Bound the allowed imports rather than banning the crate that exports the contracts.
+const neutralContracts = new Set([
+  "ApplyModerationDecisionCommand", "ModerationDecisionEffect", "ModerationDecisionEffectAction",
+  "ModerationDecisionKind", "ModerationReasonCode", "ModerationScopeKind", "ModerationScopeRef",
+  "ModerationSubjectAdapterFactory", "ModerationSubjectCommandPort", "ModerationSubjectKind",
+  "ModerationSubjectRef", "moderation_scope_claim",
+]);
+const remaining = test.replace(/\buse\s+rustok_moderation::\{([^}]+)\}\s*;/g, (_, imports) => {
+  for (const name of imports.split(",").map((name) => name.trim()).filter(Boolean)) {
+    if (!neutralContracts.has(name)) {
+      throw new Error(`Groups evidence imports a non-neutral Moderation contract: ${name}`);
+    }
+  }
+  return "";
+});
+if (remaining.includes("rustok_moderation::")) {
+  throw new Error("Groups evidence must use only the explicitly allowed neutral Moderation imports");
+}
+
 for (const forbidden of [
-  'rustok_moderation::',
   'moderation_cases',
   'moderation_decisions',
   'moderation_application_operations',

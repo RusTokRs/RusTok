@@ -233,11 +233,16 @@ if (requireFile("crates/modules/rustok-groups/contracts/groups-fba-registry.json
   }
 }
 
-requireMarkers("crates/modules/rustok-groups/docs/implementation-plan.md", [
-  "invitation acceptance/delivery source",
-  "runtime parity and Notifications consumer evidence",
-  "targeted invitation delivery remains `in_progress`",
-]);
+// Check the canonical status row, not a historical prose sentence. UI source
+// availability must not promote the unexecuted transport/Notifications evidence.
+const plan = read("crates/modules/rustok-groups/docs/implementation-plan.md");
+const row = plan.split(/\r?\n/).find((line) => /^\| GROUPS-05 \|/.test(line));
+const columns = row?.split("|").map((column) => column.trim());
+if (columns?.[2] !== "in_progress"
+  || !columns?.[3]?.includes("invitation acceptance/delivery")
+  || !columns?.[4]?.includes("parity and Notifications evidence")) {
+  failures.push("Groups invitation transport/delivery status must retain source scope and open parity/Notifications evidence");
+}
 
 if (failures.length > 0) {
   console.error("Groups invitation acceptance UI verification failed:");

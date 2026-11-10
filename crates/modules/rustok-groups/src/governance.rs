@@ -133,7 +133,7 @@ impl GroupGovernanceService {
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
         let transaction = self.db.begin().await?;
-        let mut group_model = lock_group(&transaction, tenant_id, request.group_id).await?;
+        crate::commands::reserve_command(&transaction, tenant_id, &idempotency_key).await?;
         if let Some(replayed) = replay_receipt::<GroupGovernanceResult>(
             &transaction,
             tenant_id,
@@ -151,6 +151,8 @@ impl GroupGovernanceService {
                 ..replayed
             });
         }
+
+        let mut group_model = lock_group(&transaction, tenant_id, request.group_id).await?;
 
         let platform_manage = has_platform_manage(context);
         let locked = lock_governance_memberships(
@@ -208,9 +210,9 @@ impl GroupGovernanceService {
         target_active.updated_at = Set(fixed_now);
         target_active.update(&transaction).await?;
 
-        group_model.version = group_model.version.saturating_add(1);
+        group_model.version = crate::domain::next_revision(group_model.version)?;
         group_model.updated_at = fixed_now;
-        let group_version = group_model.version.max(1) as u64;
+        let group_version = group_model.version as u64;
         let mut group_active: group::ActiveModel = group_model.into();
         group_active.version = Set(group_version as i64);
         group_active.updated_at = Set(fixed_now);
@@ -276,7 +278,7 @@ impl GroupGovernanceService {
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
         let transaction = self.db.begin().await?;
-        let group_model = lock_group(&transaction, tenant_id, request.group_id).await?;
+        crate::commands::reserve_command(&transaction, tenant_id, &idempotency_key).await?;
         if let Some(replayed) = replay_receipt::<GroupGovernanceResult>(
             &transaction,
             tenant_id,
@@ -294,6 +296,8 @@ impl GroupGovernanceService {
                 ..replayed
             });
         }
+
+        let group_model = lock_group(&transaction, tenant_id, request.group_id).await?;
 
         let platform_manage = has_platform_manage(context);
         if group_model.owner_user_id != actor_user_id && !platform_manage {
@@ -384,7 +388,7 @@ impl GroupGovernanceService {
         new_owner_active.updated_at = Set(fixed_now);
         new_owner_active.update(&transaction).await?;
 
-        let group_version = group_model.version.saturating_add(1).max(1) as u64;
+        let group_version = crate::domain::next_revision(group_model.version)? as u64;
         let mut group_active: group::ActiveModel = group_model.into();
         group_active.owner_user_id = Set(request.new_owner_user_id);
         group_active.version = Set(group_version as i64);

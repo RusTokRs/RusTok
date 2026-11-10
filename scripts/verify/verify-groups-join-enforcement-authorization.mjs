@@ -11,7 +11,7 @@ function requireText(sourceText, marker, message) {
 }
 
 const start = source.indexOf("async fn join_group_owned(");
-const end = source.indexOf("\n    async fn set_group_feature_owned(", start);
+const end = source.indexOf("\n    async fn leave_group_owned(", start);
 if (start < 0 || end < 0) {
   throw new Error("effective Groups join owner function could not be isolated");
 }
@@ -22,6 +22,8 @@ for (const marker of [
   "reserve_group_write_for_update(&transaction, tenant_id, request.group_id).await?",
   "resolve_group_membership_enforcement_for_update(",
   "GroupMembershipEffectiveStatus::Suspended",
+  "(GroupVisibility::Public | GroupVisibility::Closed, GroupJoinPolicy::Open, _)",
+  "_ => return Err(GroupsError::ApplicationRequired)",
   "GroupsError::MembershipSuspended",
   "GroupMembershipEffectiveStatus::LegacyBanned",
   "GroupsError::MembershipBanned",

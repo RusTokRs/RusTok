@@ -280,6 +280,7 @@ impl GroupInvitationService {
         }
         let paginator = query
             .order_by_desc(invitation::Column::CreatedAt)
+            .order_by_desc(invitation::Column::Id)
             .paginate(&self.db, per_page);
         let total = paginator.num_items().await?;
         let items = paginator
@@ -295,358 +296,6 @@ impl GroupInvitationService {
             page,
             per_page,
         })
-    }
-
-    async fn create_group_invitation_owned(
-        &self,
-        context: &PortContext,
-        request: CreateGroupInvitationRequest,
-    ) -> GroupsResult<CreateGroupInvitationResult> {
-        require_write(context)?;
-        validate_create_request(&request)?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_user_id = actor_user_id(context)?;
-        let idempotency_key = idempotency_key(context)?;
-        let request_hash = request_hash(&request)?;
-        let transaction = self.db.begin().await?;
-        let group_model = find_group_for_update(&transaction, tenant_id, request.group_id).await?;
-
-        if let Some(mut replayed) = replay_receipt::<CreateGroupInvitationResult>(
-            &transaction,
-            tenant_id,
-            actor_user_id,
-            &idempotency_key,
-            CREATE_INVITATION_COMMAND,
-            &request_hash,
-        )
-        .await?
-        {
-            replayed.token = None;
-            replayed.replayed = true;
-            transaction.commit().await?;
-            return Ok(replayed);
-        }
-
-        require_active_group(&group_model)?;
-        authorize_invitation_management_in_transaction(
-            &transaction,
-            context,
-            tenant_id,
-            request.group_id,
-            actor_user_id,
-        )
-        .await?;
-
-        let now = Utc::now();
-        let expires_at = now + Duration::seconds(request.expires_in_seconds as i64);
-        let token = generate_invitation_token();
-        let token_hash = invitation_token_hash(&token);
-        let invitation_model = invitation::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            tenant_id: Set(tenant_id),
-            group_id: Set(request.group_id),
-            invited_by_user_id: Set(actor_user_id),
-            target_user_id: Set(request.target_user_id),
-            token_hash: Set(token_hash),
-            max_uses: Set(request.max_uses as i32),
-            use_count: Set(0),
-            expires_at: Set(expires_at.fixed_offset()),
-            revoked_at: Set(None),
-            revoked_by_user_id: Set(None),
-            created_at: Set(now.fixed_offset()),
-            updated_at: Set(now.fixed_offset()),
-        }
-        .insert(&transaction)
-        .await?;
-
-        let group_version = increment_group_version(&transaction, group_model, now).await?;
-        let result = CreateGroupInvitationResult {
-            invitation: map_invitation(invitation_model)?,
-            token: Some(token),
-            group_version,
-            replayed: false,
-        };
-        append_audit(
-            &transaction,
-            context,
-            tenant_id,
-            request.group_id,
-            actor_user_id,
-            "group.invitation_created",
-            request.target_user_id,
-            json!({
-                "invitation_id": result.invitation.id,
-                "target_user_id": request.target_user_id,
-                "max_uses": request.max_uses,
-                "expires_at": expires_at,
-                "group_version": group_version
-            }),
-        )
-        .await?;
-        let mut stored_result = result.clone();
-        stored_result.token = None;
-        store_receipt(
-            &transaction,
-            tenant_id,
-            request.group_id,
-            actor_user_id,
-            idempotency_key,
-            CREATE_INVITATION_COMMAND,
-            request_hash,
-            &stored_result,
-        )
-        .await?;
-        transaction.commit().await?;
-        Ok(result)
-    }
-
-    async fn revoke_group_invitation_owned(
-        &self,
-        context: &PortContext,
-        request: RevokeGroupInvitationRequest,
-    ) -> GroupsResult<RevokeGroupInvitationResult> {
-        require_write(context)?;
-        request.validate()?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_user_id = actor_user_id(context)?;
-        let idempotency_key = idempotency_key(context)?;
-        let request_hash = request_hash(&request)?;
-        let transaction = self.db.begin().await?;
-        let invitation_model =
-            find_invitation_for_update(&transaction, tenant_id, request.invitation_id).await?;
-
-        if let Some(mut replayed) = replay_receipt::<RevokeGroupInvitationResult>(
-            &transaction,
-            tenant_id,
-            actor_user_id,
-            &idempotency_key,
-            REVOKE_INVITATION_COMMAND,
-            &request_hash,
-        )
-        .await?
-        {
-            replayed.replayed = true;
-            transaction.commit().await?;
-            return Ok(replayed);
-        }
-        if invitation_model.revoked_at.is_some() {
-            return Err(GroupsError::Conflict(
-                "group invitation is already revoked".to_string(),
-            ));
-        }
-
-        let group_model =
-            find_group_for_update(&transaction, tenant_id, invitation_model.group_id).await?;
-        authorize_invitation_management_in_transaction(
-            &transaction,
-            context,
-            tenant_id,
-            invitation_model.group_id,
-            actor_user_id,
-        )
-        .await?;
-        let now = Utc::now();
-        let mut active: invitation::ActiveModel = invitation_model.into();
-        active.revoked_at = Set(Some(now.fixed_offset()));
-        active.revoked_by_user_id = Set(Some(actor_user_id));
-        active.updated_at = Set(now.fixed_offset());
-        let revoked = active.update(&transaction).await?;
-        let group_version = increment_group_version(&transaction, group_model, now).await?;
-        let result = RevokeGroupInvitationResult {
-            invitation: map_invitation(revoked)?,
-            group_version,
-            replayed: false,
-        };
-        append_audit(
-            &transaction,
-            context,
-            tenant_id,
-            result.invitation.group_id,
-            actor_user_id,
-            "group.invitation_revoked",
-            result.invitation.target_user_id,
-            json!({
-                "invitation_id": result.invitation.id,
-                "group_version": group_version
-            }),
-        )
-        .await?;
-        store_receipt(
-            &transaction,
-            tenant_id,
-            result.invitation.group_id,
-            actor_user_id,
-            idempotency_key,
-            REVOKE_INVITATION_COMMAND,
-            request_hash,
-            &result,
-        )
-        .await?;
-        transaction.commit().await?;
-        Ok(result)
-    }
-
-    async fn accept_group_invitation_owned(
-        &self,
-        context: &PortContext,
-        request: AcceptGroupInvitationRequest,
-    ) -> GroupsResult<AcceptGroupInvitationResult> {
-        require_write(context)?;
-        request.validate()?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_user_id = actor_user_id(context)?;
-        let token = request.token.trim();
-        if token.len() < 32 || token.len() > 160 {
-            return Err(invalid_invitation_token());
-        }
-        let idempotency_key = idempotency_key(context)?;
-        let request_hash = request_hash(&request)?;
-        let transaction = self.db.begin().await?;
-
-        if let Some(mut replayed) = replay_receipt::<AcceptGroupInvitationResult>(
-            &transaction,
-            tenant_id,
-            actor_user_id,
-            &idempotency_key,
-            ACCEPT_INVITATION_COMMAND,
-            &request_hash,
-        )
-        .await?
-        {
-            replayed.replayed = true;
-            transaction.commit().await?;
-            return Ok(replayed);
-        }
-
-        let token_hash = invitation_token_hash(token);
-        let invitation_model =
-            find_invitation_by_token_for_update(&transaction, tenant_id, &token_hash).await?;
-        ensure_invitation_active(&invitation_model, actor_user_id)?;
-        let group_model =
-            find_group_for_update(&transaction, tenant_id, invitation_model.group_id).await?;
-        require_active_group(&group_model)?;
-
-        if redemption::Entity::find()
-            .filter(redemption::Column::TenantId.eq(tenant_id))
-            .filter(redemption::Column::InvitationId.eq(invitation_model.id))
-            .filter(redemption::Column::UserId.eq(actor_user_id))
-            .one(&transaction)
-            .await?
-            .is_some()
-        {
-            return Err(GroupsError::Conflict(
-                "group invitation was already accepted by this user".to_string(),
-            ));
-        }
-
-        let existing_membership = membership::Entity::find()
-            .filter(membership::Column::TenantId.eq(tenant_id))
-            .filter(membership::Column::GroupId.eq(invitation_model.group_id))
-            .filter(membership::Column::UserId.eq(actor_user_id))
-            .one(&transaction)
-            .await?;
-        if existing_membership
-            .as_ref()
-            .is_some_and(|row| row.status == GroupMembershipStatus::Banned.as_str())
-        {
-            return Err(GroupsError::Forbidden(
-                "group membership is banned".to_string(),
-            ));
-        }
-        if existing_membership
-            .as_ref()
-            .is_some_and(|row| row.status == GroupMembershipStatus::Active.as_str())
-        {
-            return Err(GroupsError::Conflict(
-                "user is already an active group member".to_string(),
-            ));
-        }
-
-        let now = Utc::now();
-        let membership_model = if let Some(existing) = existing_membership {
-            let mut active: membership::ActiveModel = existing.into();
-            active.role = Set(GroupRole::Member.as_str().to_string());
-            active.status = Set(GroupMembershipStatus::Active.as_str().to_string());
-            active.invited_by_user_id = Set(Some(invitation_model.invited_by_user_id));
-            active.joined_at = Set(Some(now.fixed_offset()));
-            active.left_at = Set(None);
-            active.updated_at = Set(now.fixed_offset());
-            active.update(&transaction).await?
-        } else {
-            membership::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant_id),
-                group_id: Set(invitation_model.group_id),
-                user_id: Set(actor_user_id),
-                role: Set(GroupRole::Member.as_str().to_string()),
-                status: Set(GroupMembershipStatus::Active.as_str().to_string()),
-                invited_by_user_id: Set(Some(invitation_model.invited_by_user_id)),
-                joined_at: Set(Some(now.fixed_offset())),
-                left_at: Set(None),
-                metadata: Set(json!({})),
-                created_at: Set(now.fixed_offset()),
-                updated_at: Set(now.fixed_offset()),
-            }
-            .insert(&transaction)
-            .await?
-        };
-
-        redemption::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            tenant_id: Set(tenant_id),
-            invitation_id: Set(invitation_model.id),
-            group_id: Set(invitation_model.group_id),
-            user_id: Set(actor_user_id),
-            redeemed_at: Set(now.fixed_offset()),
-        }
-        .insert(&transaction)
-        .await?;
-
-        let invitation_id = invitation_model.id;
-        let group_id = invitation_model.group_id;
-        let next_use_count = invitation_model.use_count.saturating_add(1);
-        let mut invitation_active: invitation::ActiveModel = invitation_model.into();
-        invitation_active.use_count = Set(next_use_count);
-        invitation_active.updated_at = Set(now.fixed_offset());
-        invitation_active.update(&transaction).await?;
-
-        let group_version =
-            increment_group_membership_version(&transaction, group_model, now).await?;
-        let result = AcceptGroupInvitationResult {
-            invitation_id,
-            group_id,
-            membership: map_membership(membership_model)?,
-            group_version,
-            replayed: false,
-        };
-        append_audit(
-            &transaction,
-            context,
-            tenant_id,
-            group_id,
-            actor_user_id,
-            "group.invitation_accepted",
-            Some(actor_user_id),
-            json!({
-                "invitation_id": invitation_id,
-                "use_count": next_use_count,
-                "group_version": group_version
-            }),
-        )
-        .await?;
-        store_receipt(
-            &transaction,
-            tenant_id,
-            group_id,
-            actor_user_id,
-            idempotency_key,
-            ACCEPT_INVITATION_COMMAND,
-            request_hash,
-            &result,
-        )
-        .await?;
-        transaction.commit().await?;
-        Ok(result)
     }
 }
 
@@ -672,7 +321,7 @@ impl GroupInvitationCommandPort for GroupInvitationService {
         request: CreateGroupInvitationRequest,
     ) -> Result<CreateGroupInvitationResult, PortError> {
         request.validate().map_err(PortError::from)?;
-        self.create_group_invitation_owned(&context, request)
+        self.create_group_invitation_effective_owned(&context, request)
             .await
             .map_err(Into::into)
     }
@@ -683,7 +332,7 @@ impl GroupInvitationCommandPort for GroupInvitationService {
         request: RevokeGroupInvitationRequest,
     ) -> Result<RevokeGroupInvitationResult, PortError> {
         request.validate().map_err(PortError::from)?;
-        self.revoke_group_invitation_owned(&context, request)
+        self.revoke_group_invitation_effective_owned(&context, request)
             .await
             .map_err(Into::into)
     }
@@ -694,7 +343,7 @@ impl GroupInvitationCommandPort for GroupInvitationService {
         request: AcceptGroupInvitationRequest,
     ) -> Result<AcceptGroupInvitationResult, PortError> {
         request.validate().map_err(PortError::from)?;
-        self.accept_group_invitation_owned(&context, request)
+        self.accept_group_invitation_effective_owned(&context, request)
             .await
             .map_err(Into::into)
     }
@@ -771,6 +420,16 @@ async fn find_invitation_for_update(
             .filter(invitation::Column::TenantId.eq(tenant_id))
             .filter(invitation::Column::Id.eq(invitation_id))
     };
+    let locator = query()
+        .one(transaction)
+        .await?
+        .ok_or_else(|| GroupsError::NotFound)?;
+    crate::membership_enforcement_transaction::reserve_group_write_for_update(
+        transaction,
+        tenant_id,
+        locator.group_id,
+    )
+    .await?;
     match transaction.get_database_backend() {
         DbBackend::Sqlite => query().one(transaction).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
@@ -789,6 +448,16 @@ async fn find_invitation_by_token_for_update(
             .filter(invitation::Column::TenantId.eq(tenant_id))
             .filter(invitation::Column::TokenHash.eq(token_hash))
     };
+    let locator = query()
+        .one(transaction)
+        .await?
+        .ok_or_else(|| invalid_invitation_token())?;
+    crate::membership_enforcement_transaction::reserve_group_write_for_update(
+        transaction,
+        tenant_id,
+        locator.group_id,
+    )
+    .await?;
     match transaction.get_database_backend() {
         DbBackend::Sqlite => query().one(transaction).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
@@ -815,7 +484,7 @@ fn ensure_invitation_active(model: &invitation::Model, actor_user_id: Uuid) -> G
     {
         Err(invalid_invitation_token())
     } else {
-        Ok(())
+        validate_stored_invitation_uses(model)
     }
 }
 
@@ -824,7 +493,7 @@ async fn increment_group_version(
     group_model: group::Model,
     now: DateTime<Utc>,
 ) -> GroupsResult<u64> {
-    let group_version = group_model.version.saturating_add(1).max(1) as u64;
+    let group_version = crate::domain::next_revision(group_model.version)? as u64;
     let mut active: group::ActiveModel = group_model.into();
     active.version = Set(group_version as i64);
     active.updated_at = Set(now.fixed_offset());
@@ -837,8 +506,8 @@ async fn increment_group_membership_version(
     group_model: group::Model,
     now: DateTime<Utc>,
 ) -> GroupsResult<u64> {
-    let group_version = group_model.version.saturating_add(1).max(1) as u64;
-    let member_count = group_model.member_count.saturating_add(1);
+    let group_version = crate::domain::next_revision(group_model.version)? as u64;
+    let member_count = crate::domain::increment_member_count(group_model.member_count)?;
     let mut active: group::ActiveModel = group_model.into();
     active.member_count = Set(member_count);
     active.version = Set(group_version as i64);
@@ -847,7 +516,20 @@ async fn increment_group_membership_version(
     Ok(group_version)
 }
 
+pub(crate) fn validate_stored_invitation_uses(model: &invitation::Model) -> GroupsResult<()> {
+    if !(1..=MAX_INVITATION_USES as i32).contains(&model.max_uses)
+        || !(0..=model.max_uses).contains(&model.use_count)
+        || (model.target_user_id.is_some() && model.max_uses != 1)
+    {
+        return Err(GroupsError::Invariant(
+            "stored invitation use bounds are invalid".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn map_invitation(model: invitation::Model) -> GroupsResult<GroupInvitation> {
+    validate_stored_invitation_uses(&model)?;
     let now = Utc::now();
     let status = if model.revoked_at.is_some() {
         GroupInvitationStatus::Revoked
@@ -863,8 +545,8 @@ fn map_invitation(model: invitation::Model) -> GroupsResult<GroupInvitation> {
         group_id: model.group_id,
         invited_by_user_id: model.invited_by_user_id,
         target_user_id: model.target_user_id,
-        max_uses: model.max_uses.max(0) as u32,
-        use_count: model.use_count.max(0) as u32,
+        max_uses: model.max_uses as u32,
+        use_count: model.use_count as u32,
         expires_at: model.expires_at.with_timezone(&Utc),
         revoked_at: model.revoked_at.map(|value| value.with_timezone(&Utc)),
         revoked_by_user_id: model.revoked_by_user_id,
@@ -1060,4 +742,59 @@ fn has_platform_manage(context: &PortContext) -> bool {
         .claims
         .iter()
         .any(|claim| matches!(claim.as_str(), "groups:manage" | "groups:*" | "*:*"))
+}
+
+#[path = "invitations_transactional.rs"]
+mod transactional;
+
+#[cfg(test)]
+mod projection_tests {
+    use super::*;
+
+    #[test]
+    fn invitation_projection_rejects_corrupt_use_bounds_even_when_revoked() {
+        let now = Utc::now().fixed_offset();
+        let valid = invitation::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            group_id: Uuid::new_v4(),
+            invited_by_user_id: Uuid::new_v4(),
+            target_user_id: None,
+            token_hash: "0".repeat(64),
+            max_uses: 2,
+            use_count: 1,
+            expires_at: now + chrono::Duration::hours(1),
+            revoked_at: None,
+            revoked_by_user_id: None,
+            created_at: now,
+            updated_at: now,
+        };
+        assert!(map_invitation(valid.clone()).is_ok());
+        let mut exhausted = valid.clone();
+        exhausted.use_count = 2;
+        assert_eq!(
+            map_invitation(exhausted).unwrap().status,
+            GroupInvitationStatus::Exhausted
+        );
+        for (max_uses, use_count, target) in [
+            (0, 0, None),
+            (-1, 0, None),
+            (101, 0, None),
+            (2, -1, None),
+            (2, 3, None),
+            (2, 0, Some(Uuid::new_v4())),
+        ] {
+            for revoked in [false, true] {
+                let mut corrupt = valid.clone();
+                corrupt.max_uses = max_uses;
+                corrupt.use_count = use_count;
+                corrupt.target_user_id = target;
+                corrupt.revoked_at = revoked.then_some(now);
+                assert!(matches!(
+                    map_invitation(corrupt),
+                    Err(GroupsError::Invariant(_))
+                ));
+            }
+        }
+    }
 }

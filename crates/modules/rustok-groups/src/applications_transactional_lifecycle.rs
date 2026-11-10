@@ -1,3 +1,5 @@
+use super::*;
+
 impl GroupApplicationService {
     pub(crate) async fn cancel_application_effective_owned(
         &self,
@@ -7,9 +9,11 @@ impl GroupApplicationService {
         require_write(context)?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
+        request.validate()?;
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
         let transaction = self.db.begin().await?;
+        crate::commands::reserve_command(&transaction, tenant_id, &idempotency_key).await?;
 
         if let Some(mut replayed) = replay_receipt::<GroupApplicationLifecycleResult>(
             &transaction,
@@ -33,7 +37,7 @@ impl GroupApplicationService {
         }
         let group_model =
             find_group_for_update(&transaction, tenant_id, application_model.group_id).await?;
-        require_active_group(&group_model)?;
+        require_candidate_group(&group_model)?;
         crate::effective_membership_guard::require_user_not_denied_owned(
             &transaction,
             tenant_id,
@@ -126,9 +130,11 @@ impl GroupApplicationService {
         require_write(context)?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
+        request.validate()?;
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
         let transaction = self.db.begin().await?;
+        crate::commands::reserve_command(&transaction, tenant_id, &idempotency_key).await?;
 
         if let Some(mut replayed) = replay_receipt::<GroupApplicationLifecycleResult>(
             &transaction,
@@ -149,7 +155,6 @@ impl GroupApplicationService {
             find_application_for_update(&transaction, tenant_id, request.application_id).await?;
         let group_model =
             find_group_for_update(&transaction, tenant_id, application_model.group_id).await?;
-        require_application_group(&group_model)?;
         crate::effective_membership_guard::require_effective_manager_owned(
             &transaction,
             context,
@@ -159,6 +164,7 @@ impl GroupApplicationService {
             crate::effective_membership_guard::GroupManagerCapability::Moderate,
         )
         .await?;
+        require_application_group(&group_model)?;
         crate::effective_membership_guard::require_user_not_denied_owned(
             &transaction,
             tenant_id,

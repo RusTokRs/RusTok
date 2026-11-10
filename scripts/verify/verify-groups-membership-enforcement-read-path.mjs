@@ -17,6 +17,7 @@ const files = {
     "crates/modules/rustok-groups/src/migrations/m20260808_000009_extend_group_domain_events_for_membership_enforcement.rs",
   migrationRegistry: "crates/modules/rustok-groups/src/migrations/mod.rs",
   module: "crates/modules/rustok-groups/src/lib.rs",
+  runtimeModule: "crates/modules/rustok-groups/src/module.rs",
   registry: "crates/modules/rustok-groups/contracts/groups-fba-registry.json",
   plan: "crates/modules/rustok-groups/docs/implementation-plan.md",
 };
@@ -138,6 +139,10 @@ if (failures.length === 0) {
     "mod membership_enforcement_command;",
     "GroupMembershipEnforcementService",
     "GroupMembershipEnforcementCommandService",
+  ]);
+  requireMarkers(files.runtimeModule, [
+    "impl MigrationSource for GroupsModule",
+    "migrations::migrations()",
     "module.migrations().len(), 9",
   ]);
   requireMarkers(files.registry, [

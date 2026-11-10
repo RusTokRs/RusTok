@@ -46,7 +46,7 @@ requireMarkers("crates/modules/rustok-groups/src/localization.rs", [
   "normalize_locale_tag",
   "translation::Column::Locale.eq(locale.clone())",
   "the last group translation cannot be deleted",
-  "version.saturating_add(1)",
+  "crate::domain::next_revision(group_model.version)?",
   "PortCallPolicy::read()",
   "PortCallPolicy::write()",
   "reserve_group_write_for_update",

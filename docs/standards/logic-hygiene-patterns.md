@@ -287,6 +287,7 @@ flowchart TD
   }
   return Err(primary_error);
   ```
+* **Observed Groups remediation:** The membership Moderation adapter discarded both rollback errors and failed terminal producer-receipt persistence. Application and receipt completion now share explicit rollback; if finalization itself fails, the adapter returns a retryable error preserving the primary code/message and the failed stage. A failed rollback must not be followed by recording a permanent rejection as though finalization succeeded.
 * **Verification:** Identify the actual transaction and lock kind. Test that callers never receive false success and that cleanup failures remain observable. The scanner flags discarded `commit` and `rollback` calls.
 
 ---
@@ -527,3 +528,33 @@ invariants with the owner’s tests and runtime evidence.
 - [Continuous Review Ledger](./continuous-review-ledger.md) — Living audit progress
 - [AGENTS.md](../../AGENTS.md) — Canonical platform contract
 
+
+
+## P-COMMAND-ADMISSION — Serialize receipt admission before snapshots
+
+- **Category:** Idempotency and transaction concurrency.
+- **Logic dimensions:** Order/concurrency, state transitions, side-effect completeness.
+- **Observed defect:** Groups invitation/application writes queried receipts before
+  waiting on child locks. Concurrent identical requests could both miss a receipt;
+  the loser then validated changed lifecycle state instead of replaying success.
+  On SQLite a read before writer reservation could also fail snapshot promotion.
+- **Canonical solution:** Bound and normalize the tenant/key; acquire transaction
+  admission before reads; replay the receipt; then lock the aggregate and children,
+  authorize, mutate, append audit/outbox where required, and persist the receipt in
+  the same transaction. PostgreSQL advisory-key hash collisions may serialize extra
+  requests but must never replace exact receipt identity/hash comparison.
+
+```rust
+let transaction = database.begin().await?;
+reserve_command(&transaction, tenant_id, &key).await?;
+if let Some(result) = replay_receipt(&transaction, &key).await? {
+    transaction.commit().await?;
+    return Ok(result);
+}
+// Lock aggregate before children; authorize and write owner state and receipt.
+transaction.commit().await?;
+```
+
+Detection: `rg -n 'begin\(\)|replay_receipt|reserve_command' crates/modules/rustok-groups/src`.
+Review ordering in the actual compiled module graph; source markers do not prove
+runtime admission or replay. Keep parallel same-key DB tests beside sequential replay.

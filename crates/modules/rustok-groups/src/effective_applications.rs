@@ -3,10 +3,9 @@ use std::collections::BTreeSet;
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::applications_legacy_module::{
+use crate::application_owner::{
     BulkReviewGroupMembershipApplicationItemResult, BulkReviewGroupMembershipApplicationsRequest,
     BulkReviewGroupMembershipApplicationsResult, CancelGroupMembershipApplicationRequest,
     GroupApplicationBulkReviewCommandPort, GroupApplicationCasCommandPort,
@@ -37,13 +36,13 @@ const MAX_REVIEW_NOTE_CHARS: usize = 2_000;
 #[derive(Clone)]
 pub struct GroupApplicationService {
     db: DatabaseConnection,
-    legacy: crate::applications_legacy_module::GroupApplicationService,
+    legacy: crate::application_owner::GroupApplicationService,
 }
 
 impl GroupApplicationService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            legacy: crate::applications_legacy_module::GroupApplicationService::new(db.clone()),
+            legacy: crate::application_owner::GroupApplicationService::new(db.clone()),
             db,
         }
     }
@@ -56,6 +55,12 @@ impl GroupApplicationService {
         context: &PortContext,
         group_id: Uuid,
     ) -> Result<(), PortError> {
+        if group_id.is_nil() {
+            return Err(PortError::validation(
+                "groups.invalid_group_id",
+                "group_id cannot be nil UUID",
+            ));
+        }
         let tenant_id = tenant_id(context)?;
         let model = group::Entity::find()
             .filter(group::Column::TenantId.eq(tenant_id))
@@ -69,7 +74,11 @@ impl GroupApplicationService {
             Some(model) if model.visibility == GroupVisibility::Secret.as_str() => Err(
                 PortError::not_found("groups.not_found", "group was not found"),
             ),
-            _ => Ok(()),
+            None => Err(PortError::not_found(
+                "groups.not_found",
+                "group was not found",
+            )),
+            Some(_) => Ok(()),
         }
     }
 
@@ -99,7 +108,7 @@ impl GroupApplicationReadPort for GroupApplicationService {
         &self,
         context: PortContext,
         request: ReadGroupApplicationPolicyRequest,
-    ) -> Result<crate::applications_legacy_module::GroupApplicationPolicy, PortError> {
+    ) -> Result<crate::application_owner::GroupApplicationPolicy, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         self.require_candidate_surface_visible(&context, request.group_id)
             .await?;
@@ -183,7 +192,7 @@ impl GroupApplicationCasCommandPort for GroupApplicationService {
         self.legacy
             .upsert_policy_if_current_effective_owned(&context, request)
             .await
-            .map_err(crate::applications_legacy_module::map_effective_application_cas_error)
+            .map_err(crate::application_owner::map_effective_application_cas_error)
     }
 
     async fn submit_group_membership_application_if_current(
@@ -195,7 +204,7 @@ impl GroupApplicationCasCommandPort for GroupApplicationService {
         self.legacy
             .submit_application_if_current_effective_owned(&context, request)
             .await
-            .map_err(crate::applications_legacy_module::map_effective_application_cas_error)
+            .map_err(crate::application_owner::map_effective_application_cas_error)
     }
 }
 
@@ -403,14 +412,7 @@ fn normalize_bulk_note(note: Option<String>) -> Result<Option<String>, PortError
 }
 
 fn bulk_review_item_idempotency_key(base_idempotency_key: &str, application_id: Uuid) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(base_idempotency_key.as_bytes());
-    hasher.update(application_id.as_bytes());
-    let digest = hasher.finalize();
-    let mut encoded = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        use std::fmt::Write as _;
-        let _ = write!(&mut encoded, "{byte:02x}");
-    }
-    format!("groups-bulk-review:{encoded}")
+    let mut bytes = base_idempotency_key.as_bytes().to_vec();
+    bytes.extend_from_slice(application_id.as_bytes());
+    format!("groups-bulk-review:{}", crate::domain::sha256_hex(&bytes))
 }
