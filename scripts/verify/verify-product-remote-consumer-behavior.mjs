@@ -80,9 +80,16 @@ forbidAll(commerceBehavior, [
 requireAll(checkoutPlan, [
   'boundary_error("read_checkout_product_projection", error)',
 ], "Commerce checkout Product boundary");
+const ownerPort = String.raw`\bself\s*\.\s*product_catalog_read_port`;
+const clonedOwnerPort = checkoutPlan.match(
+  new RegExp(String.raw`\blet\s+([A-Za-z_]\w*)\s*=\s*${ownerPort}\s*\.\s*clone\s*\(\s*\)\s*;`),
+)?.[1];
+const ownerReceiver = clonedOwnerPort
+  ? String.raw`(?:${ownerPort}|\b${clonedOwnerPort})`
+  : ownerPort;
 for (const operation of ["read_product_projection", "read_variant_product_projection"]) {
   const viaOwnerPort = new RegExp(
-    String.raw`\bself\s*\.product_catalog_read_port\s*\.${operation}\s*\(`,
+    String.raw`${ownerReceiver}\s*\.\s*${operation}\s*\(`,
   );
   if (!viaOwnerPort.test(checkoutPlan)) {
     failures.push(`Commerce checkout Product boundary: ${operation} must use the owner read port`);
