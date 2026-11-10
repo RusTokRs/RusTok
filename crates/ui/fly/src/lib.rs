@@ -212,7 +212,8 @@ pub use symbol::{
 };
 pub use theme::{
     DesignToken, FLY_THEME_FIELD, MAXIMUM_THEME_TOKENS, MAXIMUM_TOKEN_NAME_LENGTH,
-    MAXIMUM_TOKEN_VALUE_LENGTH, ThemeCommand, apply_theme_command, decode_theme_tokens,
+    MAXIMUM_TOKEN_VALUE_LENGTH, ThemeCommand, TokenUsage, TokenUsageLocation, apply_theme_command,
+    decode_theme_tokens, find_token_usages, rename_token_references, replace_token_in_css_value,
     theme_root_rule, validate_token_name, validate_token_value,
 };
 pub use trait_model::{

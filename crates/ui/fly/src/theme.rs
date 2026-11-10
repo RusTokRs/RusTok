@@ -11,7 +11,7 @@
 //! because they must survive GrapesJS round-trips untouched by rule identity; the codec's
 //! flattened extension map already guarantees that.
 
-use crate::ProjectDocument;
+use crate::{ComponentChildren, ComponentNode, ProjectDocument};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -231,6 +231,303 @@ mod tests {
     }
 }
 
+/// Locations where a design token is referenced in CSS declarations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TokenUsageLocation {
+    ComponentStyle {
+        component_id: String,
+        property: String,
+    },
+    StyleRule {
+        rule_index: usize,
+        property: String,
+    },
+    ThemeToken {
+        token_name: String,
+    },
+}
+
+/// Recorded usage of a design token in the document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TokenUsage {
+    pub location: TokenUsageLocation,
+    pub snippet: String,
+}
+
+/// Replaces exact occurrences of `--{old_name}` with `--{new_name}` in CSS values (e.g. `var(--old_name)`),
+/// respecting identifier boundary characters so `--old-name-dark` is not touched.
+pub fn replace_token_in_css_value(value: &str, old_name: &str, new_name: &str) -> (String, usize) {
+    let target = format!("--{old_name}");
+    let replacement = format!("--{new_name}");
+    let mut result = String::with_capacity(value.len());
+    let mut count = 0;
+    let mut last_copied = 0;
+
+    let is_ident_char = |ch: char| -> bool {
+        ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch >= '\u{0080}'
+    };
+
+    for (idx, _) in value.match_indices(&target) {
+        if idx < last_copied {
+            continue;
+        }
+        let before_is_ident = idx > 0 && {
+            let ch = value[..idx].chars().next_back().unwrap();
+            is_ident_char(ch)
+        };
+        let after_idx = idx + target.len();
+        let after_is_ident = after_idx < value.len() && {
+            let ch = value[after_idx..].chars().next().unwrap();
+            is_ident_char(ch)
+        };
+
+        if !before_is_ident && !after_is_ident {
+            result.push_str(&value[last_copied..idx]);
+            result.push_str(&replacement);
+            count += 1;
+            last_copied = after_idx;
+        }
+    }
+    result.push_str(&value[last_copied..]);
+    (result, count)
+}
+
+fn find_usages_in_opaque_value(
+    value: &Value,
+    token_name: &str,
+    usages: &mut Vec<TokenUsage>,
+    fallback_id: &str,
+) {
+    match value {
+        Value::Object(map) => {
+            let comp_id = map.get("id").and_then(Value::as_str).unwrap_or(fallback_id);
+            if let Some(Value::Object(style_map)) = map.get("style") {
+                for (prop, val) in style_map {
+                    if let Some(css_val) = val.as_str() {
+                        let (_, count) =
+                            replace_token_in_css_value(css_val, token_name, token_name);
+                        if count > 0 {
+                            usages.push(TokenUsage {
+                                location: TokenUsageLocation::ComponentStyle {
+                                    component_id: comp_id.to_string(),
+                                    property: prop.clone(),
+                                },
+                                snippet: format!("{prop}: {css_val}"),
+                            });
+                        }
+                    }
+                }
+            }
+            if let Some(components) = map.get("components") {
+                find_usages_in_opaque_value(components, token_name, usages, comp_id);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                find_usages_in_opaque_value(item, token_name, usages, fallback_id);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Inspect all component styles, style catalog rules, and sibling theme tokens to find usages of `--{token_name}`.
+pub fn find_token_usages(document: &ProjectDocument, token_name: &str) -> Vec<TokenUsage> {
+    let mut usages = Vec::new();
+
+    // 1. Component inline styles
+    document.project.visit_components(|component, _, _| {
+        let comp_id = component
+            .id
+            .clone()
+            .unwrap_or_else(|| "anonymous".to_string());
+        if let Some(Value::Object(map)) = &component.style {
+            for (prop, val) in map {
+                if let Some(css_val) = val.as_str() {
+                    let (_, count) = replace_token_in_css_value(css_val, token_name, token_name);
+                    if count > 0 {
+                        usages.push(TokenUsage {
+                            location: TokenUsageLocation::ComponentStyle {
+                                component_id: comp_id.clone(),
+                                property: prop.clone(),
+                            },
+                            snippet: format!("{prop}: {css_val}"),
+                        });
+                    }
+                }
+            }
+        }
+        if let ComponentChildren::Opaque(val) = &component.components {
+            find_usages_in_opaque_value(val, token_name, &mut usages, &comp_id);
+        }
+    });
+
+    for page in &document.project.pages {
+        if let Some(ComponentNode::Opaque(val)) = &page.component {
+            find_usages_in_opaque_value(val, token_name, &mut usages, "opaque-page-root");
+        }
+    }
+
+    // 2. Project styles catalog
+    for (idx, rule_val) in document.project.styles.iter().enumerate() {
+        if let Some(style_obj) = rule_val.get("style").and_then(Value::as_object) {
+            for (prop, val) in style_obj {
+                if let Some(css_val) = val.as_str() {
+                    let (_, count) = replace_token_in_css_value(css_val, token_name, token_name);
+                    if count > 0 {
+                        usages.push(TokenUsage {
+                            location: TokenUsageLocation::StyleRule {
+                                rule_index: idx,
+                                property: prop.clone(),
+                            },
+                            snippet: format!("{prop}: {css_val}"),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Other tokens in flyTheme
+    if let Ok(tokens) = decode_theme_tokens(document) {
+        for token in tokens {
+            if token.name != token_name {
+                let (_, count) = replace_token_in_css_value(&token.value, token_name, token_name);
+                if count > 0 {
+                    usages.push(TokenUsage {
+                        location: TokenUsageLocation::ThemeToken {
+                            token_name: token.name.clone(),
+                        },
+                        snippet: format!("--{}: {}", token.name, token.value),
+                    });
+                }
+            }
+        }
+    }
+
+    usages
+}
+
+/// Rewrites all `var(--{old_name})` occurrences to `var(--{new_name})` across component styles,
+/// catalog style rules, and sibling theme tokens in `document`.
+pub fn rename_token_references(
+    document: &mut ProjectDocument,
+    old_name: &str,
+    new_name: &str,
+) -> usize {
+    if old_name == new_name {
+        return 0;
+    }
+    let mut total_replacements = 0;
+
+    // 1. Mutate component styles across all pages
+    for page in &mut document.project.pages {
+        if let Some(root) = page.component.as_mut() {
+            total_replacements += rename_in_component_tree(root, old_name, new_name);
+        }
+    }
+
+    // 2. Mutate project style catalog rules
+    for rule_val in &mut document.project.styles {
+        if let Some(style_obj) = rule_val.get_mut("style").and_then(Value::as_object_mut) {
+            for val in style_obj.values_mut() {
+                if let Some(css_val) = val.as_str() {
+                    let (replaced, count) = replace_token_in_css_value(css_val, old_name, new_name);
+                    if count > 0 {
+                        *val = Value::String(replaced);
+                        total_replacements += count;
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Mutate sibling theme tokens
+    if let Some(theme) = document.project.extensions.get_mut(FLY_THEME_FIELD)
+        && let Some(tokens_obj) = theme.get_mut("tokens").and_then(Value::as_object_mut)
+    {
+        for val in tokens_obj.values_mut() {
+            if let Some(css_val) = val.as_str() {
+                let (replaced, count) = replace_token_in_css_value(css_val, old_name, new_name);
+                if count > 0 {
+                    *val = Value::String(replaced);
+                    total_replacements += count;
+                }
+            }
+        }
+    }
+
+    if total_replacements > 0 {
+        document.invalidate_caches();
+    }
+
+    total_replacements
+}
+
+fn rename_in_component_tree(node: &mut ComponentNode, old_name: &str, new_name: &str) -> usize {
+    match node {
+        ComponentNode::Object(object) => {
+            let mut count = 0;
+            if let Some(Value::Object(style_map)) = &mut object.style {
+                for val in style_map.values_mut() {
+                    if let Some(css_val) = val.as_str() {
+                        let (replaced, c) = replace_token_in_css_value(css_val, old_name, new_name);
+                        if c > 0 {
+                            *val = Value::String(replaced);
+                            count += c;
+                        }
+                    }
+                }
+            }
+            match &mut object.components {
+                ComponentChildren::Nodes(children) => {
+                    for child in children {
+                        count += rename_in_component_tree(child, old_name, new_name);
+                    }
+                }
+                ComponentChildren::Opaque(val) => {
+                    count += rename_in_opaque_value(val, old_name, new_name);
+                }
+            }
+            count
+        }
+        ComponentNode::Opaque(value) => rename_in_opaque_value(value, old_name, new_name),
+    }
+}
+
+fn rename_in_opaque_value(value: &mut Value, old_name: &str, new_name: &str) -> usize {
+    let mut count = 0;
+    match value {
+        Value::Object(map) => {
+            for (key, val) in map.iter_mut() {
+                if key == "style" {
+                    if let Value::Object(style_map) = val {
+                        for style_val in style_map.values_mut() {
+                            if let Some(css_val) = style_val.as_str() {
+                                let (replaced, c) =
+                                    replace_token_in_css_value(css_val, old_name, new_name);
+                                if c > 0 {
+                                    *style_val = Value::String(replaced);
+                                    count += c;
+                                }
+                            }
+                        }
+                    }
+                } else if key == "components" {
+                    count += rename_in_opaque_value(val, old_name, new_name);
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                count += rename_in_opaque_value(item, old_name, new_name);
+            }
+        }
+        _ => {}
+    }
+    count
+}
+
 /// Mutations of the project design-token set, executed as editor commands so token
 /// authoring goes through the same transaction/validation/history path as every other
 /// edit (instead of hosts poking the `flyTheme` extension directly).
@@ -242,6 +539,8 @@ pub enum ThemeCommand {
     Upsert { token: DesignToken },
     /// Remove one token by name; removing the last one removes the theme.
     Remove { name: String },
+    /// Rename a token and automatically rewrite all `var(--old_name)` occurrences in styles.
+    Rename { old_name: String, new_name: String },
 }
 
 pub fn apply_theme_command(
@@ -277,6 +576,28 @@ pub fn apply_theme_command(
                     "design token `{name}` does not exist"
                 )));
             }
+        }
+        ThemeCommand::Rename { old_name, new_name } => {
+            if old_name == new_name {
+                return Ok(());
+            }
+            validate_token_name(new_name).map_err(crate::FlyError::Decode)?;
+            let Some(pos) = tokens.iter().position(|t| t.name == *old_name) else {
+                return Err(crate::FlyError::Decode(format!(
+                    "design token `{old_name}` does not exist"
+                )));
+            };
+            if tokens.iter().any(|t| t.name == *new_name) {
+                return Err(crate::FlyError::Decode(format!(
+                    "design token `{new_name}` already exists"
+                )));
+            }
+            tokens[pos].name = new_name.clone();
+            for item in &mut tokens {
+                let (replaced, _) = replace_token_in_css_value(&item.value, old_name, new_name);
+                item.value = replaced;
+            }
+            rename_token_references(document, old_name, new_name);
         }
     }
     if tokens.len() > MAXIMUM_THEME_TOKENS {
@@ -381,5 +702,154 @@ mod command_tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn theme_rename_command_rewrites_references_and_supports_undo_redo() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "flyTheme": {
+                "tokens": {
+                    "brand": "#0b5fff",
+                    "accent": "var(--brand)"
+                }
+            },
+            "styles": [
+                {
+                    "selectors": [{ "name": "cta-btn" }],
+                    "style": { "outline": "2px dashed var(--brand)", "color": "var(--brand-dark)" }
+                }
+            ],
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [
+                        {
+                            "id": "hero",
+                            "type": "section",
+                            "style": {
+                                "color": "var(--brand)",
+                                "border": "1px solid var(--brand)",
+                                "background": "var(--brand-dark)"
+                            },
+                            "components": []
+                        }
+                    ]
+                }
+            }]
+        }))
+        .expect("document");
+
+        // 1. Usages detection
+        let usages = find_token_usages(&document, "brand");
+        assert_eq!(
+            usages.len(),
+            4,
+            "Expected 4 usages (2 in component, 1 in catalog, 1 in sibling token)"
+        );
+        let dark_usages = find_token_usages(&document, "brand-dark");
+        assert_eq!(dark_usages.len(), 2, "Expected 2 usages of brand-dark");
+
+        let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+
+        // 2. Rename brand -> primary
+        editor
+            .apply(EditorCommand::Theme {
+                command: ThemeCommand::Rename {
+                    old_name: "brand".to_string(),
+                    new_name: "primary".to_string(),
+                },
+            })
+            .expect("rename command succeeds");
+
+        // Verify tokens in theme
+        let tokens = decode_theme_tokens(editor.document()).expect("tokens");
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0].name, "accent");
+        assert_eq!(tokens[0].value, "var(--primary)");
+        assert_eq!(tokens[1].name, "primary");
+        assert_eq!(tokens[1].value, "#0b5fff");
+
+        // Verify component styles updated, while brand-dark was untouched
+        let hero = editor.document().component("hero").expect("hero component");
+        if let Some(Value::Object(hero_style)) = &hero.style {
+            assert_eq!(
+                hero_style.get("color").and_then(Value::as_str),
+                Some("var(--primary)")
+            );
+            assert_eq!(
+                hero_style.get("border").and_then(Value::as_str),
+                Some("1px solid var(--primary)")
+            );
+            assert_eq!(
+                hero_style.get("background").and_then(Value::as_str),
+                Some("var(--brand-dark)")
+            );
+        } else {
+            panic!("hero style must be an object");
+        }
+
+        // Verify project style catalog updated
+        let catalog_style = &editor.document().project.styles[0];
+        let style_obj = catalog_style
+            .get("style")
+            .and_then(Value::as_object)
+            .expect("style obj");
+        assert_eq!(
+            style_obj.get("outline").and_then(Value::as_str),
+            Some("2px dashed var(--primary)")
+        );
+        assert_eq!(
+            style_obj.get("color").and_then(Value::as_str),
+            Some("var(--brand-dark)")
+        );
+
+        // Render page verifies root CSS has --primary
+        let page = render_page(
+            editor.document(),
+            &PageSelection::First,
+            &RenderPolicy::default(),
+        )
+        .expect("render");
+        assert!(
+            page.css.contains("--primary:#0b5fff"),
+            "css must contain --primary"
+        );
+        assert!(
+            !page.css.contains("--brand:#0b5fff"),
+            "css must not contain old --brand definition"
+        );
+
+        // 3. Test undo
+        editor.undo().expect("undo rename succeeds");
+        let restored_tokens = decode_theme_tokens(editor.document()).expect("restored tokens");
+        assert_eq!(restored_tokens[0].name, "accent");
+        assert_eq!(restored_tokens[0].value, "var(--brand)");
+        assert_eq!(restored_tokens[1].name, "brand");
+
+        let hero_restored = editor.document().component("hero").expect("hero component");
+        if let Some(Value::Object(hero_style)) = &hero_restored.style {
+            assert_eq!(
+                hero_style.get("color").and_then(Value::as_str),
+                Some("var(--brand)")
+            );
+            assert_eq!(
+                hero_style.get("border").and_then(Value::as_str),
+                Some("1px solid var(--brand)")
+            );
+        }
+
+        // 4. Test redo
+        editor.redo().expect("redo rename succeeds");
+        let redone_tokens = decode_theme_tokens(editor.document()).expect("redone tokens");
+        assert_eq!(redone_tokens[1].name, "primary");
+        let hero_redone = editor.document().component("hero").expect("hero component");
+        if let Some(Value::Object(hero_style)) = &hero_redone.style {
+            assert_eq!(
+                hero_style.get("color").and_then(Value::as_str),
+                Some("var(--primary)")
+            );
+        }
     }
 }

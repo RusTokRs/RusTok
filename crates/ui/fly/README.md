@@ -240,15 +240,15 @@ the owner of the missing half.
   safe link otherwise. Static publishing refuses `fly_embed` explicitly — embeds go through
   dynamic routes. Arbitrary third-party embeds and custom code stay out by design, while
   `raw_html` stays escaped (above). Owner: `fly` embed registry.
-- **Design tokens exist, with one authoring surface; rename-with-usage-checks is still open.**
+- **Design tokens exist with usage checks and reference rewriting.**
   A project carries a `flyTheme` extension (`fly::theme`): validated tokens render as `:root`
   custom properties and style declarations reference them with `var(--name)`. Token mutations
-  are editor commands (`EditorCommand::Theme`), and the Page Builder admin has a Design tokens
-  panel, and both adapter workspaces (`fly-leptos`, `fly-dioxus`) ship an editable token
-panel on the same command. Renaming a token does not
-  rewrite `var(--name)` references in style declarations — hosts must check usages first —
-  and there is no site-wide style *inheritance* beyond the cascade itself. Owner: `fly` theme
-  model.
+  are editor commands (`EditorCommand::Theme`), and both adapter workspaces (`fly-leptos`,
+  `fly-dioxus`) ship an editable token panel on the same command. Renaming a token
+  (`ThemeCommand::Rename`) automatically rewrites all `var(--old_name)` occurrences across
+  component styles, style catalog rules, and sibling token definitions with full undo/redo
+  reversibility, and `find_token_usages` provides pre-flight usage discovery. Site-wide style
+  inheritance remains cascade-driven by design. Owner: `fly` theme model.
 - **Collaboration is out of scope for the engine.** No presence, locking, OT/CRDT, or merge:
   concurrent editors coordinate through the consumer's revision checks. Editor-minted ids are
   collision-resistant across sessions (`UniqueIdGenerator`), which removes accidental id
