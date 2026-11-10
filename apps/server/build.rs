@@ -87,7 +87,9 @@ fn build_optional_module_entry(
     slug: String,
     spec: ModuleSpec,
 ) -> Result<Option<OptionalModuleEntry>, Box<dyn std::error::Error>> {
-    if spec.required {
+    // Core modules have explicit host wiring. Required runtime extensions still
+    // contribute their feature-gated surfaces through the package manifest.
+    if spec.required && spec.runtime != "extension" {
         return Ok(None);
     }
 
@@ -107,17 +109,21 @@ fn build_optional_module_entry(
         println!("cargo:rerun-if-changed={}", path.display());
     }
 
-    let module_expr = wiring
-        .entry_type
-        .clone()
-        .or_else(|| infer_runtime_module_expr(lib_path.as_deref(), &spec.crate_name))
-        .or_else(|| {
-            if has_package_manifest {
-                None
-            } else {
-                Some(format!("{crate_ident}::{type_stem}Module"))
-            }
-        });
+    let module_expr = if spec.required {
+        None
+    } else {
+        wiring
+            .entry_type
+            .clone()
+            .or_else(|| infer_runtime_module_expr(lib_path.as_deref(), &spec.crate_name))
+            .or_else(|| {
+                if has_package_manifest {
+                    None
+                } else {
+                    Some(format!("{crate_ident}::{type_stem}Module"))
+                }
+            })
+    };
 
     let graphql_query_expr = wiring.graphql_query_type.clone().or_else(|| {
         crate_root

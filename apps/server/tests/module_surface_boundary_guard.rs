@@ -948,9 +948,25 @@ fn ai_graphql_surface_is_owned_by_ai_crate() {
         "rustok-ai GraphQL must depend on owner/shared contracts: {offenders:?}"
     );
 
-    let schema = std::fs::read_to_string(repo.join("apps/server/src/graphql/schema.rs"))
-        .expect("server GraphQL schema should read");
-    assert!(schema.contains("rustok_ai::graphql::{AiMutation, AiQuery, AiSubscription}"));
+    let manifest = std::fs::read_to_string(repo.join("crates/modules/rustok-ai/rustok-module.toml"))
+        .expect("AI package manifest should read");
+    for contribution in [
+        "graphql::AiQuery",
+        "graphql::AiMutation",
+        "graphql::AiSubscription",
+        "graphql_runtime::attach_schema_data",
+    ] {
+        assert!(
+            manifest.contains(contribution),
+            "missing AI contribution {contribution}"
+        );
+        #[cfg(feature = "mod-ai")]
+        assert!(
+            include_str!(concat!(env!("OUT_DIR"), "/graphql_schema_codegen.rs"))
+                .contains(&format!("rustok_ai::{contribution}")),
+            "server schema must compose AI contribution {contribution}"
+        );
+    }
 }
 
 #[test]
