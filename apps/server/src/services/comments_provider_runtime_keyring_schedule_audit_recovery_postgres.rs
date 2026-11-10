@@ -220,15 +220,21 @@ impl PostgresCommentsTcpDelegationScheduleAuditRecoveryStore {
                 return Ok(CommentsTcpDelegationScheduleAuditRecoveryOutcome::NotFound);
             }
             Err(RequeueTransactionError::NotDeadLetter) => {
-                let _ = transaction.rollback().await;
+                if let Err(rollback_err) = transaction.rollback().await {
+                    tracing::warn!(%rollback_err, "failed to rollback schedule audit recovery transaction (not dead letter)");
+                }
                 return Ok(CommentsTcpDelegationScheduleAuditRecoveryOutcome::NotDeadLetter);
             }
             Err(RequeueTransactionError::StaleInspection) => {
-                let _ = transaction.rollback().await;
+                if let Err(rollback_err) = transaction.rollback().await {
+                    tracing::warn!(%rollback_err, "failed to rollback schedule audit recovery transaction (stale inspection)");
+                }
                 return Ok(CommentsTcpDelegationScheduleAuditRecoveryOutcome::StaleInspection);
             }
             Err(RequeueTransactionError::Recovery(error)) => {
-                let _ = transaction.rollback().await;
+                if let Err(rollback_err) = transaction.rollback().await {
+                    tracing::warn!(%rollback_err, "failed to rollback schedule audit recovery transaction (recovery error)");
+                }
                 return Err(error);
             }
         };

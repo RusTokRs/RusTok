@@ -333,15 +333,19 @@ async fn bootstrap_empty_on_postgres(
         .await;
     let rows_affected = match execution {
         Ok(result) => result.rows_affected(),
-        Err(_) => {
-            let _ = transaction.rollback().await;
+        Err(err) => {
+            if let Err(rollback_err) = transaction.rollback().await {
+                tracing::warn!(%rollback_err, %err, "failed to rollback bootstrap schedule audit transaction on execution error");
+            }
             return Err(
                 persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable,
             );
         }
     };
     if rows_affected != 1 {
-        let _ = transaction.rollback().await;
+        if let Err(rollback_err) = transaction.rollback().await {
+            tracing::warn!(%rollback_err, "failed to rollback bootstrap schedule audit transaction on conflict");
+        }
         return Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict);
     }
     match transaction.commit().await {
@@ -368,15 +372,19 @@ async fn compare_and_store_with_audit_on_postgres(
         .await;
     let state_rows = match state_execution {
         Ok(result) => result.rows_affected(),
-        Err(_) => {
-            let _ = transaction.rollback().await;
+        Err(err) => {
+            if let Err(rollback_err) = transaction.rollback().await {
+                tracing::warn!(%rollback_err, %err, "failed to rollback update schedule state transaction on execution error");
+            }
             return Err(
                 persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable,
             );
         }
     };
     if state_rows != 1 {
-        let _ = transaction.rollback().await;
+        if let Err(rollback_err) = transaction.rollback().await {
+            tracing::warn!(%rollback_err, "failed to rollback update schedule state transaction on conflict");
+        }
         return Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict);
     }
 
@@ -385,15 +393,19 @@ async fn compare_and_store_with_audit_on_postgres(
         .await;
     let audit_rows = match audit_execution {
         Ok(result) => result.rows_affected(),
-        Err(_) => {
-            let _ = transaction.rollback().await;
+        Err(err) => {
+            if let Err(rollback_err) = transaction.rollback().await {
+                tracing::warn!(%rollback_err, %err, "failed to rollback insert schedule audit transaction on execution error");
+            }
             return Err(
                 persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable,
             );
         }
     };
     if audit_rows != 1 {
-        let _ = transaction.rollback().await;
+        if let Err(rollback_err) = transaction.rollback().await {
+            tracing::warn!(%rollback_err, "failed to rollback insert schedule audit transaction on conflict");
+        }
         return Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict);
     }
 

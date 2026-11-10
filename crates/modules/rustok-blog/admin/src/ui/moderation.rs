@@ -39,7 +39,7 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
         let tenant = tenant.get();
         let locale = resource_locale.clone();
         let page = page.get().max(1);
-        let _ = refresh_nonce.get();
+        refresh_nonce.track();
 
         async move {
             let Some(post_id) = post_id

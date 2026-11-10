@@ -232,7 +232,7 @@ pub fn AttributesPage() -> impl IntoView {
         let tok = token.get();
         let ten = tenant.get();
         let loc = locale_store.get_value().unwrap_or_default();
-        let _ = refresh_nonce.get();
+        refresh_nonce.track();
         async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
@@ -254,7 +254,7 @@ pub fn AttributesPage() -> impl IntoView {
         let tok = token.get();
         let ten = tenant.get();
         let loc = locale_store.get_value().unwrap_or_default();
-        let _ = refresh_nonce.get();
+        refresh_nonce.track();
         async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await

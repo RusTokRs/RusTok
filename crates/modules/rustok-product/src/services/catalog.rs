@@ -100,29 +100,40 @@ fn map_product_unique_violation(
     locale: &str,
     sku: Option<&str>,
 ) -> CommerceError {
+    let debug = format!("{error:?}");
     let message = error.to_string();
-    if message.contains("uq_product_variants_tenant_sku") {
+    let is_unique_violation = debug.contains("23505")
+        || message.contains("23505")
+        || debug.contains("UNIQUE")
+        || message.contains("UNIQUE");
+
+    if !is_unique_violation {
+        return CommerceError::Database(error);
+    }
+
+    let constraint = &message;
+    if constraint.contains("product_variants_tenant_sku") {
         return CommerceError::DuplicateSku(sku.unwrap_or_default().to_owned());
     }
-    if message.contains("uq_product_translations_tenant_locale_handle") {
+    if constraint.contains("product_translations_tenant_locale_handle") {
         return CommerceError::DuplicateHandle {
             handle: handle.to_owned(),
             locale: locale.to_owned(),
         };
     }
-    if message.contains("idx_product_trans_unique")
-        || message.contains("product_translations_product_id_locale_key")
+    if constraint.contains("product_trans_unique")
+        || constraint.contains("product_translations_product_id_locale_key")
     {
         return CommerceError::Validation(format!(
             "A translation for locale `{locale}` already exists for this product"
         ));
     }
-    if message.contains("uq_product_variants_combination") {
+    if constraint.contains("product_variants_combination") {
         return CommerceError::Validation(
             "A variant with this axis combination already exists for this product".to_owned(),
         );
     }
-    if message.contains("uq_product_variants_default") {
+    if constraint.contains("product_variants_default") {
         return CommerceError::Validation(
             "A default variant already exists for this product".to_owned(),
         );

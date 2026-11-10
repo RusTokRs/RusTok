@@ -240,15 +240,19 @@ async fn compare_and_store_on_postgres(
 
     let rows_affected = match execution {
         Ok(result) => result.rows_affected(),
-        Err(_) => {
-            let _ = transaction.rollback().await;
+        Err(err) => {
+            if let Err(rollback_err) = transaction.rollback().await {
+                tracing::warn!(%rollback_err, %err, "failed to rollback schedule persistence transaction on execution error");
+            }
             return Err(
                 persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Unavailable,
             );
         }
     };
     if rows_affected != 1 {
-        let _ = transaction.rollback().await;
+        if let Err(rollback_err) = transaction.rollback().await {
+            tracing::warn!(%rollback_err, "failed to rollback schedule persistence transaction on conflict");
+        }
         return Err(persistence::CommentsTcpDelegationSchedulePersistenceStoreError::Conflict);
     }
 

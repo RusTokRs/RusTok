@@ -159,7 +159,7 @@ RE_RUST_TOKEN = re.compile(
 RE_BLOCK_COMMENT_DELIMITER = re.compile(r'/\*|\*/')
 RE_STRING_DELIMITER = re.compile(r'\\[\s\S]|"')
 RE_REACTIVE_TOKEN = re.compile(
-    r'(?P<reactive>\b(?:create_effect|create_memo|Effect::new|Memo::new)\s*\('
+    r'(?P<reactive>\b(?:create_effect|create_memo|create_resource|create_local_resource|Effect::new|Memo::new|Resource::new|LocalResource::new)\s*\('
     r'|\bview!\s*[{(\[])|[(){}\[\]]'
 )
 DELIMITER_PAIRS = {"(": ")", "[": "]", "{": "}"}
@@ -187,7 +187,7 @@ def is_build_or_example(file_path: Path) -> bool:
 
 def is_migration(file_path: Path) -> bool:
     parts = [p.lower() for p in file_path.parts]
-    return "migrations" in parts or "migration" in parts
+    return any("migration" in p for p in parts) or file_path.name.startswith("m202")
 
 
 def extract_module_name(file_path: Path) -> str:

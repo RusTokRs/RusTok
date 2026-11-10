@@ -659,9 +659,10 @@ async fn check_required_database_schema(
     ctx: &ServerRuntimeContext,
     settings: &RustokSettings,
 ) -> std::result::Result<(), String> {
+    let backend = ctx.db().get_database_backend();
     for table in required_database_schema_tables(settings) {
-        let query = format!("SELECT 1 FROM {table} LIMIT 1");
-        if ctx.db().execute_unprepared(&query).await.is_err() {
+        let stmt = Statement::from_string(backend, format!("SELECT 1 FROM {table} LIMIT 1"));
+        if ctx.db().execute(&stmt).await.is_err() {
             return Err(format!("required table `{table}` is unavailable"));
         }
     }

@@ -156,21 +156,29 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
             .await
             .map_err(unavailable)?;
         let Some(row) = row else {
-            let _ = transaction.rollback().await;
+            if let Err(rollback_err) = transaction.rollback().await {
+                tracing::warn!(%rollback_err, "failed to rollback schedule audit handoff transaction on missing record");
+            }
             return Err(CommentsTcpDelegationScheduleAuditHandoffError::Conflict);
         };
         let stored = StoredAuditHandoffRecord::from_row(&row)?;
 
         if stored.is_exact_terminal() {
-            let _ = transaction.rollback().await;
+            if let Err(rollback_err) = transaction.rollback().await {
+                tracing::warn!(%rollback_err, "failed to rollback schedule audit handoff transaction on terminal match");
+            }
             return Ok(claim.request_id);
         }
         if stored.has_invalid_terminal_pair() {
-            let _ = transaction.rollback().await;
+            if let Err(rollback_err) = transaction.rollback().await {
+                tracing::warn!(%rollback_err, "failed to rollback schedule audit handoff transaction on invalid terminal pair");
+            }
             return Err(CommentsTcpDelegationScheduleAuditHandoffError::Unavailable);
         }
         if !stored.matches_claim(claim) {
-            let _ = transaction.rollback().await;
+            if let Err(rollback_err) = transaction.rollback().await {
+                tracing::warn!(%rollback_err, "failed to rollback schedule audit handoff transaction on claim mismatch");
+            }
             return Err(CommentsTcpDelegationScheduleAuditHandoffError::Conflict);
         }
 
@@ -182,12 +190,16 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
         {
             Ok(envelope_id) if envelope_id == claim.request_id => envelope_id,
             Ok(_) => {
-                let _ = transaction.rollback().await;
+                if let Err(rollback_err) = transaction.rollback().await {
+                    tracing::warn!(%rollback_err, "failed to rollback schedule audit handoff transaction on envelope mismatch");
+                }
                 return Err(CommentsTcpDelegationScheduleAuditHandoffError::Unavailable);
             }
             Err(error) => {
                 let mapped = map_writer_error(error);
-                let _ = transaction.rollback().await;
+                if let Err(rollback_err) = transaction.rollback().await {
+                    tracing::warn!(%rollback_err, "failed to rollback schedule audit handoff transaction on write error");
+                }
                 return Err(mapped);
             }
         };
@@ -198,7 +210,9 @@ impl PostgresCommentsTcpDelegationScheduleAuditCanonicalHandoff {
             .map_err(unavailable)?
             .rows_affected();
         if updated != 1 {
-            let _ = transaction.rollback().await;
+            if let Err(rollback_err) = transaction.rollback().await {
+                tracing::warn!(%rollback_err, "failed to rollback schedule audit handoff transaction on optimistic update conflict");
+            }
             return Err(CommentsTcpDelegationScheduleAuditHandoffError::Conflict);
         }
 

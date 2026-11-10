@@ -44,8 +44,9 @@ source commit or retained raw logs. The conformance fixture now includes `Produc
 See the [current verification scope](docs/implementation-plan.md#current-revision-and-evidence-limits).
 
 The standalone PostgreSQL probe exercises all six RPCs. Commerce HTTP checkout passed locally
-in both profiles. The `boundary_ready` status covers the catalog-read track. The combined
-capture and mounted AI evidence remain open.
+in both profiles. The AI GraphQL attribute task passed locally with a separate Product service
+and separate PostgreSQL databases. The catalog-read track remains `boundary_ready` pending
+the combined deployment capture.
 Product does not currently publish a contracts-only build without ORM dependencies.
 Contracts and implementation may remain in this one owner crate. See the
 [coverage and verification work](docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
