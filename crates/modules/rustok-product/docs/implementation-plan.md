@@ -370,7 +370,7 @@ At the time of the maintainer attestation, Product remained at `boundary_ready`.
 The attestation recorded these limits: configured remote-profile execution evidence remain open,
 provider-host execution evidence remains open, Schema-preflight execution evidence remains open,
 and standalone PostgreSQL schema-preflight runtime evidence remains open.
-Product remains `boundary_ready` pending the combined deployment capture. The local
+Product remains `boundary_ready` rather than being promoted prematurely, pending the combined deployment capture. The local
 execution results below cover Commerce checkout and the AI attributes task. The
 sanitized packet for the configured separate-process profile still needs to be retained.
 

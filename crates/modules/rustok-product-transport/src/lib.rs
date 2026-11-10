@@ -17,8 +17,8 @@ pub mod proto {
 pub use auth::{ProductCatalogGrpcAuthenticationError, ProductCatalogGrpcBearerToken};
 pub use client::{GrpcProductCatalogCommandProvider, GrpcProductCatalogReadProvider};
 pub use connection::{
-    GrpcProductCatalogReadConnectionConfig, GrpcProductCatalogReadConnectionError,
-    ValidatedGrpcProductCatalogReadConnection,
+    GrpcProductCatalogConnectionConfig, GrpcProductCatalogReadConnectionConfig,
+    GrpcProductCatalogReadConnectionError, ValidatedGrpcProductCatalogReadConnection,
 };
 pub use server::{
     ProductCatalogCommandGrpcService, ProductCatalogGrpcBearerAuthenticator,

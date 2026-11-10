@@ -11,7 +11,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortError};
+use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_product::{
     FilteredPublishedProductsRequest, ProductCatalogCommandPort, ProductCatalogReadPort,
     ProductProjectionRequest, ProductVariantIdentitiesRequest,
@@ -672,38 +672,41 @@ fn status_to_port_error(status: Status) -> PortError {
     {
         return error;
     }
-    match status.code() {
-        Code::InvalidArgument => PortError::validation("product.grpc_invalid_argument", status.message()),
-        Code::NotFound => PortError::not_found("product.grpc_not_found", status.message()),
-        Code::AlreadyExists | Code::FailedPrecondition | Code::Aborted => {
-            PortError::conflict("product.grpc_conflict", status.message())
-        }
-        Code::PermissionDenied => {
-            PortError::forbidden("product.grpc_permission_denied", status.message())
-        }
-        Code::Unauthenticated => {
-            PortError::forbidden("product.grpc_unauthenticated", status.message())
-        }
-        Code::DeadlineExceeded => {
-            let mut error = PortError::timeout("product.grpc_timeout", status.message());
-            error.retryable = true;
-            error
-        }
-        Code::Unimplemented => {
-            let mut error = PortError::unavailable("product.grpc_operation_unsupported", status.message());
-            error.retryable = false;
-            error
-        }
-        _ => {
-            let mut error = PortError::unavailable("product.grpc_unavailable", status.message());
-            error.retryable = true;
-            error
-        }
+
+    if status.code() == Code::Unimplemented {
+        return PortError::new(
+            PortErrorKind::Unavailable,
+            "product.grpc_operation_unsupported",
+            "The configured Product provider does not support this operation",
+            false,
+        );
     }
+
+    let kind = match status.code() {
+        Code::InvalidArgument => PortErrorKind::Validation,
+        Code::NotFound => PortErrorKind::NotFound,
+        Code::AlreadyExists | Code::Aborted | Code::FailedPrecondition => PortErrorKind::Conflict,
+        Code::PermissionDenied | Code::Unauthenticated => PortErrorKind::Forbidden,
+        Code::DeadlineExceeded => PortErrorKind::Timeout,
+        Code::Unavailable | Code::ResourceExhausted => PortErrorKind::Unavailable,
+        _ => PortErrorKind::InvariantViolation,
+    };
+    let retryable = matches!(kind, PortErrorKind::Timeout | PortErrorKind::Unavailable);
+    PortError::new(
+        kind,
+        format!(
+            "product.grpc.{}",
+            status.code().description().replace(' ', "_")
+        ),
+        status.message(),
+        retryable,
+    )
 }
 
 #[cfg(test)]
 mod tests {
+    use rustok_api::{PortActor, PortErrorKind};
+
     use super::*;
 
     #[test]
