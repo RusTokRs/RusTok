@@ -21,18 +21,15 @@ ProductCatalogGrpcService
 authenticated tonic gRPC
 ```
 
-It does not own Product DTOs, catalog policy, persistence queries, locale/channel rules, consumer fallback behavior, migrations, or an outbox relay. The exposed RPC surface is read-only. `CatalogService` receives an `OutboxTransport`-backed `TransactionalEventBus` so the owner constructor remains production-valid without introducing a no-op event transport.
+It does not own Product DTOs, catalog policy, persistence queries, locale/channel rules, consumer fallback behavior, migrations, or an outbox relay. The exposed RPC surface includes the complete read-only query suite as well as transactional command execution for authorized callers. `CatalogService` receives an `OutboxTransport`-backed `TransactionalEventBus` so the owner constructor remains production-valid without introducing a no-op event transport.
 
-## Known Limitations / Pending Implementation
+## Service Capabilities
 
-This host exposes `ReadProductProjection`, `ReadVariantProductProjection`,
-`ListPublishedProducts`, `ReadVariantIdentities`, `ListProductVariantIdentities`
-and `ReadStorefrontVariantProductProjection`
-through one Product owner instance. Product commands, schema, additional storefront
-and admin operations remain outside this host. Pricing and Inventory transaction
-participants stay local to the embedded Product command runtime.
+This host exposes both:
+- `ProductCatalogReadService`: `ReadProductProjection`, `ReadVariantProductProjection`, `ListPublishedProducts`, `ReadVariantIdentities`, `ListProductVariantIdentities`, `ReadStorefrontVariantProductProjection`, `ListFilteredPublishedProducts`, `LoadStorefrontCatalogFacets`, and `ReadStorefrontProductProjection`.
+- `ProductCatalogCommandService`: all 15 catalog lifecycle commands (`CreateProduct`, `UpdateProduct`, `DeleteProduct`, `PublishProduct`, `UnpublishProduct`, `ArchiveProduct`, `CreateVariant`, `UpdateVariant`, `DeleteVariant`, `SetVariantAxes`, `PreviewVariantAxes`, `AddProductImage`, `UpdateProductImage`, `DeleteProductImage`, `ReorderProductImages`).
 
-The standalone provider passed a local PostgreSQL smoke check for all six RPCs,
+The standalone provider passed a local PostgreSQL smoke check for all read RPCs,
 including the storefront SKU projection for a published product and a draft.
 The local Commerce HTTP checkout passed with embedded and separate gRPC Product.
 The combined capture, mounted AI request and broader recovery evidence remain
