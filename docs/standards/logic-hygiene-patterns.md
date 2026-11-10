@@ -413,6 +413,21 @@ flowchart TD
 
 ---
 
+### Pattern 26: Clean Up Only Created Fixtures (`P-FIXTURE-OWNERSHIP`)
+
+* **Category:** Resource ownership. **Dimension:** Side-effect completeness.
+* **Problem:** The PostgreSQL smoke and fresh verifier used a fixture name as evidence of ownership. If creation failed because the database or role already existed, dropping that name could delete a resource from another run.
+* **Pattern Solution:** Treat each successful exclusive creation as the acquisition of that resource. Carry partial acquisition into cleanup and surface cleanup errors alongside the primary failure.
+  ```rust
+  create_postgres_database(&admin, &name).await?;
+  let result = run_fixture(&name).await;
+  let cleanup = drop_postgres_database_if_exists(&admin, &name).await;
+  finish_fixture(result, cleanup)
+  ```
+* **Detection:** Run `rg -ni 'DROP (DATABASE|ROLE) IF EXISTS|drop_postgres_database_if_exists' crates` and trace ownership on each cleanup path. Pre-create the fixture name and verify that the attempt fails while the original resource survives.
+
+---
+
 ## 3. Summary Matrix
 
 The evidence column describes how to verify the invariant at its owner. “Manual” means the Python scanner has no rule for that pattern.
@@ -435,6 +450,7 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-SQLSTATE-DISCRIM` | Error mapping | Real SQLSTATE and constraint failures map correctly | Heuristic: error-message substring match |
 | `P-STRUCTURED-TRACE` | Observability | Emitted or inherited spans contain required context | Heuristic: mutation name and nearby span marker |
 | `P-TXN-ROLLBACK-SWALLOW` | Failure paths | Commit errors propagate and rollback errors remain observable | Heuristic: discarded finalization call |
+| `P-FIXTURE-OWNERSHIP` | Side effects | Name collisions leave pre-existing fixtures intact | Manual |
 | `P-SYNC-LOCK-AWAIT` | Concurrency | Actual synchronous guard lifetimes exclude suspension | Heuristic: lock and await in lexical scope |
 | `P-RAW-SQL-INTERP` | Security | Runtime values are bound and interpolated identifiers are trusted | Heuristic: formatted direct SQL or local binding |
 | `P-TENANT-FALLBACK-LEAK` | Tenant isolation | Missing and wrong-tenant identities fail closed | Heuristic: fallback on a tenant selector |

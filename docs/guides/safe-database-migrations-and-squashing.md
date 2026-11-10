@@ -345,31 +345,26 @@ at the migration boundary where Product still owned that tree.
 Separate owner tests verified counter repair for an existing archived Forum
 thread, Product tenant constraints and catalog facet behavior on PostgreSQL.
 
-The strict data comparison remains blocked by `updated_at` in eight bootstrap
-singletons. The affected owner tables are:
-
-- Channel: `channel_resolution_invalidation_state`.
-- Flex: `flex_field_definition_cache_generation`.
-- Modules: `module_artifact_node_reconciliation_state`, `module_security_epoch`,
-  `module_static_distribution_state`, `module_static_distribution_release_state`,
-  and `module_static_distribution_rollout_state`.
-- RBAC: `rbac_invalidation_state`.
-
-The fresh report diagnoses these tables independently on each side. It checks
-the expected singleton, column types, identity, counters and references, and
-checks `updated_at` against the installation window measured by PostgreSQL.
-The report marks a difference as clock-only only after both checks pass.
 The PostgreSQL 16.13 full-chain run on 2026-11-04 passed all eight diagnostics
 on both fixtures. Strict comparison still reported those eight timestamp
-differences and blocked equivalence.
-The window spans `up` and `status`. Per-migration clock bounds and independent
-schema/data assertions at each retained boundary remain pending.
-This diagnostic leaves strict comparison and its original digests in force.
-An owner-reviewed disposition is required before the verifier can accept a
-clock-only difference for equivalence.
+differences and blocked equivalence. The [bootstrap clock disposition](../../DECISIONS/2026-11-03-migration-consolidation.md#data-and-behavioral-comparison)
+now allows a clock difference only for the named fresh singleton rows and only
+after both satisfy the independent seed and install-window checks. Each report
+retains the raw snapshot digests. Comparisons of existing databases remain exact.
+The install window spans `up` and `status`. Per-migration clock bounds and
+independent schema/data assertions at each retained boundary remain pending.
 
-Gate 3 still needs a passing fresh comparison, released-prefix replay and
-installer coverage. Gates 2, 4 and 5 remain pending.
+On 2026-11-10, `verify-migrations fresh` applied the current 587-step executable
+plan to each of two empty PostgreSQL 16.13 fixtures. Both replays satisfied the
+ordered step and final journal checks. The report retained distinct raw digests,
+listed eight validated clock differences and found no blocking difference. All
+28 scoped library and verifier tests passed, including ordinary data drift, an
+out-of-window bootstrap value and database and role name collisions. Both
+fixture databases and roles were removed.
+
+Gate 3 still needs a source-snapshot comparison of an original and a proposed
+consolidated chain through `xtask`, released-prefix replay and installer
+coverage. Gates 2, 4 and 5 remain pending.
 No migration history is removed by the tooling change. A production prerelease prohibition
 also requires enforcement at the installer/update admission boundary. Release
 workflow prerelease labels by themselves do not enforce it.

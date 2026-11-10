@@ -246,6 +246,31 @@ Deterministic IDs/clocks are preferred. Any nondeterministic-field equivalence
 must be owner-defined, field-specific and incapable of hiding lost rows or
 changed references.
 
+For stepwise replay from an empty PostgreSQL database, `updated_at` records the
+time of bootstrap for the following singleton rows in `public`:
+
+- Channel's `channel_resolution_invalidation_state` and RBAC's
+  `rbac_invalidation_state` start at generation zero for their respective scopes.
+- Flex's `flex_field_definition_cache_generation` starts at generation zero for
+  its singleton key.
+- Modules' `module_artifact_node_reconciliation_state`,
+  `module_static_distribution_state`, `module_static_distribution_release_state`
+  and `module_static_distribution_rollout_state` start at revision zero with no
+  build, release, rollout or reconciliation references.
+- Modules' `module_security_epoch` starts at epoch one with the initial
+  bootstrap reason. Its timestamp identifies when that epoch was initialized.
+
+The fresh verifier may accept different timestamps for those exact fields when
+both observations contain one row with the expected key, exact column layout
+and types, and all expected non-clock values. Each timestamp must be finite and
+fall within that side's PostgreSQL-measured install window. Any invalid observed
+bootstrap row fails even when both sides produced the same row. The report
+retains both raw snapshot digests and identifies each accepted clock difference.
+Schema, privileges, enforcement, sequences and all other data compare exactly.
+The disposition applies only to the verifier's empty-fixture replay. Comparisons
+of existing databases, upgrade data and release admission retain their own
+requirements. It does not authorize any migration edits or data rewrites.
+
 Every removed migration has a data disposition. Extend the current backfill
 fixture contract to cover ranges and multiple cases. Setups that require an
 intermediate draft schema must be redesigned against B or tested as an explicit

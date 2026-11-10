@@ -314,7 +314,9 @@ local comparison input, not a trusted release boundary.
 both canonical migration runners/exporters with `--locked --offline`, and runs
 them on new fixture databases. Both runners must support stepwise confirmation.
 The verifier checks each confirmation sequence and the final journals against
-their respective plans. Each isolated build has a two-hour deadline to
+their respective plans. The database report records any accepted fresh bootstrap
+clock differences under the [migration consolidation decision](../DECISIONS/2026-11-03-migration-consolidation.md#data-and-behavioral-comparison).
+Each isolated build has a two-hour deadline to
 allow for compiling the composed module graph with a cold build cache. Build
 sources are copied outside the active Git and Cargo ancestor tree.
 Global/ancestor Cargo configuration is rejected;

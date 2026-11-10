@@ -2,7 +2,8 @@
 //! remain unavailable in rustok-migrate.
 
 use rustok_migrations::verification::{
-    APPLIED_STEP_PREFIX, ComparisonReport, DatabaseSnapshot, bootstrap, compare, observe_database,
+    APPLIED_STEP_PREFIX, ComparisonReport, DatabaseSnapshot, bootstrap, compare,
+    compare_fresh_install, observe_database,
 };
 use sea_orm_migration::sea_orm::{
     ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
@@ -110,7 +111,7 @@ async fn main() -> Result<()> {
         "candidate-plan".into(),
         hex::encode(Sha256::digest(&candidate_bytes)),
     );
-    let mut report = if command == "fresh" {
+    let report = if command == "fresh" {
         let admin_url = std::env::var(get("--admin-url-env")?)
             .map_err(|_| "admin URL environment variable is missing")?;
         fresh(
@@ -143,9 +144,6 @@ async fn main() -> Result<()> {
         )
         .await?
     };
-    if command == "fresh" {
-        report.scope = "fresh-install-stepwise-equivalence".into();
-    }
     for name in [
         "--reference-plan",
         "--candidate-plan",
@@ -278,12 +276,12 @@ async fn fresh(
             pg_dump,
         )
         .await?;
-        let mut report = compare(&original, &proposed, reference_plan, candidate_plan)?;
-        report.bootstrap = Some(bootstrap::diagnose(
+        Ok(compare_fresh_install(
             (&original, &original_window),
             (&proposed, &proposed_window),
-        ));
-        Ok(report)
+            reference_plan,
+            candidate_plan,
+        )?)
     }
     .await;
     let close = admin.close().await;
@@ -309,19 +307,30 @@ async fn observe_fresh(
     let password = uuid::Uuid::new_v4().simple().to_string();
     let url = fixture_url(admin_url, role, &password, name)?;
     // All interpolated identifiers and the password are generated UUIDs.
+    admin.execute_unprepared(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS")).await?;
+    let mut created_database = false;
     let result = async {
-        admin.execute_unprepared(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS")).await?;
-        admin.execute_unprepared(&format!("CREATE DATABASE {name} OWNER {role} TEMPLATE template0 ENCODING 'UTF8'")).await?;
-        admin.execute_unprepared(&format!("REVOKE CONNECT ON DATABASE {name} FROM PUBLIC")).await?;
+        admin
+            .execute_unprepared(&format!(
+                "CREATE DATABASE {name} OWNER {role} TEMPLATE template0 ENCODING 'UTF8'"
+            ))
+            .await?;
+        created_database = true;
+        admin
+            .execute_unprepared(&format!("REVOKE CONNECT ON DATABASE {name} FROM PUBLIC"))
+            .await?;
         let start = database_clock(admin).await?;
         run_migrator(runner, root, &url, plan).await?;
         let window = bootstrap::InstallWindow::new(start, database_clock(admin).await?)?;
-        let db = Database::connect(&url).await.map_err(|_| "cannot connect to migrated fixture")?;
+        let db = Database::connect(&url)
+            .await
+            .map_err(|_| "cannot connect to migrated fixture")?;
         let snapshot = observe_database(&db, &url, pg_dump).await;
         db.close().await?;
         Ok((snapshot?, window))
-    }.await;
-    let cleanup = cleanup(admin, name, role).await;
+    }
+    .await;
+    let cleanup = cleanup(admin, created_database.then_some(name), role).await;
     match (result, cleanup) {
         (result, Ok(())) => result,
         (result, Err(error)) => Err(format!(
@@ -343,11 +352,12 @@ async fn database_clock(admin: &DatabaseConnection) -> Result<DateTimeWithTimeZo
     Ok(row.try_get("", "now")?)
 }
 
-async fn cleanup(admin: &DatabaseConnection, name: &str, role: &str) -> Result<()> {
+async fn cleanup(admin: &DatabaseConnection, database: Option<&str>, role: &str) -> Result<()> {
     let mut failures = Vec::new();
-    if let Err(error) = admin
-        .execute_unprepared(&format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)"))
-        .await
+    if let Some(name) = database
+        && let Err(error) = admin
+            .execute_unprepared(&format!("DROP DATABASE IF EXISTS {name} WITH (FORCE)"))
+            .await
     {
         failures.push(format!("{name}: {error}"));
     }
@@ -552,7 +562,8 @@ fn main() {{
     let version = if binary.contains("candidate") {{ "baseline" }} else {{ "original" }};
     let value = if binary.contains("bad") {{ 2 }} else {{ 1 }};
     let role_change = if binary.contains("role-change") {{ "ALTER ROLE CURRENT_USER SET work_mem = '8MB';" }} else {{ "" }};
-    let sql = format!("CREATE TABLE seaql_migrations (version varchar(255) PRIMARY KEY, applied_at bigint NOT NULL); INSERT INTO seaql_migrations VALUES ('{{version}}', 1); CREATE TABLE records (value integer); INSERT INTO records VALUES ({{value}}); {{role_change}}");
+    let clock = if binary.contains("stale-clock") {{ "TIMESTAMPTZ '2000-01-01T00:00:00Z'" }} else {{ "CURRENT_TIMESTAMP" }};
+    let sql = format!("CREATE TABLE seaql_migrations (version varchar(255) PRIMARY KEY, applied_at bigint NOT NULL); INSERT INTO seaql_migrations VALUES ('{{version}}', 1); CREATE TABLE records (value integer); INSERT INTO records VALUES ({{value}}); CREATE TABLE module_static_distribution_state (state_id text PRIMARY KEY, revision bigint, current_build_id uuid, updated_at timestamptz NOT NULL); INSERT INTO module_static_distribution_state VALUES ('current', 0, NULL, {{clock}}); {{role_change}}");
     let status = std::process::Command::new(PSQL).args(["-X", "--no-password", "-v", "ON_ERROR_STOP=1", "-c", &sql])
         .env("PGHOST", host).env("PGPORT", port).env("PGDATABASE", db).env("PGUSER", user).env("PGPASSWORD", password).status().unwrap();
     assert!(status.success());
@@ -565,11 +576,13 @@ fn main() {{
             let original = directory.join(format!("original{}", std::env::consts::EXE_SUFFIX));
             let candidate = directory.join(format!("candidate{}", std::env::consts::EXE_SUFFIX));
             let bad = directory.join(format!("candidate-bad{}", std::env::consts::EXE_SUFFIX));
+            let stale_clock = directory.join(format!("candidate-stale-clock{}", std::env::consts::EXE_SUFFIX));
             let changed_role = directory.join(format!("original-role-change{}", std::env::consts::EXE_SUFFIX));
             let no_trace = directory.join(format!("original-no-trace{}", std::env::consts::EXE_SUFFIX));
             if !std::process::Command::new("rustc").arg("--edition=2021").arg(&source_path).arg("-o").arg(&original).status()?.success() { return Err("fixture runner did not compile".into()); }
             fs::copy(&original, &candidate)?;
             fs::copy(&original, &bad)?;
+            fs::copy(&original, &stale_clock)?;
             fs::copy(&original, &changed_role)?;
             fs::copy(&original, &no_trace)?;
             let reference_plan = vec!["original".into()];
@@ -582,16 +595,48 @@ fn main() {{
             }
             let before = resources(&admin).await?;
             let run = async {
-                assert!(fresh(&admin_url, &original, &candidate, &directory, &directory, &reference_plan, &candidate_plan, &pg_dump).await?.equivalent);
+                let report = fresh(&admin_url, &original, &candidate, &directory, &directory, &reference_plan, &candidate_plan, &pg_dump).await?;
+                assert!(report.equivalent, "{:?}", report.differences);
+                let bootstrap = report.bootstrap.ok_or("fresh bootstrap evidence is missing")?;
+                assert!(bootstrap.tables.iter().any(|table| table.table == "module_static_distribution_state" && table.clock_only_difference));
                 assert_eq!(resources(&admin).await?, before);
                 let report = fresh(&admin_url, &changed_role, &candidate, &directory, &directory, &reference_plan, &candidate_plan, &pg_dump).await?;
                 assert!(!report.equivalent, "candidate inherited the original role settings");
                 assert_eq!(resources(&admin).await?, before);
-                assert!(!fresh(&admin_url, &original, &bad, &directory, &directory, &reference_plan, &candidate_plan, &pg_dump).await?.equivalent);
+                let report = fresh(&admin_url, &original, &bad, &directory, &directory, &reference_plan, &candidate_plan, &pg_dump).await?;
+                assert_eq!(report.differences, ["table \"public\".\"records\""]);
+                assert_eq!(resources(&admin).await?, before);
+                let report = fresh(&admin_url, &original, &stale_clock, &directory, &directory, &reference_plan, &candidate_plan, &pg_dump).await?;
+                assert!(!report.equivalent);
+                let bootstrap = report.bootstrap.ok_or("fresh bootstrap evidence is missing")?;
+                assert!(bootstrap.tables.iter().any(|table| table.table == "module_static_distribution_state" && table.candidate == bootstrap::BootstrapCheck::TimestampOutsideInstall && !table.clock_only_difference));
                 assert_eq!(resources(&admin).await?, before);
                 assert!(fresh(&admin_url, &no_trace, &candidate, &directory, &directory, &reference_plan, &candidate_plan, &pg_dump).await.is_err());
                 assert_eq!(resources(&admin).await?, before);
                 assert!(fresh(&admin_url, &directory.join("missing-runner"), &candidate, &directory, &directory, &reference_plan, &candidate_plan, &pg_dump).await.is_err());
+                assert_eq!(resources(&admin).await?, before);
+
+                let id = uuid::Uuid::new_v4().simple().to_string();
+                let existing_role = format!("rustok_verify_{id}");
+                let unused_role = format!("rustok_verify_{id}_new");
+                let existing_db = format!("rustok_fixture_{id}");
+                admin.execute_unprepared(&format!("CREATE ROLE {existing_role}")).await?;
+                let mut created_database = false;
+                let collision: Result<()> = async {
+                    admin.execute_unprepared(&format!("CREATE DATABASE {existing_db}")).await?;
+                    created_database = true;
+                    let expected = resources(&admin).await?;
+                    for role in [&existing_role, &unused_role] {
+                        if observe_fresh(&admin, &admin_url, role, &existing_db, &original, &directory, &reference_plan, &pg_dump).await.is_ok()
+                            || resources(&admin).await? != expected
+                        {
+                            return Err("fixture name collision altered a pre-existing database or role".into());
+                        }
+                    }
+                    Ok(())
+                }.await;
+                cleanup(&admin, created_database.then_some(existing_db.as_str()), &existing_role).await?;
+                collision?;
                 assert_eq!(resources(&admin).await?, before);
                 Ok(())
             }.await;
