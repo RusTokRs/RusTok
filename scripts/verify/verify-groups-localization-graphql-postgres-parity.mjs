@@ -33,12 +33,20 @@ for (const marker of [
   'assert_eq!(native_last_error.code, "groups.conflict")',
   'Some("BAD_USER_INPUT".to_string())',
   "graphql_last_error.message, native_last_error.message",
-  "graphql_en[\"groupVersion\"].as_u64(), Some(native_en.group_version)",
-  "graphql_fr[\"groupVersion\"].as_u64(), Some(native_fr.group_version)",
   "Some(native_delete.group_version)",
   "graphql_final.len(), 1",
 ]) {
   requireText(test, marker, `Groups localization GraphQL PostgreSQL parity source is missing ${marker}`);
+}
+
+// Require the equality assertion, not a one-line rustfmt rendering of its operands.
+const compactTest = test.replace(/\s+/g, "");
+for (const locale of ["en", "fr"]) {
+  const operands = `graphql_${locale}["groupVersion"].as_u64(),Some(native_${locale}.group_version)`;
+  if (!compactTest.includes(`assert_eq!(${operands});`)
+      && !compactTest.includes(`assert_eq!(${operands},);`)) {
+    throw new Error(`Groups localization parity must assert ${locale} aggregate version equality`);
+  }
 }
 
 for (const forbidden of [

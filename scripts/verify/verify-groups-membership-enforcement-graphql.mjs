@@ -185,7 +185,6 @@ for (const marker of [
   'Some("groups.membership_enforcement_revision_conflict".to_string())',
   'extension_json(graphql_stale_error, "domainCode")',
   'extension_json(graphql_stale_error, "retryable")',
-  "native_revoke.group_version, native_suspend.group_version + 1",
   "native_final, graphql_final",
   "native_final.4, 3",
   'native_final.6, "direct_local"',
@@ -237,7 +236,6 @@ for (const marker of [
   'Some("groups.membership_enforcement_revision_conflict".to_string())',
   'extension_json(graphql_stale_error, "domainCode")',
   'extension_json(graphql_stale_error, "retryable")',
-  "native_revoke.group_version, native_suspend.group_version + 1",
   "native_final, graphql_final",
   "native_final.4, 3",
   'native_final.6, "direct_local"',
@@ -258,6 +256,16 @@ for (const forbidden of [
 ]) {
   if (postgresParity.includes(forbidden)) {
     throw new Error(`Groups enforcement GraphQL PostgreSQL parity source contains shortcut ${forbidden}`);
+  }
+}
+
+// Preserve the exact version-advance assertion while allowing rustfmt line wrapping.
+for (const [backend, source] of [["SQLite", sqliteParity], ["PostgreSQL", postgresParity]]) {
+  const compact = source.replace(/\s+/g, "");
+  const operands = "native_revoke.group_version,native_suspend.group_version+1";
+  if (!compact.includes(`assert_eq!(${operands});`)
+      && !compact.includes(`assert_eq!(${operands},);`)) {
+    throw new Error(`Groups enforcement ${backend} parity must assert exactly one revoke version advance`);
   }
 }
 

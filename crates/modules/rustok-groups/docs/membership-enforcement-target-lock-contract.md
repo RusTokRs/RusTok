@@ -12,6 +12,8 @@ It is intentionally crate-private. It does not authorize moderation, create rece
 
 A membership UUID cannot reveal its owning group without a lookup, so the primitive uses this sequence:
 
+0. on SQLite, reserve the database writer before opening a locator snapshot, using
+   the shared empty receipt UPDATE; other supported backends need no database-wide reservation;
 1. perform a tenant-scoped membership **locator read** by `group_memberships.id`;
 2. treat only `group_id` and `user_id` from that row as aggregate-location facts;
 3. acquire the canonical Groups group writer reservation;
@@ -28,13 +30,16 @@ Group -> GroupMembership -> GroupMembershipEnforcement
 
 The locator row is never sufficient for authorization, revision validation, provenance validation, or mutation. If the subject disappears between lookup and owner locking, the primitive returns `None`. If immutable aggregate identity disagrees after locking, it fails with an owner invariant instead of silently retargeting the subject.
 
-PostgreSQL/MySQL use row locks. SQLite first reserves the writer with the existing no-op `groups.version` update before the membership/enforcement re-reads.
+PostgreSQL/MySQL use row locks. SQLite reserves its writer before the initial locator read, then retains the existing no-op `groups.version` reservation and membership/enforcement re-reads. Reserving only after the locator could fail read-snapshot promotion under concurrent writes.
 
 ## Moderation handoff
 
-The future neutral Groups moderation adapter must perform its durable producer receipt admission **before** calling this primitive. After admission, it can lock the membership subject by immutable UUID, validate exact reviewed revision/effect/provenance against the returned rows, and invoke the existing shared Groups enforcement mutation.
+The neutral Groups moderation adapter performs its durable producer receipt admission **before** calling this primitive. After admission, it can lock the membership subject by immutable UUID, validate exact reviewed revision/effect/provenance against the returned rows, and invoke the existing shared Groups enforcement mutation.
 
-This source slice does not add `rustok-moderation-api`, `rustok-outbox`, a moderation factory, or any alternate state path. Those dependencies still require a synchronized `Cargo.toml` + `Cargo.lock` update.
+Groups composes the existing Moderation adapter and platform Outbox idempotency owner;
+the locking primitive does not add a second receipt protocol. Adapter rollback and
+terminal-receipt persistence failures propagate as retryable finalization errors,
+preserving the original domain error in diagnostic context.
 
 ## Execution status
 

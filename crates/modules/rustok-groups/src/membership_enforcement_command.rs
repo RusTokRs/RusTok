@@ -145,7 +145,7 @@ impl GroupMembershipEnforcementCommandService {
         let request_hash = request_hash(&request)?;
 
         let transaction = self.db.begin().await?;
-        let locked_group = lock_group(&transaction, tenant_id, request.group_id).await?;
+        crate::commands::reserve_command(&transaction, tenant_id, &idempotency_key).await?;
         if let Some(replayed) = replay_receipt::<GroupMembershipEnforcementMutationResult>(
             &transaction,
             tenant_id,
@@ -163,6 +163,8 @@ impl GroupMembershipEnforcementCommandService {
                 ..replayed
             });
         }
+
+        let locked_group = lock_group(&transaction, tenant_id, request.group_id).await?;
 
         let now = Utc::now();
         if request.effective_until.is_some_and(|until| until <= now) {
@@ -244,7 +246,7 @@ impl GroupMembershipEnforcementCommandService {
         let request_hash = request_hash(&request)?;
 
         let transaction = self.db.begin().await?;
-        let locked_group = lock_group(&transaction, tenant_id, request.group_id).await?;
+        crate::commands::reserve_command(&transaction, tenant_id, &idempotency_key).await?;
         if let Some(replayed) = replay_receipt::<GroupMembershipEnforcementMutationResult>(
             &transaction,
             tenant_id,
@@ -262,6 +264,8 @@ impl GroupMembershipEnforcementCommandService {
                 ..replayed
             });
         }
+
+        let locked_group = lock_group(&transaction, tenant_id, request.group_id).await?;
 
         let now = Utc::now();
         let platform_moderate = has_platform_moderate(context);
@@ -851,9 +855,7 @@ async fn bump_group_version_without_member_count_change(
             "group member count and version must be valid before enforcement mutation".to_string(),
         ));
     }
-    let next_version = group_model.version.checked_add(1).ok_or_else(|| {
-        GroupsError::Invariant("group version overflow during enforcement mutation".to_string())
-    })?;
+    let next_version = crate::domain::next_revision(group_model.version)?;
     let mut active: group::ActiveModel = group_model.into();
     active.version = Set(next_version);
     active.updated_at = Set(now);

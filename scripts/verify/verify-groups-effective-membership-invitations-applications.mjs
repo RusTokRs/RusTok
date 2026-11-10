@@ -18,6 +18,9 @@ const files = {
   applicationLifecycleOwner:
     "crates/modules/rustok-groups/src/applications_transactional_lifecycle.rs",
   module: "crates/modules/rustok-groups/src/lib.rs",
+  applicationModule: "crates/modules/rustok-groups/src/applications.rs",
+  invitationModule: "crates/modules/rustok-groups/src/invitations.rs",
+  targetedModule: "crates/modules/rustok-groups/src/targeted_invitations.rs",
   contract:
     "crates/modules/rustok-groups/contracts/groups-effective-membership-invitations-applications.json",
   plan: "crates/modules/rustok-groups/docs/implementation-plan.md",
@@ -75,7 +78,7 @@ if (failures.length === 0) {
     "UPDATE groups SET version = version",
     ".lock_exclusive()",
     "membership_enforcement::Entity::find_by_id",
-    "Do not use rows_affected as an existence test",
+    "do not use rows-affected here as an",
   ]);
 
   requireMarkers(files.guard, [
@@ -129,6 +132,56 @@ if (failures.length === 0) {
     "redemption::Entity::find()",
     "redemption::ActiveModel",
   ]);
+
+  for (const [relative, operation, validator, normalization] of [
+    [files.invitationOwner, "revoke_group_invitation_effective_owned", "request.validate()?;", "idempotency_key(context)"],
+    [files.targetedOwner, "accept_targeted_group_invitation_effective_owned", "request.validate()?;", "idempotency_key(context)"],
+    [files.applicationLifecycleOwner, "cancel_application_effective_owned", "request.validate()?;", "idempotency_key(context)"],
+    [files.applicationLifecycleOwner, "reopen_application_effective_owned", "request.validate()?;", "idempotency_key(context)"],
+    [files.applicationOwner, "upsert_policy_effective_owned", "request.validate()?;", "normalize_policy("],
+    [files.applicationOwner, "submit_application_effective_owned", "request.validate()?;", "normalize_application_submission("],
+    [files.applicationOwner, "review_application_effective_owned", "request.validate()?;", "normalize_optional_note("],
+    [files.applicationCasOwner, "upsert_policy_if_current_effective_owned", "request.policy.validate()?;", "normalize_policy("],
+    [files.applicationCasOwner, "submit_application_if_current_effective_owned", "request.submission.validate()?;", "normalize_application_submission("],
+  ]) {
+    const source = read(relative);
+    const start = source.indexOf(`async fn ${operation}(`);
+    const next = source.indexOf("async fn ", start + 1);
+    const body = source.slice(start, next < 0 ? undefined : next);
+    const validation = body.indexOf(validator);
+    const normalized = body.indexOf(normalization);
+    const transaction = body.indexOf("self.db.begin()");
+    if (start < 0 || validation < 0 || normalized < validation || transaction < validation) {
+      failures.push(`${relative}: ${operation} must validate raw DTO before normalization and storage`);
+    }
+  }
+
+  // Manager-only lifecycle errors must follow authority checks. Candidate visibility
+  // gates intentionally use a separate order to preserve secret-group non-disclosure.
+  for (const [relative, operation, lifecycle] of [
+    [files.invitationOwner, "create_group_invitation_effective_owned", "require_active_group(&group_model)?;"],
+    [files.applicationOwner, "upsert_policy_effective_owned", "require_active_group(&group_model)?;"],
+    [files.applicationOwner, "review_application_effective_owned", "require_active_group(&group_model)?;"],
+    [files.applicationCasOwner, "upsert_policy_if_current_effective_owned", "require_active_group(&group_model)?;"],
+    [files.applicationLifecycleOwner, "reopen_application_effective_owned", "require_application_group(&group_model)?;"],
+  ]) {
+    const source = read(relative);
+    const start = source.indexOf(`async fn ${operation}(`);
+    const next = source.indexOf("async fn ", start + 1);
+    const body = source.slice(start, next < 0 ? undefined : next);
+    const authorization = body.indexOf("require_effective_manager_owned(");
+    const state = body.indexOf(lifecycle);
+    if (start < 0 || authorization < 0 || state < 0 || authorization >= state) {
+      failures.push(`${relative}: ${operation} must authorize before disclosing group lifecycle`);
+    }
+    if (operation === "review_application_effective_owned") {
+      const pending = body.indexOf("if membership_model.status != GroupMembershipStatus::Pending.as_str()");
+      const write = body.indexOf("membership_active.update(&transaction)");
+      if (pending < state || write < 0 || pending >= write) {
+        failures.push(`${relative}: review must require a pending membership before writing`);
+      }
+    }
+  }
 
   requireMarkers(files.applicationOwner, [
     "upsert_policy_effective_owned",
@@ -220,19 +273,20 @@ if (failures.length === 0) {
 
   const module = read(files.module);
   requireMarkers(files.module, [
-    "mod applications_legacy_module {",
-    "include!(\"applications_transactional.rs\")",
-    "include!(\"applications_transactional_cas.rs\")",
-    "include!(\"applications_transactional_lifecycle.rs\")",
-    "mod invitations_legacy {",
-    "include!(\"invitations_transactional.rs\")",
-    "mod targeted_invitations_legacy {",
-    "include!(\"targeted_invitations_transactional.rs\")",
-    "mod membership_enforcement_transaction;",
-    "pub mod applications {",
-    "pub mod invitations {",
-    "pub mod targeted_invitations {",
+    '#[path = "applications.rs"]', "mod application_owner;",
+    '#[path = "invitations.rs"]', "mod invitation_owner;",
+    '#[path = "targeted_invitations.rs"]', "mod targeted_invitation_owner;",
+    "mod membership_enforcement_transaction;", "mod commands;",
+    "pub mod applications {", "pub mod invitations {", "pub mod targeted_invitations {",
   ]);
+  for (const [relative, children] of [
+    [files.applicationModule, ["applications_transactional.rs", "applications_transactional_cas.rs", "applications_transactional_lifecycle.rs"]],
+    [files.invitationModule, ["invitations_transactional.rs"]],
+    [files.targetedModule, ["targeted_invitations_transactional.rs"]],
+  ]) {
+    for (const child of children) requireMarkers(relative, [`#[path = "${child}"]`]);
+    if (read(relative).includes('include!(')) failures.push(`${relative}: source stitching bypasses module ownership`);
+  }
   for (const forbidden of [
     "pub mod applications;",
     "pub mod invitations;",
@@ -263,9 +317,44 @@ if (failures.length === 0) {
   requireMarkers(files.readme, [
     "transaction-aware invitation/application writes",
     "effective authorization, mutation",
-    "runtime evidence and the remaining owner paths are open",
+    "runtime evidence and remaining provider/owner paths are open",
   ]);
 }
+
+// Syntax parsers do not expand attribute macros: catch accidental deduplication leftovers.
+for (const entry of fs.readdirSync(path.join(root, "crates/modules/rustok-groups/src"))) {
+  if (!entry.endsWith(".rs")) continue;
+  const relative = `crates/modules/rustok-groups/src/${entry}`;
+  if (/#\[async_trait\]\s*#\[async_trait\]/.test(read(relative))) {
+    failures.push(`${relative}: duplicate async_trait macro attribute`);
+  }
+}
+for (const [relative, name] of [
+  [files.invitationModule, "ensure_invitation_active"],
+  [files.targetedModule, "ensure_targeted_invitation_active"],
+]) {
+  const source = read(relative);
+  const start = source.indexOf(`fn ${name}(`);
+  const end = source.indexOf("\n}", start);
+  const body = source.slice(start, end);
+  if (start < 0 || end < 0 || !body.includes("validate_stored_invitation_uses(model)")) {
+    failures.push(`${relative}: ${name} must validate stored use bounds before acceptance`);
+  }
+}
+requireMarkers(files.invitationModule, ["validate_stored_invitation_uses(&model)?;"]);
+const serviceSource = read("crates/modules/rustok-groups/src/service.rs");
+if (!serviceSource.includes("u64::try_from(model.member_count)")) {
+  failures.push("summary projection must reject a negative stored member count");
+}
+requireMarkers(files.invitationModule, [
+  "!(1..=MAX_INVITATION_USES as i32).contains(&model.max_uses)",
+  "!(0..=model.max_uses).contains(&model.use_count)",
+  "model.target_user_id.is_some() && model.max_uses != 1",
+]);
+requireMarkers(files.error, [
+  "PortErrorKind::Unavailable | PortErrorKind::Timeout => Self::Delegated(value)",
+  "GroupsError::Delegated(error) => error",
+]);
 
 if (failures.length > 0) {
   console.error("Groups transactional effective invitation/application verification failed:");

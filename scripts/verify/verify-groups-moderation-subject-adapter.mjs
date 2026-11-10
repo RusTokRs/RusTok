@@ -10,6 +10,7 @@ const forbidText = (source, needle, message) => {
 
 const cargo = read("crates/modules/rustok-groups/Cargo.toml");
 const lib = read("crates/modules/rustok-groups/src/lib.rs");
+const module = read("crates/modules/rustok-groups/src/module.rs");
 const adapter = read("crates/modules/rustok-groups/src/moderation_subject.rs");
 const ownerMutation = read("crates/modules/rustok-groups/src/membership_enforcement_command.rs");
 const ownerLock = read("crates/modules/rustok-groups/src/membership_enforcement_transaction.rs");
@@ -31,10 +32,26 @@ for (const marker of [
 for (const marker of [
   "mod moderation_subject;",
   "pub use moderation_subject::GroupsModerationSubjectAdapterFactory;",
+]) {
+  requireText(lib, marker, `Groups module registration missing ${marker}`);
+}
+
+for (const marker of [
   "register_moderation_subject_adapter_factory",
   "moderation_subject::GroupsModerationSubjectAdapterFactory",
 ]) {
-  requireText(lib, marker, `Groups module registration missing ${marker}`);
+  requireText(module, marker, `Groups runtime module registration missing ${marker}`);
+}
+for (const marker of [
+  "finalization_error",
+  '"groups.moderation_finalization_failed"',
+  "transaction.rollback().await",
+  "idempotency::fail(&self.db, lease, error).await",
+]) {
+  requireText(adapter, marker, `Groups moderation finalization contract missing ${marker}`);
+}
+for (const ignored of ["let _ = transaction.rollback()", "let _ = idempotency::fail("]) {
+  forbidText(adapter, ignored, `Groups moderation finalization must not be discarded: ${ignored}`);
 }
 
 for (const marker of [

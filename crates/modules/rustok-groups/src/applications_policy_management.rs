@@ -1,3 +1,5 @@
+use super::*;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ListGroupApplicationPolicyLocalesRequest {
     pub group_id: Uuid,
@@ -93,7 +95,7 @@ impl GroupApplicationService {
         Ok(GroupApplicationPolicyLocaleCatalog {
             group_id: request.group_id,
             policy_id: Some(policy.id),
-            revision: Some(policy.revision.max(1) as u64),
+            revision: Some(crate::domain::stored_revision(policy.revision)?),
             enabled: policy.enabled,
             locales,
         })
@@ -169,7 +171,7 @@ impl GroupApplicationService {
         Ok(GroupApplicationPolicyManagementView {
             group_id: request.group_id,
             policy_id: Some(policy.id),
-            revision: Some(policy.revision.max(1) as u64),
+            revision: Some(crate::domain::stored_revision(policy.revision)?),
             enabled: policy.enabled,
             locale: request.locale,
             translation_exists,

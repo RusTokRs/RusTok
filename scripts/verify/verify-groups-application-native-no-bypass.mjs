@@ -30,13 +30,13 @@ if (failures.length === 0) {
   const adminTransport = read(files.adminTransport);
   const finalGraphql = read(files.finalGraphql);
 
-  if (!applications.includes('include!("applications_review.rs")')) {
+  if (!applications.includes('#[path = "applications_review.rs"]')) {
     failures.push(`${files.applications}: focused review port is not composed`);
   }
   for (const marker of [
     "GroupApplicationReviewCommandPort",
     "review_group_membership_application",
-    "review_application_owned",
+    "review_application_effective_owned",
   ]) {
     if (!reviewPort.includes(marker)) {
       failures.push(`${files.reviewPort}: missing focused review marker ${JSON.stringify(marker)}`);

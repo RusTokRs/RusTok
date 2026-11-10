@@ -3,10 +3,23 @@ import path from "node:path";
 
 const root = process.cwd();
 const failures = [];
-const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const readRaw = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const read = (relative) => {
+  let source = readRaw(relative);
+  if (relative.endsWith("/applications.rs")) {
+    for (const child of source.matchAll(/#\[path = "([^"\n]+\.rs)"\]/g)) {
+      source += "\n" + readRaw(path.join(path.dirname(relative), child[1]));
+    }
+  } else if (relative.endsWith("/applications_cas.rs")) {
+    source += "\n" + readRaw(relative.replace("applications_cas.rs", "applications_transactional_cas.rs"));
+  } else if (relative.endsWith("/applications_lifecycle.rs")) {
+    source += "\n" + readRaw(relative.replace("applications_lifecycle.rs", "applications_transactional_lifecycle.rs"));
+  }
+  return source;
+};
 const files = {
   composition: "crates/modules/rustok-groups/src/applications.rs",
-  review: "crates/modules/rustok-groups/src/applications_review.rs",
+  review: "crates/modules/rustok-groups/src/applications_transactional.rs",
   owner: "crates/modules/rustok-groups/src/applications_bulk_review.rs",
   graphqlRoot: "crates/modules/rustok-groups/src/graphql_application_cas.rs",
   graphql: "crates/modules/rustok-groups/src/graphql_application_bulk_review.rs",
@@ -40,7 +53,7 @@ const requireMarkers = (relative, markers) => {
 };
 
 if (failures.length === 0) {
-  requireMarkers(files.composition, ['include!("applications_bulk_review.rs")']);
+  requireMarkers(files.composition, ['#[path = "applications_bulk_review.rs"]']);
   requireMarkers(files.owner, [
     "MAX_BULK_REVIEW_ITEMS: usize = 50",
     "GroupApplicationBulkReviewCommandPort",
@@ -49,7 +62,7 @@ if (failures.length === 0) {
     "groups.bulk_review_limit_exceeded",
     "groups.bulk_review_duplicate_application",
     "normalize_optional_note",
-    "review_application_authorized_owned",
+    "review_application_effective_owned",
     "BulkReviewGroupMembershipApplicationItemResult",
     "succeeded",
     "failed",
@@ -68,8 +81,8 @@ if (failures.length === 0) {
   }
 
   const reviewSource = read(files.review);
-  const reviewStart = reviewSource.indexOf("async fn review_application_authorized_owned");
-  const authorize = reviewSource.indexOf("authorize_application_review", reviewStart);
+  const reviewStart = reviewSource.indexOf("async fn review_application_effective_owned");
+  const authorize = reviewSource.indexOf("require_effective_manager_owned", reviewStart);
   const statusCheck = reviewSource.indexOf(
     "application_model.status != GroupApplicationStatus::Pending.as_str()",
     reviewStart,
@@ -81,7 +94,7 @@ if (failures.length === 0) {
   }
 
   requireMarkers(files.graphqlRoot, [
-    'include!("graphql_application_bulk_review.rs")',
+    '#[path = "graphql_application_bulk_review.rs"]',
     "GroupsApplicationBulkReviewMutation",
   ]);
   requireMarkers(files.graphql, [

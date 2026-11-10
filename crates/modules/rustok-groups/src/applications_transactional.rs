@@ -1,3 +1,5 @@
+use super::*;
+
 impl GroupApplicationService {
     pub(crate) async fn upsert_policy_effective_owned(
         &self,
@@ -7,6 +9,7 @@ impl GroupApplicationService {
         require_write(context)?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
+        request.validate()?;
         request.locale = normalize_locale_tag(&request.locale).ok_or_else(|| {
             GroupsError::Validation("invalid application policy locale".to_string())
         })?;
@@ -14,6 +17,7 @@ impl GroupApplicationService {
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
         let transaction = self.db.begin().await?;
+        crate::commands::reserve_command(&transaction, tenant_id, &idempotency_key).await?;
 
         if let Some(mut replayed) = replay_receipt::<UpsertGroupApplicationPolicyResult>(
             &transaction,
@@ -31,7 +35,6 @@ impl GroupApplicationService {
         }
 
         let group_model = find_group_for_update(&transaction, tenant_id, request.group_id).await?;
-        require_active_group(&group_model)?;
         crate::effective_membership_guard::require_effective_manager_owned(
             &transaction,
             context,
@@ -41,6 +44,7 @@ impl GroupApplicationService {
             crate::effective_membership_guard::GroupManagerCapability::ManageSettings,
         )
         .await?;
+        require_active_group(&group_model)?;
 
         let now = Utc::now();
         let existing_policy = membership_policy::Entity::find()
@@ -50,7 +54,7 @@ impl GroupApplicationService {
             .await?;
         let created = existing_policy.is_none();
         let policy_model = if let Some(existing) = existing_policy {
-            let next_revision = existing.revision.saturating_add(1).max(1);
+            let next_revision = crate::domain::next_revision(existing.revision)?;
             let mut active: membership_policy::ActiveModel = existing.into();
             active.revision = Set(next_revision);
             active.enabled = Set(request.enabled);
@@ -113,7 +117,7 @@ impl GroupApplicationService {
             policy: GroupApplicationPolicy {
                 id: policy_model.id,
                 group_id: request.group_id,
-                revision: policy_model.revision.max(1) as u64,
+                revision: crate::domain::stored_revision(policy_model.revision)?,
                 enabled: policy_model.enabled,
                 locale: request.locale,
                 questions: request.questions,
@@ -165,10 +169,12 @@ impl GroupApplicationService {
         require_write(context)?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
+        request.validate()?;
         normalize_application_submission(&mut request)?;
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
         let transaction = self.db.begin().await?;
+        crate::commands::reserve_command(&transaction, tenant_id, &idempotency_key).await?;
 
         if let Some(mut replayed) = replay_receipt::<SubmitGroupMembershipApplicationResult>(
             &transaction,
@@ -228,6 +234,9 @@ impl GroupApplicationService {
         if existing_application
             .as_ref()
             .is_some_and(|row| row.status == GroupApplicationStatus::Approved.as_str())
+            && !existing_membership
+                .as_ref()
+                .is_some_and(|row| row.status == GroupMembershipStatus::Left.as_str())
         {
             return Err(GroupsError::Conflict(
                 "membership application is already approved".to_string(),
@@ -361,10 +370,12 @@ impl GroupApplicationService {
         require_write(context)?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
+        request.validate()?;
         request.note = normalize_optional_note(request.note)?;
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
         let transaction = self.db.begin().await?;
+        crate::commands::reserve_command(&transaction, tenant_id, &idempotency_key).await?;
 
         if let Some(mut replayed) = replay_receipt::<ReviewGroupMembershipApplicationResult>(
             &transaction,
@@ -385,7 +396,6 @@ impl GroupApplicationService {
             find_application_for_update(&transaction, tenant_id, request.application_id).await?;
         let group_model =
             find_group_for_update(&transaction, tenant_id, application_model.group_id).await?;
-        require_active_group(&group_model)?;
         crate::effective_membership_guard::require_effective_manager_owned(
             &transaction,
             context,
@@ -395,6 +405,7 @@ impl GroupApplicationService {
             crate::effective_membership_guard::GroupManagerCapability::Moderate,
         )
         .await?;
+        require_active_group(&group_model)?;
         crate::effective_membership_guard::require_user_not_denied_owned(
             &transaction,
             tenant_id,
@@ -417,6 +428,12 @@ impl GroupApplicationService {
             .ok_or_else(|| {
                 GroupsError::Invariant("pending application membership is missing".to_string())
             })?;
+
+        if membership_model.status != GroupMembershipStatus::Pending.as_str() {
+            return Err(GroupsError::Conflict(
+                "membership is no longer pending".to_string(),
+            ));
+        }
 
         let now = Utc::now();
         let approved = request.decision == GroupApplicationReviewDecision::Approve;

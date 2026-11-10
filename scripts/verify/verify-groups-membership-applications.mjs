@@ -16,14 +16,26 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
-const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const readRaw = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const read = (relative) => {
+  let source = readRaw(relative);
+  if (relative.endsWith("/applications.rs")) {
+    for (const child of source.matchAll(/#\[path = "([^"\n]+\.rs)"\]/g)) {
+      source += "\n" + readRaw(path.join(path.dirname(relative), child[1]));
+    }
+  } else if (relative.endsWith("/applications_cas.rs")) {
+    source += "\n" + readRaw(relative.replace("applications_cas.rs", "applications_transactional_cas.rs"));
+  } else if (relative.endsWith("/applications_lifecycle.rs")) {
+    source += "\n" + readRaw(relative.replace("applications_lifecycle.rs", "applications_transactional_lifecycle.rs"));
+  }
+  return source;
+};
 const exists = (relative) => fs.existsSync(path.join(root, relative));
 const failures = [];
 
 const required = [
   "crates/modules/rustok-groups/src/application_entities.rs",
   "crates/modules/rustok-groups/src/applications.rs",
-  "crates/modules/rustok-groups/src/applications_legacy.rs",
   "crates/modules/rustok-groups/src/applications_cas.rs",
   "crates/modules/rustok-groups/src/graphql_applications.rs",
   "crates/modules/rustok-groups/src/graphql_policy_history.rs",
@@ -58,19 +70,20 @@ if (exists(migrationPath)) {
     "ux_group_membership_policies_tenant_group",
     "ux_group_membership_policy_translations_tenant_policy_locale",
     "ux_group_membership_applications_tenant_group_user",
-    "policy_snapshot",
-    "acknowledged_rule_keys",
+    "GroupMembershipApplications::PolicySnapshot",
+    "GroupMembershipApplications::AcknowledgedRuleKeys",
     "status IN ('pending', 'approved', 'rejected', 'cancelled')",
   ]) {
     if (!migration.includes(marker)) failures.push(`membership application migration is missing marker: ${marker}`);
   }
 }
 
-const legacyPath = "crates/modules/rustok-groups/src/applications_legacy.rs";
+const legacyPath = "crates/modules/rustok-groups/src/applications.rs";
 if (exists(legacyPath)) {
   const service = read(legacyPath);
   for (const marker of [
     "GroupApplicationReadPort",
+  "order_by_desc(membership_application::Column::Id)",
     "GroupApplicationCommandPort",
     "PortCallPolicy::read()",
     "PortCallPolicy::write()",
@@ -82,7 +95,7 @@ if (exists(legacyPath)) {
     "command_receipt",
     "audit_entry",
     "increment_group_membership_version",
-    "exclusive_lock",
+    "lock_exclusive",
     "group.membership_application_submitted",
     "group.membership_application_approved",
     "group.membership_application_rejected",

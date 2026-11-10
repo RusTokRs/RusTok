@@ -62,11 +62,19 @@ requireMarkers("crates/modules/rustok-groups/src/targeted_invitations.rs", [
   "model.target_user_id != Some(actor_user_id)",
   "model.max_uses != 1",
   "lock_exclusive()",
-  "redemption::ActiveModel",
-  "member_count.saturating_add(1)",
-  "group.targeted_invitation_accepted",
+  "crate::domain::increment_member_count(group_model.member_count)?",
   "store_receipt",
   "replay_receipt",
+]);
+requireMarkers("crates/modules/rustok-groups/src/targeted_invitations_transactional.rs", [
+  "redemption::ActiveModel",
+  "group.targeted_invitation_accepted",
+  "crate::commands::reserve_command",
+  "ApplicationSettlement::Invitation",
+]);
+requireMarkers("crates/modules/rustok-groups/src/targeted_invitations.rs", [
+  '#[path = "targeted_invitations_transactional.rs"]',
+  "mod transactional;",
 ]);
 forbidMarkers("crates/modules/rustok-groups/src/targeted_invitations.rs", [
   "invitation_token_hash",
@@ -99,10 +107,19 @@ requireMarkers("crates/modules/rustok-groups/rustok-module.toml", [
   'mutation = "graphql_application_cas::GroupsMutationRoot"',
 ]);
 requireMarkers("crates/modules/rustok-groups/src/lib.rs", [
+  "pub mod module;",
+  "pub use module::GroupsModule;",
+  "mod notification_source;",
+  '#[path = "targeted_invitations.rs"]',
+  "mod targeted_invitation_owner;",
+  "pub mod targeted_invitations {",
+  "pub use crate::effective_invitations::GroupTargetedInvitationService;",
+]);
+requireMarkers("crates/modules/rustok-groups/src/module.rs", [
   "register_notification_source_provider_factory",
   "notification_source::GroupsNotificationSourceProviderFactory",
-  "pub mod targeted_invitations;",
-  "assert_eq!(module.migrations().len(), 7)",
+  "migrations::migrations()",
+  "assert_eq!(module.migrations().len(), 9)",
 ]);
 
 requireMarkers("crates/modules/rustok-groups/storefront/src/core.rs", [

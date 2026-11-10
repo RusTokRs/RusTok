@@ -3,7 +3,20 @@ import path from "node:path";
 
 const root = process.cwd();
 const failures = [];
-const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const readRaw = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const read = (relative) => {
+  let source = readRaw(relative);
+  if (relative.endsWith("/applications.rs")) {
+    for (const child of source.matchAll(/#\[path = "([^"\n]+\.rs)"\]/g)) {
+      source += "\n" + readRaw(path.join(path.dirname(relative), child[1]));
+    }
+  } else if (relative.endsWith("/applications_cas.rs")) {
+    source += "\n" + readRaw(relative.replace("applications_cas.rs", "applications_transactional_cas.rs"));
+  } else if (relative.endsWith("/applications_lifecycle.rs")) {
+    source += "\n" + readRaw(relative.replace("applications_lifecycle.rs", "applications_transactional_lifecycle.rs"));
+  }
+  return source;
+};
 const exists = (relative) => fs.existsSync(path.join(root, relative));
 const requireFile = (relative) => {
   if (!exists(relative)) {
@@ -29,7 +42,6 @@ const forbidMarkers = (relative, markers) => {
 
 for (const relative of [
   "crates/modules/rustok-groups/src/applications.rs",
-  "crates/modules/rustok-groups/src/applications_legacy.rs",
   "crates/modules/rustok-groups/src/applications_cas.rs",
   "crates/modules/rustok-groups/src/applications_policy_management.rs",
   "crates/modules/rustok-groups/src/graphql_application_policy_management.rs",
@@ -52,16 +64,15 @@ for (const relative of [
 ]) requireFile(relative);
 
 requireMarkers("crates/modules/rustok-groups/src/applications.rs", [
-  'include!("applications_legacy.rs")',
-  'include!("applications_cas.rs")',
-  'include!("applications_policy_management.rs")',
+  '#[path = "applications_cas.rs"]',
+  '#[path = "applications_policy_management.rs"]',
 ]);
 requireMarkers("crates/modules/rustok-groups/src/applications_cas.rs", [
   "GroupApplicationPolicyPrecondition",
   "GroupApplicationCasCommandPort",
   "upsert_group_application_policy_if_current",
   "submit_group_membership_application_if_current",
-  'GROUP_APPLICATION_POLICY_CHANGED_CODE: &str =\n    "groups.application_policy_changed"',
+  '"groups.application_policy_changed"',
   "find_group_for_update",
   "ensure_policy_update_precondition",
   "ensure_loaded_policy_precondition",
@@ -70,7 +81,7 @@ requireMarkers("crates/modules/rustok-groups/src/applications_cas.rs", [
   '"expected_revision_enforced": true',
 ]);
 const cas = read("crates/modules/rustok-groups/src/applications_cas.rs");
-for (const method of ["upsert_policy_if_current_owned", "submit_application_if_current_owned"]) {
+for (const method of ["upsert_policy_if_current_effective_owned", "submit_application_if_current_effective_owned"]) {
   const start = cas.indexOf(`async fn ${method}`);
   const lock = cas.indexOf("find_group_for_update", start);
   const check = cas.indexOf(method.startsWith("upsert") ? "ensure_policy_update_precondition" : "ensure_loaded_policy_precondition", start);

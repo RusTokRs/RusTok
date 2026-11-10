@@ -25,24 +25,24 @@ use crate::membership_enforcement_transaction::{
 use crate::ports::{
     GroupAccessReadPort, GroupCommandPort, GroupMembershipReadPort, GroupSummaryReadPort,
 };
-use crate::service::GroupsService as LegacyGroupsService;
+use crate::service::GroupsService as CoreGroupsStore;
 
 /// Effective-membership facade for the public Groups owner boundary.
 ///
-/// The legacy service remains available only as an implementation delegate for operations that
-/// have not yet been converted. Every public core access decision, private group read, membership
+/// The private core store owns persistence and presentation; all access decisions
+/// and lifecycle mutations remain enforcement-aware. Every public core access decision, private group read, membership
 /// lifecycle command, and feature-settings authorization in this facade uses the Groups-owned
 /// enforcement resolver where effective state is relevant.
 #[derive(Clone)]
 pub struct GroupsService {
     db: DatabaseConnection,
-    legacy: LegacyGroupsService,
+    legacy: CoreGroupsStore,
 }
 
 impl GroupsService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            legacy: LegacyGroupsService::new(db.clone()),
+            legacy: CoreGroupsStore::new(db.clone()),
             db,
         }
     }
@@ -155,6 +155,19 @@ impl GroupsService {
         let tenant_id = context_tenant_id(context)?;
         let user_id = actor_user_id(context)?;
         let transaction = self.db.begin().await?;
+        let command = crate::commands::Command::admit(
+            &transaction,
+            context,
+            tenant_id,
+            user_id,
+            "groups.join.v1",
+            &request,
+        )
+        .await?;
+        if let Some(result) = command.replay::<GroupMembership>(&transaction).await? {
+            transaction.commit().await?;
+            return Ok(result);
+        }
 
         // Joining changes membership lifecycle state and can advance the aggregate count/version.
         // Serialize the group before evaluating enforcement so a suspension cannot commit between
@@ -196,11 +209,14 @@ impl GroupsService {
             .one(&transaction)
             .await?;
         if effective.active_member {
-            return existing.map(map_membership).transpose()?.ok_or_else(|| {
-                GroupsError::Invariant(
-                    "effective active membership is missing its owner row".to_string(),
-                )
-            });
+            let result = existing.map(map_membership).transpose()?.ok_or_else(|| {
+                GroupsError::Invariant("effective membership row is missing".into())
+            })?;
+            command
+                .finish(&transaction, context, request.group_id, &result)
+                .await?;
+            transaction.commit().await?;
+            return Ok(result);
         }
 
         let visibility =
@@ -211,13 +227,15 @@ impl GroupsService {
             (_, _, Some(row)) if row.status == GroupMembershipStatus::Invited.as_str() => {
                 GroupMembershipStatus::Active
             }
-            (GroupVisibility::Public, GroupJoinPolicy::Open, _) => GroupMembershipStatus::Active,
+            (GroupVisibility::Public | GroupVisibility::Closed, GroupJoinPolicy::Open, _) => {
+                GroupMembershipStatus::Active
+            }
             (GroupVisibility::Secret, _, _) | (_, GroupJoinPolicy::InviteOnly, _) => {
                 return Err(GroupsError::Forbidden(
                     "group requires an invitation".to_string(),
                 ));
             }
-            _ => GroupMembershipStatus::Pending,
+            _ => return Err(GroupsError::ApplicationRequired),
         };
 
         let now = Utc::now().fixed_offset();
@@ -249,8 +267,9 @@ impl GroupsService {
         };
 
         if target_status == GroupMembershipStatus::Active {
-            let next_member_count = group_model.member_count.saturating_add(1);
-            let next_version = group_model.version.saturating_add(1);
+            let next_member_count =
+                crate::domain::increment_member_count(group_model.member_count)?;
+            let next_version = crate::domain::next_revision(group_model.version)?;
             let mut active: group::ActiveModel = group_model.into();
             active.member_count = Set(next_member_count);
             active.version = Set(next_version);
@@ -258,8 +277,23 @@ impl GroupsService {
             active.update(&transaction).await?;
         }
 
+        crate::application_owner::settle_pending_application(
+            &transaction,
+            context,
+            tenant_id,
+            request.group_id,
+            user_id,
+            user_id,
+            crate::application_owner::ApplicationSettlement::Join,
+        )
+        .await?;
+
+        let result = map_membership(updated_membership)?;
+        command
+            .finish(&transaction, context, request.group_id, &result)
+            .await?;
         transaction.commit().await?;
-        map_membership(updated_membership)
+        Ok(result)
     }
 
     async fn leave_group_owned(
@@ -272,6 +306,19 @@ impl GroupsService {
         let tenant_id = context_tenant_id(context)?;
         let user_id = actor_user_id(context)?;
         let transaction = self.db.begin().await?;
+        let command = crate::commands::Command::admit(
+            &transaction,
+            context,
+            tenant_id,
+            user_id,
+            "groups.leave.v1",
+            &request,
+        )
+        .await?;
+        if let Some(result) = command.replay::<GroupMembership>(&transaction).await? {
+            transaction.commit().await?;
+            return Ok(result);
+        }
 
         // Leaving changes lifecycle state and may decrement the stored active count. Serialize the
         // aggregate before reading effective membership so a concurrent suspension cannot race the
@@ -312,7 +359,12 @@ impl GroupsService {
             .await?
             .ok_or_else(|| GroupsError::Conflict("membership is required".to_string()))?;
         if membership_model.status == GroupMembershipStatus::Left.as_str() {
-            return map_membership(membership_model);
+            let result = map_membership(membership_model)?;
+            command
+                .finish(&transaction, context, request.group_id, &result)
+                .await?;
+            transaction.commit().await?;
+            return Ok(result);
         }
 
         // Temporary suspension removes group authority but does not prevent a participant from
@@ -326,9 +378,27 @@ impl GroupsService {
         active.updated_at = Set(now);
         let updated_membership = active.update(&transaction).await?;
 
-        if was_active {
-            let next_member_count = group_model.member_count.saturating_sub(1);
-            let next_version = group_model.version.saturating_add(1);
+        crate::application_owner::settle_pending_application(
+            &transaction,
+            context,
+            tenant_id,
+            request.group_id,
+            user_id,
+            user_id,
+            crate::application_owner::ApplicationSettlement::Leave,
+        )
+        .await?;
+        {
+            let next_member_count = if was_active {
+                group_model
+                    .member_count
+                    .checked_sub(1)
+                    .filter(|count| *count >= 0)
+                    .ok_or_else(|| GroupsError::Invariant("active member count underflow".into()))?
+            } else {
+                group_model.member_count
+            };
+            let next_version = crate::domain::next_revision(group_model.version)?;
             let mut active: group::ActiveModel = group_model.into();
             active.member_count = Set(next_member_count);
             active.version = Set(next_version);
@@ -336,8 +406,12 @@ impl GroupsService {
             active.update(&transaction).await?;
         }
 
+        let result = map_membership(updated_membership)?;
+        command
+            .finish(&transaction, context, request.group_id, &result)
+            .await?;
         transaction.commit().await?;
-        map_membership(updated_membership)
+        Ok(result)
     }
 
     async fn set_group_feature_owned(
@@ -350,6 +424,19 @@ impl GroupsService {
         let tenant_id = context_tenant_id(context)?;
         let actor_id = actor_user_id(context)?;
         let transaction = self.db.begin().await?;
+        let command = crate::commands::Command::admit(
+            &transaction,
+            context,
+            tenant_id,
+            actor_id,
+            "groups.feature_set.v1",
+            &request,
+        )
+        .await?;
+        if let Some(result) = command.replay::<GroupFeatureBinding>(&transaction).await? {
+            transaction.commit().await?;
+            return Ok(result);
+        }
 
         // Feature settings are Groups owner state. Serialize the aggregate before evaluating
         // effective manager authority so a concurrent suspension cannot commit between auth and
@@ -417,17 +504,18 @@ impl GroupsService {
             .await?
         };
 
+        let next_version = crate::domain::next_revision(group_model.version)?;
         let mut group_active: group::ActiveModel = group_model.into();
-        group_active.version = Set(group_active
-            .version
-            .take()
-            .unwrap_or_default()
-            .saturating_add(1));
+        group_active.version = Set(next_version);
         group_active.updated_at = Set(now);
         group_active.update(&transaction).await?;
 
+        let result = map_feature(model)?;
+        command
+            .finish(&transaction, context, request.group_id, &result)
+            .await?;
         transaction.commit().await?;
-        map_feature(model)
+        Ok(result)
     }
 }
 
@@ -480,6 +568,26 @@ impl GroupMembershipReadPort for GroupsService {
         request: ReadGroupMembershipRequest,
     ) -> Result<Option<GroupMembership>, PortError> {
         request.validate()?;
+        require_read(&context).map_err(PortError::from)?;
+        let self_read = optional_actor_user_id(&context) == Some(request.user_id);
+        let service_read = context.claims.iter().any(|claim| {
+            matches!(
+                claim.as_str(),
+                "groups:access:read" | "groups:moderate" | "groups:manage" | "groups:*" | "*:*"
+            )
+        });
+        if !self_read && !service_read {
+            let decision = self
+                .decide_access_owned(&context, request.group_id, GroupAction::Moderate)
+                .await
+                .map_err(PortError::from)?;
+            if !decision.allowed {
+                return Err(PortError::not_found(
+                    "groups.not_found",
+                    "group membership was not found",
+                ));
+            }
+        }
         GroupMembershipReadPort::read_membership(&self.legacy, context, request).await
     }
 

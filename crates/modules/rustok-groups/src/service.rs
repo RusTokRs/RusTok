@@ -8,14 +8,14 @@ use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError, normaliz
 use sea_orm::Database;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, Set, TransactionTrait,
+    QueryOrder, QuerySelect, QueryTrait, Set, TransactionTrait,
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::domain::{
     GroupAction, GroupFeatureStatus, GroupJoinPolicy, GroupMembershipStatus, GroupRole,
-    GroupStatus, GroupVisibility, normalize_feature_key, normalize_group_handle,
+    GroupStatus, GroupVisibility, normalize_group_handle,
 };
 use crate::dto::*;
 use crate::entities::{feature_binding, group, membership, translation};
@@ -167,6 +167,7 @@ impl GroupsService {
                 "group title must contain between 1 and 240 characters".to_string(),
             ));
         }
+        let command_input = input.clone();
         let summary = normalize_optional_text(input.summary);
         if summary
             .as_deref()
@@ -180,6 +181,19 @@ impl GroupsService {
         let metadata = normalize_language_agnostic_metadata(input.metadata)?;
 
         let transaction = self.db.begin().await?;
+        let command = crate::commands::Command::admit(
+            &transaction,
+            context,
+            tenant_id,
+            owner_user_id,
+            "groups.create.v1",
+            &command_input,
+        )
+        .await?;
+        if let Some(result) = command.replay::<GroupDetails>(&transaction).await? {
+            transaction.commit().await?;
+            return Ok(result);
+        }
         let duplicate = group::Entity::find()
             .filter(group::Column::TenantId.eq(tenant_id))
             .filter(group::Column::Handle.eq(handle.clone()))
@@ -195,7 +209,7 @@ impl GroupsService {
             id: Set(group_id),
             tenant_id: Set(tenant_id),
             owner_user_id: Set(owner_user_id),
-            handle: Set(handle),
+            handle: Set(handle.clone()),
             visibility: Set(input.visibility.as_str().to_string()),
             join_policy: Set(input.join_policy.as_str().to_string()),
             status: Set(GroupStatus::Active.as_str().to_string()),
@@ -210,7 +224,17 @@ impl GroupsService {
             archived_at: Set(None),
         }
         .insert(&transaction)
-        .await?;
+        .await
+        .map_err(|error| {
+            if matches!(
+                error.sql_err(),
+                Some(sea_orm::SqlErr::UniqueConstraintViolation(_))
+            ) {
+                GroupsError::HandleConflict
+            } else {
+                GroupsError::from(error)
+            }
+        })?;
 
         translation::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -218,15 +242,15 @@ impl GroupsService {
             group_id: Set(group_id),
             locale: Set(locale.clone()),
             title: Set(title.to_string()),
-            summary: Set(summary),
-            body: Set(body),
+            summary: Set(summary.clone()),
+            body: Set(body.clone()),
             created_at: Set(now),
             updated_at: Set(now),
         }
         .insert(&transaction)
         .await?;
 
-        membership::ActiveModel {
+        let owner_membership = membership::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant_id),
             group_id: Set(group_id),
@@ -243,10 +267,33 @@ impl GroupsService {
         .insert(&transaction)
         .await?;
 
+        let result = GroupDetails {
+            summary: GroupSummary {
+                id: group_id,
+                tenant_id,
+                owner_user_id,
+                handle,
+                visibility: input.visibility,
+                join_policy: input.join_policy,
+                status: GroupStatus::Active,
+                title: title.to_string(),
+                summary,
+                avatar_media_id: input.avatar_media_id,
+                cover_media_id: input.cover_media_id,
+                member_count: 1,
+                requested_locale: locale.clone(),
+                effective_locale: locale.clone(),
+                available_locales: vec![locale],
+            },
+            body,
+            viewer_membership: Some(map_membership(owner_membership)?),
+            features: Vec::new(),
+        };
+        command
+            .finish(&transaction, context, group_id, &result)
+            .await?;
         transaction.commit().await?;
-        let model = self.group_model(tenant_id, group_id).await?;
-        self.map_details(context, model, true, &locale, &locale)
-            .await
+        Ok(result)
     }
 
     async fn read_group_owned(
@@ -321,25 +368,15 @@ impl GroupsService {
         if let Some(search) = normalize_optional_text(request.search) {
             localized_query = localized_query.filter(translation::Column::Title.contains(&search));
         }
-        let localized_group_ids = localized_query
-            .all(&self.db)
-            .await?
-            .into_iter()
-            .map(|row| row.group_id)
-            .collect::<Vec<_>>();
-        if localized_group_ids.is_empty() {
-            return Ok(GroupConnection {
-                items: Vec::new(),
-                total: 0,
-                page,
-                per_page,
-            });
-        }
+        let localized_groups = localized_query
+            .select_only()
+            .column(translation::Column::GroupId)
+            .into_query();
 
         let mut query = group::Entity::find()
             .filter(group::Column::TenantId.eq(tenant_id))
             .filter(group::Column::Status.eq(GroupStatus::Active.as_str()))
-            .filter(group::Column::Id.is_in(localized_group_ids));
+            .filter(group::Column::Id.in_subquery(localized_groups));
         if !include_non_public {
             query = query.filter(group::Column::Visibility.is_in([
                 GroupVisibility::Public.as_str(),
@@ -349,6 +386,7 @@ impl GroupsService {
 
         let paginator = query
             .order_by_desc(group::Column::UpdatedAt)
+            .order_by_desc(group::Column::Id)
             .paginate(&self.db, per_page);
         let total = paginator.num_items().await?;
         let models = paginator.fetch_page(page.saturating_sub(1)).await?;
@@ -379,296 +417,19 @@ impl GroupsService {
         })
     }
 
-    async fn join_group_owned(
-        &self,
-        context: &PortContext,
-        request: JoinGroupRequest,
-    ) -> GroupsResult<GroupMembership> {
-        require_write(context)?;
-        request.validate()?;
-        let tenant_id = context_tenant_id(context)?;
-        let user_id = actor_user_id(context)?;
-        let transaction = self.db.begin().await?;
-        let group_model = group::Entity::find()
-            .filter(group::Column::TenantId.eq(tenant_id))
-            .filter(group::Column::Id.eq(request.group_id))
-            .one(&transaction)
-            .await?
-            .ok_or(GroupsError::NotFound)?;
-        if group_model.status != GroupStatus::Active.as_str() {
-            return Err(GroupsError::Conflict("group is not active".to_string()));
-        }
-
-        let existing = membership::Entity::find()
-            .filter(membership::Column::TenantId.eq(tenant_id))
-            .filter(membership::Column::GroupId.eq(request.group_id))
-            .filter(membership::Column::UserId.eq(user_id))
-            .one(&transaction)
-            .await?;
-        if existing
-            .as_ref()
-            .is_some_and(|row| row.status == GroupMembershipStatus::Banned.as_str())
-        {
-            return Err(GroupsError::Forbidden(
-                "group membership is banned".to_string(),
-            ));
-        }
-        if let Some(active) = existing
-            .as_ref()
-            .filter(|row| row.status == GroupMembershipStatus::Active.as_str())
-        {
-            return map_membership(active.clone());
-        }
-
-        let visibility = parse_visibility(&group_model.visibility)?;
-        let join_policy = parse_join_policy(&group_model.join_policy)?;
-        let target_status = match (visibility, join_policy, existing.as_ref()) {
-            (_, _, Some(row)) if row.status == GroupMembershipStatus::Invited.as_str() => {
-                GroupMembershipStatus::Active
-            }
-            (GroupVisibility::Public, GroupJoinPolicy::Open, _) => GroupMembershipStatus::Active,
-            (GroupVisibility::Secret, _, _) | (_, GroupJoinPolicy::InviteOnly, _) => {
-                return Err(GroupsError::Forbidden(
-                    "group requires an invitation".to_string(),
-                ));
-            }
-            _ => GroupMembershipStatus::Pending,
-        };
-
-        let now = Utc::now().fixed_offset();
-        let updated_membership = if let Some(existing) = existing {
-            let mut active: membership::ActiveModel = existing.into();
-            active.role = Set(GroupRole::Member.as_str().to_string());
-            active.status = Set(target_status.as_str().to_string());
-            active.joined_at = Set((target_status == GroupMembershipStatus::Active).then_some(now));
-            active.left_at = Set(None);
-            active.updated_at = Set(now);
-            active.update(&transaction).await?
-        } else {
-            membership::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant_id),
-                group_id: Set(request.group_id),
-                user_id: Set(user_id),
-                role: Set(GroupRole::Member.as_str().to_string()),
-                status: Set(target_status.as_str().to_string()),
-                invited_by_user_id: Set(None),
-                joined_at: Set((target_status == GroupMembershipStatus::Active).then_some(now)),
-                left_at: Set(None),
-                metadata: Set(json!({})),
-                created_at: Set(now),
-                updated_at: Set(now),
-            }
-            .insert(&transaction)
-            .await?
-        };
-
-        if target_status == GroupMembershipStatus::Active {
-            let next_member_count = group_model.member_count.saturating_add(1);
-            let next_version = group_model.version.saturating_add(1);
-            let mut active: group::ActiveModel = group_model.into();
-            active.member_count = Set(next_member_count);
-            active.version = Set(next_version);
-            active.updated_at = Set(now);
-            active.update(&transaction).await?;
-        }
-
-        transaction.commit().await?;
-        map_membership(updated_membership)
-    }
-
-    async fn leave_group_owned(
-        &self,
-        context: &PortContext,
-        request: LeaveGroupRequest,
-    ) -> GroupsResult<GroupMembership> {
-        require_write(context)?;
-        request.validate()?;
-        let tenant_id = context_tenant_id(context)?;
-        let user_id = actor_user_id(context)?;
-        let transaction = self.db.begin().await?;
-        let group_model = group::Entity::find()
-            .filter(group::Column::TenantId.eq(tenant_id))
-            .filter(group::Column::Id.eq(request.group_id))
-            .one(&transaction)
-            .await?
-            .ok_or(GroupsError::NotFound)?;
-        let membership_model = membership::Entity::find()
-            .filter(membership::Column::TenantId.eq(tenant_id))
-            .filter(membership::Column::GroupId.eq(request.group_id))
-            .filter(membership::Column::UserId.eq(user_id))
-            .one(&transaction)
-            .await?
-            .ok_or_else(|| GroupsError::Conflict("membership is required".to_string()))?;
-        if membership_model.role == GroupRole::Owner.as_str() {
-            return Err(GroupsError::Invariant(
-                "group owner must transfer ownership before leaving".to_string(),
-            ));
-        }
-        if membership_model.status == GroupMembershipStatus::Left.as_str() {
-            return map_membership(membership_model);
-        }
-
-        let was_active = membership_model.status == GroupMembershipStatus::Active.as_str();
-        let now = Utc::now().fixed_offset();
-        let mut active: membership::ActiveModel = membership_model.into();
-        active.status = Set(GroupMembershipStatus::Left.as_str().to_string());
-        active.left_at = Set(Some(now));
-        active.updated_at = Set(now);
-        let updated_membership = active.update(&transaction).await?;
-
-        if was_active {
-            let next_member_count = group_model.member_count.saturating_sub(1);
-            let next_version = group_model.version.saturating_add(1);
-            let mut active: group::ActiveModel = group_model.into();
-            active.member_count = Set(next_member_count);
-            active.version = Set(next_version);
-            active.updated_at = Set(now);
-            active.update(&transaction).await?;
-        }
-
-        transaction.commit().await?;
-        map_membership(updated_membership)
-    }
-
-    async fn set_group_feature_owned(
-        &self,
-        context: &PortContext,
-        request: SetGroupFeatureRequest,
-    ) -> GroupsResult<GroupFeatureBinding> {
-        require_write(context)?;
-        request.validate()?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_id = actor_user_id(context)?;
-        self.group_model(tenant_id, request.group_id).await?;
-
-        let membership = self
-            .membership_model(tenant_id, request.group_id, actor_id)
-            .await?;
-        let local_allowed = membership
-            .as_ref()
-            .filter(|row| row.status == GroupMembershipStatus::Active.as_str())
-            .and_then(|row| GroupRole::from_str(&row.role).ok())
-            .is_some_and(GroupRole::can_manage_settings);
-        if !local_allowed && !has_platform_manage(context) {
-            return Err(GroupsError::Forbidden(
-                "group owner or administrator role is required".to_string(),
-            ));
-        }
-
-        let feature_key =
-            normalize_feature_key(&request.feature_key).map_err(GroupsError::Validation)?;
-        let owner_module = feature_key
-            .split_once('.')
-            .map(|(owner, _)| owner.to_string())
-            .ok_or_else(|| GroupsError::Invariant("feature key lost namespace".to_string()))?;
-        let status = if request.enabled {
-            GroupFeatureStatus::Enabled
-        } else {
-            GroupFeatureStatus::Disabled
-        };
-        let now = Utc::now().fixed_offset();
-        let existing = feature_binding::Entity::find()
-            .filter(feature_binding::Column::TenantId.eq(tenant_id))
-            .filter(feature_binding::Column::GroupId.eq(request.group_id))
-            .filter(feature_binding::Column::FeatureKey.eq(feature_key.clone()))
-            .one(&self.db)
-            .await?;
-
-        let model = if let Some(existing) = existing {
-            let mut active: feature_binding::ActiveModel = existing.into();
-            active.contract_version = Set(request.contract_version);
-            active.status = Set(status.as_str().to_string());
-            active.sort_order = Set(request.sort_order);
-            active.configuration = Set(request.configuration);
-            active.updated_at = Set(now);
-            active.update(&self.db).await?
-        } else {
-            feature_binding::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant_id),
-                group_id: Set(request.group_id),
-                feature_key: Set(feature_key),
-                owner_module: Set(owner_module),
-                contract_version: Set(request.contract_version),
-                status: Set(status.as_str().to_string()),
-                sort_order: Set(request.sort_order),
-                configuration: Set(request.configuration),
-                created_at: Set(now),
-                updated_at: Set(now),
-            }
-            .insert(&self.db)
-            .await?
-        };
-        map_feature(model)
-    }
-
     async fn decide_access_owned(
         &self,
         context: &PortContext,
         group_id: Uuid,
         action: GroupAction,
     ) -> GroupsResult<GroupAccessDecision> {
-        require_read(context)?;
-        if group_id.is_nil() {
-            return Err(GroupsError::Validation(
-                "group_id cannot be nil UUID".to_string(),
-            ));
-        }
-        let tenant_id = context_tenant_id(context)?;
-        let group_model = self.group_model(tenant_id, group_id).await?;
-        let visibility = parse_visibility(&group_model.visibility)?;
-        let membership = match optional_actor_user_id(context) {
-            Some(user_id) => self.membership_model(tenant_id, group_id, user_id).await?,
-            None => None,
-        };
-        let membership_role = membership
-            .as_ref()
-            .and_then(|row| GroupRole::from_str(&row.role).ok());
-        let membership_status = membership
-            .as_ref()
-            .and_then(|row| GroupMembershipStatus::from_str(&row.status).ok());
-        let active_member = membership_status == Some(GroupMembershipStatus::Active);
-
-        let allowed = if has_platform_manage(context) {
-            true
-        } else if group_model.status != GroupStatus::Active.as_str() {
-            false
-        } else {
-            match action {
-                GroupAction::Discover => visibility != GroupVisibility::Secret,
-                GroupAction::ViewSummary => visibility != GroupVisibility::Secret || active_member,
-                GroupAction::View | GroupAction::ViewMembers => {
-                    visibility == GroupVisibility::Public || active_member
-                }
-                GroupAction::Join => {
-                    visibility != GroupVisibility::Secret
-                        && membership_status != Some(GroupMembershipStatus::Banned)
-                }
-                GroupAction::Post | GroupAction::Comment => active_member,
-                GroupAction::Invite | GroupAction::ReviewMemberships | GroupAction::Moderate => {
-                    active_member && membership_role.is_some_and(GroupRole::can_moderate)
-                }
-                GroupAction::ManageFeatures | GroupAction::ManageSettings => {
-                    active_member && membership_role.is_some_and(GroupRole::can_manage_settings)
-                }
-                GroupAction::TransferOwnership => membership_role == Some(GroupRole::Owner),
-            }
-        };
-
-        Ok(GroupAccessDecision {
-            group_id,
-            action,
-            allowed,
-            reason_code: if allowed {
-                "groups.access.allowed"
-            } else {
-                "groups.access.denied"
-            }
-            .to_string(),
-            membership_role,
-            membership_status,
-        })
+        GroupAccessReadPort::decide_group_access(
+            &crate::GroupsService::new(self.db.clone()),
+            context.clone(),
+            GroupAccessRequest { group_id, action },
+        )
+        .await
+        .map_err(Into::into)
     }
 
     async fn map_details(
@@ -753,7 +514,9 @@ impl GroupsService {
             summary: selected.summary.clone(),
             avatar_media_id: model.avatar_media_id,
             cover_media_id: model.cover_media_id,
-            member_count: model.member_count.max(0) as u64,
+            member_count: u64::try_from(model.member_count).map_err(|_| {
+                GroupsError::Invariant("stored member count cannot be negative".into())
+            })?,
             requested_locale: requested_locale.to_string(),
             effective_locale: selected.locale.clone(),
             available_locales,
@@ -825,11 +588,29 @@ impl GroupMembershipReadPort for GroupsService {
         let tenant_id = context_tenant_id(&context).map_err(PortError::from)?;
         let page = request.page.max(1);
         let per_page = request.per_page.clamp(1, 100);
-        let paginator = membership::Entity::find()
+        let manager = GroupAccessReadPort::decide_group_access(
+            &crate::GroupsService::new(self.db.clone()),
+            context.clone(),
+            GroupAccessRequest {
+                group_id: request.group_id,
+                action: GroupAction::Moderate,
+            },
+        )
+        .await?
+        .allowed;
+        let mut query = membership::Entity::find()
             .filter(membership::Column::TenantId.eq(tenant_id))
-            .filter(membership::Column::GroupId.eq(request.group_id))
-            .filter(membership::Column::Status.ne(GroupMembershipStatus::Left.as_str()))
+            .filter(membership::Column::GroupId.eq(request.group_id));
+        if manager {
+            query =
+                query.filter(membership::Column::Status.ne(GroupMembershipStatus::Left.as_str()));
+        } else {
+            query =
+                query.filter(membership::Column::Status.eq(GroupMembershipStatus::Active.as_str()));
+        }
+        let paginator = query
             .order_by_asc(membership::Column::CreatedAt)
+            .order_by_asc(membership::Column::Id)
             .paginate(&self.db, per_page);
         let total = paginator.num_items().await.map_err(|error| {
             PortError::unavailable("groups.memberships_unavailable", error.to_string())
@@ -855,59 +636,6 @@ impl GroupMembershipReadPort for GroupsService {
 }
 
 #[async_trait]
-impl GroupAccessReadPort for GroupsService {
-    async fn decide_group_access(
-        &self,
-        context: PortContext,
-        request: GroupAccessRequest,
-    ) -> Result<GroupAccessDecision, PortError> {
-        request.validate()?;
-        self.decide_access_owned(&context, request.group_id, request.action)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn enabled_group_features(
-        &self,
-        context: PortContext,
-        group_id: Uuid,
-    ) -> Result<Vec<GroupFeatureBinding>, PortError> {
-        if group_id.is_nil() {
-            return Err(PortError::validation(
-                "groups.invalid_group_id",
-                "group_id cannot be nil UUID",
-            ));
-        }
-        let decision = self
-            .decide_access_owned(&context, group_id, GroupAction::View)
-            .await
-            .map_err(PortError::from)?;
-        if !decision.allowed {
-            return Err(PortError::forbidden(
-                "groups.features_forbidden",
-                "group features are not visible",
-            ));
-        }
-
-        let tenant_id = context_tenant_id(&context).map_err(PortError::from)?;
-        feature_binding::Entity::find()
-            .filter(feature_binding::Column::TenantId.eq(tenant_id))
-            .filter(feature_binding::Column::GroupId.eq(group_id))
-            .filter(feature_binding::Column::Status.eq(GroupFeatureStatus::Enabled.as_str()))
-            .order_by_asc(feature_binding::Column::SortOrder)
-            .all(&self.db)
-            .await
-            .map_err(|error| {
-                PortError::unavailable("groups.features_unavailable", error.to_string())
-            })?
-            .into_iter()
-            .map(map_feature)
-            .collect::<GroupsResult<Vec<_>>>()
-            .map_err(Into::into)
-    }
-}
-
-#[async_trait]
 impl GroupCommandPort for GroupsService {
     async fn create_group(
         &self,
@@ -926,9 +654,12 @@ impl GroupCommandPort for GroupsService {
         request: JoinGroupRequest,
     ) -> Result<GroupMembership, PortError> {
         request.validate()?;
-        self.join_group_owned(&context, request)
-            .await
-            .map_err(Into::into)
+        GroupCommandPort::join_group(
+            &crate::GroupsService::new(self.db.clone()),
+            context,
+            request,
+        )
+        .await
     }
 
     async fn leave_group(
@@ -937,9 +668,12 @@ impl GroupCommandPort for GroupsService {
         request: LeaveGroupRequest,
     ) -> Result<GroupMembership, PortError> {
         request.validate()?;
-        self.leave_group_owned(&context, request)
-            .await
-            .map_err(Into::into)
+        GroupCommandPort::leave_group(
+            &crate::GroupsService::new(self.db.clone()),
+            context,
+            request,
+        )
+        .await
     }
 
     async fn set_group_feature(
@@ -948,9 +682,12 @@ impl GroupCommandPort for GroupsService {
         request: SetGroupFeatureRequest,
     ) -> Result<GroupFeatureBinding, PortError> {
         request.validate()?;
-        self.set_group_feature_owned(&context, request)
-            .await
-            .map_err(Into::into)
+        GroupCommandPort::set_group_feature(
+            &crate::GroupsService::new(self.db.clone()),
+            context,
+            request,
+        )
+        .await
     }
 }
 

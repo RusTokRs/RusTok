@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::application_entities::membership_policy_revision;
-use crate::{
-    GroupApplicationQuestion, GroupApplicationReadPort, GroupApplicationRule,
-    GroupApplicationService, ListGroupMembershipApplicationsRequest,
+use crate::effective_membership_guard::{
+    GroupManagerCapability, actor_user_id, require_effective_manager_direct_owned, tenant_id,
 };
+use crate::{GroupApplicationQuestion, GroupApplicationRule};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupApplicationPolicyRevision {
@@ -94,36 +94,20 @@ impl GroupApplicationPolicyHistoryReadPort for GroupApplicationPolicyHistoryServ
     ) -> Result<GroupApplicationPolicyRevisionConnection, PortError> {
         context.require_policy(PortCallPolicy::read())?;
         request.validate()?;
-        let trimmed_tenant = context.tenant_id.trim();
-        if trimmed_tenant.is_empty() {
-            return Err(PortError::validation(
-                "groups.invalid_tenant",
-                "tenant_id cannot be empty",
-            ));
-        }
-        let tenant_id = Uuid::parse_str(trimmed_tenant).map_err(|_| {
-            PortError::validation("groups.invalid_tenant", "tenant_id must be a UUID")
-        })?;
-        if tenant_id.is_nil() {
-            return Err(PortError::validation(
-                "groups.invalid_tenant",
-                "tenant_id cannot be nil UUID",
-            ));
-        }
-
-        // Reuse the application review authorization boundary so history remains
-        // manager-only for active owner/admin/moderator or platform manage actors.
-        GroupApplicationReadPort::list_group_membership_applications(
-            &GroupApplicationService::new(self.db.clone()),
-            context,
-            ListGroupMembershipApplicationsRequest {
-                group_id: request.group_id,
-                status: None,
-                page: 1,
-                per_page: 1,
-            },
+        let tenant_id = tenant_id(&context)?;
+        let actor_user_id = actor_user_id(&context)?;
+        // Authorization must not fetch or decode unrelated candidate application payloads.
+        // Use the same owner-clock capability as the effective application review surface.
+        require_effective_manager_direct_owned(
+            &self.db,
+            &context,
+            tenant_id,
+            request.group_id,
+            actor_user_id,
+            GroupManagerCapability::Moderate,
         )
-        .await?;
+        .await
+        .map_err(PortError::from)?;
 
         let page = request.page.max(1);
         let per_page = request.per_page.clamp(1, 100);
@@ -169,7 +153,7 @@ fn map_revision(
     Ok(GroupApplicationPolicyRevision {
         group_id: model.group_id,
         policy_id: model.policy_id,
-        revision: model.revision.max(1) as u64,
+        revision: crate::domain::stored_revision(model.revision)?,
         locale: model.locale,
         enabled: model.enabled,
         questions,
