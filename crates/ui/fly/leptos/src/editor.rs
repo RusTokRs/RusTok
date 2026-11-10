@@ -592,6 +592,16 @@ fn report_workspace_error_raw(on_error: Option<Callback<String>>, message: &str)
     }
 }
 
+fn report_ui_error(
+    on_error: Option<Callback<String>>,
+    context: &str,
+    error: &fly_ui::UiError,
+) {
+    if let Some(on_error) = on_error {
+        on_error.run(format!("{context}: {error}"));
+    }
+}
+
 fn current_media_scope(breakpoint_id: String) -> fly::StyleRuleScope {
     responsive_breakpoint(breakpoint_id.as_str())
         .map(|breakpoint| fly::StyleRuleScope::Media {
@@ -1774,7 +1784,9 @@ pub fn FlyEditorWorkspace(
             }
         }
         palette_ui.update(|machine| {
-            let _ = machine.dispatch(UiIntent::ReplaceDiagnostics(Vec::new()));
+            if let Err(error) = machine.dispatch(UiIntent::ReplaceDiagnostics(Vec::new())) {
+                report_ui_error(on_error, "Clear diagnostics failed", &error);
+            }
         });
     });
 
@@ -1800,10 +1812,12 @@ pub fn FlyEditorWorkspace(
         }
         active_page.set(page_index);
         activate_ui.update(|machine| {
-            let _ = machine.dispatch(UiIntent::ActivatePage {
+            if let Err(error) = machine.dispatch(UiIntent::ActivatePage {
                 page_id,
                 page_index,
-            });
+            }) {
+                report_ui_error(on_error, "Activate page failed", &error);
+            }
         });
     });
 
@@ -1839,10 +1853,12 @@ pub fn FlyEditorWorkspace(
         }
         active_page.set(page_index);
         add_ui.update(|machine| {
-            let _ = machine.dispatch(UiIntent::ActivatePage {
+            if let Err(error) = machine.dispatch(UiIntent::ActivatePage {
                 page_id: Some(page_id),
                 page_index,
-            });
+            }) {
+                report_ui_error(on_error, "Activate page failed", &error);
+            }
         });
         if let Some(on_change) = on_change {
             add_editor.with(|editor| on_change.run(editor.document().clone()));
@@ -2027,7 +2043,9 @@ pub fn FlyEditorWorkspace(
         preview_ui.update(|machine| {
             let current = machine.state.viewport;
             if let Some(next) = preview_viewport_for_breakpoint(&breakpoint_id, current) {
-                let _ = machine.dispatch(UiIntent::SetViewport(next));
+                if let Err(error) = machine.dispatch(UiIntent::SetViewport(next)) {
+                    report_ui_error(on_error, "Set viewport failed", &error);
+                }
                 preview_width.set(Some(machine.state.viewport.width));
             }
         });
@@ -2350,7 +2368,9 @@ pub fn FlyEditorWorkspace(
                             on_intent.run(BrowserIntentEnvelope::undo(&shortcut_instance));
                         } else {
                             shortcut_editor.update(|e| {
-                                let _ = e.undo();
+                                if let Err(error) = e.undo() {
+                                    report_workspace_error(on_error, "Undo failed", &error);
+                                }
                             });
                             if let Some(on_change) = on_change {
                                 shortcut_editor.with(|e| on_change.run(e.document().clone()));
@@ -2362,7 +2382,9 @@ pub fn FlyEditorWorkspace(
                             on_intent.run(BrowserIntentEnvelope::redo(&shortcut_instance));
                         } else {
                             shortcut_editor.update(|e| {
-                                let _ = e.redo();
+                                if let Err(error) = e.redo() {
+                                    report_workspace_error(on_error, "Redo failed", &error);
+                                }
                             });
                             if let Some(on_change) = on_change {
                                 shortcut_editor.with(|e| on_change.run(e.document().clone()));
@@ -2460,7 +2482,9 @@ pub fn FlyEditorWorkspace(
                             return;
                         }
                         undo_editor.update(|editor| {
-                            let _ = editor.undo();
+                            if let Err(error) = editor.undo() {
+                                report_workspace_error(on_error, "Undo failed", &error);
+                            }
                         });
                         if let Some(on_change) = on_change {
                             undo_editor.with(|editor| on_change.run(editor.document().clone()));
@@ -2481,7 +2505,9 @@ pub fn FlyEditorWorkspace(
                             return;
                         }
                         redo_editor.update(|editor| {
-                            let _ = editor.redo();
+                            if let Err(error) = editor.redo() {
+                                report_workspace_error(on_error, "Redo failed", &error);
+                            }
                         });
                         if let Some(on_change) = on_change {
                             redo_editor.with(|editor| on_change.run(editor.document().clone()));
