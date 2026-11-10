@@ -13,10 +13,8 @@
 //! Provides transport-neutral and persistence-neutral contracts so that Inventory logic
 //! never queries Product-owned tables (`products`, `product_variants`) directly via SQL.
 
-use std::sync::Arc;
-
 use async_trait::async_trait;
-use rustok_api::{PortContext, PortError, PortErrorKind};
+use rustok_api::{PortContext, PortError};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect,
@@ -127,8 +125,15 @@ pub async fn get_variant_info_from_conn<C: ConnectionTrait>(
     tenant_id: Uuid,
     variant_id: Uuid,
 ) -> Result<InventoryProductVariantInfo, PortError> {
-    let variant = product_variant::Entity::find_by_id(variant_id)
+    let row = product_variant::Entity::find_by_id(variant_id)
         .filter(product_variant::Column::TenantId.eq(tenant_id))
+        .select_only()
+        .column(product_variant::Column::Id)
+        .column(product_variant::Column::ProductId)
+        .column(product_variant::Column::TenantId)
+        .column(product_variant::Column::Sku)
+        .column(product_variant::Column::InventoryPolicy)
+        .into_tuple::<(Uuid, Uuid, Uuid, Option<String>, String)>()
         .one(conn)
         .await
         .map_err(|err| PortError::unavailable("inventory.storage_unavailable", err.to_string()))?
@@ -140,11 +145,11 @@ pub async fn get_variant_info_from_conn<C: ConnectionTrait>(
         })?;
 
     Ok(InventoryProductVariantInfo {
-        variant_id: variant.id,
-        product_id: variant.product_id,
-        tenant_id: variant.tenant_id,
-        sku: variant.sku,
-        inventory_policy: variant.inventory_policy,
+        variant_id: row.0,
+        product_id: row.1,
+        tenant_id: row.2,
+        sku: row.3,
+        inventory_policy: row.4,
     })
 }
 
@@ -157,21 +162,28 @@ pub async fn get_variants_info_from_conn<C: ConnectionTrait>(
     if variant_ids.is_empty() {
         return Ok(Vec::new());
     }
-    let variants = product_variant::Entity::find()
+    let rows = product_variant::Entity::find()
         .filter(product_variant::Column::TenantId.eq(tenant_id))
         .filter(product_variant::Column::Id.is_in(variant_ids.iter().copied()))
+        .select_only()
+        .column(product_variant::Column::Id)
+        .column(product_variant::Column::ProductId)
+        .column(product_variant::Column::TenantId)
+        .column(product_variant::Column::Sku)
+        .column(product_variant::Column::InventoryPolicy)
+        .into_tuple::<(Uuid, Uuid, Uuid, Option<String>, String)>()
         .all(conn)
         .await
         .map_err(|err| PortError::unavailable("inventory.storage_unavailable", err.to_string()))?;
 
-    Ok(variants
+    Ok(rows
         .into_iter()
-        .map(|v| InventoryProductVariantInfo {
-            variant_id: v.id,
-            product_id: v.product_id,
-            tenant_id: v.tenant_id,
-            sku: v.sku,
-            inventory_policy: v.inventory_policy,
+        .map(|row| InventoryProductVariantInfo {
+            variant_id: row.0,
+            product_id: row.1,
+            tenant_id: row.2,
+            sku: row.3,
+            inventory_policy: row.4,
         })
         .collect())
 }

@@ -387,7 +387,7 @@ impl InventoryService {
             &self.db,
             tenant_id,
             super::public_channel::PublicChannelInventoryVariantProjectionInput {
-                variant_id: variant.id,
+                variant_id: variant.id(),
                 inventory_policy: &variant.inventory_policy,
             },
             requested_quantity,
@@ -468,7 +468,7 @@ impl InventoryService {
             {
                 self.available_quantity(&txn, inventory_item.id).await?
             } else {
-                variant.inventory_quantity
+                0
             };
             txn.commit().await?;
             return Ok(InventoryReservationWriteResult::from_quantities(
@@ -605,7 +605,7 @@ impl InventoryService {
             {
                 self.available_quantity(&txn, inventory_item.id).await?
             } else {
-                variant.inventory_quantity
+                0
             };
             txn.commit().await?;
             return Ok(InventoryReservationReleaseWriteResult::from_quantities(

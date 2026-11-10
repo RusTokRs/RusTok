@@ -64,6 +64,7 @@ pub(super) async fn load_with_budget<C: ConnectionTrait>(
     if info.product_id.is_nil() {
         return Err(E::StateUnverified);
     }
+    let parent = info.product_id;
     let items = inventory_item::Entity::find()
         .select_only()
         .column(inventory_item::Column::Id)

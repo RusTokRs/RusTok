@@ -857,7 +857,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         Ok(InventoryIdentityReservationReleaseSnapshot {
             reservation_id: reservation.id,
             external_id: request.external_id,
-            variant_id: variant.id,
+            variant_id: variant.id(),
             location_id: reservation.location_id,
             released_quantity,
             available_quantity,
@@ -905,7 +905,7 @@ where
 {
     crate::product_port::get_variant_info_from_conn(conn, tenant_id, variant_id)
         .await
-        .map_err(|error| {
+        .inspect_err(|error| {
             if error.kind == PortErrorKind::NotFound {
                 let facts = InventoryOwnerErrorFacts::uuid("variant_not_found", variant_id);
                 log_inventory_port_failure(
@@ -916,7 +916,6 @@ where
                     false,
                 );
             }
-            error
         })
 }
 

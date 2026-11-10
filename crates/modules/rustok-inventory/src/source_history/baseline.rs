@@ -3,7 +3,7 @@ use rustok_api::PortContext;
 use rustok_core::resilience::with_timeout;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    QueryFilter, Set, TransactionTrait, sea_query::Expr,
 };
 use std::time::{Duration, Instant};
 use uuid::Uuid;
