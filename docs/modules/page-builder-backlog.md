@@ -137,7 +137,14 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
      - Next.js admin (`apps/next-admin/packages/pages`): Wired deep links to visual editing (`builderUrlForPage`), live storefront viewing / draft mode preview (`storefrontUrlForPage`), and styled status badges.
      - Iframe isolation is strictly retained for authoring (`IsolatedAuthoringCanvas` in `apps/admin`) where CSS isolation and viewport resizing are required.
    - All 295 `fly` tests, 11 `rustok-page-builder-storefront` tests, 26 `rustok-pages-storefront` tests, 8 `@rustok/pages-frontend` unit tests, and 4 `@rustok/pages-admin` unit tests passing clean.
-   - Remaining: 3–5 Playwright editor scenarios and executable accessibility evidence run against deployment.
+   - Implemented 5 end-to-end authoring scenarios in `apps/next-admin/tests/e2e/fly-editor-scenarios.spec.ts`:
+     1. Component selection & style rule editing (`upsert_style_rule`) with live overlay positioning.
+     2. Design token lifecycle (`set_theme_token` & `remove_theme_token`).
+     3. Undo & redo transaction chains with revision propagation.
+     4. Optimistic error recovery (403 `FLY_CAPABILITY_DENIED` setting and subsequently clearing `data-fly-browser-problem`).
+     5. Component cut & paste lifecycle (`cut_selection` & `paste_component`).
+     Verified with 100% pass rate in real Chromium / Google Chrome via Playwright. Hardened Next.js admin Edge Runtime middleware (`apps/next-admin/src/i18n/config.ts`) and auto-resolved Chromium/Edge binaries in `apps/next-admin/playwright.config.ts`.
+   - Remaining: executable accessibility evidence run against deployment.
 5. **Performance, second half (P1-6) — DONE (2026-10-15).** Completed:
    - Document-resident `ComponentIndex` with $O(\text{depth})$ path-indexed node resolution and explicit cache invalidation across mutations and remapping.
    - Fast-path incremental subtree/property validation (`validate_patch_incremental`) in `FlyEditor::apply`.

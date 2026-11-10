@@ -96,7 +96,7 @@
       "path": "crates/modules/flex",
       "category": "modules",
       "files": 53,
-      "loc": 17279,
+      "loc": 17299,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -196,7 +196,7 @@
       "path": "crates/modules/rustok-auth",
       "category": "modules",
       "files": 62,
-      "loc": 15026,
+      "loc": 15066,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -206,7 +206,7 @@
       "path": "crates/modules/rustok-auth/admin",
       "category": "modules",
       "files": 21,
-      "loc": 7373,
+      "loc": 7404,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -349,7 +349,7 @@
       "path": "crates/modules/rustok-commerce",
       "category": "modules",
       "files": 323,
-      "loc": 155679,
+      "loc": 155694,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -429,7 +429,7 @@
       "path": "crates/modules/rustok-distribution",
       "category": "modules",
       "files": 40,
-      "loc": 16360,
+      "loc": 16364,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -468,8 +468,8 @@
       "name": "rustok-forum",
       "path": "crates/modules/rustok-forum",
       "category": "modules",
-      "files": 612,
-      "loc": 180514,
+      "files": 614,
+      "loc": 181014,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -528,8 +528,8 @@
       "name": "rustok-groups",
       "path": "crates/modules/rustok-groups",
       "category": "modules",
-      "files": 116,
-      "loc": 43764,
+      "files": 117,
+      "loc": 34525,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -539,7 +539,7 @@
       "path": "crates/modules/rustok-groups/admin",
       "category": "modules",
       "files": 35,
-      "loc": 9144,
+      "loc": 9142,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -608,8 +608,8 @@
       "name": "rustok-inventory",
       "path": "crates/modules/rustok-inventory",
       "category": "modules",
-      "files": 65,
-      "loc": 22039,
+      "files": 66,
+      "loc": 22218,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -729,7 +729,7 @@
       "path": "crates/modules/rustok-media",
       "category": "modules",
       "files": 48,
-      "loc": 14286,
+      "loc": 14287,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -779,7 +779,7 @@
       "path": "crates/modules/rustok-modules",
       "category": "modules",
       "files": 284,
-      "loc": 158871,
+      "loc": 159027,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -899,7 +899,7 @@
       "path": "crates/modules/rustok-page-builder",
       "category": "modules",
       "files": 123,
-      "loc": 38467,
+      "loc": 39760,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -909,7 +909,7 @@
       "path": "crates/modules/rustok-page-builder/admin",
       "category": "modules",
       "files": 67,
-      "loc": 21124,
+      "loc": 22326,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -918,8 +918,8 @@
       "name": "rustok-pages",
       "path": "crates/modules/rustok-pages",
       "category": "modules",
-      "files": 204,
-      "loc": 59718,
+      "files": 205,
+      "loc": 60760,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -929,7 +929,7 @@
       "path": "crates/modules/rustok-pages/admin",
       "category": "modules",
       "files": 28,
-      "loc": 9341,
+      "loc": 9748,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -998,8 +998,8 @@
       "name": "rustok-product",
       "path": "crates/modules/rustok-product",
       "category": "modules",
-      "files": 238,
-      "loc": 102193,
+      "files": 240,
+      "loc": 102317,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1049,7 +1049,7 @@
       "path": "crates/modules/rustok-product-catalog-service",
       "category": "modules",
       "files": 2,
-      "loc": 535,
+      "loc": 544,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1079,7 +1079,7 @@
       "path": "crates/modules/rustok-product-transport",
       "category": "modules",
       "files": 9,
-      "loc": 2111,
+      "loc": 3261,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1189,7 +1189,7 @@
       "path": "crates/modules/rustok-search",
       "category": "modules",
       "files": 94,
-      "loc": 35041,
+      "loc": 35047,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1259,7 +1259,7 @@
       "path": "crates/modules/rustok-taxonomy",
       "category": "modules",
       "files": 55,
-      "loc": 15141,
+      "loc": 15143,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1289,7 +1289,7 @@
       "path": "crates/modules/rustok-translation",
       "category": "modules",
       "files": 86,
-      "loc": 46676,
+      "loc": 46706,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1329,7 +1329,7 @@
       "path": "crates/ui/fly",
       "category": "ui",
       "files": 117,
-      "loc": 44615,
+      "loc": 45535,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1339,7 +1339,7 @@
       "path": "crates/ui/leptos-auth",
       "category": "ui",
       "files": 11,
-      "loc": 1970,
+      "loc": 1984,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1379,7 +1379,7 @@
       "path": "crates/ui/rustok-ui-auth",
       "category": "ui",
       "files": 2,
-      "loc": 158,
+      "loc": 180,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1519,7 +1519,7 @@
       "path": "crates/utils/rustok-installer",
       "category": "utils",
       "files": 12,
-      "loc": 4940,
+      "loc": 5264,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1539,7 +1539,7 @@
       "path": "crates/utils/rustok-installer-persistence",
       "category": "utils",
       "files": 10,
-      "loc": 2098,
+      "loc": 2267,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1549,7 +1549,7 @@
       "path": "crates/utils/rustok-migrations",
       "category": "utils",
       "files": 66,
-      "loc": 15856,
+      "loc": 15995,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1769,7 +1769,7 @@
       "path": "apps/admin",
       "category": "apps",
       "files": 102,
-      "loc": 24736,
+      "loc": 24752,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1778,8 +1778,8 @@
       "name": "next-admin",
       "path": "apps/next-admin",
       "category": "apps",
-      "files": 576,
-      "loc": 93116,
+      "files": 577,
+      "loc": 93716,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1899,7 +1899,7 @@
       "path": "apps/next-frontend",
       "category": "apps",
       "files": 191,
-      "loc": 28848,
+      "loc": 28708,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -1950,7 +1950,7 @@
       "path": "apps/server",
       "category": "apps",
       "files": 498,
-      "loc": 207690,
+      "loc": 207960,
       "completed": false,
       "completed_at": null,
       "notes": "",
@@ -2091,7 +2091,7 @@
       "path": "crates/ui/fly/dioxus",
       "category": "ui",
       "files": 3,
-      "loc": 462,
+      "loc": 739,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2111,7 +2111,7 @@
       "path": "crates/ui/fly/ui",
       "category": "ui",
       "files": 23,
-      "loc": 6407,
+      "loc": 6426,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2391,7 +2391,7 @@
       "path": "apps/next-frontend/packages/rustok-pages",
       "category": "apps",
       "files": 8,
-      "loc": 816,
+      "loc": 676,
       "completed": false,
       "completed_at": null,
       "notes": ""
@@ -2662,6 +2662,16 @@
       "category": "apps",
       "files": 3,
       "loc": 56,
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
+    },
+    "crates/utils/rustok-doctor": {
+      "name": "rustok-doctor",
+      "path": "crates/utils/rustok-doctor",
+      "category": "utils",
+      "files": 10,
+      "loc": 2543,
       "completed": false,
       "completed_at": null,
       "notes": ""
