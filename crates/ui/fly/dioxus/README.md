@@ -2,7 +2,7 @@
 
 For full public interface and component definitions, see [CRATE_API.md](CRATE_API.md).
 
-> **Status (2026-10-14): parked.** This adapter is frozen at the current parity snapshot (workspace with contribution access, SSR intent dispatch incl. theme intents, host-resolved messages). All editor development proceeds on the Leptos adapter until stabilization; Dioxus parity resumes afterwards in one pass.
+> **Status (2026-11-10): active parity snapshot.** The Dioxus adapter provides modular panels (`FlyContributionSummary`, `FlyPalette`, `FlyLayerTree`, `FlyThemeTokens`, `FlyThemeTokenEditor`, `FlyCanvasPreview`) and `FlyEditorWorkspace` with complete SSR intent and local command execution, design token mutation, contribution filtering, and typed error callbacks matching the `fly-leptos` workspace contract.
 
 
 `fly-dioxus` is the Dioxus 0.7 component adapter foundation for Fly visual editors.

@@ -998,6 +998,27 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         Ok(())
     }
 
+    /// Reads the tenant's explicit enablement intent. Missing and inherited
+    /// intent both return `None`; this read does not fence concurrent writes.
+    pub async fn tenant_override_enabled(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+    ) -> Result<Option<bool>, ModuleLifecycleDbWriterError> {
+        if tenant_id.is_nil() || !is_valid_module_slug(module_slug) {
+            return Err(ModuleLifecycleDbWriterError::Lifecycle(
+                ModuleLifecycleExecutionError::InvalidCommandIdentity,
+            ));
+        }
+        self.require_module_definition(module_slug)?;
+        Ok(
+            TenantModuleStateStore::read(&self.db, tenant_id, module_slug)
+                .await
+                .map_err(|error| ModuleLifecycleDbWriterError::Database(error.to_string()))?
+                .and_then(|state| state.enabled),
+        )
+    }
+
     /// Returns the static lifecycle revision without materializing an override
     /// row for inherited/default state. Artifact installations expose their
     /// separate tenant-lifecycle snapshot through the installation owner.

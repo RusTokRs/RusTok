@@ -14,7 +14,10 @@
 mod editor;
 
 use dioxus::prelude::*;
-pub use editor::FlyEditorWorkspace;
+pub use editor::{
+    FlyCanvasPreview, FlyContributionSummary, FlyEditorWorkspace, FlyLayerTree, FlyPalette,
+    FlyThemeTokenEditor, FlyThemeTokens,
+};
 pub use fly_web::{
     AuthenticatedInlineEditGrant, AuthenticatedInlineEditRequest, AutoScrollDelta,
     AutoScrollPolicy, BrowserDropTarget, BrowserHitTarget, BrowserPoint, BrowserRect,

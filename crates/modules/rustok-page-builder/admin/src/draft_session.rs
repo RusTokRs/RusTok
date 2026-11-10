@@ -1407,7 +1407,7 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
         } else {
             None
         };
-        if let Some(persistent_record) = persistent_record {
+        if let Some(persistent_record) = persistent_record.as_ref() {
             if persistent_record.controller.page_id() != controller.page_id() {
                 return Err(SsrDraftSessionError::PageMismatch {
                     expected: persistent_record.controller.page_id().to_string(),
@@ -1429,11 +1429,11 @@ impl SsrDraftSessionStore for DurableSsrDraftSessionStore {
                 .unwrap_or(true);
             if is_stale {
                 self.memory.insert_snapshot(SsrDraftSessionSnapshot {
-                    token: persistent_record.token,
+                    token: persistent_record.token.clone(),
                     generation: persistent_record.generation,
-                    controller: persistent_record.controller,
-                    runtime_context: persistent_record.runtime_context,
-                    owner: persistent_record.owner,
+                    controller: persistent_record.controller.clone(),
+                    runtime_context: persistent_record.runtime_context.clone(),
+                    owner: persistent_record.owner.clone(),
                 })?;
             }
         }

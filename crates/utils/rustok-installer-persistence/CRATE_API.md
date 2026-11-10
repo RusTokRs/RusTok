@@ -6,6 +6,8 @@
 - **Zero Host Leakage:** SeaORM entities, migration execution, and database schema mappings remain strictly contained within this crate. Neither `apps/server` nor `rustok-installer-cli` maintain private installer database models.
 - **Contract Fulfillment:** Implements neutral ports defined by `rustok-installer`:
   - `InstallDatabasePort`, `InstallSchemaPort`, `InstallBootstrapPort`, `InstallPersistencePort`, `InstallSeedPort`, `InstallAdminPort`, `InstallVerificationPort`, `InstallDeploymentPort`.
+- **Migration composition:** Explicitly enables the `rustok-migrations`
+  `composition` feature required by its owner-schema and remaining-schema ports.
 - **Atomic Bootstrap & Provisioning:** Unifies user creation and RBAC assignment in single-transaction primitives (`AuthUserBootstrapDbWriter`, `RbacRoleAssignmentDbWriter`) to prevent orphaned administrator identities upon role binding failures.
 - **Decoupled DTOs:** Public consumer surfaces expose clean data transfer objects such as `InstallStepReceiptItem` and `InstallSessionRecord` instead of raw, mutable SeaORM active models.
 
@@ -54,6 +56,11 @@
 - **TTL Clamping:** Lock acquisition TTL is bounded below by 1 second (`ttl.max(Duration::seconds(1))`).
 - **Postgres Database Provisioning Validation:** URL scheme verification (`postgres` / `postgresql`), non-empty database names, non-empty usernames, and strict SQL identifier quoting (`quote_ident`, `quote_literal`).
 - **Production Environment Seed Guard:** Rejects `SeedProfile::Dev` when `plan.environment.is_production()`.
+- **Seed lifecycle replay:** The deterministic tenant/module/direction/actor key
+  reuses the owner journal's original revision. Missing historical revision,
+  conflicting command identity, and a later observed change to the requested
+  intent fail explicitly; the final intent read does not lock out later writes.
+  Seed toggles still require host composition of static settings schemas.
 
 ---
 

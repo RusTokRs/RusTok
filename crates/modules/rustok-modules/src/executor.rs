@@ -1371,6 +1371,13 @@ mod tests {
                 .unwrap(),
             None
         );
+        assert_eq!(
+            writer
+                .tenant_override_enabled(tenant_id, "optional_test")
+                .await
+                .unwrap(),
+            None
+        );
         let enabled = execute_module_toggle(&database, &dispatcher, None, enable.clone())
             .await
             .unwrap();
@@ -1380,6 +1387,13 @@ mod tests {
                 .await
                 .unwrap(),
             Some(0)
+        );
+        assert_eq!(
+            writer
+                .tenant_override_enabled(tenant_id, "optional_test")
+                .await
+                .unwrap(),
+            Some(true)
         );
         assert!(matches!(
             writer
@@ -1399,6 +1413,32 @@ mod tests {
                 ModuleLifecycleExecutionError::IdempotencyConflict
             ))
         ));
+        let operation_id = enabled.operation_id.unwrap();
+        let changed = database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_operations SET expected_revision = NULL WHERE id = ?1",
+                vec![operation_id.into()],
+            ))
+            .await
+            .unwrap();
+        assert_eq!(changed.rows_affected(), 1);
+        assert!(matches!(
+            writer
+                .original_toggle_revision(tenant_id, "optional_test", true, &enable.context)
+                .await,
+            Err(crate::ModuleLifecycleDbWriterError::Lifecycle(
+                ModuleLifecycleExecutionError::Persistence(_)
+            ))
+        ));
+        database
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE module_operations SET expected_revision = 0 WHERE id = ?1",
+                vec![operation_id.into()],
+            ))
+            .await
+            .unwrap();
         let replay = execute_module_toggle(&database, &dispatcher, None, enable)
             .await
             .unwrap();

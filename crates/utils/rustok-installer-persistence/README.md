@@ -17,6 +17,9 @@ the schema created by `rustok-migrations`.
 - Compose tenant, identity, RBAC, and module lifecycle writers for typed seed
   profiles and administrator provisioning without duplicating them in HTTP or
   CLI hosts.
+- Replay seed module toggles with the original owner-journal revision and reject
+  a replay when the currently observed enablement intent has changed. Static
+  settings schema composition for these toggles remains outstanding.
 - Provide a complete standalone SeaORM apply adapter that verifies the tenant,
   administrator, and effective module set from the installer seed defaults and
   persisted tenant overrides.

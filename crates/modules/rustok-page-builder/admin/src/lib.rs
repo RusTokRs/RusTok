@@ -694,8 +694,8 @@ mod tests {
         assert!(!controller.ui().state.dirty.dirty);
     }
 }
-;
 }
+
 mod palette_access;
 pub mod provider_status;
 pub mod publish_scenario_selection;

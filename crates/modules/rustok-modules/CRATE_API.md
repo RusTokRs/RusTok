@@ -91,6 +91,14 @@ and makes injected clock/ID/event-writer infrastructure request-dependent.
   exact existing journal entry before rejecting a new enable whose schema could
   not be resolved. The host must not treat an unknown or missing schema as an
   empty one. This does not establish release-bound schema provenance.
+- `ModuleLifecycleDbWriter::original_toggle_revision` retrieves the original
+  revision for an exact tenant, module, direction, actor and idempotency key.
+  Missing receipts return `None`; mismatched or revisionless receipts fail closed.
+  Callers must still handle concurrent admission and validate any current-state
+  guarantees they require after replay.
+- `ModuleLifecycleDbWriter::tenant_override_enabled` reads explicit tenant
+  intent through the owner. Missing and inherited intent return `None`; the read
+  is not a fence against concurrent writes.
 - Post-hook recovery requires the original hook settings digest and rejects
   changed settings or historical operations without evidence. Recovery replay
   identity binds the exact source operation. Successful retry and original

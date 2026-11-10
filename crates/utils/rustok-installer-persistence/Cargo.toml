@@ -18,7 +18,7 @@ async-trait.workspace = true
 rustok-core.workspace = true
 rustok-auth.workspace = true
 rustok-installer.workspace = true
-rustok-migrations.workspace = true
+rustok-migrations = { workspace = true, features = ["composition"] }
 rustok-modules.workspace = true
 rustok-rbac.workspace = true
 rustok-tenant.workspace = true

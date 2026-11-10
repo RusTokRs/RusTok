@@ -107,11 +107,12 @@ lookup, so failures in that earlier work can still prevent a lifecycle replay.
 The host co-requisite loader also substitutes an empty set when a package
 manifest is missing; release-owned policy evidence is needed before that
 effective-policy projection can be considered safe in those images.
-Installer seed toggles still need schema composition. They also reconstruct the
-current aggregate revision while reusing a deterministic idempotency key, so
-repeating an already committed seed toggle conflicts with the original recorded
-revision. Seed replay needs durable original command identity; deriving a new
-revision for the same key is unsafe. Dated claims below that describe this guard as delivered do not
+Installer seed toggles still need schema composition. Their deterministic replay
+now recovers the original command revision from the owner journal, handles a
+concurrent same-key admission, and checks that the persisted enablement intent
+still matches after replay. A missing historic revision or changed intent fails
+closed. This post-replay read is not a fence against subsequent writes.
+Dated claims below that describe the schema guard as delivered do not
 establish those guarantees. Completion requires immutable schema evidence in
 the build and release, a rollout-owned transactional fence shared by all static
 settings and lifecycle writers, installer schema composition, and

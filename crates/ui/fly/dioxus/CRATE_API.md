@@ -9,7 +9,13 @@ SSR and Web/Desktop Dioxus 0.7 adapter foundation and component shells for Fly v
 - `FlyInlineEditor`: Container shell for contextual inline page-editing sessions.
 - `FlyPreview`: Responsive live canvas preview container.
 - `FlyReadOnly`: Non-editable presentation container.
-- `FlyEditorWorkspace`: Composite workspace component binding palette, layer tree, canvas preview, design-token editor, and undo/redo history.
+- `FlyEditorWorkspace`: Composite workspace component binding palette, layer tree, canvas preview, design-token editor, and undo/redo history with typed `on_error` and `on_intent` support.
+- `FlyContributionSummary`: Summary badge rendering loaded block, dynamic slot, and extension counts with accessible status semantics.
+- `FlyPalette`: Category-grouped block palette honoring `EditorCapabilities` (insert permissions) and `ContributionAccess` filtering.
+- `FlyLayerTree`: Interactive layer hierarchy tree with selection highlighting and navigation.
+- `FlyThemeTokens`: Read-only design token listing displaying token keys and resolved values.
+- `FlyThemeTokenEditor`: Interactive design token management panel supporting upsert, remove, and error dispatch.
+- `FlyCanvasPreview`: Responsive live canvas preview container rendering the active page AST into styled HTML with error fallback.
 
 ### Re-exported Web Runtime & Geometry
 - Re-exports core types from `fly-web`: `BrowserPoint`, `BrowserRect`, `CoordinateTransform`, `BrowserDropTarget`, `BrowserHitTarget`, `IframeBridgeEnvelope`, `CleanupRegistry`, `PointerSample`, `DropZonePolicy`, `AutoScrollPolicy`, etc.

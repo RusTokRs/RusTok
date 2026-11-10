@@ -77,7 +77,5 @@ if (JSON.stringify(contract.profiles) !== JSON.stringify(["full", "read_only"]))
 if (contract.fixture_requirements?.minimum_page_count < 2) {
   throw new Error("generic accessibility browser fixture must retain at least two pages");
 }
-, marker, `accessibility actualization missing ${marker}`);
-}
 
 console.log("Page Builder generic accessibility browser evidence harness source: ok");

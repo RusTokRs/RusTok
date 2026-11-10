@@ -586,3 +586,31 @@ transaction.commit().await?;
 Detection: `rg -n 'begin\(\)|replay_receipt|reserve_command' crates/modules/rustok-groups/src`.
 Review ordering in the actual compiled module graph; source markers do not prove
 runtime admission or replay. Keep parallel same-key DB tests beside sequential replay.
+
+## P-REPLAY-PRECONDITION — Preserve the original command revision
+
+- **Category:** Idempotency and optimistic concurrency.
+- **Logic dimensions:** State transitions and order/concurrency.
+- **Observed defect:** Installer seed toggles reused a deterministic command key
+  while reading the current aggregate revision again. After the first successful
+  toggle the new revision changed the command fingerprint, so a retry conflicted
+  with its own receipt. Blindly accepting the old receipt can also conceal a later
+  opposite toggle.
+- **Canonical solution:** Recover the immutable revision from the owner's exact
+  receipt and verify all command identity fields; fail when historical evidence
+  is absent. Handle a same-key admission racing the initial lookup. If the caller
+  promises current state, check that state after replay and describe its locking
+  limits instead of treating historical success as proof of present state.
+
+```rust
+let original = owner.original_toggle_revision(tenant, slug, enabled, &context).await?;
+let revision = match original {
+    Some(revision) => revision,
+    None => owner.static_lifecycle_snapshot(tenant, slug).await?.revision,
+};
+// Submit with the original identity and revision; reconcile a concurrent admission.
+```
+
+Detection: `rg -n 'idempotency_key|expected_revision' crates/modules crates/utils`;
+trace retries through the owning journal and test both repeated commands and a
+later opposing transition.

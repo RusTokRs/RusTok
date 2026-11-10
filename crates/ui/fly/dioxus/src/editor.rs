@@ -76,7 +76,10 @@ pub fn FlyPalette(
     let can_insert = capabilities.map(|s| s.edit).unwrap_or(true);
     let mut groups = std::collections::BTreeMap::<String, Vec<PaletteBlockItem>>::new();
     for block in blocks {
-        groups.entry(block.category.clone()).or_default().push(block);
+        groups
+            .entry(block.category.clone())
+            .or_default()
+            .push(block);
     }
 
     rsx! {
@@ -365,15 +368,19 @@ pub fn FlyEditorWorkspace(
                                 handler.call(BrowserIntentEnvelope::undo(&instance));
                                 return;
                             }
-                            match editor.write().undo() {
-                                Ok(_) => {
+                            let result = {
+                                let mut ed = editor.write();
+                                ed.undo().cloned().map_err(|e| e.to_string())
+                            };
+                            match result {
+                                Ok(doc) => {
                                     if let Some(handler) = on_change {
-                                        handler.call(editor.read().document().clone());
+                                        handler.call(doc);
                                     }
                                 }
                                 Err(err) => {
                                     if let Some(handler) = on_error {
-                                        handler.call(err.to_string());
+                                        handler.call(err);
                                     }
                                 }
                             }
@@ -391,15 +398,19 @@ pub fn FlyEditorWorkspace(
                                 handler.call(BrowserIntentEnvelope::redo(&instance));
                                 return;
                             }
-                            match editor.write().redo() {
-                                Ok(_) => {
+                            let result = {
+                                let mut ed = editor.write();
+                                ed.redo().cloned().map_err(|e| e.to_string())
+                            };
+                            match result {
+                                Ok(doc) => {
                                     if let Some(handler) = on_change {
-                                        handler.call(editor.read().document().clone());
+                                        handler.call(doc);
                                     }
                                 }
                                 Err(err) => {
                                     if let Some(handler) = on_error {
-                                        handler.call(err.to_string());
+                                        handler.call(err);
                                     }
                                 }
                             }
@@ -435,19 +446,25 @@ pub fn FlyEditorWorkspace(
                                 .get(block_id.as_str())
                                 .map(|definition| definition.component.clone());
                             if let Some(component) = template {
-                                match editor.write().apply(fly::EditorCommand::Insert {
-                                    parent_id: None,
-                                    index: usize::MAX,
-                                    component,
-                                }) {
-                                    Ok(_) => {
+                                let result = {
+                                    let mut ed = editor.write();
+                                    ed.apply(fly::EditorCommand::Insert {
+                                        parent_id: None,
+                                        index: usize::MAX,
+                                        component,
+                                    })
+                                    .map(|_| ed.document().clone())
+                                    .map_err(|e| e.to_string())
+                                };
+                                match result {
+                                    Ok(doc) => {
                                         if let Some(handler) = on_change {
-                                            handler.call(editor.read().document().clone());
+                                            handler.call(doc);
                                         }
                                     }
                                     Err(err) => {
                                         if let Some(handler) = on_error {
-                                            handler.call(err.to_string());
+                                            handler.call(err);
                                         }
                                     }
                                 }
@@ -466,19 +483,25 @@ pub fn FlyEditorWorkspace(
                                 handler.call(BrowserIntentEnvelope::set_theme_token(&instance, &name, &value));
                                 return;
                             }
-                            match editor.write().apply(EditorCommand::Theme {
-                                command: ThemeCommand::Upsert {
-                                    token: DesignToken { name, value },
-                                },
-                            }) {
-                                Ok(_) => {
+                            let result = {
+                                let mut ed = editor.write();
+                                ed.apply(EditorCommand::Theme {
+                                    command: ThemeCommand::Upsert {
+                                        token: DesignToken { name, value },
+                                    },
+                                })
+                                .map(|_| ed.document().clone())
+                                .map_err(|e| e.to_string())
+                            };
+                            match result {
+                                Ok(doc) => {
                                     if let Some(handler) = on_change {
-                                        handler.call(editor.read().document().clone());
+                                        handler.call(doc);
                                     }
                                 }
                                 Err(err) => {
                                     if let Some(handler) = on_error {
-                                        handler.call(err.to_string());
+                                        handler.call(err);
                                     }
                                 }
                             }
@@ -491,17 +514,23 @@ pub fn FlyEditorWorkspace(
                                 handler.call(BrowserIntentEnvelope::remove_theme_token(&instance, &name));
                                 return;
                             }
-                            match editor.write().apply(EditorCommand::Theme {
-                                command: ThemeCommand::Remove { name },
-                            }) {
-                                Ok(_) => {
+                            let result = {
+                                let mut ed = editor.write();
+                                ed.apply(EditorCommand::Theme {
+                                    command: ThemeCommand::Remove { name },
+                                })
+                                .map(|_| ed.document().clone())
+                                .map_err(|e| e.to_string())
+                            };
+                            match result {
+                                Ok(doc) => {
                                     if let Some(handler) = on_change {
-                                        handler.call(editor.read().document().clone());
+                                        handler.call(doc);
                                     }
                                 }
                                 Err(err) => {
                                     if let Some(handler) = on_error {
-                                        handler.call(err.to_string());
+                                        handler.call(err);
                                     }
                                 }
                             }
@@ -527,15 +556,17 @@ pub fn FlyEditorWorkspace(
                                 handler.call(BrowserIntentEnvelope::select(&instance, next.as_deref()));
                                 return;
                             }
-                            match editor.write().apply(fly::EditorCommand::Select {
-                                component_id: next,
-                            }) {
-                                Ok(_) => {}
-                                Err(err) => {
-                                    if let Some(handler) = on_error {
-                                        handler.call(err.to_string());
-                                    }
-                                }
+                            let result = {
+                                let mut ed = editor.write();
+                                ed.apply(fly::EditorCommand::Select {
+                                    component_id: next,
+                                })
+                                .map_err(|e| e.to_string())
+                            };
+                            if let Err(err) = result
+                                && let Some(handler) = on_error
+                            {
+                                handler.call(err);
                             }
                         }
                     },

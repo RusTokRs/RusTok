@@ -11,7 +11,7 @@ use rustok_installer::{
 };
 use rustok_modules::{
     ModuleCommandContext, ModuleControlPlane, ModuleLifecycleDbWriterError,
-    ModuleLifecycleExecutionError, ModuleLifecycleToggleCommand, TenantModuleStateStore,
+    ModuleLifecycleExecutionError, ModuleLifecycleToggleCommand,
 };
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_tenant::{
@@ -577,10 +577,11 @@ impl SeedModulePort for SeaOrmInstallerBootstrapPorts<'_> {
         } else {
             result.map_err(seed_error)?;
         }
-        let current = TenantModuleStateStore::read(&self.db, tenant_id, module_slug)
+        let current = lifecycle
+            .tenant_override_enabled(tenant_id, module_slug)
             .await
             .map_err(seed_error)?;
-        if current.as_ref().and_then(|state| state.enabled) != Some(enabled) {
+        if current != Some(enabled) {
             return Err(SeedExecutionError::Dependency(format!(
                 "seed module `{module_slug}` no longer has the requested enablement intent"
             )));

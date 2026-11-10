@@ -156,7 +156,7 @@ requireMarkers('flyUiTests', [
   'restricted_capabilities_survive_presentation_round_trip',
   'specialized_commands_cannot_bypass_disabled_capabilities',
   'batch_commands_require_every_specialized_capability_before_dispatch',
-  'reviewer_profile_can_publish_but_cannot_mutate',
+  'author_profiles_save_drafts_and_publish_only_reviewers_do_not',
 ], 'state-machine regressions');
 
 requireMarkers('host', [
@@ -246,10 +246,10 @@ requireMarkers('pageBuilderLib', [
 ], 'Page Builder capability exports');
 
 requireMarkers('pagesAccess', [
-  'pub fn pages_editor_permissions_for_role(',
-  'Some("super_admin") | Some("admin")',
-  'Some("manager")',
-  'Some("customer") | None | Some(_)',
+  'pub fn pages_editor_permissions_from_effective(permissions: &[String]) -> CapabilityState',
+  'pub fn effective_permissions_grant(effective: &[String], required: &str) -> bool',
+  'pages:update',
+  'pages:publish',
   'pub fn pages_editor_provider_state(',
 ], 'Pages auth and provider policy');
 requireMarkers('pagesComposition', [
@@ -280,7 +280,7 @@ requireMarkers('pagesLib', [
 
 requireMarkers('adminMain', [
   'leptos_auth::transport::fetch_current_user(',
-  'pages_editor_capability_policy_for_role(Some(',
+  'pages_editor_capability_policy_from_effective(&verified_user.permissions)',
   'PagesBrowserIntentProblem',
   'let problem = PagesBrowserIntentProblem::from(&error);',
   'StatusCode::from_u16(problem.status)',
