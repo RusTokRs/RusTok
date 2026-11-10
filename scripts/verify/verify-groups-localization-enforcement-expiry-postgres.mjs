@@ -4,6 +4,9 @@ const testPath = "apps/server/tests/groups_localization_enforcement_expiry_postg
 const docsPath = "crates/modules/rustok-groups/docs/localization-enforcement-expiry-postgres-contract.md";
 const test = fs.readFileSync(testPath, "utf8");
 const docs = fs.readFileSync(docsPath, "utf8");
+const registry = JSON.parse(fs.readFileSync(
+  "crates/modules/rustok-groups/contracts/groups-fba-registry.json", "utf8",
+));
 
 function requireText(source, marker, message) {
   if (!source.includes(marker)) throw new Error(message);
@@ -55,10 +58,15 @@ for (const marker of [
   "groups.membership_suspended",
   "no cleanup mutation",
   "membership revision must remain unchanged since suspension",
-  "localization_transport_parity",
-  "localization_concurrency",
 ]) {
   requireText(docs, marker, `Groups PostgreSQL localization expiry handoff is missing ${marker}`);
+}
+
+// Runtime readiness belongs to the registry, not incidental field names in prose.
+for (const field of ["localization_transport_parity", "localization_concurrency"]) {
+  if (registry.evidence?.[field] !== null) {
+    throw new Error(`Unexecuted Groups ${field} evidence must remain explicitly null`);
+  }
 }
 
 console.log("Groups localization PostgreSQL suspension/expiry source guard passed");

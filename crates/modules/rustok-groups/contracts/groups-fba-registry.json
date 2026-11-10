@@ -184,7 +184,7 @@
         "transactional_membership": true,
         "transactional_group_version": true,
         "serialized_group_row": "exclusive_lock_where_supported",
-        "serialized_application_row": "existing_application_before_group_where_supported",
+        "serialized_application_row": "group_before_application_where_supported",
         "first_submission_application_recheck": "after_group_lock_before_state_write"
       },
       {
@@ -214,7 +214,7 @@
         "transactional_group_version": true,
         "serialized_application_row": "exclusive_lock_where_supported",
         "serialized_group_row": "exclusive_lock_where_supported",
-        "lock_order": "application_then_group",
+        "lock_order": "group_then_application",
         "reopen_status_disclosure": "after_manager_authorization"
       },
       {
@@ -233,7 +233,7 @@
         "transactional_group_version": true,
         "serialized_application_row": "exclusive_lock_where_supported",
         "serialized_group_row": "exclusive_lock_where_supported",
-        "lock_order": "application_then_group"
+        "lock_order": "group_then_application"
       },
       {
         "name": "GroupApplicationBulkReviewCommandPort",

@@ -52,22 +52,37 @@ requireMarkers("crates/modules/rustok-groups/src/migrations/m20260721_000004_cre
 ]);
 requireMarkers("crates/modules/rustok-groups/src/invitations.rs", [
   "GroupInvitationReadPort",
+  "order_by_desc(invitation::Column::Id)",
   "GroupInvitationCommandPort",
-  "Sha256::digest(token.as_bytes())",
-  "stored_result.token = None",
-  "replayed.token = None",
+  "crate::domain::sha256_hex(token.as_bytes())",
   "lock_exclusive()",
-  "redemption::ActiveModel",
   "append_audit",
   "store_receipt",
   "PortCallPolicy::read()",
   "PortCallPolicy::write()",
 ]);
-forbidMarkers("crates/modules/rustok-groups/src/invitations.rs", [
-  "token: Set(",
-  "token_hash: Set(token.to_string())",
-  '"token": token',
+requireMarkers("crates/modules/rustok-groups/src/invitations_transactional.rs", [
+  "stored_result.token = None",
+  "replayed.token = None",
+  "token_hash: Set(token_hash)",
+  "redemption::ActiveModel",
+  "crate::commands::reserve_command",
 ]);
+requireMarkers("crates/modules/rustok-groups/src/domain.rs", [
+  "pub(crate) fn sha256_hex",
+  "Sha256::digest(bytes)",
+]);
+requireMarkers("crates/modules/rustok-groups/src/invitations.rs", [
+  '#[path = "invitations_transactional.rs"]',
+  "mod transactional;",
+]);
+for (const owner of ["invitations.rs", "invitations_transactional.rs"]) {
+  forbidMarkers(`crates/modules/rustok-groups/src/${owner}`, [
+    "token: Set(",
+    "token_hash: Set(token.to_string())",
+    '\"token\": token',
+  ]);
+}
 
 requireMarkers("crates/modules/rustok-groups/src/graphql_invitations.rs", [
   "group_invitations",

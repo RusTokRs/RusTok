@@ -1,6 +1,8 @@
 use std::time::Duration;
 
-use async_graphql::{Context, Enum, FieldError, InputObject, Json, Object, Result, SimpleObject};
+use async_graphql::{
+    Context, Enum, ErrorExtensions, FieldError, InputObject, Json, Object, Result, SimpleObject,
+};
 use rustok_api::graphql::GraphQLError;
 use rustok_api::request::RequestContext;
 use rustok_api::{
@@ -551,6 +553,12 @@ fn port_context(
 }
 
 fn map_port_error(error: PortError) -> FieldError {
+    if error.code == "groups.application_required" {
+        return FieldError::new(error.message).extend_with(|_, extensions| {
+            extensions.set("code", "groups.application_required");
+            extensions.set("kind", "CONFLICT");
+        });
+    }
     match error.kind {
         PortErrorKind::Validation | PortErrorKind::Conflict => {
             <FieldError as GraphQLError>::bad_user_input(&error.message)

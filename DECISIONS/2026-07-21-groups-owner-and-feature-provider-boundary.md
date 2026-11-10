@@ -103,3 +103,59 @@ Logical typed context references and ports are used instead.
 Rejected because host applications are composition roots, not domain or UI
 owners. Manifest-driven contributions preserve modularity and independent
 transports.
+### Membership command consistency (2026-11-10)
+
+All Groups commands admit the tenant-scoped idempotency key before reading mutable
+owner state. PostgreSQL uses a transaction advisory lock derived from tenant and
+key; SQLite obtains its writer reservation before any snapshot read. Receipts,
+state, aggregate version, and audit commit together. This includes core commands,
+not only invitation/application/governance commands. Admission precedes aggregate
+and child locks; reads never acquire command admission locks.
+
+Request-policy groups admit candidates only through application submission;
+`join_group` returns `groups.application_required` rather than creating an orphan
+pending membership. An approved application may be resubmitted only after its
+membership has left. Invitation activation completes any pending application in
+the same transaction. Leaving cancels a pending application. Application snapshots
+remain stable during each attempt; resubmission replaces the current attempt as
+for rejected/cancelled applications, while audit retains transition provenance.
+A separate immutable multi-attempt archive is not introduced by this change.
+
+Public membership rosters contain only stored lifecycle-active members. Managers
+may read the management roster. Exact membership reads require self, authorized
+access-service claims, or effective local management; secret subjects are not
+revealed through an unrestricted membership lookup. Aggregate version advances
+for every actual membership lifecycle mutation, independently of active count.
+
+### Stored revision and counter bounds (2026-11-10 follow-up)
+
+Stored aggregate/policy revisions are positive signed 64-bit values. An actual
+mutation must advance its revision; neither saturation at the storage limit nor
+clamping invalid values into a valid CAS token is permitted. At exhaustion or
+invalid stored revision, the owner returns an invariant error and commits no
+mutation, audit, or success receipt. Member-count increments similarly reject
+negative counts and signed-storage overflow. Invitation redemption must advance
+its use count within its configured maximum. Existing successful receipts still
+replay before these checks against current state.
+
+Revision projections follow the same invariant: invalid stored values are never
+clamped into a public CAS token. Current policy corruption is an invariant error
+even if the supplied precondition is absent or mismatches; ordinary policy-changed
+conflicts describe only valid stored policy state.
+
+Activation through core join of a stored invited membership also settles a pending
+application atomically. Audit provenance distinguishes direct join from invitation
+redemption. After admission, successful receipt replay precedes mutable subject
+lookup/locking; a replay is not conditional on the subject's current existence.
+
+### Visibility and admission policy are independent (2026-11-10)
+
+`Closed` restricts content/roster visibility to effective members, but does not
+implicitly require a membership application. Both public and closed groups with
+`Open` admission allow direct join. With `Request`, both require application
+submission; with `InviteOnly`, both require an invitation. Secret groups still
+require invitation authority regardless of the stored admission policy. Existing
+invited membership activation is preserved. This resolves the former closed/open
+combination that returned application-required while rejecting applications under
+its non-request policy. Joining does not bypass effective suspension/ban checks,
+and closed content remains redacted before successful admission.

@@ -80,10 +80,16 @@ requireMarkers("crates/modules/rustok-groups/src/policy_history.rs", [
   "GroupApplicationPolicyHistoryReadPort",
   "GroupApplicationPolicyHistoryService",
   "list_group_application_policy_revisions",
-  "GroupApplicationReadPort::list_group_membership_applications",
+  "require_effective_manager_direct_owned",
+    "GroupManagerCapability::Moderate",
   "PortCallPolicy::read()",
   "order_by_desc(membership_policy_revision::Column::Revision)",
 ]);
+forbidMarkers("crates/modules/rustok-groups/src/policy_history.rs", [
+  "GroupApplicationReadPort::list_group_membership_applications",
+  "ListGroupMembershipApplicationsRequest",
+]);
+
 requireMarkers("crates/modules/rustok-groups/src/applications_cas.rs", [
   "GroupApplicationCasCommandPort",
   "GROUP_APPLICATION_POLICY_CHANGED_CODE",
@@ -125,8 +131,19 @@ requireMarkers("crates/modules/rustok-groups/src/lib.rs", [
   "pub mod graphql_application_policy_management;",
   "pub mod graphql_application_cas;",
   "pub mod policy_history;",
-  "pub use policy_history::*;",
-  "assert_eq!(module.migrations().len(), 7)",
+  "pub use policy_history::{",
+  "GroupApplicationPolicyHistoryReadPort, GroupApplicationPolicyHistoryService,",
+  "GroupApplicationPolicyRevision, GroupApplicationPolicyRevisionConnection,",
+  "ListGroupApplicationPolicyRevisionsRequest,",
+]);
+
+requireMarkers("crates/modules/rustok-groups/src/module.rs", [
+  "impl MigrationSource for GroupsModule",
+  "migrations::migrations()",
+  "assert_eq!(module.migrations().len(), 9)",
+]);
+requireMarkers("crates/modules/rustok-groups/src/policy_history.rs", [
+  "crate::domain::stored_revision(model.revision)?",
 ]);
 
 requireMarkers("crates/modules/rustok-groups/admin/src/application_core.rs", [
@@ -281,13 +298,12 @@ if (requireFile("crates/modules/rustok-groups/contracts/groups-fba-registry.json
 }
 
 requireMarkers("crates/modules/rustok-groups/docs/implementation-plan.md", [
-  "group_membership_policy_revisions",
-  "visual policy editor",
+  "append-only policy revisions",
+  "## GROUPS-06 membership-application contract",
   "GroupApplicationPolicyManagementReadPort",
   "GroupApplicationCasCommandPort",
   "groups.application_policy_changed",
   "legacy unconditional",
-  "verify-groups-membership-policy-revisions.mjs",
   "verify-groups-application-policy-locales.mjs",
 ]);
 

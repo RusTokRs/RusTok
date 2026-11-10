@@ -220,3 +220,81 @@ adapter are source-complete, but runtime evidence and remaining provider/owner p
 - [Moderation membership adapter guard](../../../scripts/verify/verify-groups-moderation-subject-adapter.mjs)
 - [Effective membership access guard](../../../scripts/verify/verify-groups-effective-membership-access.mjs)
 - [Effective invitation/application guard](../../../scripts/verify/verify-groups-effective-membership-invitations-applications.mjs)
+
+## Known Limitations / Pending Implementation
+
+The 2026-11-10 owner consistency changes add durable core/localization command
+receipts, tenant/key admission before mutable reads, application settlement during
+invitation/leave, approved-candidate resubmission after leaving, restricted exact
+membership reads, active-only public rosters, and database-side directory filtering.
+The current application row represents the current attempt. Resubmission replaces
+its snapshot as for rejected/cancelled attempts; a separate immutable multi-attempt
+archive is not implemented. Audit records preserve lifecycle transition provenance,
+not a complete archive of every historical answer payload.
+
+`tests/command_lifecycle.rs` covers the public owner boundary using production
+migrations. Rust compilation and those tests have not been executed in the current
+sandbox because Cargo is absent. PostgreSQL contention, independent-connection
+SQLite execution, transport execution and client/browser parity still require
+runtime verification. Existing FFA/FBA/provider readiness gates remain open.
+
+
+The privacy/finalization follow-up checks secret visibility before lifecycle and
+join-policy disclosure, reserves SQLite writers before exact subject locator reads,
+and propagates Moderation rollback/receipt-finalization failures instead of
+silencing them. Corresponding regression tests are added but unexecuted; the
+previous source-verifier results are not runtime evidence for this follow-up.
+
+Aggregate and application-policy revisions now use checked, positive increments
+across mutation owners. Member-count overflow and invalid invitation use-count
+advancement abort the owner transaction rather than silently saturating. Boundary
+and atomic join/retry regression tests are included but have not been executed.
+
+Policy revisions are validated on reads and CAS comparison as well as writes;
+invalid stored revisions are no longer clamped to a seemingly valid revision 1.
+
+
+The invitation, targeted-delivery and Moderation adapter source verifiers follow
+the canonical module graph and runtime factory registrations. Their source checks
+remain distinct from unexecuted Rust behavior and integration tests.
+
+
+All 50 Groups source-verifier scripts pass after canonical module/evidence-check
+reconciliation. This is source-level evidence only: Rust compilation, database
+behavior, concurrency and native/GraphQL runtime parity remain unverified here.
+
+Policy history uses direct effective-manager authorization rather than querying
+and decoding an unrelated candidate application. This preserves the manager-only
+boundary without coupling history availability to application payload integrity.
+
+Application and invitation management pagination uses descending ID tie-breakers
+after submission/creation time. This stabilizes equal-time ordering for unchanged
+data; it does not make offset pages snapshot-consistent under concurrent writes.
+
+Manager command lifecycle errors follow effective authorization for invitation
+creation, policy upsert, review and reopen. Candidate visibility and committed
+receipt replay preserve their separate ordering contracts.
+
+Review requires pending state on both application and linked membership; stale
+left/invited membership states cannot be rewritten by an approval or rejection.
+
+Closed visibility is independent of admission policy: Closed/Open allows direct
+join while withholding private content before entry. Closed/Request uses an
+application; Secret and InviteOnly retain invitation requirements.
+
+Application write owners invoke existing raw DTO validators before normalization
+and database work, including compatibility/CAS entrypoints and both review ports.
+
+Lifecycle and invitation subject-ID validation is enforced in transactional owner
+methods, including public facade calls that bypass private port wrappers.
+
+### Review hardening: projections and delegated failures
+
+Summary reads reject negative stored member counts rather than clamping them. Invitation
+projections validate the schema's use bounds (including targeted single-use invitations)
+before deriving status, including expired/revoked records. Token and targeted acceptance reuse
+that owner validation before membership/redemption mutations: acceptance cannot silently repair
+negative use counts or admit an out-of-range use limit. Wrong-target/unavailable invitation
+redaction and receipt-first replay remain unchanged. Delegated unavailable/timeout
+port failures preserve their original kind, code and retryability through the owner adapter;
+they must not become client validation errors. Added regression coverage remains unexecuted.

@@ -3,6 +3,10 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum GroupsError {
+    #[error("group delegated port failed: {0}")]
+    Delegated(PortError),
+    #[error("a membership application is required")]
+    ApplicationRequired,
     #[error("group validation failed: {0}")]
     Validation(String),
     #[error("group was not found")]
@@ -50,6 +54,11 @@ impl From<sea_orm::DbErr> for GroupsError {
 impl From<GroupsError> for PortError {
     fn from(value: GroupsError) -> Self {
         match value {
+            GroupsError::Delegated(error) => error,
+            GroupsError::ApplicationRequired => PortError::conflict(
+                "groups.application_required",
+                "submit a membership application to join this group",
+            ),
             GroupsError::Validation(message) => PortError::validation("groups.validation", message),
             GroupsError::NotFound => {
                 PortError::not_found("groups.not_found", "group was not found")
@@ -118,7 +127,31 @@ impl From<PortError> for GroupsError {
             PortErrorKind::Conflict => Self::Conflict(value.message),
             PortErrorKind::Forbidden => Self::Forbidden(value.message),
             PortErrorKind::InvariantViolation => Self::Invariant(value.message),
-            _ => Self::Validation(value.message),
+            PortErrorKind::Unavailable | PortErrorKind::Timeout => Self::Delegated(value),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn delegated_operational_failures_preserve_kind_code_and_retryability() {
+        for kind in [PortErrorKind::Unavailable, PortErrorKind::Timeout] {
+            for retryable in [false, true] {
+                let original = PortError::new(
+                    kind.clone(),
+                    "groups.delegate_failed",
+                    "delegate failed",
+                    retryable,
+                );
+                let result = PortError::from(GroupsError::from(original.clone()));
+                assert_eq!(result.kind, original.kind);
+                assert_eq!(result.code, original.code);
+                assert_eq!(result.message, original.message);
+                assert_eq!(result.retryable, original.retryable);
+            }
         }
     }
 }

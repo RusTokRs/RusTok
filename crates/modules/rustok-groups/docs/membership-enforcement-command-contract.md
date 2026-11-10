@@ -9,22 +9,27 @@ Status: **source-ready / maintainer execution pending**
 - `suspend_membership`;
 - `revoke_membership_suspension`.
 
-Both commands are user-actor operations. The later neutral Moderation adapter does **not** impersonate this port. It will perform trusted producer receipt/subject/scope validation and then reuse the same crate-private Groups owner mutation functions.
+Both commands are user-actor operations. The neutral Moderation adapter does **not** impersonate this port. It performs trusted producer receipt/subject/scope validation and reuses the same crate-private Groups owner mutation functions.
 
 ## Lock and replay order
 
 The direct command uses one owner transaction and preserves the GROUPS-07 lock protocol:
 
-1. lock/reserve the group row;
+1. reserve tenant/key command admission before any owner reads;
 2. replay an identical `group_command_receipts` result, or reject a changed request/actor/group using the same idempotency key;
-3. lock actor/target memberships in deterministic UUID order when local authority is required;
-4. lock their enforcement rows in deterministic membership-ID order;
-5. evaluate effective actor authority with the Groups owner clock;
-6. compare the exact expected target membership revision;
-7. mutate the Groups enforcement projection;
-8. bump group version, append audit + semantic event, store the command receipt, and commit together.
+3. locate and lock/reserve the group row;
+4. lock actor/target memberships in deterministic UUID order when local authority is required;
+5. lock their enforcement rows in deterministic membership-ID order;
+6. evaluate effective actor authority with the Groups owner clock;
+7. compare the exact expected target membership revision;
+8. mutate the Groups enforcement projection;
+9. bump group version, append audit + semantic event, store the command receipt, and commit together.
 
-SQLite obtains writer serialization through the no-op group update already used by the effective Groups lock protocol. PostgreSQL/MySQL use row locks. The source does not introduce invitation/application locks and therefore does not invert their established ordering.
+PostgreSQL command admission uses a transaction advisory lock; SQLite reserves its
+writer through the shared empty receipt UPDATE before opening an owner snapshot.
+The subsequent group reservation and membership/enforcement locks retain canonical
+aggregate order. Command admission supports PostgreSQL and SQLite; historical
+MySQL branches in row-lock helpers do not imply MySQL command support.
 
 ## Hierarchy and owner protection
 
@@ -96,18 +101,22 @@ The SQLite migration rebuild preserves existing sequence/event IDs and reinstall
 
 ## Moderation adapter seam
 
-The owner mutations retain bounded provenance fields for the later neutral adapter:
+The owner mutations retain bounded provenance fields used by the neutral adapter:
 
 - `source_kind=moderation_decision`;
 - immutable Moderation decision UUID/hash;
 - trusted service/system actor identity;
 - no copied Moderation report/case/queue/policy data.
 
-The adapter remains a separate next slice because it requires `rustok-moderation-api` plus producer receipt integration. This command PR creates the owner seam first, as required by the canonical Groups plan.
+The source-complete adapter consumes neutral contracts exported by
+`rustok-moderation` and shared `rustok-outbox` producer receipts. Runtime/replay/race
+evidence remains pending; the adapter does not access Moderation owner persistence.
+See [the canonical implementation plan](implementation-plan.md) for current evidence.
 
 ## Verification
 
-Intentionally not run while preparing this source slice:
+Rust compilation and behavioral tests remain deferred to the maintainer. The Node
+source guard has been run; source presence is not runtime evidence. Scoped commands:
 
 ```bash
 cargo check -p rustok-groups

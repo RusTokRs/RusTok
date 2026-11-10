@@ -124,7 +124,13 @@ impl ModerationSubjectCommandPort for GroupsModerationSubjectAdapter {
         if let Err(error) = &result
             && !error.retryable
         {
-            let _ = idempotency::fail(&self.db, lease, error).await;
+            if let Err(failure) = idempotency::fail(&self.db, lease, error).await {
+                return Err(finalization_error(
+                    error,
+                    "receipt failure persistence",
+                    &failure.to_string(),
+                ));
+            }
         }
         result
     }
@@ -141,7 +147,7 @@ impl GroupsModerationSubjectAdapter {
         command: &ApplyModerationDecisionCommand,
     ) -> Result<ModerationDecisionApplication, PortError> {
         let transaction = self.db.begin().await.map_err(database_error)?;
-        let result = apply_inside_transaction(
+        let result = match apply_inside_transaction(
             &transaction,
             tenant_id,
             group_id,
@@ -149,19 +155,38 @@ impl GroupsModerationSubjectAdapter {
             context,
             command,
         )
-        .await;
+        .await
+        {
+            Ok(application) => idempotency::complete(&transaction, lease, &application)
+                .await
+                .map(|()| application),
+            Err(error) => Err(error),
+        };
         match result {
             Ok(application) => {
-                idempotency::complete(&transaction, lease, &application).await?;
                 transaction.commit().await.map_err(database_error)?;
                 Ok(application)
             }
-            Err(error) => {
-                let _ = transaction.rollback().await;
-                Err(error)
-            }
+            Err(error) => match transaction.rollback().await {
+                Ok(()) => Err(error),
+                Err(failure) => Err(finalization_error(
+                    &error,
+                    "transaction rollback",
+                    &failure.to_string(),
+                )),
+            },
         }
     }
+}
+
+fn finalization_error(original: &PortError, stage: &str, failure: &str) -> PortError {
+    PortError::unavailable(
+        "groups.moderation_finalization_failed",
+        format!(
+            "{stage} failed: {failure}; original error [{}]: {}",
+            original.code, original.message
+        ),
+    )
 }
 
 async fn apply_inside_transaction(
@@ -396,6 +421,20 @@ mod tests {
             })
             .expect("valid effect"),
             decision_hash: "a".repeat(64),
+        }
+    }
+
+    #[test]
+    fn finalization_failure_preserves_original_error_and_requires_retry() {
+        let original = PortError::forbidden("groups.membership_protected", "protected subject");
+        for stage in ["transaction rollback", "receipt failure persistence"] {
+            let result = finalization_error(&original, stage, "database unavailable");
+            assert_eq!(result.code, "groups.moderation_finalization_failed");
+            assert!(result.retryable);
+            assert!(result.message.contains(stage));
+            assert!(result.message.contains("database unavailable"));
+            assert!(result.message.contains(&original.code));
+            assert!(result.message.contains(&original.message));
         }
     }
 

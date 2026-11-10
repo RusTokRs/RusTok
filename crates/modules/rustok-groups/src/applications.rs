@@ -1,5 +1,3 @@
-use sea_orm::ConnectionTrait;
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
@@ -7,8 +5,9 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError, normalize_locale_tag};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction,
+    DbBackend, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
@@ -349,370 +348,6 @@ impl GroupApplicationService {
         load_policy_for_locale(&self.db, tenant_id, request.group_id, &context.locale).await
     }
 
-    async fn upsert_policy_owned(
-        &self,
-        context: &PortContext,
-        mut request: UpsertGroupApplicationPolicyRequest,
-    ) -> GroupsResult<UpsertGroupApplicationPolicyResult> {
-        require_write(context)?;
-        request.validate()?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_user_id = actor_user_id(context)?;
-        request.locale = normalize_locale_tag(&request.locale).ok_or_else(|| {
-            GroupsError::Validation("invalid application policy locale".to_string())
-        })?;
-        normalize_policy(&mut request.questions, &mut request.rules)?;
-        let idempotency_key = idempotency_key(context)?;
-        let request_hash = request_hash(&request)?;
-        let transaction = self.db.begin().await?;
-
-        if let Some(mut replayed) = replay_receipt::<UpsertGroupApplicationPolicyResult>(
-            &transaction,
-            tenant_id,
-            actor_user_id,
-            &idempotency_key,
-            UPSERT_POLICY_COMMAND,
-            &request_hash,
-        )
-        .await?
-        {
-            replayed.replayed = true;
-            transaction.commit().await?;
-            return Ok(replayed);
-        }
-
-        let group_model = find_group_for_update(&transaction, tenant_id, request.group_id).await?;
-        require_active_group(&group_model)?;
-        authorize_policy_management(
-            &transaction,
-            context,
-            tenant_id,
-            request.group_id,
-            actor_user_id,
-        )
-        .await?;
-
-        let now = Utc::now();
-        let existing_policy = membership_policy::Entity::find()
-            .filter(membership_policy::Column::TenantId.eq(tenant_id))
-            .filter(membership_policy::Column::GroupId.eq(request.group_id))
-            .one(&transaction)
-            .await?;
-        let created = existing_policy.is_none();
-        let policy_model = if let Some(existing) = existing_policy {
-            let next_revision = existing.revision.saturating_add(1).max(1);
-            let mut active: membership_policy::ActiveModel = existing.into();
-            active.revision = Set(next_revision);
-            active.enabled = Set(request.enabled);
-            active.updated_by_user_id = Set(actor_user_id);
-            active.updated_at = Set(now.fixed_offset());
-            active.update(&transaction).await?
-        } else {
-            membership_policy::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant_id),
-                group_id: Set(request.group_id),
-                revision: Set(1),
-                enabled: Set(request.enabled),
-                created_by_user_id: Set(actor_user_id),
-                updated_by_user_id: Set(actor_user_id),
-                created_at: Set(now.fixed_offset()),
-                updated_at: Set(now.fixed_offset()),
-            }
-            .insert(&transaction)
-            .await?
-        };
-
-        let existing_translation = membership_policy_translation::Entity::find()
-            .filter(membership_policy_translation::Column::TenantId.eq(tenant_id))
-            .filter(membership_policy_translation::Column::PolicyId.eq(policy_model.id))
-            .filter(membership_policy_translation::Column::Locale.eq(request.locale.clone()))
-            .one(&transaction)
-            .await?;
-        let questions_value = serde_json::to_value(&request.questions).map_err(|error| {
-            GroupsError::Invariant(format!(
-                "application questions are not serializable: {error}"
-            ))
-        })?;
-        let rules_value = serde_json::to_value(&request.rules).map_err(|error| {
-            GroupsError::Invariant(format!("application rules are not serializable: {error}"))
-        })?;
-        if let Some(existing) = existing_translation {
-            let mut active: membership_policy_translation::ActiveModel = existing.into();
-            active.questions = Set(questions_value);
-            active.rules = Set(rules_value);
-            active.updated_at = Set(now.fixed_offset());
-            active.update(&transaction).await?;
-        } else {
-            membership_policy_translation::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant_id),
-                policy_id: Set(policy_model.id),
-                locale: Set(request.locale.clone()),
-                questions: Set(questions_value),
-                rules: Set(rules_value),
-                created_at: Set(now.fixed_offset()),
-                updated_at: Set(now.fixed_offset()),
-            }
-            .insert(&transaction)
-            .await?;
-        }
-
-        let group_version = increment_group_version(&transaction, group_model, now).await?;
-        let result = UpsertGroupApplicationPolicyResult {
-            policy: GroupApplicationPolicy {
-                id: policy_model.id,
-                group_id: request.group_id,
-                revision: policy_model.revision.max(1) as u64,
-                enabled: policy_model.enabled,
-                locale: request.locale,
-                questions: request.questions,
-                rules: request.rules,
-            },
-            group_version,
-            created,
-            replayed: false,
-        };
-        append_audit(
-            &transaction,
-            context,
-            tenant_id,
-            request.group_id,
-            actor_user_id,
-            "group.membership_application_policy_upserted",
-            None,
-            json!({
-                "policy_id": result.policy.id,
-                "policy_revision": result.policy.revision,
-                "locale": result.policy.locale,
-                "enabled": result.policy.enabled,
-                "question_count": result.policy.questions.len(),
-                "rule_count": result.policy.rules.len(),
-                "group_version": group_version
-            }),
-        )
-        .await?;
-        store_receipt(
-            &transaction,
-            tenant_id,
-            request.group_id,
-            actor_user_id,
-            idempotency_key,
-            UPSERT_POLICY_COMMAND,
-            request_hash,
-            &result,
-        )
-        .await?;
-        transaction.commit().await?;
-        Ok(result)
-    }
-
-    async fn submit_application_owned(
-        &self,
-        context: &PortContext,
-        mut request: SubmitGroupMembershipApplicationRequest,
-    ) -> GroupsResult<SubmitGroupMembershipApplicationResult> {
-        require_write(context)?;
-        request.validate()?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_user_id = actor_user_id(context)?;
-        normalize_application_submission(&mut request)?;
-        let idempotency_key = idempotency_key(context)?;
-        let request_hash = request_hash(&request)?;
-        let transaction = self.db.begin().await?;
-
-        if let Some(mut replayed) = replay_receipt::<SubmitGroupMembershipApplicationResult>(
-            &transaction,
-            tenant_id,
-            actor_user_id,
-            &idempotency_key,
-            SUBMIT_APPLICATION_COMMAND,
-            &request_hash,
-        )
-        .await?
-        {
-            replayed.replayed = true;
-            transaction.commit().await?;
-            return Ok(replayed);
-        }
-
-        let group_model = find_group_for_update(&transaction, tenant_id, request.group_id).await?;
-        require_application_group(&group_model)?;
-        let policy =
-            load_policy_for_locale(&transaction, tenant_id, request.group_id, &context.locale)
-                .await?;
-        if !policy.enabled {
-            return Err(GroupsError::Conflict(
-                "group membership applications are disabled".to_string(),
-            ));
-        }
-        validate_submission(&policy, &request)?;
-
-        let existing_membership = membership::Entity::find()
-            .filter(membership::Column::TenantId.eq(tenant_id))
-            .filter(membership::Column::GroupId.eq(request.group_id))
-            .filter(membership::Column::UserId.eq(actor_user_id))
-            .one(&transaction)
-            .await?;
-        if existing_membership
-            .as_ref()
-            .is_some_and(|row| row.status == GroupMembershipStatus::Banned.as_str())
-        {
-            return Err(GroupsError::Forbidden(
-                "group membership is banned".to_string(),
-            ));
-        }
-        if existing_membership
-            .as_ref()
-            .is_some_and(|row| row.status == GroupMembershipStatus::Active.as_str())
-        {
-            return Err(GroupsError::Conflict(
-                "user is already an active group member".to_string(),
-            ));
-        }
-
-        let existing_application = membership_application::Entity::find()
-            .filter(membership_application::Column::TenantId.eq(tenant_id))
-            .filter(membership_application::Column::GroupId.eq(request.group_id))
-            .filter(membership_application::Column::UserId.eq(actor_user_id))
-            .one(&transaction)
-            .await?;
-        if existing_application
-            .as_ref()
-            .is_some_and(|row| row.status == GroupApplicationStatus::Pending.as_str())
-        {
-            return Err(GroupsError::Conflict(
-                "a membership application is already pending".to_string(),
-            ));
-        }
-        if existing_application
-            .as_ref()
-            .is_some_and(|row| row.status == GroupApplicationStatus::Approved.as_str())
-        {
-            return Err(GroupsError::Conflict(
-                "membership application is already approved".to_string(),
-            ));
-        }
-
-        let now = Utc::now();
-        let membership_model = if let Some(existing) = existing_membership {
-            let mut active: membership::ActiveModel = existing.into();
-            active.role = Set(GroupRole::Member.as_str().to_string());
-            active.status = Set(GroupMembershipStatus::Pending.as_str().to_string());
-            active.joined_at = Set(None);
-            active.left_at = Set(None);
-            active.updated_at = Set(now.fixed_offset());
-            active.update(&transaction).await?
-        } else {
-            membership::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant_id),
-                group_id: Set(request.group_id),
-                user_id: Set(actor_user_id),
-                role: Set(GroupRole::Member.as_str().to_string()),
-                status: Set(GroupMembershipStatus::Pending.as_str().to_string()),
-                invited_by_user_id: Set(None),
-                joined_at: Set(None),
-                left_at: Set(None),
-                metadata: Set(json!({})),
-                created_at: Set(now.fixed_offset()),
-                updated_at: Set(now.fixed_offset()),
-            }
-            .insert(&transaction)
-            .await?
-        };
-
-        let policy_snapshot = json!({
-            "questions": policy.questions,
-            "rules": policy.rules
-        });
-        let answers_value = serde_json::to_value(&request.answers).map_err(|error| {
-            GroupsError::Invariant(format!("application answers are not serializable: {error}"))
-        })?;
-        let acknowledged_value =
-            serde_json::to_value(&request.acknowledged_rule_keys).map_err(|error| {
-                GroupsError::Invariant(format!(
-                    "application acknowledgements are not serializable: {error}"
-                ))
-            })?;
-        let application_model = if let Some(existing) = existing_application {
-            let mut active: membership_application::ActiveModel = existing.into();
-            active.policy_id = Set(policy.id);
-            active.policy_revision = Set(policy.revision as i64);
-            active.policy_locale = Set(policy.locale.clone());
-            active.policy_snapshot = Set(policy_snapshot);
-            active.answers = Set(answers_value);
-            active.acknowledged_rule_keys = Set(acknowledged_value);
-            active.status = Set(GroupApplicationStatus::Pending.as_str().to_string());
-            active.submitted_at = Set(now.fixed_offset());
-            active.reviewed_at = Set(None);
-            active.reviewed_by_user_id = Set(None);
-            active.review_note = Set(None);
-            active.updated_at = Set(now.fixed_offset());
-            active.update(&transaction).await?
-        } else {
-            membership_application::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant_id),
-                group_id: Set(request.group_id),
-                user_id: Set(actor_user_id),
-                policy_id: Set(policy.id),
-                policy_revision: Set(policy.revision as i64),
-                policy_locale: Set(policy.locale.clone()),
-                policy_snapshot: Set(policy_snapshot),
-                answers: Set(answers_value),
-                acknowledged_rule_keys: Set(acknowledged_value),
-                status: Set(GroupApplicationStatus::Pending.as_str().to_string()),
-                submitted_at: Set(now.fixed_offset()),
-                reviewed_at: Set(None),
-                reviewed_by_user_id: Set(None),
-                review_note: Set(None),
-                created_at: Set(now.fixed_offset()),
-                updated_at: Set(now.fixed_offset()),
-            }
-            .insert(&transaction)
-            .await?
-        };
-
-        let group_version = increment_group_version(&transaction, group_model, now).await?;
-        let result = SubmitGroupMembershipApplicationResult {
-            application: map_application(application_model)?,
-            membership: map_membership(membership_model)?,
-            group_version,
-            replayed: false,
-        };
-        append_audit(
-            &transaction,
-            context,
-            tenant_id,
-            request.group_id,
-            actor_user_id,
-            "group.membership_application_submitted",
-            Some(actor_user_id),
-            json!({
-                "application_id": result.application.id,
-                "policy_id": result.application.policy_id,
-                "policy_revision": result.application.policy_revision,
-                "policy_locale": result.application.policy_locale,
-                "group_version": group_version
-            }),
-        )
-        .await?;
-        store_receipt(
-            &transaction,
-            tenant_id,
-            request.group_id,
-            actor_user_id,
-            idempotency_key,
-            SUBMIT_APPLICATION_COMMAND,
-            request_hash,
-            &result,
-        )
-        .await?;
-        transaction.commit().await?;
-        Ok(result)
-    }
-
     async fn list_applications_owned(
         &self,
         context: &PortContext,
@@ -740,6 +375,7 @@ impl GroupApplicationService {
         }
         let paginator = query
             .order_by_desc(membership_application::Column::SubmittedAt)
+            .order_by_desc(membership_application::Column::Id)
             .paginate(&self.db, per_page);
         let total = paginator.num_items().await?;
         let items = paginator
@@ -754,140 +390,6 @@ impl GroupApplicationService {
             page,
             per_page,
         })
-    }
-
-    async fn review_application_owned(
-        &self,
-        context: &PortContext,
-        mut request: ReviewGroupMembershipApplicationRequest,
-    ) -> GroupsResult<ReviewGroupMembershipApplicationResult> {
-        require_write(context)?;
-        request.validate()?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_user_id = actor_user_id(context)?;
-        request.note = normalize_optional_note(request.note)?;
-        let idempotency_key = idempotency_key(context)?;
-        let request_hash = request_hash(&request)?;
-        let transaction = self.db.begin().await?;
-
-        if let Some(mut replayed) = replay_receipt::<ReviewGroupMembershipApplicationResult>(
-            &transaction,
-            tenant_id,
-            actor_user_id,
-            &idempotency_key,
-            REVIEW_APPLICATION_COMMAND,
-            &request_hash,
-        )
-        .await?
-        {
-            replayed.replayed = true;
-            transaction.commit().await?;
-            return Ok(replayed);
-        }
-
-        let application_model =
-            find_application_for_update(&transaction, tenant_id, request.application_id).await?;
-        if application_model.status != GroupApplicationStatus::Pending.as_str() {
-            return Err(GroupsError::Conflict(
-                "membership application is no longer pending".to_string(),
-            ));
-        }
-        let group_model =
-            find_group_for_update(&transaction, tenant_id, application_model.group_id).await?;
-        require_active_group(&group_model)?;
-        authorize_application_review(
-            &transaction,
-            context,
-            tenant_id,
-            application_model.group_id,
-            actor_user_id,
-        )
-        .await?;
-        let membership_model = membership::Entity::find()
-            .filter(membership::Column::TenantId.eq(tenant_id))
-            .filter(membership::Column::GroupId.eq(application_model.group_id))
-            .filter(membership::Column::UserId.eq(application_model.user_id))
-            .one(&transaction)
-            .await?
-            .ok_or_else(|| {
-                GroupsError::Invariant("pending application membership is missing".to_string())
-            })?;
-        if membership_model.status == GroupMembershipStatus::Banned.as_str() {
-            return Err(GroupsError::Forbidden(
-                "group membership is banned".to_string(),
-            ));
-        }
-
-        let now = Utc::now();
-        let approved = request.decision == GroupApplicationReviewDecision::Approve;
-        let mut membership_active: membership::ActiveModel = membership_model.into();
-        membership_active.role = Set(GroupRole::Member.as_str().to_string());
-        membership_active.status = Set(if approved {
-            GroupMembershipStatus::Active.as_str().to_string()
-        } else {
-            GroupMembershipStatus::Left.as_str().to_string()
-        });
-        membership_active.joined_at = Set(approved.then_some(now.fixed_offset()));
-        membership_active.left_at = Set((!approved).then_some(now.fixed_offset()));
-        membership_active.updated_at = Set(now.fixed_offset());
-        let membership_model = membership_active.update(&transaction).await?;
-
-        let mut application_active: membership_application::ActiveModel = application_model.into();
-        application_active.status = Set(if approved {
-            GroupApplicationStatus::Approved.as_str().to_string()
-        } else {
-            GroupApplicationStatus::Rejected.as_str().to_string()
-        });
-        application_active.reviewed_at = Set(Some(now.fixed_offset()));
-        application_active.reviewed_by_user_id = Set(Some(actor_user_id));
-        application_active.review_note = Set(request.note.clone());
-        application_active.updated_at = Set(now.fixed_offset());
-        let application_model = application_active.update(&transaction).await?;
-
-        let group_version = if approved {
-            increment_group_membership_version(&transaction, group_model, now).await?
-        } else {
-            increment_group_version(&transaction, group_model, now).await?
-        };
-        let result = ReviewGroupMembershipApplicationResult {
-            application: map_application(application_model)?,
-            membership: map_membership(membership_model)?,
-            group_version,
-            replayed: false,
-        };
-        append_audit(
-            &transaction,
-            context,
-            tenant_id,
-            result.application.group_id,
-            actor_user_id,
-            if approved {
-                "group.membership_application_approved"
-            } else {
-                "group.membership_application_rejected"
-            },
-            Some(result.application.user_id),
-            json!({
-                "application_id": result.application.id,
-                "decision": if approved { "approve" } else { "reject" },
-                "review_note_present": result.application.review_note.is_some(),
-                "group_version": group_version
-            }),
-        )
-        .await?;
-        store_receipt(
-            &transaction,
-            tenant_id,
-            result.application.group_id,
-            actor_user_id,
-            idempotency_key,
-            REVIEW_APPLICATION_COMMAND,
-            request_hash,
-            &result,
-        )
-        .await?;
-        transaction.commit().await?;
-        Ok(result)
     }
 }
 
@@ -924,7 +426,7 @@ impl GroupApplicationCommandPort for GroupApplicationService {
         request: UpsertGroupApplicationPolicyRequest,
     ) -> Result<UpsertGroupApplicationPolicyResult, PortError> {
         request.validate().map_err(PortError::from)?;
-        self.upsert_policy_owned(&context, request)
+        self.upsert_policy_effective_owned(&context, request)
             .await
             .map_err(Into::into)
     }
@@ -935,7 +437,7 @@ impl GroupApplicationCommandPort for GroupApplicationService {
         request: SubmitGroupMembershipApplicationRequest,
     ) -> Result<SubmitGroupMembershipApplicationResult, PortError> {
         request.validate().map_err(PortError::from)?;
-        self.submit_application_owned(&context, request)
+        self.submit_application_effective_owned(&context, request)
             .await
             .map_err(Into::into)
     }
@@ -946,7 +448,7 @@ impl GroupApplicationCommandPort for GroupApplicationService {
         request: ReviewGroupMembershipApplicationRequest,
     ) -> Result<ReviewGroupMembershipApplicationResult, PortError> {
         request.validate().map_err(PortError::from)?;
-        self.review_application_owned(&context, request)
+        self.review_application_effective_owned(&context, request)
             .await
             .map_err(Into::into)
     }
@@ -992,7 +494,7 @@ async fn load_policy_for_locale<C: sea_orm::ConnectionTrait>(
     Ok(GroupApplicationPolicy {
         id: policy.id,
         group_id,
-        revision: policy.revision.max(1) as u64,
+        revision: crate::domain::stored_revision(policy.revision)?,
         enabled: policy.enabled,
         locale,
         questions,
@@ -1152,7 +654,7 @@ fn map_application(
         group_id: model.group_id,
         user_id: model.user_id,
         policy_id: model.policy_id,
-        policy_revision: model.policy_revision.max(1) as u64,
+        policy_revision: crate::domain::stored_revision(model.policy_revision)?,
         policy_locale: model.policy_locale,
         questions: snapshot.questions,
         rules: snapshot.rules,
@@ -1217,6 +719,16 @@ async fn find_application_for_update(
             .filter(membership_application::Column::TenantId.eq(tenant_id))
             .filter(membership_application::Column::Id.eq(application_id))
     };
+    let locator = query()
+        .one(transaction)
+        .await?
+        .ok_or_else(|| GroupsError::NotFound)?;
+    crate::membership_enforcement_transaction::reserve_group_write_for_update(
+        transaction,
+        tenant_id,
+        locator.group_id,
+    )
+    .await?;
     match transaction.get_database_backend() {
         DbBackend::Sqlite => query().one(transaction).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
@@ -1225,19 +737,25 @@ async fn find_application_for_update(
     .ok_or(GroupsError::NotFound)
 }
 
+fn require_candidate_group(model: &group::Model) -> GroupsResult<()> {
+    // Candidate surfaces must not reveal whether a secret group is archived or accepts requests.
+    // Visibility is checked before lifecycle, join policy, or candidate-specific state.
+    if GroupVisibility::from_str(&model.visibility).map_err(GroupsError::Invariant)?
+        == GroupVisibility::Secret
+    {
+        return Err(GroupsError::NotFound);
+    }
+    require_active_group(model)
+}
+
 fn require_application_group(model: &group::Model) -> GroupsResult<()> {
-    require_active_group(model)?;
+    require_candidate_group(model)?;
     if GroupJoinPolicy::from_str(&model.join_policy).map_err(GroupsError::Invariant)?
         != GroupJoinPolicy::Request
     {
         return Err(GroupsError::Conflict(
             "group does not accept membership applications".to_string(),
         ));
-    }
-    if GroupVisibility::from_str(&model.visibility).map_err(GroupsError::Invariant)?
-        == GroupVisibility::Secret
-    {
-        return Err(GroupsError::NotFound);
     }
     Ok(())
 }
@@ -1334,7 +852,7 @@ async fn increment_group_version(
     group_model: group::Model,
     now: DateTime<Utc>,
 ) -> GroupsResult<u64> {
-    let group_version = group_model.version.saturating_add(1).max(1) as u64;
+    let group_version = crate::domain::next_revision(group_model.version)? as u64;
     let mut active: group::ActiveModel = group_model.into();
     active.version = Set(group_version as i64);
     active.updated_at = Set(now.fixed_offset());
@@ -1347,8 +865,8 @@ async fn increment_group_membership_version(
     group_model: group::Model,
     now: DateTime<Utc>,
 ) -> GroupsResult<u64> {
-    let group_version = group_model.version.saturating_add(1).max(1) as u64;
-    let member_count = group_model.member_count.saturating_add(1);
+    let group_version = crate::domain::next_revision(group_model.version)? as u64;
+    let member_count = crate::domain::increment_member_count(group_model.member_count)?;
     let mut active: group::ActiveModel = group_model.into();
     active.member_count = Set(member_count);
     active.version = Set(group_version as i64);
@@ -1699,1446 +1217,109 @@ mod tests {
         assert!(actor_user_id(&system_actor_ctx).is_err());
     }
 }
-;
-#[async_trait]
-pub trait GroupApplicationReviewCommandPort: Send + Sync {
-    async fn review_group_membership_application(
-        &self,
-        context: PortContext,
-        request: ReviewGroupMembershipApplicationRequest,
-    ) -> Result<ReviewGroupMembershipApplicationResult, PortError>;
+
+#[path = "applications_review.rs"]
+mod review;
+pub use review::GroupApplicationReviewCommandPort;
+#[path = "applications_bulk_review.rs"]
+mod bulk_review;
+pub use bulk_review::{
+    BulkReviewGroupMembershipApplicationItemResult, BulkReviewGroupMembershipApplicationsRequest,
+    BulkReviewGroupMembershipApplicationsResult, GroupApplicationBulkReviewCommandPort,
+};
+#[path = "applications_cas.rs"]
+mod cas;
+pub use cas::{
+    GROUP_APPLICATION_POLICY_CHANGED_CODE, GroupApplicationCasCommandPort,
+    GroupApplicationPolicyPrecondition, SubmitGroupMembershipApplicationIfCurrentRequest,
+    UpsertGroupApplicationPolicyIfCurrentRequest,
+};
+use cas::{
+    SUBMIT_APPLICATION_IF_CURRENT_COMMAND, UPSERT_POLICY_IF_CURRENT_COMMAND,
+    ensure_loaded_policy_precondition, ensure_policy_update_precondition,
+    find_candidate_application_for_update, map_application_cas_error,
+    normalize_policy_precondition,
+};
+#[path = "applications_lifecycle.rs"]
+mod lifecycle;
+use lifecycle::{CANCEL_APPLICATION_COMMAND, REOPEN_APPLICATION_COMMAND};
+pub use lifecycle::{
+    CancelGroupMembershipApplicationRequest, GroupApplicationLifecycleCommandPort,
+    GroupApplicationLifecycleReadPort, GroupApplicationLifecycleResult,
+    ReadMyGroupMembershipApplicationRequest, ReopenGroupMembershipApplicationRequest,
+};
+#[path = "applications_policy_management.rs"]
+mod policy_management;
+pub use policy_management::{
+    GroupApplicationPolicyLocaleCatalog, GroupApplicationPolicyManagementReadPort,
+    GroupApplicationPolicyManagementView, ListGroupApplicationPolicyLocalesRequest,
+    ReadGroupApplicationPolicyForManagementRequest,
+};
+#[path = "applications_transactional.rs"]
+mod transactional;
+#[path = "applications_transactional_cas.rs"]
+mod transactional_cas;
+#[path = "applications_transactional_cas_bridge.rs"]
+mod transactional_cas_bridge;
+pub(crate) use transactional_cas_bridge::map_effective_application_cas_error;
+#[path = "applications_transactional_lifecycle.rs"]
+mod transactional_lifecycle;
+
+pub(crate) enum ApplicationSettlement {
+    Invitation,
+    Join,
+    Leave,
 }
 
-#[async_trait]
-impl GroupApplicationReviewCommandPort for GroupApplicationService {
-    async fn review_group_membership_application(
-        &self,
-        context: PortContext,
-        request: ReviewGroupMembershipApplicationRequest,
-    ) -> Result<ReviewGroupMembershipApplicationResult, PortError> {
-        self.review_application_authorized_owned(&context, request)
-            .await
-            .map_err(Into::into)
-    }
-}
-
-impl GroupApplicationService {
-    async fn review_application_authorized_owned(
-        &self,
-        context: &PortContext,
-        mut request: ReviewGroupMembershipApplicationRequest,
-    ) -> GroupsResult<ReviewGroupMembershipApplicationResult> {
-        require_write(context)?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_user_id = actor_user_id(context)?;
-        request.note = normalize_optional_note(request.note)?;
-        let idempotency_key = idempotency_key(context)?;
-        let request_hash = request_hash(&request)?;
-        let transaction = self.db.begin().await?;
-
-        if let Some(mut replayed) = replay_receipt::<ReviewGroupMembershipApplicationResult>(
-            &transaction,
-            tenant_id,
-            actor_user_id,
-            &idempotency_key,
-            REVIEW_APPLICATION_COMMAND,
-            &request_hash,
-        )
-        .await?
-        {
-            replayed.replayed = true;
-            transaction.commit().await?;
-            return Ok(replayed);
-        }
-
-        let application_model =
-            find_application_for_update(&transaction, tenant_id, request.application_id).await?;
-        let group_model =
-            find_group_for_update(&transaction, tenant_id, application_model.group_id).await?;
-        require_active_group(&group_model)?;
-        authorize_application_review(
-            &transaction,
-            context,
-            tenant_id,
-            application_model.group_id,
-            actor_user_id,
-        )
-        .await?;
-        if application_model.status != GroupApplicationStatus::Pending.as_str() {
-            return Err(GroupsError::Conflict(
-                "membership application is no longer pending".to_string(),
-            ));
-        }
-
-        let membership_model = membership::Entity::find()
-            .filter(membership::Column::TenantId.eq(tenant_id))
-            .filter(membership::Column::GroupId.eq(application_model.group_id))
-            .filter(membership::Column::UserId.eq(application_model.user_id))
-            .one(&transaction)
-            .await?
-            .ok_or_else(|| {
-                GroupsError::Invariant("pending application membership is missing".to_string())
-            })?;
-        if membership_model.status == GroupMembershipStatus::Banned.as_str() {
-            return Err(GroupsError::Forbidden(
-                "group membership is banned".to_string(),
-            ));
-        }
-
-        let now = Utc::now();
-        let approved = request.decision == GroupApplicationReviewDecision::Approve;
-        let mut membership_active: membership::ActiveModel = membership_model.into();
-        membership_active.role = Set(GroupRole::Member.as_str().to_string());
-        membership_active.status = Set(if approved {
-            GroupMembershipStatus::Active.as_str().to_string()
-        } else {
-            GroupMembershipStatus::Left.as_str().to_string()
-        });
-        membership_active.joined_at = Set(approved.then_some(now.fixed_offset()));
-        membership_active.left_at = Set((!approved).then_some(now.fixed_offset()));
-        membership_active.updated_at = Set(now.fixed_offset());
-        let membership_model = membership_active.update(&transaction).await?;
-
-        let mut application_active: membership_application::ActiveModel = application_model.into();
-        application_active.status = Set(if approved {
-            GroupApplicationStatus::Approved.as_str().to_string()
-        } else {
-            GroupApplicationStatus::Rejected.as_str().to_string()
-        });
-        application_active.reviewed_at = Set(Some(now.fixed_offset()));
-        application_active.reviewed_by_user_id = Set(Some(actor_user_id));
-        application_active.review_note = Set(request.note.clone());
-        application_active.updated_at = Set(now.fixed_offset());
-        let application_model = application_active.update(&transaction).await?;
-
-        let group_version = if approved {
-            increment_group_membership_version(&transaction, group_model, now).await?
-        } else {
-            increment_group_version(&transaction, group_model, now).await?
-        };
-        let result = ReviewGroupMembershipApplicationResult {
-            application: map_application(application_model)?,
-            membership: map_membership(membership_model)?,
-            group_version,
-            replayed: false,
-        };
-        append_audit(
-            &transaction,
-            context,
-            tenant_id,
-            result.application.group_id,
-            actor_user_id,
-            if approved {
-                "group.membership_application_approved"
-            } else {
-                "group.membership_application_rejected"
-            },
-            Some(result.application.user_id),
-            json!({
-                "application_id": result.application.id,
-                "decision": if approved { "approve" } else { "reject" },
-                "review_note_present": result.application.review_note.is_some(),
-                "group_version": group_version
-            }),
-        )
-        .await?;
-        store_receipt(
-            &transaction,
-            tenant_id,
-            result.application.group_id,
-            actor_user_id,
-            idempotency_key,
-            REVIEW_APPLICATION_COMMAND,
-            request_hash,
-            &result,
-        )
-        .await?;
-        transaction.commit().await?;
-        Ok(result)
-    }
-}
-;
-const MAX_BULK_REVIEW_ITEMS: usize = 50;
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BulkReviewGroupMembershipApplicationsRequest {
-    pub application_ids: Vec<Uuid>,
-    pub decision: GroupApplicationReviewDecision,
-    pub note: Option<String>,
-    pub confirmed: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BulkReviewGroupMembershipApplicationItemResult {
-    pub application_id: Uuid,
-    pub result: Option<ReviewGroupMembershipApplicationResult>,
-    pub error: Option<PortError>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BulkReviewGroupMembershipApplicationsResult {
-    pub items: Vec<BulkReviewGroupMembershipApplicationItemResult>,
-    pub succeeded: u32,
-    pub failed: u32,
-}
-
-#[async_trait]
-pub trait GroupApplicationBulkReviewCommandPort: Send + Sync {
-    async fn bulk_review_group_membership_applications(
-        &self,
-        context: PortContext,
-        request: BulkReviewGroupMembershipApplicationsRequest,
-    ) -> Result<BulkReviewGroupMembershipApplicationsResult, PortError>;
-}
-
-#[async_trait]
-impl GroupApplicationBulkReviewCommandPort for GroupApplicationService {
-    async fn bulk_review_group_membership_applications(
-        &self,
-        context: PortContext,
-        request: BulkReviewGroupMembershipApplicationsRequest,
-    ) -> Result<BulkReviewGroupMembershipApplicationsResult, PortError> {
-        context.require_policy(PortCallPolicy::write())?;
-        if !request.confirmed {
-            return Err(PortError::validation(
-                "groups.bulk_review_confirmation_required",
-                "bulk membership application review requires explicit confirmation",
-            ));
-        }
-        if request.application_ids.is_empty() {
-            return Err(PortError::validation(
-                "groups.bulk_review_empty",
-                "bulk membership application review requires at least one application",
-            ));
-        }
-        if request.application_ids.len() > MAX_BULK_REVIEW_ITEMS {
-            return Err(PortError::validation(
-                "groups.bulk_review_limit_exceeded",
-                format!(
-                    "bulk membership application review accepts at most {MAX_BULK_REVIEW_ITEMS} applications"
-                ),
-            ));
-        }
-
-        let mut unique_ids = BTreeSet::new();
-        for application_id in &request.application_ids {
-            if !unique_ids.insert(*application_id) {
-                return Err(PortError::validation(
-                    "groups.bulk_review_duplicate_application",
-                    "bulk membership application review contains duplicate application IDs",
-                ));
-            }
-        }
-        let normalized_note = normalize_optional_note(request.note).map_err(PortError::from)?;
-
-        let base_idempotency_key = context
-            .idempotency_key
-            .as_deref()
-            .ok_or_else(|| {
-                PortError::validation(
-                    "port.idempotency_key_required",
-                    "write port calls require a non-empty idempotency key",
-                )
-            })?
-            .to_string();
-        let mut items = Vec::with_capacity(request.application_ids.len());
-        let mut succeeded = 0_u32;
-        let mut failed = 0_u32;
-
-        for application_id in request.application_ids {
-            let item_context = context
-                .clone()
-                .with_causation_id(context.correlation_id.clone())
-                .with_idempotency_key(bulk_review_item_idempotency_key(
-                    &base_idempotency_key,
-                    application_id,
-                ));
-            let item_request = ReviewGroupMembershipApplicationRequest {
-                application_id,
-                decision: request.decision,
-                note: normalized_note.clone(),
-            };
-            match self
-                .review_application_authorized_owned(&item_context, item_request)
-                .await
-            {
-                Ok(result) => {
-                    succeeded = succeeded.saturating_add(1);
-                    items.push(BulkReviewGroupMembershipApplicationItemResult {
-                        application_id,
-                        result: Some(result),
-                        error: None,
-                    });
-                }
-                Err(error) => {
-                    failed = failed.saturating_add(1);
-                    items.push(BulkReviewGroupMembershipApplicationItemResult {
-                        application_id,
-                        result: None,
-                        error: Some(error.into()),
-                    });
-                }
-            }
-        }
-
-        Ok(BulkReviewGroupMembershipApplicationsResult {
-            items,
-            succeeded,
-            failed,
-        })
-    }
-}
-
-fn bulk_review_item_idempotency_key(base_idempotency_key: &str, application_id: Uuid) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(base_idempotency_key.as_bytes());
-    hasher.update(application_id.as_bytes());
-    let digest = hasher.finalize();
-    let mut encoded = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        use std::fmt::Write as _;
-        let _ = write!(&mut encoded, "{byte:02x}");
-    }
-    format!("groups-bulk-review:{encoded}")
-}
-;
-const UPSERT_POLICY_IF_CURRENT_COMMAND: &str =
-    "groups.upsert_membership_application_policy_if_current.v1";
-const SUBMIT_APPLICATION_IF_CURRENT_COMMAND: &str =
-    "groups.submit_membership_application_if_current.v1";
-
-pub const GROUP_APPLICATION_POLICY_CHANGED_CODE: &str = "groups.application_policy_changed";
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GroupApplicationPolicyPrecondition {
-    pub policy_id: Uuid,
-    pub revision: u64,
-    pub locale: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UpsertGroupApplicationPolicyIfCurrentRequest {
-    pub expected_policy: Option<GroupApplicationPolicyPrecondition>,
-    pub policy: UpsertGroupApplicationPolicyRequest,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SubmitGroupMembershipApplicationIfCurrentRequest {
-    pub expected_policy: GroupApplicationPolicyPrecondition,
-    pub submission: SubmitGroupMembershipApplicationRequest,
-}
-
-#[async_trait]
-pub trait GroupApplicationCasCommandPort: Send + Sync {
-    async fn upsert_group_application_policy_if_current(
-        &self,
-        context: PortContext,
-        request: UpsertGroupApplicationPolicyIfCurrentRequest,
-    ) -> Result<UpsertGroupApplicationPolicyResult, PortError>;
-
-    async fn submit_group_membership_application_if_current(
-        &self,
-        context: PortContext,
-        request: SubmitGroupMembershipApplicationIfCurrentRequest,
-    ) -> Result<SubmitGroupMembershipApplicationResult, PortError>;
-}
-
-impl GroupApplicationService {
-    async fn upsert_policy_if_current_owned(
-        &self,
-        context: &PortContext,
-        mut request: UpsertGroupApplicationPolicyIfCurrentRequest,
-    ) -> GroupsResult<UpsertGroupApplicationPolicyResult> {
-        require_write(context)?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_user_id = actor_user_id(context)?;
-        request.policy.locale = normalize_locale_tag(&request.policy.locale).ok_or_else(|| {
-            GroupsError::Validation("invalid application policy locale".to_string())
-        })?;
-        normalize_policy(&mut request.policy.questions, &mut request.policy.rules)?;
-        if let Some(expected) = request.expected_policy.as_mut() {
-            normalize_policy_precondition(expected)?;
-            if expected.locale != request.policy.locale {
-                return Err(GroupsError::Validation(
-                    "expected policy locale must match the policy locale being updated".to_string(),
-                ));
-            }
-        }
-        let idempotency_key = idempotency_key(context)?;
-        let request_hash = request_hash(&request)?;
-        let transaction = self.db.begin().await?;
-
-        if let Some(mut replayed) = replay_receipt::<UpsertGroupApplicationPolicyResult>(
-            &transaction,
-            tenant_id,
-            actor_user_id,
-            &idempotency_key,
-            UPSERT_POLICY_IF_CURRENT_COMMAND,
-            &request_hash,
-        )
-        .await?
-        {
-            replayed.replayed = true;
-            transaction.commit().await?;
-            return Ok(replayed);
-        }
-
-        let group_model =
-            find_group_for_update(&transaction, tenant_id, request.policy.group_id).await?;
-        require_active_group(&group_model)?;
-        authorize_policy_management(
-            &transaction,
-            context,
-            tenant_id,
-            request.policy.group_id,
-            actor_user_id,
-        )
-        .await?;
-
-        let existing_policy = membership_policy::Entity::find()
-            .filter(membership_policy::Column::TenantId.eq(tenant_id))
-            .filter(membership_policy::Column::GroupId.eq(request.policy.group_id))
-            .one(&transaction)
-            .await?;
-        ensure_policy_update_precondition(
-            request.expected_policy.as_ref(),
-            existing_policy.as_ref(),
-            &request.policy.locale,
-        )?;
-
-        let now = Utc::now();
-        let created = existing_policy.is_none();
-        let policy_model = if let Some(existing) = existing_policy {
-            let next_revision = existing.revision.saturating_add(1).max(1);
-            let mut active: membership_policy::ActiveModel = existing.into();
-            active.revision = Set(next_revision);
-            active.enabled = Set(request.policy.enabled);
-            active.updated_by_user_id = Set(actor_user_id);
-            active.updated_at = Set(now.fixed_offset());
-            active.update(&transaction).await?
-        } else {
-            membership_policy::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant_id),
-                group_id: Set(request.policy.group_id),
-                revision: Set(1),
-                enabled: Set(request.policy.enabled),
-                created_by_user_id: Set(actor_user_id),
-                updated_by_user_id: Set(actor_user_id),
-                created_at: Set(now.fixed_offset()),
-                updated_at: Set(now.fixed_offset()),
-            }
-            .insert(&transaction)
-            .await?
-        };
-
-        let existing_translation = membership_policy_translation::Entity::find()
-            .filter(membership_policy_translation::Column::TenantId.eq(tenant_id))
-            .filter(membership_policy_translation::Column::PolicyId.eq(policy_model.id))
-            .filter(membership_policy_translation::Column::Locale.eq(request.policy.locale.clone()))
-            .one(&transaction)
-            .await?;
-        let questions_value = serde_json::to_value(&request.policy.questions).map_err(|error| {
-            GroupsError::Invariant(format!(
-                "application questions are not serializable: {error}"
-            ))
-        })?;
-        let rules_value = serde_json::to_value(&request.policy.rules).map_err(|error| {
-            GroupsError::Invariant(format!("application rules are not serializable: {error}"))
-        })?;
-        if let Some(existing) = existing_translation {
-            let mut active: membership_policy_translation::ActiveModel = existing.into();
-            active.questions = Set(questions_value);
-            active.rules = Set(rules_value);
-            active.updated_at = Set(now.fixed_offset());
-            active.update(&transaction).await?;
-        } else {
-            membership_policy_translation::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant_id),
-                policy_id: Set(policy_model.id),
-                locale: Set(request.policy.locale.clone()),
-                questions: Set(questions_value),
-                rules: Set(rules_value),
-                created_at: Set(now.fixed_offset()),
-                updated_at: Set(now.fixed_offset()),
-            }
-            .insert(&transaction)
-            .await?;
-        }
-
-        let group_version = increment_group_version(&transaction, group_model, now).await?;
-        let result = UpsertGroupApplicationPolicyResult {
-            policy: GroupApplicationPolicy {
-                id: policy_model.id,
-                group_id: request.policy.group_id,
-                revision: policy_model.revision.max(1) as u64,
-                enabled: policy_model.enabled,
-                locale: request.policy.locale,
-                questions: request.policy.questions,
-                rules: request.policy.rules,
-            },
-            group_version,
-            created,
-            replayed: false,
-        };
-        append_audit(
-            &transaction,
-            context,
-            tenant_id,
-            result.policy.group_id,
-            actor_user_id,
-            "group.membership_application_policy_upserted",
-            None,
-            json!({
-                "policy_id": result.policy.id,
-                "policy_revision": result.policy.revision,
-                "locale": result.policy.locale,
-                "enabled": result.policy.enabled,
-                "question_count": result.policy.questions.len(),
-                "rule_count": result.policy.rules.len(),
-                "group_version": group_version,
-                "expected_revision_enforced": true
-            }),
-        )
-        .await?;
-        store_receipt(
-            &transaction,
-            tenant_id,
-            result.policy.group_id,
-            actor_user_id,
-            idempotency_key,
-            UPSERT_POLICY_IF_CURRENT_COMMAND,
-            request_hash,
-            &result,
-        )
-        .await?;
-        transaction.commit().await?;
-        Ok(result)
-    }
-
-    async fn submit_application_if_current_owned(
-        &self,
-        context: &PortContext,
-        mut request: SubmitGroupMembershipApplicationIfCurrentRequest,
-    ) -> GroupsResult<SubmitGroupMembershipApplicationResult> {
-        require_write(context)?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_user_id = actor_user_id(context)?;
-        normalize_policy_precondition(&mut request.expected_policy)?;
-        normalize_application_submission(&mut request.submission)?;
-        let idempotency_key = idempotency_key(context)?;
-        let request_hash = request_hash(&request)?;
-        let transaction = self.db.begin().await?;
-
-        if let Some(mut replayed) = replay_receipt::<SubmitGroupMembershipApplicationResult>(
-            &transaction,
-            tenant_id,
-            actor_user_id,
-            &idempotency_key,
-            SUBMIT_APPLICATION_IF_CURRENT_COMMAND,
-            &request_hash,
-        )
-        .await?
-        {
-            replayed.replayed = true;
-            transaction.commit().await?;
-            return Ok(replayed);
-        }
-
-        let prelocked_application = find_candidate_application_for_update(
-            &transaction,
-            tenant_id,
-            request.submission.group_id,
-            actor_user_id,
-        )
-        .await?;
-        let group_model =
-            find_group_for_update(&transaction, tenant_id, request.submission.group_id).await?;
-        require_application_group(&group_model)?;
-        let policy = load_policy_for_locale(
-            &transaction,
-            tenant_id,
-            request.submission.group_id,
-            &context.locale,
-        )
-        .await?;
-        ensure_loaded_policy_precondition(&request.expected_policy, &policy)?;
-        if !policy.enabled {
-            return Err(GroupsError::Conflict(
-                "group membership applications are disabled".to_string(),
-            ));
-        }
-        validate_submission(&policy, &request.submission)?;
-
-        let existing_membership = membership::Entity::find()
-            .filter(membership::Column::TenantId.eq(tenant_id))
-            .filter(membership::Column::GroupId.eq(request.submission.group_id))
-            .filter(membership::Column::UserId.eq(actor_user_id))
-            .one(&transaction)
-            .await?;
-        if existing_membership
-            .as_ref()
-            .is_some_and(|row| row.status == GroupMembershipStatus::Banned.as_str())
-        {
-            return Err(GroupsError::Forbidden(
-                "group membership is banned".to_string(),
-            ));
-        }
-        if existing_membership
-            .as_ref()
-            .is_some_and(|row| row.status == GroupMembershipStatus::Active.as_str())
-        {
-            return Err(GroupsError::Conflict(
-                "user is already an active group member".to_string(),
-            ));
-        }
-
-        let existing_application = match prelocked_application {
-            Some(existing) => Some(existing),
-            None => {
-                find_candidate_application_for_update(
-                    &transaction,
-                    tenant_id,
-                    request.submission.group_id,
-                    actor_user_id,
-                )
-                .await?
-            }
-        };
-        if existing_application
-            .as_ref()
-            .is_some_and(|row| row.status == GroupApplicationStatus::Pending.as_str())
-        {
-            return Err(GroupsError::Conflict(
-                "a membership application is already pending".to_string(),
-            ));
-        }
-        if existing_application
-            .as_ref()
-            .is_some_and(|row| row.status == GroupApplicationStatus::Approved.as_str())
-        {
-            return Err(GroupsError::Conflict(
-                "membership application is already approved".to_string(),
-            ));
-        }
-
-        let now = Utc::now();
-        let membership_model = if let Some(existing) = existing_membership {
-            let mut active: membership::ActiveModel = existing.into();
-            active.role = Set(GroupRole::Member.as_str().to_string());
-            active.status = Set(GroupMembershipStatus::Pending.as_str().to_string());
-            active.joined_at = Set(None);
-            active.left_at = Set(None);
-            active.updated_at = Set(now.fixed_offset());
-            active.update(&transaction).await?
-        } else {
-            membership::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant_id),
-                group_id: Set(request.submission.group_id),
-                user_id: Set(actor_user_id),
-                role: Set(GroupRole::Member.as_str().to_string()),
-                status: Set(GroupMembershipStatus::Pending.as_str().to_string()),
-                invited_by_user_id: Set(None),
-                joined_at: Set(None),
-                left_at: Set(None),
-                metadata: Set(json!({})),
-                created_at: Set(now.fixed_offset()),
-                updated_at: Set(now.fixed_offset()),
-            }
-            .insert(&transaction)
-            .await?
-        };
-
-        let policy_snapshot = json!({
-            "questions": policy.questions,
-            "rules": policy.rules
-        });
-        let answers_value = serde_json::to_value(&request.submission.answers).map_err(|error| {
-            GroupsError::Invariant(format!("application answers are not serializable: {error}"))
-        })?;
-        let acknowledged_value = serde_json::to_value(&request.submission.acknowledged_rule_keys)
-            .map_err(|error| {
-            GroupsError::Invariant(format!(
-                "application acknowledgements are not serializable: {error}"
-            ))
-        })?;
-        let application_model = if let Some(existing) = existing_application {
-            let mut active: membership_application::ActiveModel = existing.into();
-            active.policy_id = Set(policy.id);
-            active.policy_revision = Set(policy.revision as i64);
-            active.policy_locale = Set(policy.locale.clone());
-            active.policy_snapshot = Set(policy_snapshot);
-            active.answers = Set(answers_value);
-            active.acknowledged_rule_keys = Set(acknowledged_value);
-            active.status = Set(GroupApplicationStatus::Pending.as_str().to_string());
-            active.submitted_at = Set(now.fixed_offset());
-            active.reviewed_at = Set(None);
-            active.reviewed_by_user_id = Set(None);
-            active.review_note = Set(None);
-            active.updated_at = Set(now.fixed_offset());
-            active.update(&transaction).await?
-        } else {
-            membership_application::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                tenant_id: Set(tenant_id),
-                group_id: Set(request.submission.group_id),
-                user_id: Set(actor_user_id),
-                policy_id: Set(policy.id),
-                policy_revision: Set(policy.revision as i64),
-                policy_locale: Set(policy.locale.clone()),
-                policy_snapshot: Set(policy_snapshot),
-                answers: Set(answers_value),
-                acknowledged_rule_keys: Set(acknowledged_value),
-                status: Set(GroupApplicationStatus::Pending.as_str().to_string()),
-                submitted_at: Set(now.fixed_offset()),
-                reviewed_at: Set(None),
-                reviewed_by_user_id: Set(None),
-                review_note: Set(None),
-                created_at: Set(now.fixed_offset()),
-                updated_at: Set(now.fixed_offset()),
-            }
-            .insert(&transaction)
-            .await?
-        };
-
-        let group_version = increment_group_version(&transaction, group_model, now).await?;
-        let result = SubmitGroupMembershipApplicationResult {
-            application: map_application(application_model)?,
-            membership: map_membership(membership_model)?,
-            group_version,
-            replayed: false,
-        };
-        append_audit(
-            &transaction,
-            context,
-            tenant_id,
-            request.submission.group_id,
-            actor_user_id,
-            "group.membership_application_submitted",
-            Some(actor_user_id),
-            json!({
-                "application_id": result.application.id,
-                "policy_id": result.application.policy_id,
-                "policy_revision": result.application.policy_revision,
-                "policy_locale": result.application.policy_locale,
-                "group_version": group_version,
-                "expected_revision_enforced": true,
-                "application_lock_order": "application_then_group_when_existing"
-            }),
-        )
-        .await?;
-        store_receipt(
-            &transaction,
-            tenant_id,
-            request.submission.group_id,
-            actor_user_id,
-            idempotency_key,
-            SUBMIT_APPLICATION_IF_CURRENT_COMMAND,
-            request_hash,
-            &result,
-        )
-        .await?;
-        transaction.commit().await?;
-        Ok(result)
-    }
-}
-
-#[async_trait]
-impl GroupApplicationCasCommandPort for GroupApplicationService {
-    async fn upsert_group_application_policy_if_current(
-        &self,
-        context: PortContext,
-        request: UpsertGroupApplicationPolicyIfCurrentRequest,
-    ) -> Result<UpsertGroupApplicationPolicyResult, PortError> {
-        self.upsert_policy_if_current_owned(&context, request)
-            .await
-            .map_err(map_application_cas_error)
-    }
-
-    async fn submit_group_membership_application_if_current(
-        &self,
-        context: PortContext,
-        request: SubmitGroupMembershipApplicationIfCurrentRequest,
-    ) -> Result<SubmitGroupMembershipApplicationResult, PortError> {
-        self.submit_application_if_current_owned(&context, request)
-            .await
-            .map_err(map_application_cas_error)
-    }
-}
-
-async fn find_candidate_application_for_update(
+/// Called under the group writer lock by non-application lifecycle commands.
+/// The current snapshot is preserved; only the pending attempt is completed.
+pub(crate) async fn settle_pending_application(
     transaction: &DatabaseTransaction,
+    context: &PortContext,
     tenant_id: Uuid,
     group_id: Uuid,
     user_id: Uuid,
-) -> GroupsResult<Option<membership_application::Model>> {
-    let query = || {
-        membership_application::Entity::find()
-            .filter(membership_application::Column::TenantId.eq(tenant_id))
-            .filter(membership_application::Column::GroupId.eq(group_id))
-            .filter(membership_application::Column::UserId.eq(user_id))
-    };
-    let model = match transaction.get_database_backend() {
-        DbBackend::Sqlite => query().one(transaction).await?,
-        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(transaction).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
-    };
-    Ok(model)
-}
-
-fn normalize_policy_precondition(
-    expected: &mut GroupApplicationPolicyPrecondition,
+    actor_id: Uuid,
+    settlement: ApplicationSettlement,
 ) -> GroupsResult<()> {
-    if expected.revision == 0 {
-        return Err(GroupsError::Validation(
-            "expected policy revision must be at least 1".to_string(),
-        ));
+    let activated = !matches!(settlement, ApplicationSettlement::Leave);
+    let action = match settlement {
+        ApplicationSettlement::Invitation => "group.membership_application_completed_by_invitation",
+        ApplicationSettlement::Join => "group.membership_application_completed_by_join",
+        ApplicationSettlement::Leave => "group.membership_application_cancelled_by_leave",
+    };
+    let Some(application) =
+        find_candidate_application_for_update(transaction, tenant_id, group_id, user_id).await?
+    else {
+        return Ok(());
+    };
+    if application.status != GroupApplicationStatus::Pending.as_str() {
+        return Ok(());
     }
-    expected.locale = normalize_locale_tag(&expected.locale)
-        .ok_or_else(|| GroupsError::Validation("invalid expected policy locale".to_string()))?;
-    Ok(())
-}
-
-fn ensure_policy_update_precondition(
-    expected: Option<&GroupApplicationPolicyPrecondition>,
-    current: Option<&membership_policy::Model>,
-    locale: &str,
-) -> GroupsResult<()> {
-    let matches = match (expected, current) {
-        (None, None) => true,
-        (Some(expected), Some(current)) => {
-            expected.policy_id == current.id
-                && expected.revision == current.revision.max(1) as u64
-                && expected.locale == locale
-        }
-        _ => false,
-    };
-    if matches {
-        Ok(())
+    let application_id = application.id;
+    let now = Utc::now().fixed_offset();
+    let mut active: membership_application::ActiveModel = application.into();
+    active.status = Set(if activated {
+        GroupApplicationStatus::Approved
     } else {
-        Err(policy_changed_error(
-            expected,
-            current.map(|value| (value.id, value.revision.max(1) as u64, locale)),
-        ))
+        GroupApplicationStatus::Cancelled
     }
+    .as_str()
+    .to_string());
+    active.reviewed_at = Set(activated.then_some(now));
+    active.reviewed_by_user_id = Set(activated.then_some(actor_id));
+    active.review_note = Set(None);
+    active.updated_at = Set(now);
+    active.update(transaction).await?;
+    append_audit(
+        transaction,
+        context,
+        tenant_id,
+        group_id,
+        actor_id,
+        action,
+        Some(user_id),
+        json!({"application_id": application_id, "previous_status": "pending"}),
+    )
+    .await
 }
-
-fn ensure_loaded_policy_precondition(
-    expected: &GroupApplicationPolicyPrecondition,
-    current: &GroupApplicationPolicy,
-) -> GroupsResult<()> {
-    if expected.policy_id == current.id
-        && expected.revision == current.revision
-        && expected.locale == current.locale
-    {
-        Ok(())
-    } else {
-        Err(policy_changed_error(
-            Some(expected),
-            Some((current.id, current.revision, current.locale.as_str())),
-        ))
-    }
-}
-
-fn policy_changed_error(
-    expected: Option<&GroupApplicationPolicyPrecondition>,
-    current: Option<(Uuid, u64, &str)>,
-) -> GroupsError {
-    let expected_description = expected
-        .map(|value| format!("{}@{}:{}", value.policy_id, value.revision, value.locale))
-        .unwrap_or_else(|| "none".to_string());
-    let current_description = current
-        .map(|(policy_id, revision, locale)| format!("{policy_id}@{revision}:{locale}"))
-        .unwrap_or_else(|| "none".to_string());
-    GroupsError::Conflict(format!(
-        "{GROUP_APPLICATION_POLICY_CHANGED_CODE}: expected={expected_description}; current={current_description}"
-    ))
-}
-
-fn map_application_cas_error(error: GroupsError) -> PortError {
-    match error {
-        GroupsError::Conflict(message)
-            if message.starts_with(GROUP_APPLICATION_POLICY_CHANGED_CODE) =>
-        {
-            let message = message
-                .strip_prefix(GROUP_APPLICATION_POLICY_CHANGED_CODE)
-                .unwrap_or(&message)
-                .trim_start_matches(':')
-                .trim()
-                .to_string();
-            PortError::conflict(GROUP_APPLICATION_POLICY_CHANGED_CODE, message)
-        }
-        other => other.into(),
-    }
-}
-;
-const CANCEL_APPLICATION_COMMAND: &str = "groups.cancel_membership_application.v1";
-const REOPEN_APPLICATION_COMMAND: &str = "groups.reopen_membership_application.v1";
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ReadMyGroupMembershipApplicationRequest {
-    pub group_id: Uuid,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CancelGroupMembershipApplicationRequest {
-    pub application_id: Uuid,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ReopenGroupMembershipApplicationRequest {
-    pub application_id: Uuid,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GroupApplicationLifecycleResult {
-    pub application: GroupMembershipApplication,
-    pub membership: GroupMembership,
-    pub group_version: u64,
-    pub replayed: bool,
-}
-
-#[async_trait]
-pub trait GroupApplicationLifecycleReadPort: Send + Sync {
-    async fn read_my_group_membership_application(
-        &self,
-        context: PortContext,
-        request: ReadMyGroupMembershipApplicationRequest,
-    ) -> Result<Option<GroupMembershipApplication>, PortError>;
-}
-
-#[async_trait]
-pub trait GroupApplicationLifecycleCommandPort: Send + Sync {
-    async fn cancel_group_membership_application(
-        &self,
-        context: PortContext,
-        request: CancelGroupMembershipApplicationRequest,
-    ) -> Result<GroupApplicationLifecycleResult, PortError>;
-
-    async fn reopen_group_membership_application(
-        &self,
-        context: PortContext,
-        request: ReopenGroupMembershipApplicationRequest,
-    ) -> Result<GroupApplicationLifecycleResult, PortError>;
-}
-
-impl GroupApplicationService {
-    async fn read_my_application_owned(
-        &self,
-        context: &PortContext,
-        request: ReadMyGroupMembershipApplicationRequest,
-    ) -> GroupsResult<Option<GroupMembershipApplication>> {
-        require_read(context)?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_user_id = actor_user_id(context)?;
-        let group_model = find_group(&self.db, tenant_id, request.group_id).await?;
-        require_active_group(&group_model)?;
-        ensure_not_banned(&self.db, tenant_id, request.group_id, actor_user_id).await?;
-        membership_application::Entity::find()
-            .filter(membership_application::Column::TenantId.eq(tenant_id))
-            .filter(membership_application::Column::GroupId.eq(request.group_id))
-            .filter(membership_application::Column::UserId.eq(actor_user_id))
-            .one(&self.db)
-            .await?
-            .map(map_application)
-            .transpose()
-    }
-
-    async fn cancel_application_owned(
-        &self,
-        context: &PortContext,
-        request: CancelGroupMembershipApplicationRequest,
-    ) -> GroupsResult<GroupApplicationLifecycleResult> {
-        require_write(context)?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_user_id = actor_user_id(context)?;
-        let idempotency_key = idempotency_key(context)?;
-        let request_hash = request_hash(&request)?;
-        let transaction = self.db.begin().await?;
-
-        if let Some(mut replayed) = replay_receipt::<GroupApplicationLifecycleResult>(
-            &transaction,
-            tenant_id,
-            actor_user_id,
-            &idempotency_key,
-            CANCEL_APPLICATION_COMMAND,
-            &request_hash,
-        )
-        .await?
-        {
-            replayed.replayed = true;
-            transaction.commit().await?;
-            return Ok(replayed);
-        }
-
-        let application_model =
-            find_application_for_update(&transaction, tenant_id, request.application_id).await?;
-        if application_model.user_id != actor_user_id {
-            return Err(GroupsError::NotFound);
-        }
-        if application_model.status != GroupApplicationStatus::Pending.as_str() {
-            return Err(GroupsError::Conflict(
-                "only a pending membership application can be cancelled".to_string(),
-            ));
-        }
-
-        let group_model =
-            find_group_for_update(&transaction, tenant_id, application_model.group_id).await?;
-        require_active_group(&group_model)?;
-        let membership_model = membership::Entity::find()
-            .filter(membership::Column::TenantId.eq(tenant_id))
-            .filter(membership::Column::GroupId.eq(application_model.group_id))
-            .filter(membership::Column::UserId.eq(actor_user_id))
-            .one(&transaction)
-            .await?
-            .ok_or_else(|| {
-                GroupsError::Invariant(
-                    "pending application membership is missing during cancellation".to_string(),
-                )
-            })?;
-        if membership_model.status == GroupMembershipStatus::Banned.as_str() {
-            return Err(GroupsError::Forbidden(
-                "group membership is banned".to_string(),
-            ));
-        }
-        if membership_model.status != GroupMembershipStatus::Pending.as_str() {
-            return Err(GroupsError::Conflict(
-                "membership is no longer pending".to_string(),
-            ));
-        }
-
-        let now = Utc::now();
-        let mut membership_active: membership::ActiveModel = membership_model.into();
-        membership_active.status = Set(GroupMembershipStatus::Left.as_str().to_string());
-        membership_active.joined_at = Set(None);
-        membership_active.left_at = Set(Some(now.fixed_offset()));
-        membership_active.updated_at = Set(now.fixed_offset());
-        let membership_model = membership_active.update(&transaction).await?;
-
-        let mut application_active: membership_application::ActiveModel = application_model.into();
-        application_active.status = Set(GroupApplicationStatus::Cancelled.as_str().to_string());
-        application_active.reviewed_at = Set(None);
-        application_active.reviewed_by_user_id = Set(None);
-        application_active.review_note = Set(None);
-        application_active.updated_at = Set(now.fixed_offset());
-        let application_model = application_active.update(&transaction).await?;
-
-        let group_version = increment_group_version(&transaction, group_model, now).await?;
-        let result = GroupApplicationLifecycleResult {
-            application: map_application(application_model)?,
-            membership: map_membership(membership_model)?,
-            group_version,
-            replayed: false,
-        };
-        append_audit(
-            &transaction,
-            context,
-            tenant_id,
-            result.application.group_id,
-            actor_user_id,
-            "group.membership_application_cancelled",
-            Some(actor_user_id),
-            json!({
-                "application_id": result.application.id,
-                "previous_status": "pending",
-                "membership_status": result.membership.status,
-                "group_version": group_version
-            }),
-        )
-        .await?;
-        store_receipt(
-            &transaction,
-            tenant_id,
-            result.application.group_id,
-            actor_user_id,
-            idempotency_key,
-            CANCEL_APPLICATION_COMMAND,
-            request_hash,
-            &result,
-        )
-        .await?;
-        transaction.commit().await?;
-        Ok(result)
-    }
-
-    async fn reopen_application_owned(
-        &self,
-        context: &PortContext,
-        request: ReopenGroupMembershipApplicationRequest,
-    ) -> GroupsResult<GroupApplicationLifecycleResult> {
-        require_write(context)?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_user_id = actor_user_id(context)?;
-        let idempotency_key = idempotency_key(context)?;
-        let request_hash = request_hash(&request)?;
-        let transaction = self.db.begin().await?;
-
-        if let Some(mut replayed) = replay_receipt::<GroupApplicationLifecycleResult>(
-            &transaction,
-            tenant_id,
-            actor_user_id,
-            &idempotency_key,
-            REOPEN_APPLICATION_COMMAND,
-            &request_hash,
-        )
-        .await?
-        {
-            replayed.replayed = true;
-            transaction.commit().await?;
-            return Ok(replayed);
-        }
-
-        let application_model =
-            find_application_for_update(&transaction, tenant_id, request.application_id).await?;
-        let group_model =
-            find_group_for_update(&transaction, tenant_id, application_model.group_id).await?;
-        require_application_group(&group_model)?;
-        authorize_application_review(
-            &transaction,
-            context,
-            tenant_id,
-            application_model.group_id,
-            actor_user_id,
-        )
-        .await?;
-
-        let previous_status = GroupApplicationStatus::from_str(&application_model.status)
-            .map_err(GroupsError::Invariant)?;
-        if !matches!(
-            previous_status,
-            GroupApplicationStatus::Rejected | GroupApplicationStatus::Cancelled
-        ) {
-            return Err(GroupsError::Conflict(
-                "only a rejected or cancelled membership application can be reopened".to_string(),
-            ));
-        }
-
-        let membership_model = membership::Entity::find()
-            .filter(membership::Column::TenantId.eq(tenant_id))
-            .filter(membership::Column::GroupId.eq(application_model.group_id))
-            .filter(membership::Column::UserId.eq(application_model.user_id))
-            .one(&transaction)
-            .await?
-            .ok_or_else(|| {
-                GroupsError::Invariant(
-                    "application membership is missing during reopen".to_string(),
-                )
-            })?;
-        if membership_model.status == GroupMembershipStatus::Banned.as_str() {
-            return Err(GroupsError::Forbidden(
-                "group membership is banned".to_string(),
-            ));
-        }
-        if membership_model.status == GroupMembershipStatus::Active.as_str() {
-            return Err(GroupsError::Conflict(
-                "an active member application cannot be reopened".to_string(),
-            ));
-        }
-        if membership_model.status != GroupMembershipStatus::Left.as_str() {
-            return Err(GroupsError::Conflict(
-                "membership must be left before the application can be reopened".to_string(),
-            ));
-        }
-
-        let now = Utc::now();
-        let target_user_id = application_model.user_id;
-        let mut membership_active: membership::ActiveModel = membership_model.into();
-        membership_active.role = Set(GroupRole::Member.as_str().to_string());
-        membership_active.status = Set(GroupMembershipStatus::Pending.as_str().to_string());
-        membership_active.joined_at = Set(None);
-        membership_active.left_at = Set(None);
-        membership_active.updated_at = Set(now.fixed_offset());
-        let membership_model = membership_active.update(&transaction).await?;
-
-        let mut application_active: membership_application::ActiveModel = application_model.into();
-        application_active.status = Set(GroupApplicationStatus::Pending.as_str().to_string());
-        application_active.reviewed_at = Set(None);
-        application_active.reviewed_by_user_id = Set(None);
-        application_active.review_note = Set(None);
-        application_active.updated_at = Set(now.fixed_offset());
-        let application_model = application_active.update(&transaction).await?;
-
-        let group_version = increment_group_version(&transaction, group_model, now).await?;
-        let result = GroupApplicationLifecycleResult {
-            application: map_application(application_model)?,
-            membership: map_membership(membership_model)?,
-            group_version,
-            replayed: false,
-        };
-        append_audit(
-            &transaction,
-            context,
-            tenant_id,
-            result.application.group_id,
-            actor_user_id,
-            "group.membership_application_reopened",
-            Some(target_user_id),
-            json!({
-                "application_id": result.application.id,
-                "previous_status": previous_status.as_str(),
-                "policy_id": result.application.policy_id,
-                "policy_revision": result.application.policy_revision,
-                "policy_locale": result.application.policy_locale,
-                "snapshot_preserved": true,
-                "group_version": group_version
-            }),
-        )
-        .await?;
-        store_receipt(
-            &transaction,
-            tenant_id,
-            result.application.group_id,
-            actor_user_id,
-            idempotency_key,
-            REOPEN_APPLICATION_COMMAND,
-            request_hash,
-            &result,
-        )
-        .await?;
-        transaction.commit().await?;
-        Ok(result)
-    }
-}
-
-#[async_trait]
-impl GroupApplicationLifecycleReadPort for GroupApplicationService {
-    async fn read_my_group_membership_application(
-        &self,
-        context: PortContext,
-        request: ReadMyGroupMembershipApplicationRequest,
-    ) -> Result<Option<GroupMembershipApplication>, PortError> {
-        self.read_my_application_owned(&context, request)
-            .await
-            .map_err(Into::into)
-    }
-}
-
-#[async_trait]
-impl GroupApplicationLifecycleCommandPort for GroupApplicationService {
-    async fn cancel_group_membership_application(
-        &self,
-        context: PortContext,
-        request: CancelGroupMembershipApplicationRequest,
-    ) -> Result<GroupApplicationLifecycleResult, PortError> {
-        self.cancel_application_owned(&context, request)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn reopen_group_membership_application(
-        &self,
-        context: PortContext,
-        request: ReopenGroupMembershipApplicationRequest,
-    ) -> Result<GroupApplicationLifecycleResult, PortError> {
-        self.reopen_application_owned(&context, request)
-            .await
-            .map_err(Into::into)
-    }
-}
-;
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ListGroupApplicationPolicyLocalesRequest {
-    pub group_id: Uuid,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ReadGroupApplicationPolicyForManagementRequest {
-    pub group_id: Uuid,
-    pub locale: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GroupApplicationPolicyLocaleCatalog {
-    pub group_id: Uuid,
-    pub policy_id: Option<Uuid>,
-    pub revision: Option<u64>,
-    pub enabled: bool,
-    pub locales: Vec<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GroupApplicationPolicyManagementView {
-    pub group_id: Uuid,
-    pub policy_id: Option<Uuid>,
-    pub revision: Option<u64>,
-    pub enabled: bool,
-    pub locale: String,
-    pub translation_exists: bool,
-    pub questions: Vec<GroupApplicationQuestion>,
-    pub rules: Vec<GroupApplicationRule>,
-}
-
-#[async_trait]
-pub trait GroupApplicationPolicyManagementReadPort: Send + Sync {
-    async fn list_group_application_policy_locales(
-        &self,
-        context: PortContext,
-        request: ListGroupApplicationPolicyLocalesRequest,
-    ) -> Result<GroupApplicationPolicyLocaleCatalog, PortError>;
-
-    async fn read_group_application_policy_for_management(
-        &self,
-        context: PortContext,
-        request: ReadGroupApplicationPolicyForManagementRequest,
-    ) -> Result<GroupApplicationPolicyManagementView, PortError>;
-}
-
-impl GroupApplicationService {
-    async fn list_policy_locales_owned(
-        &self,
-        context: &PortContext,
-        request: ListGroupApplicationPolicyLocalesRequest,
-    ) -> GroupsResult<GroupApplicationPolicyLocaleCatalog> {
-        require_read(context)?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_user_id = actor_user_id(context)?;
-        let group_model = find_group(&self.db, tenant_id, request.group_id).await?;
-        require_active_group(&group_model)?;
-        authorize_policy_management(
-            &self.db,
-            context,
-            tenant_id,
-            request.group_id,
-            actor_user_id,
-        )
-        .await?;
-
-        let policy = membership_policy::Entity::find()
-            .filter(membership_policy::Column::TenantId.eq(tenant_id))
-            .filter(membership_policy::Column::GroupId.eq(request.group_id))
-            .one(&self.db)
-            .await?;
-        let Some(policy) = policy else {
-            return Ok(GroupApplicationPolicyLocaleCatalog {
-                group_id: request.group_id,
-                policy_id: None,
-                revision: None,
-                enabled: true,
-                locales: Vec::new(),
-            });
-        };
-
-        let locales = membership_policy_translation::Entity::find()
-            .filter(membership_policy_translation::Column::TenantId.eq(tenant_id))
-            .filter(membership_policy_translation::Column::PolicyId.eq(policy.id))
-            .order_by_asc(membership_policy_translation::Column::Locale)
-            .all(&self.db)
-            .await?
-            .into_iter()
-            .map(|translation| translation.locale)
-            .collect();
-
-        Ok(GroupApplicationPolicyLocaleCatalog {
-            group_id: request.group_id,
-            policy_id: Some(policy.id),
-            revision: Some(policy.revision.max(1) as u64),
-            enabled: policy.enabled,
-            locales,
-        })
-    }
-
-    async fn read_policy_for_management_owned(
-        &self,
-        context: &PortContext,
-        mut request: ReadGroupApplicationPolicyForManagementRequest,
-    ) -> GroupsResult<GroupApplicationPolicyManagementView> {
-        require_read(context)?;
-        let tenant_id = context_tenant_id(context)?;
-        let actor_user_id = actor_user_id(context)?;
-        request.locale = normalize_locale_tag(&request.locale).ok_or_else(|| {
-            GroupsError::Validation("invalid application policy management locale".to_string())
-        })?;
-        let group_model = find_group(&self.db, tenant_id, request.group_id).await?;
-        require_active_group(&group_model)?;
-        authorize_policy_management(
-            &self.db,
-            context,
-            tenant_id,
-            request.group_id,
-            actor_user_id,
-        )
-        .await?;
-
-        let policy = membership_policy::Entity::find()
-            .filter(membership_policy::Column::TenantId.eq(tenant_id))
-            .filter(membership_policy::Column::GroupId.eq(request.group_id))
-            .one(&self.db)
-            .await?;
-        let Some(policy) = policy else {
-            return Ok(GroupApplicationPolicyManagementView {
-                group_id: request.group_id,
-                policy_id: None,
-                revision: None,
-                enabled: true,
-                locale: request.locale,
-                translation_exists: false,
-                questions: Vec::new(),
-                rules: Vec::new(),
-            });
-        };
-
-        let translation = membership_policy_translation::Entity::find()
-            .filter(membership_policy_translation::Column::TenantId.eq(tenant_id))
-            .filter(membership_policy_translation::Column::PolicyId.eq(policy.id))
-            .filter(membership_policy_translation::Column::Locale.eq(request.locale.clone()))
-            .one(&self.db)
-            .await?;
-
-        let (translation_exists, questions, rules) = match translation {
-            Some(translation) => (
-                true,
-                serde_json::from_value::<Vec<GroupApplicationQuestion>>(translation.questions)
-                    .map_err(|error| {
-                        GroupsError::Invariant(format!(
-                            "invalid application policy management questions: {error}"
-                        ))
-                    })?,
-                serde_json::from_value::<Vec<GroupApplicationRule>>(translation.rules).map_err(
-                    |error| {
-                        GroupsError::Invariant(format!(
-                            "invalid application policy management rules: {error}"
-                        ))
-                    },
-                )?,
-            ),
-            None => (false, Vec::new(), Vec::new()),
-        };
-
-        Ok(GroupApplicationPolicyManagementView {
-            group_id: request.group_id,
-            policy_id: Some(policy.id),
-            revision: Some(policy.revision.max(1) as u64),
-            enabled: policy.enabled,
-            locale: request.locale,
-            translation_exists,
-            questions,
-            rules,
-        })
-    }
-}
-
-#[async_trait]
-impl GroupApplicationPolicyManagementReadPort for GroupApplicationService {
-    async fn list_group_application_policy_locales(
-        &self,
-        context: PortContext,
-        request: ListGroupApplicationPolicyLocalesRequest,
-    ) -> Result<GroupApplicationPolicyLocaleCatalog, PortError> {
-        self.list_policy_locales_owned(&context, request)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn read_group_application_policy_for_management(
-        &self,
-        context: PortContext,
-        request: ReadGroupApplicationPolicyForManagementRequest,
-    ) -> Result<GroupApplicationPolicyManagementView, PortError> {
-        self.read_policy_for_management_owned(&context, request)
-            .await
-            .map_err(Into::into)
-    }
-}
-;

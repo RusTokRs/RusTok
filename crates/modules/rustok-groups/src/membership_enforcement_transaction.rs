@@ -86,6 +86,9 @@ pub(crate) async fn lock_membership_enforcement_target_by_id_for_update(
     tenant_id: Uuid,
     membership_id: Uuid,
 ) -> GroupsResult<Option<LockedMembershipEnforcementTarget>> {
+    // Moderation and exact subject reads may enter without the Groups command-admission path.
+    // They still must reserve SQLite's writer before opening their locator snapshot.
+    crate::commands::reserve_sqlite_writer(transaction).await?;
     let Some(locator) = membership_state::Entity::find_by_id(membership_id)
         .filter(membership_state::Column::TenantId.eq(tenant_id))
         .one(transaction)

@@ -1,3 +1,5 @@
+use super::*;
+
 impl GroupTargetedInvitationService {
     pub(crate) async fn accept_targeted_group_invitation_effective_owned(
         &self,
@@ -7,9 +9,11 @@ impl GroupTargetedInvitationService {
         require_write(context)?;
         let tenant_id = context_tenant_id(context)?;
         let actor_user_id = actor_user_id(context)?;
+        request.validate()?;
         let idempotency_key = idempotency_key(context)?;
         let request_hash = request_hash(&request)?;
         let transaction = self.db.begin().await?;
+        crate::commands::reserve_command(&transaction, tenant_id, &idempotency_key).await?;
 
         if let Some(mut replayed) = replay_receipt::<AcceptGroupInvitationResult>(
             &transaction,
@@ -87,6 +91,17 @@ impl GroupTargetedInvitationService {
             .insert(&transaction)
             .await?
         };
+
+        crate::application_owner::settle_pending_application(
+            &transaction,
+            context,
+            tenant_id,
+            invitation_model.group_id,
+            actor_user_id,
+            invitation_model.invited_by_user_id,
+            crate::application_owner::ApplicationSettlement::Invitation,
+        )
+        .await?;
 
         redemption::ActiveModel {
             id: Set(Uuid::new_v4()),

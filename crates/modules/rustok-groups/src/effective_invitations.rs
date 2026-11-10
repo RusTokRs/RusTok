@@ -5,26 +5,26 @@ use sea_orm::DatabaseConnection;
 use crate::effective_membership_guard::{
     GroupManagerCapability, actor_user_id, require_effective_manager, tenant_id,
 };
-use crate::invitations_legacy::{
+use crate::invitation_owner::{
     AcceptGroupInvitationRequest, AcceptGroupInvitationResult, CreateGroupInvitationRequest,
     CreateGroupInvitationResult, GroupInvitationCommandPort, GroupInvitationConnection,
     GroupInvitationReadPort, ListGroupInvitationsRequest, RevokeGroupInvitationRequest,
     RevokeGroupInvitationResult,
 };
-use crate::targeted_invitations_legacy::{
+use crate::targeted_invitation_owner::{
     AcceptTargetedGroupInvitationRequest, GroupTargetedInvitationCommandPort,
 };
 
 #[derive(Clone)]
 pub struct GroupInvitationService {
     db: DatabaseConnection,
-    legacy: crate::invitations_legacy::GroupInvitationService,
+    legacy: crate::invitation_owner::GroupInvitationService,
 }
 
 impl GroupInvitationService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            legacy: crate::invitations_legacy::GroupInvitationService::new(db.clone()),
+            legacy: crate::invitation_owner::GroupInvitationService::new(db.clone()),
             db,
         }
     }
@@ -96,13 +96,13 @@ impl GroupInvitationCommandPort for GroupInvitationService {
 
 #[derive(Clone)]
 pub struct GroupTargetedInvitationService {
-    legacy: crate::targeted_invitations_legacy::GroupTargetedInvitationService,
+    legacy: crate::targeted_invitation_owner::GroupTargetedInvitationService,
 }
 
 impl GroupTargetedInvitationService {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
-            legacy: crate::targeted_invitations_legacy::GroupTargetedInvitationService::new(db),
+            legacy: crate::targeted_invitation_owner::GroupTargetedInvitationService::new(db),
         }
     }
 }

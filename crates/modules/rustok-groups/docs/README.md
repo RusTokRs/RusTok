@@ -36,6 +36,10 @@ applications preserve the exact immutable questions/rules snapshot seen by the c
 ## Access and privacy
 
 - Public groups expose their public shell and configured public features.
+- Public rosters include stored lifecycle-active members only. Pending, invited and
+  banned membership states require effective management authority.
+- Exact membership reads require self, effective local management or explicit
+  access-service/platform claims.
 - Closed groups expose a discoverable summary; private body, membership, features, and provider
   content require effective active membership or platform authority.
 - Secret groups return not-found to unauthorized users.
@@ -62,14 +66,12 @@ resolved group before reading membership and enforcement state. This protects bo
 missing membership subjects: an enforcement writer following the same protocol cannot commit
 between authorization and mutation.
 
-Command-specific locks still precede the canonical group sequence where required:
-
-- invitation revoke/accept locks the invitation before the group;
-- application review/cancel/reopen locks the application before the group;
-- CAS resubmit locks an existing application before the group.
-
-These orders do not introduce a cycle because enforcement commands do not lock invitation or
-application rows.
+Command admission always precedes mutable reads and aggregate/child locks.
+PostgreSQL uses a transaction advisory lock for the exact tenant/idempotency key;
+SQLite acquires its database writer reservation before any read snapshot. An
+unlocked child lookup may locate a group, but the owner locks the group before
+re-reading and locking application/invitation state. This common group-first order
+also covers settlement by invitation acceptance and leave commands.
 
 ## Replay contract
 
@@ -108,10 +110,14 @@ bounded bulk-review ports while preserving `rustok_groups::applications::*` comp
 
 Candidate rules:
 
-- secret groups return not-found before membership-specific denial;
+- secret groups return not-found before lifecycle, join-policy, policy/CAS, or membership-specific denial;
 - active suspension and legacy banned state deny policy/current-state reads and write actions;
 - submit and CAS resubmit require an effective non-active candidate;
-- cancellation requires the exact candidate and pending membership/application state.
+- cancellation requires the exact candidate and pending membership/application state;
+- an approved candidate may submit again after the previous membership has left;
+- invitation activation atomically completes a pending application;
+- leaving atomically cancels a pending application;
+- request-policy `join_group` returns `groups.application_required` without creating membership.
 
 Manager rules:
 
@@ -168,8 +174,8 @@ The following remain open:
 - PostgreSQL/SQLite migration, lock, contention, replay, parity, security, accessibility, retry, and
   recovery execution.
 
-No Cargo check, test, migration, Node verifier, browser, or CI command was executed for this source
-slice. Runtime evidence remains `null`; FFA, FBA, `GROUPS-06`, `GROUPS-07`, and `GROUPS-19` remain
+The 2026-11-10 remediation runs source boundary verifiers only. No Rust compilation,
+Rust test, migration execution, browser or CI evidence is claimed. Runtime evidence remains `null`; FFA, FBA, `GROUPS-06`, `GROUPS-07`, and `GROUPS-19` remain
 `in_progress`.
 
 ## Verification
@@ -228,3 +234,117 @@ slice. Runtime evidence remains `null`; FFA, FBA, `GROUPS-06`, `GROUPS-07`, and 
 - [Feature enforcement PostgreSQL contract](./feature-enforcement-postgres-contract.md)
 - [Feature enforcement SQLite contract](./feature-enforcement-sqlite-contract.md)
 - [Moderation subject PostgreSQL contract](./moderation-subject-postgres-contract.md)
+
+
+### Subject locator and moderation finalization follow-up
+
+SQLite command admission and exact membership-subject locators share an empty
+receipt UPDATE writer reservation. Locator reads cannot open a read snapshot
+before that reservation, including Moderation and public exact-subject entrypaths
+that do not use the core Groups command receipt protocol.
+
+Moderation application and receipt completion share the owner transaction.
+Failure of either explicitly rolls back. A rollback failure or failure to persist
+a terminal producer error returns retryable `groups.moderation_finalization_failed`
+with both the original error and finalization stage in diagnostic context; neither
+is silently discarded. A failed rollback is not recorded as a successfully
+finalized permanent rejection.
+
+Additional regression cases are present for secret-group privacy across active,
+archived and suspended lifecycle states (including candidate cancellation of a
+historical application), invalid/missing candidate targets, SQLite
+reservation contention and moderation finalization error classification. They have
+not been run in this follow-up; execution is reserved for the maintainer's final pass.
+
+### Checked stored arithmetic
+
+Actual mutations must advance a positive aggregate/policy revision. Exhaustion of
+signed storage is an invariant failure, not a successful saturated write. The
+same fail-closed rule applies to negative/overflowing member-count increments and
+out-of-range invitation redemption counts. The transaction must not commit domain
+changes, audit, or a success receipt on arithmetic failure. Existing receipts
+retain their normal replay semantics. Added boundary and atomicity regressions
+are awaiting the maintainer's final execution pass.
+
+Policy/catalog/history and application-snapshot revision projections also reject
+non-positive stored revisions: readers never manufacture revision 1. Policy update
+CAS distinguishes corrupt current storage (invariant failure) from a valid but
+stale precondition (policy-changed conflict), including absent/mismatching expected
+policies. Positive `i64::MAX` remains readable but cannot be advanced by a write.
+
+Direct join of an existing invited membership also completes any pending
+application atomically, with distinct join audit provenance. Admitted receipt
+replays precede current aggregate/subject lookup for invitation management,
+governance and enforcement, as well as core and application commands.
+
+Cumulative static recheck: 38 of 50 Groups source guards pass; 12 failures also
+reproduce on the unchanged task base. The full gate is not green. These source
+checks and syntax parsing are not compilation or runtime evidence; see the
+implementation plan for the recheck scope and corrections.
+
+
+Invitation/targeted-delivery and Moderation adapter source guards now inspect
+canonical transactional owners and runtime registration in `module.rs`. Checks
+retain token-redaction, digest, redemption and registration requirements and add
+finalization anti-swallowing checks. Negative source probes validate that the
+checks reject representative regressions; they do not execute Rust or establish
+runtime evidence.
+
+
+Enforcement read/command, policy-history and invitation-UI source guards now use
+runtime module registration, explicit exports, checked revision projections and
+the canonical GROUPS-05 status row. The command contract is reconciled with the
+existing Moderation adapter and receipt-before-subject-lock semantics. Current
+source-guard result is 45/50; the five remaining failures are listed in the plan.
+No Rust runtime evidence was obtained in this follow-up.
+
+
+The final parity/expiry/Moderation evidence source guards now tolerate assertion
+line wrapping without dropping exact version checks, allow only enumerated neutral
+Moderation imports, and check unexecuted localization evidence directly in the
+registry. This completes source-guard reconciliation, not runtime certification.
+
+Policy history authorizes directly through the shared effective-manager read
+guard (`Moderate`) after tenant/user validation. It never loads candidate
+applications merely to establish authority. Invalid answers/snapshots in an
+unrelated application cannot break history reads; application readers still fail
+closed on their own invalid payloads. Added corruption-isolation and authority/
+tenant regression tests remain unexecuted.
+
+Application management lists use `(submitted_at DESC, id DESC)`; invitation
+management lists use `(created_at DESC, id DESC)`. Tied timestamps cannot leave
+ordering to the database. Pages remain offset-based and do not promise a shared
+snapshot across concurrent mutations or invitation expiry. Added equal-timestamp
+pagination regression tests remain awaiting maintainer execution.
+
+Manager-only invitation creation, policy upsert, review and reopen check effective
+authority before group lifecycle/join-policy errors. This prevents unauthorized
+callers learning archived-state details through the command error ordering.
+Committed replay remains first, and candidate secret-visibility gates are
+unchanged. This is not a claim of uniform missing/existing-subject responses.
+
+Application review requires a pending application **and** a pending linked stored
+membership. Left/invited mismatches fail with `groups.conflict` before mutation;
+review does not repair inconsistent lifecycle state by activating or rejecting an
+unrelated membership state. Authorization, enforcement and receipt-replay ordering
+remain unchanged. The new regression is present but unexecuted.
+
+Open admission permits direct entry into public **and closed** groups. Closed
+visibility protects content/rosters before entry; it does not implicitly select
+Request admission. Request groups use application submission, InviteOnly uses
+invitations, and Secret still requires invitation authority. A stored invited
+membership retains its explicit activation path. See the owning ADR for this
+visibility/admission separation and the unexecuted matrix regression for coverage.
+
+Application transactional owners validate raw DTOs before normalization and
+storage: nil IDs, collection limits and raw review-note bounds apply equally to
+compatibility/CAS calls and both review ports. Normalization cannot shrink an
+oversized input into the accepted range. Valid requests retain normalized hashing
+and receipt replay semantics. The added no-schema validation regression remains
+unexecuted.
+
+Application cancel/reopen and invitation revoke/targeted accept validate subject
+IDs at their transactional owner entry, not only in a transport or private port
+wrapper. Nil IDs fail as `groups.validation` before receipt/storage access. Valid
+receipt replay and authorization semantics remain unchanged; the new no-schema
+regression has not been executed.

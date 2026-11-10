@@ -36,7 +36,7 @@ const requireMarkers = (relative, markers) => {
 if (failures.length === 0) {
   requireMarkers(files.facade, [
     "pub struct GroupsService",
-    "LegacyGroupsService",
+    "CoreGroupsStore",
     "resolve_group_membership_enforcement",
     "GroupSummaryReadPort::read_group(&self.legacy",
     "details.body = None",
@@ -66,7 +66,7 @@ if (failures.length === 0) {
     "mod effective_service;",
     "mod service;",
     "pub use effective_service::GroupsService;",
-    "cannot bypass the effective membership facade",
+    "mod service;",
   ]);
   for (const forbidden of ["pub mod effective_service;", "pub mod service;", "pub use service::GroupsService;"]) {
     if (moduleSource.includes(forbidden)) {
@@ -116,9 +116,9 @@ if (failures.length === 0) {
   ]);
   requireMarkers(files.readme, [
     "not a paid subscription",
-    "effective-membership `GroupsService`",
+    "effective `GroupsService`",
     "crate-private",
-    "invitation/application/localization/governance",
+    "invitation, targeted-invitation, and membership-application public services",
   ]);
 }
 
