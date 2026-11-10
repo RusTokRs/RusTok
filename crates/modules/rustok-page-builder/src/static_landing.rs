@@ -428,4 +428,95 @@ mod tests {
                 .any(|diagnostic| diagnostic.code == "landing_page_count_exceeded")
         );
     }
+
+    fn project_with_srcset(srcset: &str) -> Value {
+        json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": {
+                    "title": "Home",
+                    "description": "A stable landing page",
+                    "slug": "home"
+                },
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "heading",
+                        "type": "heading",
+                        "tagName": "h1",
+                        "content": "Welcome"
+                    }, {
+                        "id": "hero",
+                        "type": "image",
+                        "attributes": {
+                            "src": "https://cdn.example.com/hero.webp",
+                            "srcset": srcset,
+                            "sizes": "(max-width: 800px) 100vw, 800px"
+                        }
+                    }]
+                }
+            }]
+        })
+    }
+
+    #[test]
+    fn compiler_renders_validated_srcset_into_artifact() {
+        // End-to-end contract from audit §3.1: a srcset that passes the
+        // publish policy must reach the published artifact — together with
+        // its `sizes`, never orphaned again.
+        let artifact = StaticLandingCompiler::default()
+            .compile_publish(&project_with_srcset(
+                "https://cdn.example.com/hero.webp 800w, https://cdn.example.com/hero@2x.webp 1600w",
+            ))
+            .expect("artifact");
+        let page = &artifact.pages[0];
+        assert!(
+            page.body_html.contains(
+                "srcset=\"https://cdn.example.com/hero.webp 800w, \
+                 https://cdn.example.com/hero@2x.webp 1600w\""
+            ),
+            "body: {}",
+            page.body_html
+        );
+        assert!(
+            page.body_html
+                .contains("sizes=\"(max-width: 800px) 100vw, 800px\""),
+            "body: {}",
+            page.body_html
+        );
+        artifact.verify_integrity().expect("artifact integrity");
+    }
+
+    #[test]
+    fn compiler_rejects_insecure_srcset_candidate_before_artifact_creation() {
+        let error = StaticLandingCompiler::default()
+            .compile_publish(&project_with_srcset(
+                "https://cdn.example.com/hero.webp 800w, http://cdn.example.com/hero@2x.webp 1600w",
+            ))
+            .expect_err("HTTP srcset candidate must be rejected");
+        let LandingProjectError::Validation { diagnostics } = error else {
+            panic!("expected typed validation diagnostics");
+        };
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "landing_srcset_rejected"
+                && diagnostic.path.ends_with("attributes.srcset")
+        }));
+    }
+
+    #[test]
+    fn compiler_rejects_data_url_srcset_candidate_before_artifact_creation() {
+        let error = StaticLandingCompiler::default()
+            .compile_publish(&project_with_srcset(
+                "https://cdn.example.com/hero.webp 800w, data:image/png;base64,AAAA 2x",
+            ))
+            .expect_err("data: srcset candidate must be rejected");
+        let LandingProjectError::Validation { diagnostics } = error else {
+            panic!("expected typed validation diagnostics");
+        };
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "landing_srcset_rejected"
+                && diagnostic.path.ends_with("attributes.srcset")
+        }));
+    }
 }

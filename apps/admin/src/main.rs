@@ -27,11 +27,11 @@ async fn main() {
         request_csp_nonce, shell, validate_admin_security_profile,
     };
     use rustok_pages_admin::{
-        BrowserIntentEnvelope, FLY_CSRF_HEADER_NAME, PagesBrowserIntentAccessError,
-        PagesBrowserIntentProblem, PagesBrowserIntentResponse, PagesBuilderSaveSnapshot,
-        dispatch_pages_browser_intent_with_capabilities, fetch_pages_builder_rollout_snapshot,
-        pages_editor_capabilities_for_snapshot, pages_editor_capability_policy_for_role,
-        verify_csrf_token,
+        BrowserIntentEnvelope, DraftSessionOwner, FLY_CSRF_HEADER_NAME,
+        PagesBrowserIntentAccessError, PagesBrowserIntentProblem, PagesBrowserIntentResponse,
+        PagesBuilderSaveSnapshot, dispatch_pages_browser_intent_with_capabilities,
+        fetch_pages_builder_rollout_snapshot, pages_editor_capabilities_for_snapshot,
+        pages_editor_capability_policy_from_effective, verify_csrf_token,
     };
     use rustok_ui_auth::AuthError;
     use serde_json::{Value, json};
@@ -101,7 +101,7 @@ async fn main() {
                     auth_error(StatusCode::UNAUTHORIZED, "Authenticated user was not found")
                 })?;
         let role_capabilities =
-            pages_editor_capability_policy_for_role(Some(verified_user.role.as_str())).evaluate();
+            pages_editor_capability_policy_from_effective(&verified_user.permissions).evaluate();
         let rollout =
             fetch_pages_builder_rollout_snapshot(Some(token.clone()), Some(tenant_slug.clone()))
                 .await
@@ -120,9 +120,16 @@ async fn main() {
             .unwrap_or_else(|| "en".to_string());
         let snapshot = PagesBuilderSaveSnapshot {
             token: Some(token),
-            tenant_slug: Some(tenant_slug),
+            tenant_slug: Some(tenant_slug.clone()),
             page_id,
             default_locale,
+            // Bind the draft session to the verified caller (audit §2.5):
+            // other users — including cross-tenant ones — cannot load or
+            // commit this session even with the token.
+            owner: Some(DraftSessionOwner {
+                tenant_id: tenant_slug,
+                user_id: verified_user.id,
+            }),
         };
         dispatch_pages_browser_intent_with_capabilities(snapshot, envelope, editor_capabilities)
             .await

@@ -3,7 +3,7 @@ use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 use url::form_urlencoded::Serializer;
 use uuid::Uuid;
 
-use crate::access::pages_editor_capability_policy_for_role;
+use crate::access::pages_editor_capability_policy_from_effective;
 use crate::core::optional_ui_text;
 use crate::transport;
 
@@ -55,7 +55,7 @@ pub(crate) fn PagesInlineEditLaunch(selected_page: Signal<Option<String>>) -> im
             let can_edit = user
                 .as_ref()
                 .map(|user| {
-                    pages_editor_capability_policy_for_role(Some(user.role.as_str()))
+                    pages_editor_capability_policy_from_effective(&user.permissions)
                         .evaluate_detailed()
                         .effective
                         .edit

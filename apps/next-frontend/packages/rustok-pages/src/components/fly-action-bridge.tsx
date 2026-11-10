@@ -10,6 +10,14 @@
 
 "use client";
 
+// The canonical fly-actions runtime, byte-exact with the asset the Rust
+// storefront inlines (`crates/ui/fly/browser/assets/fly-actions.js`). It is a
+// self-starting, idempotent IIFE: importing it installs the document-level
+// click/touch listeners and exposes `globalThis.FlyActions`. Guarded against
+// SSR by its own `typeof document` checks, so it is safe to import at module
+// scope. Parity is enforced by `npm run verify:fly-actions-parity`.
+import "./fly-actions.js";
+
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -17,7 +25,6 @@ import {
   pricingExpectationFromCart,
   type CartPricingExpectation,
 } from "@rustok/cart-frontend";
-import { initFlyActions } from "./fly-actions-runtime";
 
 export interface FlyActionDetail {
   kind: string;
@@ -35,10 +42,7 @@ export function FlyActionBridge() {
   const cart = useCart();
 
   useEffect(() => {
-    // 1. Initialize fly-actions runtime (idempotent)
-    initFlyActions();
-
-    // 2. Handle CustomEvents dispatched by fly actions
+    // 1. Handle CustomEvents dispatched by fly actions
     const handleFlyAction = (e: Event) => {
       const customEvent = e as CustomEvent<FlyActionDetail>;
       const detail = customEvent.detail;
@@ -86,13 +90,13 @@ export function FlyActionBridge() {
       }
     };
 
-    // 3. Sync cart count islands with live cart state
+    // 2. Sync cart count islands with live cart state
     const counters = document.querySelectorAll("[data-fly-island='cart_count']");
     for (const counter of counters) {
       counter.textContent = String(cart.itemCount);
     }
 
-    // 4. Progressive enhancement: intercept internal <a> clicks for client-side navigation
+    // 3. Progressive enhancement: intercept internal <a> clicks for client-side navigation
     const handleLinkClick = (e: MouseEvent) => {
       const target = e.target as Element | null;
       if (!target || typeof target.closest !== "function") return;

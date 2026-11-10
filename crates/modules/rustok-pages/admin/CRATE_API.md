@@ -5,8 +5,8 @@
 - **Module Authority**: `rustok-pages-admin` is the authoritative SSR-first Leptos admin UI package for CMS page authoring, static page management, template layout editing, and site symbol management.
 - **Symmetric FFA Boundary**: Framework-agnostic logic lives strictly in `src/core.rs` with zero UI framework imports, zero template bindings, and full pure Rust unit test coverage. Leptos UI components (`PagesAdmin`, `TemplatesAdmin`) act strictly as presentation and event-dispatch adapters.
 - **Visual Builder Integration**: Hosts the Fly browser intent bridge and `PageBuilderAdmin` canvas for pages formatted with `PAGE_BUILDER_DOCUMENT_FORMAT`.
-- **SSR Draft Session Store**: Manages server-side draft sessions (`SsrDraftSessionStore`, `DurableSsrDraftSessionStore`) with generation conflict tracking and revision-level invalidation.
-- **Deterministic Access Policy**: Role-based capability policy (`pages_editor_capability_policy`) enforcing strict fail-closed access (only `super_admin` and `admin` receive publish privileges).
+- **SSR Draft Session Store**: Manages server-side draft sessions (`SsrDraftSessionStore`, `DurableSsrDraftSessionStore`) with generation conflict tracking and revision-level invalidation. Sessions are bound to a `DraftSessionOwner` (`tenant_id` + `user_id` from the verified caller); read-only callers (no edit capability) never create or mutate a session, and records above `MAX_DRAFT_SESSION_RECORD_BYTES` or owners above `MAX_DRAFT_SESSIONS_PER_OWNER` live sessions are rejected/evicted (audit §2.5).
+- **Deterministic Access Policy**: Effective-permission capability policy (`pages_editor_capability_policy`) enforcing strict fail-closed access (`pages:manage` grants everything, `pages:update` grants authoring, `pages:publish` grants publishing; snapshots without Pages grants stay read-only).
 
 ## Platform Capability Bindings
 
@@ -40,9 +40,10 @@
 - `PagesBrowserIntentProblem`: RFC-7807 problem detail projection with machine-readable codes.
 
 ### Access & Policy APIs
-- `pages_editor_capability_policy`: Builds an `EditorCapabilityPolicy` from an authenticated user role and contribution assembly.
-- `pages_editor_capability_policy_for_role`: Builds the default editor capability policy for a specific role string.
-- `pages_editor_permissions_for_role`: Maps a role to `CapabilityState` (`super_admin`/`admin` -> full, `manager` -> author without publish, others -> read-only).
+- `pages_editor_capability_policy`: Builds an `EditorCapabilityPolicy` from the authenticated user's effective permission snapshot and contribution assembly.
+- `pages_editor_capability_policy_from_effective`: Builds the default editor capability policy for an effective permission snapshot.
+- `pages_editor_permissions_from_effective`: Maps an effective permission snapshot to `CapabilityState` (`pages:manage` -> full, `pages:update` -> author without publish, `pages:update` + `pages:publish` -> full, `pages:publish` alone -> read-only plus publish, anything else -> read-only).
+- `effective_permissions_grant`: Checks whether an effective snapshot grants a required `"{resource}:{action}"` permission (exact match or the resource's `manage` grant), mirroring `rustok_api::has_effective_permission`.
 - `pages_editor_provider_state`: Derives `EditorProviderState` (`Healthy`, `Degraded`, `Unavailable`) from contribution diagnostics.
 - `pages_palette_block_access`: Verifies whether a given block contribution can be inserted under active capabilities.
 
@@ -70,7 +71,7 @@
 
 - **Zero UI Framework Leakage in Core**: `src/core.rs` contains zero imports from `leptos`, `dioxus`, or any UI rendering framework.
 - **Role Fail-Closed Security**: Unauthenticated, customer, or unrecognized roles receive strictly read-only capabilities (`CapabilityState::read_only()`). Only `super_admin` and `admin` receive publication capabilities.
-- **Draft Session Scoping**: SSR draft sessions are bound to a specific `page_id` and verified against the page's persisted revision. Revision mismatches automatically prune the stale session and reseed from persisted state.
+- **Draft Session Scoping**: SSR draft sessions are bound to a specific `page_id` and verified against the page's persisted revision. Revision mismatches automatically prune the stale session and reseed from persisted state. Sessions are also owner-bound (`DraftSessionOwner`): attributed records reject loads, commits, and removals from any other user or tenant with `OwnerMismatch`, and callers without the edit capability never create or mutate a session at all.
 - **Symbol Referential Integrity**: Reusable site symbols cannot be deleted without warning if referenced by any template or page.
 - **Unique Component Identity**: Every component instantiated from a starter preset generates fresh, non-colliding unique IDs.
 

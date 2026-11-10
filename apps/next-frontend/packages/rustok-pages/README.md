@@ -22,9 +22,9 @@ Rather than isolating the public storefront within a sandboxed `<iframe>`, `@rus
    - Injects the sanitized HTML into `<div className="fly-page-body" dangerouslySetInnerHTML={{ __html: html }} />`.
    - Mounts the client island `<FlyActionBridge />`.
 
-2. **Client Island (`FlyActionBridge` & `fly-actions-runtime`):**
-   - Initializes the lightweight, zero-dependency `fly-actions` runtime (`initFlyActions`).
-   - Natively handles DOM actions: `toggle_visibility`, `scroll_to`, `animate`.
+2. **Client Island (`FlyActionBridge` + canonical `fly-actions.js`):**
+   - Side-effect imports `components/fly-actions.js` — a byte-exact copy of the canonical runtime asset the Rust storefront inlines (`crates/ui/fly/browser/assets/fly-actions.js`); it self-starts idempotently (SSR-safe) and exposes `globalThis.FlyActions`.
+   - Natively handles DOM actions: `toggle_visibility`, `switch_tab`, `toggle_accordion`, `switch_slide` (incl. touch/swipe), `scroll_to`, `animate`.
    - Bridges `emit_event` and `provider_action` events (`add_to_cart`, `buy_now`, `navigate`) to React context and Next.js router.
    - Intercepts internal same-origin link clicks for SPA client routing.
 
@@ -32,7 +32,7 @@ Rather than isolating the public storefront within a sandboxed `<iframe>`, `@rus
 - `FlyActionBridge` — Client Component handling interactive actions, cart integration, and dynamic island sync.
 - `DraftPreviewBanner` — Sticky indicator banner displayed when viewing unpublished draft pages in Next.js Draft Mode.
 - `scopeLandingCss` — Utility wrapping styles with `@scope (.fly-page-container)` and remapping root selectors.
-- `initFlyActions` — Standalone idempotent actions runtime initializer.
+- `fly-actions.js` — Vendored byte-exact copy of the canonical action runtime asset (`crates/ui/fly/browser/assets/fly-actions.js`); imported for side effects only, typed by the sibling `fly-actions.d.ts` (`tsc` resolves `.js` → `.d.ts`; `allowJs` stays `false`). Never edit the copy by hand — re-copy it from the crate and keep `npm run verify:fly-actions-parity` green.
 - `parseArtifactHtml` — Utility extracting `<style>` and `<body>` from artifact documents.
 - `pageCacheTags` — Generates canonical ISR cache tags (`["page-${slug}", "pages"]`).
 - `fetchPublishedPage`, `fetchPageArtifact` — GraphQL and HTTP artifact fetching helpers with configurable ISR tags and draft cache options.

@@ -13,6 +13,8 @@ on:
       - "apps/admin/Cargo.toml"
       - "apps/next-admin/packages/blog/**"
       - "apps/next-admin/src/app/dashboard/blog/**"
+      - "apps/next-frontend/packages/rustok-pages/src/components/fly-actions.js"
+      - "apps/next-frontend/scripts/verify-fly-actions-parity.mjs"
       - "scripts/verify/verify-fly-*.mjs"
       - "scripts/verify/verify-pages-current-only.mjs"
       - ".github/workflows/fly-page-builder.yml"
@@ -38,6 +40,8 @@ on:
       - "apps/admin/Cargo.toml"
       - "apps/next-admin/packages/blog/**"
       - "apps/next-admin/src/app/dashboard/blog/**"
+      - "apps/next-frontend/packages/rustok-pages/src/components/fly-actions.js"
+      - "apps/next-frontend/scripts/verify-fly-actions-parity.mjs"
       - "scripts/verify/verify-fly-*.mjs"
       - "scripts/verify/verify-pages-current-only.mjs"
       - ".github/workflows/fly-page-builder.yml"
@@ -231,6 +235,12 @@ jobs:
       - name: Verify Fly interaction capabilities
         if: ${{ !cancelled() }}
         run: node scripts/verify/verify-fly-interaction-capabilities.mjs
+
+      # Single canonical action runtime (audit §3.2): the Next.js storefront
+      # package must consume fly-actions.js byte-for-byte, never a TS rewrite.
+      - name: Verify fly-actions asset parity with Next.js storefront
+        if: ${{ !cancelled() }}
+        run: node apps/next-frontend/scripts/verify-fly-actions-parity.mjs
 
       - name: Verify Fly multilingual runtime
         if: ${{ !cancelled() }}

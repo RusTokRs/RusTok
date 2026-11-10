@@ -31,6 +31,8 @@ struct CookieUserInfo {
     role: String,
     #[allow(dead_code)]
     status: String,
+    #[serde(default)]
+    permissions: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,6 +47,7 @@ fn to_user_session(payload: CookieSessionResponse, tenant: String) -> (AuthUser,
         email: payload.user.email,
         name: payload.user.name,
         role: payload.user.role,
+        permissions: payload.user.permissions,
     };
     let session = AuthSession {
         token: payload.access_token,

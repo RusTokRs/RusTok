@@ -7,8 +7,8 @@ use rustok_page_builder::dto::{
 };
 use rustok_page_builder::rollout::BuilderCapabilityFlags;
 use rustok_page_builder_admin::{
-    AdminCanvasController, PageBuilderAdminFacade, PageBuilderAdminFacadeError,
-    PageBuilderAdminFacadeFuture, PageBuilderAdminProviderStatus,
+    AdminCanvasController, DraftSessionOwner, PageBuilderAdminFacade,
+    PageBuilderAdminFacadeError, PageBuilderAdminFacadeFuture, PageBuilderAdminProviderStatus,
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -20,15 +20,20 @@ use fly::{PageSelection, RenderPolicy};
 #[cfg(feature = "ssr")]
 use rustok_api::{Action, Permission, PortActor, PortContext, Resource};
 #[cfg(feature = "ssr")]
-use rustok_page_builder::composition::compose_fly_page_builder_handlers;
+use rustok_page_builder::adapters::FlyAdapterBackedPageBuilderService;
+#[cfg(feature = "ssr")]
+use rustok_page_builder::composition::compose_configured_fly_page_builder_handlers;
 #[cfg(feature = "ssr")]
 use rustok_page_builder::preview_port::PageBuilderPreviewRenderingPort;
 #[cfg(feature = "ssr")]
 use rustok_page_builder::render::PageBuilderRenderer;
 #[cfg(feature = "ssr")]
+use rustok_page_builder::runtime_telemetry::ProviderHealthRuntimeTelemetry;
+#[cfg(feature = "ssr")]
 use rustok_page_builder::service::{
-    PageBuilderProjectSaveResult, PageBuilderProjectStore, PageBuilderRequestAuth,
-    PageBuilderServiceError, PageBuilderServiceResult,
+    PageBuilderCapabilityAuthorizer, PageBuilderCapabilityPermissions,
+    PageBuilderCapabilityPortPolicies, PageBuilderProjectSaveResult, PageBuilderProjectStore,
+    PageBuilderRequestAuth, PageBuilderServiceError, PageBuilderServiceResult,
 };
 #[cfg(feature = "ssr")]
 use std::time::Duration;
@@ -43,6 +48,11 @@ pub struct PagesBuilderSaveSnapshot {
     pub tenant_slug: Option<String>,
     pub page_id: String,
     pub default_locale: String,
+    /// Owner binding for the browser-intent draft session (audit §2.5).
+    /// `None` keeps the legacy unattributed behavior (internal paths,
+    /// tests); the admin endpoint sets the verified user and tenant so
+    /// draft sessions cannot be loaded or committed across users.
+    pub owner: Option<DraftSessionOwner>,
 }
 
 type SnapshotProvider = Arc<dyn Fn() -> PagesBuilderSaveSnapshot + Send + Sync>;
@@ -165,6 +175,7 @@ async fn pages_page_builder_capability(
                 tenant_slug,
                 page_id,
                 default_locale,
+                owner: None,
             },
             noop_saved_handler(),
             request,
@@ -276,7 +287,7 @@ async fn dispatch_pages_page_builder_capability(
             .await
             .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
             .ok_or_else(|| PageBuilderAdminFacadeError::new("Authenticated user was not found"))?;
-    let permissions = page_builder_permissions_for_role(&verified_user.role);
+    let permissions = page_builder_permissions_from_effective(&verified_user.permissions);
     let actor_id = verified_user.id;
     let auth = PageBuilderRequestAuth::new(permissions);
     let context = match &request {
@@ -317,8 +328,31 @@ async fn dispatch_pages_page_builder_capability(
     };
     let expected_capability = request.capability();
     let effective_flags = trusted_rollout.effective_runtime_flags();
-    let handlers = compose_fly_page_builder_handlers(store, renderer, effective_flags)
-        .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
+    // The Pages host routes the port's "Publish" capability to
+    // `PageService::save_document`, which persists the working copy and
+    // itself enforces `pages:update` (for a published page the public
+    // body stays untouched until the separate publication flow). The
+    // authorizer mirrors that backend contract: saving a draft requires
+    // the update permission, while real publication (`publish_reviewed`)
+    // keeps requiring `pages:publish` inside the Pages module. Hosts
+    // whose store genuinely publishes keep the shared default mapping.
+    let service = FlyAdapterBackedPageBuilderService::with_telemetry(
+        store,
+        renderer,
+        ProviderHealthRuntimeTelemetry::default(),
+    );
+    let handlers = compose_configured_fly_page_builder_handlers(
+        service,
+        effective_flags,
+        PageBuilderCapabilityPortPolicies::default(),
+        PageBuilderCapabilityAuthorizer::new(PageBuilderCapabilityPermissions {
+            preview: Permission::new(Resource::Pages, Action::Read),
+            tree: Permission::new(Resource::Pages, Action::Read),
+            properties: Permission::new(Resource::Pages, Action::Update),
+            publish: Permission::new(Resource::Pages, Action::Update),
+        }),
+    )
+    .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?;
     let response = handlers
         .handle(&context, &auth, request)
         .await
@@ -416,9 +450,16 @@ fn required_snapshot_value(
 }
 
 #[cfg(feature = "ssr")]
-fn page_builder_permissions_for_role(role: &str) -> Vec<Permission> {
-    let capabilities = crate::access::pages_editor_permissions_for_role(Some(role));
+fn page_builder_permissions_from_effective(effective: &[String]) -> Vec<Permission> {
+    // The editor always needs to read the document it renders; write
+    // capabilities mirror the user's effective Pages grants through the
+    // single capability mapping in `access.rs`, so the UI capabilities and
+    // the port authorization can never drift apart.
+    let capabilities = crate::access::pages_editor_permissions_from_effective(effective);
     let mut permissions = vec![Permission::new(Resource::Pages, Action::Read)];
+    if capabilities.edit {
+        permissions.push(Permission::new(Resource::Pages, Action::Update));
+    }
     if capabilities.publish {
         permissions.push(Permission::new(Resource::Pages, Action::Publish));
     }

@@ -20,7 +20,7 @@
   - Wraps content in `<div className="fly-page-container" style={{ isolation: "isolate", contain: "style layout" }}>`.
   - Mounts the client `<FlyActionBridge />` island for handling interactive triggers.
 - `FlyActionBridge()`:
-  - Client component (`"use client"`) that initializes `fly-actions-runtime` and listens for `fly:action` CustomEvents.
+  - Client component (`"use client"`) that side-effect imports the canonical `fly-actions.js` runtime asset (a byte-exact copy of `crates/ui/fly/browser/assets/fly-actions.js`, the same script the Rust storefront inlines) and listens for `fly:action` CustomEvents.
   - Bridges actions (`add_to_cart`, `cart:add`, `buy_now`, `cart:open`, `cart:close`, `cart:toggle`, `navigate`) to `@rustok/cart-frontend` and Next.js `useRouter`.
   - Dynamically updates cart counter islands (`[data-fly-island="cart_count"]`) and intercepts relative same-origin link clicks for client-side SPA routing.
 - `DraftPreviewBanner({ slug, locale, exitUrl }: DraftPreviewBannerProps)`:
@@ -65,7 +65,7 @@ Unlike legacy iframe-based embedding, `@rustok/pages-frontend` renders published
 - `pageCacheTags`: Handles undefined, null, or empty string slugs gracefully by falling back to `["pages"]`.
 - `scopeLandingCss`: Handles empty, whitespace-only, or already-scoped CSS strings idempotently without malformed syntax.
 - `fetchPageArtifact`: Revalidation durations are clamped and validated; defaults to 60s when not specified.
-- Animation durations in `fly-actions-runtime` are clamped between 50ms and 10,000ms.
+- Animation durations in the `fly-actions` runtime asset are clamped between 50ms and 10,000ms.
 
 ### 2. Branch Completeness & Anti-Swallowing
 - `fetchPublishedPage`: Throws typed errors containing backend GraphQL error messages when GraphQL execution fails.
@@ -78,7 +78,7 @@ Unlike legacy iframe-based embedding, `@rustok/pages-frontend` renders published
 
 ### 4. Side-Effect Completeness
 - Event listeners for `fly:action` and document `click` are cleanly unregistered in `FlyActionBridge`'s `useEffect` cleanup hook.
-- `initFlyActions` uses a global document symbol (`Symbol.for("fly.actions.adapter")`) to ensure click delegation is attached exactly once per document lifecycle.
+- The `fly-actions` runtime asset self-starts idempotently on import: it keys the installed listener adapter on a document symbol (`Symbol.for("fly.actions.adapter")`), so hydration re-imports or dual mounting attach delegation exactly once per document lifecycle, and it is SSR-safe (`typeof document` guards).
 
 ### 5. Calculation & Algorithmic Correctness
 - `scopeLandingCss` implements a tokenizer respecting block nesting (`group` vs `declaration`), string quotes (`"`, `'`), comments (`/* ... */`), and identifier word boundaries (`tbody` or `.some-body` are never mistaken for `body`).
@@ -92,10 +92,14 @@ Unlike legacy iframe-based embedding, `@rustok/pages-frontend` renders published
 
 ## 5. Verification & Testing
 
-- **Contract Unit Tests**: `apps/next-frontend/packages/rustok-pages/src/pages-frontend.test.mjs` (8 passing unit tests).
+- **Contract Unit Tests**: `apps/next-frontend/packages/rustok-pages/src/pages-frontend.test.mjs` (9 passing unit tests, including fly-actions asset parity).
 - **Execution Command**:
   ```bash
   npm --prefix apps/next-frontend run test:pages
+  ```
+- **Fly Actions Asset Parity** (byte-exact copy of `crates/ui/fly/browser/assets/fly-actions.js` + supported action-kind set vs the Rust `ComponentAction` enum):
+  ```bash
+  npm --prefix apps/next-frontend run verify:fly-actions-parity
   ```
 - **Type Checking**:
   ```bash

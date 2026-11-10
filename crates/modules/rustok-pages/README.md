@@ -23,7 +23,9 @@ channel visibility, deterministic published landing artifacts and page routes.
   copied, titles/metadata are kept, and each locale gets a `-copy[-N]` slug suffix.
 - Schedule reviewed publications: `page_publish_jobs` captures the exact reviewed
   publish command at scheduling time and a bounded sweep replays due commands
-  through `publish_reviewed` as a system actor (see
+  through `publish_reviewed` as a system actor; claims take a reaper lease, so a
+  worker that crashes mid-publish no longer strands its job in `executing` — the
+  sweep reaper returns expired leases to `scheduled` (or fails/cancels them; see
   [`DECISIONS/2026-10-09-scheduled-page-publishing.md`](../../../DECISIONS/2026-10-09-scheduled-page-publishing.md)).
 - Expose module-owned GraphQL and REST adapters.
 - Accept one Page Builder body input through the typed `document` field without
@@ -97,7 +99,15 @@ These are gaps in what the runtime actually does, not accepted design:
   captured at scheduling time and replayed unchanged, so content edited after scheduling
   intentionally fails the job with `PAGE_DOCUMENT_REVISION_CONFLICT` instead of publishing
   unreviewed content — reschedule after re-review. Deterministic failures are terminal;
-  unknown errors retry up to 5 attempts. Scheduling needs `pages:publish`; execution is a
+  unknown errors retry up to 5 attempts. Claimed jobs hold a lease
+  (`page_publish_jobs.lease_until`, `PAGE_PUBLISH_JOB_LEASE_SECS`): every sweep first
+  reaps expired `executing` rows — back to `scheduled` when attempts remain
+  (`PAGE_PUBLISH_JOB_LEASE_EXPIRED` records the recovery), terminal `failed` when
+  attempts are exhausted, and terminal `canceled` when a newer schedule superseded the
+  stranded claim — so a crashed worker cannot strand a publication forever
+  (`sweep_due_publish_jobs_as_of` / `reap_expired_publish_jobs_as_of`;
+  `PagePublishScheduler::metrics()` exposes `requeued_total` / `reaped_failed_total`
+  counters for stranded-state monitoring). Scheduling needs `pages:publish`; execution is a
   system-actor publish whose job row keeps `created_by` attribution. **Hosts must run
   `PagePublishScheduler` (or `process_due_publish_jobs`) for schedules to fire.** Runtime
   coverage lives in `tests/page_publish_scheduler_sqlite.rs` (SQLite); the Postgres suites

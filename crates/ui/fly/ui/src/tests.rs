@@ -106,14 +106,29 @@ fn withdrawing_drag_capability_cancels_active_drag_and_overlay() {
 }
 
 #[test]
-fn reviewer_profile_can_publish_but_cannot_mutate() {
-    let mut machine =
+fn author_profiles_save_drafts_and_publish_only_reviewers_do_not() {
+    // Saving the working draft is an authoring action: a manager-style
+    // profile (authoring without publish rights) can save its draft…
+    let mut author =
+        FlyUiStateMachine::new(Presentation::Full).with_editable_capabilities(CapabilityState {
+            publish: false,
+            ..CapabilityState::full()
+        });
+    assert!(matches!(
+        author.dispatch(UiIntent::RequestSave),
+        Ok(effects) if matches!(effects.first(), Some(UiEffect::Persist { .. }))
+    ));
+
+    // …while a publish-only reviewer can neither mutate the project nor
+    // save a draft. The publish capability stays independent for the
+    // real publication flow, which does not run through RequestSave.
+    let mut reviewer =
         FlyUiStateMachine::new(Presentation::Full).with_editable_capabilities(CapabilityState {
             edit: false,
             publish: true,
             ..CapabilityState::full()
         });
-    let mutation = machine.dispatch(UiIntent::execute(EditorCommand::Patch {
+    let mutation = reviewer.dispatch(UiIntent::execute(EditorCommand::Patch {
         component_id: "hero".to_string(),
         patch: Default::default(),
     }));
@@ -121,10 +136,10 @@ fn reviewer_profile_can_publish_but_cannot_mutate() {
         mutation,
         Err(UiError::CapabilityUnavailable("edit".to_string()))
     );
-    assert!(matches!(
-        machine.dispatch(UiIntent::RequestSave),
-        Ok(effects) if matches!(effects.first(), Some(UiEffect::Persist { .. }))
-    ));
+    assert_eq!(
+        reviewer.dispatch(UiIntent::RequestSave),
+        Err(UiError::CapabilityUnavailable("edit".to_string()))
+    );
 }
 
 #[test]

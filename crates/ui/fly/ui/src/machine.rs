@@ -278,10 +278,14 @@ impl FlyUiStateMachine {
                 vec![UiEffect::Redo]
             }
             UiIntent::RequestSave => {
-                self.require_edit_capability("publish", self.state.capabilities.publish)?;
+                // Saving the working draft is an authoring action: it
+                // requires the edit capability (pages:update at the
+                // permission layer), not the publish capability. Real
+                // publication is a separate flow with its own gate.
+                self.require_edit_capability("edit", self.state.capabilities.edit)?;
                 if self.state.has_blocking_diagnostics() {
                     return Err(UiError::CapabilityUnavailable(
-                        "publish blocked by validation diagnostics".to_string(),
+                        "save blocked by validation diagnostics".to_string(),
                     ));
                 }
                 vec![UiEffect::Persist {

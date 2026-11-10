@@ -45,6 +45,10 @@
 - `srcset`/`sizes` pass static validation in `static_publish_policy` (bounded
   grammar, cap-covered by the policy hash). The default policy permits validated
   `srcset`; operators can explicitly ban it through `forbidden_attributes`.
+  The renderer emits a validated `srcset` into the artifact: every candidate
+  URL is re-checked against the same image-resource policy as `src`, and one
+  malformed or disallowed candidate drops the whole attribute (a partial
+  `srcset` would silently change which image the browser picks).
   After the policy hash changes, exact
   rebuild of earlier retained sanitized sources reports hash drift until the
   page is re-published (fail-closed by design, see

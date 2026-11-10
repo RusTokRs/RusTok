@@ -111,6 +111,14 @@ outbox, exactly like an interactive publish. No read projections are added.
   job `failed` immediately with `last_error_code`/`last_error_message`.
 - Unknown errors return the job to `scheduled` with the attempt counter incremented, up
   to 5 attempts, then `failed`.
+- A claimed job holds a reaper lease (`page_publish_jobs.lease_until`, 10 minutes): a
+  worker that crashes between claiming and reporting an outcome leaves the job `executing`
+  only until the next sweep reaps the expired lease — back to `scheduled` when attempts
+  remain (recorded with `PAGE_PUBLISH_JOB_LEASE_EXPIRED`), terminal `failed` when attempts
+  are exhausted, and terminal `canceled` when a newer schedule superseded the stranded
+  claim (the newer schedule wins; requeueing would violate the one-pending-job index).
+  NULL leases (rows claimed before the lease column existed) count as expired; replays
+  stay safe through the captured command's `idempotency_key`.
 - No automatic retry after `failed`; rescheduling is explicit and creates a fresh
   pending state (rewriting the pending row if one exists).
 - Cancel is allowed only from `scheduled`; `executing`, `published`, `failed`, and
@@ -118,9 +126,11 @@ outbox, exactly like an interactive publish. No read projections are added.
 
 ## Migration and cutover
 
-One append-only migration with backfill `mode: none`; no existing rows are touched and no
-deploy ordering constraint exists. Scheduling is opt-in editor behavior from cutover;
-immediate publishing is unchanged.
+Append-only migrations with backfill `mode: none`; no existing rows are touched and no
+deploy ordering constraint exists (the follow-up lease migration adds a nullable
+`lease_until` column plus a partial index over `executing` rows — existing rows keep
+NULL leases, which the reaper treats as expired claims). Scheduling is opt-in editor
+behavior from cutover; immediate publishing is unchanged.
 
 ## Alternatives considered
 
@@ -140,6 +150,10 @@ immediate publishing is unchanged.
   semantics, due sweep executes the stored command once (idempotent replay safe), due
   sweep honors `publish_at`, cancellation prevents execution, deterministic publish
   failure marks the job failed with the recorded error, and non-due jobs are untouched.
+  Reaper coverage: one sweep reclaims a stranded `executing` job and publishes it;
+  expired leases return to `scheduled` with the `PAGE_PUBLISH_JOB_LEASE_EXPIRED` marker;
+  live leases and exhausted-attempt/NULL-lease/superseded cases each land in their
+  documented state; `PagePublishScheduler::metrics()` counts sweeps and recoveries.
 - Toolchain-less static gates (rustfmt, tree-sitter syntax, module resolution,
   `verify:adrs`, migration backfill self-test) must pass in the authoring environment;
   `cargo test`/`clippy` remain CI authority (no Rust toolchain in the environment).

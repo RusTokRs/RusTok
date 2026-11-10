@@ -11,8 +11,10 @@ const HTTP_BAD_REQUEST: u16 = 400;
 const HTTP_FORBIDDEN: u16 = 403;
 const HTTP_NOT_FOUND: u16 = 404;
 const HTTP_CONFLICT: u16 = 409;
+const HTTP_PAYLOAD_TOO_LARGE: u16 = 413;
 const HTTP_UNPROCESSABLE_ENTITY: u16 = 422;
 const HTTP_BAD_GATEWAY: u16 = 502;
+const HTTP_SERVICE_UNAVAILABLE: u16 = 503;
 
 pub const BROWSER_REVISION_CONFLICT_CODE: &str = "REVISION_CONFLICT";
 pub const BROWSER_PROJECT_HASH_CONFLICT_CODE: &str = "PROJECT_HASH_CONFLICT";
@@ -88,6 +90,17 @@ fn status_for_error(error: &PagesBrowserIntentAccessError) -> u16 {
             SsrDraftSessionError::GenerationConflict { .. }
             | SsrDraftSessionError::PageMismatch { .. },
         )) => HTTP_CONFLICT,
+        // The draft session belongs to another user/tenant: never leak which
+        // one (audit §2.5).
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::OwnerMismatch,
+        )) => HTTP_FORBIDDEN,
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::RecordTooLarge { .. },
+        )) => HTTP_PAYLOAD_TOO_LARGE,
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::LockTimeout(_),
+        )) => HTTP_SERVICE_UNAVAILABLE,
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Facade(error))
             if error.stable_code.as_deref() == Some(BROWSER_REVISION_CONFLICT_CODE) =>
         {
@@ -144,9 +157,9 @@ mod tests {
         let error = PagesBrowserIntentAccessError::Capability(
             BrowserCapabilityDenial {
                 intent: BrowserIntentKind::Save,
-                capability: EditorCapability::Publish,
-                required: vec![EditorCapability::Publish],
-                missing: vec![EditorCapability::Publish],
+                capability: EditorCapability::Edit,
+                required: vec![EditorCapability::Edit],
+                missing: vec![EditorCapability::Edit],
             }
             .into(),
         );
@@ -157,19 +170,19 @@ mod tests {
             Some(BROWSER_CAPABILITY_DENIAL_CODE)
         );
         assert_eq!(problem.intent.as_deref(), Some("save"));
-        assert_eq!(problem.capability, Some(EditorCapability::Publish));
-        assert_eq!(problem.required, vec![EditorCapability::Publish]);
-        assert_eq!(problem.missing, vec![EditorCapability::Publish]);
+        assert_eq!(problem.capability, Some(EditorCapability::Edit));
+        assert_eq!(problem.required, vec![EditorCapability::Edit]);
+        assert_eq!(problem.missing, vec![EditorCapability::Edit]);
         assert_eq!(
             serde_json::to_value(&problem).expect("serialize problem"),
             json!({
                 "status": 403,
-                "error": "browser intent `save` requires editor capability `publish`",
+                "error": "browser intent `save` requires editor capability `edit`",
                 "code": "FLY_CAPABILITY_DENIED",
                 "intent": "save",
-                "capability": "publish",
-                "required": ["publish"],
-                "missing": ["publish"]
+                "capability": "edit",
+                "required": ["edit"],
+                "missing": ["edit"]
             })
         );
     }
@@ -248,6 +261,17 @@ mod tests {
             problem.code.as_deref(),
             Some(BROWSER_DRAFT_GENERATION_CONFLICT_CODE)
         );
+    }
+
+    #[test]
+    fn draft_owner_mismatch_maps_to_forbidden_without_leaking_ids() {
+        let error = PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::OwnerMismatch,
+        ));
+        let problem = PagesBrowserIntentProblem::from(&error);
+        assert_eq!(problem.status, HTTP_FORBIDDEN);
+        // The detail is opaque: no tenant or user identifiers.
+        assert_eq!(problem.error, "SSR draft session belongs to another owner");
     }
 
     #[test]

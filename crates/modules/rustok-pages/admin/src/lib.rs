@@ -43,8 +43,9 @@ use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use standalone_metadata::PagesPublishedMetadataSurface;
 
 pub use access::{
-    pages_editor_capability_policy, pages_editor_capability_policy_for_role,
-    pages_editor_permissions_for_role, pages_editor_provider_state,
+    effective_permissions_grant, pages_editor_capability_policy,
+    pages_editor_capability_policy_from_effective, pages_editor_permissions_from_effective,
+    pages_editor_provider_state,
 };
 pub use browser_intent::{
     PagesBrowserIntentError, PagesBrowserIntentResponse, pages_browser_default_durable_store,
@@ -52,6 +53,7 @@ pub use browser_intent::{
 };
 pub use browser_problem::PagesBrowserIntentProblem;
 pub use builder::PagesBuilderSaveSnapshot;
+pub use rustok_page_builder_admin::DraftSessionOwner;
 pub use builder_rollout_settings::{
     PagesBuilderRolloutSnapshot, PagesBuilderRolloutSnapshotError,
     fetch_pages_builder_rollout_snapshot, pages_editor_capabilities_for_rollout,
@@ -100,6 +102,7 @@ pub fn PagesAdmin() -> impl IntoView {
             tenant_slug: metadata_tenant.get_untracked(),
             page_id: metadata_page.get_untracked().unwrap_or_default(),
             default_locale: metadata_default_locale.clone(),
+            owner: None,
         },
         move |_page| {
             metadata_refresh.update(|generation| *generation = generation.wrapping_add(1));
