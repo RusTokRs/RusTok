@@ -86,7 +86,11 @@ impl ControlPlaneInfrastructure {
         actor_id: Option<Uuid>,
         event: DomainEvent,
     ) -> EventEnvelope {
-        let mut envelope = EventEnvelope::new(tenant_id.unwrap_or_default(), actor_id, event);
+        let envelope_tenant = match tenant_id {
+            Some(id) => id,
+            None => Uuid::nil(),
+        };
+        let mut envelope = EventEnvelope::new(envelope_tenant, actor_id, event);
         let event_id = self.new_id();
         envelope.id = event_id;
         envelope.correlation_id = event_id;

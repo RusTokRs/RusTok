@@ -324,7 +324,9 @@ impl SeaOrmModuleCompositionService {
                 })
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
+                if let Err(rollback_err) = transaction.rollback().await {
+                    tracing::warn!(%rollback_err, "failed to rollback module composition transaction");
+                }
                 let terminal_error = operation_failure(&error);
                 self.fail_build_operation(lease, &terminal_error).await?;
                 Err(error)

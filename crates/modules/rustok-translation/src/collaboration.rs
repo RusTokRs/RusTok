@@ -266,7 +266,9 @@ impl TranslationCollaborationService {
             .exec(&transaction)
             .await?;
         if update.rows_affected != 1 {
-            let _ = transaction.rollback().await;
+            if let Err(rollback_err) = transaction.rollback().await {
+                tracing::warn!(%rollback_err, "failed to rollback note resolution transaction");
+            }
             return Err(TranslationError::WorkflowRevisionConflict);
         }
         let persisted = workflow_note::Entity::find_by_id(input.note_id)

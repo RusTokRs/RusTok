@@ -57,6 +57,7 @@ pub struct ChangePasswordRequest {
 pub enum ChangePasswordInputError {
     MissingPasswords,
     Unauthorized,
+    MissingTenant,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -400,9 +401,14 @@ pub fn prepare_change_password_request(
     }
 
     let token = token.ok_or(ChangePasswordInputError::Unauthorized)?;
+    let tenant = tenant
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or(ChangePasswordInputError::MissingTenant)?;
+
     Ok(ChangePasswordRequest {
         token,
-        tenant: tenant.unwrap_or_default(),
+        tenant,
         current_password,
         new_password,
     })
@@ -901,7 +907,7 @@ mod tests {
     }
 
     #[test]
-    fn change_password_request_preserves_credentials_and_requires_auth() {
+    fn change_password_request_preserves_credentials_and_requires_auth_and_tenant() {
         assert_eq!(
             prepare_change_password_request(
                 Some("token".into()),
@@ -920,15 +926,33 @@ mod tests {
             ),
             Err(ChangePasswordInputError::Unauthorized)
         );
+        assert_eq!(
+            prepare_change_password_request(
+                Some("token".into()),
+                None,
+                "current-secret".into(),
+                "new-secret".into(),
+            ),
+            Err(ChangePasswordInputError::MissingTenant)
+        );
+        assert_eq!(
+            prepare_change_password_request(
+                Some("token".into()),
+                Some("   ".into()),
+                "current-secret".into(),
+                "new-secret".into(),
+            ),
+            Err(ChangePasswordInputError::MissingTenant)
+        );
 
         let request = prepare_change_password_request(
             Some("token".into()),
-            None,
+            Some("  tenant-alpha  ".into()),
             " current secret ".into(),
             " new secret ".into(),
         )
         .expect("valid request");
-        assert_eq!(request.tenant, "");
+        assert_eq!(request.tenant, "tenant-alpha");
         assert_eq!(request.current_password, " current secret ");
         assert_eq!(request.new_password, " new secret ");
     }
