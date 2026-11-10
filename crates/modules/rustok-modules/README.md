@@ -178,8 +178,9 @@ production readiness. The documented implementation and operational gaps include
   production use.
 - Static settings writes conservatively reject detected unresolved transitions
   with a predecessor, but exact release schemas and an atomic fence covering
-  static rollouts are missing. Installer seed toggles do not yet compose the
-  active settings schema, and recovery and retry paths need production evidence.
+  static rollouts are missing. Installer seed enables fail closed because they
+  cannot yet compose release-bound settings schemas, and recovery and retry
+  paths need production evidence.
 - Artifact-data object migration and the physical namespace cutover still need
   production fleet/job/write/recovery/retention fences, actual migration-object
   copy publication, PostgreSQL crash/race evidence, a separate full-manifest

@@ -16,6 +16,10 @@ High-confidence findings meeting the requested threshold exit with code 1.
 Text, JSON, CSV, Markdown, GitHub annotations, and advisory patches report the
 same selected findings. Git selections examine full files. Patches preserve
 the scanned content and append comments with the original line numbers.
+Requested report files are written even for an empty result and alongside JSON
+output. Report paths must be distinct from each other and scanned files.
+GitHub annotations and JSON use separate invocations. Unknown or ambiguous
+crate selectors return an operational error.
 
 ```text
 cargo test -p rustok-doctor

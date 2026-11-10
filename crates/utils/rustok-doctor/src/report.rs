@@ -346,9 +346,16 @@ pub(crate) fn annotations(findings: &[Finding]) {
             .replace('%', "%25")
             .replace('\n', " ")
             .replace('\r', "");
+        let file = finding
+            .file
+            .replace('%', "%25")
+            .replace('\r', "%0D")
+            .replace('\n', "%0A")
+            .replace(':', "%3A")
+            .replace(',', "%2C");
         println!(
             "::{level} file={},line={},title={}::[{}] {message}",
-            finding.file,
+            file,
             finding.line,
             finding.pattern_id,
             confidence(finding.confidence)
@@ -359,6 +366,5 @@ pub(crate) fn annotations(findings: &[Finding]) {
 pub(crate) fn write(root: &Path, path: &Path, content: &str) -> Result<(), String> {
     let target = root.join(path);
     fs::write(&target, content).map_err(|error| format!("{}: {error}", target.display()))?;
-    println!("Report written to {}", target.display());
     Ok(())
 }

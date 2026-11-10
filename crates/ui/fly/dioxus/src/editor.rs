@@ -321,7 +321,7 @@ pub fn FlyEditorWorkspace(
     on_change: Option<EventHandler<ProjectDocument>>,
     on_error: Option<EventHandler<String>>,
     messages: Option<EditorMessages>,
-    #[allow(unused_variables)] initial_page: Option<usize>,
+    initial_page: Option<usize>,
     capabilities: Option<CapabilityState>,
 ) -> Element {
     let messages = messages.unwrap_or_default();
@@ -340,9 +340,13 @@ pub fn FlyEditorWorkspace(
 
     let mut editor = use_signal(|| FlyEditor::new(document, registries));
 
+    let page_selection = match initial_page {
+        Some(index) => PageSelection::Index(index),
+        None => PageSelection::First,
+    };
     let rendered = render_page(
         editor.read().document(),
-        &PageSelection::First,
+        &page_selection,
         &RenderPolicy::default(),
     );
     let layers = editor_layer_items(editor.read().document());

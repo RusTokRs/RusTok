@@ -208,14 +208,60 @@ async fn successful_provisioning_commits_identity_and_role_together() {
 #[tokio::test]
 async fn seed_module_retry_reuses_original_revision_and_detects_later_change() {
     let db = setup_test_db_with_migrations::<Migrator>().await;
-    let tenant_id = Uuid::new_v4();
+    let tenant_id = Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").unwrap();
     insert_tenant(&db, tenant_id).await;
     let registry = ModuleRegistry::new().register(SeedTestModule);
     let ports = SeaOrmInstallerBootstrapPorts::new(db.clone(), &registry, Vec::new());
-    ports
+    let error = ports
         .set_seed_module_enabled(tenant_id, "seed_test", true, "installer")
         .await
+        .expect_err("a fresh enable must reject missing release schema evidence");
+    assert!(error.to_string().contains("settings schema"));
+    assert_eq!(
+        rustok_modules::StaticTenantLifecycleStore::snapshot(&db, tenant_id, "seed_test")
+            .await
+            .unwrap()
+            .revision,
+        0
+    );
+    let operation_count: i64 = db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS total FROM module_operations".to_string(),
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "total")
         .unwrap();
+    assert_eq!(
+        operation_count, 0,
+        "missing schema must not admit an operation"
+    );
+
+    // A command admitted before the schema evidence became unavailable keeps
+    // its immutable identity and can still replay. The UUIDs are fixed seed
+    // command identities for this tenant, slug, direction, and actor.
+    let actor_id = Uuid::parse_str("ac7dbb8d-28bc-8a4f-89cc-af369815a14e").unwrap();
+    let key = Uuid::parse_str("6d81df5b-de9b-8a44-b5b6-41ad181cc166").unwrap();
+    rustok_modules::ModuleControlPlane::new(db.clone())
+        .lifecycle(&registry, Vec::new())
+        .with_static_settings_schema("seed_test".to_string(), Default::default())
+        .toggle(rustok_modules::ModuleLifecycleToggleCommand {
+            tenant_id,
+            module_slug: "seed_test".to_string(),
+            enabled: true,
+            expected_revision: 0,
+            context: rustok_modules::ModuleCommandContext {
+                actor_id,
+                tenant_id: Some(tenant_id),
+                trace_id: format!("installer:seed:{key}"),
+                correlation_id: key,
+                idempotency_key: key,
+            },
+        })
+        .await
+        .expect("record a prior command with verified test schema");
     ports
         .set_seed_module_enabled(tenant_id, "seed_test", true, "installer")
         .await

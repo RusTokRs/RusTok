@@ -121,7 +121,7 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 - [`rustok-page-builder` Runtime Contract](../crates/modules/rustok-page-builder/docs/README.md)
 - [`rustok-translation-targets` Provider Contract](../crates/libs/rustok-translation-targets/docs/README.md)
 - [`rustok-ai-translation` Machine-Translation Bridge Contract](../crates/modules/rustok-ai-translation/docs/README.md)
-- [Messenger Module Documentation](../crates/modules/rustok-messenger/docs/README.md)
+- [Messenger Module Documentation](../crates/modules/rustok-messenger/docs/README.md) and [implementation plan](../crates/modules/rustok-messenger/docs/implementation-plan.md)
 
 ### Implementation Plans and Machine-Readable Contracts
 
@@ -162,7 +162,7 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 ## Architecture and Foundation
 
 - [CRM, ERP, and Accounting Matrix and Plan](./architecture/crm-erp-accounting-matrix-and-plan.md) — exhaustive domain overlap matrix, atomic module decomposition, and FFA mobile integration plan for CRM, ERP, and Accounting capabilities in RusToK.
-- [Workplace & Collaboration SuperApp Plan](./architecture/workplace-collaboration-superapp-plan.md) — highload distributed messenger (Iggy streaming), Notion-grade collaborative docs (Loro CRDT), LiveKit WebRTC calls, calendar scheduling, and Live ERP block embedding.
+- [Workplace & Collaboration SuperApp Plan](./architecture/workplace-collaboration-superapp-plan.md) — team messaging, collaborative docs (Loro CRDT), LiveKit WebRTC calls, calendar scheduling, and live ERP block embedding.
 - [ADR: Durable invalidation for GraphQL role-grant edits](../DECISIONS/2026-11-02-rbac-graphql-grant-invalidation.md) — grant replacement and the durable recovery generation commit together.
 - [ADR: Invalidated RBAC request snapshots fail closed](../DECISIONS/2026-11-02-invalidated-rbac-request-scope.md) — matching invalidated request scopes cannot fall back to unscoped grants.
 - [ADR: RBAC cache-resolution consistency failures](../DECISIONS/2026-11-02-rbac-cache-resolution-consistency.md) — rejected cached permission reads produce a typed error rather than an unvalidated grant set.

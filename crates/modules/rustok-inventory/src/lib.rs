@@ -13,6 +13,7 @@ pub mod entities {
 
 pub mod migrations;
 pub mod module;
+pub mod product_port;
 #[path = "ports.rs"]
 mod ports_impl;
 
@@ -28,6 +29,9 @@ pub mod ports {
         InventoryReservationPort, InventoryReservationReleaseRequest,
         InventoryReservationReleaseSnapshot, InventoryReservationRequest,
         InventoryReservationSnapshot, MAX_RESERVATION_ADOPTION_ITEMS,
+    };
+    pub use crate::product_port::{
+        DatabaseFallbackProductAdapter, InventoryProductPort, InventoryProductVariantInfo,
     };
     pub use crate::reservation_owner_context::{
         PersistentInventoryReservationIdentityPort, in_process_inventory_reservation_identity_port,
@@ -60,6 +64,7 @@ pub use ports::{
     InventoryIdentityReservationSnapshot, InventoryReservationIdentityPort,
     InventoryReservationPort, InventoryReservationReleaseRequest,
     InventoryReservationReleaseSnapshot, InventoryReservationRequest, InventoryReservationSnapshot,
+    InventoryProductPort, InventoryProductVariantInfo, DatabaseFallbackProductAdapter,
     MAX_RESERVATION_ADOPTION_ITEMS, PersistentInventoryReservationIdentityPort,
     in_process_inventory_reservation_identity_port, in_process_inventory_reservation_port,
 };

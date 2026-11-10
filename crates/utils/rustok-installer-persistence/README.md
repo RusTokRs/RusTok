@@ -18,8 +18,11 @@ the schema created by `rustok-migrations`.
   profiles and administrator provisioning without duplicating them in HTTP or
   CLI hosts.
 - Replay seed module toggles with the original owner-journal revision and reject
-  a replay when the currently observed enablement intent has changed. Static
-  settings schema composition for these toggles remains outstanding.
+  a replay when the currently observed enablement intent has changed. Fresh
+  seed enables fail closed while admitted static releases do not provide their
+  settings schemas; this blocks installations requiring new module enables until
+  release-bound schema composition is implemented. Disable and exact replay
+  do not require a new schema.
 - Provide a complete standalone SeaORM apply adapter that verifies the tenant,
   administrator, and effective module set from the installer seed defaults and
   persisted tenant overrides.

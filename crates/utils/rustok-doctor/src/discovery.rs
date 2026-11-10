@@ -192,47 +192,49 @@ pub(crate) fn crates(root: &Path, names: &str) -> Result<Vec<PathBuf>, String> {
         .map(str::trim)
         .filter(|name| !name.is_empty())
     {
-        let mut found = None;
+        let mut matches = BTreeSet::new();
         for base in bases {
             for candidate in [name.to_owned(), format!("rustok-{name}")] {
                 let path = root.join(base).join(candidate);
                 if path.is_dir() {
-                    found = Some(path);
-                    break;
+                    matches.insert(path);
                 }
             }
-            if found.is_some() {
-                break;
-            }
         }
-        if found.is_none() {
+        if matches.is_empty() {
             for base in bases {
                 let directory = root.join(base);
                 if !directory.is_dir() {
                     continue;
                 }
-                let mut matches = Vec::new();
                 for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
                     let entry = entry.map_err(|error| error.to_string())?;
-                    if entry.file_type().map_err(|error| error.to_string())?.is_dir()
+                    if entry
+                        .file_type()
+                        .map_err(|error| error.to_string())?
+                        .is_dir()
                         && entry.file_name().to_string_lossy().contains(name)
                     {
-                        matches.push(entry.path());
+                        matches.insert(entry.path());
                     }
-                }
-                matches.sort();
-                if let Some(path) = matches.into_iter().next() {
-                    found = Some(path);
-                    break;
                 }
             }
         }
+        if matches.len() > 1 {
+            let paths = matches
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(format!("Ambiguous crate '{name}': {paths}"));
+        }
+        let found = matches.into_iter().next();
         if let Some(path) = found {
             if !selected.contains(&path) {
                 selected.push(path);
             }
         } else {
-            eprintln!("[WARN] Could not find directory matching crate '{name}'");
+            return Err(format!("Could not find directory matching crate '{name}'"));
         }
     }
     if selected.is_empty() {
