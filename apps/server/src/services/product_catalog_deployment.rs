@@ -108,7 +108,7 @@ pub async fn configure_product_catalog_deployment(ctx: &ServerRuntimeContext) ->
                 capability = "read",
                 authentication = "bearer",
                 insecure_loopback = remote.allow_insecure_loopback,
-                "Product catalog read deployment provider initialized"
+                "Product catalog deployment provider initialized"
             );
         }
 

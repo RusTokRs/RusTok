@@ -2,10 +2,11 @@ use std::{env, error::Error, io, time::Duration};
 
 use rustok_api::{PortActor, PortContext, PortError};
 use rustok_product::{
-    ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentitiesRequest,
-    ProductVariantIdentityListRequest, ProductVariantIdentityReadPort,
-    ProductVariantIdentitySnapshot, PublishedProductsRequest,
+    ProductCatalogCommandPort, ProductCatalogReadPort, ProductProjectionRequest,
+    ProductVariantIdentitiesRequest, ProductVariantIdentityListRequest,
+    ProductVariantIdentityReadPort, ProductVariantIdentitySnapshot, PublishedProductsRequest,
     StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,
+    dto::SetVariantAxesInput,
 };
 use rustok_product_transport::{
     GrpcProductCatalogReadConnectionConfig, ProductCatalogGrpcBearerToken,
@@ -23,6 +24,7 @@ const VARIANT_ID_ENV: &str = "RUSTOK_PRODUCT_CATALOG_EVIDENCE_VARIANT_ID";
 const LOCALE_ENV: &str = "RUSTOK_PRODUCT_CATALOG_EVIDENCE_LOCALE";
 const FALLBACK_LOCALE_ENV: &str = "RUSTOK_PRODUCT_CATALOG_EVIDENCE_FALLBACK_LOCALE";
 const CHANNEL_SLUG_ENV: &str = "RUSTOK_PRODUCT_CATALOG_EVIDENCE_CHANNEL_SLUG";
+const ENABLE_COMMANDS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_EVIDENCE_ENABLE_COMMANDS";
 const DEFAULT_CONNECT_TIMEOUT_MS: u64 = 5_000;
 
 struct ProbeConfig {
@@ -37,6 +39,7 @@ struct ProbeConfig {
     locale: String,
     fallback_locale: Option<String>,
     channel_slug: Option<String>,
+    enable_commands: bool,
 }
 
 impl ProbeConfig {
@@ -67,6 +70,7 @@ impl ProbeConfig {
             channel_slug: optional_env(CHANNEL_SLUG_ENV)?
                 .map(|value| bounded_text(&value, CHANNEL_SLUG_ENV, 1, 64))
                 .transpose()?,
+            enable_commands: optional_bool(ENABLE_COMMANDS_ENV, false)?,
         })
     }
 }
@@ -191,7 +195,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let product_identities = provider
         .list_product_variant_identities(
-            context,
+            context.clone(),
             ProductVariantIdentityListRequest {
                 product_ids: vec![config.product_id],
             },
@@ -204,6 +208,32 @@ async fn main() -> Result<(), Box<dyn Error>> {
         })
     {
         return Err(invalid("Product SKU identity list did not match the fixture scope").into());
+    }
+
+    if config.enable_commands {
+        let command_provider = GrpcProductCatalogReadConnectionConfig::new(config.endpoint)
+            .with_tls_domain(config.tls_domain)
+            .with_connect_timeout(config.connect_timeout)
+            .allow_insecure_loopback(config.allow_insecure_loopback)
+            .connect_command()
+            .await?
+            .with_authentication(authentication);
+
+        let preview = command_provider
+            .preview_variant_axes(
+                context,
+                config.product_id,
+                SetVariantAxesInput::default(),
+            )
+            .await
+            .map_err(|error| port_error("preview_variant_axes", error))?;
+        if preview.product_id != config.product_id {
+            return Err(invalid("variant axes preview product identity mismatch").into());
+        }
+
+        println!(
+            "PRODUCT_CATALOG_COMMAND_RUNTIME_PROBE_OK operations=1 preview_axes=matched product_id=matched"
+        );
     }
 
     println!(
