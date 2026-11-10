@@ -23,7 +23,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use rustok_commerce_foundation::entities::{product, product_variant};
+use rustok_commerce_foundation::entities::product_variant;
 
 /// Validated product variant metadata required by Inventory business operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
