@@ -85,6 +85,7 @@
   naming a different module always fails. `SeedContentOutcome::is_success`
   requires both zero failed items and no reported errors; an unknown item count
   remains zero and does not turn a loader error into success.
+  Debug formatting for seed requests redacts admin and demo-customer passwords.
 - Ports:
   - `SeedTenantPort`: Ensures seed tenant creation.
   - `SeedPrincipalPort`: Atomically provisions user credentials and initial RBAC role.

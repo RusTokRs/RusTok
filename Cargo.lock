@@ -15316,6 +15316,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-doctor"
+version = "0.1.0"
+dependencies = [
+ "csv",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "rustok-e2e-rust"
 version = "0.1.0"
 dependencies = [
@@ -23474,6 +23485,7 @@ dependencies = [
  "pulldown-cmark",
  "regex",
  "reqwest 0.13.5",
+ "rustok-doctor",
  "rustok-manifest",
  "semver",
  "serde",

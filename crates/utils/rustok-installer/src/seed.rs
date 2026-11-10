@@ -21,12 +21,24 @@ pub struct SeedTenant {
     pub created: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct SeedUserRequest {
     pub tenant_id: Uuid,
     pub email: String,
     pub name: String,
     pub password: String,
+}
+
+impl std::fmt::Debug for SeedUserRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SeedUserRequest")
+            .field("tenant_id", &self.tenant_id)
+            .field("email", &self.email)
+            .field("name", &self.name)
+            .field("password", &"[REDACTED]")
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,7 +48,7 @@ pub struct SeedUser {
     pub created: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct SeedExecutionRequest {
     pub profile: SeedProfile,
     pub tenant: SeedTenantRequest,
@@ -49,6 +61,26 @@ pub struct SeedExecutionRequest {
     pub seed_data_path: Option<String>,
     /// Continue seed execution even if content loading fails for some modules
     pub continue_on_content_error: bool,
+}
+
+impl std::fmt::Debug for SeedExecutionRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SeedExecutionRequest")
+            .field("profile", &self.profile)
+            .field("tenant", &self.tenant)
+            .field("enabled_modules", &self.enabled_modules)
+            .field("disabled_modules", &self.disabled_modules)
+            .field("admin", &self.admin)
+            .field(
+                "demo_customer_password",
+                &self.demo_customer_password.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("actor", &self.actor)
+            .field("seed_data_path", &self.seed_data_path)
+            .field("continue_on_content_error", &self.continue_on_content_error)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -402,6 +434,34 @@ mod tests {
     struct TenantPort;
     struct PrincipalPort;
     struct ModulePort;
+
+    #[test]
+    fn seed_request_debug_redacts_all_passwords() {
+        let request = SeedExecutionRequest {
+            profile: SeedProfile::Dev,
+            tenant: SeedTenantRequest {
+                name: "Demo".into(),
+                slug: "demo".into(),
+                domain: None,
+            },
+            enabled_modules: Vec::new(),
+            disabled_modules: Vec::new(),
+            admin: Some(SeedUserRequest {
+                tenant_id: Uuid::new_v4(),
+                email: "admin@example.test".into(),
+                name: "Admin".into(),
+                password: "secret-admin-password".into(),
+            }),
+            demo_customer_password: Some("secret-customer-password".into()),
+            actor: "installer".into(),
+            seed_data_path: None,
+            continue_on_content_error: false,
+        };
+        let output = format!("{request:?}");
+        assert!(!output.contains("secret-admin-password"));
+        assert!(!output.contains("secret-customer-password"));
+        assert!(output.contains("[REDACTED]"));
+    }
 
     #[async_trait]
     impl SeedTenantPort for TenantPort {
@@ -812,4 +872,13 @@ mod tests {
         assert!(matches!(
             execute_seed_profile(
                 continued,
-                &TenantPor
+                &TenantPort,
+                &PrincipalPort,
+                &ModulePort,
+                Some(&Content { wrong_module: true })
+            )
+            .await,
+            Err(SeedExecutionError::ContentLoading(_))
+        ));
+    }
+}

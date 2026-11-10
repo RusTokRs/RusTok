@@ -639,6 +639,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "host-runtime")]
     #[test]
     fn topology_requires_bound_composition_and_exact_surface_ownership() {
         let unbound = InstallTopology::for_mode(InstallTopologyMode::Monolith);
@@ -662,6 +663,7 @@ mod tests {
         assert!(monolith_with_bundle.validate().is_ok());
     }
 
+    #[cfg(feature = "host-runtime")]
     #[test]
     fn distributed_topology_rejects_a_role_owning_another_roles_surface() {
         let mut topology = InstallTopology::for_mode(InstallTopologyMode::Distributed)
@@ -680,6 +682,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "host-runtime")]
     #[test]
     fn distribution_binding_rejects_missing_authority_and_noncanonical_digests() {
         let mut binding = distribution();
@@ -704,6 +707,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "host-runtime")]
     #[test]
     fn one_universal_bundle_supports_monolith_or_distributed_assignments() {
         let mut monolith = InstallTopology::for_mode(InstallTopologyMode::Monolith)
@@ -717,6 +721,7 @@ mod tests {
         distributed.validate().unwrap();
     }
 
+    #[cfg(feature = "host-runtime")]
     fn universal_distribution() -> InstallDistributionBinding {
         let roles = [
             rustok_modules::ModuleStaticDistributionRole::Monolith,
@@ -747,6 +752,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "host-runtime")]
     fn distribution() -> InstallDistributionBinding {
         let roles = vec![rustok_modules::ModuleStaticDistributionRoleArtifact {
             role: rustok_modules::ModuleStaticDistributionRole::Monolith,
@@ -765,6 +771,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "host-runtime")]
     fn distributed_distribution() -> InstallDistributionBinding {
         let roles = [
             rustok_modules::ModuleStaticDistributionRole::Api,

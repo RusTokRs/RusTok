@@ -1,0 +1,1012 @@
+[
+  {
+    "path": "src/service.rs",
+    "source": "\r\n        pub fn process_order() {\r\n            let _ = dangerous_operation();\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-ANTI-SWALLOW",
+        "rule_name": "Zero Error Swallowing",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "let _ = dangerous_operation();",
+        "message": "Discarded call result via 'let _ ='. Verify whether it can fail.",
+        "suggested_fix": "Propagate a required failure or record an explicitly best-effort failure."
+      }
+    ]
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "async fn async_lock(mutex: &tokio::sync::Mutex<u64>) {\n    let guard = mutex.lock()\n        .await;\n    remote_call().await;\n}\nasync fn conditional(mutex: &std::sync::Mutex<u64>, early: bool) -> Result<(), Error> {\n    let guard = mutex.lock()?;\n    if early {\n        drop(guard);\n    }\n    remote_call().await;\n    Ok(())\n}\nasync fn always_drops(mutex: &std::sync::Mutex<u64>) -> Result<(), Error> {\n    let guard = mutex.lock()?;\n    drop(guard);\n    remote_call().await;\n    Ok(())\n}\n",
+    "findings": [
+      {
+        "pattern_id": "P-SYNC-LOCK-AWAIT",
+        "rule_name": "Sync Lock Held Across Await",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 11,
+        "content": "remote_call().await;",
+        "message": "Possible synchronous guard 'guard' from line 7 across .await.",
+        "suggested_fix": "Verify the guard type and end 'guard' scope before awaiting when possible."
+      }
+    ]
+  },
+  {
+    "path": "src/services/loader.rs",
+    "source": "\r\n        pub async fn load_all(ids: Vec<Uuid>, txn: &DatabaseTransaction) -> Result<(), Error> {\r\n            for id in ids {\r\n                let item = Entity::find_by_id(id).one(txn).await?;\r\n            }\r\n            Ok(())\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-BATCH-QUERY",
+        "rule_name": "Transactional Batching",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "let item = Entity::find_by_id(id).one(txn).await?;",
+        "message": "Suspected N+1 query: database query inside loop body. Batch with Column::Id.is_in(ids).all().",
+        "suggested_fix": "Collect IDs and perform one Entity::find().filter(Column::Id.is_in(ids)).all(txn) before loop."
+      }
+    ]
+  },
+  {
+    "path": "src/services/user.rs",
+    "source": "\r\n        pub async fn fetch_all(&self, ids: Vec<Uuid>) -> Result<(), Error> {\r\n            for id in ids {\r\n                let row = Entity::find_by_id(id).one(&self.db).await?;\r\n            }\r\n            Ok(())\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-BATCH-QUERY",
+        "rule_name": "Transactional Batching",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "let row = Entity::find_by_id(id).one(&self.db).await?;",
+        "message": "Suspected N+1 query: database query inside loop body. Batch with Column::Id.is_in(ids).all().",
+        "suggested_fix": "Collect IDs and perform one Entity::find().filter(Column::Id.is_in(ids)).all(txn) before loop."
+      }
+    ]
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "async fn run(transaction: DatabaseTransaction) {\n    let _ = transaction.commit().await;\n}\n",
+    "findings": [
+      {
+        "pattern_id": "P-TXN-ROLLBACK-SWALLOW",
+        "rule_name": "Ignored Transaction Finalization Result",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 2,
+        "content": "let _ = transaction.commit().await;",
+        "message": "Ignored commit result on a transaction-like value.",
+        "suggested_fix": "Propagate the commit failure and preserve the operation's retry contract."
+      }
+    ]
+  },
+  {
+    "path": "src/migrations/m20260101_init.rs",
+    "source": "\r\n        #[allow(dead_code)]\r\n        enum Users { Id, Name }\r\n        ",
+    "findings": []
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "#![allow(unused_imports, dead_code)]\n#[allow(dead_code)]\nstruct Fixture;\n",
+    "findings": [
+      {
+        "pattern_id": "P-DEAD-TWIN",
+        "rule_name": "File-Level Slop Suppression",
+        "severity": "P2-MEDIUM",
+        "confidence": "heuristic",
+        "line": 1,
+        "content": "#![allow(unused_imports, dead_code)]",
+        "message": "Module-wide dead-code or unused lint suppression may hide unused implementations.",
+        "suggested_fix": "Verify reachability and remove dormant implementations."
+      }
+    ]
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "fn run(size: usize) {\n    let _ = size;\n    let _ = operation();\n}\n",
+    "findings": [
+      {
+        "pattern_id": "P-ANTI-SWALLOW",
+        "rule_name": "Zero Error Swallowing",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "let _ = operation();",
+        "message": "Discarded call result via 'let _ ='. Verify whether it can fail.",
+        "suggested_fix": "Propagate a required failure or record an explicitly best-effort failure."
+      }
+    ]
+  },
+  {
+    "path": "src/services/validator.rs",
+    "source": "\r\n        pub fn check_state(status: &str) -> Result<(), Error> {\r\n            if status == \"corrupted\" {\r\n                panic!(\"state corrupted\");\r\n            }\r\n            Ok(())\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-ZERO-PANIC-PROD",
+        "rule_name": "Zero Production Panics",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "panic!(\"state corrupted\");",
+        "message": "Calling panic!(...) in production path. Return typed DomainError / PortError.",
+        "suggested_fix": "return Err(DomainError::from(...));"
+      }
+    ]
+  },
+  {
+    "path": "src/services/category.rs",
+    "source": "\r\n        pub fn update_category(input: CategoryInput) -> Result<(), Error> {\r\n            let name = input.name.clone();\r\n            validate_category_name(&name)?;\r\n            Ok(())\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-HOTPATH-ALLOC",
+        "rule_name": "Premature Input Allocation",
+        "severity": "P2-MEDIUM",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "let name = input.name.clone();",
+        "message": "Cloning input field immediately before a validation check. Validate borrowed reference first.",
+        "suggested_fix": "Validate with &input.field or .as_deref() first, clone only after validation passes."
+      }
+    ]
+  },
+  {
+    "path": "src/services/processor.rs",
+    "source": "\r\n        pub fn process(input: Input) -> Result<(), Error> {\r\n            let name = input.name.clone();\r\n            // check_permission was verified earlier\r\n            println!(\"Proceeding with name: {}\", name);\r\n            Ok(())\r\n        }\r\n        ",
+    "findings": []
+  },
+  {
+    "path": "src/route.rs",
+    "source": "\r\n        pub const SHORT_ID_LEN: usize = 12;\r\n        pub fn make_route(uuid: &Uuid) -> &str {\r\n            &uuid.simple().to_string()[..12]\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-ID-ENTROPY",
+        "rule_name": "Bounded Identifier Entropy",
+        "severity": "P2-MEDIUM",
+        "confidence": "heuristic",
+        "line": 2,
+        "content": "pub const SHORT_ID_LEN: usize = 12;",
+        "message": "Possible 12-hex identifier. Verify generator entropy and the uniqueness scope.",
+        "suggested_fix": "Use an owner-defined collision policy and preserve existing route compatibility."
+      },
+      {
+        "pattern_id": "P-ID-ENTROPY",
+        "rule_name": "Bounded Identifier Entropy",
+        "severity": "P2-MEDIUM",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "&uuid.simple().to_string()[..12]",
+        "message": "Possible 12-hex identifier. Verify generator entropy and the uniqueness scope.",
+        "suggested_fix": "Use an owner-defined collision policy and preserve existing route compatibility."
+      }
+    ]
+  },
+  {
+    "path": "src\\lib.rs",
+    "source": "try_include!(\"fixture.rs\");\ninclude!(concat!(env!(\"OUT_DIR\"), \"/generated.rs\"));\n#[cfg(test)]\nmod fixture_support {\n    include!(\"fixture.rs\");\n}\ninclude!(\"OUT_DIR/handwritten.rs\");\n",
+    "findings": [
+      {
+        "pattern_id": "P-ZERO-INCLUDE",
+        "rule_name": "Zero Include Slop",
+        "severity": "P1-HIGH",
+        "confidence": "high",
+        "line": 7,
+        "content": "include!(\"OUT_DIR/handwritten.rs\");",
+        "message": "Forbidden file-stitching macro 'include!(\"OUT_DIR/handwritten.rs\")'. Use canonical 'mod ...;' and public exports.",
+        "suggested_fix": "Declare mod handwritten; and expose only the required items."
+      }
+    ]
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "const MARKER: &str = \"TODO: todo!()\";\nfn stub() { unimplemented!(\"no implementation\"); }\n// FIXME: verify the owner contract\n",
+    "findings": [
+      {
+        "pattern_id": "P-UNFINISHED-CODE",
+        "rule_name": "Lingering Incomplete Marker",
+        "severity": "P2-MEDIUM",
+        "confidence": "heuristic",
+        "line": 2,
+        "content": "fn stub() { unimplemented!(\"no implementation\"); }",
+        "message": "Found unfinished work marker 'unimplemented!('. Check the reachable behavior.",
+        "suggested_fix": "Implement required behavior and track agreed follow-up in the owner plan."
+      },
+      {
+        "pattern_id": "P-UNFINISHED-CODE",
+        "rule_name": "Lingering Incomplete Marker",
+        "severity": "P2-MEDIUM",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "// FIXME: verify the owner contract",
+        "message": "Found unfinished work marker 'FIXME'. Check the reachable behavior.",
+        "suggested_fix": "Implement required behavior and track agreed follow-up in the owner plan."
+      }
+    ]
+  },
+  {
+    "path": "src/component.rs",
+    "source": "fn setup() {\r\n    // create_effect(move |_| {\r\n    let note = \"view! {\";\r\n    let _ = signal.get();\r\n    create_effect(\r\n        move |_| {\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        let _ = signal.get();\r\n    });\r\n    let _ = signal.get();\r\n}\r\n",
+    "findings": [
+      {
+        "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
+        "rule_name": "Dead Reactive Signal Read",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "let _ = signal.get();",
+        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
+        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+      },
+      {
+        "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
+        "rule_name": "Dead Reactive Signal Read",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 19,
+        "content": "let _ = signal.get();",
+        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
+        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+      }
+    ]
+  },
+  {
+    "path": "src/component.rs",
+    "source": "fn setup() {\r\n    // create_effect(move |_| {\r\n    let note = \"view! {\";\r\n    let _ = signal.get();\r\n    create_memo(move |_| {\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        let _ = signal.get();\r\n    });\r\n    let _ = signal.get();\r\n}\r\n",
+    "findings": [
+      {
+        "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
+        "rule_name": "Dead Reactive Signal Read",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "let _ = signal.get();",
+        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
+        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+      },
+      {
+        "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
+        "rule_name": "Dead Reactive Signal Read",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 18,
+        "content": "let _ = signal.get();",
+        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
+        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+      }
+    ]
+  },
+  {
+    "path": "src/component.rs",
+    "source": "fn setup() {\r\n    // create_effect(move |_| {\r\n    let note = \"view! {\";\r\n    let _ = signal.get();\r\n    Effect::new(move |_| {\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        let _ = signal.get();\r\n    });\r\n    let _ = signal.get();\r\n}\r\n",
+    "findings": [
+      {
+        "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
+        "rule_name": "Dead Reactive Signal Read",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "let _ = signal.get();",
+        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
+        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+      },
+      {
+        "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
+        "rule_name": "Dead Reactive Signal Read",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 18,
+        "content": "let _ = signal.get();",
+        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
+        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+      }
+    ]
+  },
+  {
+    "path": "src/component.rs",
+    "source": "fn setup() {\r\n    // create_effect(move |_| {\r\n    let note = \"view! {\";\r\n    let _ = signal.get();\r\n    Memo::new(move |_| {\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        let _ = signal.get();\r\n    });\r\n    let _ = signal.get();\r\n}\r\n",
+    "findings": [
+      {
+        "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
+        "rule_name": "Dead Reactive Signal Read",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "let _ = signal.get();",
+        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
+        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+      },
+      {
+        "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
+        "rule_name": "Dead Reactive Signal Read",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 18,
+        "content": "let _ = signal.get();",
+        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
+        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+      }
+    ]
+  },
+  {
+    "path": "src/component.rs",
+    "source": "fn setup() {\r\n    // create_effect(move |_| {\r\n    let note = \"view! {\";\r\n    let _ = signal.get();\r\n    view! {\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        let _ = signal.get();\r\n    };\r\n    let _ = signal.get();\r\n}\r\n",
+    "findings": [
+      {
+        "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
+        "rule_name": "Dead Reactive Signal Read",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "let _ = signal.get();",
+        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
+        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+      },
+      {
+        "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
+        "rule_name": "Dead Reactive Signal Read",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 18,
+        "content": "let _ = signal.get();",
+        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
+        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+      }
+    ]
+  },
+  {
+    "path": "src/component.rs",
+    "source": "fn setup() {\r\n    // create_effect(move |_| {\r\n    let note = \"view! {\";\r\n    let _ = signal.get();\r\n    view! [\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        work(\"] })\");\r\n        let _ = signal.get();\r\n    ];\r\n    let _ = signal.get();\r\n}\r\n",
+    "findings": [
+      {
+        "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
+        "rule_name": "Dead Reactive Signal Read",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "let _ = signal.get();",
+        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
+        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+      },
+      {
+        "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
+        "rule_name": "Dead Reactive Signal Read",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 18,
+        "content": "let _ = signal.get();",
+        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
+        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+      }
+    ]
+  },
+  {
+    "path": "src/render.rs",
+    "source": "async fn run() {\r\n    let template = r#\"<div class=\"test\">} panic!(example)</div>\"#;\r\n    std::thread::sleep(duration);\r\n}\r\nfn run_sync() {\r\n    std::thread::sleep(duration);\r\n}\r\n",
+    "findings": [
+      {
+        "pattern_id": "P-SYNC-SLEEP-AWAIT",
+        "rule_name": "Sync Sleep in Async Code",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "std::thread::sleep(duration);",
+        "message": "Blocking sleep appears in an async function. Verify which thread executes it.",
+        "suggested_fix": "Use tokio::time::sleep(duration).await on executor workers."
+      }
+    ]
+  },
+  {
+    "path": "src/render.rs",
+    "source": "async fn run() {\r\n    let template = br##\"\r\nlet _ = not_code();\r\n}\"# /*\r\n\"##;\r\n    std::thread::sleep(duration);\r\n}\r\nfn run_sync() {\r\n    std::thread::sleep(duration);\r\n}\r\n",
+    "findings": [
+      {
+        "pattern_id": "P-SYNC-SLEEP-AWAIT",
+        "rule_name": "Sync Sleep in Async Code",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 6,
+        "content": "std::thread::sleep(duration);",
+        "message": "Blocking sleep appears in an async function. Verify which thread executes it.",
+        "suggested_fix": "Use tokio::time::sleep(duration).await on executor workers."
+      }
+    ]
+  },
+  {
+    "path": "src/render.rs",
+    "source": "async fn run() {\r\n    let template = \"/* } panic!(example)\";\r\n    std::thread::sleep(duration);\r\n}\r\nfn run_sync() {\r\n    std::thread::sleep(duration);\r\n}\r\n",
+    "findings": [
+      {
+        "pattern_id": "P-SYNC-SLEEP-AWAIT",
+        "rule_name": "Sync Sleep in Async Code",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "std::thread::sleep(duration);",
+        "message": "Blocking sleep appears in an async function. Verify which thread executes it.",
+        "suggested_fix": "Use tokio::time::sleep(duration).await on executor workers."
+      }
+    ]
+  },
+  {
+    "path": "src/render.rs",
+    "source": "async fn run() {\r\n    let template = \"line one\r\nlet _ = not_code();\r\n}\";\r\n    std::thread::sleep(duration);\r\n}\r\nfn run_sync() {\r\n    std::thread::sleep(duration);\r\n}\r\n",
+    "findings": [
+      {
+        "pattern_id": "P-SYNC-SLEEP-AWAIT",
+        "rule_name": "Sync Sleep in Async Code",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 5,
+        "content": "std::thread::sleep(duration);",
+        "message": "Blocking sleep appears in an async function. Verify which thread executes it.",
+        "suggested_fix": "Use tokio::time::sleep(duration).await on executor workers."
+      }
+    ]
+  },
+  {
+    "path": "src/render.rs",
+    "source": "async fn run() {\r\n    let template = \"C:\\\\folder\\\\\r\nsubfolder\\\\}\";\r\n    std::thread::sleep(duration);\r\n}\r\nfn run_sync() {\r\n    std::thread::sleep(duration);\r\n}\r\n",
+    "findings": [
+      {
+        "pattern_id": "P-SYNC-SLEEP-AWAIT",
+        "rule_name": "Sync Sleep in Async Code",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "std::thread::sleep(duration);",
+        "message": "Blocking sleep appears in an async function. Verify which thread executes it.",
+        "suggested_fix": "Use tokio::time::sleep(duration).await on executor workers."
+      }
+    ]
+  },
+  {
+    "path": "src/render.rs",
+    "source": "async fn run() {\r\n    let template = '}';\r\n    std::thread::sleep(duration);\r\n}\r\nfn run_sync() {\r\n    std::thread::sleep(duration);\r\n}\r\n",
+    "findings": [
+      {
+        "pattern_id": "P-SYNC-SLEEP-AWAIT",
+        "rule_name": "Sync Sleep in Async Code",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "std::thread::sleep(duration);",
+        "message": "Blocking sleep appears in an async function. Verify which thread executes it.",
+        "suggested_fix": "Use tokio::time::sleep(duration).await on executor workers."
+      }
+    ]
+  },
+  {
+    "path": "src/service.rs",
+    "source": "fn run() {\r\n    /* /* inner */ panic!(\"not code\");\r\n    */ panic!(\"real code\");\r\n}\r\n",
+    "findings": [
+      {
+        "pattern_id": "P-ZERO-PANIC-PROD",
+        "rule_name": "Zero Production Panics",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "panic!(\"real code\");",
+        "message": "Calling panic!(...) in production path. Return typed DomainError / PortError.",
+        "suggested_fix": "return Err(DomainError::from(...));"
+      }
+    ]
+  },
+  {
+    "path": "src/page_builder.rs",
+    "source": "\r\n        include!(concat!(env!(\"OUT_DIR\"), \"/generated.rs\"));\r\n        ",
+    "findings": []
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "use sea_orm::DatabaseTransaction;\nasync fn write(txn: &DatabaseTransaction, event_bus: EventBus) {\n    event_bus.publish_in_tx(txn, event()).await;\n    event_bus.publish(event()).await;\n}\nasync fn announce(event_bus: EventBus) {\n    event_bus.publish(startup_event()).await;\n}\nasync fn write_with_begin(db: &DatabaseConnection, event_bus: EventBus) {\n    event_bus.publish(event()).await;\n    let txn = db.begin().await;\n}\n",
+    "findings": [
+      {
+        "pattern_id": "P-OUTBOX-DETACHED",
+        "rule_name": "Transactional Outbox Decoupling",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "event_bus.publish(event()).await;",
+        "message": "Direct publication in a function with transaction evidence. Verify which mutation the event represents.",
+        "suggested_fix": "Write events for the mutation through the owner outbox in the same transaction."
+      },
+      {
+        "pattern_id": "P-OUTBOX-DETACHED",
+        "rule_name": "Transactional Outbox Decoupling",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 10,
+        "content": "event_bus.publish(event()).await;",
+        "message": "Direct publication in a function with transaction evidence. Verify which mutation the event represents.",
+        "suggested_fix": "Write events for the mutation through the owner outbox in the same transaction."
+      }
+    ]
+  },
+  {
+    "path": "src/repository.rs",
+    "source": "\r\n        pub async fn update(txn: &DatabaseTransaction, id: i32) -> Result<(), Error> {\r\n            txn.execute_unprepared(&format!(\"UPDATE table SET x = 1 WHERE id = {}\", id)).await?;\r\n            Ok(())\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-RAW-SQL-INTERP",
+        "rule_name": "Unprepared SQL Interpolation",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "txn.execute_unprepared(&format!(\"UPDATE table SET x = 1 WHERE id = {}\", id)).await?;",
+        "message": "Unprepared SQL contains formatted values. Verify their origin and parameterize query data.",
+        "suggested_fix": "Statement::from_sql_and_values(db.get_database_backend(), sql, values)"
+      }
+    ]
+  },
+  {
+    "path": "src/services/store.rs",
+    "source": "\r\n        pub async fn raw_update(db: &DatabaseConnection, id: i32) -> Result<(), Error> {\r\n            db.execute_unprepared(\r\n                &format!(\"UPDATE table SET x = {}\", id)\r\n            ).await?;\r\n            Ok(())\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-RAW-SQL-INTERP",
+        "rule_name": "Unprepared SQL Interpolation",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "db.execute_unprepared(",
+        "message": "Unprepared SQL contains formatted values. Verify their origin and parameterize query data.",
+        "suggested_fix": "Statement::from_sql_and_values(db.get_database_backend(), sql, values)"
+      }
+    ]
+  },
+  {
+    "path": "src/services/rbac.rs",
+    "source": "\r\n        pub fn check(scope: PermissionScope) -> Result<(), Error> {\r\n            match scope {\r\n                PermissionScope::All => Ok(()),\r\n                PermissionScope::Own => Ok(()),\r\n                PermissionScope::None => Ok(()),\r\n            }\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-FAIL-CLOSED",
+        "rule_name": "Fail-Closed Security Floor",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 6,
+        "content": "PermissionScope::None => Ok(()),",
+        "message": "PermissionScope::None may grant access. Verify the caller's decision contract.",
+        "suggested_fix": "Return the owner-defined denial value at the authorization boundary."
+      }
+    ]
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "match scope {\n    PermissionScope::None => Ok(true),\n}\n",
+    "findings": [
+      {
+        "pattern_id": "P-FAIL-CLOSED",
+        "rule_name": "Fail-Closed Security Floor",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 2,
+        "content": "PermissionScope::None => Ok(true),",
+        "message": "PermissionScope::None may grant access. Verify the caller's decision contract.",
+        "suggested_fix": "Return the owner-defined denial value at the authorization boundary."
+      }
+    ]
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "match scope {\n    PermissionScope::None => Ok(()),\n}\n",
+    "findings": [
+      {
+        "pattern_id": "P-FAIL-CLOSED",
+        "rule_name": "Fail-Closed Security Floor",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 2,
+        "content": "PermissionScope::None => Ok(()),",
+        "message": "PermissionScope::None may grant access. Verify the caller's decision contract.",
+        "suggested_fix": "Return the owner-defined denial value at the authorization boundary."
+      }
+    ]
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "match scope {\n    PermissionScope::None => true,\n}\n",
+    "findings": [
+      {
+        "pattern_id": "P-FAIL-CLOSED",
+        "rule_name": "Fail-Closed Security Floor",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 2,
+        "content": "PermissionScope::None => true,",
+        "message": "PermissionScope::None may grant access. Verify the caller's decision contract.",
+        "suggested_fix": "Return the owner-defined denial value at the authorization boundary."
+      }
+    ]
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "match scope {\n    PermissionScope::None => Ok(false),\n}\n",
+    "findings": []
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "match scope {\n    PermissionScope::None => Ok(None),\n}\n",
+    "findings": []
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "match scope {\n    PermissionScope::None => false,\n}\n",
+    "findings": []
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "match scope {\n    PermissionScope::None => true && has_other_permission,\n}\n",
+    "findings": []
+  },
+  {
+    "path": "src/services/rbac.rs",
+    "source": "\r\n        pub fn check(scope: PermissionScope) -> Result<(), Error> {\r\n            match scope {\r\n                PermissionScope::None =>\r\n                    Ok(()),\r\n                _ => Ok(()),\r\n            }\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-FAIL-CLOSED",
+        "rule_name": "Fail-Closed Security Floor",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "PermissionScope::None =>",
+        "message": "PermissionScope::None may grant access. Verify the caller's decision contract.",
+        "suggested_fix": "Return the owner-defined denial value at the authorization boundary."
+      }
+    ]
+  },
+  {
+    "path": "services/user.rs",
+    "source": "\r\n        pub async fn update_user(input: UserInput) -> Result<(), Error> {\r\n            let name = input.name.clone();\r\n            validate_user(&name)?;\r\n            Ok(())\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-STRUCTURED-TRACE",
+        "rule_name": "Contextual Trace Spans",
+        "severity": "P2-MEDIUM",
+        "confidence": "heuristic",
+        "line": 2,
+        "content": "pub async fn update_user(input: UserInput) -> Result<(), Error> {",
+        "message": "Candidate mutation 'update_user' has no nearby instrumentation marker.",
+        "suggested_fix": "Verify that the owner entry point has the required operation and tenant context."
+      },
+      {
+        "pattern_id": "P-HOTPATH-ALLOC",
+        "rule_name": "Premature Input Allocation",
+        "severity": "P2-MEDIUM",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "let name = input.name.clone();",
+        "message": "Cloning input field immediately before a validation check. Validate borrowed reference first.",
+        "suggested_fix": "Validate with &input.field or .as_deref() first, clone only after validation passes."
+      }
+    ]
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "const TOPIC_ROUTE_SHORT_ID_LEN: usize = 12;\nfn head(data: &[u8]) -> &[u8] { &data[..12] }\nconst SCHEMA: &str = \"CREATE TABLE items (short_id VARCHAR(12))\";\nconst OTHER_SCHEMA: &str = \"CREATE TABLE items (name VARCHAR(12))\";\n",
+    "findings": [
+      {
+        "pattern_id": "P-ID-ENTROPY",
+        "rule_name": "Bounded Identifier Entropy",
+        "severity": "P2-MEDIUM",
+        "confidence": "heuristic",
+        "line": 1,
+        "content": "const TOPIC_ROUTE_SHORT_ID_LEN: usize = 12;",
+        "message": "Possible 12-hex identifier. Verify generator entropy and the uniqueness scope.",
+        "suggested_fix": "Use an owner-defined collision policy and preserve existing route compatibility."
+      },
+      {
+        "pattern_id": "P-ID-ENTROPY",
+        "rule_name": "Bounded Identifier Entropy",
+        "severity": "P2-MEDIUM",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "const SCHEMA: &str = \"CREATE TABLE items (short_id VARCHAR(12))\";",
+        "message": "Possible 12-hex identifier. Verify generator entropy and the uniqueness scope.",
+        "suggested_fix": "Use an owner-defined collision policy and preserve existing route compatibility."
+      }
+    ]
+  },
+  {
+    "path": "src/services/db_error.rs",
+    "source": "\r\n        pub fn map_error(db_err: &DbErr) -> Error {\r\n            if db_err.to_string().contains(\"duplicate key\") {\r\n                return Error::Conflict;\r\n            }\r\n            Error::Internal\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-SQLSTATE-DISCRIM",
+        "rule_name": "SQLSTATE Error Mapping",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "if db_err.to_string().contains(\"duplicate key\") {",
+        "message": "Brittle string matching on error message. Discriminate using SQLSTATE (23505, P0001).",
+        "suggested_fix": "Match on db_err.sql_state() == Some(\"23505\") or \"P0001\"."
+      }
+    ]
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "async fn write(db: &DatabaseConnection, input: &str) {\n    db.execute_unprepared(&format!(\"SELECT * FROM {table}\", table = \"items\")).await;\n    db.execute_unprepared(&format!(\"SELECT * FROM {}\", \"items\")).await;\n    let mut sql = format!(\"DELETE FROM items WHERE name = {input}\");\n    {\n        let sql = \"SELECT 1\";\n        db.execute_unprepared(sql).await;\n    }\n    db.execute_unprepared(&sql).await;\n    db.execute_unprepared(&format!(\"SELECT * FROM {}\", input)).await;\n    db.execute_unprepared(&format!(\"SELECT '{{input}}'\")).await;\n    sql = \"SELECT 1\".to_string();\n    db.execute_unprepared(&sql).await;\n}\nasync fn read(db: &DatabaseConnection, sql: &str) {\n    db.execute_unprepared(sql).await;\n}\n",
+    "findings": [
+      {
+        "pattern_id": "P-RAW-SQL-INTERP",
+        "rule_name": "Unprepared SQL Interpolation",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 9,
+        "content": "db.execute_unprepared(&sql).await;",
+        "message": "Unprepared SQL contains formatted values. Verify their origin and parameterize query data.",
+        "suggested_fix": "Statement::from_sql_and_values(db.get_database_backend(), sql, values)"
+      },
+      {
+        "pattern_id": "P-RAW-SQL-INTERP",
+        "rule_name": "Unprepared SQL Interpolation",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 10,
+        "content": "db.execute_unprepared(&format!(\"SELECT * FROM {}\", input)).await;",
+        "message": "Unprepared SQL contains formatted values. Verify their origin and parameterize query data.",
+        "suggested_fix": "Statement::from_sql_and_values(db.get_database_backend(), sql, values)"
+      }
+    ]
+  },
+  {
+    "path": "src/regex_helper.rs",
+    "source": "\r\n        pub static RE_TEST: Lazy<Regex> = Lazy::new(|| {\r\n            Regex::new(\"^[a-z]+$\").expect(\"valid regex\")\r\n        });\r\n        ",
+    "findings": []
+  },
+  {
+    "path": "src/services/relation.rs",
+    "source": "\r\n        pub async fn update_status(&self, id: Uuid) -> Result<(), Error> {\r\n            Ok(())\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-STRUCTURED-TRACE",
+        "rule_name": "Contextual Trace Spans",
+        "severity": "P2-MEDIUM",
+        "confidence": "heuristic",
+        "line": 2,
+        "content": "pub async fn update_status(&self, id: Uuid) -> Result<(), Error> {",
+        "message": "Candidate mutation 'update_status' has no nearby instrumentation marker.",
+        "suggested_fix": "Verify that the owner entry point has the required operation and tenant context."
+      }
+    ]
+  },
+  {
+    "path": "src/services/relation.rs",
+    "source": "\r\n        async fn delete_internal_relations<C: ConnectionTrait>(id: Uuid) -> Result<(), Error> {\r\n            Ok(())\r\n        }\r\n        ",
+    "findings": []
+  },
+  {
+    "path": "src/service.rs",
+    "source": "\r\n        pub async fn execute(&self) -> Result<(), Error> {\r\n            let guard = self.sync_mutex.lock().unwrap();\r\n            remote_call().await?;\r\n            Ok(())\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-STRUCTURED-TRACE",
+        "rule_name": "Contextual Trace Spans",
+        "severity": "P2-MEDIUM",
+        "confidence": "heuristic",
+        "line": 2,
+        "content": "pub async fn execute(&self) -> Result<(), Error> {",
+        "message": "Candidate mutation 'execute' has no nearby instrumentation marker.",
+        "suggested_fix": "Verify that the owner entry point has the required operation and tenant context."
+      },
+      {
+        "pattern_id": "P-ZERO-PANIC-PROD",
+        "rule_name": "Zero Production Panics",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "let guard = self.sync_mutex.lock().unwrap();",
+        "message": "Calling .expect() or .unwrap() in production path. Return typed DomainError / PortError.",
+        "suggested_fix": "Use '?' operator with .map_err(DomainError::from) or return Result."
+      },
+      {
+        "pattern_id": "P-SYNC-LOCK-AWAIT",
+        "rule_name": "Sync Lock Held Across Await",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "remote_call().await?;",
+        "message": "Possible synchronous guard 'guard' from line 3 across .await.",
+        "suggested_fix": "Verify the guard type and end 'guard' scope before awaiting when possible."
+      }
+    ]
+  },
+  {
+    "path": "src/service.rs",
+    "source": "\r\n        pub async fn execute(&self) -> Result<(), Error> {\r\n            let data = {\r\n                let mut guard = self.sync_mutex.lock().unwrap();\r\n                std::mem::take(&mut *guard)\r\n            };\r\n            remote_call().await?;\r\n            Ok(())\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-STRUCTURED-TRACE",
+        "rule_name": "Contextual Trace Spans",
+        "severity": "P2-MEDIUM",
+        "confidence": "heuristic",
+        "line": 2,
+        "content": "pub async fn execute(&self) -> Result<(), Error> {",
+        "message": "Candidate mutation 'execute' has no nearby instrumentation marker.",
+        "suggested_fix": "Verify that the owner entry point has the required operation and tenant context."
+      },
+      {
+        "pattern_id": "P-ZERO-PANIC-PROD",
+        "rule_name": "Zero Production Panics",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "let mut guard = self.sync_mutex.lock().unwrap();",
+        "message": "Calling .expect() or .unwrap() in production path. Return typed DomainError / PortError.",
+        "suggested_fix": "Use '?' operator with .map_err(DomainError::from) or return Result."
+      }
+    ]
+  },
+  {
+    "path": "src/job.rs",
+    "source": "\r\n        pub async fn run_job() {\r\n            std::thread::sleep(std::time::Duration::from_millis(50));\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-SYNC-SLEEP-AWAIT",
+        "rule_name": "Sync Sleep in Async Code",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "std::thread::sleep(std::time::Duration::from_millis(50));",
+        "message": "Blocking sleep appears in an async function. Verify which thread executes it.",
+        "suggested_fix": "Use tokio::time::sleep(duration).await on executor workers."
+      }
+    ]
+  },
+  {
+    "path": "src\\service.rs",
+    "source": "fn resolve(owner: Option<Uuid>, tenant: Tenant) -> Uuid {\n    let owner_id = owner.unwrap_or_default();\n    let locale = tenant.locale().unwrap_or_default();\n    let tenant_id: Uuid = owner.unwrap_or_else(Uuid::nil);\n    tenant_id\n}\n",
+    "findings": [
+      {
+        "pattern_id": "P-TENANT-FALLBACK-LEAK",
+        "rule_name": "Tenant Fallback Leakage",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "let tenant_id: Uuid = owner.unwrap_or_else(Uuid::nil);",
+        "message": "Possible default tenant selector. Verify that missing tenant authority fails closed.",
+        "suggested_fix": "tenant_id.ok_or(DomainError::TenantNotFound)?"
+      }
+    ]
+  },
+  {
+    "path": "src/auth.rs",
+    "source": "\r\n        pub fn resolve(tenant: Option<Uuid>) -> Uuid {\r\n            tenant.as_ref().copied().unwrap_or_default()\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-TENANT-FALLBACK-LEAK",
+        "rule_name": "Tenant Fallback Leakage",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "tenant.as_ref().copied().unwrap_or_default()",
+        "message": "Possible default tenant selector. Verify that missing tenant authority fails closed.",
+        "suggested_fix": "tenant_id.ok_or(DomainError::TenantNotFound)?"
+      }
+    ]
+  },
+  {
+    "path": "src/context.rs",
+    "source": "\r\n        pub fn create_context(tenant: Option<Uuid>) {\r\n            let tenant_id = tenant.unwrap_or_default();\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-TENANT-FALLBACK-LEAK",
+        "rule_name": "Tenant Fallback Leakage",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "let tenant_id = tenant.unwrap_or_default();",
+        "message": "Possible default tenant selector. Verify that missing tenant authority fails closed.",
+        "suggested_fix": "tenant_id.ok_or(DomainError::TenantNotFound)?"
+      }
+    ]
+  },
+  {
+    "path": "src/auth.rs",
+    "source": "\r\n        pub fn resolve(tenant: Option<Uuid>) -> Uuid {\r\n            tenant.unwrap_or(Uuid::nil())\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-TENANT-FALLBACK-LEAK",
+        "rule_name": "Tenant Fallback Leakage",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "tenant.unwrap_or(Uuid::nil())",
+        "message": "Possible default tenant selector. Verify that missing tenant authority fails closed.",
+        "suggested_fix": "tenant_id.ok_or(DomainError::TenantNotFound)?"
+      }
+    ]
+  },
+  {
+    "path": "src/auth.rs",
+    "source": "\r\n        pub fn resolve(tenant: Option<Uuid>) -> Uuid {\r\n            tenant.unwrap_or_else(|| Uuid::nil())\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-TENANT-FALLBACK-LEAK",
+        "rule_name": "Tenant Fallback Leakage",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "tenant.unwrap_or_else(|| Uuid::nil())",
+        "message": "Possible default tenant selector. Verify that missing tenant authority fails closed.",
+        "suggested_fix": "tenant_id.ok_or(DomainError::TenantNotFound)?"
+      }
+    ]
+  },
+  {
+    "path": "src/lib.rs",
+    "source": "\r\n        #[cfg(test)]\r\n        mod tests {\r\n            #[test]\r\n            fn test_foo() {\r\n                let x: Result<i32, ()> = Ok(42);\r\n                assert_eq!(x.unwrap(), 42);\r\n            }\r\n        }\r\n        ",
+    "findings": []
+  },
+  {
+    "path": "src/integration_check.rs",
+    "source": "\r\n        #[tokio::test]\r\n        async fn test_async_workflow() {\r\n            let val = some_async_call().await.unwrap();\r\n            assert!(val.to_string().contains(\"expected message\"));\r\n        }\r\n        ",
+    "findings": []
+  },
+  {
+    "path": "src/workflow.rs",
+    "source": "\r\n        pub async fn handle() -> Result<(), Error> {\r\n            let _ = transaction.rollback().await;\r\n            Err(Error::Failed)\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-TXN-ROLLBACK-SWALLOW",
+        "rule_name": "Ignored Transaction Finalization Result",
+        "severity": "P0-CRITICAL",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "let _ = transaction.rollback().await;",
+        "message": "Ignored rollback result on a transaction-like value.",
+        "suggested_fix": "Handle the rollback failure while preserving the primary operation error."
+      }
+    ]
+  },
+  {
+    "path": "src/service.rs",
+    "source": "\r\n        pub fn connect() {\r\n            let url = \"https://example.com/api\";\r\n            let _ = dangerous_operation();\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-ANTI-SWALLOW",
+        "rule_name": "Zero Error Swallowing",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 4,
+        "content": "let _ = dangerous_operation();",
+        "message": "Discarded call result via 'let _ ='. Verify whether it can fail.",
+        "suggested_fix": "Propagate a required failure or record an explicitly best-effort failure."
+      }
+    ]
+  },
+  {
+    "path": "src/services/post.rs",
+    "source": "\r\n        pub fn validate_post(message: &str) -> Result<(), Error> {\r\n            if message.contains(\"bad_word\") {\r\n                return Err(Error::BadPost);\r\n            }\r\n            Ok(())\r\n        }\r\n        ",
+    "findings": []
+  },
+  {
+    "path": "src/service.rs",
+    "source": "\r\n        pub mod foo;\r\n        include!(\"bad_twin.rs\");\r\n        pub fn run() {}\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-ZERO-INCLUDE",
+        "rule_name": "Zero Include Slop",
+        "severity": "P1-HIGH",
+        "confidence": "high",
+        "line": 3,
+        "content": "include!(\"bad_twin.rs\");",
+        "message": "Forbidden file-stitching macro 'include!(\"bad_twin.rs\")'. Use canonical 'mod ...;' and public exports.",
+        "suggested_fix": "Declare mod bad_twin; and expose only the required items."
+      }
+    ]
+  },
+  {
+    "path": "src/parser.rs",
+    "source": "\r\n        pub fn parse(s: &str) -> Uuid {\r\n            Uuid::parse_str(s).expect(\"must parse\")\r\n        }\r\n        ",
+    "findings": [
+      {
+        "pattern_id": "P-ZERO-PANIC-PROD",
+        "rule_name": "Zero Production Panics",
+        "severity": "P1-HIGH",
+        "confidence": "heuristic",
+        "line": 3,
+        "content": "Uuid::parse_str(s).expect(\"must parse\")",
+        "message": "Calling .expect() or .unwrap() in production path. Return typed DomainError / PortError.",
+        "suggested_fix": "Use '?' operator with .map_err(DomainError::from) or return Result."
+      }
+    ]
+  }
+]

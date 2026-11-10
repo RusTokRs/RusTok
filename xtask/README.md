@@ -11,6 +11,7 @@ The tool provides one stable entry point for repository maintenance tasks that a
 - Validate the central module composition contract in `modules.toml`.
 - Validate each scoped path module from `modules.toml` against its publish, runtime, UI, documentation, dependency, permission, and server-wiring contracts.
 - Run native architecture lint with `cargo xtask module lint <slug>`, using the existing source-layout verifier. This is a static gate, not compile/runtime evidence.
+- Run repository hygiene diagnostics with `cargo xtask doctor hygiene` through the `rustok-doctor` library.
 - Detect drift between `modules.toml` and central module documentation maps such as `docs/modules/registry.md`, `docs/modules/_index.md`, and UI package indexes.
 - Build targeted local module smoke plans for `cargo xtask module test <slug>`.
 - Generate server module registry artifacts from `modules.toml`.
@@ -29,6 +30,7 @@ cargo xtask validate-manifest
 cargo xtask module validate
 cargo xtask module validate <slug>
 cargo xtask module test <slug>
+cargo xtask doctor hygiene --crate <slug>
 cargo xtask install-dev --create-db
 cargo xtask generate-registry
 cargo xtask list-modules

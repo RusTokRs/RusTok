@@ -442,9 +442,9 @@ flowchart TD
 
 ## 3. Summary Matrix
 
-The evidence column describes how to verify the invariant at its owner. “Manual” means the Python scanner has no rule for that pattern.
+The evidence column describes how to verify the invariant at its owner. “Manual” means RusToK Doctor has no rule for that pattern.
 
-| ID | Dimension | Evidence to verify | Python scanner |
+| ID | Dimension | Evidence to verify | RusToK Doctor |
 |---|---|---|---|
 | `P-SCOPE-GENERIC` | Structure | Equivalent behavior and one owner across scopes | Manual |
 | `P-DB-CHECK` | State integrity | Database rejects invalid state transitions or combinations | Manual |
@@ -479,49 +479,49 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 
 > [!NOTE]
 > **Автономная периодическая чистка (Offline Periodic Maintenance Utility):**
-> Скрипт `verify-domain-hygiene.py` является **вспомогательной утилитой для периодической (например, ежемесячной) фоновой санитарной чистки кодовой базы**.
+> `rustok-doctor` предоставляет вспомогательную утилиту для периодической фоновой санитарной чистки кодовой базы.
 > Он **НЕ** входит в обязательный протокол непрерывного аудита (`CONTINUOUS_CODE_REVIEW.md`, `continuous-review-ledger.md`) и **НЕ** заменяет глубокую архитектурную проверку и 6 Universal Logic Dimensions.
 > Агенты, выполняющие директиву `реализуй план аудита`, **НЕ ДОЛЖНЫ** подменять аудит крейта поверхностным запуском этого скрипта или требовать его выполнения как критерий завершения фазы аудита.
 
-Скрипт проверяет исходный код Rust и находит кандидатов из матрицы антипаттернов для плановой чистки:
+Doctor проверяет исходный код Rust и находит кандидатов из матрицы антипаттернов для плановой чистки:
 
 ```bash
 # Periodic repository-wide maintenance sweep (e.g. monthly cleanup)
 npm run verify:hygiene:strict
 
 # Scan a specific domain module (smart resolution: forum -> crates/modules/rustok-forum)
-python scripts/verify/verify-domain-hygiene.py --crate forum
+cargo xtask doctor hygiene --crate forum
 
 # Scan multiple crates at once
-python scripts/verify/verify-domain-hygiene.py --crate commerce,forum,index
+cargo xtask doctor hygiene --crate commerce,forum,index
 
 # Scan staged Rust blobs directly from the Git index
-python scripts/verify/verify-domain-hygiene.py --staged --strict
+cargo xtask doctor hygiene --staged --strict
 
 # Scan all modified files in working tree
-python scripts/verify/verify-domain-hygiene.py --changed
+cargo xtask doctor hygiene --changed
 
 # Scan changes relative to a base branch
-python scripts/verify/verify-domain-hygiene.py --diff main
+cargo xtask doctor hygiene --diff main
 
 # Filter by minimum severity (P0 = critical only, P1 = high+, P2 = all)
-python scripts/verify/verify-domain-hygiene.py --crate commerce --severity P0
+cargo xtask doctor hygiene --crate commerce --severity P0
 
 # Display remediation guidance
-python scripts/verify/verify-domain-hygiene.py --crate commerce --suggest-fixes
+cargo xtask doctor hygiene --crate commerce --suggest-fixes
 
 # Export machine-readable JSON or GitHub-flavored markdown report artifact
-python scripts/verify/verify-domain-hygiene.py --crate commerce --markdown-report commerce_hygiene.md
-python scripts/verify/verify-domain-hygiene.py --crate commerce --json --fail-on P1
+cargo xtask doctor hygiene --crate commerce --markdown-report commerce_hygiene.md
+cargo xtask doctor hygiene --crate commerce --json --fail-on P1
 
 # Generate a patch that appends advisory comments to the scanned source
-python scripts/verify/verify-domain-hygiene.py --crate commerce --patch commerce_hygiene.patch
+cargo xtask doctor hygiene --crate commerce --patch commerce_hygiene.patch
 
 # Run regression tests for the scanner
 npm run test:verify:hygiene
 ```
 
-The scanner uses the Python 3 standard library. Git modes require Git.
+The scanner runs through the `rustok-doctor` library and `xtask`. Git modes require Git.
 Severity (`P0` through `P2`) describes potential impact. The separate `confidence`
 field is `high` for a direct source-level violation or `heuristic` for a candidate
 that needs review. Text, JSON, CSV, and Markdown reports show both. `--severity`
@@ -548,7 +548,7 @@ invariants with the owner’s tests and runtime evidence.
 
 ## Related Documents
 
-- [Periodic Domain Hygiene Scanner](../../scripts/verify/verify-domain-hygiene.py) — Independent monthly maintenance utility
+- [RusToK Doctor](../../crates/utils/rustok-doctor/README.md) — Repository hygiene diagnostics
 - [Coding Standards](./coding.md) — Rust syntax and styling rules
 - [Patterns vs Antipatterns](./patterns-vs-antipatterns.md) — Platform-wide architectural DOs and DON'Ts
 - [Continuous Code Review Protocol](../CONTINUOUS_CODE_REVIEW.md) — The audit workflow
