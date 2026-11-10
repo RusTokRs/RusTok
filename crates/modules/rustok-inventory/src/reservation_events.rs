@@ -4,11 +4,10 @@
 //! second receipt, a Product refresh ledger entry, or permission to retry a quantity command.
 
 use rustok_api::{PortCallPolicy, PortContext};
-use rustok_commerce_foundation::entities::{product, product_variant};
 use rustok_commerce_foundation::error::{CommerceError, CommerceResult};
 use rustok_events::InventoryReservationEvent;
 use rustok_outbox::TransactionalEventBus;
-use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, QueryFilter};
+use sea_orm::{ConnectionTrait, DatabaseTransaction};
 use uuid::Uuid;
 
 use crate::ports_impl::parse_port_tenant_id;
@@ -41,10 +40,10 @@ pub(crate) struct ReservationEventPlan {
 impl ReservationEventPlan {
     /// Called only on a new movement after replay/no-op decisions, before counter effects.
     pub(crate) async fn prepare<C>(
-        conn: &C,
+        _conn: &C,
         context: &PortContext,
         operation: &'static str,
-        variant: &product_variant::Model,
+        variant: &crate::product_port::InventoryProductVariantInfo,
     ) -> CommerceResult<Self>
     where
         C: ConnectionTrait,
@@ -55,15 +54,7 @@ impl ReservationEventPlan {
                 "Inventory reservation notifications require the current human actor's non-nil UUID; do not reconstruct an actor from saved metadata".to_owned(),
             )
         })?;
-        if variant.tenant_id != tenant_id || variant.id.is_nil() || variant.product_id.is_nil() {
-            return Err(scope_unverified());
-        }
-        if product::Entity::find_by_id(variant.product_id)
-            .filter(product::Column::TenantId.eq(tenant_id))
-            .one(conn)
-            .await?
-            .is_none()
-        {
+        if variant.tenant_id != tenant_id || variant.variant_id.is_nil() || variant.product_id.is_nil() {
             return Err(scope_unverified());
         }
         Ok(Self {
@@ -71,7 +62,7 @@ impl ReservationEventPlan {
             actor_id,
             event: InventoryReservationEvent::Changed {
                 product_id: variant.product_id,
-                variant_id: variant.id,
+                variant_id: variant.variant_id,
             },
         })
     }

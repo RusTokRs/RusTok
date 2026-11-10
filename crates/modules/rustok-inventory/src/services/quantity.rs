@@ -17,7 +17,6 @@ use super::bootstrap::BootstrapService;
 use super::inventory::inventory_item_write_query;
 use super::policy::inventory_policy_allows_backorder;
 use crate::entities::{inventory_level, stock_location};
-use rustok_commerce_foundation::entities::{product, product_variant};
 
 const MAX_QUANTITY_LEVELS: usize = 4096;
 
@@ -294,27 +293,13 @@ impl QuantityPlan {
         variant_id: Uuid,
         change: Change,
     ) -> WriteResult<Self> {
-        let variant = current_read(
-            txn,
-            product_variant::Entity::find_by_id(variant_id)
-                .filter(product_variant::Column::TenantId.eq(tenant_id)),
-        )
-        .one(txn)
-        .await?
-        .ok_or(QuantityWriteError::VariantNotFound(variant_id))?;
+        let variant = crate::product_port::get_variant_info_from_conn(txn, tenant_id, variant_id)
+            .await
+            .map_err(|err| match err.kind {
+                rustok_api::PortErrorKind::NotFound => QuantityWriteError::VariantNotFound(variant_id),
+                _ => QuantityWriteBlocker::IdentityUnavailable.into(),
+            })?;
         if variant.product_id.is_nil() {
-            return Err(QuantityWriteBlocker::IdentityUnavailable.into());
-        }
-        // Structural parent proof, not Product publication policy. Tenant ownership is immutable;
-        // a nonlocking current read avoids inverting Product's parent-before-Variant lock order.
-        let parent = product::Entity::find_by_id(variant.product_id)
-            .select_only()
-            .column(product::Column::Id)
-            .filter(product::Column::TenantId.eq(tenant_id))
-            .into_tuple::<Uuid>()
-            .one(txn)
-            .await?;
-        if parent != Some(variant.product_id) {
             return Err(QuantityWriteBlocker::IdentityUnavailable.into());
         }
         // INVARIANT: Variant/parent tenant identity precedes every tenant-less item query.

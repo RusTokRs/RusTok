@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_commerce_foundation::entities::{
-    inventory_item, inventory_level, product_variant, reservation_item, stock_location,
+    inventory_item, inventory_level, reservation_item, stock_location,
 };
 use rustok_commerce_foundation::error::CommerceError;
 use sea_orm::{
@@ -544,7 +544,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
                 .then_with(|| left.id.cmp(&right.id))
         });
 
-        let allows_backorder = crate::inventory_policy_allows_backorder(&variant.inventory_policy);
+        let allows_backorder = variant.allows_backorder();
         let mut selected = None;
         for level in levels {
             let new_reserved = level
@@ -764,7 +764,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
         let variant =
             load_tenant_variant(&context, owner_operation, &txn, tenant_id, item.variant_id)
                 .await?;
-        let allows_backorder = crate::inventory_policy_allows_backorder(&variant.inventory_policy);
+        let allows_backorder = variant.allows_backorder();
 
         if reservation.deleted_at.is_some() || reservation.quantity == 0 {
             let available_quantity =
@@ -775,7 +775,7 @@ impl InventoryReservationIdentityPort for PersistentInventoryReservationIdentity
             return Ok(InventoryIdentityReservationReleaseSnapshot {
                 reservation_id: reservation.id,
                 external_id: request.external_id,
-                variant_id: variant.id,
+                variant_id: variant.variant_id,
                 location_id: reservation.location_id,
                 released_quantity: 0,
                 available_quantity,
@@ -899,28 +899,24 @@ pub(super) async fn load_tenant_variant<C>(
     conn: &C,
     tenant_id: Uuid,
     variant_id: Uuid,
-) -> Result<product_variant::Model, PortError>
+) -> Result<crate::product_port::InventoryProductVariantInfo, PortError>
 where
     C: ConnectionTrait,
 {
-    product_variant::Entity::find_by_id(variant_id)
-        .filter(product_variant::Column::TenantId.eq(tenant_id))
-        .one(conn)
+    crate::product_port::get_variant_info_from_conn(conn, tenant_id, variant_id)
         .await
-        .map_err(|error| storage_unavailable_with_context(context, owner_operation, error))?
-        .ok_or_else(|| {
-            let facts = InventoryOwnerErrorFacts::uuid("variant_not_found", variant_id);
-            log_inventory_port_failure(
-                context,
-                owner_operation,
-                "inventory.variant_not_found",
-                &facts,
-                false,
-            );
-            PortError::not_found(
-                "inventory.variant_not_found",
-                "inventory variant was not found",
-            )
+        .map_err(|error| {
+            if error.kind == PortErrorKind::NotFound {
+                let facts = InventoryOwnerErrorFacts::uuid("variant_not_found", variant_id);
+                log_inventory_port_failure(
+                    context,
+                    owner_operation,
+                    "inventory.variant_not_found",
+                    &facts,
+                    false,
+                );
+            }
+            error
         })
 }
 
@@ -985,7 +981,7 @@ async fn existing_reservation_snapshot<C>(
     context: &PortContext,
     owner_operation: &'static str,
     conn: &C,
-    variant: &product_variant::Model,
+    variant: &crate::product_port::InventoryProductVariantInfo,
     item: &inventory_item::Model,
     existing: reservation_item::Model,
     request: &InventoryIdentityReservationRequest,
@@ -1009,12 +1005,11 @@ where
     Ok(InventoryIdentityReservationSnapshot {
         reservation_id: existing.id,
         external_id: request.external_id.clone(),
-        variant_id: variant.id,
+        variant_id: variant.variant_id,
         location_id: existing.location_id,
         reserved_quantity: existing.quantity,
         available_quantity,
-        in_stock: available_quantity > 0
-            || crate::inventory_policy_allows_backorder(&variant.inventory_policy),
+        in_stock: available_quantity > 0 || variant.allows_backorder(),
     })
 }
 

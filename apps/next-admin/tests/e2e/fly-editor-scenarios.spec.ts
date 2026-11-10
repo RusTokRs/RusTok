@@ -183,6 +183,30 @@ async function mountEditorWorkspace(
   );
 }
 
+async function dispatchFlyIntent(
+  page: Page,
+  intent: string,
+  payload: Record<string, unknown> = {}
+) {
+  await page.evaluate(
+    ({ intent, payload }) => {
+      const root = document.querySelector('#fly-root') as HTMLElement & {
+        [key: symbol]: {
+          emitIntent: (
+            intent: string,
+            payload?: Record<string, unknown>
+          ) => Promise<unknown>;
+        };
+      };
+      const adapter = root ? root[Symbol.for('fly.browser.adapter')] : null;
+      if (!adapter)
+        throw new Error('Fly browser adapter not found on #fly-root');
+      return adapter.emitIntent(intent, payload);
+    },
+    { intent, payload }
+  );
+}
+
 test.describe('Fly Editor Authoring Scenarios', () => {
   test('scenario 1: component selection and style rule editing updates live overlay and dispatches upsert_style_rule', async ({
     page
@@ -223,26 +247,15 @@ test.describe('Fly Editor Authoring Scenarios', () => {
     await expect(selectedOverlay).toHaveCSS('height', '120px');
 
     // 2. Dispatch style rule intent on the selected component
-    await page.evaluate(() => {
-      const root = document.querySelector('#fly-root');
-      root?.dispatchEvent(
-        new CustomEvent('fly:intent', {
-          bubbles: true,
-          detail: {
-            intent: 'upsert_style_rule',
-            payload: {
-              component_id: 'hero-section',
-              rule: {
-                selector: '.hero-dark',
-                properties: {
-                  'background-color': '#0f172a',
-                  color: '#ffffff'
-                }
-              }
-            }
-          }
-        })
-      );
+    await dispatchFlyIntent(page, 'upsert_style_rule', {
+      component_id: 'hero-section',
+      rule: {
+        selector: '.hero-dark',
+        properties: {
+          'background-color': '#0f172a',
+          color: '#ffffff'
+        }
+      }
     });
 
     // 3. Verify request envelope
@@ -302,20 +315,9 @@ test.describe('Fly Editor Authoring Scenarios', () => {
     );
 
     // 1. Dispatch set_theme_token intent
-    await page.evaluate(() => {
-      const root = document.querySelector('#fly-root');
-      root?.dispatchEvent(
-        new CustomEvent('fly:intent', {
-          bubbles: true,
-          detail: {
-            intent: 'set_theme_token',
-            payload: {
-              name: 'brand-primary',
-              value: '#2563eb'
-            }
-          }
-        })
-      );
+    await dispatchFlyIntent(page, 'set_theme_token', {
+      name: 'brand-primary',
+      value: '#2563eb'
     });
 
     // Verify token creation intent
@@ -337,19 +339,8 @@ test.describe('Fly Editor Authoring Scenarios', () => {
       .toBeTruthy();
 
     // 2. Dispatch remove_theme_token intent
-    await page.evaluate(() => {
-      const root = document.querySelector('#fly-root');
-      root?.dispatchEvent(
-        new CustomEvent('fly:intent', {
-          bubbles: true,
-          detail: {
-            intent: 'remove_theme_token',
-            payload: {
-              name: 'old-accent'
-            }
-          }
-        })
-      );
+    await dispatchFlyIntent(page, 'remove_theme_token', {
+      name: 'old-accent'
     });
 
     await expect
@@ -480,18 +471,7 @@ test.describe('Fly Editor Authoring Scenarios', () => {
     );
 
     // 1. Trigger intent that will fail (403)
-    await page.evaluate(() => {
-      const root = document.querySelector('#fly-root');
-      root?.dispatchEvent(
-        new CustomEvent('fly:intent', {
-          bubbles: true,
-          detail: {
-            intent: 'publish_page',
-            payload: {}
-          }
-        })
-      );
-    });
+    await dispatchFlyIntent(page, 'publish_page', {});
 
     // 2. Verify error status and problem contract attribute on root
     const root = page.locator('#fly-root');

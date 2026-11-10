@@ -31,6 +31,7 @@ pub struct InventoryProductVariantInfo {
     pub variant_id: Uuid,
     pub product_id: Uuid,
     pub tenant_id: Uuid,
+    pub sku: Option<String>,
     pub inventory_policy: String,
 }
 
@@ -142,6 +143,7 @@ pub async fn get_variant_info_from_conn<C: ConnectionTrait>(
         variant_id: variant.id,
         product_id: variant.product_id,
         tenant_id: variant.tenant_id,
+        sku: variant.sku,
         inventory_policy: variant.inventory_policy,
     })
 }
@@ -168,6 +170,7 @@ pub async fn get_variants_info_from_conn<C: ConnectionTrait>(
             variant_id: v.id,
             product_id: v.product_id,
             tenant_id: v.tenant_id,
+            sku: v.sku,
             inventory_policy: v.inventory_policy,
         })
         .collect())

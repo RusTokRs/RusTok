@@ -10,7 +10,9 @@ export const localeLabels: Record<Locale, string> = {
   ru: 'Русский'
 };
 
-export function matchSupportedLocale(value?: string | null): Locale | undefined {
+export function matchSupportedLocale(
+  value?: string | null
+): Locale | undefined {
   const normalized = value?.trim().replaceAll('_', '-').toLowerCase();
   if (!normalized) return undefined;
 
@@ -23,4 +25,3 @@ export function matchSupportedLocale(value?: string | null): Locale | undefined 
 export function resolveLocale(value?: string | null): Locale {
   return matchSupportedLocale(value) ?? defaultLocale;
 }
-
