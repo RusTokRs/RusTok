@@ -157,7 +157,7 @@ fn known_sample_secret(value: &str) -> Option<&'static str> {
         .find(|sample| value.contains(sample))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "host-runtime"))]
 mod tests {
     use super::*;
     use crate::{

@@ -62,7 +62,14 @@ repository maintainer-attested that
 implementation agent did not independently execute it and raw logs were not retained.
 The registry keeps the base `source_complete_execution_pending`
 production status while `maintainer_harness_status` records the bounded harness
-result; authenticated separate-process Product provider execution remains open.
+result. Promotion requires the combined deployment capture.
+
+On 2026-11-10, the authenticated GraphQL `product_attributes` task passed locally
+against a separate Product process and database. The task sent the owner projection
+to a deterministic local model. Missing or unavailable Product returned typed
+reasons and generated from the submitted prompt. All three results required review
+and left Product data unchanged.
+[Mounted AI execution details](../../rustok-product/docs/implementation-plan.md#mounted-ai-product-attributes-2026-11-10)
 
 ## Next results
 
@@ -74,10 +81,9 @@ result; authenticated separate-process Product provider execution remains open.
    The command `cargo test -p rustok-ai --features server --lib remote_product_`
    is retained in the Product gRPC attestation packet as passed without raw logs.
    Do not promote the remote profile from this bounded result alone.
-3. **Retain authenticated separate-process Product execution.** Run the AI
-   consumer through a separately started PostgreSQL-backed Product catalog
-   service using the production bearer and tenant metadata path, and retain logs
-   or CI artifacts before changing the production remote status.
+3. **Retain authenticated separate-process Product execution.** Repeat the AI
+   request against the deployment used for the combined Product capture and
+   retain sanitized logs or CI artifacts before changing the production remote status.
 4. **Composed product-agent workflow evidence is covered.**
    `service::product_agent_workflow_persistence_tests::product_enrichment_workflow_persists_owner_bindings_and_approval_gates`
    creates the product-owned principals and capability-compatible model

@@ -23,6 +23,12 @@ The crate defines the common installer contract reused by:
 - `SeedExecutionRequest` composes tenant, identity, role and module owner ports;
   it has no server model or database adapter dependency and is exposed by the
   default `seed-runtime` feature.
+- Seed content requests require the development profile, a non-empty path,
+  a content loader and an admin request; known missing prerequisites fail before
+  any owner port is called. Loader failures and partial outcomes stop the seed
+  unless continuation is explicitly enabled. Continued failures remain visible
+  in the content outcome, including failures with an unknown affected-item count.
+  A loader outcome must identify the requested module.
 - Install-plan, state, receipt, preflight, deployment, secret, and executor
   contracts remain available without default features so the web wizard can
   share their exact types without linking the native seed runtime.

@@ -95,6 +95,33 @@ pub fn compare(
     reference_plan: &[String],
     candidate_plan: &[String],
 ) -> Result<ComparisonReport> {
+    compare_observations(reference, candidate, reference_plan, candidate_plan, None)
+}
+
+/// Compare only fixtures replayed from empty databases. Each window is measured
+/// by PostgreSQL around its own replay. Existing databases use `compare`.
+pub fn compare_fresh_install(
+    reference: (&DatabaseSnapshot, &bootstrap::InstallWindow),
+    candidate: (&DatabaseSnapshot, &bootstrap::InstallWindow),
+    reference_plan: &[String],
+    candidate_plan: &[String],
+) -> Result<ComparisonReport> {
+    compare_observations(
+        reference.0,
+        candidate.0,
+        reference_plan,
+        candidate_plan,
+        Some(bootstrap::diagnose(reference, candidate)),
+    )
+}
+
+fn compare_observations(
+    reference: &DatabaseSnapshot,
+    candidate: &DatabaseSnapshot,
+    reference_plan: &[String],
+    candidate_plan: &[String],
+    bootstrap: Option<bootstrap::BootstrapReport>,
+) -> Result<ComparisonReport> {
     validate_journal(&reference.migration_versions, reference_plan)?;
     validate_journal(&candidate.migration_versions, candidate_plan)?;
     let mut differences = Vec::new();
@@ -116,12 +143,18 @@ pub fn compare(
     for name in names {
         let original = reference.tables.iter().find(|table| table.relation == name);
         let proposed = candidate.tables.iter().find(|table| table.relation == name);
-        if original != proposed {
+        let bootstrap_check = bootstrap
+            .as_ref()
+            .and_then(|report| report.for_relation(&name));
+        if bootstrap_check.is_some_and(|check| !check.verified_on_both_sides()) {
             differences.push(format!(
-                "table {}.{}",
-                quote(&name.schema),
-                quote(&name.name)
+                "bootstrap invariant for table {}",
+                qualified(&name)
             ));
+        }
+        if original != proposed && !bootstrap_check.is_some_and(|check| check.clock_only_difference)
+        {
+            differences.push(format!("table {}", qualified(&name)));
         }
     }
     if reference.sequences != candidate.sequences {
@@ -129,13 +162,18 @@ pub fn compare(
     }
     Ok(ComparisonReport {
         schema_version: 1,
-        scope: "observed-database-equivalence".into(),
+        scope: if bootstrap.is_some() {
+            "fresh-install-stepwise-equivalence"
+        } else {
+            "observed-database-equivalence"
+        }
+        .into(),
         equivalent: differences.is_empty(),
         replacement_admission: "blocked: release provenance, upgrade fixtures, recovery and activation gates are separate requirements".into(),
         differences,
         reference_digest: snapshot_digest(reference),
         candidate_digest: snapshot_digest(candidate),
-        bootstrap: None,
+        bootstrap,
     })
 }
 

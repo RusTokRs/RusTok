@@ -4,7 +4,7 @@ use thiserror::Error;
 use tonic::transport::{ClientTlsConfig, Endpoint};
 use url::{Host, Url};
 
-use crate::GrpcProductCatalogReadProvider;
+use crate::{GrpcProductCatalogCommandProvider, GrpcProductCatalogReadProvider};
 
 const MAX_CONNECT_TIMEOUT_MS: u64 = 30_000;
 
@@ -84,7 +84,33 @@ impl GrpcProductCatalogReadConnectionConfig {
             .await
             .map_err(GrpcProductCatalogReadConnectionError::Connection)
     }
+
+    pub async fn connect_command(
+        &self,
+    ) -> Result<GrpcProductCatalogCommandProvider, GrpcProductCatalogReadConnectionError> {
+        let validated = self.validated()?;
+        let mut endpoint = Endpoint::from_shared(validated.endpoint)
+            .map_err(|_| GrpcProductCatalogReadConnectionError::InvalidEndpoint)?
+            .connect_timeout(validated.connect_timeout)
+            .tcp_keepalive(Some(Duration::from_secs(30)));
+
+        if validated.endpoint_uses_tls {
+            let mut tls = ClientTlsConfig::new().with_webpki_roots();
+            if let Some(domain) = validated.tls_domain {
+                tls = tls.domain_name(domain);
+            }
+            endpoint = endpoint
+                .tls_config(tls)
+                .map_err(GrpcProductCatalogReadConnectionError::TransportConfiguration)?;
+        }
+
+        GrpcProductCatalogCommandProvider::connect(endpoint)
+            .await
+            .map_err(GrpcProductCatalogReadConnectionError::Connection)
+    }
 }
+
+pub type GrpcProductCatalogConnectionConfig = GrpcProductCatalogReadConnectionConfig;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ValidatedGrpcProductCatalogReadConnection {

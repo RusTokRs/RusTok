@@ -143,7 +143,9 @@ impl SeaOrmModuleGovernanceService {
         let verified = match verify_publish_request_prerequisites(&tx, backend, &command).await {
             Ok(v) => v,
             Err(e) => {
-                let _ = tx.rollback().await;
+                if let Err(rollback_err) = tx.rollback().await {
+                    tracing::warn!(%rollback_err, "failed to rollback module publication transaction");
+                }
                 return Err(e);
             }
         };

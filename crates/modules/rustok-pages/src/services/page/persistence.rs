@@ -376,20 +376,34 @@ impl PageService {
             DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().all(txn).await?,
             _ => unreachable!("unsupported SeaORM database backend"),
         };
-        let mut promoted = Vec::with_capacity(drafts.len());
-        for draft in drafts {
-            let body_revision = draft.updated_at.to_string();
-            let query = || {
+        let locales = drafts.iter().map(|d| d.locale.clone()).collect::<Vec<_>>();
+        let existing_bodies = if locales.is_empty() {
+            Vec::new()
+        } else {
+            let body_query = || {
                 page_body::Entity::find()
                     .filter(page_body::Column::TenantId.eq(tenant_id))
                     .filter(page_body::Column::PageId.eq(page_id))
-                    .filter(page_body::Column::Locale.eq(&draft.locale))
+                    .filter(page_body::Column::Locale.is_in(locales.clone()))
+                    .order_by_asc(page_body::Column::Locale)
             };
-            let existing = match txn.get_database_backend() {
-                DbBackend::Sqlite => query().one(txn).await?,
-                DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
+            match txn.get_database_backend() {
+                DbBackend::Sqlite => body_query().all(txn).await?,
+                DbBackend::Postgres | DbBackend::MySql => {
+                    body_query().lock_exclusive().all(txn).await?
+                }
                 _ => unreachable!("unsupported SeaORM database backend"),
-            };
+            }
+        };
+        let mut existing_by_locale: std::collections::HashMap<String, page_body::Model> =
+            existing_bodies
+                .into_iter()
+                .map(|body| (body.locale.clone(), body))
+                .collect();
+        let mut promoted = Vec::with_capacity(drafts.len());
+        for draft in drafts {
+            let body_revision = draft.updated_at.to_string();
+            let existing = existing_by_locale.remove(&draft.locale);
             match existing {
                 Some(existing) => {
                     let mut active: page_body::ActiveModel = existing.into();

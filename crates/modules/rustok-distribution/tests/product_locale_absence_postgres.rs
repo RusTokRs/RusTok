@@ -170,13 +170,17 @@ async fn run_product_locale_absence_scenarios(database: &TestDatabase) -> TestRe
         wait_for_blocked_materialized_read(&database.observer, &database.snapshot_application_name)
             .await
     {
-        let _ = lock.rollback().await;
+        if let Err(rollback_err) = lock.rollback().await {
+            tracing::warn!(%rollback_err, "failed to rollback lock on blocked read failure");
+        }
         capture.abort();
         return Err(error);
     }
 
     if let Err(error) = insert_de_translation(&database.writer).await {
-        let _ = lock.rollback().await;
+        if let Err(rollback_err) = lock.rollback().await {
+            tracing::warn!(%rollback_err, "failed to rollback lock on insert translation failure");
+        }
         capture.abort();
         return Err(error);
     }

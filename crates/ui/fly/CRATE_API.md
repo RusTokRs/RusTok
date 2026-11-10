@@ -13,6 +13,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 - `EditorCommand`: Atomic document manipulation commands (`InsertComponent`, `RemoveComponent`, `UpdateAttributes`, `PatchStyleRule`, etc.).
 - `ProjectBundle`, `BundleInspection`: Exportable, versioned project archive (`encode_project_bundle`, `decode_project_bundle`, `inspect_project_bundle`).
 - `AuditReport`, `AuditDiagnostic`: Preflight page auditing models for accessibility, broken links, and SEO metadata.
+- `DesignToken`, `ThemeCommand`: Design token management (`Upsert`, `Remove`, `Rename` with automatic usage rewriting, `Replace`), `find_token_usages`, and reversible history tracking.
 
 ### Runtime, Binding, and Expression System
 - `RuntimeBinding`, `BindingCatalog`, `BindingTarget`: Dynamic data binding descriptors and materialization.

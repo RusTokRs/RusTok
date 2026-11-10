@@ -4,15 +4,25 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_product::{
-    ProductCatalogReadPort, ProductCatalogReadRuntime, ProductFulfillmentRequirement,
-    ProductProjectionRequest, ProductVariantIdentitiesRequest, ProductVariantIdentityListRequest,
-    ProductVariantIdentityReadPort, ProductVariantIdentitySnapshot, PublishedProductsRequest,
-    StorefrontProductList, StorefrontProductListItem, StorefrontVariantProductProjectionRequest,
-    VariantProductProjectionRequest, dto::ProductResponse, entities::product::ProductStatus,
+    ProductCatalogCommandPort, ProductCatalogReadPort, ProductCatalogReadRuntime,
+    ProductFulfillmentRequirement, ProductProjectionRequest, ProductVariantIdentitiesRequest,
+    ProductVariantIdentityListRequest, ProductVariantIdentityReadPort,
+    ProductVariantIdentitySnapshot, PublishedProductsRequest, StorefrontProductList,
+    StorefrontProductListItem, StorefrontVariantProductProjectionRequest,
+    VariantProductProjectionRequest,
+    dto::{
+        AddProductImageInput, CreateProductInput, CreateVariantInput, ProductImageResponse,
+        ProductResponse, SetVariantAxesInput, UpdateProductImageInput, UpdateProductInput,
+        UpdateVariantInput, VariantAxesPreviewResponse, VariantAxisConfigResponse,
+        VariantResponse,
+    },
+    entities::product::ProductStatus,
 };
 use rustok_product_transport::{
-    GrpcProductCatalogReadProvider, ProductCatalogGrpcBearerAuthenticator,
+    GrpcProductCatalogCommandProvider, GrpcProductCatalogReadProvider,
+    ProductCatalogCommandGrpcService, ProductCatalogGrpcBearerAuthenticator,
     ProductCatalogGrpcBearerInterceptor, ProductCatalogGrpcOperation, ProductCatalogGrpcService,
+    proto::product_catalog_command_service_server::ProductCatalogCommandServiceServer,
     proto::product_catalog_read_service_server::ProductCatalogReadServiceServer,
 };
 use tokio::sync::oneshot;
@@ -411,4 +421,273 @@ async fn loopback_grpc_provider_executes_the_product_catalog_port_contract() {
     server
         .await
         .expect("loopback Product gRPC server task should stop");
+}
+
+struct MockProductCatalogCommandPort {
+    tenant_id: Uuid,
+    product_id: Uuid,
+}
+
+#[async_trait]
+impl ProductCatalogCommandPort for MockProductCatalogCommandPort {
+    async fn create_product(
+        &self,
+        context: PortContext,
+        input: CreateProductInput,
+    ) -> Result<ProductResponse, PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        assert_eq!(context.tenant_id, self.tenant_id.to_string());
+        assert_eq!(
+            context.actor,
+            PortActor::service("trusted-product-catalog-conformance")
+        );
+        let now = Utc::now();
+        Ok(ProductResponse {
+            id: self.product_id,
+            tenant_id: self.tenant_id,
+            status: if input.publish {
+                ProductStatus::Active
+            } else {
+                ProductStatus::Draft
+            },
+            seller_id: None,
+            vendor: Some("RusToK".to_string()),
+            product_type: Some("demo".to_string()),
+            fulfillment_requirement: ProductFulfillmentRequirement::Physical,
+            shipping_profile_slug: Some("default".to_string()),
+            primary_category_id: None,
+            tags: vec!["created-via-grpc".to_string()],
+            brands: Vec::new(),
+            metadata: serde_json::json!({"created_via": "grpc"}),
+            created_at: now,
+            updated_at: now,
+            published_at: if input.publish { Some(now) } else { None },
+            revision: 1,
+            translations: Vec::new(),
+            variant_axes: Vec::new(),
+            variants: Vec::new(),
+            images: Vec::new(),
+            storefront_attributes: Vec::new(),
+        })
+    }
+
+    async fn preview_variant_axes(
+        &self,
+        _context: PortContext,
+        _product_id: Uuid,
+        _input: SetVariantAxesInput,
+    ) -> Result<VariantAxesPreviewResponse, PortError> {
+        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+    }
+
+    async fn set_variant_axes(
+        &self,
+        _context: PortContext,
+        _product_id: Uuid,
+        _input: SetVariantAxesInput,
+    ) -> Result<Vec<VariantAxisConfigResponse>, PortError> {
+        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+    }
+
+    async fn update_product(
+        &self,
+        _context: PortContext,
+        _product_id: Uuid,
+        _input: UpdateProductInput,
+    ) -> Result<ProductResponse, PortError> {
+        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+    }
+
+    async fn delete_product(&self, context: PortContext, product_id: Uuid) -> Result<(), PortError> {
+        context.require_policy(PortCallPolicy::write())?;
+        assert_eq!(product_id, self.product_id);
+        Ok(())
+    }
+
+    async fn publish_product(
+        &self,
+        _context: PortContext,
+        _product_id: Uuid,
+    ) -> Result<ProductResponse, PortError> {
+        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+    }
+
+    async fn unpublish_product(
+        &self,
+        _context: PortContext,
+        _product_id: Uuid,
+    ) -> Result<ProductResponse, PortError> {
+        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+    }
+
+    async fn archive_product(
+        &self,
+        _context: PortContext,
+        _product_id: Uuid,
+    ) -> Result<ProductResponse, PortError> {
+        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+    }
+
+    async fn create_variant(
+        &self,
+        _context: PortContext,
+        _product_id: Uuid,
+        _input: CreateVariantInput,
+    ) -> Result<VariantResponse, PortError> {
+        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+    }
+
+    async fn update_variant(
+        &self,
+        _context: PortContext,
+        _variant_id: Uuid,
+        _input: UpdateVariantInput,
+    ) -> Result<VariantResponse, PortError> {
+        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+    }
+
+    async fn delete_variant(&self, _context: PortContext, _variant_id: Uuid) -> Result<(), PortError> {
+        Ok(())
+    }
+
+    async fn add_product_image(
+        &self,
+        _context: PortContext,
+        _product_id: Uuid,
+        _input: AddProductImageInput,
+    ) -> Result<ProductImageResponse, PortError> {
+        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+    }
+
+    async fn update_product_image(
+        &self,
+        _context: PortContext,
+        _product_id: Uuid,
+        _image_id: Uuid,
+        _input: UpdateProductImageInput,
+    ) -> Result<ProductImageResponse, PortError> {
+        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+    }
+
+    async fn delete_product_image(
+        &self,
+        _context: PortContext,
+        _product_id: Uuid,
+        _image_id: Uuid,
+    ) -> Result<(), PortError> {
+        Ok(())
+    }
+
+    async fn reorder_product_images(
+        &self,
+        _context: PortContext,
+        _product_id: Uuid,
+        _image_ids: Vec<Uuid>,
+    ) -> Result<(), PortError> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn loopback_grpc_provider_executes_the_product_catalog_command_port_contract() {
+    let tenant_id = Uuid::new_v4();
+    let product_id = Uuid::new_v4();
+
+    let provider = Arc::new(MockProductCatalogCommandPort {
+        tenant_id,
+        product_id,
+    });
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("loopback listener should bind");
+    let address = listener
+        .local_addr()
+        .expect("loopback listener address should exist");
+    let incoming = TcpListenerStream::new(listener);
+    let (shutdown_tx, shutdown_rx) = oneshot::channel();
+    let authentication = ProductCatalogGrpcBearerAuthenticator::new(
+        "loopback-command-token",
+        PortActor::service("trusted-product-catalog-conformance"),
+    )
+    .expect("test credential must be valid")
+    .with_allowed_operations([
+        ProductCatalogGrpcOperation::CreateProduct,
+        ProductCatalogGrpcOperation::DeleteProduct,
+    ]);
+
+    let server_service = ProductCatalogCommandServiceServer::with_interceptor(
+        ProductCatalogCommandGrpcService::new(provider.clone()),
+        ProductCatalogGrpcBearerInterceptor::new(authentication),
+    );
+    let server = tokio::spawn(async move {
+        Server::builder()
+            .add_service(server_service)
+            .serve_with_incoming_shutdown(incoming, async {
+                let _ = shutdown_rx.await;
+            })
+            .await
+            .expect("loopback Product command gRPC server should run");
+    });
+
+    let remote = GrpcProductCatalogCommandProvider::connect(
+        Endpoint::from_shared(format!("http://{address}"))
+            .expect("loopback endpoint should parse")
+            .connect_timeout(Duration::from_secs(5)),
+    )
+    .await
+    .expect("loopback Product command gRPC client should connect");
+
+    let write_context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("untrusted-caller"),
+        "en",
+        "corr-command",
+    )
+    .with_idempotency_key("idemp-create-product")
+    .with_deadline(Duration::from_millis(5_000));
+
+    let create_input = CreateProductInput {
+        attribute_values: Vec::new(),
+        translations: Vec::new(),
+        variant_axes: Vec::new(),
+        variants: Vec::new(),
+        seller_id: None,
+        vendor: None,
+        product_type: None,
+        shipping_profile_slug: None,
+        primary_category_id: None,
+        brands: Vec::new(),
+        tags: Vec::new(),
+        metadata: serde_json::json!({}),
+        publish: true,
+    };
+
+    let unauthenticated = remote
+        .create_product(write_context.clone(), create_input.clone())
+        .await
+        .expect_err("command calls without bearer token must fail");
+    assert_eq!(unauthenticated.kind, PortErrorKind::Forbidden);
+
+    let remote = remote
+        .with_bearer_token("loopback-command-token")
+        .expect("bearer token should be accepted");
+
+    let created = remote
+        .create_product(write_context.clone(), create_input)
+        .await
+        .expect("create_product should succeed over gRPC loopback");
+    assert_eq!(created.id, product_id);
+    assert_eq!(created.tenant_id, tenant_id);
+    assert_eq!(created.status, ProductStatus::Active);
+
+    remote
+        .delete_product(write_context, product_id)
+        .await
+        .expect("delete_product should succeed over gRPC loopback");
+
+    let _ = shutdown_tx.send(());
+    server
+        .await
+        .expect("loopback Product command gRPC server task should stop");
 }

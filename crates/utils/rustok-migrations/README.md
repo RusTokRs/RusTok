@@ -274,16 +274,19 @@ admission/recovery certification.
 the ordered confirmations from both runners and checks each final journal
 against its executable plan.
 
-Fresh reports include bootstrap diagnostics for eight known singleton tables.
-The verifier uses PostgreSQL's clock to bound each run and checks the exact row
-count, column types, keys, counters, references and other seed values. A
-diagnostic flags a clock-only difference when both rows satisfy those checks and
-only `updated_at` differs. The raw observations still determine equivalence.
+Fresh reports apply the [bootstrap clock disposition](../../../DECISIONS/2026-11-03-migration-consolidation.md#data-and-behavioral-comparison)
+to eight named singleton rows. The verifier checks the exact column layout, key,
+counters, references and other seed values, and requires each timestamp to fall
+within its own PostgreSQL-measured install window. The report records accepted
+differences as `clock_only_difference` and retains both raw snapshot digests.
+An invalid observed singleton fails fresh comparison even when the two rows
+match. `compare --quiescent` continues to compare timestamps exactly.
 Recreating the login with a new password also discards original role settings
 before the candidate runs. Migration children
 receive their fixture URL and a bounded OS environment. `compare --quiescent`
 compares two already prepared fixture endpoints without creating or deleting
-databases. Run `verify-migrations --help` for explicit arguments. Reports contain
+databases. The `fresh` cleanup drops only successfully created fixture resources.
+Run `verify-migrations --help` for explicit arguments. Reports contain
 digests and difference categories rather than fixture row values. A successful
 comparison is scoped evidence; `replacement_admission` always remains blocked.
 

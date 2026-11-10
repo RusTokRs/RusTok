@@ -1,9 +1,16 @@
 use sea_orm_migration::prelude::*;
-use sea_orm_migration::sea_orm::{ConnectionTrait, DbBackend};
+use sea_orm_migration::sea_orm::{ConnectionTrait, DbBackend, Statement};
 
 pub const FIELD_DEFINITION_CACHE_GENERATION_TABLE: &str = "flex_field_definition_cache_generation";
 const FIELD_DEFINITION_CACHE_GENERATION_ID: i32 = 1;
 const POSTGRES_BUMP_FUNCTION: &str = "rustok_bump_flex_field_definition_cache_generation";
+
+async fn execute_statement<C: ConnectionTrait>(connection: &C, sql: String) -> Result<(), DbErr> {
+    connection
+        .execute_raw(Statement::from_string(connection.get_database_backend(), sql))
+        .await
+        .map(|_| ())
+}
 
 /// Create the singleton durable generation used by every attached field-definition owner.
 pub async fn create_field_definition_cache_generation_table(
@@ -48,11 +55,12 @@ pub async fn create_field_definition_cache_generation_table(
              VALUES ({FIELD_DEFINITION_CACHE_GENERATION_ID}, 0)"
         ),
     };
-    connection.execute_unprepared(&seed).await?;
+    execute_statement(connection, seed).await?;
 
     if connection.get_database_backend() == DbBackend::Postgres {
-        connection
-            .execute_unprepared(&format!(
+        execute_statement(
+            connection,
+            format!(
                 "CREATE OR REPLACE FUNCTION {POSTGRES_BUMP_FUNCTION}() RETURNS trigger AS $$ \
                  BEGIN \
                    UPDATE {FIELD_DEFINITION_CACHE_GENERATION_TABLE} \
@@ -61,8 +69,9 @@ pub async fn create_field_definition_cache_generation_table(
                    RETURN NULL; \
                  END; \
                  $$ LANGUAGE plpgsql"
-            ))
-            .await?;
+            ),
+        )
+        .await?;
     }
 
     Ok(())
@@ -80,24 +89,27 @@ pub async fn create_field_definition_cache_generation_trigger(
     let connection = manager.get_connection();
     match connection.get_database_backend() {
         DbBackend::Postgres => {
-            connection
-                .execute_unprepared(&format!(
-                    "DROP TRIGGER IF EXISTS {trigger_name} ON {table_name}"
-                ))
-                .await?;
-            connection
-                .execute_unprepared(&format!(
+            execute_statement(
+                connection,
+                format!("DROP TRIGGER IF EXISTS {trigger_name} ON {table_name}"),
+            )
+            .await?;
+            execute_statement(
+                connection,
+                format!(
                     "CREATE TRIGGER {trigger_name} \
                      AFTER INSERT OR UPDATE OR DELETE ON {table_name} \
                      FOR EACH STATEMENT EXECUTE FUNCTION {POSTGRES_BUMP_FUNCTION}()"
-                ))
-                .await?;
+                ),
+            )
+            .await?;
         }
         DbBackend::Sqlite => {
             for operation in ["insert", "update", "delete"] {
                 let sqlite_trigger = format!("{trigger_name}_{operation}");
-                connection
-                    .execute_unprepared(&format!(
+                execute_statement(
+                    connection,
+                    format!(
                         "CREATE TRIGGER IF NOT EXISTS {sqlite_trigger} \
                          AFTER {} ON {table_name} \
                          BEGIN \
@@ -106,26 +118,31 @@ pub async fn create_field_definition_cache_generation_trigger(
                            WHERE id = {FIELD_DEFINITION_CACHE_GENERATION_ID}; \
                          END",
                         operation.to_ascii_uppercase()
-                    ))
-                    .await?;
+                    ),
+                )
+                .await?;
             }
         }
         _ => {
             for operation in ["insert", "update", "delete"] {
                 let mysql_trigger = format!("{trigger_name}_{operation}");
-                connection
-                    .execute_unprepared(&format!("DROP TRIGGER IF EXISTS {mysql_trigger}"))
-                    .await?;
-                connection
-                    .execute_unprepared(&format!(
+                execute_statement(
+                    connection,
+                    format!("DROP TRIGGER IF EXISTS {mysql_trigger}"),
+                )
+                .await?;
+                execute_statement(
+                    connection,
+                    format!(
                         "CREATE TRIGGER {mysql_trigger} AFTER {} ON {table_name} \
                          FOR EACH ROW \
                          UPDATE {FIELD_DEFINITION_CACHE_GENERATION_TABLE} \
                          SET generation = generation + 1, updated_at = CURRENT_TIMESTAMP \
                          WHERE id = {FIELD_DEFINITION_CACHE_GENERATION_ID}",
                         operation.to_ascii_uppercase()
-                    ))
-                    .await?;
+                    ),
+                )
+                .await?;
             }
         }
     }
@@ -144,19 +161,19 @@ pub async fn drop_field_definition_cache_generation_trigger(
     let connection = manager.get_connection();
     match connection.get_database_backend() {
         DbBackend::Postgres => {
-            connection
-                .execute_unprepared(&format!(
-                    "DROP TRIGGER IF EXISTS {trigger_name} ON {table_name}"
-                ))
-                .await?;
+            execute_statement(
+                connection,
+                format!("DROP TRIGGER IF EXISTS {trigger_name} ON {table_name}"),
+            )
+            .await?;
         }
         _ => {
             for operation in ["insert", "update", "delete"] {
-                connection
-                    .execute_unprepared(&format!(
-                        "DROP TRIGGER IF EXISTS {trigger_name}_{operation}"
-                    ))
-                    .await?;
+                execute_statement(
+                    connection,
+                    format!("DROP TRIGGER IF EXISTS {trigger_name}_{operation}"),
+                )
+                .await?;
             }
         }
     }
@@ -169,11 +186,11 @@ pub async fn drop_field_definition_cache_generation_table(
 ) -> Result<(), DbErr> {
     let connection = manager.get_connection();
     if connection.get_database_backend() == DbBackend::Postgres {
-        connection
-            .execute_unprepared(&format!(
-                "DROP FUNCTION IF EXISTS {POSTGRES_BUMP_FUNCTION}()"
-            ))
-            .await?;
+        execute_statement(
+            connection,
+            format!("DROP FUNCTION IF EXISTS {POSTGRES_BUMP_FUNCTION}()"),
+        )
+        .await?;
     }
 
     manager

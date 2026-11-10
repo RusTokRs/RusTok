@@ -546,6 +546,47 @@ pub fn invert_command(
                 })
             }
         },
+        EditorCommand::Theme { command } => match command {
+            crate::ThemeCommand::Upsert { token } => {
+                let current_tokens = crate::decode_theme_tokens(document).ok()?;
+                if let Some(existing) = current_tokens.iter().find(|t| t.name == token.name) {
+                    Some(EditorCommand::Theme {
+                        command: crate::ThemeCommand::Upsert {
+                            token: existing.clone(),
+                        },
+                    })
+                } else {
+                    Some(EditorCommand::Theme {
+                        command: crate::ThemeCommand::Remove {
+                            name: token.name.clone(),
+                        },
+                    })
+                }
+            }
+            crate::ThemeCommand::Remove { name } => {
+                let current_tokens = crate::decode_theme_tokens(document).ok()?;
+                let existing = current_tokens.iter().find(|t| t.name == *name)?;
+                Some(EditorCommand::Theme {
+                    command: crate::ThemeCommand::Upsert {
+                        token: existing.clone(),
+                    },
+                })
+            }
+            crate::ThemeCommand::Rename { old_name, new_name } => Some(EditorCommand::Theme {
+                command: crate::ThemeCommand::Rename {
+                    old_name: new_name.clone(),
+                    new_name: old_name.clone(),
+                },
+            }),
+            crate::ThemeCommand::Replace { .. } => {
+                let current_tokens = crate::decode_theme_tokens(document).ok()?;
+                Some(EditorCommand::Theme {
+                    command: crate::ThemeCommand::Replace {
+                        tokens: current_tokens,
+                    },
+                })
+            }
+        },
         EditorCommand::Batch { commands } => {
             let mut inverted = Vec::with_capacity(commands.len());
             for cmd in commands.iter().rev() {

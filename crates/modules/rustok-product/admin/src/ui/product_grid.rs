@@ -71,7 +71,7 @@ pub fn ProductGridPage() -> impl IntoView {
         let ten = tenant.get();
         let loc = res_locale.clone();
         let controls = res_controls.clone();
-        let _ = refresh_nonce.get();
+        refresh_nonce.track();
         async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
@@ -99,7 +99,7 @@ pub fn ProductGridPage() -> impl IntoView {
         let ten = tenant.get();
         let loc = facets_locale.clone();
         let controls = facets_controls.clone();
-        let _ = refresh_nonce.get();
+        refresh_nonce.track();
         async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await

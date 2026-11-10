@@ -429,11 +429,16 @@ async fn seed_topic(
     .expect("topic seed should succeed");
 
     db.execute_unprepared(&format!(
-        "UPDATE forum_categories SET topic_count = 1 WHERE id = {}",
-        sql_uuid(category_id)
+        "UPDATE forum_categories SET topic_count = topic_count + 1 WHERE id = {}; \
+         INSERT INTO forum_user_stats (tenant_id, user_id, topic_count, reply_count, solution_count) \
+         VALUES ({}, {}, 1, 0, 0) \
+         ON CONFLICT (tenant_id, user_id) DO UPDATE SET topic_count = forum_user_stats.topic_count + 1",
+        sql_uuid(category_id),
+        sql_uuid(tenant_id),
+        sql_uuid(author_id),
     ))
     .await
-    .expect("category topic count seed should succeed");
+    .expect("category and author counters should match seeded topics");
 }
 
 async fn scalar_i64(db: &DatabaseConnection, sql: String) -> i64 {

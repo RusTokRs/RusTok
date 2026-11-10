@@ -82,7 +82,6 @@ use crate::error::{CommerceError, CommerceResult};
 use crate::ports::pricing::{CatalogBasePriceSnapshot, InitialPrice, ProductPricingPort};
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_events::DomainEvent;
-use rustok_inventory::{BootstrapService, InitialInventory};
 use rustok_outbox::TransactionalEventBus;
 
 use crate::ProductCatalogSchemaService;
@@ -100,29 +99,33 @@ fn map_product_unique_violation(
     locale: &str,
     sku: Option<&str>,
 ) -> CommerceError {
-    let message = error.to_string();
-    if message.contains("uq_product_variants_tenant_sku") {
+    let Some(sea_orm::SqlErr::UniqueConstraintViolation(details)) = error.sql_err() else {
+        return CommerceError::Database(error);
+    };
+
+    let constraint = &details;
+    if constraint.contains("product_variants_tenant_sku") {
         return CommerceError::DuplicateSku(sku.unwrap_or_default().to_owned());
     }
-    if message.contains("uq_product_translations_tenant_locale_handle") {
+    if constraint.contains("product_translations_tenant_locale_handle") {
         return CommerceError::DuplicateHandle {
             handle: handle.to_owned(),
             locale: locale.to_owned(),
         };
     }
-    if message.contains("idx_product_trans_unique")
-        || message.contains("product_translations_product_id_locale_key")
+    if constraint.contains("product_trans_unique")
+        || constraint.contains("product_translations_product_id_locale_key")
     {
         return CommerceError::Validation(format!(
             "A translation for locale `{locale}` already exists for this product"
         ));
     }
-    if message.contains("uq_product_variants_combination") {
+    if constraint.contains("product_variants_combination") {
         return CommerceError::Validation(
             "A variant with this axis combination already exists for this product".to_owned(),
         );
     }
-    if message.contains("uq_product_variants_default") {
+    if constraint.contains("product_variants_default") {
         return CommerceError::Validation(
             "A default variant already exists for this product".to_owned(),
         );
@@ -137,6 +140,8 @@ pub struct CatalogService {
     pub(crate) shipping_profile_port: Option<std::sync::Arc<dyn crate::ProductShippingProfilePort>>,
     pub(crate) media_reference_port: Option<std::sync::Arc<dyn crate::ProductMediaReferencePort>>,
     pub(crate) pricing_port: Option<std::sync::Arc<dyn ProductPricingPort>>,
+    pub(crate) inventory_bootstrap_port:
+        Option<std::sync::Arc<dyn crate::ports::ProductInventoryBootstrapPort>>,
 }
 
 impl CatalogService {
@@ -147,6 +152,7 @@ impl CatalogService {
             media_reference_port: None,
             shipping_profile_port: None,
             pricing_port: None,
+            inventory_bootstrap_port: None,
         }
     }
 
@@ -161,6 +167,22 @@ impl CatalogService {
     pub fn with_pricing_port(mut self, port: std::sync::Arc<dyn ProductPricingPort>) -> Self {
         self.pricing_port = Some(port);
         self
+    }
+
+    pub fn with_inventory_bootstrap_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ports::ProductInventoryBootstrapPort>,
+    ) -> Self {
+        self.inventory_bootstrap_port = Some(port);
+        self
+    }
+
+    pub(crate) fn inventory_bootstrap(
+        &self,
+    ) -> std::sync::Arc<dyn crate::ports::ProductInventoryBootstrapPort> {
+        self.inventory_bootstrap_port
+            .clone()
+            .unwrap_or_else(|| std::sync::Arc::new(crate::ports::EmbeddedInventoryBootstrapAdapter))
     }
 
     pub(crate) fn database(&self) -> &DatabaseConnection {

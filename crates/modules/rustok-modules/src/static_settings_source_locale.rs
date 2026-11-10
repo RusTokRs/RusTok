@@ -343,7 +343,9 @@ impl StaticSettingsSourceLocaleService {
                 Ok(record)
             }
             Err(error) => {
-                let _ = transaction.rollback().await;
+                if let Err(rollback_err) = transaction.rollback().await {
+                    tracing::warn!(%rollback_err, "failed to rollback static settings source locale transaction");
+                }
                 abandon_claim_and_fail(&self.db, registry.module_slug(), &command, lease, &error)
                     .await?;
                 Err(error)

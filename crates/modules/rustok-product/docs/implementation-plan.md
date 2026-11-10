@@ -370,11 +370,9 @@ At the time of the maintainer attestation, Product remained at `boundary_ready`.
 The attestation recorded these limits: configured remote-profile execution evidence remain open,
 provider-host execution evidence remains open, Schema-preflight execution evidence remains open,
 and standalone PostgreSQL schema-preflight runtime evidence remains open.
-Product remains `boundary_ready` rather than `transport_verified` pending the combined
-capture and mounted AI evidence. See the current local execution results below.
-Concrete external transport execution remains open for the configured separate-process
-profile. The capture source is complete, but its sanitized runtime packet has not
-been generated or retained.
+Product remains `boundary_ready` rather than being promoted prematurely, pending the combined deployment capture. The local
+execution results below cover Commerce checkout and the AI attributes task. The
+sanitized packet for the configured separate-process profile still needs to be retained.
 
 The composed `rustok-ai` consumer has existing unavailable/deadline degraded-path
 evidence. Commerce checkout treats Product as a hard dependency and must not
@@ -586,8 +584,27 @@ scenario ran with the embedded Product profile and the manual payment provider.
 The first HTTP run exposed a PostgreSQL parameter binding error when Cart loaded
 the tenant locale. Commit `8077c68a71` selects the correct parameter syntax for
 PostgreSQL, and the successful runs used that fix. This evidence covers the
-Commerce HTTP path for a digital SKU on shared storage. The combined
-provider/consumer capture and mounted AI request remain open.
+Commerce HTTP path for a digital SKU on shared storage.
+
+### Mounted AI product attributes (2026-11-10)
+
+The `mod-commerce,mod-ai` API host and standalone Product service were built from
+`8aedf54fda` and ran as separate loopback processes. They used separate migrated
+databases in an isolated PostgreSQL 16 cluster. The published test Product existed
+only in the provider database. Inference used a deterministic local model fixture.
+
+- An authenticated `runAiTaskJob` request to `/api/graphql` returned suggestions
+  with `product_context.source=owner_port`. The model request contained the
+  remote Product projection and the title submitted by the operator.
+- A missing Product produced `not_found` with `retryable=false`. Stopping the
+  provider produced `unavailable` with `retryable=true`. Both requests generated
+  suggestions from the submitted prompt with catalog enrichment skipped.
+- All three responses required operator review and reported `persistence=none`.
+  The owner Product, translation, SKU, and attribute value rows matched their
+  initial state. The consumer database still contained zero Product rows.
+
+This is local execution evidence for the AI business request. The combined
+deployment capture remains open.
 
 ## Open results
 
@@ -628,6 +645,7 @@ provider/consumer capture and mounted AI request remain open.
 - [x] Execute the Commerce and AI remote consumer behavior harnesses.
 - [x] Lock a reproducible separate-process Product runtime evidence capture contract.
 - [x] Verify mounted Commerce HTTP checkout locally with embedded and separate gRPC Product on PostgreSQL.
+- [x] Verify mounted AI product attributes locally with separate gRPC Product and PostgreSQL databases.
 - [ ] Execute the separate-process Product runtime capture and retain its sanitized evidence packet.
 - [ ] Execute the standalone PostgreSQL schema preflight and retain runtime logs.
 - [ ] Retain authenticated separate-process Commerce and AI end-to-end evidence.

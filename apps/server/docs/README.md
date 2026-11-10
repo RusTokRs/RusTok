@@ -209,7 +209,11 @@ success while a refresh token could remain valid.
   not through framework-owned application context.
 - Auth lifecycle and OAuth GraphQL query/mutation/types belong to `rustok-auth`; auth, OAuth and users REST request/response DTOs and OpenAPI schema derives also belong to `rustok-auth::rest`. The server implements only `AuthLifecyclePort`/`OAuthAdminPort` on top of persisted lifecycle/OAuth/email services, registers the corresponding runtimes in shared runtime extensions, and keeps auth/OAuth/users HTTP controllers as route/extractor/response adapters that re-export or import owner DTOs for Swagger and route compatibility. `AuthLifecycleService` accepts only `ServerRuntimeContext` and an explicit `AuthConfig`. `ServerAuthLifecycleProvider` receives explicit `ServerRuntimeContext`, `AuthConfig`, and mailer handle; `CurrentUser`/`OptionalCurrentUser`, `auth_context` middleware, and RBAC permission extractors use a narrow `ServerAuthRuntime`.
   Auth lifecycle GraphQL/native self-service operations consume the canonical `AuthPrincipalKind`; direct-session operations fail closed for delegated OAuth and service principals instead of inferring direct-user status from `session_id` presence.
-- AI GraphQL/service/direct execution receives `rustok_ai::AiHostRuntime` as schema-owned data: the host passes explicit DB, transactional event bus, module registry, storage, Alloy runtime handles, and owner-composed read ports such as checkout status and product catalog projection. The Leptos admin adapter remains a host-boundary point that assembles this runtime from neutral host state.
+- With `mod-ai`, the server composes the AI query, mutation, subscription, and schema data factory
+  from the AI package manifest. AI is a required runtime extension in distributions that include
+  it. Its runtime registration stays with the distribution. The schema data factory builds the
+  AI runtime from the host context, including deployment-selected owner read ports for checkout
+  status and Product catalog projection. The Leptos admin adapter uses the same AI runtime factory.
 - MCP GraphQL query/mutation/types and REST/control-plane DTOs belong to `rustok-mcp`; the server implements `McpManagementPort` on top of persisted `McpManagementService`, registers `McpManagementRuntime`, and keeps HTTP controllers as Axum adapters that import owner DTOs and actor parsing.
 - Content GraphQL dataloaders for `nodes`, `node_translations`, and `bodies` live in
   `rustok-content`; `apps/server` only registers owner-owned loader types in the schema builder.

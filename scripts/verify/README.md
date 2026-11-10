@@ -107,9 +107,11 @@ npm run test:verify:ecommerce:fba-registries
 
 ## Script Descriptions
 
-### `verify-domain-hygiene.py`
+### `rustok-doctor`
 
-Independent offline utility for periodic (e.g. monthly) codebase hygiene sweeps and cleanup. It is **not** a gate or requirement of the per-module Continuous Code Review / Full-Stack Audit Plan (`CONTINUOUS_CODE_REVIEW.md`).
+The `rustok-doctor` crate provides offline hygiene scans through
+`cargo xtask doctor hygiene` and the existing `npm run verify:hygiene` entry
+points. It supports periodic codebase sweeps and scoped change checks.
 
 Run `npm run test:verify:hygiene` to exercise the scanner and its CLI against
 isolated fixtures. See the [hygiene patterns guide](../../docs/standards/logic-hygiene-patterns.md#4-periodic-domain-hygiene--code-cleanup-utility)

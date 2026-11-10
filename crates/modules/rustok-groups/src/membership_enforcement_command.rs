@@ -5,8 +5,8 @@ use chrono::{DateTime, Utc};
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, Set, Statement,
-    TransactionTrait,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
@@ -416,33 +416,34 @@ async fn lock_command_memberships(
     user_ids.sort_unstable();
     user_ids.dedup();
 
-    let mut memberships = Vec::with_capacity(user_ids.len());
-    for user_id in user_ids {
+    let memberships = if user_ids.is_empty() {
+        Vec::new()
+    } else {
         let mut query = membership_state::Entity::find()
             .filter(membership_state::Column::TenantId.eq(tenant_id))
             .filter(membership_state::Column::GroupId.eq(group_id))
-            .filter(membership_state::Column::UserId.eq(user_id));
+            .filter(membership_state::Column::UserId.is_in(user_ids))
+            .order_by_asc(membership_state::Column::UserId);
         if transaction.get_database_backend() != DatabaseBackend::Sqlite {
             query = query.lock_exclusive();
         }
-        if let Some(row) = query.one(transaction).await? {
-            memberships.push(row);
-        }
-    }
+        query.all(transaction).await?
+    };
 
     let mut membership_ids = memberships.iter().map(|row| row.id).collect::<Vec<_>>();
     membership_ids.sort_unstable();
-    let mut enforcements = Vec::with_capacity(membership_ids.len());
-    for membership_id in membership_ids {
-        let mut query = membership_enforcement::Entity::find_by_id(membership_id)
-            .filter(membership_enforcement::Column::TenantId.eq(tenant_id));
+    let enforcements = if membership_ids.is_empty() {
+        Vec::new()
+    } else {
+        let mut query = membership_enforcement::Entity::find()
+            .filter(membership_enforcement::Column::TenantId.eq(tenant_id))
+            .filter(membership_enforcement::Column::MembershipId.is_in(membership_ids))
+            .order_by_asc(membership_enforcement::Column::MembershipId);
         if transaction.get_database_backend() != DatabaseBackend::Sqlite {
             query = query.lock_exclusive();
         }
-        if let Some(row) = query.one(transaction).await? {
-            enforcements.push(row);
-        }
-    }
+        query.all(transaction).await?
+    };
 
     Ok(LockedCommandState {
         memberships,

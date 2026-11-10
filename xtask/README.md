@@ -11,6 +11,7 @@ The tool provides one stable entry point for repository maintenance tasks that a
 - Validate the central module composition contract in `modules.toml`.
 - Validate each scoped path module from `modules.toml` against its publish, runtime, UI, documentation, dependency, permission, and server-wiring contracts.
 - Run native architecture lint with `cargo xtask module lint <slug>`, using the existing source-layout verifier. This is a static gate, not compile/runtime evidence.
+- Run repository hygiene diagnostics with `cargo xtask doctor hygiene` through the `rustok-doctor` library.
 - Detect drift between `modules.toml` and central module documentation maps such as `docs/modules/registry.md`, `docs/modules/_index.md`, and UI package indexes.
 - Build targeted local module smoke plans for `cargo xtask module test <slug>`.
 - Generate server module registry artifacts from `modules.toml`.
@@ -29,6 +30,7 @@ cargo xtask validate-manifest
 cargo xtask module validate
 cargo xtask module validate <slug>
 cargo xtask module test <slug>
+cargo xtask doctor hygiene --crate <slug>
 cargo xtask install-dev --create-db
 cargo xtask generate-registry
 cargo xtask list-modules
@@ -314,7 +316,9 @@ local comparison input, not a trusted release boundary.
 both canonical migration runners/exporters with `--locked --offline`, and runs
 them on new fixture databases. Both runners must support stepwise confirmation.
 The verifier checks each confirmation sequence and the final journals against
-their respective plans. Each isolated build has a two-hour deadline to
+their respective plans. The database report records any accepted fresh bootstrap
+clock differences under the [migration consolidation decision](../DECISIONS/2026-11-03-migration-consolidation.md#data-and-behavioral-comparison).
+Each isolated build has a two-hour deadline to
 allow for compiling the composed module graph with a cold build cache. Build
 sources are copied outside the active Git and Cargo ancestor tree.
 Global/ancestor Cargo configuration is rejected;

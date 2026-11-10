@@ -60,6 +60,7 @@ fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
     })
 }
 
+#[allow(dead_code)]
 fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
     ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
         PortError::invariant_violation(

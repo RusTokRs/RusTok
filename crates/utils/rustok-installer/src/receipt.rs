@@ -165,9 +165,13 @@ pub fn checksum_json<T: Serialize>(value: &T) -> Result<String, ReceiptError> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "host-runtime")]
     use base64::{Engine, engine::general_purpose::STANDARD};
+    #[cfg(feature = "host-runtime")]
     use chrono::Duration;
+    #[cfg(feature = "host-runtime")]
     use ed25519_dalek::{Signer, SigningKey};
+    #[cfg(feature = "host-runtime")]
     use uuid::Uuid;
 
     use super::*;
@@ -200,6 +204,7 @@ mod tests {
         assert!(!receipt.can_skip(InstallStep::Migrate, &input).unwrap());
     }
 
+    #[cfg(feature = "host-runtime")]
     #[test]
     fn signed_base_distribution_receipt_creates_exact_binding() {
         let now = DateTime::parse_from_rfc3339("2026-08-12T12:00:00Z")
@@ -227,6 +232,7 @@ mod tests {
         assert!(binding.bootstrap_receipt.is_some());
     }
 
+    #[cfg(feature = "host-runtime")]
     #[test]
     fn signed_base_distribution_receipt_rejects_tampering_and_expiry() {
         let now = DateTime::parse_from_rfc3339("2026-08-12T12:00:00Z")
@@ -246,6 +252,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "host-runtime")]
     #[test]
     fn distribution_binding_rejects_receipt_identity_mismatch() {
         let now = DateTime::parse_from_rfc3339("2026-08-12T12:00:00Z")
@@ -287,6 +294,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "host-runtime")]
     fn signed_base_distribution_receipt(
         now: DateTime<Utc>,
     ) -> (
@@ -369,6 +377,7 @@ mod tests {
         )
     }
 
+    #[cfg(feature = "host-runtime")]
     fn digest(character: char) -> String {
         format!("sha256:{}", character.to_string().repeat(64))
     }

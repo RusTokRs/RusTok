@@ -46,6 +46,7 @@ impl PostgresForumTestDb {
             // preserving only the exact platform identity columns Forum consumes.
             db.execute_unprepared(
                 r#"
+                CREATE TABLE tenants (id UUID NOT NULL PRIMARY KEY);
                 CREATE TABLE users (
                     id UUID NOT NULL PRIMARY KEY,
                     tenant_id UUID NOT NULL

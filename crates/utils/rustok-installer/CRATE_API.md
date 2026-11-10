@@ -78,6 +78,14 @@
 
 ### Seed Runtime Pipeline (`seed.rs`, with `feature = "seed-runtime"`)
 - `execute_seed_profile(request, tenant_port, principal_port, module_port, content_port) -> Result<SeedExecutionOutcome, SeedExecutionError>`
+- A requested content import must use the development profile and supply a
+  non-empty path, loader, and admin request. These prerequisites and the demo
+  customer password are checked before any seed owner is called. Partial
+  content outcomes fail unless continuation is explicitly requested; an outcome
+  naming a different module always fails. `SeedContentOutcome::is_success`
+  requires both zero failed items and no reported errors; an unknown item count
+  remains zero and does not turn a loader error into success.
+  Debug formatting for seed requests redacts admin and demo-customer passwords.
 - Ports:
   - `SeedTenantPort`: Ensures seed tenant creation.
   - `SeedPrincipalPort`: Atomically provisions user credentials and initial RBAC role.

@@ -517,7 +517,9 @@ async fn commit_churn_cycle(
             Ok(value)
         }
         Err(error) => {
-            let _ = transaction.rollback().await;
+            if let Err(rollback_err) = transaction.rollback().await {
+                tracing::warn!(%rollback_err, "failed to rollback bench maintenance transaction");
+            }
             Err(error)
         }
     }
@@ -637,7 +639,9 @@ async fn create_maintenance_clones(
             .await
             .context("failed to commit partition maintenance evidence clones"),
         Err(error) => {
-            let _ = transaction.rollback().await;
+            if let Err(rollback_err) = transaction.rollback().await {
+                tracing::warn!(%rollback_err, "failed to rollback bench maintenance transaction");
+            }
             Err(error)
         }
     }

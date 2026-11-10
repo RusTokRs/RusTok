@@ -28,7 +28,7 @@ function fixture(options = {}) {
       impl CommerceGraphqlRuntimeData { pub fn product_catalog_read_runtime(&self) { } }
       fn scope() { runtime_data.product_catalog_read_runtime(); CURRENT_COMMERCE_PRODUCT_CATALOG_READ_RUNTIME; }
       fn attach_schema_data() { shared_get::<ProductCatalogReadRuntime>(); "commerce GraphQL requires ProductCatalogReadRuntime in host composition"; }
-      pub(crate) fn product_catalog_read_runtime_for_current_graphql_scope() { try_with(Clone::clone); ProductCatalogReadRuntime::in_process(db, event_bus); }
+      pub(crate) fn product_catalog_read_runtime_for_current_graphql_scope() { try_with(Clone::clone); ProductCatalogReadRuntime::in_process_with_pricing(db, event_bus, Some(pricing)); }
     `;
   write(root, "crates/modules/rustok-commerce/src/graphql_runtime.rs", runtimeSource);
   const wrapperCatalog = options.wrapperCatalog ? "CatalogService::new;" : "";

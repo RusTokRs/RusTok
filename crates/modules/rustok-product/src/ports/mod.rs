@@ -5,10 +5,14 @@
 
 mod catalog_read;
 mod diagnostics;
+pub mod inventory;
 pub mod pricing;
 mod types;
 
 pub use catalog_read::ProductCatalogReadPort;
+pub use inventory::{
+    EmbeddedInventoryBootstrapAdapter, ProductInitialInventory, ProductInventoryBootstrapPort,
+};
 pub use pricing::{
     AsPricingConnection, CatalogBasePriceSnapshot, InitialPrice, PricingConnection,
     ProductPricingPort,

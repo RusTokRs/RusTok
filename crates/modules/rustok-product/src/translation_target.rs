@@ -910,7 +910,7 @@ mod tests {
     #[test]
     fn product_fields_expose_reviewed_handle_and_bounded_seo_metadata() {
         let source = record("en", "Product");
-        let fields = translation_fields(&source, None)?;
+        let fields = translation_fields(&source, None).expect("translation fields");
         assert_eq!(fields.len(), 5);
         assert_eq!(
             fields

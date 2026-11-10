@@ -1,5 +1,8 @@
 #[cfg(test)]
 mod tests {
+    use crate::InstancePlacement;
+    #[cfg(feature = "seed-runtime")]
+    use crate::SeedContentOutcome;
     use crate::plan::{
         AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallDistributionBinding,
         InstallEnvironment, InstallPlan, InstallProfile, InstallRole, InstallSurface,
@@ -14,7 +17,6 @@ mod tests {
         resolve_local_secret_value,
     };
     use crate::state::{InstallState, InstallStep, StateTransitionError};
-    use crate::{InstancePlacement, SeedContentOutcome};
 
     #[test]
     fn install_state_happy_path_lifecycle() {
@@ -403,6 +405,7 @@ mod tests {
         assert!(!receipt.can_skip(InstallStep::Migrate, &p1).unwrap());
     }
 
+    #[cfg(feature = "seed-runtime")]
     #[test]
     fn seed_content_outcome_statistics() {
         let empty = SeedContentOutcome {

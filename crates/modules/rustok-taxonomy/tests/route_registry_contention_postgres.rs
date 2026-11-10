@@ -208,7 +208,9 @@ fn spawn_route_claim(
                 Ok(())
             }
             Err(error) => {
-                let _ = txn.rollback().await;
+                if let Err(rollback_err) = txn.rollback().await {
+                    tracing::warn!(%rollback_err, "failed to rollback contention test transaction");
+                }
                 Err(error)
             }
         }

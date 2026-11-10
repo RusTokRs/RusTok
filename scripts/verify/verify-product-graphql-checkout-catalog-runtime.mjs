@@ -59,7 +59,7 @@ for (const marker of [
   "shared_get::<ProductCatalogReadRuntime>()",
   "commerce GraphQL requires ProductCatalogReadRuntime in host composition",
   "product_catalog_read_runtime_for_current_graphql_scope",
-  "ProductCatalogReadRuntime::in_process(db, event_bus)",
+  "ProductCatalogReadRuntime::in_process_with_pricing(db, event_bus, Some(pricing))",
 ]) {
   requireText(graphqlRuntime, marker, "Commerce GraphQL runtime");
 }

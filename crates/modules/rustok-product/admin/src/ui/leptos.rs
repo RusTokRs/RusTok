@@ -2399,8 +2399,8 @@ pub(crate) fn ProductAttributeValuesSection(
         let ten = tenant.get();
         let pid = loaded_product_id.clone();
         let loc = loaded_locale.clone().unwrap_or_default();
-        let _ = refresh_nonce.get();
-        let _ = owner_refresh_nonce.get();
+        refresh_nonce.track();
+        owner_refresh_nonce.track();
         async move {
             let Some(pid) = pid else {
                 return Ok(Vec::new());
@@ -2767,7 +2767,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
         let tok = token.get();
         let ten = tenant.get();
         let loc = locale_store.get_value().unwrap_or_default();
-        let _ = refresh_nonce.get();
+        refresh_nonce.track();
         async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
@@ -2783,7 +2783,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
         let tok = token.get();
         let ten = tenant.get();
         let loc = locale_store.get_value().unwrap_or_default();
-        let _ = refresh_nonce.get();
+        refresh_nonce.track();
         async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
@@ -2799,7 +2799,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
         let tok = token.get();
         let ten = tenant.get();
         let loc = locale_store.get_value().unwrap_or_default();
-        let _ = refresh_nonce.get();
+        refresh_nonce.track();
         async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
@@ -2894,7 +2894,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
         let tok = token.get();
         let ten = tenant.get();
         let loc = preview_locale.clone();
-        let _ = refresh_nonce.get();
+        refresh_nonce.track();
         async move {
             if category_id.is_empty() {
                 return Ok::<_, String>(None);

@@ -7,8 +7,8 @@ use rustok_core::MigrationSource;
 use rustok_migrations::{Migrator, execution::StepRunner};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_product::{
-    CatalogService, ProductCatalogReadPort, ProductProjectionRequest, PublishedProductsRequest,
-    VariantProductProjectionRequest,
+    ProductCatalogReadPort, ProductCatalogReadRuntime, ProductProjectionRequest,
+    PublishedProductsRequest, VariantProductProjectionRequest,
 };
 use rustok_test_utils::{
     assert_postgres_column_contract as assert_column_contract,
@@ -145,7 +145,7 @@ impl MigratorTrait for ProductMigrator {
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL admin access"]
-async fn product_postgres_migrations_support_up_down_up() {
+async fn product_postgres_migrations_apply_and_replay_latest() {
     if let Err(error) = run_product_postgres_migration_lifecycle().await {
         panic!("Product PostgreSQL migration lifecycle failed: {error}");
     }
@@ -196,13 +196,20 @@ async fn run_product_postgres_migration_lifecycle() -> Result<(), Box<dyn std::e
             .map_err(|error| format!("initial product migration up failed: {error}"))?;
         assert_product_migration_schema(&db).await?;
 
-        ProductMigrator::down(&db, None)
+        let latest = ProductMigrator::migrations()
+            .pop()
+            .ok_or("Product migration plan must not be empty")?;
+        ProductMigrator::down(&db, Some(1))
             .await
-            .map_err(|error| format!("product migration down failed: {error}"))?;
-        assert_table_missing(&db, "products").await?;
-        assert_table_missing(&db, "product_attributes").await?;
+            .map_err(|error| format!("latest Product migration down failed: {error}"))?;
+        let pending = ProductMigrator::get_pending_migrations(&db).await?;
+        if pending.len() != 1 || pending[0].name() != latest.name() {
+            return Err(
+                format!("Product rollback must leave only {} pending", latest.name()).into(),
+            );
+        }
 
-        ProductMigrator::up(&db, None)
+        ProductMigrator::up(&db, Some(1))
             .await
             .map_err(|error| format!("second product migration up failed: {error}"))?;
         assert_product_migration_schema(&db).await
@@ -227,9 +234,17 @@ async fn run_product_postgres_constraint_checks() -> Result<(), Box<dyn std::err
     let constraint_result = async {
         let db = connect_postgres(&target_url).await?;
         create_product_migration_prerequisites(&db).await?;
-        ProductMigrator::up(&db, None)
+        // The category-tree SQL below exercises the retained predecessor. Taxonomy owns
+        // the live hierarchy after Product's category cutover.
+        let tree_boundary = ProductMigrator::migrations()
+            .iter()
+            .position(|migration| {
+                migration.name() == "m20260725_000002_enforce_catalog_category_tree_invariants"
+            })
+            .ok_or("missing Product category-tree predecessor")?;
+        ProductMigrator::up(&db, Some(u32::try_from(tree_boundary + 1)?))
             .await
-            .map_err(|error| format!("product migration up failed: {error}"))?;
+            .map_err(|error| format!("product predecessor migration up failed: {error}"))?;
         seed_product_constraint_fixtures(&db).await?;
 
         assert_exactly_one_concurrent_write_succeeds(
@@ -439,11 +454,16 @@ async fn run_product_catalog_read_port_checks() -> Result<(), Box<dyn std::error
         seed_product_read_port_fixtures(&db).await?;
 
         let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
-        let service = CatalogService::new(db.clone(), event_bus);
-        assert_product_read_projection(&service).await?;
-        assert_variant_read_projection(&service).await?;
-        assert_published_product_listing(&service).await?;
-        assert_product_read_tenant_isolation(&service).await?;
+        let service = ProductCatalogReadRuntime::in_process_with_pricing(
+            db.clone(),
+            event_bus,
+            Some(rustok_pricing::in_process_product_pricing_port(db.clone())),
+        )
+        .read_port();
+        assert_product_read_projection(service.as_ref()).await?;
+        assert_variant_read_projection(service.as_ref()).await?;
+        assert_published_product_listing(service.as_ref()).await?;
+        assert_product_read_tenant_isolation(service.as_ref()).await?;
 
         db.close().await?;
         Ok(())
@@ -464,7 +484,7 @@ fn product_read_context(tenant_id: &str, correlation_id: &str) -> PortContext {
 }
 
 async fn assert_product_read_projection(
-    service: &CatalogService,
+    service: &dyn ProductCatalogReadPort,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let product = service
         .read_product_projection(
@@ -507,7 +527,7 @@ async fn assert_product_read_projection(
 }
 
 async fn assert_variant_read_projection(
-    service: &CatalogService,
+    service: &dyn ProductCatalogReadPort,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let product = service
         .read_variant_product_projection(
@@ -535,7 +555,7 @@ async fn assert_variant_read_projection(
 }
 
 async fn assert_published_product_listing(
-    service: &CatalogService,
+    service: &dyn ProductCatalogReadPort,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let first_page = service
         .list_published_products(
@@ -635,7 +655,7 @@ async fn assert_published_product_listing(
 }
 
 async fn assert_product_read_tenant_isolation(
-    service: &CatalogService,
+    service: &dyn ProductCatalogReadPort,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let error = service
         .read_product_projection(
@@ -1190,12 +1210,10 @@ async fn assert_product_migration_schema(
     ] {
         assert_index_exists(db, index).await?;
     }
-    for trigger in [
-        "trg_catalog_categories_validate_tree",
-        "trg_catalog_category_closure_validate_tree",
-    ] {
-        assert_trigger_exists(db, trigger).await?;
-    }
+    assert_trigger_exists(db, "taxonomy_category_hierarchy_guard").await?;
+    assert_trigger_exists(db, "trg_products_index_graph_projection_update").await?;
+    assert_trigger_does_not_exist(db, "trg_catalog_categories_validate_tree").await?;
+    assert_table_missing(db, "catalog_category_closure").await?;
     for (table, columns) in [
         (
             "products",

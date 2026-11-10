@@ -356,11 +356,9 @@ impl CatalogService {
             "Product variant axes inserted"
         );
 
-        let default_stock_location =
-            BootstrapService::ensure_default_location_in_tx(&txn, tenant_id).await?;
-
         let mut variant_translation_models = Vec::new();
         let mut initial_prices = Vec::new();
+        let mut initial_inventories = Vec::new();
         for (position, var_input) in input.variants.iter().enumerate() {
             let variant_position = i32::try_from(position)
                 .map_err(|_| CommerceError::Validation("too many Product variants".to_owned()))?;
@@ -403,17 +401,11 @@ impl CatalogService {
                 .await?;
             }
 
-            BootstrapService::create_initial_records_in_tx(
-                &txn,
-                &default_stock_location,
-                actor_id,
-                InitialInventory {
-                    variant_id,
-                    sku: var_input.sku.clone(),
-                    available_quantity: var_input.inventory_quantity,
-                },
-            )
-            .await?;
+            initial_inventories.push(crate::ports::ProductInitialInventory {
+                variant_id,
+                sku: var_input.sku.clone(),
+                available_quantity: var_input.inventory_quantity,
+            });
 
             let variant_title = if !var_input.axis_values.is_empty() {
                 let variant_model = entities::product_variant::Entity::find_by_id(variant_id)
@@ -449,6 +441,11 @@ impl CatalogService {
         if !variant_translation_models.is_empty() {
             entities::variant_translation::Entity::insert_many(variant_translation_models)
                 .exec(&txn)
+                .await?;
+        }
+        if !initial_inventories.is_empty() {
+            self.inventory_bootstrap()
+                .bootstrap_variants_in_tx(&txn, tenant_id, actor_id, initial_inventories)
                 .await?;
         }
         if !initial_prices.is_empty() {
@@ -1246,13 +1243,9 @@ impl CatalogService {
             return Err(CommerceError::NoVariants);
         }
         let variant_ids = variants.iter().map(|(id, _)| *id).collect::<Vec<_>>();
-        BootstrapService::delete_records_for_variants_in_tx(
-            &txn,
-            tenant_id,
-            actor_id,
-            &variant_ids,
-        )
-        .await?;
+        self.inventory_bootstrap()
+            .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &variant_ids)
+            .await?;
         if let Some(port) = &self.pricing_port {
             port.delete_prices_for_variants_in_tx(&txn, &variant_ids)
                 .await?;
@@ -1458,20 +1451,18 @@ impl CatalogService {
                 .await?;
         }
 
-        let default_stock_location =
-            BootstrapService::ensure_default_location_in_tx(&txn, tenant_id).await?;
-
-        BootstrapService::create_initial_records_in_tx(
-            &txn,
-            &default_stock_location,
-            actor_id,
-            InitialInventory {
-                variant_id,
-                sku: input.sku.clone(),
-                available_quantity: input.inventory_quantity,
-            },
-        )
-        .await?;
+        self.inventory_bootstrap()
+            .bootstrap_variants_in_tx(
+                &txn,
+                tenant_id,
+                actor_id,
+                vec![crate::ports::ProductInitialInventory {
+                    variant_id,
+                    sku: input.sku.clone(),
+                    available_quantity: input.inventory_quantity,
+                }],
+            )
+            .await?;
 
         let variant_model = entities::product_variant::Entity::find_by_id(variant_id)
             .one(&txn)
@@ -1715,10 +1706,11 @@ impl CatalogService {
         }
 
         if let Some(quantity) = input.inventory_quantity {
-            BootstrapService::update_initial_quantity_in_tx(
-                &txn, tenant_id, actor_id, variant_id, quantity,
-            )
-            .await?;
+            self.inventory_bootstrap()
+                .update_initial_quantity_in_tx(
+                    &txn, tenant_id, actor_id, variant_id, quantity,
+                )
+                .await?;
         }
 
         txn.publish(
@@ -1774,13 +1766,14 @@ impl CatalogService {
             return Err(CommerceError::CannotDeleteOnlyVariant);
         }
 
-        BootstrapService::delete_records_for_variants_in_tx(
-            &txn,
-            tenant_id,
-            actor_id,
-            &[variant_id],
-        )
-        .await?;
+        self.inventory_bootstrap()
+            .delete_records_for_variants_in_tx(
+                &txn,
+                tenant_id,
+                actor_id,
+                &[variant_id],
+            )
+            .await?;
         if let Some(port) = &self.pricing_port {
             port.delete_prices_for_variants_in_tx(&txn, &[variant_id])
                 .await?;

@@ -39,7 +39,7 @@ function fixture(options = {}) {
   write(
     root,
     "crates/modules/rustok-commerce/src/services/checkout_plan_builder.rs",
-    `self\n  .product_catalog_read_port\n  .read_product_projection( self\n  .product_catalog_read_port\n  .read_variant_product_projection( boundary_error("read_checkout_product_projection", error)`,
+    `let port = ${options.localProductRead ? "local_product" : "self.product_catalog_read_port"}.clone(); async move { port\n  .read_product_projection( port\n  .read_variant_product_projection( boundary_error("read_checkout_product_projection", error) }`,
   );
 
   write(
@@ -175,6 +175,10 @@ test("remote consumer behavior guard accepts canonical fixture", () => {
 
 test("guard rejects missing Commerce timeout behavior", () => {
   reject({ missingCommerceTimeout: true }, /Commerce remote Product hard-dependency harness/);
+});
+
+test("guard rejects checkout reads from an unrelated provider", () => {
+  reject({ localProductRead: true }, /must use the owner read port/);
 });
 
 test("guard rejects cart snapshot fallback", () => {

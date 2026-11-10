@@ -142,6 +142,7 @@ fn main() -> Result<()> {
         "scaffold" => scaffold_command(&args[2..])?,
         "module" => module_command(&args[2..])?,
         "migrations" => migrations::run(&args[2..])?,
+        "doctor" => std::process::exit(rustok_doctor::run(&args[2..])),
         _ => {
             eprintln!("Unknown command: {}", args[1]);
             print_usage();
@@ -161,6 +162,7 @@ fn print_usage() {
     println!("  install-dev         Bootstrap local non-Docker development install");
     println!("  list-modules        List all configured modules");
     println!("  migrations          Snapshot and verify migration consolidation on PostgreSQL");
+    println!("  doctor              Diagnose repository hygiene");
     println!(
         "  i18n-api-inventory  Report workspace usages of compatibility-only rustok-ui-i18n APIs"
     );

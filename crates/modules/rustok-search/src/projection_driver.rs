@@ -85,7 +85,8 @@ impl SearchProjectionDriver {
             }
 
             self.delete_scope(&tx, tenant_id).await?;
-            tx.execute_unprepared(&format!(
+            tx.execute_raw(Statement::from_string(
+                DbBackend::Postgres,
                 r#"
                 INSERT INTO search_documents (
                     document_key, tenant_id, document_id, source_module, entity_type,
@@ -96,8 +97,9 @@ impl SearchProjectionDriver {
                     document_key, tenant_id, document_id, source_module, entity_type,
                     locale, status, is_public, title, subtitle, slug, handle, body,
                     keywords_text, facets, payload, published_at, created_at, updated_at
-                FROM {STAGE_TABLE}
+                FROM search_projection_stage
                 "#
+                .to_string(),
             ))
             .await
             .map_err(Error::Database)?;
@@ -209,12 +211,14 @@ impl SearchProjectionDriver {
     }
 
     async fn create_stage(&self, tx: &DatabaseTransaction) -> Result<()> {
-        tx.execute_unprepared(&format!(
+        tx.execute_raw(Statement::from_string(
+            DbBackend::Postgres,
             r#"
-            CREATE TEMP TABLE {STAGE_TABLE}
+            CREATE TEMP TABLE search_projection_stage
             (LIKE search_documents INCLUDING DEFAULTS)
             ON COMMIT DROP
             "#
+            .to_string(),
         ))
         .await
         .map_err(Error::Database)?;

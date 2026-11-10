@@ -24,3 +24,4 @@ hex = "0.4"
 sha2.workspace = true
 url = "2.5"
 rustok-manifest = { path = "../crates/libs/rustok-manifest" }
+rustok-doctor = { path = "../crates/utils/rustok-doctor" }

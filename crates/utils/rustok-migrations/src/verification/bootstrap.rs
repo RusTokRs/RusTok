@@ -1,7 +1,7 @@
-//! Independent assertions for the eight clock-bearing bootstrap rows on a fresh
-//! composed installation. These diagnostics never alter the strict comparison.
+//! Fresh-install assertions for the exact bootstrap rows covered by the clock
+//! disposition in the migration consolidation ADR.
 
-use super::{DatabaseSnapshot, Result, TableObservation, VerificationError};
+use super::{DatabaseSnapshot, RelationName, Result, TableObservation, VerificationError};
 use sea_orm_migration::sea_orm::entity::prelude::DateTimeWithTimeZone;
 use serde::{Deserialize, Serialize};
 
@@ -112,11 +112,25 @@ pub struct BootstrapTable {
     pub clock_only_difference: bool,
 }
 
+impl BootstrapTable {
+    pub(super) fn verified_on_both_sides(&self) -> bool {
+        self.reference == BootstrapCheck::Verified && self.candidate == BootstrapCheck::Verified
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BootstrapReport {
     pub reference_window: InstallWindow,
     pub candidate_window: InstallWindow,
     pub tables: Vec<BootstrapTable>,
+}
+
+impl BootstrapReport {
+    pub(super) fn for_relation(&self, relation: &RelationName) -> Option<&BootstrapTable> {
+        self.tables
+            .iter()
+            .find(|table| relation.schema == "public" && relation.name == table.table)
+    }
 }
 
 pub fn diagnose(
@@ -128,19 +142,16 @@ pub fn diagnose(
         .map(|seed| {
             let original = find_table(reference.0, seed);
             let proposed = find_table(candidate.0, seed);
-            let original_check = check(original, seed, reference.1);
-            let proposed_check = check(proposed, seed, candidate.1);
+            let mut result = BootstrapTable {
+                table: seed.table.to_owned(),
+                reference: check(original, seed, reference.1),
+                candidate: check(proposed, seed, candidate.1),
+                clock_only_difference: false,
+            };
             // Two verified observations have the same columns and expected values
             // in every position except the final timestamp.
-            let clock_only_difference = original_check == BootstrapCheck::Verified
-                && proposed_check == BootstrapCheck::Verified
-                && original != proposed;
-            BootstrapTable {
-                table: seed.table.to_owned(),
-                reference: original_check,
-                candidate: proposed_check,
-                clock_only_difference,
-            }
+            result.clock_only_difference = result.verified_on_both_sides() && original != proposed;
+            result
         })
         .collect();
     BootstrapReport {
@@ -205,7 +216,7 @@ fn check(table: Option<&TableObservation>, seed: &Seed, window: &InstallWindow) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::verification::RelationName;
+    use crate::verification::{compare, compare_fresh_install};
 
     #[test]
     fn clock_diagnostic_requires_an_exact_singleton_inside_the_window() {
@@ -244,19 +255,53 @@ mod tests {
         let mut proposed = original.clone();
         proposed.tables[0].rows =
             vec![r#"["current", "0", null, "2026-11-04 15:00:00.000002+00"]"#.into()];
-        let diagnostic = diagnose((&original, &window), (&proposed, &window));
-        assert!(diagnostic.tables[6].clock_only_difference);
-        let strict = super::super::compare(
-            &original,
-            &proposed,
-            &["migration".into()],
-            &["migration".into()],
-        )
-        .unwrap();
+        let plan = &original.migration_versions;
+        let strict = compare(&original, &proposed, plan, plan).unwrap();
         assert!(!strict.equivalent);
         assert_eq!(
             strict.differences,
             ["table \"public\".\"module_static_distribution_state\""]
+        );
+        let fresh =
+            compare_fresh_install((&original, &window), (&proposed, &window), plan, plan).unwrap();
+        assert!(fresh.equivalent);
+        assert_eq!(fresh.reference_digest, strict.reference_digest);
+        assert_eq!(fresh.candidate_digest, strict.candidate_digest);
+        assert_ne!(fresh.reference_digest, fresh.candidate_digest);
+        assert!(fresh.bootstrap.unwrap().tables[6].clock_only_difference);
+
+        let mut foreign_reference = original.clone();
+        foreign_reference.tables[0].relation.schema = "other".into();
+        let mut foreign_candidate = proposed.clone();
+        foreign_candidate.tables[0].relation.schema = "other".into();
+        let foreign = compare_fresh_install(
+            (&foreign_reference, &window),
+            (&foreign_candidate, &window),
+            plan,
+            plan,
+        )
+        .unwrap();
+        assert_eq!(
+            foreign.differences,
+            ["table \"other\".\"module_static_distribution_state\""]
+        );
+
+        let wrong_window = InstallWindow::new(
+            "2026-11-04T15:00:02Z".parse().unwrap(),
+            "2026-11-04T15:00:03Z".parse().unwrap(),
+        )
+        .unwrap();
+        let invalid = compare_fresh_install(
+            (&original, &wrong_window),
+            (&original, &wrong_window),
+            plan,
+            plan,
+        )
+        .unwrap();
+        assert!(!invalid.equivalent);
+        assert_eq!(
+            invalid.differences,
+            ["bootstrap invariant for table \"public\".\"module_static_distribution_state\""]
         );
         table.rows.clear();
         assert_eq!(

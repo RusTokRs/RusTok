@@ -1,15 +1,31 @@
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
 use std::time::Duration;
 
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_product::{
-    ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentitiesRequest,
+    FilteredPublishedProductsRequest, ProductCatalogCommandPort, ProductCatalogReadPort,
+    ProductProjectionRequest, ProductVariantIdentitiesRequest,
     ProductVariantIdentityListRequest, ProductVariantIdentityReadPort,
-    ProductVariantIdentitySnapshot, PublishedProductsRequest, StorefrontProductList,
+    ProductVariantIdentitySnapshot, PublishedProductsRequest, StorefrontCatalogFacet,
+    StorefrontCatalogFacetsRequest, StorefrontProductList, StorefrontProductProjectionRequest,
     StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,
-    dto::ProductResponse,
+    dto::{
+        AddProductImageInput, CreateProductInput, CreateVariantInput, ProductImageResponse,
+        ProductResponse, SetVariantAxesInput, UpdateProductImageInput, UpdateProductInput,
+        UpdateVariantInput, VariantAxesPreviewResponse, VariantAxisConfigResponse, VariantResponse,
+    },
 };
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use tonic::{Code, Request, Status};
@@ -17,6 +33,7 @@ use uuid::Uuid;
 
 use crate::auth::{AUTHORIZATION_METADATA, TENANT_ID_METADATA};
 use crate::proto::JsonRequest;
+use crate::proto::product_catalog_command_service_client::ProductCatalogCommandServiceClient;
 use crate::proto::product_catalog_read_service_client::ProductCatalogReadServiceClient;
 use crate::{ProductCatalogGrpcAuthenticationError, ProductCatalogGrpcBearerToken};
 
@@ -160,6 +177,54 @@ impl ProductCatalogReadPort for GrpcProductCatalogReadProvider {
             .into_inner();
         decode(&response.output_json)
     }
+
+    async fn list_filtered_published_products(
+        &self,
+        context: PortContext,
+        request: FilteredPublishedProductsRequest,
+    ) -> Result<StorefrontProductList, PortError> {
+        let request = self.read_request(&context, &request)?;
+        let response = self
+            .client
+            .clone()
+            .list_filtered_published_products(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn load_storefront_catalog_facets(
+        &self,
+        context: PortContext,
+        request: StorefrontCatalogFacetsRequest,
+    ) -> Result<Vec<StorefrontCatalogFacet>, PortError> {
+        let request = self.read_request(&context, &request)?;
+        let response = self
+            .client
+            .clone()
+            .load_storefront_catalog_facets(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn read_storefront_product_projection(
+        &self,
+        context: PortContext,
+        request: StorefrontProductProjectionRequest,
+    ) -> Result<Option<ProductResponse>, PortError> {
+        let request = self.read_request(&context, &request)?;
+        let response = self
+            .client
+            .clone()
+            .read_storefront_product_projection(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
 }
 
 #[async_trait]
@@ -194,6 +259,364 @@ impl ProductVariantIdentityReadPort for GrpcProductCatalogReadProvider {
             .map_err(status_to_port_error)?
             .into_inner();
         decode(&response.output_json)
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct ProductIdPayload {
+    pub product_id: Uuid,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct VariantIdPayload {
+    pub variant_id: Uuid,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct ProductInputPayload<T> {
+    pub product_id: Uuid,
+    pub input: T,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct VariantInputPayload<T> {
+    pub variant_id: Uuid,
+    pub input: T,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct ProductImageIdPayload {
+    pub product_id: Uuid,
+    pub image_id: Uuid,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct UpdateProductImagePayload {
+    pub product_id: Uuid,
+    pub image_id: Uuid,
+    pub input: UpdateProductImageInput,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct ReorderProductImagesPayload {
+    pub product_id: Uuid,
+    pub image_ids: Vec<Uuid>,
+}
+
+/// Consumer-side gRPC adapter implementing the Product-owned catalog command port.
+pub struct GrpcProductCatalogCommandProvider {
+    client: ProductCatalogCommandServiceClient<Channel>,
+    authentication: Option<ProductCatalogGrpcBearerToken>,
+}
+
+impl GrpcProductCatalogCommandProvider {
+    pub fn from_channel(channel: Channel) -> Self {
+        Self {
+            client: ProductCatalogCommandServiceClient::new(channel),
+            authentication: None,
+        }
+    }
+
+    pub async fn connect(endpoint: Endpoint) -> Result<Self, tonic::transport::Error> {
+        Ok(Self::from_channel(endpoint.connect().await?))
+    }
+
+    pub async fn connect_with_tls(
+        endpoint: Endpoint,
+        tls_config: ClientTlsConfig,
+    ) -> Result<Self, tonic::transport::Error> {
+        Ok(Self::from_channel(
+            endpoint.tls_config(tls_config)?.connect().await?,
+        ))
+    }
+
+    pub fn with_authentication(mut self, authentication: ProductCatalogGrpcBearerToken) -> Self {
+        self.authentication = Some(authentication);
+        self
+    }
+
+    pub fn with_bearer_token(
+        self,
+        secret: impl AsRef<str>,
+    ) -> Result<Self, ProductCatalogGrpcAuthenticationError> {
+        Ok(self.with_authentication(ProductCatalogGrpcBearerToken::new(secret)?))
+    }
+
+    fn command_request(
+        &self,
+        context: &PortContext,
+        input: &impl Serialize,
+    ) -> Result<Request<JsonRequest>, PortError> {
+        let payload = JsonRequest {
+            context_json: encode(context)?,
+            input_json: encode(input)?,
+        };
+        grpc_request(payload, context, self.authentication.as_ref())
+    }
+}
+
+#[async_trait]
+impl ProductCatalogCommandPort for GrpcProductCatalogCommandProvider {
+    async fn create_product(
+        &self,
+        context: PortContext,
+        input: CreateProductInput,
+    ) -> Result<ProductResponse, PortError> {
+        let request = self.command_request(&context, &input)?;
+        let response = self
+            .client
+            .clone()
+            .create_product(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn preview_variant_axes(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        input: SetVariantAxesInput,
+    ) -> Result<VariantAxesPreviewResponse, PortError> {
+        let payload = ProductInputPayload { product_id, input };
+        let request = self.command_request(&context, &payload)?;
+        let response = self
+            .client
+            .clone()
+            .preview_variant_axes(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn set_variant_axes(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        input: SetVariantAxesInput,
+    ) -> Result<Vec<VariantAxisConfigResponse>, PortError> {
+        let payload = ProductInputPayload { product_id, input };
+        let request = self.command_request(&context, &payload)?;
+        let response = self
+            .client
+            .clone()
+            .set_variant_axes(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn update_product(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        input: UpdateProductInput,
+    ) -> Result<ProductResponse, PortError> {
+        let payload = ProductInputPayload { product_id, input };
+        let request = self.command_request(&context, &payload)?;
+        let response = self
+            .client
+            .clone()
+            .update_product(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn delete_product(&self, context: PortContext, product_id: Uuid) -> Result<(), PortError> {
+        let payload = ProductIdPayload { product_id };
+        let request = self.command_request(&context, &payload)?;
+        let _ = self
+            .client
+            .clone()
+            .delete_product(request)
+            .await
+            .map_err(status_to_port_error)?;
+        Ok(())
+    }
+
+    async fn publish_product(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+    ) -> Result<ProductResponse, PortError> {
+        let payload = ProductIdPayload { product_id };
+        let request = self.command_request(&context, &payload)?;
+        let response = self
+            .client
+            .clone()
+            .publish_product(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn unpublish_product(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+    ) -> Result<ProductResponse, PortError> {
+        let payload = ProductIdPayload { product_id };
+        let request = self.command_request(&context, &payload)?;
+        let response = self
+            .client
+            .clone()
+            .unpublish_product(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn archive_product(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+    ) -> Result<ProductResponse, PortError> {
+        let payload = ProductIdPayload { product_id };
+        let request = self.command_request(&context, &payload)?;
+        let response = self
+            .client
+            .clone()
+            .archive_product(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn create_variant(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        input: CreateVariantInput,
+    ) -> Result<VariantResponse, PortError> {
+        let payload = ProductInputPayload { product_id, input };
+        let request = self.command_request(&context, &payload)?;
+        let response = self
+            .client
+            .clone()
+            .create_variant(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn update_variant(
+        &self,
+        context: PortContext,
+        variant_id: Uuid,
+        input: UpdateVariantInput,
+    ) -> Result<VariantResponse, PortError> {
+        let payload = VariantInputPayload { variant_id, input };
+        let request = self.command_request(&context, &payload)?;
+        let response = self
+            .client
+            .clone()
+            .update_variant(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn delete_variant(&self, context: PortContext, variant_id: Uuid) -> Result<(), PortError> {
+        let payload = VariantIdPayload { variant_id };
+        let request = self.command_request(&context, &payload)?;
+        let _ = self
+            .client
+            .clone()
+            .delete_variant(request)
+            .await
+            .map_err(status_to_port_error)?;
+        Ok(())
+    }
+
+    async fn add_product_image(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        input: AddProductImageInput,
+    ) -> Result<ProductImageResponse, PortError> {
+        let payload = ProductInputPayload { product_id, input };
+        let request = self.command_request(&context, &payload)?;
+        let response = self
+            .client
+            .clone()
+            .add_product_image(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn update_product_image(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        image_id: Uuid,
+        input: UpdateProductImageInput,
+    ) -> Result<ProductImageResponse, PortError> {
+        let payload = UpdateProductImagePayload {
+            product_id,
+            image_id,
+            input,
+        };
+        let request = self.command_request(&context, &payload)?;
+        let response = self
+            .client
+            .clone()
+            .update_product_image(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn delete_product_image(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        image_id: Uuid,
+    ) -> Result<(), PortError> {
+        let payload = ProductImageIdPayload {
+            product_id,
+            image_id,
+        };
+        let request = self.command_request(&context, &payload)?;
+        let _ = self
+            .client
+            .clone()
+            .delete_product_image(request)
+            .await
+            .map_err(status_to_port_error)?;
+        Ok(())
+    }
+
+    async fn reorder_product_images(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        image_ids: Vec<Uuid>,
+    ) -> Result<(), PortError> {
+        let payload = ReorderProductImagesPayload {
+            product_id,
+            image_ids,
+        };
+        let request = self.command_request(&context, &payload)?;
+        let _ = self
+            .client
+            .clone()
+            .reorder_product_images(request)
+            .await
+            .map_err(status_to_port_error)?;
+        Ok(())
     }
 }
 
@@ -282,21 +705,20 @@ fn status_to_port_error(status: Status) -> PortError {
 
 #[cfg(test)]
 mod tests {
-    use super::{grpc_request, status_to_port_error};
-    use crate::ProductCatalogGrpcBearerToken;
-    use crate::auth::{AUTHORIZATION_METADATA, TENANT_ID_METADATA};
-    use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
-    use tonic::{Code, Status};
-    use uuid::Uuid;
+    use rustok_api::{PortActor, PortErrorKind};
+
+    use super::*;
 
     #[test]
-    fn typed_error_details_override_lossy_grpc_status_mapping() {
-        let expected = PortError::validation("product.exact", "exact owner error");
+    fn structured_port_error_is_preserved_from_grpc_status_details() {
+        let expected = PortError::validation("product.sku_invalid", "SKU format is invalid");
+        let encoded = serde_json::to_vec(&expected).expect("port error should serialize");
         let status = Status::with_details(
             Code::InvalidArgument,
-            expected.message.clone(),
-            serde_json::to_vec(&expected).unwrap().into(),
+            "validation failed",
+            encoded.into(),
         );
+
         assert_eq!(status_to_port_error(status), expected);
     }
 

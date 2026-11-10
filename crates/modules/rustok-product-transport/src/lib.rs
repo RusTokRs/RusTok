@@ -15,14 +15,15 @@ pub mod proto {
 }
 
 pub use auth::{ProductCatalogGrpcAuthenticationError, ProductCatalogGrpcBearerToken};
-pub use client::GrpcProductCatalogReadProvider;
+pub use client::{GrpcProductCatalogCommandProvider, GrpcProductCatalogReadProvider};
 pub use connection::{
-    GrpcProductCatalogReadConnectionConfig, GrpcProductCatalogReadConnectionError,
-    ValidatedGrpcProductCatalogReadConnection,
+    GrpcProductCatalogConnectionConfig, GrpcProductCatalogReadConnectionConfig,
+    GrpcProductCatalogReadConnectionError, ValidatedGrpcProductCatalogReadConnection,
 };
 pub use server::{
-    ProductCatalogGrpcBearerAuthenticator, ProductCatalogGrpcBearerInterceptor,
-    ProductCatalogGrpcOperation, ProductCatalogGrpcService, TrustedProductCatalogAuthority,
+    ProductCatalogCommandGrpcService, ProductCatalogGrpcBearerAuthenticator,
+    ProductCatalogGrpcBearerInterceptor, ProductCatalogGrpcOperation, ProductCatalogGrpcService,
+    TrustedProductCatalogAuthority,
 };
 pub use tonic::transport::ClientTlsConfig;
 

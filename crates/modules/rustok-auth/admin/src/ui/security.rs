@@ -48,6 +48,13 @@ pub fn Security() -> impl IntoView {
                 )));
                 return;
             }
+            Err(ChangePasswordInputError::MissingTenant) => {
+                set_form_state.set(FormState::with_form_error(t_local(
+                    "errors.auth.missingTenant",
+                    "Tenant context is required.",
+                )));
+                return;
+            }
         };
 
         set_form_state.set(FormState::submitting());

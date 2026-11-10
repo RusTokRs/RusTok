@@ -264,7 +264,7 @@ fn surface_sort_key(surface: InstallSurface) -> u8 {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "host-runtime"))]
 mod tests {
     use std::sync::Mutex;
 
