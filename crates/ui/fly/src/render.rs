@@ -500,7 +500,7 @@ fn render_component(
             || renderer_manages_attribute(&name, policy)
             || matches!(
                 name.as_str(),
-                "style" | "srcdoc" | "srcset" | "xlink:href" | "ping" | "background"
+                "style" | "srcdoc" | "xlink:href" | "ping" | "background"
             )
         {
             continue;
@@ -515,6 +515,20 @@ fn render_component(
         let Some(value) = scalar_string(value) else {
             continue;
         };
+        if name == "srcset" {
+            // `srcset` carries a list of image candidate URLs. The static
+            // publish policy validates the full grammar (descriptors,
+            // uniqueness, no `data:`) before an artifact exists; the renderer
+            // re-checks every candidate URL against the same resource policy
+            // that governs `src`, so an unvalidated draft cannot smuggle one
+            // through a preview render. A malformed or disallowed candidate
+            // drops the whole attribute — a partial `srcset` would silently
+            // change which image the browser picks (audit §3.1).
+            if srcset_allowed(&value, policy) {
+                write_attribute(output, &name, &value);
+            }
+            continue;
+        }
         if let Some(kind) = UrlAttributeKind::for_attribute(&name)
             && !url_allowed(&value, kind, policy)
         {
@@ -947,6 +961,35 @@ impl RenderPolicy {
 
 fn url_allowed(value: &str, kind: UrlAttributeKind, policy: &RenderPolicy) -> bool {
     safe_url::url_allowed(value, kind, &policy.url_policy())
+}
+
+/// Decides whether a `srcset` attribute value may be emitted (audit §3.1).
+///
+/// Mirrors the static publish policy's candidate structure — a non-empty URL
+/// followed by at most one descriptor, `data:` URLs refused outright — and
+/// checks every candidate URL with the same resource policy that governs
+/// `src`. The value is all-or-nothing: one bad candidate drops the whole
+/// attribute instead of silently changing which image the browser picks.
+fn srcset_allowed(value: &str, policy: &RenderPolicy) -> bool {
+    let mut candidates = 0usize;
+    for raw_candidate in value.split(',') {
+        let candidate = raw_candidate.trim();
+        if candidate.is_empty() {
+            return false;
+        }
+        candidates += 1;
+        let mut tokens = candidate.split_whitespace();
+        let Some(url) = tokens.next() else {
+            return false;
+        };
+        if tokens.count() > 1 {
+            return false;
+        }
+        if url.starts_with("data:") || !url_allowed(url, UrlAttributeKind::Resource, policy) {
+            return false;
+        }
+    }
+    candidates > 0
 }
 
 /// Properties that can execute script regardless of their value.
@@ -1995,5 +2038,74 @@ mod tests {
             rendered.html
         );
         assert!(rendered.html.contains("#hero-map"), "{}", rendered.html);
+    }
+
+    #[test]
+    fn renders_srcset_when_every_candidate_url_is_allowed() {
+        // `srcset` used to be dropped unconditionally while `sizes` was
+        // emitted — validated adaptive images never reached the artifact
+        // (audit §3.1).
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": {
+                    "id": "root",
+                    "type": "wrapper",
+                    "components": [{
+                        "id": "hero",
+                        "type": "image",
+                        "attributes": {
+                            "src": "/img/hero.webp",
+                            "srcset": "/img/hero.webp 800w, /img/hero@2x.webp 1600w",
+                            "sizes": "(max-width: 800px) 100vw, 800px"
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("document");
+        let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+            .expect("rendered");
+        assert!(
+            rendered
+                .html
+                .contains("srcset=\"/img/hero.webp 800w, /img/hero@2x.webp 1600w\""),
+            "html: {}",
+            rendered.html
+        );
+        assert!(
+            rendered.html.contains("sizes=\"(max-width: 800px) 100vw, 800px\""),
+            "html: {}",
+            rendered.html
+        );
+    }
+
+    #[test]
+    fn drops_srcset_when_a_candidate_is_disallowed_or_malformed() {
+        for srcset in [
+            "javascript:alert(1) 1x, /img/hero.webp 2x",
+            "/img/hero.webp 1x, data:image/png;base64,AAAA 2x",
+            "/img/hero.webp 1x trailing-token",
+            "",
+        ] {
+            let document = GrapesJsCodec::decode_value(json!({
+                "pages": [{
+                    "id": "home",
+                    "component": {
+                        "id": "root",
+                        "type": "wrapper",
+                        "components": [{
+                            "id": "hero",
+                            "type": "image",
+                            "attributes": { "src": "/img/hero.webp", "srcset": srcset }
+                        }]
+                    }
+                }]
+            }))
+            .expect("document");
+            let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
+                .expect("rendered");
+            assert!(!rendered.html.contains("srcset="), "html: {}", rendered.html);
+        }
     }
 }

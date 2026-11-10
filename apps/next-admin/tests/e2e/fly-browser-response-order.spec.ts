@@ -46,12 +46,12 @@ const denial = {
   status: 403,
   body: {
     status: 403,
-    error: 'browser intent `save` requires editor capability `publish`',
+    error: 'browser intent `save` requires editor capability `edit`',
     code: 'FLY_CAPABILITY_DENIED',
     intent: 'save',
-    capability: 'publish',
-    required: ['publish'],
-    missing: ['publish']
+    capability: 'edit',
+    required: ['edit'],
+    missing: ['edit']
   }
 };
 

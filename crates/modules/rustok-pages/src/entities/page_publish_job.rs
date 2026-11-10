@@ -13,6 +13,10 @@ pub struct Model {
     pub state: String,
     pub command: Json,
     pub attempts: i32,
+    /// Reaper lease: set when the job is claimed (`scheduled -> executing`),
+    /// cleared on every terminal or requeue transition. `NULL` on an
+    /// `executing` row means the claim predates the lease column.
+    pub lease_until: Option<DateTimeWithTimeZone>,
     pub last_error_code: Option<String>,
     pub last_error_message: Option<String>,
     pub publish_operation_id: Option<Uuid>,

@@ -49,5 +49,6 @@ pub(super) async fn fetch_current_user_graphql(
         email: user.email,
         name: user.name,
         role: user.role,
+        permissions: user.permissions,
     }))
 }

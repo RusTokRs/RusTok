@@ -162,7 +162,8 @@ async fn page_builder_contribution_permissions(
 ///
 /// In SSR mode, the browser sends only manifest-declared permissions; the server resolves each one
 /// through `has_effective_permission`.
-/// In CSR mode, the client validates the authenticated user role directly from auth context.
+/// In CSR mode, the client resolves the same manifest-declared permissions against the
+/// authenticated user's effective permission snapshot from the auth context.
 #[component]
 pub fn PageBuilderContributionScope(
     enabled_modules: HashSet<String>,
@@ -221,37 +222,29 @@ pub fn PageBuilderContributionScope(
                     }.into_any();
                 }
 
-                let user = current_user.get();
-                let is_authorized = user.as_ref().map(|u| {
-                    let role = u.role.to_ascii_lowercase();
-                    role == "super_admin" || role == "admin"
-                }).unwrap_or(false);
-
-                if is_authorized {
-                    let enabled_modules = enabled_modules.clone();
-                    let children = children_for_result.clone();
-                    let permissions = required_permissions.clone();
-                    view! {
-                        <ResolvedPageBuilderContributionScope
-                            enabled_modules
-                            permissions
-                            children
-                        />
-                    }.into_any()
-                } else if user.is_some() {
-                    view! {
-                        <div
-                            class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-                            role="alert"
-                            data-page-builder-contribution-host="permission-error"
-                        >
-                            "Page Builder contribution permissions are unavailable: unauthorized"
-                        </div>
-                    }.into_any()
-                } else {
-                    view! {
+                match current_user.get() {
+                    Some(user) => {
+                        // Mirror of the SSR server-fn resolution: the
+                        // manifest-required permissions the effective
+                        // snapshot actually grants, so a manager sees the
+                        // same contribution surface on both paths.
+                        let granted = granted_contribution_permissions(
+                            &required_permissions,
+                            &user.permissions,
+                        );
+                        let enabled_modules = enabled_modules.clone();
+                        let children = children_for_result.clone();
+                        view! {
+                            <ResolvedPageBuilderContributionScope
+                                enabled_modules
+                                permissions={granted}
+                                children
+                            />
+                        }.into_any()
+                    }
+                    None => view! {
                         <div class="h-24 animate-pulse rounded-xl border border-border bg-muted" aria-label="Loading Page Builder contribution permissions"></div>
-                    }.into_any()
+                    }.into_any(),
                 }
             }}
         }
@@ -269,6 +262,21 @@ fn required_contribution_permissions(enabled_modules: &HashSet<String>) -> Vec<S
     permissions.sort();
     permissions.dedup();
     permissions
+}
+
+/// Client-side mirror of the SSR `page_builder_contribution_permissions`
+/// server function: keep the manifest-required permissions the user's
+/// effective snapshot actually grants. `effective_permissions_grant`
+/// applies the same exact-or-manage rule as
+/// `rustok_api::has_effective_permission` on the server.
+fn granted_contribution_permissions(required: &[String], effective: &[String]) -> Vec<String> {
+    required
+        .iter()
+        .filter(|permission| {
+            rustok_pages_admin::effective_permissions_grant(effective, permission.as_str())
+        })
+        .cloned()
+        .collect()
 }
 
 #[component]

@@ -10,6 +10,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { parseArtifactHtml, pageCacheTags } from "./api/artifact.ts";
 import { scopeLandingCss } from "./components/css-scope.ts";
 
@@ -150,6 +151,40 @@ body {
   assert.ok(scoped.includes(":scope {\n  font-family: 'Roboto', sans-serif;\n  --custom-ident: body;\n}"));
   assert.ok(scoped.includes("@media (max-width: 768px) {\n  :scope {\n    padding: 10px;\n  }\n}"));
   assert.ok(scoped.includes("@media (min-width: 1200px) {\n    :scope, :scope {\n      display: flex;\n    }\n  }"));
+});
+
+test("fly-actions runtime is the canonical asset and handles every non-native action kind", async () => {
+  const vendored = await readFile(new URL("./components/fly-actions.js", import.meta.url));
+  const canonical = await readFile(
+    new URL("../../../../../crates/ui/fly/browser/assets/fly-actions.js", import.meta.url)
+  );
+
+  // The Next package consumes the canonical runtime byte-for-byte instead of a
+  // parallel TypeScript implementation. The Rust-side contract lives in
+  // crates/ui/fly/browser/tests/action_runtime_contract.rs; the npm-level
+  // structural checks live in scripts/verify-fly-actions-parity.mjs.
+  assert.ok(
+    vendored.equals(canonical),
+    "components/fly-actions.js must stay a byte-exact copy of crates/ui/fly/browser/assets/fly-actions.js"
+  );
+
+  // Every non-native ComponentAction kind (navigate_page, navigate_url and
+  // submit_form are materialized as href/form attributes and never reach the
+  // runtime) must have a case in the runtime's handleAction switch.
+  const kinds = new Set();
+  for (const match of canonical.toString("utf8").matchAll(/case\s+"([a-z_]+)"\s*:/g)) {
+    kinds.add(match[1]);
+  }
+  assert.deepEqual([...kinds].sort(), [
+    "animate",
+    "emit_event",
+    "provider_action",
+    "scroll_to",
+    "switch_slide",
+    "switch_tab",
+    "toggle_accordion",
+    "toggle_visibility",
+  ]);
 });
 
 

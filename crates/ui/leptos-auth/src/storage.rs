@@ -205,6 +205,7 @@ mod tests {
                 email: "user@example.test".to_string(),
                 name: None,
                 role: "admin".to_string(),
+                permissions: Vec::new(),
             }),
         };
         assert_eq!(snapshot.session.as_ref().unwrap().tenant, "demo");

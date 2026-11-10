@@ -14,6 +14,16 @@ export default [
     },
   },
   {
-    ignores: [".next/", "out/", "build/", "node_modules/", "next-env.d.ts"],
+    // fly-actions.js is a byte-exact copy of the canonical Rust asset
+    // (crates/ui/fly/browser/assets/fly-actions.js); lint/autofix would break
+    // parity, which scripts/verify-fly-actions-parity.mjs enforces byte-for-byte.
+    ignores: [
+      ".next/",
+      "out/",
+      "build/",
+      "node_modules/",
+      "next-env.d.ts",
+      "packages/rustok-pages/src/components/fly-actions.js",
+    ],
   },
 ];

@@ -3,6 +3,7 @@ use crate::core;
 use crate::transport;
 use fly::{RUNTIME_FALLBACK_LOCALES_FIELD, RUNTIME_LOCALE_FIELD, normalize_locale_tag};
 use fly_browser::{BrowserIntentEnvelope, FLY_BROWSER_PROTOCOL};
+use fly_ui::{CapabilityState, UiIntent};
 use rustok_page_builder::RuntimeContextExamplePolicy;
 use rustok_page_builder::dto::{
     PageBuilderCapabilityRequest, PageBuilderCapabilityResponse, PublishPageBuilderResult,
@@ -14,18 +15,87 @@ use rustok_page_builder_admin::{
     AdminCanvasController, BrowserIntentDispatchError, BrowserIntentDispatchResult,
     BrowserIntentEffect, DurableSsrDraftSessionStore, PageBuilderAdminFacade,
     PageBuilderAdminFacadeError, SsrDraftSessionError, SsrDraftSessionStore,
-    dispatch_browser_intent,
+    dispatch_browser_intent, validate_browser_capability_access,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
-use std::sync::{Arc, OnceLock};
+use std::collections::{HashMap, hash_map::DefaultHasher};
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 const MAX_RUNTIME_CONTEXT_BYTES: usize = 256 * 1024;
 const MAX_RUNTIME_LOCALE_BYTES: usize = 64;
 const MAX_RUNTIME_FALLBACK_LOCALES: usize = 16;
 
+/// Lifetime of a cached persisted-page revision (audit §5.1). Bounded so a
+/// revision saved by another editor is picked up (and the draft session
+/// re-seeded) within this window even if this process never re-fetches.
+const PERSISTED_REVISION_TTL: Duration = Duration::from_secs(30);
+/// Upper bound on cached (token, tenant, page) revision entries.
+const PERSISTED_REVISION_CACHE_MAX_ENTRIES: usize = 512;
+
 static CUSTOM_STORE: OnceLock<Arc<dyn SsrDraftSessionStore>> = OnceLock::new();
 static DEFAULT_STORE: OnceLock<DurableSsrDraftSessionStore> = OnceLock::new();
+static PERSISTED_REVISION_CACHE: OnceLock<PersistedRevisionCache> = OnceLock::new();
+
+/// In-process cache mapping an auth context (token, tenant, page) to the
+/// persisted revision observed for it, letting interactive intents skip the
+/// `fetch_page` round-trip while their draft session is already in sync
+/// (audit §5.1). Correctness does not depend on freshness: the save path
+/// re-fetches the page and fails with `REVISION_CONFLICT` before writing, so
+/// a stale entry can only delay detection of a concurrent edit within the
+/// TTL — it can never overwrite one.
+#[derive(Default)]
+struct PersistedRevisionCache {
+    entries: Mutex<HashMap<u64, (String, Instant)>>,
+}
+
+impl PersistedRevisionCache {
+    fn get(&self, key: u64, now: Instant) -> Option<String> {
+        let mut entries = self
+            .entries
+            .lock()
+            .expect("persisted revision cache lock poisoned");
+        match entries.get(&key) {
+            Some((revision, expires_at)) if now < *expires_at => Some(revision.clone()),
+            Some(_) => {
+                entries.remove(&key);
+                None
+            }
+            None => None,
+        }
+    }
+
+    fn put(&self, key: u64, revision: String, now: Instant) {
+        let mut entries = self
+            .entries
+            .lock()
+            .expect("persisted revision cache lock poisoned");
+        entries.retain(|_, (_, expires_at)| now < *expires_at);
+        if entries.len() >= PERSISTED_REVISION_CACHE_MAX_ENTRIES {
+            // Bounded memory over correctness-critical state: dropping the
+            // whole map only costs extra fetches, never wrong answers.
+            entries.clear();
+        }
+        entries.insert(key, (revision, now + PERSISTED_REVISION_TTL));
+    }
+}
+
+fn persisted_revision_cache() -> &'static PersistedRevisionCache {
+    PERSISTED_REVISION_CACHE.get_or_init(PersistedRevisionCache::default)
+}
+
+/// Cache key derived from the auth context and page. The token is hashed so
+/// credential material is not duplicated into long-lived cache entries, and
+/// distinct tokens never share a view of a page's persisted revision.
+fn persisted_revision_key(snapshot: &PagesBuilderSaveSnapshot) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    snapshot.token.hash(&mut hasher);
+    snapshot.tenant_slug.hash(&mut hasher);
+    snapshot.page_id.hash(&mut hasher);
+    hasher.finish()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PagesBrowserIntentResponse {
@@ -62,14 +132,22 @@ pub fn pages_browser_default_durable_store() -> &'static DurableSsrDraftSessionS
 pub async fn dispatch_pages_browser_intent(
     snapshot: PagesBuilderSaveSnapshot,
     envelope: BrowserIntentEnvelope,
+    capabilities: CapabilityState,
 ) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
-    dispatch_pages_browser_intent_with_store(snapshot, envelope, pages_browser_draft_store()).await
+    dispatch_pages_browser_intent_with_store(
+        snapshot,
+        envelope,
+        pages_browser_draft_store(),
+        capabilities,
+    )
+    .await
 }
 
 pub async fn dispatch_pages_browser_intent_with_store(
     snapshot: PagesBuilderSaveSnapshot,
     envelope: BrowserIntentEnvelope,
     draft_store: &dyn SsrDraftSessionStore,
+    capabilities: CapabilityState,
 ) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentError> {
     let envelope = envelope
         .normalized()
@@ -85,18 +163,12 @@ pub async fn dispatch_pages_browser_intent_with_store(
         });
     }
 
-    let page = transport::fetch_page(
-        snapshot.token.clone(),
-        snapshot.tenant_slug.clone(),
-        snapshot.page_id.clone(),
-    )
-    .await?
-    .ok_or(PagesBrowserIntentError::PageNotFound)?;
-    let persisted_revision = builder::page_revision(&page);
-    let generated_context = generated_runtime_context(&page, &snapshot.default_locale);
-
+    // Load the draft session before any page fetch: a session already in
+    // sync with the cached persisted revision lets the dispatch skip the
+    // fetch entirely (audit §5.1). The page document is only needed to seed
+    // or re-seed a controller — never for an in-sync session.
     let loaded_session = match envelope.draft_token.as_deref() {
-        Some(token) => draft_store.load(token, &snapshot.page_id)?,
+        Some(token) => draft_store.load(token, &snapshot.page_id, snapshot.owner.as_ref())?,
         None => None,
     };
     if let (Some(expected), Some(session)) = (envelope.draft_generation, loaded_session.as_ref())
@@ -110,30 +182,71 @@ pub async fn dispatch_pages_browser_intent_with_store(
         ));
     }
 
+    let revision_key = persisted_revision_key(&snapshot);
+    let now = Instant::now();
+    let session_in_sync = loaded_session.as_ref().is_some_and(|session| {
+        persisted_revision_cache()
+            .get(revision_key, now)
+            .is_some_and(|cached| cached == session.controller.revision_id())
+    });
+
     let (mut controller, mut runtime_context, session_token, session_generation) =
         match loaded_session {
-            Some(session) if session.controller.revision_id() == persisted_revision => (
+            Some(session) if session_in_sync => (
                 session.controller,
                 session.runtime_context,
                 Some(session.token),
                 Some(session.generation),
             ),
-            Some(session) => {
-                draft_store.remove(&session.token)?;
-                (
-                    controller_from_page(&page, &persisted_revision, &snapshot.default_locale)?,
-                    generated_context,
-                    None,
-                    None,
+            loaded => {
+                let page = transport::fetch_page(
+                    snapshot.token.clone(),
+                    snapshot.tenant_slug.clone(),
+                    snapshot.page_id.clone(),
                 )
+                .await?
+                .ok_or(PagesBrowserIntentError::PageNotFound)?;
+                let persisted_revision = builder::page_revision(&page);
+                persisted_revision_cache().put(revision_key, persisted_revision.clone(), now);
+                let generated_context = generated_runtime_context(&page, &snapshot.default_locale);
+                match loaded {
+                    Some(session) if session.controller.revision_id() == persisted_revision => (
+                        session.controller,
+                        session.runtime_context,
+                        Some(session.token),
+                        Some(session.generation),
+                    ),
+                    Some(session) => {
+                        draft_store.remove(&session.token, snapshot.owner.as_ref())?;
+                        (
+                            controller_from_page(
+                                &page,
+                                &persisted_revision,
+                                &snapshot.default_locale,
+                            )?,
+                            generated_context,
+                            None,
+                            None,
+                        )
+                    }
+                    None => (
+                        controller_from_page(&page, &persisted_revision, &snapshot.default_locale)?,
+                        generated_context,
+                        None,
+                        None,
+                    ),
+                }
             }
-            None => (
-                controller_from_page(&page, &persisted_revision, &snapshot.default_locale)?,
-                generated_context,
-                None,
-                None,
-            ),
         };
+
+    // Narrow the server-side controller to the caller's editor
+    // capabilities. The controller is created with the full presentation,
+    // so without this every intent routed through its state machine —
+    // including the autosave envelope synthesized below — would run
+    // against full capabilities instead of the caller's.
+    controller
+        .dispatch(UiIntent::SetEditableCapabilities(capabilities))
+        .map_err(PagesBrowserIntentError::from)?;
 
     let context_update = matches!(
         envelope.intent.as_str(),
@@ -165,9 +278,16 @@ pub async fn dispatch_pages_browser_intent_with_store(
             draft_token: session_token.clone(),
             draft_generation: session_generation,
         };
-        let save_result = dispatch_browser_intent(&mut controller, save)?;
-        requests = request_effects(&save_result);
-        result.effects.extend(save_result.effects);
+        // The synthesized autosave is a draft save and must clear the same
+        // capability gate as an explicit save. Callers without the save
+        // capability keep their working copy dirty — the client shows the
+        // unsaved indicator — instead of receiving a late Forbidden from
+        // the facade after the intent already mutated the session.
+        if validate_browser_capability_access(&save, capabilities).is_ok() {
+            let save_result = dispatch_browser_intent(&mut controller, save)?;
+            requests = request_effects(&save_result);
+            result.effects.extend(save_result.effects);
+        }
     }
 
     let mut persistence = None;
@@ -181,24 +301,40 @@ pub async fn dispatch_pages_browser_intent_with_store(
         }) = &response
         {
             controller.acknowledge_save(revision_id.clone())?;
+            // The publish advanced the persisted revision; record it so the
+            // following intents keep hitting the fetch-free fast path
+            // instead of re-fetching the page they just wrote.
+            persisted_revision_cache().put(revision_key, revision_id.clone(), Instant::now());
             result = controller_snapshot(&controller)?;
         }
         persistence = Some(response);
     }
 
-    let committed = draft_store.commit_with_context(
-        session_token.as_deref(),
-        session_generation,
-        controller,
-        runtime_context.clone(),
-    )?;
+    let (draft_token, draft_generation) = if capabilities.edit {
+        let committed = draft_store.commit_with_context(
+            session_token.as_deref(),
+            session_generation,
+            controller,
+            runtime_context.clone(),
+            snapshot.owner.as_ref(),
+        )?;
+        (committed.token, committed.generation)
+    } else {
+        // Read-only callers never touch the draft store (audit §2.5): a
+        // customer's `select` must not spawn or bump a session, so the
+        // response echoes the loaded token (if any) instead of committing.
+        (
+            session_token.unwrap_or_default(),
+            session_generation.unwrap_or(0),
+        )
+    };
 
     Ok(PagesBrowserIntentResponse {
         reload: context_update || envelope.is_mutating() || persistence.is_some(),
         result,
         persistence,
-        draft_token: committed.token,
-        draft_generation: committed.generation,
+        draft_token,
+        draft_generation,
         runtime_context,
     })
 }
@@ -352,7 +488,9 @@ fn controller_snapshot(
         command_sequence: revision.command_sequence,
         dirty: revision.dirty,
         selected_component_id: controller.ui().state.selection.component_id.clone(),
-        project_data: fly::GrapesJsCodec::encode_value(controller.editor().document())?,
+        project_data: Some(fly::GrapesJsCodec::encode_value(
+            controller.editor().document(),
+        )?),
         effects: Vec::new(),
     })
 }
@@ -410,7 +548,7 @@ mod tests {
             command_sequence: 1,
             dirty: true,
             selected_component_id: None,
-            project_data: json!({}),
+            project_data: Some(json!({})),
             effects: vec![
                 BrowserIntentEffect::Announce {
                     message: "changed".to_string(),
@@ -476,6 +614,94 @@ mod tests {
         let default_durable = pages_browser_default_durable_store();
         assert_eq!(default_durable.memory().len().unwrap(), 0);
         let store = pages_browser_draft_store();
-        assert!(store.load("non-existent-token", "home").unwrap().is_none());
+        assert!(store
+            .load("non-existent-token", "home", None)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn persisted_revision_cache_roundtrips_per_key() {
+        let cache = PersistedRevisionCache::default();
+        let now = Instant::now();
+        assert_eq!(cache.get(1, now), None);
+        cache.put(1, "rev-1".to_string(), now);
+        cache.put(2, "rev-2".to_string(), now);
+        assert_eq!(cache.get(1, now).as_deref(), Some("rev-1"));
+        assert_eq!(cache.get(2, now).as_deref(), Some("rev-2"));
+        // A later write for the same key wins.
+        cache.put(1, "rev-9".to_string(), now);
+        assert_eq!(cache.get(1, now).as_deref(), Some("rev-9"));
+    }
+
+    #[test]
+    fn persisted_revision_cache_expires_after_ttl() {
+        let cache = PersistedRevisionCache::default();
+        let now = Instant::now();
+        cache.put(1, "rev-1".to_string(), now);
+        let before_ttl = now + PERSISTED_REVISION_TTL - Duration::from_nanos(1);
+        assert_eq!(cache.get(1, before_ttl).as_deref(), Some("rev-1"));
+        assert_eq!(cache.get(1, now + PERSISTED_REVISION_TTL), None);
+        // Expired entries are dropped, not resurrected by older timestamps.
+        assert_eq!(cache.get(1, now), None);
+    }
+
+    #[test]
+    fn persisted_revision_cache_is_bounded() {
+        let cache = PersistedRevisionCache::default();
+        let now = Instant::now();
+        for key in 0..PERSISTED_REVISION_CACHE_MAX_ENTRIES as u64 {
+            cache.put(key, format!("rev-{key}"), now);
+        }
+        assert_eq!(
+            cache.entries.lock().unwrap().len(),
+            PERSISTED_REVISION_CACHE_MAX_ENTRIES
+        );
+        // One entry over capacity drops the whole map: correctness never
+        // depends on the cache, only latency does.
+        cache.put(
+            PERSISTED_REVISION_CACHE_MAX_ENTRIES as u64 + 1,
+            "rev-overflow".to_string(),
+            now,
+        );
+        let entries = cache.entries.lock().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries
+                .values()
+                .next()
+                .map(|(revision, _)| revision.as_str()),
+            Some("rev-overflow")
+        );
+    }
+
+    #[test]
+    fn persisted_revision_key_separates_auth_contexts() {
+        let snapshot = |token: Option<&str>, tenant: Option<&str>, page: &str| {
+            PagesBuilderSaveSnapshot {
+                token: token.map(ToString::to_string),
+                tenant_slug: tenant.map(ToString::to_string),
+                page_id: page.to_string(),
+                default_locale: "en".to_string(),
+                owner: None,
+            }
+        };
+        let base = snapshot(Some("token-a"), Some("tenant-1"), "home");
+        assert_eq!(
+            persisted_revision_key(&base),
+            persisted_revision_key(&snapshot(Some("token-a"), Some("tenant-1"), "home"))
+        );
+        assert_ne!(
+            persisted_revision_key(&base),
+            persisted_revision_key(&snapshot(Some("token-b"), Some("tenant-1"), "home"))
+        );
+        assert_ne!(
+            persisted_revision_key(&base),
+            persisted_revision_key(&snapshot(Some("token-a"), Some("tenant-2"), "home"))
+        );
+        assert_ne!(
+            persisted_revision_key(&base),
+            persisted_revision_key(&snapshot(Some("token-a"), Some("tenant-1"), "about"))
+        );
     }
 }

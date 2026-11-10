@@ -21,7 +21,7 @@ use rustok_page_builder::runtime_scenario_release::{
 };
 use rustok_page_builder::{RuntimeContextExamplePolicy, RuntimeContextScenario};
 use rustok_page_builder_admin::{
-    PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext,
+    DraftSessionOwner, PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext,
     PageBuilderAdminProviderStatus,
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
@@ -1080,16 +1080,24 @@ fn PagesFlyBuilder(
     ));
     let editor_policy = {
         let user = current_user.get();
-        pages_editor_capability_policy(
-            user.as_ref().map(|user| user.role.as_str()),
-            contribution_assembly.as_ref(),
-        )
+        let effective_permissions = user
+            .as_ref()
+            .map(|user| user.permissions.as_slice())
+            .unwrap_or(&[]);
+        pages_editor_capability_policy(effective_permissions, contribution_assembly.as_ref())
     };
+    let draft_owner = current_user
+        .get()
+        .zip(tenant.get())
+        .map(|(user, tenant_slug)| DraftSessionOwner {
+            tenant_id: tenant_slug,
+            user_id: user.id,
+        });
     let restored_draft = draft_token
         .as_deref()
         .and_then(|token| {
             pages_browser_draft_store()
-                .load(token, &page.id)
+                .load(token, &page.id, draft_owner.as_ref())
                 .ok()
                 .flatten()
         })
@@ -1116,6 +1124,7 @@ fn PagesFlyBuilder(
                         tenant_slug: facade_tenant.get_untracked(),
                         page_id: page_id.clone(),
                         default_locale: snapshot_default_locale.clone(),
+                        owner: None,
                     },
                     move |_page, _project_data| {
                         refresh_generation.update(|generation| {

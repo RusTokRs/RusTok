@@ -1,6 +1,6 @@
 //! Contract tests verifying the architectural invariants and public API of `rustok-pages-admin`.
 
-use crate::access::pages_editor_permissions_for_role;
+use crate::access::pages_editor_permissions_from_effective;
 use crate::browser_problem::{
     BROWSER_DRAFT_GENERATION_CONFLICT_CODE, BROWSER_PROJECT_HASH_CONFLICT_CODE,
     BROWSER_REVISION_CONFLICT_CODE,
@@ -37,35 +37,41 @@ fn crate_api_markdown_contains_all_mandatory_contract_sections() {
 }
 
 #[test]
-fn role_permission_contract_enforces_least_privilege() {
-    // Super admin & admin receive full permissions
+fn effective_permission_contract_enforces_least_privilege() {
+    // A Pages manage grant implies every editor capability
     assert_eq!(
-        pages_editor_permissions_for_role(Some("super_admin")),
-        CapabilityState::full()
-    );
-    assert_eq!(
-        pages_editor_permissions_for_role(Some("admin")),
+        pages_editor_permissions_from_effective(&["pages:manage".to_string()]),
         CapabilityState::full()
     );
 
-    // Manager can author but cannot publish
-    let manager = pages_editor_permissions_for_role(Some("manager"));
-    assert!(manager.edit);
-    assert!(manager.properties);
-    assert!(manager.assets);
-    assert!(!manager.publish);
+    // Update plus publish grants receive full permissions
+    assert_eq!(
+        pages_editor_permissions_from_effective(&[
+            "pages:update".to_string(),
+            "pages:publish".to_string(),
+        ]),
+        CapabilityState::full()
+    );
 
-    // Customer, unrecognized, or None fail closed to read-only
+    // An update-only grant can author but cannot publish
+    let author = pages_editor_permissions_from_effective(&["pages:update".to_string()]);
+    assert!(author.edit);
+    assert!(author.properties);
+    assert!(author.assets);
+    assert!(!author.publish);
+
+    // Permissions outside the Pages resource, missing snapshots, and
+    // malformed entries fail closed to read-only
     assert_eq!(
-        pages_editor_permissions_for_role(Some("customer")),
+        pages_editor_permissions_from_effective(&["products:manage".to_string()]),
         CapabilityState::read_only()
     );
     assert_eq!(
-        pages_editor_permissions_for_role(Some("guest")),
+        pages_editor_permissions_from_effective(&[]),
         CapabilityState::read_only()
     );
     assert_eq!(
-        pages_editor_permissions_for_role(None),
+        pages_editor_permissions_from_effective(&["pages".to_string()]),
         CapabilityState::read_only()
     );
 }

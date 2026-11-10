@@ -7,11 +7,25 @@ fn test_auth_user_roundtrip() {
         email: "alice@example.com".to_string(),
         name: Some("Alice Smith".to_string()),
         role: "admin".to_string(),
+        permissions: vec!["pages:update".to_string(), "pages:publish".to_string()],
     };
 
     let serialized = serde_json::to_string(&user).expect("serialize user");
     let deserialized: AuthUser = serde_json::from_str(&serialized).expect("deserialize user");
     assert_eq!(user, deserialized);
+}
+
+#[test]
+fn test_auth_user_without_permissions_deserializes_to_empty_snapshot() {
+    // Backends predating the permission snapshot must keep deserializing.
+    let legacy_payload = r#"{
+        "id": "usr_123",
+        "email": "alice@example.com",
+        "name": null,
+        "role": "manager"
+    }"#;
+    let user: AuthUser = serde_json::from_str(legacy_payload).expect("deserialize legacy user");
+    assert!(user.permissions.is_empty());
 }
 
 #[test]

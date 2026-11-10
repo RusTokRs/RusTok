@@ -102,7 +102,11 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
                 disabled=Signal::derive({
                     let runtime = runtime.clone();
                     move || runtime.controller.with(|controller| {
-                        !controller.ui().state.capabilities.publish
+                        // Saving the working draft is an authoring action
+                        // gated by the edit capability; the publish
+                        // capability is reserved for the separate
+                        // publication flow.
+                        !controller.ui().state.capabilities.edit
                             || controller.ui().state.has_blocking_diagnostics()
                             || !controller.ui().state.dirty.dirty
                             || controller.ui().state.dirty.save_in_progress

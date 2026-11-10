@@ -84,9 +84,10 @@ pub use route_history_import::{
     PageRouteHistoryImportService,
 };
 pub use schedule::{
-    MAX_PAGE_PUBLISH_JOB_ATTEMPTS, MAX_PAGE_PUBLISH_JOBS_PER_SWEEP,
-    PAGE_PUBLISH_SCHEDULE_NOT_CANCELABLE, PAGE_PUBLISH_SCHEDULE_NOT_FOUND,
-    PAGE_PUBLISH_SCHEDULE_TIME_INVALID, PagePublishScheduler,
+    MAX_PAGE_PUBLISH_JOB_ATTEMPTS, MAX_PAGE_PUBLISH_JOBS_PER_SWEEP, PAGE_PUBLISH_JOB_LEASE_EXPIRED,
+    PAGE_PUBLISH_JOB_LEASE_SECS, PAGE_PUBLISH_SCHEDULE_NOT_CANCELABLE,
+    PAGE_PUBLISH_SCHEDULE_NOT_FOUND, PAGE_PUBLISH_SCHEDULE_TIME_INVALID, PagePublishReapOutcome,
+    PagePublishScheduler, PagePublishSchedulerMetricsSnapshot, PagePublishSweepOutcome,
 };
 pub(crate) use translation_apply::ApplyExactPageMetadataTranslationInput;
 

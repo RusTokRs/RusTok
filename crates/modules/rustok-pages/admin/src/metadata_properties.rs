@@ -416,6 +416,7 @@ mod tests {
             tenant_slug: Some("tenant".to_string()),
             page_id: "page-1".to_string(),
             default_locale: "en".to_string(),
+            owner: None,
         }
     }
 

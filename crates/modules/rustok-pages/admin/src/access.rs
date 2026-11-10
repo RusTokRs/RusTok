@@ -6,39 +6,74 @@ use fly_ui::{
     EditorCapabilityPolicy, EditorProviderState,
 };
 
-/// Builds the Pages editor policy from a canonical RusTok role and the actual contribution assembly
-/// health. Authoritative callers must supply a role verified by the backend auth service. Unknown
-/// roles fail closed; no local permission identifiers are invented here.
+/// Builds the Pages editor policy from the effective RBAC permission snapshot
+/// and the actual contribution assembly health. Authoritative callers must
+/// supply the snapshot verified by the backend auth service; an empty or
+/// unrecognized snapshot fails closed to read-only.
 pub fn pages_editor_capability_policy(
-    role: Option<&str>,
+    permissions: &[String],
     assembly: &ContributionAssemblyResult,
 ) -> EditorCapabilityPolicy {
     EditorCapabilityPolicy {
         requested: CapabilityState::full(),
         tenant: CapabilityState::full(),
-        permissions: pages_editor_permissions_for_role(role),
+        permissions: pages_editor_permissions_from_effective(permissions),
         provider_state: pages_editor_provider_state(assembly),
         allow_publish_when_degraded: false,
     }
 }
 
-pub fn pages_editor_capability_policy_for_role(role: Option<&str>) -> EditorCapabilityPolicy {
+pub fn pages_editor_capability_policy_from_effective(
+    permissions: &[String],
+) -> EditorCapabilityPolicy {
     let assembly = build_pages_admin_contribution_registry(&pages_admin_contribution_policy());
-    pages_editor_capability_policy(role, &assembly)
+    pages_editor_capability_policy(permissions, &assembly)
 }
 
-pub fn pages_editor_permissions_for_role(role: Option<&str>) -> CapabilityState {
-    let role = role
-        .map(str::trim)
-        .filter(|role| !role.is_empty())
-        .map(str::to_ascii_lowercase);
-    match role.as_deref() {
-        Some("super_admin") | Some("admin") => CapabilityState::full(),
-        Some("manager") => CapabilityState {
+/// Whether an effective permission snapshot grants `required`
+/// (`"{resource}:{action}"`, e.g. `pages:update`). Mirrors
+/// `rustok_api::has_effective_permission`: an exact match or the resource's
+/// `manage` grant suffices; no other implication exists. Malformed entries
+/// are ignored rather than guessed from a role string.
+pub fn effective_permissions_grant(effective: &[String], required: &str) -> bool {
+    let required = required.trim();
+    let Some((resource, _action)) = required.split_once(':') else {
+        return false;
+    };
+    effective.iter().any(|granted| {
+        let granted = granted.trim();
+        if granted.eq_ignore_ascii_case(required) {
+            return true;
+        }
+        granted
+            .split_once(':')
+            .is_some_and(|(granted_resource, granted_action)| {
+                granted_resource.trim().eq_ignore_ascii_case(resource.trim())
+                    && matches!(granted_action.trim(), "manage" | "*")
+            })
+    })
+}
+
+/// Maps the effective permission snapshot onto editor capabilities:
+/// `pages:manage` grants everything; `pages:update` grants authoring
+/// (edit/properties/assets/…); `pages:publish` grants publishing only.
+/// Users without Pages grants stay read-only. This matches the port
+/// authorization model, where the Properties capability requires
+/// `pages:update` and Publish requires `pages:publish`.
+pub fn pages_editor_permissions_from_effective(permissions: &[String]) -> CapabilityState {
+    let can_update = effective_permissions_grant(permissions, "pages:update");
+    let can_publish = effective_permissions_grant(permissions, "pages:publish");
+    match (can_update, can_publish) {
+        (true, true) => CapabilityState::full(),
+        (true, false) => CapabilityState {
             publish: false,
             ..CapabilityState::full()
         },
-        Some("customer") | None | Some(_) => CapabilityState::read_only(),
+        (false, true) => CapabilityState {
+            publish: true,
+            ..CapabilityState::read_only()
+        },
+        (false, false) => CapabilityState::read_only(),
     }
 }
 
@@ -66,18 +101,28 @@ mod tests {
     use fly_ui::{ContributionAssemblyDiagnostic, ContributionAssemblyResult};
 
     #[test]
-    fn canonical_admin_roles_receive_full_editor_access() {
-        for role in ["super_admin", "admin", " ADMIN "] {
-            assert_eq!(
-                pages_editor_permissions_for_role(Some(role)),
-                CapabilityState::full()
-            );
-        }
+    fn manage_grant_receives_full_editor_access() {
+        assert_eq!(
+            pages_editor_permissions_from_effective(&["pages:manage".to_string()]),
+            CapabilityState::full()
+        );
     }
 
     #[test]
-    fn manager_can_author_but_cannot_publish() {
-        let permissions = pages_editor_permissions_for_role(Some("manager"));
+    fn update_and_publish_grants_together_grant_full_access() {
+        assert_eq!(
+            pages_editor_permissions_from_effective(&[
+                "pages:update".to_string(),
+                "pages:publish".to_string(),
+            ]),
+            CapabilityState::full()
+        );
+    }
+
+    #[test]
+    fn update_grant_authors_but_cannot_publish() {
+        let permissions =
+            pages_editor_permissions_from_effective(&["pages:update".to_string()]);
         assert!(permissions.edit);
         assert!(permissions.properties);
         assert!(permissions.assets);
@@ -85,13 +130,44 @@ mod tests {
     }
 
     #[test]
-    fn customer_unknown_and_unauthenticated_roles_fail_closed() {
-        for role in [Some("customer"), Some("future_role"), None] {
+    fn publish_grant_without_update_only_publishes() {
+        let permissions =
+            pages_editor_permissions_from_effective(&["pages:publish".to_string()]);
+        assert!(!permissions.edit);
+        assert!(!permissions.properties);
+        assert!(!permissions.assets);
+        assert!(permissions.publish);
+    }
+
+    #[test]
+    fn unrelated_missing_and_malformed_permissions_fail_closed() {
+        for permissions in [
+            vec![],
+            vec!["products:update".to_string()],
+            vec!["users:manage".to_string()],
+            vec!["pages".to_string()],
+            vec!["".to_string()],
+        ] {
             assert_eq!(
-                pages_editor_permissions_for_role(role),
+                pages_editor_permissions_from_effective(&permissions),
                 CapabilityState::read_only()
             );
         }
+    }
+
+    #[test]
+    fn manage_grant_satisfies_any_required_permission_for_its_resource() {
+        let effective = vec![
+            "forum_topics:manage".to_string(),
+            "pages:update".to_string(),
+        ];
+        assert!(effective_permissions_grant(&effective, "forum_topics:moderate"));
+        assert!(!effective_permissions_grant(&effective, "blog_posts:update"));
+        assert!(!effective_permissions_grant(&effective, "pages:publish"));
+        assert!(effective_permissions_grant(
+            &["  pages:manage  ".to_string()],
+            "pages:publish"
+        ));
     }
 
     #[test]
@@ -113,8 +189,9 @@ mod tests {
     }
 
     #[test]
-    fn healthy_pages_registry_preserves_role_permissions() {
-        let policy = pages_editor_capability_policy_for_role(Some("manager"));
+    fn healthy_pages_registry_preserves_effective_permissions() {
+        let policy =
+            pages_editor_capability_policy_from_effective(&["pages:update".to_string()]);
         let evaluation = policy.evaluate_detailed();
         assert_eq!(evaluation.provider_state, EditorProviderState::Healthy);
         assert!(evaluation.effective.edit);

@@ -23,7 +23,15 @@ pub struct BrowserIntentDispatchResult {
     pub command_sequence: u64,
     pub dirty: bool,
     pub selected_component_id: Option<String>,
-    pub project_data: Value,
+    /// Full project document, serialized only for mutating intents
+    /// (audit §5.1). Non-mutating intents such as `select`/`hover` answer
+    /// with a lightweight snapshot: no consumer of the browser-intent
+    /// response reads `project_data` — server-side canvases re-render from
+    /// their own controller state and the browser client reloads the page
+    /// after mutations — so shipping megabytes of unchanged JSON on every
+    /// click was pure overhead. Absent in serialized form when `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_data: Option<Value>,
     #[serde(default)]
     pub effects: Vec<BrowserIntentEffect>,
 }
@@ -50,7 +58,10 @@ pub fn dispatch_browser_intent(
     validate_revision(controller, &envelope)?;
     apply_selection_hint(controller, &envelope.payload)?;
     let effects = dispatch_named_intent(controller, &envelope.intent, &envelope.payload)?;
-    result(controller, effects)
+    // Non-mutating intents (select/hover/…) get a lightweight result without
+    // the project document; mutating ones keep the full snapshot so any
+    // consumer that still relies on it sees no behavior change (audit §5.1).
+    result(controller, effects, is_mutating_intent(&envelope))
 }
 
 fn dispatch_named_intent(
@@ -502,6 +513,7 @@ fn apply_selection_hint(
 fn result(
     controller: &AdminCanvasController,
     effects: Vec<AdminCanvasEffect>,
+    include_project_data: bool,
 ) -> Result<BrowserIntentDispatchResult, BrowserIntentDispatchError> {
     let revision = controller.editor().revision();
     Ok(BrowserIntentDispatchResult {
@@ -511,7 +523,11 @@ fn result(
         command_sequence: revision.command_sequence,
         dirty: revision.dirty,
         selected_component_id: controller.ui().state.selection.component_id.clone(),
-        project_data: GrapesJsCodec::encode_value(controller.editor().document())?,
+        project_data: if include_project_data {
+            Some(GrapesJsCodec::encode_value(controller.editor().document())?)
+        } else {
+            None
+        },
         effects: effects.into_iter().map(effect).collect(),
     })
 }

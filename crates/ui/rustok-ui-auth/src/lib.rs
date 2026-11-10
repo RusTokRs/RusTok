@@ -13,6 +13,14 @@ pub struct AuthUser {
     pub email: String,
     pub name: Option<String>,
     pub role: String,
+    /// Effective RBAC permission snapshot (`"{resource}:{action}"` strings,
+    /// e.g. `pages:update`) as resolved by the backend auth service. The
+    /// role string stays for display only; capability decisions must read
+    /// this list. Payloads from older backends that omit the field
+    /// deserialize to an empty snapshot, which every consumer treats as
+    /// least privilege.
+    #[serde(default)]
+    pub permissions: Vec<String>,
 }
 
 /// In-memory browser session: the short-lived access token only.
