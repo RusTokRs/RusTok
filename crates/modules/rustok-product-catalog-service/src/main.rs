@@ -22,7 +22,9 @@ use rustok_product::{
     entities::{Product, ProductVariant},
 };
 use rustok_product_transport::{
-    ProductCatalogGrpcBearerInterceptor, ProductCatalogGrpcService,
+    ProductCatalogCommandGrpcService, ProductCatalogGrpcBearerInterceptor,
+    ProductCatalogGrpcService,
+    proto::product_catalog_command_service_server::ProductCatalogCommandServiceServer,
     proto::product_catalog_read_service_server::ProductCatalogReadServiceServer,
 };
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait};
@@ -178,6 +180,7 @@ async fn run() -> Result<()> {
     let outbox = Arc::new(OutboxTransport::new(database.clone()));
     let event_bus = TransactionalEventBus::new(outbox);
     let provider = Arc::new(CatalogService::new(database, event_bus));
+    let command_provider = provider.clone();
     let service =
         ProductCatalogGrpcService::new(provider.clone()).with_variant_identity_read_port(provider);
     let interceptor = ProductCatalogGrpcBearerInterceptor::from_bearer_token(
@@ -185,7 +188,12 @@ async fn run() -> Result<()> {
         PortActor::service(config.trusted_service_actor.clone()),
     )
     .map_err(|error| anyhow!("Product catalog service authentication is invalid: {error}"))?;
+    let command_interceptor = interceptor.clone();
     let service = ProductCatalogReadServiceServer::with_interceptor(service, interceptor);
+    let command_service = ProductCatalogCommandServiceServer::with_interceptor(
+        ProductCatalogCommandGrpcService::new(command_provider),
+        command_interceptor,
+    );
 
     let mut server = Server::builder();
     if let ServiceTransport::Tls {
@@ -206,6 +214,7 @@ async fn run() -> Result<()> {
     );
     server
         .add_service(service)
+        .add_service(command_service)
         .serve_with_shutdown(config.bind, shutdown_signal())
         .await
         .context("Product catalog gRPC service failed")

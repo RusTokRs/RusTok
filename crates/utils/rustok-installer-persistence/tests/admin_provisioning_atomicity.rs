@@ -2,13 +2,37 @@ use rustok_core::{ModuleRegistry, UserRole};
 use rustok_installer::{
     AdminBootstrap, DatabaseConfig, DatabaseEngine, InstallEnvironment, InstallPlan,
     InstallProfile, InstallTopology, InstallTopologyMode, ModuleSelection, SecretMode, SecretValue,
-    SeedPrincipalPort, SeedProfile, SeedUserRequest, TenantBootstrap,
+    SeedModulePort, SeedPrincipalPort, SeedProfile, SeedUserRequest, TenantBootstrap,
 };
 use rustok_installer_persistence::SeaOrmInstallerBootstrapPorts;
 use rustok_migrations::SqliteTestMigrator as Migrator;
 use rustok_test_utils::db::setup_test_db_with_migrations;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use uuid::Uuid;
+
+struct SeedTestModule;
+
+impl rustok_core::MigrationSource for SeedTestModule {
+    fn migrations(&self) -> Vec<Box<dyn sea_orm_migration::MigrationTrait>> {
+        Vec::new()
+    }
+}
+
+#[async_trait::async_trait]
+impl rustok_core::RusToKModule for SeedTestModule {
+    fn slug(&self) -> &'static str {
+        "seed_test"
+    }
+    fn name(&self) -> &'static str {
+        "Seed test"
+    }
+    fn description(&self) -> &'static str {
+        "Installer lifecycle test"
+    }
+    fn version(&self) -> &'static str {
+        "0.1.0"
+    }
+}
 
 fn test_plan(email: &str) -> InstallPlan {
     InstallPlan {
@@ -179,4 +203,49 @@ async fn successful_provisioning_commits_identity_and_role_together() {
         .try_get("", "total")
         .expect("read role count");
     assert_eq!(role_links, 1);
+}
+
+#[tokio::test]
+async fn seed_module_retry_reuses_original_revision_and_detects_later_change() {
+    let db = setup_test_db_with_migrations::<Migrator>().await;
+    let tenant_id = Uuid::new_v4();
+    insert_tenant(&db, tenant_id).await;
+    let registry = ModuleRegistry::new().register(SeedTestModule);
+    let ports = SeaOrmInstallerBootstrapPorts::new(db.clone(), &registry, Vec::new());
+    ports
+        .set_seed_module_enabled(tenant_id, "seed_test", true, "installer")
+        .await
+        .unwrap();
+    ports
+        .set_seed_module_enabled(tenant_id, "seed_test", true, "installer")
+        .await
+        .unwrap();
+    let revision =
+        rustok_modules::StaticTenantLifecycleStore::snapshot(&db, tenant_id, "seed_test")
+            .await
+            .unwrap();
+    assert_eq!(
+        revision.revision, 1,
+        "replay must not create a second transition"
+    );
+    ports
+        .set_seed_module_enabled(tenant_id, "seed_test", false, "installer")
+        .await
+        .unwrap();
+    let error = ports
+        .set_seed_module_enabled(tenant_id, "seed_test", true, "installer")
+        .await
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("no longer has the requested enablement intent")
+    );
+    assert_eq!(
+        rustok_modules::StaticTenantLifecycleStore::snapshot(&db, tenant_id, "seed_test")
+            .await
+            .unwrap()
+            .revision,
+        2
+    );
 }

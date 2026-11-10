@@ -571,7 +571,7 @@ impl ModuleOperationJournal {
         Ok(result.rows_affected() == 1)
     }
 
-    async fn find_by_idempotency_key<C: ConnectionTrait>(
+    pub(crate) async fn find_by_idempotency_key<C: ConnectionTrait>(
         db: &C,
         tenant_id: Uuid,
         idempotency_key: Uuid,

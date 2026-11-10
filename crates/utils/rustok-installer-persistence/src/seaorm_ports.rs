@@ -9,7 +9,10 @@ use rustok_installer::{
     SeedIdentityPort, SeedModulePort, SeedPrincipalPort, SeedProfile, SeedRolePort, SeedTenant,
     SeedTenantPort, SeedTenantRequest, SeedUser, SeedUserRequest,
 };
-use rustok_modules::{ModuleCommandContext, ModuleControlPlane, ModuleLifecycleToggleCommand};
+use rustok_modules::{
+    ModuleCommandContext, ModuleControlPlane, ModuleLifecycleDbWriterError,
+    ModuleLifecycleExecutionError, ModuleLifecycleToggleCommand, TenantModuleStateStore,
+};
 use rustok_rbac::RbacRoleAssignmentDbWriter;
 use rustok_tenant::{
     CreateTenantInput, PortActor, PortContext, TenantReadPort, TenantReadRequest,
@@ -523,28 +526,66 @@ impl SeedModulePort for SeaOrmInstallerBootstrapPorts<'_> {
         );
         let lifecycle = ModuleControlPlane::new(self.db.clone())
             .lifecycle(self.registry, self.defaults.clone());
-        let expected_revision = lifecycle
-            .static_lifecycle_snapshot(tenant_id, module_slug)
+        let context = ModuleCommandContext {
+            actor_id,
+            tenant_id: Some(tenant_id),
+            trace_id: format!("installer:seed:{idempotency_key}"),
+            correlation_id: idempotency_key,
+            idempotency_key,
+        };
+        let original_revision = lifecycle
+            .original_toggle_revision(tenant_id, module_slug, enabled, &context)
             .await
-            .map_err(|error| SeedExecutionError::Dependency(error.to_string()))?
-            .revision;
-        lifecycle
-            .toggle(ModuleLifecycleToggleCommand {
-                tenant_id,
-                module_slug: module_slug.to_string(),
-                enabled,
-                context: ModuleCommandContext {
-                    actor_id,
-                    tenant_id: Some(tenant_id),
-                    trace_id: format!("installer:seed:{idempotency_key}"),
-                    correlation_id: idempotency_key,
-                    idempotency_key,
-                },
-                expected_revision,
-            })
+            .map_err(seed_error)?;
+        let expected_revision = match original_revision {
+            Some(revision) => revision,
+            None => {
+                lifecycle
+                    .static_lifecycle_snapshot(tenant_id, module_slug)
+                    .await
+                    .map_err(seed_error)?
+                    .revision
+            }
+        };
+        let mut command = ModuleLifecycleToggleCommand {
+            tenant_id,
+            module_slug: module_slug.to_string(),
+            enabled,
+            context,
+            expected_revision,
+        };
+        let result = lifecycle.toggle(command.clone()).await;
+        if matches!(
+            &result,
+            Err(ModuleLifecycleDbWriterError::Lifecycle(
+                ModuleLifecycleExecutionError::IdempotencyConflict
+            ))
+        ) && original_revision.is_none()
+        {
+            // Another same-key command may have committed after our lookup.
+            // Recover its immutable revision once; never substitute current state.
+            command.expected_revision = lifecycle
+                .original_toggle_revision(tenant_id, module_slug, enabled, &command.context)
+                .await
+                .map_err(seed_error)?
+                .ok_or_else(|| {
+                    SeedExecutionError::Dependency(
+                        "seed lifecycle command conflicted without a durable receipt".to_string(),
+                    )
+                })?;
+            lifecycle.toggle(command).await.map_err(seed_error)?;
+        } else {
+            result.map_err(seed_error)?;
+        }
+        let current = TenantModuleStateStore::read(&self.db, tenant_id, module_slug)
             .await
-            .map(|_| ())
-            .map_err(seed_error)
+            .map_err(seed_error)?;
+        if current.as_ref().and_then(|state| state.enabled) != Some(enabled) {
+            return Err(SeedExecutionError::Dependency(format!(
+                "seed module `{module_slug}` no longer has the requested enablement intent"
+            )));
+        }
+        Ok(())
     }
 }
 

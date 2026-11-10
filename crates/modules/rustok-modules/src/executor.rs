@@ -1363,9 +1363,42 @@ mod tests {
             policy_transition: None,
             static_settings_schema: None,
         };
+        let writer = crate::ModuleLifecycleDbWriter::new(database.clone(), &registry, vec![]);
+        assert_eq!(
+            writer
+                .original_toggle_revision(tenant_id, "optional_test", true, &enable.context)
+                .await
+                .unwrap(),
+            None
+        );
         let enabled = execute_module_toggle(&database, &dispatcher, None, enable.clone())
             .await
             .unwrap();
+        assert_eq!(
+            writer
+                .original_toggle_revision(tenant_id, "optional_test", true, &enable.context)
+                .await
+                .unwrap(),
+            Some(0)
+        );
+        assert!(matches!(
+            writer
+                .original_toggle_revision(tenant_id, "optional_test", false, &enable.context)
+                .await,
+            Err(crate::ModuleLifecycleDbWriterError::Lifecycle(
+                ModuleLifecycleExecutionError::IdempotencyConflict
+            ))
+        ));
+        let mut foreign_actor = enable.context.clone();
+        foreign_actor.actor_id = uuid::Uuid::new_v4();
+        assert!(matches!(
+            writer
+                .original_toggle_revision(tenant_id, "optional_test", true, &foreign_actor)
+                .await,
+            Err(crate::ModuleLifecycleDbWriterError::Lifecycle(
+                ModuleLifecycleExecutionError::IdempotencyConflict
+            ))
+        ));
         let replay = execute_module_toggle(&database, &dispatcher, None, enable)
             .await
             .unwrap();

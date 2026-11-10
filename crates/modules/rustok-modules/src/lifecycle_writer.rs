@@ -367,6 +367,56 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         .await
     }
 
+    /// Recovers the original CAS precondition for an exact replay without
+    /// treating current aggregate state as the identity of the old command.
+    /// A missing journal entry returns `None`; callers must still handle a
+    /// concurrent first admission and must never infer a legacy missing revision.
+    pub async fn original_toggle_revision(
+        &self,
+        tenant_id: Uuid,
+        module_slug: &str,
+        enabled: bool,
+        context: &ModuleCommandContext,
+    ) -> Result<Option<u64>, ModuleLifecycleDbWriterError> {
+        if tenant_id.is_nil()
+            || context.tenant_id != Some(tenant_id)
+            || !is_valid_module_slug(module_slug)
+        {
+            return Err(ModuleLifecycleDbWriterError::Lifecycle(
+                ModuleLifecycleExecutionError::InvalidCommandIdentity,
+            ));
+        }
+        context.validate().map_err(|error| {
+            ModuleLifecycleDbWriterError::Lifecycle(
+                ModuleLifecycleExecutionError::InvalidCommandContext(error),
+            )
+        })?;
+        let operation = ModuleOperationJournal::find_by_idempotency_key(
+            &self.db,
+            tenant_id,
+            context.idempotency_key,
+        )
+        .await
+        .map_err(map_idempotency_command_error)?;
+        let Some(operation) = operation else {
+            return Ok(None);
+        };
+        if operation.module_slug != module_slug
+            || operation.requested_enabled != enabled
+            || operation.recovery_source_id.is_some()
+            || operation.requested_by.as_deref() != Some(context.actor_id.to_string().as_str())
+        {
+            return Err(ModuleLifecycleDbWriterError::Lifecycle(
+                ModuleLifecycleExecutionError::IdempotencyConflict,
+            ));
+        }
+        operation.expected_revision.map(Some).ok_or_else(|| {
+            ModuleLifecycleDbWriterError::Lifecycle(ModuleLifecycleExecutionError::Persistence(
+                "original lifecycle revision is unavailable for replay".to_string(),
+            ))
+        })
+    }
+
     async fn apply_override_with_operation_context(
         &self,
         request: OverrideOperationRequest<'_>,
