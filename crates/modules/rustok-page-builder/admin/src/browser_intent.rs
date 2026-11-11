@@ -203,6 +203,11 @@ fn dispatch_named_intent(
                 page_index,
             })?
         }
+        "create_page" | "remove_page" | "rename_page" | "patch_page_metadata"
+            if is_ssr_page_form(payload) =>
+        {
+            dispatch_ssr_form(controller, intent, payload)?
+        }
         "create_page" => {
             let name = payload
                 .get("name")
@@ -395,15 +400,39 @@ fn dispatch_named_intent(
                 intent.to_string(),
             ));
         }
-        other => match controller
-            .ssr_form_intent(other, payload)
-            .map_err(BrowserIntentDispatchError::Authoring)?
-        {
-            Some(intent) => controller.dispatch(intent)?,
-            None => return Err(BrowserIntentDispatchError::Unsupported(other.to_string())),
-        },
+        other => dispatch_ssr_form(controller, other, payload)?,
     };
     Ok(effects)
+}
+
+/// Resolves an intent through the classic SSR form resolver and dispatches the result.
+fn dispatch_ssr_form(
+    controller: &mut AdminCanvasController,
+    intent: &str,
+    payload: &Value,
+) -> Result<Vec<AdminCanvasEffect>, BrowserIntentDispatchError> {
+    match controller
+        .ssr_form_intent(intent, payload)
+        .map_err(BrowserIntentDispatchError::Authoring)?
+    {
+        Some(ui_intent) => Ok(controller.dispatch(ui_intent)?),
+        None => Err(BrowserIntentDispatchError::Unsupported(intent.to_string())),
+    }
+}
+
+/// `true` when a page intent carries the payload of a classic SSR form.
+///
+/// `create_page`, `remove_page`, `rename_page` and `patch_page_metadata` arrive in two shapes
+/// under one wire name. The typed envelopes of the adapter workspaces
+/// (`BrowserIntentEnvelope::remove_page` and its siblings) address a page by `page_index`, and
+/// the `create_page` envelope names no page at all. The SSR inspector forms have no index to
+/// send: they name the page by `page_id` alone and send the fields of their `Ssr*Request`.
+///
+/// The arms of [`dispatch_named_intent`] for these four names read the envelope shape. A form
+/// payload that reached them failed on the missing `page_index`, or — for `create_page` — lost
+/// the page id the author typed, and the form resolver that owns the shape was never asked.
+fn is_ssr_page_form(payload: &Value) -> bool {
+    payload.get("page_index").is_none() && payload.get("page_id").is_some()
 }
 
 fn dispatch_shortcut(
