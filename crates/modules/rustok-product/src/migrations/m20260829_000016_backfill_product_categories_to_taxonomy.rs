@@ -1,15 +1,6 @@
 use chrono::{DateTime, FixedOffset};
-use rustok_taxonomy::{
-    TaxonomyScopeType, TaxonomyTermKind,
-    entities::{
-        taxonomy_category_hierarchy, taxonomy_term, taxonomy_term_route_key,
-        taxonomy_term_translation, translation_change,
-    },
-    normalize_term_locale, normalize_term_route_key,
-};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait,
-    FromQueryResult, QueryFilter, Statement, TransactionTrait,
+    ConnectionTrait, DatabaseBackend, FromQueryResult, Statement, TransactionTrait,
 };
 use sea_orm_migration::prelude::*;
 use uuid::Uuid;
@@ -47,6 +38,39 @@ struct ExistingProductBindingRow {
     catalog_category_id: Uuid,
 }
 
+#[derive(Debug, FromQueryResult)]
+struct CountRow {
+    count: i64,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct TaxonomyTermRow {
+    id: Uuid,
+    tenant_id: Uuid,
+    kind: String,
+    scope_type: String,
+    scope_value: String,
+    canonical_key: String,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct TaxonomyTranslationRow {
+    name: String,
+    slug: String,
+    description: Option<String>,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct TaxonomyTermOwnerRow {
+    term_id: Uuid,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct HierarchyRow {
+    parent_term_id: Option<Uuid>,
+    position: i32,
+}
+
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
@@ -58,7 +82,26 @@ impl MigrationTrait for Migration {
         }
 
         let txn = manager.get_connection().begin().await?;
-        backfill_product_categories(&txn).await?;
+
+        let has_taxonomy_terms = CountRow::find_by_statement(Statement::from_string(
+            DatabaseBackend::Postgres,
+            r#"
+                SELECT COUNT(*)::BIGINT AS count
+                FROM information_schema.tables
+                WHERE table_schema = current_schema()
+                  AND table_name = 'taxonomy_terms'
+            "#,
+        ))
+        .one(&txn)
+        .await?
+        .map(|row| row.count)
+        .unwrap_or_default()
+            != 0;
+
+        if has_taxonomy_terms {
+            backfill_product_categories(&txn).await?;
+        }
+
         txn.commit().await?;
         Ok(())
     }
@@ -108,13 +151,18 @@ async fn ensure_taxonomy_term(
 ) -> Result<(), DbErr> {
     let canonical_key = canonical_key_for_product_category(category.id);
 
-    if let Some(existing) = taxonomy_term::Entity::find_by_id(category.id)
-        .one(txn)
-        .await?
-    {
+    let existing_by_id = TaxonomyTermRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT id, tenant_id, kind, scope_type, scope_value, canonical_key FROM taxonomy_terms WHERE id = $1",
+        vec![category.id.into()],
+    ))
+    .one(txn)
+    .await?;
+
+    if let Some(existing) = existing_by_id {
         if existing.tenant_id != category.tenant_id
-            || existing.kind != TaxonomyTermKind::Category
-            || existing.scope_type != TaxonomyScopeType::Module
+            || existing.kind != "category"
+            || existing.scope_type != "module"
             || existing.scope_value != PRODUCT_SCOPE_VALUE
             || existing.canonical_key != canonical_key
         {
@@ -126,33 +174,50 @@ async fn ensure_taxonomy_term(
         return Ok(());
     }
 
-    if let Some(existing) = taxonomy_term::Entity::find()
-        .filter(taxonomy_term::Column::TenantId.eq(category.tenant_id))
-        .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
-        .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
-        .filter(taxonomy_term::Column::ScopeValue.eq(PRODUCT_SCOPE_VALUE))
-        .filter(taxonomy_term::Column::CanonicalKey.eq(&canonical_key))
-        .one(txn)
-        .await?
-    {
+    let existing_by_key = TaxonomyTermRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+            SELECT id, tenant_id, kind, scope_type, scope_value, canonical_key
+            FROM taxonomy_terms
+            WHERE tenant_id = $1
+              AND kind = 'category'
+              AND scope_type = 'module'
+              AND scope_value = $2
+              AND canonical_key = $3
+            LIMIT 1
+        "#,
+        vec![
+            category.tenant_id.into(),
+            PRODUCT_SCOPE_VALUE.into(),
+            canonical_key.clone().into(),
+        ],
+    ))
+    .one(txn)
+    .await?;
+
+    if let Some(existing) = existing_by_key {
         return Err(DbErr::Migration(format!(
             "Product Category Taxonomy backfill blocked: canonical key {canonical_key:?} is already owned by Taxonomy Category {}",
             existing.id,
         )));
     }
 
-    taxonomy_term::ActiveModel {
-        id: Set(category.id),
-        tenant_id: Set(category.tenant_id),
-        kind: Set(TaxonomyTermKind::Category),
-        scope_type: Set(TaxonomyScopeType::Module),
-        scope_value: Set(PRODUCT_SCOPE_VALUE.to_owned()),
-        canonical_key: Set(canonical_key),
-        revision: Set(1),
-        created_at: Set(category.created_at),
-        updated_at: Set(category.updated_at),
-    }
-    .insert(txn)
+    txn.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+            INSERT INTO taxonomy_terms (
+                id, tenant_id, kind, scope_type, scope_value, canonical_key, revision, created_at, updated_at
+            ) VALUES ($1, $2, 'category', 'module', $3, $4, 1, $5, $6)
+        "#,
+        vec![
+            category.id.into(),
+            category.tenant_id.into(),
+            PRODUCT_SCOPE_VALUE.into(),
+            canonical_key.into(),
+            category.created_at.into(),
+            category.updated_at.into(),
+        ],
+    ))
     .await?;
 
     Ok(())
@@ -187,12 +252,22 @@ async fn ensure_category_translations_and_routes(
     for translation in translations {
         let locale = exact_taxonomy_locale(&translation.locale, category.id)?;
 
-        let existing = taxonomy_term_translation::Entity::find()
-            .filter(taxonomy_term_translation::Column::TenantId.eq(category.tenant_id))
-            .filter(taxonomy_term_translation::Column::TermId.eq(category.id))
-            .filter(taxonomy_term_translation::Column::Locale.eq(&locale))
-            .one(txn)
-            .await?;
+        let existing = TaxonomyTranslationRow::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+                SELECT name, slug, description
+                FROM taxonomy_term_translations
+                WHERE tenant_id = $1 AND term_id = $2 AND locale = $3
+            "#,
+            vec![
+                category.tenant_id.into(),
+                category.id.into(),
+                locale.clone().into(),
+            ],
+        ))
+        .one(txn)
+        .await?;
+
         match existing {
             Some(existing)
                 if existing.name == translation.name
@@ -205,32 +280,40 @@ async fn ensure_category_translations_and_routes(
                 )));
             }
             None => {
-                if let Some(id_owner) =
-                    taxonomy_term_translation::Entity::find_by_id(translation.id)
-                        .one(txn)
-                        .await?
-                {
+                let id_owner = TaxonomyTermOwnerRow::find_by_statement(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT term_id FROM taxonomy_term_translations WHERE id = $1",
+                    vec![translation.id.into()],
+                ))
+                .one(txn)
+                .await?;
+
+                if let Some(id_owner) = id_owner {
                     return Err(DbErr::Migration(format!(
                         "Product Category Taxonomy backfill blocked: translation UUID {} is already used by Taxonomy term {}",
                         translation.id, id_owner.term_id,
                     )));
                 }
 
-                taxonomy_term_translation::ActiveModel {
-                    id: Set(translation.id),
-                    term_id: Set(category.id),
-                    tenant_id: Set(category.tenant_id),
-                    locale: Set(locale.clone()),
-                    name: Set(translation.name.clone()),
-                    // Product owns one base category slug, not locale-specific slugs.
-                    // Preserve it deterministically for every imported locale.
-                    slug: Set(route_key.clone()),
-                    description: Set(translation.description.clone()),
-                    revision: Set(1),
-                    created_at: Set(category.created_at),
-                    updated_at: Set(category.updated_at),
-                }
-                .insert(txn)
+                txn.execute_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"
+                        INSERT INTO taxonomy_term_translations (
+                            id, term_id, tenant_id, locale, name, slug, description, revision, created_at, updated_at
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $9)
+                    "#,
+                    vec![
+                        translation.id.into(),
+                        category.id.into(),
+                        category.tenant_id.into(),
+                        locale.clone().into(),
+                        translation.name.clone().into(),
+                        route_key.clone().into(),
+                        translation.description.clone().into(),
+                        category.created_at.into(),
+                        category.updated_at.into(),
+                    ],
+                ))
                 .await?;
             }
         }
@@ -249,15 +332,28 @@ async fn ensure_route_owner(
     locale: &str,
     route_key: &str,
 ) -> Result<(), DbErr> {
-    let existing = taxonomy_term_route_key::Entity::find()
-        .filter(taxonomy_term_route_key::Column::TenantId.eq(tenant_id))
-        .filter(taxonomy_term_route_key::Column::Kind.eq(TaxonomyTermKind::Category))
-        .filter(taxonomy_term_route_key::Column::ScopeType.eq(TaxonomyScopeType::Module))
-        .filter(taxonomy_term_route_key::Column::ScopeValue.eq(PRODUCT_SCOPE_VALUE))
-        .filter(taxonomy_term_route_key::Column::Locale.eq(locale))
-        .filter(taxonomy_term_route_key::Column::RouteKey.eq(route_key))
-        .one(txn)
-        .await?;
+    let existing = TaxonomyTermOwnerRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+            SELECT term_id
+            FROM taxonomy_term_route_keys
+            WHERE tenant_id = $1
+              AND kind = 'category'
+              AND scope_type = 'module'
+              AND scope_value = $2
+              AND locale = $3
+              AND route_key = $4
+            LIMIT 1
+        "#,
+        vec![
+            tenant_id.into(),
+            PRODUCT_SCOPE_VALUE.into(),
+            locale.into(),
+            route_key.into(),
+        ],
+    ))
+    .one(txn)
+    .await?;
 
     if let Some(existing) = existing {
         if existing.term_id == term_id {
@@ -269,16 +365,21 @@ async fn ensure_route_owner(
         )));
     }
 
-    taxonomy_term_route_key::ActiveModel {
-        tenant_id: Set(tenant_id),
-        kind: Set(TaxonomyTermKind::Category),
-        scope_type: Set(TaxonomyScopeType::Module),
-        scope_value: Set(PRODUCT_SCOPE_VALUE.to_owned()),
-        locale: Set(locale.to_owned()),
-        route_key: Set(route_key.to_owned()),
-        term_id: Set(term_id),
-    }
-    .insert(txn)
+    txn.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+            INSERT INTO taxonomy_term_route_keys (
+                tenant_id, kind, scope_type, scope_value, locale, route_key, term_id
+            ) VALUES ($1, 'category', 'module', $2, $3, $4, $5)
+        "#,
+        vec![
+            tenant_id.into(),
+            PRODUCT_SCOPE_VALUE.into(),
+            locale.into(),
+            route_key.into(),
+            term_id.into(),
+        ],
+    ))
     .await?;
 
     Ok(())
@@ -289,31 +390,48 @@ async fn ensure_translation_change(
     category: &ProductCategoryRow,
     locale: &str,
 ) -> Result<(), DbErr> {
-    let exists = translation_change::Entity::find()
-        .filter(translation_change::Column::TenantId.eq(category.tenant_id))
-        .filter(translation_change::Column::TermId.eq(category.id))
-        .filter(translation_change::Column::Locale.eq(locale))
-        .filter(translation_change::Column::Operation.eq("upsert"))
-        .filter(translation_change::Column::Lifecycle.eq("active"))
-        .one(txn)
-        .await?
-        .is_some();
+    let exists = CountRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+            SELECT COUNT(*)::BIGINT AS count
+            FROM translation_changes
+            WHERE tenant_id = $1
+              AND term_id = $2
+              AND locale = $3
+              AND operation = 'upsert'
+              AND lifecycle = 'active'
+        "#,
+        vec![
+            category.tenant_id.into(),
+            category.id.into(),
+            locale.into(),
+        ],
+    ))
+    .one(txn)
+    .await?
+    .map(|row| row.count)
+    .unwrap_or_default()
+        != 0;
+
     if exists {
         return Ok(());
     }
 
-    translation_change::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        tenant_id: Set(category.tenant_id),
-        term_id: Set(category.id),
-        locale: Set(locale.to_owned()),
-        resource_revision: Set(1),
-        target_revision: Set(1),
-        operation: Set("upsert".to_owned()),
-        lifecycle: Set("active".to_owned()),
-        created_at: Set(category.updated_at),
-    }
-    .insert(txn)
+    txn.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+            INSERT INTO translation_changes (
+                id, tenant_id, term_id, locale, resource_revision, target_revision, operation, lifecycle, created_at
+            ) VALUES ($1, $2, $3, $4, 1, 1, 'upsert', 'active', $5)
+        "#,
+        vec![
+            Uuid::new_v4().into(),
+            category.tenant_id.into(),
+            category.id.into(),
+            locale.into(),
+            category.updated_at.into(),
+        ],
+    ))
     .await?;
 
     Ok(())
@@ -323,10 +441,19 @@ async fn ensure_category_hierarchy(
     txn: &sea_orm::DatabaseTransaction,
     category: &ProductCategoryRow,
 ) -> Result<(), DbErr> {
-    match taxonomy_category_hierarchy::Entity::find_by_id((category.tenant_id, category.id))
-        .one(txn)
-        .await?
-    {
+    let existing = HierarchyRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+            SELECT parent_term_id, position
+            FROM taxonomy_category_hierarchy
+            WHERE tenant_id = $1 AND term_id = $2
+        "#,
+        vec![category.tenant_id.into(), category.id.into()],
+    ))
+    .one(txn)
+    .await?;
+
+    match existing {
         Some(existing)
             if existing.parent_term_id == category.parent_id
                 && existing.position == category.position =>
@@ -338,13 +465,20 @@ async fn ensure_category_hierarchy(
             category.id,
         ))),
         None => {
-            taxonomy_category_hierarchy::ActiveModel {
-                tenant_id: Set(category.tenant_id),
-                term_id: Set(category.id),
-                parent_term_id: Set(category.parent_id),
-                position: Set(category.position),
-            }
-            .insert(txn)
+            txn.execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"
+                    INSERT INTO taxonomy_category_hierarchy (
+                        tenant_id, term_id, parent_term_id, position
+                    ) VALUES ($1, $2, $3, $4)
+                "#,
+                vec![
+                    category.tenant_id.into(),
+                    category.id.into(),
+                    category.parent_id.into(),
+                    category.position.into(),
+                ],
+            ))
             .await?;
             Ok(())
         }
@@ -419,7 +553,7 @@ fn canonical_key_for_product_category(category_id: Uuid) -> String {
 }
 
 fn exact_taxonomy_locale(value: &str, category_id: Uuid) -> Result<String, DbErr> {
-    let normalized = normalize_term_locale(value).ok_or_else(|| {
+    let normalized = rustok_api::normalize_locale_tag(value).ok_or_else(|| {
         DbErr::Migration(format!(
             "Product Category Taxonomy backfill blocked: category {category_id} has invalid locale {value:?}",
         ))
@@ -433,11 +567,14 @@ fn exact_taxonomy_locale(value: &str, category_id: Uuid) -> Result<String, DbErr
 }
 
 fn exact_taxonomy_route_key(value: &str, category_id: Uuid) -> Result<String, DbErr> {
-    let normalized = normalize_term_route_key(value).ok_or_else(|| {
-        DbErr::Migration(format!(
+    let key = crate::services::catalog::helpers::slugify(value);
+    let normalized = if key.is_empty() {
+        return Err(DbErr::Migration(format!(
             "Product Category Taxonomy backfill blocked: category {category_id} has an empty route key",
-        ))
-    })?;
+        )));
+    } else {
+        key
+    };
     if normalized != value {
         return Err(DbErr::Migration(format!(
             "Product Category Taxonomy backfill blocked: category {category_id} route {value:?} normalizes to {normalized:?}",

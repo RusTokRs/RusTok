@@ -21,9 +21,8 @@ pub use pricing::{
     ProductPricingPort,
 };
 pub use taxonomy::{
-    AsTaxonomyConnection, NoopProductTaxonomyPort, ProductTaxonomyCategoryInput,
-    ProductTaxonomyCategorySnapshot, ProductTaxonomyCategoryTranslationInput,
-    ProductTaxonomyPort, TaxonomyConnection,
+    AsTaxonomyConnection, NoopProductTaxonomyPort, ProductTaxonomyCategorySnapshot,
+    ProductTaxonomyCategoryTranslationInput, ProductTaxonomyPort, TaxonomyConnection,
 };
 pub use types::{
     AdminCatalogFacetsRequest, AdminProductsRequest, FilteredPublishedProductsRequest,

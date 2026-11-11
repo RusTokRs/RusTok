@@ -47,6 +47,7 @@ where
     F: Fn(T) -> Fut,
     Fut: Future,
 {
+    let concurrency = concurrency.max(1);
     let mut results = Vec::with_capacity(items.len());
     let mut futures = FuturesUnordered::new();
 
@@ -73,6 +74,7 @@ where
     F: Fn(Vec<T>) -> Fut,
     Fut: Future<Output = Vec<R>>,
 {
+    let batch_size = batch_size.max(1);
     let mut results = Vec::new();
 
     for chunk in items.chunks(batch_size) {
@@ -554,5 +556,24 @@ mod tests {
         let value = coalescer.take();
         assert_eq!(value, Some("value2"));
         assert!(!coalescer.has_pending());
+    }
+
+    #[tokio::test]
+    async fn test_parallel_zero_concurrency_does_not_deadlock() {
+        let items = vec![1, 2, 3];
+        let results: Vec<Result<i32, ()>> = parallel(items, 0, |item| async move { item * 2 }).await;
+        let mut values: Vec<i32> = results.into_iter().map(|r| r.unwrap()).collect();
+        values.sort();
+        assert_eq!(values, vec![2, 4, 6]);
+    }
+
+    #[tokio::test]
+    async fn test_batch_zero_batch_size_does_not_panic() {
+        let items = vec![1, 2, 3];
+        let results = batch(items, 0, Duration::ZERO, |batch| async move {
+            batch.into_iter().map(|x| x * 10).collect()
+        })
+        .await;
+        assert_eq!(results, vec![10, 20, 30]);
     }
 }

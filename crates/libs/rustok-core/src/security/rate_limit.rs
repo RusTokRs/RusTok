@@ -89,11 +89,19 @@ impl TokenBucket {
     }
 
     fn retry_after(&self) -> Duration {
+        if self.rate <= 0.0 || !self.rate.is_finite() {
+            return Duration::from_secs(60);
+        }
         let needed = 1.0 - self.tokens;
         if needed <= 0.0 {
             Duration::from_secs(0)
         } else {
-            Duration::from_secs_f64(needed / self.rate)
+            let secs = needed / self.rate;
+            if secs.is_finite() && secs >= 0.0 {
+                Duration::from_secs_f64(secs)
+            } else {
+                Duration::from_secs(60)
+            }
         }
     }
 }
@@ -135,8 +143,12 @@ impl RateLimiter {
 
     /// Check rate limit for arbitrary key
     async fn check_key(&self, key: &str, requests_per_minute: u32) -> RateLimitResult {
+        if requests_per_minute == 0 {
+            let retry_after = Duration::from_secs(self.config.block_duration_seconds.max(1));
+            return RateLimitResult::Blocked { retry_after };
+        }
         let rate = requests_per_minute as f64 / 60.0;
-        let capacity = self.config.burst_size as f64;
+        let capacity = (self.config.burst_size as f64).max(1.0);
 
         let mut buckets = self.buckets.write().await;
 
@@ -299,6 +311,19 @@ mod tests {
         }
 
         // 6th request should be blocked
+        let result = limiter.check_ip("127.0.0.1".parse().unwrap()).await;
+        assert!(matches!(result, RateLimitResult::Blocked { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter_zero_requests_per_minute_does_not_panic() {
+        let config = RateLimitConfig {
+            requests_per_minute: 0,
+            burst_size: 0,
+            block_duration_seconds: 60,
+            ..Default::default()
+        };
+        let limiter = RateLimiter::new(config);
         let result = limiter.check_ip("127.0.0.1".parse().unwrap()).await;
         assert!(matches!(result, RateLimitResult::Blocked { .. }));
     }

@@ -3,10 +3,6 @@ use std::{collections::HashMap, sync::Arc};
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, TenantLocale};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
-use rustok_taxonomy::{
-    TaxonomyCategoryDeleteCleanupPort, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
-    TaxonomyService,
-};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect,
@@ -24,6 +20,9 @@ use crate::dto::{
 };
 use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
+use crate::ports::taxonomy::{
+    BlogCategoryDeleteCleanupPort, BlogTaxonomyPort, NoopBlogTaxonomyPort,
+};
 
 const BLOG_TAXONOMY_SCOPE: &str = "blog";
 
@@ -36,16 +35,20 @@ pub struct CategoryService {
     commands: CategoryCommandCore,
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
-    category_delete_cleanup: Option<Arc<dyn TaxonomyCategoryDeleteCleanupPort>>,
+    category_delete_cleanup: Option<Arc<dyn BlogCategoryDeleteCleanupPort>>,
+    taxonomy_port: Arc<dyn BlogTaxonomyPort>,
 }
 
 impl CategoryService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
+        let taxonomy_port: Arc<dyn BlogTaxonomyPort> = Arc::new(NoopBlogTaxonomyPort);
         Self {
-            commands: CategoryCommandCore::new(db.clone(), event_bus.clone()),
+            commands: CategoryCommandCore::new(db.clone(), event_bus.clone())
+                .with_taxonomy_port(taxonomy_port.clone()),
             db,
             event_bus,
             category_delete_cleanup: None,
+            taxonomy_port,
         }
     }
 
@@ -54,9 +57,15 @@ impl CategoryService {
     /// Delete fails closed when this port is absent; reads and other writes do not require it.
     pub fn with_category_delete_cleanup(
         mut self,
-        cleanup: Arc<dyn TaxonomyCategoryDeleteCleanupPort>,
+        cleanup: Arc<dyn BlogCategoryDeleteCleanupPort>,
     ) -> Self {
         self.category_delete_cleanup = Some(cleanup);
+        self
+    }
+
+    pub fn with_taxonomy_port(mut self, port: Arc<dyn BlogTaxonomyPort>) -> Self {
+        self.commands = self.commands.with_taxonomy_port(port.clone());
+        self.taxonomy_port = port;
         self
     }
 
@@ -83,7 +92,7 @@ impl CategoryService {
             return Err(BlogError::validation("Category ID must not be nil"));
         }
         enforce_scope(&security, Resource::BlogCategories, Action::Read)?;
-        load_category_response(&self.db, tenant_id, category_id, locale).await
+        load_category_response(&*self.taxonomy_port, &self.db, tenant_id, category_id, locale).await
     }
 
     pub async fn update(
@@ -116,21 +125,22 @@ impl CategoryService {
                 "Blog Category delete requires host-composed Taxonomy capability cleanup",
             )
         })?;
-        let cleanup = BlogCategoryDeleteCleanup::new(
+        let cleanup = Arc::new(BlogCategoryDeleteCleanup::new(
             category_id,
             security.user_id,
             self.event_bus.clone(),
             capability_cleanup,
-        );
-        TaxonomyService::new(self.db.clone())
+            self.taxonomy_port.clone(),
+        ));
+        self.taxonomy_port
             .delete_module_category_with_cleanup(
+                &self.db,
                 tenant_id,
                 category_id,
-                BLOG_TAXONOMY_SCOPE,
-                &cleanup,
+                &security,
+                cleanup,
             )
             .await
-            .map_err(BlogError::from)
     }
 
     pub async fn list(
@@ -168,11 +178,11 @@ impl CategoryService {
             .map(|category| category.id)
             .collect::<Vec<_>>();
 
-        let canonical = TaxonomyOwnerCategoryReader::new(self.db.clone())
-            .load_scoped_categories_strict(
+        let canonical = self
+            .taxonomy_port
+            .load_scoped_categories(
+                (&self.db).into(),
                 tenant_id,
-                TaxonomyScopeType::Module,
-                Some(BLOG_TAXONOMY_SCOPE),
                 Some(&category_ids),
                 &locale,
                 Some(PLATFORM_FALLBACK_LOCALE),
@@ -263,8 +273,9 @@ impl CategoryService {
     }
 }
 
-pub(super) async fn load_category_response<C: ConnectionTrait>(
-    db: &C,
+pub(super) async fn load_category_response(
+    port: &dyn BlogTaxonomyPort,
+    db: &DatabaseConnection,
     tenant_id: Uuid,
     category_id: Uuid,
     locale: &str,
@@ -276,23 +287,22 @@ pub(super) async fn load_category_response<C: ConnectionTrait>(
         .await?
         .ok_or_else(|| BlogError::category_not_found(category_id))?;
     let taxonomy_ids = [category_id];
-    let canonical = TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
-        db,
-        tenant_id,
-        TaxonomyScopeType::Module,
-        Some(BLOG_TAXONOMY_SCOPE),
-        Some(&taxonomy_ids),
-        &locale,
-        Some(PLATFORM_FALLBACK_LOCALE),
-    )
-    .await?
-    .into_iter()
-    .next()
-    .ok_or_else(|| {
-        BlogError::invariant(format!(
-            "Blog category {category_id} points to a missing Taxonomy Category"
-        ))
-    })?;
+    let canonical = port
+        .load_scoped_categories(
+            db.into(),
+            tenant_id,
+            Some(&taxonomy_ids),
+            &locale,
+            Some(PLATFORM_FALLBACK_LOCALE),
+        )
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| {
+            BlogError::invariant(format!(
+                "Blog category {category_id} points to a missing Taxonomy Category"
+            ))
+        })?;
     if canonical.available_locales.is_empty() {
         return Err(BlogError::invariant(format!(
             "Blog category {category_id} Taxonomy projection has no localized copy"

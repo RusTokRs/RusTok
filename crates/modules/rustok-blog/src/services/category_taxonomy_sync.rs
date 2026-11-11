@@ -1,28 +1,36 @@
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
 use sea_orm::DatabaseTransaction;
 use uuid::Uuid;
 
-use crate::error::{BlogError, BlogResult};
+use crate::error::BlogResult;
+use crate::ports::taxonomy::{
+    BlogTaxonomyCategoryLocaleCopy, BlogTaxonomyPort, BlogTaxonomySyncCategoryInput,
+};
 
 pub(crate) const BLOG_TAXONOMY_SCOPE: &str = "blog";
 
 pub(crate) async fn load_category_locale_copy_in_tx(
+    port: &dyn BlogTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
     locale: &str,
-) -> BlogResult<Option<rustok_taxonomy::TaxonomyModuleCategoryLocaleCopy>> {
-    rustok_taxonomy::load_module_category_locale_copy_in_tx(
-        txn,
-        tenant_id,
-        category_id,
-        BLOG_TAXONOMY_SCOPE,
-        locale,
-    )
-    .await
-    .map_err(BlogError::from)
+) -> BlogResult<Option<BlogTaxonomyCategoryLocaleCopy>> {
+    port.load_category_locale_copy_in_tx(txn, tenant_id, category_id, locale)
+        .await
 }
 
 pub(crate) async fn sync_category_copy_in_tx(
+    port: &dyn BlogTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
@@ -33,27 +41,20 @@ pub(crate) async fn sync_category_copy_in_tx(
     slug: String,
     description: Option<String>,
 ) -> BlogResult<()> {
-    rustok_taxonomy::sync_module_category_with_owned_aliases_in_tx(
+    port.sync_category_copy_in_tx(
         txn,
         tenant_id,
-        rustok_taxonomy::SyncModuleCategoryInput {
+        BlogTaxonomySyncCategoryInput {
             category_id,
-            module_scope: BLOG_TAXONOMY_SCOPE.to_string(),
-            canonical_key: canonical_key_for_blog_category(category_id),
+            parent_id,
+            position,
             locale,
             name,
             slug,
-            aliases: Vec::new(),
             description,
-            parent_id,
-            position,
-            icon_key: None,
-            color: None,
         },
     )
     .await
-    .map(|_| ())
-    .map_err(BlogError::from)
 }
 
 pub(crate) fn canonical_key_for_blog_category(category_id: Uuid) -> String {

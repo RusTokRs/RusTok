@@ -11,14 +11,16 @@ use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
 
+use std::sync::Arc;
+
 use crate::domain::BLOG_CATEGORY_SETTINGS_MAX_BYTES;
 use crate::dto::{
     CategoryResponse, CreateCategoryInput, MAX_BLOG_CATEGORY_TREE_NODES, UpdateCategoryInput,
 };
 use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
+use crate::ports::taxonomy::{BlogTaxonomyPort, NoopBlogTaxonomyPort};
 use crate::services::{category_taxonomy_sync, rbac::enforce_scope};
-use rustok_taxonomy::{TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 
 /// Blog-owned Category command core.
 ///
@@ -28,11 +30,21 @@ use rustok_taxonomy::{TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 pub struct CategoryService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    pub(crate) taxonomy_port: Arc<dyn BlogTaxonomyPort>,
 }
 
 impl CategoryService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        Self {
+            db,
+            event_bus,
+            taxonomy_port: Arc::new(NoopBlogTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(mut self, port: Arc<dyn BlogTaxonomyPort>) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     #[instrument(skip(self, security, input))]
@@ -82,12 +94,12 @@ impl CategoryService {
         let id = Uuid::new_v4();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
-        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?;
+        self.taxonomy_port.lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?;
         ensure_category_tree_capacity_in_tx(&txn, tenant_id).await?;
         if let Some(parent_id) = parent_id {
-            Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?;
+            Self::ensure_exists_in_tx(&*self.taxonomy_port, &txn, tenant_id, parent_id).await?;
         }
-        ensure_hierarchy_coverage_in_tx(&txn, tenant_id).await?;
+        ensure_hierarchy_coverage_in_tx(&*self.taxonomy_port, &txn, tenant_id).await?;
 
         blog_category::ActiveModel {
             id: Set(id),
@@ -101,6 +113,7 @@ impl CategoryService {
         .await?;
 
         category_taxonomy_sync::sync_category_copy_in_tx(
+            &*self.taxonomy_port,
             &txn,
             tenant_id,
             id,
@@ -113,8 +126,15 @@ impl CategoryService {
         )
         .await?;
 
-        canonicalize_siblings_for_insert_in_tx(&txn, tenant_id, id, parent_id, requested_position)
-            .await?;
+        canonicalize_siblings_for_insert_in_tx(
+            &*self.taxonomy_port,
+            &txn,
+            tenant_id,
+            id,
+            parent_id,
+            requested_position,
+        )
+        .await?;
 
         self.publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id)
             .await?;
@@ -145,17 +165,16 @@ impl CategoryService {
             return Ok(Some(0));
         }
 
-        let canonical = TaxonomyOwnerCategoryReader::new(self.db.clone())
-            .load_scoped_categories_strict(
+        let canonical = self
+            .taxonomy_port
+            .load_scoped_categories(
+                (&self.db).into(),
                 tenant_id,
-                TaxonomyScopeType::Module,
-                Some(category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
                 Some(&category_ids),
                 PLATFORM_FALLBACK_LOCALE,
                 None,
             )
-            .await
-            .map_err(BlogError::from)?;
+            .await?;
         if canonical.len() != category_ids.len() {
             return Ok(None);
         }
@@ -190,7 +209,9 @@ impl CategoryService {
         let txn = self.db.begin().await.map_err(BlogError::from)?;
         // Serialize before reading hierarchy so a concurrent structural move cannot be
         // overwritten by a stale parent/position snapshot from this update transaction.
-        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?;
+        self.taxonomy_port
+            .lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
+            .await?;
         let category = blog_category::Entity::find_by_id(category_id)
             .filter(blog_category::Column::TenantId.eq(tenant_id))
             .one(&txn)
@@ -199,17 +220,10 @@ impl CategoryService {
 
         // Fail closed on missing/foreign canonical ownership; update must never recreate a Taxonomy Category.
         let category_ids = [category_id];
-        let canonical = TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
-            &txn,
-            tenant_id,
-            TaxonomyScopeType::Module,
-            Some(category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
-            Some(&category_ids),
-            &locale,
-            None,
-        )
-        .await
-        .map_err(BlogError::from)?;
+        let canonical = self
+            .taxonomy_port
+            .load_scoped_categories((&txn).into(), tenant_id, Some(&category_ids), &locale, None)
+            .await?;
         if canonical.len() != 1 {
             return Err(BlogError::invariant(format!(
                 "Blog category {category_id} is missing canonical Taxonomy ownership or hierarchy",
@@ -217,6 +231,7 @@ impl CategoryService {
         }
 
         let existing_canonical = category_taxonomy_sync::load_category_locale_copy_in_tx(
+            &*self.taxonomy_port,
             &txn,
             tenant_id,
             category_id,
@@ -319,6 +334,7 @@ impl CategoryService {
         let (parent_id, position) = (placement.parent_id, placement.position);
 
         category_taxonomy_sync::sync_category_copy_in_tx(
+            &*self.taxonomy_port,
             &txn,
             tenant_id,
             category_id,
@@ -344,6 +360,7 @@ impl CategoryService {
     }
 
     pub(crate) async fn ensure_exists_in_tx(
+        port: &dyn BlogTaxonomyPort,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
         category_id: Uuid,
@@ -363,18 +380,15 @@ impl CategoryService {
         }
 
         let ids = [category_id];
-        let canonical =
-            rustok_taxonomy::TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
-                txn,
+        let canonical = port
+            .load_scoped_categories(
+                txn.into(),
                 tenant_id,
-                rustok_taxonomy::TaxonomyScopeType::Module,
-                Some(category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
                 Some(&ids),
                 rustok_api::PLATFORM_FALLBACK_LOCALE,
                 None,
             )
-            .await
-            .map_err(BlogError::from)?;
+            .await?;
 
         let canonical = canonical.into_iter().next().ok_or_else(|| {
             BlogError::invariant(format!(
@@ -428,6 +442,7 @@ async fn ensure_category_tree_capacity_in_tx(
 }
 
 async fn ensure_hierarchy_coverage_in_tx(
+    port: &dyn BlogTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
 ) -> BlogResult<()> {
@@ -443,17 +458,15 @@ async fn ensure_hierarchy_coverage_in_tx(
         return Ok(());
     }
 
-    let canonical = rustok_taxonomy::TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
-        txn,
-        tenant_id,
-        rustok_taxonomy::TaxonomyScopeType::Module,
-        Some(category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
-        Some(&blog_category_ids),
-        PLATFORM_FALLBACK_LOCALE,
-        Some(PLATFORM_FALLBACK_LOCALE),
-    )
-    .await
-    .map_err(BlogError::from)?;
+    let canonical = port
+        .load_scoped_categories(
+            txn.into(),
+            tenant_id,
+            Some(&blog_category_ids),
+            PLATFORM_FALLBACK_LOCALE,
+            Some(PLATFORM_FALLBACK_LOCALE),
+        )
+        .await?;
 
     if canonical.len() != blog_category_ids.len() {
         return Err(BlogError::invariant(
@@ -473,6 +486,7 @@ async fn ensure_hierarchy_coverage_in_tx(
 }
 
 async fn canonicalize_siblings_for_insert_in_tx(
+    port: &dyn BlogTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
@@ -487,17 +501,15 @@ async fn canonicalize_siblings_for_insert_in_tx(
         .map(|category| category.id)
         .collect::<Vec<_>>();
 
-    let canonical = TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
-        txn,
-        tenant_id,
-        TaxonomyScopeType::Module,
-        Some(category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
-        Some(&category_ids),
-        PLATFORM_FALLBACK_LOCALE,
-        None,
-    )
-    .await
-    .map_err(BlogError::from)?;
+    let canonical = port
+        .load_scoped_categories(
+            txn.into(),
+            tenant_id,
+            Some(&category_ids),
+            PLATFORM_FALLBACK_LOCALE,
+            None,
+        )
+        .await?;
     if canonical.len() != category_ids.len() {
         return Err(BlogError::invariant(
             "Blog category Taxonomy hierarchy coverage is incomplete after create",
@@ -526,15 +538,13 @@ async fn canonicalize_siblings_for_insert_in_tx(
     let mut ordered_sibling_ids = siblings.into_iter().map(|(_, id)| id).collect::<Vec<_>>();
     ordered_sibling_ids.insert(insertion_index, category_id);
 
-    rustok_taxonomy::reorder_module_category_siblings_in_tx(
+    port.reorder_category_siblings_in_tx(
         txn,
         tenant_id,
-        category_taxonomy_sync::BLOG_TAXONOMY_SCOPE,
         parent_id,
         &ordered_sibling_ids,
     )
     .await
-    .map_err(BlogError::from)
 }
 
 fn normalize_category_settings(settings: serde_json::Value) -> BlogResult<serde_json::Value> {
@@ -621,7 +631,7 @@ fn normalize_category_slug(input: Option<&str>, fallback_name: &str) -> BlogResu
 }
 
 fn normalize_non_empty_slug(slug: &str) -> BlogResult<String> {
-    let normalized = rustok_taxonomy::normalize_term_route_key(slug).ok_or_else(|| {
+    let normalized = crate::normalization::normalize_term_route_key(slug).ok_or_else(|| {
         BlogError::validation("Slug must contain at least one routable letter or digit")
     })?;
     if normalized.chars().count() > 120 {

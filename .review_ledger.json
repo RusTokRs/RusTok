@@ -17,9 +17,10 @@
       "category": "libs",
       "files": 35,
       "loc": 7691,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-11T20:03:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: BCP 47 locale normalization, candidate hierarchy and script-level fallback in locale.rs; fixed-work constant-time SHA-256 digest comparison and RFC 2104 HMAC in digest.rs; typed ChannelContext, TenantContext, and HostAuthority in context/; bidirectional Display/FromStr platform resource mapping and effective permission calculation in permissions.rs; fail-closed port deadline semantics, trimmed whitespace idempotency validation and sanitized technical messages in ports.rs",
+      "last_audited": "2026-11-11"
     },
     "crates/libs/rustok-core": {
       "name": "rustok-core",
@@ -27,9 +28,10 @@
       "category": "libs",
       "files": 66,
       "loc": 18566,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-11T19:43:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: ISO 4217 canonical money exponents and rounding in money.rs; flex custom fields schema validation, transparent array depth parsing, and regexes in field_schema.rs; 64-stripe write-locked CAS in cache_atomic.rs; event bus schema validation, backpressure controller and memory transport in events/; epoch-aware half-open probes and bounded failure/success thresholds in resilience/circuit_breaker.rs; clamped non-zero concurrency and non-panicking batch_size.max(1) in async_utils/mod.rs; non-panicking division-by-zero protection in security/rate_limit.rs TokenBucket::retry_after(); slug and RFC 1035 hostname validation in tenant_validation.rs",
+      "last_audited": "2026-11-11"
     },
     "crates/libs/rustok-events": {
       "name": "rustok-events",
@@ -37,9 +39,10 @@
       "category": "libs",
       "files": 37,
       "loc": 12838,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-11T20:19:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: root DomainEvent and sealed ContractEventPayload families, correlation/causation tracking, strict non-nil UUID validation in EventEnvelope, RFC 3339 / microsecond serde timestamp formats, registered schema version consistency guards, and sealed event delivery requirements",
+      "last_audited": "2026-11-11"
     },
     "crates/libs/rustok-fba": {
       "name": "rustok-fba",

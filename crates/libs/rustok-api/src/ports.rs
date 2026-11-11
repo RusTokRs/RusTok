@@ -108,6 +108,7 @@ impl PortContext {
             .idempotency_key
             .as_deref()
             .unwrap_or_default()
+            .trim()
             .is_empty()
         {
             return Err(PortError::validation(
@@ -508,5 +509,15 @@ mod tests {
 
         assert_eq!(validation.message, "currency is invalid");
         assert_eq!(conflict.message, "price already exists");
+    }
+
+    #[test]
+    fn require_write_semantics_rejects_whitespace_idempotency_key() {
+        let context = PortContext::new("t1", PortActor::user("u1"), "en", "c1")
+            .with_deadline(Duration::from_secs(5))
+            .with_idempotency_key("   ");
+
+        let err = context.require_write_semantics().unwrap_err();
+        assert_eq!(err.code, "port.idempotency_key_required");
     }
 }
