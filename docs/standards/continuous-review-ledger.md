@@ -4,8 +4,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-01 — Entrypoint & Composition Root (`apps/server`)  
-**Next pending component:** [`apps/server`](../../apps/server) (485 files, 190,468 LOC)  
-**Current main SHA:** `60267e392b`  
+**Next pending component:** [`apps/server` (Track FS-01.02 — host.rs & host_authority.rs)](../../apps/server)  
+**Current main SHA:** `bbaa269b90`  
 **Active branch:** `main`
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **285 components** (~2.5M LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -32,7 +32,7 @@ The single canonical trigger to continue this audit sequence is:
 
 ### Phase Backlog — Architectural Sequence (285 Components Total — 0% COMPLETE)
 
-- [ ] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (0/1 completed)
+- [ ] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (1/33 tracks completed)
 - [ ] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (0/10 completed)
 - [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (0/24 completed)
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (0/37 completed)
@@ -47,9 +47,50 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-01 — Entrypoint & Composition Root (`apps/server`)
-*Host binary, Axum HTTP/gRPC server composition, runtime context, middleware pipeline, global error handling, and background service lifecycle.* (0/1 completed)
+*Host binary, Axum HTTP/gRPC server composition, runtime context, middleware pipeline, global error handling, and background service lifecycle.* (1/33 tracks completed)
 
-- [ ] **[`apps/server`](../../apps/server)** (485 files, 190,468 LOC)
+- [ ] **[`apps/server`](../../apps/server)** (485 files, 190,468 LOC) — decomposed into 33 focused audit tracks:
+
+#### 1. Bootstrap, Host & Configuration
+- [x] **FS-01.01 — `apps/server/src/main.rs` & `apps/server/src/bin/*`** — entrypoint, CLI arguments, signal handling, process lifecycle. *(Done: bounded thread stack size parsing with [2MB, 64MB] bounds and 8MB default; case-insensitive log format normalization; robust falsy parsing for RUSTOK_METRICS; trimmed service name fallback; fail-closed duplicate/whitespace argument handling in `export_api_contracts`; 5 unit tests in `main.rs` + 9 unit tests in `export_api_contracts.rs` all passing; verified with `cargo test` and `cargo clippy --no-deps`).*
+- [ ] **FS-01.02 — `apps/server/src/host.rs` & `apps/server/src/host_authority.rs`** — host wiring, socket binding, TLS/HTTPS, shutdown signals.
+- [ ] **FS-01.03 — `apps/server/src/services/server_bootstrap.rs`** — bootstrap sequence, database pool initialization, migration execution, state validation.
+- [ ] **FS-01.04 — `apps/server/src/services/server_runtime_context.rs`** — shared server context, state injection, thread safety.
+- [ ] **FS-01.05 — `apps/server/src/services/app_runtime.rs` & `apps/server/src/services/app_lifecycle.rs`** — runtime background worker lifecycle, cancellation, drain on shutdown.
+- [ ] **FS-01.06 — `apps/server/src/routes.rs` & `apps/server/src/error.rs`** — global routing table, 404 fallback, top-level Axum error mapping.
+
+#### 2. Middleware & Context Guards
+- [ ] **FS-01.07 — `apps/server/src/middleware/tenant.rs`** — multi-tenant header/host resolution, domain mapping, fail-closed tenant boundary.
+- [ ] **FS-01.08 — `apps/server/src/middleware/channel.rs`** — sales channel resolution, default fallback, header precedence.
+- [ ] **FS-01.09 — `apps/server/src/middleware/locale.rs`** — locale header negotiation, fallback normalization, language validation.
+- [ ] **FS-01.10 — `apps/server/src/middleware/auth_context.rs`** — JWT/session authentication context extraction, bearer token parsing, claims validation.
+- [ ] **FS-01.11 — `apps/server/src/middleware/rbac.rs`** — route-level role/permission enforcement, policy evaluation, 403 handling.
+- [ ] **FS-01.12 — `apps/server/src/middleware/rate_limit.rs`** — tier-based rate limiting, token bucket algorithm, header emission.
+- [ ] **FS-01.13 — `apps/server/src/middleware/security_headers.rs`** — CSP, CORS, HSTS, frame options, clickjacking defense.
+- [ ] **FS-01.14 — `apps/server/src/middleware/telemetry.rs` & `request_id.rs`** — trace propagation, OpenTelemetry spans, request correlation IDs.
+- [ ] **FS-01.15 — `apps/server/src/middleware/body_limit.rs`** — payload size guards, DoS defense, streaming boundaries.
+- [ ] **FS-01.16 — `apps/server/src/middleware/idempotency.rs`** — mutation idempotency keys, cache lookups, duplicate detection.
+- [ ] **FS-01.17 — `apps/server/src/middleware/cache_control.rs`** — dynamic HTTP caching directives, ETag negotiation, 304 handling.
+
+#### 3. Core API Controllers
+- [ ] **FS-01.18 — `apps/server/src/controllers/health.rs`** — liveness, readiness, deep dependency checks (DB, Iggy, Redis).
+- [ ] **FS-01.19 — `apps/server/src/controllers/metrics.rs`** — Prometheus metric exposition, telemetry sanitization.
+- [ ] **FS-01.20 — `apps/server/src/controllers/graphql.rs`** — async-graphql HTTP/WS execution, schema stitching, error formatting.
+- [ ] **FS-01.21 — `apps/server/src/controllers/auth.rs`** — login, register, token refresh, password reset endpoints.
+- [ ] **FS-01.22 — `apps/server/src/controllers/tenant.rs`** — tenant provisioning, domain management, settings CRUD.
+- [ ] **FS-01.23 — `apps/server/src/controllers/modules.rs`** — dynamic module registry inspection, lifecycle control (enable/disable).
+- [ ] **FS-01.24 — `apps/server/src/controllers/admin_proxy.rs`** — admin SPA routing, SSR fallback, asset streaming.
+- [ ] **FS-01.25 — `apps/server/src/controllers/admin_permissions.rs`** — role assignment, permission matrix query endpoints.
+- [ ] **FS-01.26 — `apps/server/src/controllers/admin_events.rs`** — outbox/event inspection, DLQ management, retry dispatch.
+- [ ] **FS-01.27 — `apps/server/src/controllers/channel.rs`** — channel admin endpoints, CRUD, tenant scoping.
+- [ ] **FS-01.28 — `apps/server/src/controllers/swagger.rs`** — OpenAPI/Swagger UI endpoints, schema generation safety.
+
+#### 4. Event Bus, Outbox & Background Services in Server
+- [ ] **FS-01.29 — `apps/server/src/services/event_bus.rs` & `module_event_dispatcher.rs`** — host event bus composition, module dispatch.
+- [ ] **FS-01.30 — `apps/server/src/services/outbox_retention_worker.rs`** — outbox cleanup worker, batch retention pruning.
+- [ ] **FS-01.31 — `apps/server/src/services/module_transition_watchdog.rs`** — module state machine watchdog, timeout recovery.
+- [ ] **FS-01.32 — `apps/server/src/services/settings_service.rs`** — static & dynamic tenant settings loading and caching.
+- [ ] **FS-01.33 — `apps/server/src/services/rbac_*.rs`** — server-level RBAC caching, runtime invalidation.
 
 ---
 
