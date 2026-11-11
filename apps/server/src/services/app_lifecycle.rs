@@ -798,25 +798,35 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     // These supervisors do not consume StopHandle. Explicitly abort them even
     // if other clones of their handles or the shared context remain alive.
-    if let Some(listener) = runtime_ctx.shared_take::<
+    if let Some(listener) = runtime_ctx.shared_get::<
         crate::services::channel_cache_invalidation::ChannelCacheInvalidationListenerHandle,
     >() {
         listener.abort();
+        runtime_ctx.shared_remove::<
+            crate::services::channel_cache_invalidation::ChannelCacheInvalidationListenerHandle,
+        >();
     }
-    if let Some(listener) = runtime_ctx.shared_take::<
+    if let Some(listener) = runtime_ctx.shared_get::<
         crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle,
     >() {
         listener.abort();
+        runtime_ctx.shared_remove::<
+            crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle,
+        >();
     }
-    if let Some(watchdog) = runtime_ctx.shared_take::<
+    if let Some(watchdog) = runtime_ctx.shared_get::<
         crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle,
     >() {
         watchdog.abort();
+        runtime_ctx.shared_remove::<
+            crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle,
+        >();
     }
     if let Some(forwarder) =
-        runtime_ctx.shared_take::<crate::services::event_bus::EventForwarderHandle>()
+        runtime_ctx.shared_get::<crate::services::event_bus::EventForwarderHandle>()
     {
         forwarder.abort();
+        runtime_ctx.shared_remove::<crate::services::event_bus::EventForwarderHandle>();
     }
 }
 
@@ -1231,6 +1241,25 @@ mod tests {
             false,
             "postgres://postgres:postgres@prod-db.internal:5432/rustok"
         ));
+    }
+
+    #[tokio::test]
+    async fn shutdown_aborts_supervisors_even_when_clone_handles_exist() {
+        use crate::services::event_bus::EventForwarderHandle;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+
+        let (forwarder, _abort_handles) = EventForwarderHandle::for_shutdown_test();
+        let clone = forwarder.clone();
+        ctx.shared_insert(forwarder);
+
+        assert!(clone.is_running());
+        super::shutdown_runtime_workers(&ctx).await;
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(!clone.is_running());
+        assert!(!ctx.shared_contains::<EventForwarderHandle>());
     }
 
     #[tokio::test]
