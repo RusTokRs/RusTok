@@ -68,7 +68,6 @@ pub use ports::{
     MAX_RESERVATION_ADOPTION_ITEMS, PersistentInventoryReservationIdentityPort,
     in_process_inventory_reservation_identity_port, in_process_inventory_reservation_port,
 };
-pub use rustok_commerce_foundation::entities::product::ProductStatus;
 pub use services::{
     BootstrapService, CatalogDeletionBlocker, CatalogDeletionError, InitialInventory,
     InventoryAvailabilityCheckResult, InventoryQuantityWriteResult,
