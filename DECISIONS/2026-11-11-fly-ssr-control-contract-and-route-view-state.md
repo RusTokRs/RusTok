@@ -69,6 +69,30 @@ a read-only caller has no draft session, by design.
    so that styles, browser evidence runners and a future server-rendered Dioxus host see one
    palette.
 
+6. **The host bootstrap is a second consumer of the same markup, under the same rule.**
+   `PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS` in
+   `crates/modules/rustok-page-builder/src/browser_host.rs` binds three attributes of the classic
+   SSR panels:
+
+   | Attribute | On | Meaning |
+   | --- | --- | --- |
+   | `data-fly-intent-form="<name>"` | `<form>` | posts its named controls as the payload of `<name>` |
+   | `data-fly-component-picker` | `<select>` | selects a component and retargets every form |
+   | `data-fly-selected-component-input` | hidden `<input>` | the `component_id` field of a form |
+
+   A form is the wire contract of its intent: every named control is a field of the request type
+   the handler reads, with the JSON type the bootstrap produces (a checkbox is a boolean, a number
+   input is a number or absent, anything else is a string), and every required field has a
+   control. The server renders the target of a form; the bootstrap applies the browser selection
+   over that value and restores it when the selection is cleared.
+
+7. **An intent name with two payload shapes is resolved by an explicit discriminator.**
+   `create_page`, `remove_page`, `rename_page` and `patch_page_metadata` are sent as a typed
+   envelope (`page_index`) and as an SSR form (`page_id` alone). `dispatch_named_intent` hands the
+   form shape to `ssr_form_intent` in one guarded arm, `is_ssr_page_form`, before the arms that
+   read the envelope shape. A new shape is a new term of that guard or a new intent name, never an
+   arm that happens to come first.
+
 ## Sources of truth and ownership
 
 - The adapter source is the source of truth for what is bound. The views are the source of truth
@@ -92,6 +116,13 @@ a read-only caller has no draft session, by design.
 - A `data-fly-route-query` value is a constant that a server resolver reads and that is applied
   before render.
 
+- Every `data-fly-intent-form` names a `BrowserIntentKind` that is resolved for the payload the
+  form sends: by the dispatcher arm whose guard holds, by `ssr_form_intent`, or by the host
+  endpoint.
+- No arm of `ssr_form_intent` is shadowed by a dispatcher arm that never hands the payload over.
+- A selection input that the server rendered with a component keeps that component until the
+  browser selects another one.
+
 ### Allowed states
 
 - A control that needs a transport the host did not provide is absent.
@@ -105,6 +136,10 @@ a read-only caller has no draft session, by design.
 - View state stored in the draft session, or sent as a mutating intent, in order to reach the
   server renderer.
 - A route key written by the adapter and not resolved by the server.
+- A form control whose name the handler does not read, or whose JSON type the request type
+  rejects.
+- A handler that exists and cannot be reached from the endpoint.
+- A bootstrap that clears a server-rendered form target at mount.
 
 ## Non-goals
 
@@ -169,6 +204,11 @@ Not applicable. The contract emits no domain event and owns no projection.
   `crates/modules/rustok-page-builder/admin/src/ssr_control_contract_tests.rs`.
 - Browser tests: `apps/next-admin/tests/e2e/fly-browser-ssr-controls.spec.ts`, which loads the
   shipped adapter.
+- Host bootstrap: part 6 of the same check;
+  `apps/next-admin/tests/e2e/fly-browser-host-bootstrap.spec.ts`, which imports the module
+  composed from the shipped adapter and the shipped constant;
+  `crates/modules/rustok-page-builder/admin/src/ssr_page_forms_browser_tests.rs`, which sends the
+  fields of each page form through `dispatch_browser_intent`.
 - Unit tests of `route_viewport` in `toolbar.rs`.
 
 ## Consequences

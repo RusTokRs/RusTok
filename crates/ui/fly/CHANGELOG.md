@@ -289,6 +289,22 @@ Engineering audit remediation — see
     adapter and the views and fails on a difference in either direction. Decision:
     `DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`.
 
+- **The classic SSR forms of the Page Builder admin reach their handlers with the target the
+  server rendered.** The forms (`form[data-fly-intent-form]`) are bound by the Page Builder host
+  bootstrap that is composed with `fly-browser.js`, not by the adapter itself.
+  - At mount the bootstrap wrote the adapter selection, which is empty at that point, into every
+    `[data-fly-selected-component-input]`. Every form lost the `component_id` the server had
+    rendered and posted without a target. The component picker did not follow a selection made
+    on the canvas or in the layer tree. The bootstrap now keeps the rendered value, applies the
+    selection over it, restores it when the selection is cleared, and moves the picker with it.
+  - The page forms `create_page`, `rename_page`, `remove_page` and `patch_page_metadata` never
+    reached the form resolver: the dispatcher resolved the same names in arms that read the typed
+    envelope shape (`page_index`). Three forms were refused for a missing `page_index`, and
+    `create_page` generated an id in place of the one the author typed. A payload with `page_id`
+    and without `page_index` is now resolved as a form; the typed envelopes are unchanged.
+  - Part 6 of `verify-fly-ssr-control-contract.mjs` derives this second consumer and follows
+    each form to the arm that handles its payload.
+
 - **A save rejected after the edit was applied no longer leaves the canvas diverged from the
   server.** A host may now answer an intent with a successful response that carries
   `save_failure` (`status`, `code`, `error`, `intent`) next to `reload: true`: the edit is in the

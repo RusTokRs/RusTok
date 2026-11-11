@@ -365,8 +365,41 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
       - The host bootstrap (`PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS` in
         `crates/modules/rustok-page-builder/src/browser_host.rs`) is a second consumer:
         `form[data-fly-intent-form]`, `[data-fly-component-picker]`,
-        `[data-fly-selected-component-input]`. The contract check does not read it yet.
-        Owner: Page Builder, repository tooling.
+        `[data-fly-selected-component-input]`. Closed on 2026-11-11: part 6 of the contract
+        check reads it, and follows every form to the arm Rust takes for the payload that
+        form sends. Doing so found two defects, both fixed in the same change:
+        - At mount the bootstrap wrote the empty adapter selection into every selection
+          input, so every SSR form lost the `component_id` the server had rendered and posted
+          without a target; the picker did not follow a selection made elsewhere.
+          `syncSelectionControls` keeps the rendered value, applies the selection over it and
+          restores it when the selection is cleared.
+        - `create_page`, `remove_page`, `rename_page` and `patch_page_metadata` have two
+          payload shapes under one name: the typed envelopes address a page by `page_index`,
+          the forms by `page_id` alone. `dispatch_named_intent` had its own arm for each name
+          and read the envelope shape, so the four arms of `ssr_form_intent` were unreachable:
+          three forms failed on the missing `page_index`, and `create_page` ignored the id the
+          author typed. One guarded arm (`is_ssr_page_form`) now hands the form shape to the
+          resolver. Pattern: `P-SHADOWED-HANDLER`.
+
+        Browser side: `apps/next-admin/tests/e2e/fly-browser-host-bootstrap.spec.ts` (10 tests
+        against the module composed from the shipped adapter and the shipped constant; the
+        "Browser E2E" workflow runs it). Server side: `ssr_page_forms_browser_tests.rs`
+        (dispatch of the exact form fields) and three render tests in
+        `ssr_control_contract_tests.rs`. Open:
+        - The envelope arm of `create_page` activates the new page; the form path does not,
+          and the author stays on the page the form was submitted from. Whether a created page
+          should become the active one is a product decision. Owner: Page Builder admin.
+        - Renaming the id of the page the editor is on (either shape) leaves the route on the
+          old id. What the host does after the reload was not traced. Owner: Pages admin host.
+        - The bind form of `ssr_translations.rs` renders its selection input with `value=""`,
+          while the other panels render the selection the server knows. Without a selection in
+          the browser the form is refused with "translation binding requires component_id,
+          bind_kind, and bind_name together". Owner: Page Builder admin.
+        - The SSR panels are rendered outside `CapabilityFieldset`: a read-only caller sees
+          enabled forms and the server refuses each intent. Owner: Page Builder admin.
+        - The envelope arms of the four page intents have no dispatch test of their own beyond
+          `rename_page` and `remove_page` by index in `ssr_page_forms_browser_tests.rs`.
+          Owner: Page Builder admin.
       - Hydrated `wasm-client` builds mount the adapter too (`wasm-client` enables
         `browser-js`, `post_intents` defaults to `true`). A toolbar button then has both
         `data-fly-action="intent:…"` and a live `on:click`. Whether both fire, and which one

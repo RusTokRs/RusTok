@@ -969,3 +969,32 @@ if (!allowed.includes(current)) fail(`drift: ${current} is neither ${allowed.joi
 Detection: `rg -n '!== "pending"|=== "pending"' scripts/verify` lists checks that
 know one side of a transition. For a status that appears in a registry, search the
 same identifier in `contracts/` and in the owner plan and compare the values.
+
+## P-SHADOWED-HANDLER — A handler is tested through the entry point that reaches it
+
+- **Category:** Verification integrity, dispatch.
+- **Logic dimensions:** Branch completeness, preconditions and bounds.
+- **Observed defect:** Four page intents were sent in two payload shapes under one name:
+  a typed envelope that addressed a page by index, and an SSR form that named it by id.
+  The dispatcher had an arm for each name that read the envelope shape, and a fallback
+  that handed every other name to a form resolver. The resolver had arms for the same
+  four names, written for the form shape. They were never reached: the dispatcher arms
+  came first. Three forms failed on a missing index, and the fourth succeeded with a
+  generated id in place of the one the author typed. The resolver arms had no test
+  through the dispatcher, and a first check that asked "does some arm carry this name"
+  answered yes.
+- **Canonical solution:** One name with two shapes needs an explicit discriminator in
+  one place: a guard that names the keys that tell the shapes apart, before the arms
+  that read either of them. A handler is tested by sending the bytes its producer sends
+  to the public entry point, not by calling the handler. A check that follows a request
+  to its handler reads the arms in source order with their guards and reports an arm
+  that an earlier one always pre-empts.
+
+```rust
+"create_page" | "remove_page" | "rename_page" | "patch_page_metadata"
+    if is_ssr_page_form(payload) => dispatch_ssr_form(controller, intent, payload)?,
+```
+
+Detection: list the string arms of the dispatcher and of every resolver it falls back
+to; a name in both is a candidate. For each, send the payload of every producer through
+the entry point.
