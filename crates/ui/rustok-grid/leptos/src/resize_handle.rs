@@ -46,12 +46,16 @@ pub fn ColumnResizeHandle(
         }
         ev.stop_propagation();
         ev.prevent_default();
-        if let Some(target) = ev.current_target()
-            && let Ok(element) = target.dyn_into::<web_sys::Element>()
-        {
-            // Pointer capture keeps move/up events coming to this element
-            // even when the cursor leaves it mid-drag.
-            let _ = element.set_pointer_capture(ev.pointer_id());
+        // Pointer capture keeps move/up events coming to this element even when
+        // the cursor leaves it mid-drag. A drag without the capture would lose
+        // its `pointerup` as soon as the button is released elsewhere and stay
+        // active, so it is not started; the keyboard path stays available.
+        let captured = ev
+            .current_target()
+            .and_then(|target| target.dyn_into::<web_sys::Element>().ok())
+            .is_some_and(|element| element.set_pointer_capture(ev.pointer_id()).is_ok());
+        if !captured {
+            return;
         }
         set_start_x.set(ev.client_x() as f64);
         set_initial_width.set(current_width.get_untracked());
@@ -72,14 +76,12 @@ pub fn ColumnResizeHandle(
         ));
     };
 
-    let on_pointer_up = move |ev: PointerEvent| {
+    // Bound to `pointerup` and `pointercancel`. The browser releases the capture
+    // itself right after either event (Pointer Events, "implicit release of
+    // pointer capture"), so the handler only ends the drag.
+    let on_pointer_up = move |_: PointerEvent| {
         if !is_dragging.get_untracked() {
             return;
-        }
-        if let Some(target) = ev.current_target()
-            && let Ok(element) = target.dyn_into::<web_sys::Element>()
-        {
-            let _ = element.release_pointer_capture(ev.pointer_id());
         }
         set_is_dragging.set(false);
     };
