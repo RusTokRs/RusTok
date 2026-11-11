@@ -342,15 +342,37 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
     - Measure how long `publish_reviewed` holds the page lock now that the scenario gate and
       the compilation are attempted before the transaction, and decide whether they move to a
       blocking pool. Owner: `rustok-pages`.
-    - Run the Rust and Node suites for the series on the repository toolchain. What was
-      compiled and run so far, in an offline workspace built from Git checkouts of the
-      dependencies (rustc 1.88, a few dependency versions and feature sets differ from
-      `Cargo.lock`; exact scope in the journal): `fly`, `fly-ui`, `fly-browser`,
-      `rustok-page-builder` without `server`, and those files of the four admin/storefront
-      crates that could be built without `leptos` (listed in the journal; among them
-      `draft_session.rs` and `css_scope.rs`). Of the 64 Rust files the series touches, 48
-      were never compiled: all of the server crate `rustok-pages` (`src/**`, `tests/**`),
-      the `apps/server` test, and the remaining admin/storefront files. Owner: maintainer.
+    - Bind the platform rich-text renderer where a landing is compiled. The series removed
+      `PagesRichTextRenderer` together with the storefront branch that rendered the
+      authoring document, and it was the only implementation of `fly::RichTextHtmlRenderer`.
+      The reviewed publish compiles without a renderer (it did before the series too), so
+      rich text in a published landing is the escaped fallback projection of `fly`. Before
+      the series the native storefront read already served that landing, while the GraphQL
+      fallback read of an `ssr` build rendered the authoring document through the platform
+      renderer; on that read the visible rich text changed to the fallback projection. The
+      port, `SharedRichTextRenderer` and the `rich_text_renderer` property of
+      `PageBuilderStorefront` have no production caller. Decide whether the publish
+      compilation gets the `rustok-content` Article renderer (the markup and hash of every
+      landing with rich text change) or the port is retired, and record it against
+      `DECISIONS/2026-10-14-fly-rich-text-embed-action-runtime-and-adapters.md`.
+      Owner: `rustok-page-builder`, `rustok-pages`.
+    - Run the remaining Rust suites for the series on the repository toolchain. The pull
+      request CI (workflow "Fly Page Builder" and the two "Pages Rollback-Activated"
+      workflows, on `d03db9f`) compiled `rustok-pages` with `--all-targets`, ran every test
+      target of `fly`, `fly-ui` and `fly-browser` and the `--lib` tests of
+      `rustok-page-builder-admin`, `rustok-pages` and `rustok-pages-admin`; it checked the
+      two storefront crates with `cargo check --lib` and no features, and
+      `cargo clippy -D warnings` passed for `fly`, `fly-ui`, `fly-web`, `fly-leptos` and
+      `fly-dioxus`. Not executed in any job whose result is green or readable: the five
+      integration tests of `rustok-pages` that the series changed (`tests/*_sqlite.rs`,
+      compiled only; the three PostgreSQL rollback tests that did run are not among them), the
+      Pages storefront under `--features ssr` (its `ssr` code and its five
+      `tests/*_sqlite.rs`), the unit tests of `rustok-page-builder-storefront` (the CSS scope
+      twin was run only in the offline workspace described in the journal), the `apps/server`
+      test `pages_production_relay_native_route_sqlite`, and `cargo clippy -D warnings` for
+      `fly-browser`, `rustok-page-builder-admin`, `rustok-pages`, `rustok-pages-admin` and
+      `rustok-pages-storefront` (that step fails on `main` as well, so it cannot show
+      whether the series added a warning). Owner: maintainer.
 
 ## Rules for this backlog
 

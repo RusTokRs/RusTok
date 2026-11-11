@@ -1170,6 +1170,57 @@ CI на PR показал два регресса относительно `main
 
 `main` за это время ушёл вперёд (`2b00ce4`), снова конфликт в строке индекса `DECISIONS/README.md`; сохранены обе строки `main` от 2026-11-11 и строка серии. `verify-adrs` (181 решение) и `verify-docs` проходят.
 
+### Перепроверка после слияния (2026-11-11)
+
+Предмет — дерево после слияния PR #4717 (`eb17526`) относительно `main` до слияния (`2b00ce4`): 125 файлов, из них 64 Rust. Rust в этой среде не собирается; журналы заданий CI отсюда не читаются — доступны только имена и исходы шагов и номер строки журнала, на которой шаг завершился.
+
+**Найдено и исправлено (документация и конфигурация; код не менялся):**
+
+1. Серия удалила `PagesRichTextRenderer` и нигде этого не записала. Это была единственная реализация порта `fly::RichTextHtmlRenderer`; ADR от 2026-10-14 (решение 1) называет её привязкой к платформенному рендереру rich text. Что изменилось для посетителя:
+   - Публикация компилирует лендинг через `fly::render_page`, без рендерера — и до серии, и после (`landing_contract.rs` серией не менялся). Нативное чтение витрины и до серии отдавало этот лендинг, то есть экранированную fallback-проекцию `fly`.
+   - GraphQL-fallback чтение в сборке с `ssr` до серии получало авторский документ и рендерило rich text платформенным рендерером. Теперь оно отдаёт лендинг, и rich text на этом пути стал fallback-проекцией.
+
+   Записано: ADR от 2026-11-10 («Migration and cutover», «Consequences»), пометка «Amended 2026-11-10» в решении 1 ADR от 2026-10-14, открытый пункт в бэклоге (пункт 10): привязать рендерер в компиляции публикации либо упразднить порт.
+2. Задание Typos в CI отмечает в этом журнале слово `writeable`. Это имя крейта ICU4X из `Cargo.lock`, не опечатка. Слово добавлено в `extend-words` обоих файлов конфигурации (`_typos.toml`, `typos.toml`; они идентичны). Остальные восемь показанных срабатываний — в шести файлах вне серии; в списке аннотаций ровно десять ошибок, а это предел GitHub на шаг, так что список может быть неполным. Локально `typos-cli 1.52.2` (версия не та, что закреплена в CI: `writeable` она не отмечает и со старой конфигурацией) по всему дереву с новой конфигурацией даёт 12 срабатываний в 10 файлах, все вне серии.
+3. Запись бэклога «48 из 64 Rust-файлов серии ни разу не компилировались» устарела после CI на PR. Заменена перечнем того, что CI собрал и исполнил, и того, что по-прежнему не исполнялось.
+
+**Поправки к прежним записям этого журнала:**
+
+- «`tsc` без ошибок в обоих Next-приложениях» относится к голому `tsc --noEmit` с закоммиченным `src/types/i18n.d.ts`. CI запускает `npm run typecheck`, который сначала перегенерирует этот файл из `messages/en.ftl`. В таком виде проверка падает: витрина — 3 ошибки (`packages/rustok-blog`, `packages/rustok-pricing`), админка — 10 (`packages/blog`). Ошибки дословно совпадают до и после серии, файлов серии среди них нет.
+- Запись о первой сборке («`rustok-page-builder/admin/src/lib.rs` не разбирался» из-за лишней `;`) верна для базы, на которой он писался. К моменту слияния `main` уже убрал `;` (`357a961`), и вставка разбиралась. Итог серии в этом файле — удаление встроенной копии `model.rs`; копия повторно сверена с файлом без учёта пробельных символов: совпадает.
+
+**Проверено, дефектов серии не найдено:**
+
+- CI на голове PR (`d03db9f`), workflow «Fly Page Builder», задание «Focused tests and source guards». Зелёные шаги: `cargo test --all-targets` для `fly`, `fly-browser`, `fly-ui` и `fly-web`; `cargo test --lib` для `rustok-page-builder-admin`, `rustok-pages`, `rustok-pages-admin`; `cargo check --lib` обоих storefront-крейтов; `cargo check` SSR-эндпоинта админки; `cargo clippy --all-targets -- -D warnings` для `fly`, `fly-ui`, `fly-web`, `fly-leptos`, `fly-dioxus`. Красные шаги: 19 (clippy интеграций) и пять `Verify …` (29, 31–33, 35). На последнем запуске этого workflow на `main` до слияния (`c71b901`) красные те же шесть и ещё шаг 12 `Run Page Builder admin unit tests`.
+- Оба workflow «Pages Rollback-Activated … PostgreSQL Evidence» на `d03db9f` зелёные: три PostgreSQL-теста `rustok-pages` исполнены, `cargo check --locked -p rustok-pages --all-targets` прошёл.
+- Общий CI: `Cargo Check` (stable и 1.96.0), `Documentation`, `Unused Dependencies` падают на той же строке журнала, что и на `2b00ce4` (2294, 2277, 2967); `Clippy` — на 1699 против 1698. `Formatting` падает в обоих случаях, журнал после серии короче на 1230 строк (7596 против 8826).
+- `rustfmt 1.8.0` (Rust 1.88, `--edition 2024`; в CI — 1.96), каждый из 64 файлов отдельно. До серии не отформатированы шесть файлов, после — пять: `rustok-page-builder/admin/src/lib.rs` (1236 строк расхождения) стал отформатированным, потому что удалена встроенная копия `model.rs` без отступов. В остальных пяти (`draft_session.rs`, `rustok-pages/admin/src/{access,browser_intent,builder}.rs`, `rustok-pages/src/services/mod.rs`) серия не добавила ни одной неотформатированной строки.
+- Next: `eslint` в обоих приложениях без ошибок. `next build` обоих приложений проходит в копии дерева вне репозитория (витрина — после удаления BOM из четырёх `package.json`, см. ниже); маршруты `/[locale]/pages/[slug]` и `/dashboard/pages` собраны. В CI шаг `Build` не исполняется: витрина падает на `Typecheck`, админка — на `Format`, одинаково до и после серии. Prettier в админке отмечает 79 файлов, из файлов серии — один (`pages-admin.test.mjs`, отмечен и до серии); ни одна из 13 отмеченных в нём строк серией не добавлена.
+- Node-тесты: витрина — `test` (3), `test:pages` (16), `test:seo` (7), `test:search` (5), `test:blog` (15), `test:forum` (121); админка — `test:pages` (9), `test:modules` (5). Все проходят.
+- Playwright в Chromium 153 (npm-пакет `@sparticuz/chromium`; конфигурация и страница-заглушка вне репозитория, один worker): `landing-css-scope.spec.ts` — 4 из 4, `fly-browser-*.spec.ts` и `fly-editor-scenarios.spec.ts` — 29 из 29.
+- 1501 скрипт `*/verify/*.mjs`: исходы до и после серии совпадают (638 падают в обоих деревьях). Четыре скрипта workflow «UI I18n Verify» дают одинаковый результат; единственное падение — в `rustok-channel`. `verify-adrs` и `verify-docs` после правок этой перепроверки выдают то же, что на `main` (см. ниже).
+- Тесты, читающие исходники через `include_str!` (311 файлов, 968 утверждений вида `contains`): утверждения по файлам серии выполняются, в том числе все 39 в `rustok-pages/tests/page_builder_roundtrip.rs`.
+- Три теста вне серии читают страницу по slug (`page_language_agnostic_contract.rs`, `page_locale_fallback.rs`, `rustok-starter/tests/starter_import_integration.rs`): все три сначала публикуют страницу, так что правило «по slug — только опубликованные» их не затрагивает.
+- Вспомогательная `publish_landing` в тестах витрины вызывается для одной страницы до четырёх раз. Сверено по тексту с уникальным индексом `(tenant_id, page_id, locale, build_hash)` и триггерами `m20260721_000004`: маркеры различаются, `build_hash` включает хеш исходника, перевод `en` у страниц есть.
+- Модули-сироты (файл `.rs`, не объявленный через `mod`): по всему дереву до серии 32, после 31, новых нет; исчезнувший — тот же `model.rs`.
+- Чтение кода витрины Pages: `Cargo.toml`, `src/{builder,core,lib,contract_tests}.rs`, `src/ui/leptos.rs`, `src/transport/{graphql_adapter,host_route_adapter}.rs`, большая часть `src/transport/native_server_adapter.rs` и первая половина `src/model.rs`, пять `tests/*_sqlite.rs`, `tests/support/mod.rs`; изменения теста `apps/server`. Импорты и неиспользуемые элементы проверены эвристическим сканером с ручным разбором срабатываний; сканер компиляцию не заменяет.
+- Удалённые публичные имена витрины в коде не используются. Локали витрины: по 38 ключей в `en.ftl` и `ru.ftl`, все 19 используемых в коде ключей определены в обоих. Поле `artifactHash` называется одинаково в GraphQL-типе сервера, в запросе витрины Leptos и в запросе Next.
+
+**Не проверено:**
+
+- Не исполнялись ни в CI, ни здесь: пять изменённых серией интеграционных тестов `rustok-pages` (`tests/*_sqlite.rs`, только компиляция), пять тестов витрины Pages под `--features ssr`, модульные тесты `rustok-page-builder-storefront`, тест `apps/server`.
+- Код витрины Pages под `ssr` в CI компилирует только шаг `Build monolith browser host` workflow «Rust-hosted Browser Smoke»; на `d03db9f` этот шаг на момент записи ещё выполнялся.
+- `cargo clippy -D warnings` для `fly-browser`, `rustok-page-builder-admin`, `rustok-pages`, `rustok-pages-admin`, `rustok-pages-storefront` красный и на `main`; добавила ли серия предупреждение, по исходам шагов установить нельзя. То же относится к `Clippy`, `Cargo Check`, `Documentation` и `Unused Dependencies` общего CI: совпадение номера строки — косвенный признак, не доказательство.
+- Почему шаг `Run Page Builder admin unit tests` падал на `c71b901`, отсюда не видно.
+- `smoke.spec.ts` обоих приложений не запускался: ему нужен работающий сервер приложения.
+
+**Найдено вне серии, не исправлялось:**
+
+- `apps/next-frontend/packages/{rustok-notifications,rustok-pricing,rustok-profiles,rustok-seo}/package.json` начинаются с BOM. `next build` (Turbopack) витрины на этом падает: «Error parsing package.json file». Так было и до серии.
+- Закоммиченные `src/types/i18n.d.ts` обоих Next-приложений расходятся с тем, что генерирует `typegen:i18n`; после перегенерации `Typecheck` падает (см. поправку выше).
+- На `main` после слияния (`dbfed63`) `verify-adrs` и `verify-docs` падают: ADR `2026-11-11-inventory-taxonomy-sovereignty-and-product-decoupling.md` не внесён в `DECISIONS/README.md`. «Rust-hosted Browser Smoke» на том же коммите падает на шаге миграций, который на `d03db9f` проходил.
+- `docs/research/dioxus-ffa-pilot-connectivity-map.md` упоминает `summarize_page_content` и `raw_body_format_summary`, удалённые серией. Это журнал завершённого пилота; не менялся.
+
 ### Не реализовано в этой серии
 
 - **§8.1** (перенос Leptos-слоя в `core/` + `ui/`), **§8.2** (переименование capability `Publish` → `Save`) — структурные изменения уровня major. Не начаты.

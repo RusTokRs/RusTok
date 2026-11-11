@@ -55,6 +55,8 @@ ND = "ND"
 mulitline = "mulitline"
 nam = "nam"
 unparseable = "unparseable"
+# `writeable` is the name of an ICU4X crate (see `Cargo.lock`).
+writeable = "writeable"
 OT = "OT"
 FUL = "FUL"
 UPDATEs = "UPDATEs"

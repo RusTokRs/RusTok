@@ -201,7 +201,8 @@ One cutover, no compatibility layer:
 
 - The synthetic body formats `fly_artifact_payload` and `fly_artifact_url`, `PageBody`,
   `StaticLandingBodyPayload`, `PageBuilderPageBody` and the format constants are removed from
-  `rustok-pages-storefront`.
+  `rustok-pages-storefront`. `PagesRichTextRenderer` goes with them: it was used only by the
+  removed branch that rendered the authoring document (see Consequences).
 - `fetchPageArtifact`, `parseArtifactHtml`, `ARTIFACT_ENVELOPE`, `ArtifactEnvelopeError` and
   `pageCacheTags` are removed from `@rustok/pages-frontend`.
 - External GraphQL or REST consumers that read `body` with neither `pages:update` nor
@@ -311,6 +312,20 @@ One cutover, no compatibility layer:
   answers `403 DOCUMENT_UNAVAILABLE`, and its project store refuses to load a project.
 - REST `GET /api/pages` requires a token; it returns the page record without a landing and
   is not a storefront transport.
+- Rich text: no implementation of the `fly::RichTextHtmlRenderer` port remains in the
+  workspace. `PagesRichTextRenderer`, the binding to the platform rich-text capability
+  (`rustok-content`, Article profile) that decision 1 of
+  [the rich-text ADR](./2026-10-14-fly-rich-text-embed-action-runtime-and-adapters.md) names,
+  was called only where the Leptos storefront rendered the authoring document, and that branch
+  is removed. The reviewed publish compiles a landing through `fly::render_page`, without a
+  renderer, as it did before this decision, so `flyRichText` content in a published landing is
+  the escaped fallback projection of `fly`, not the output of the platform renderer. The native
+  storefront read already served that landing. The GraphQL fallback read of an `ssr` build
+  served the authoring document and rendered its rich text through the platform renderer; on
+  that read the rich text a visitor sees changes to the fallback projection. Binding the
+  platform renderer in the publish compilation changes the markup, and so the hash, of every
+  landing that carries rich text; it is recorded in the Page Builder backlog and is not part
+  of this decision.
 - SEO: the primary image is found only as an `<img>` in the landing body markup. An image that
   exists only as a CSS background in the landing stylesheet is no longer picked up; the
   previous lookup read image keys of the authoring document. In the authoring scope, a page
