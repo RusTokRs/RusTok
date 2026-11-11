@@ -1953,7 +1953,7 @@
       "loc": 207960,
       "completed": false,
       "completed_at": null,
-      "notes": "FS-01.01 completed (main.rs, export_api_contracts.rs); next pending: FS-01.02",
+      "notes": "FS-01.01 and FS-01.02 completed (main.rs, export_api_contracts.rs, host.rs, host_authority.rs); next pending: FS-01.03",
       "last_audited": "2026-11-11"
     },
     "apps/storefront": {

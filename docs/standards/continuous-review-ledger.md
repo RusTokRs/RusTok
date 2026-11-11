@@ -4,8 +4,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-01 — Entrypoint & Composition Root (`apps/server`)  
-**Next pending component:** [`apps/server` (Track FS-01.02 — host.rs & host_authority.rs)](../../apps/server)  
-**Current main SHA:** `bbaa269b90`  
+**Next pending component:** [`apps/server` (Track FS-01.03 — services/server_bootstrap.rs)](../../apps/server)  
+**Current main SHA:** `9dad32cd14`  
 **Active branch:** `main`
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **285 components** (~2.5M LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -32,7 +32,7 @@ The single canonical trigger to continue this audit sequence is:
 
 ### Phase Backlog — Architectural Sequence (285 Components Total — 0% COMPLETE)
 
-- [ ] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (1/33 tracks completed)
+- [ ] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (2/33 tracks completed)
 - [ ] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (0/10 completed)
 - [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (0/24 completed)
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (0/37 completed)
@@ -47,13 +47,13 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-01 — Entrypoint & Composition Root (`apps/server`)
-*Host binary, Axum HTTP/gRPC server composition, runtime context, middleware pipeline, global error handling, and background service lifecycle.* (1/33 tracks completed)
+*Host binary, Axum HTTP/gRPC server composition, runtime context, middleware pipeline, global error handling, and background service lifecycle.* (2/33 tracks completed)
 
 - [ ] **[`apps/server`](../../apps/server)** (485 files, 190,468 LOC) — decomposed into 33 focused audit tracks:
 
 #### 1. Bootstrap, Host & Configuration
 - [x] **FS-01.01 — `apps/server/src/main.rs` & `apps/server/src/bin/*`** — entrypoint, CLI arguments, signal handling, process lifecycle. *(Done: bounded thread stack size parsing with [2MB, 64MB] bounds and 8MB default; case-insensitive log format normalization; robust falsy parsing for RUSTOK_METRICS; trimmed service name fallback; fail-closed duplicate/whitespace argument handling in `export_api_contracts`; 5 unit tests in `main.rs` + 9 unit tests in `export_api_contracts.rs` all passing; verified with `cargo test` and `cargo clippy --no-deps`).*
-- [ ] **FS-01.02 — `apps/server/src/host.rs` & `apps/server/src/host_authority.rs`** — host wiring, socket binding, TLS/HTTPS, shutdown signals.
+- [x] **FS-01.02 — `apps/server/src/host.rs` & `apps/server/src/host_authority.rs`** — host wiring, socket binding, TLS/HTTPS, shutdown signals. *(Done: fail-closed validation of server binding in `resolve_server_endpoint` trimming inputs and rejecting empty/whitespace; HTTPS/HSTS enforcement in production; strict production validation in `validate_auth_deployment` enforcing valid issuer without whitespace, minimum length > 8, access/refresh expirations > 0, and minimum password length >= 8; strict production validation in `validate_database_deployment` rejecting empty URI and dev credential placeholders; idle_timeout clamped to minimum 1000ms; host authority token whitespace trimming and fail-closed empty/whitespace denial; RAII test environment isolation; 4 unit tests in `host.rs` + 9 unit tests in `host_authority.rs` all passing; verified with `cargo test -p rustok-server --lib host` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
 - [ ] **FS-01.03 — `apps/server/src/services/server_bootstrap.rs`** — bootstrap sequence, database pool initialization, migration execution, state validation.
 - [ ] **FS-01.04 — `apps/server/src/services/server_runtime_context.rs`** — shared server context, state injection, thread safety.
 - [ ] **FS-01.05 — `apps/server/src/services/app_runtime.rs` & `apps/server/src/services/app_lifecycle.rs`** — runtime background worker lifecycle, cancellation, drain on shutdown.
