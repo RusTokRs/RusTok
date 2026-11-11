@@ -1,6 +1,7 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
+import type { useTranslations } from '@rustok/next-fluent/client';
 import { DataTableColumnHeader } from '@/components/ui/table/data-table-column-header';
 import type { ColumnDef, StockFeatures } from '@tanstack/react-table';
 import { CircleDot } from 'lucide-react';
@@ -36,7 +37,10 @@ function authorCell(post: PostSummary): string {
  * filtering is owned by the text-filter controls next to it, which reset the
  * cursor atomically when a filter changes.
  */
-export function createColumns(gqlOpts: GqlOpts, t: (key: string) => string): ColumnDef<StockFeatures, PostSummary, any>[] {
+/** The typed translator of the `blog` namespace, as `useTranslations('blog')` returns it. */
+type BlogTranslations = ReturnType<typeof useTranslations<'blog'>>;
+
+export function createColumns(gqlOpts: GqlOpts, t: BlogTranslations): ColumnDef<StockFeatures, PostSummary, any>[] {
   return [
   {
     id: 'title',

@@ -9,6 +9,15 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RichTextHtml } from '@rustok/richtext/view';
 import { postStatusPresentation } from '../model/presentation';
+import type { useTranslations } from '@rustok/next-fluent/client';
+
+/**
+ * Keys of the `blog` message namespace. The options form of `getTranslations` applies the
+ * namespace at run time but is typed by key, so the key type is passed explicitly.
+ */
+type BlogMessageKey = Parameters<
+  ReturnType<typeof useTranslations<'blog'>>['has']
+>[0];
 
 interface PostDetailPageProps {
   postId: string;
@@ -24,7 +33,10 @@ export default async function PostDetailPage({
   tenantId
 }: PostDetailPageProps) {
   const locale = await getLocale();
-  const t = await getTranslations({ namespace: 'blog', locale });
+  const t = await getTranslations<BlogMessageKey>({
+    namespace: 'blog',
+    locale
+  });
   const formatter = await getFormatter({ locale });
   const opts: GqlOpts = {
     token,

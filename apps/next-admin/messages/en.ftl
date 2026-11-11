@@ -1128,6 +1128,8 @@ blog-status-archived = Archived
 blog-sort-updated_at = Recently updated
 
 blog-moderation-approved = Approve
+blog-moderation-spam = Mark spam
+blog-moderation-trash = Move to trash
 blog-moderation-saving = Saving...
 blog-moderation-pageSummary = { $total ->
     [one] { $total } comment · Page { $page } of { $pages }
@@ -1143,6 +1145,7 @@ blog-preview-linkHint = Keep this link private.
 blog-preview-pathHint = Add your storefront domain to this path before sharing.
 blog-preview-linkCopied = Preview link copied
 blog-preview-tokenCopied = Token copied
+blog-preview-copyError = Could not copy to the clipboard.
 blog-preview-expires = Expires { $at }. Keep this link private.
 blog-preview-lifetimeHours = { $hours } hours
 blog-error-savePost = Failed to save post

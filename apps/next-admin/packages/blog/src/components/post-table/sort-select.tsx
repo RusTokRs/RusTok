@@ -63,7 +63,7 @@ export function PostSortSelect() {
         <SelectContent>
           {SORT_FIELD_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
-              {t(`sort.${option.value.toLowerCase()}`)}
+              {t(option.labelKey)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -85,7 +85,7 @@ export function PostSortSelect() {
         <SelectContent>
           {SORT_ORDER_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
-              {t(`sort.${option.value.toLowerCase()}`)}
+              {t(option.labelKey)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -124,7 +124,7 @@ export function PostStatusSelect() {
         <SelectItem value='ALL'>{t('table.allStatuses')}</SelectItem>
         {STATUS_OPTIONS.map((option) => (
           <SelectItem key={option.value} value={option.value}>
-            {t(`status.${option.value.toLowerCase()}`)}
+            {t(option.labelKey)}
           </SelectItem>
         ))}
       </SelectContent>

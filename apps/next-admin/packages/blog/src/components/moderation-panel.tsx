@@ -14,11 +14,14 @@ import {
 import type { GqlOpts } from '../api/posts';
 
 const PER_PAGE = 20;
-const STATUSES: ReadonlyArray<{ value: BlogModerationStatus; label: string }> = [
-  { value: 'APPROVED', label: 'Approve' },
-  { value: 'SPAM', label: 'Mark spam' },
-  { value: 'TRASH', label: 'Move to trash' }
-];
+const STATUSES = [
+  { value: 'APPROVED', labelKey: 'moderation.approved' },
+  { value: 'SPAM', labelKey: 'moderation.spam' },
+  { value: 'TRASH', labelKey: 'moderation.trash' }
+] as const satisfies ReadonlyArray<{
+  value: BlogModerationStatus;
+  labelKey: string;
+}>;
 
 /** The same Blog-owned moderation projection and lifecycle as the Leptos admin. */
 export function BlogModerationPanel({
@@ -119,7 +122,7 @@ export function BlogModerationPanel({
                   disabled={pendingId !== null}
                   onClick={() => void moderate(comment.id, action.value)}
                 >
-                  {pendingId === comment.id ? t('moderation.saving') : t(`moderation.${action.value.toLowerCase()}`)}
+                  {pendingId === comment.id ? t('moderation.saving') : t(action.labelKey)}
                 </Button>
               ))}
             </div>
