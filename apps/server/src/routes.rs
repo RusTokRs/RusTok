@@ -150,4 +150,30 @@ mod tests {
         let response = app.oneshot(req).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
     }
+
+    #[tokio::test]
+    async fn registry_only_mode_router_mounts_health_and_excludes_auth() {
+        let settings = crate::common::settings::RustokSettings::default();
+        let router = build_application_router(RuntimeHostMode::RegistryOnly, &settings);
+        let db = rustok_test_utils::setup_test_db().await;
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(db, settings);
+        let app = router.with_state(ServerAuthRuntime::without_auth(ctx));
+
+        // Health check is mounted
+        let req = Request::builder()
+            .uri("/health")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Auth endpoint is NOT mounted in RegistryOnly mode
+        let req_auth = Request::builder()
+            .method("POST")
+            .uri("/api/auth/login")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let response_auth = app.oneshot(req_auth).await.unwrap();
+        assert_eq!(response_auth.status(), StatusCode::NOT_FOUND);
+    }
 }
