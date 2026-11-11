@@ -18,7 +18,7 @@ host-runtime = [
   "dep:rustok-modules",
   "dep:rustok-runtime",
 ]
-seed-runtime = ["dep:rustok-core"]
+seed-runtime = ["dep:rustok-core", "dep:rustok-api"]
 
 [dependencies]
 chrono.workspace = true
@@ -30,6 +30,7 @@ sha2.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 rustok-core = { workspace = true, optional = true }
+rustok-api = { workspace = true, optional = true }
 rustok-modules = { workspace = true, optional = true }
 rustok-runtime = { workspace = true, optional = true }
 

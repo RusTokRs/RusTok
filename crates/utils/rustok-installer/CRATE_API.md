@@ -86,6 +86,8 @@
   requires both zero failed items and no reported errors; an unknown item count
   remains zero and does not turn a loader error into success.
   Debug formatting for seed requests redacts admin and demo-customer passwords.
+- Enabled and disabled module slugs are validated with the canonical module
+  grammar before any tenant, identity, lifecycle, or content owner is called.
 - Ports:
   - `SeedTenantPort`: Ensures seed tenant creation.
   - `SeedPrincipalPort`: Atomically provisions user credentials and initial RBAC role.

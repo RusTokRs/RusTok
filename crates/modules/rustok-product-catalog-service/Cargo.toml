@@ -24,3 +24,4 @@ tokio.workspace = true
 tonic = { workspace = true, features = ["tls-ring"] }
 tracing.workspace = true
 url.workspace = true
+uuid.workspace = true
