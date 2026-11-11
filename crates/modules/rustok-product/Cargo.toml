@@ -22,7 +22,6 @@ rustok-outbox.workspace = true
 rustok-seo-targets = { workspace = true, features = ["server"] }
 rustok-translation-targets.workspace = true
 flex.workspace = true
-rustok-taxonomy.workspace = true
 rust_decimal.workspace = true
 serde.workspace = true
 serde_json.workspace = true

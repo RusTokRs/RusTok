@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use sea_orm::{
     ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder,
@@ -10,7 +11,6 @@ use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
-use rustok_taxonomy::{TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 
 use crate::dto::{
     CategoryPlacementResponse, MAX_BLOG_CATEGORY_TREE_NODES, MoveCategoryInput,
@@ -18,6 +18,7 @@ use crate::dto::{
 };
 use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
+use crate::ports::taxonomy::{BlogTaxonomyPort, NoopBlogTaxonomyPort};
 use crate::services::rbac::enforce_scope;
 
 /// Owner-side structural commands for the Blog category hierarchy.
@@ -28,11 +29,21 @@ use crate::services::rbac::enforce_scope;
 pub struct CategoryCommandService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    taxonomy_port: Arc<dyn BlogTaxonomyPort>,
 }
 
 impl CategoryCommandService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        Self {
+            db,
+            event_bus,
+            taxonomy_port: Arc::new(NoopBlogTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(mut self, port: Arc<dyn BlogTaxonomyPort>) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     pub async fn move_category(
@@ -51,7 +62,9 @@ impl CategoryCommandService {
         enforce_scope(&security, Resource::BlogCategories, Action::Manage)?;
 
         let txn = self.db.begin().await?;
-        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?;
+        self.taxonomy_port
+            .lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
+            .await?;
 
         let categories = load_categories_in_tx(&txn, tenant_id).await?;
         let blog_ids = categories
@@ -66,13 +79,16 @@ impl CategoryCommandService {
         // Taxonomy remains the storage owner; validate the complete canonical Category projection
         // through its storage-encapsulating owner reader before mutating the hierarchy.
         let category_ids = blog_ids.iter().copied().collect::<Vec<_>>();
-        let canonical_terms = TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
-            &txn,
-            tenant_id,
-            TaxonomyScopeType::Module,
-            Some(crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE),
-            Some(&category_ids),
-            rustok_api::PLATFORM_FALLBACK_LOCALE,
+        let canonical_terms = self
+            .taxonomy_port
+            .load_scoped_categories(
+                (&txn).into(),
+                tenant_id,
+                Some(&category_ids),
+                rustok_api::PLATFORM_FALLBACK_LOCALE,
+                None,
+            )
+            .await?;
             None,
         )
         .await
@@ -132,6 +148,7 @@ impl CategoryCommandService {
             siblings.insert(target_index, category_id);
             updated.extend(
                 persist_sibling_order(
+                    &*self.taxonomy_port,
                     &txn,
                     tenant_id,
                     &desired_depths,
@@ -145,28 +162,29 @@ impl CategoryCommandService {
             // A parent change is not a sibling reorder. Taxonomy owns the
             // canonical move and validates cycle, scope and sibling membership
             // before updating both source and destination inside this transaction.
-            let placements = rustok_taxonomy::move_module_category_in_tx(
-                &txn,
-                tenant_id,
-                category_id,
-                crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE,
-                input.parent_id,
-                i32::try_from(input.position)
-                    .map_err(|_| BlogError::validation("Category position exceeds i32 range"))?,
-            )
-            .await
-            .map_err(BlogError::from)?;
+            let position = i32::try_from(input.position)
+                .map_err(|_| BlogError::validation("Category position exceeds i32 range"))?;
+            let placements = self
+                .taxonomy_port
+                .move_category_in_tx(
+                    &txn,
+                    tenant_id,
+                    category_id,
+                    input.parent_id,
+                    Some(position),
+                )
+                .await?;
 
             for placement in placements {
-                let depth = *desired_depths.get(&placement.term_id).ok_or_else(|| {
+                let depth = *desired_depths.get(&placement.category_id).ok_or_else(|| {
                     BlogError::invariant(format!(
                         "Blog category depth was not computed for category {}",
-                        placement.term_id
+                        placement.category_id
                     ))
                 })?;
-                touched.insert(placement.term_id);
+                touched.insert(placement.category_id);
                 updated.push(CategoryPlacementResponse {
-                    id: placement.term_id,
+                    id: placement.category_id,
                     parent_id: placement.parent_id,
                     position: placement.position,
                     depth,
@@ -260,6 +278,7 @@ fn sibling_ids(
 }
 
 async fn persist_sibling_order(
+    port: &dyn BlogTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     desired_depths: &HashMap<Uuid, i32>,
@@ -267,15 +286,13 @@ async fn persist_sibling_order(
     ordered_ids: &[Uuid],
     touched: &mut HashSet<Uuid>,
 ) -> BlogResult<Vec<CategoryPlacementResponse>> {
-    rustok_taxonomy::reorder_module_category_siblings_in_tx(
+    port.reorder_category_siblings_in_tx(
         txn,
         tenant_id,
-        crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE,
         parent_id,
         ordered_ids,
     )
-    .await
-    .map_err(BlogError::from)?;
+    .await?;
 
     let mut placements = Vec::with_capacity(ordered_ids.len());
     for (position, category_id) in ordered_ids.iter().copied().enumerate() {

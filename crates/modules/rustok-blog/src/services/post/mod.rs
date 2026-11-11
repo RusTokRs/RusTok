@@ -46,6 +46,10 @@ use crate::services::tag::{
 };
 use crate::state_machine::BlogPostStatus;
 
+use std::sync::Arc;
+
+use crate::ports::taxonomy::{BlogTaxonomyPort, NoopBlogTaxonomyPort};
+
 /// Application boundary for Blog-owned post state and its durable side effects.
 ///
 /// Hosts inject the database and transactional bus. Commands own authorization,
@@ -56,6 +60,7 @@ use crate::state_machine::BlogPostStatus;
 pub struct PostService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    pub(crate) taxonomy_port: Arc<dyn BlogTaxonomyPort>,
 }
 
 #[derive(Debug, Clone)]
@@ -90,7 +95,16 @@ mod tests;
 
 impl PostService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        Self {
+            db,
+            event_bus,
+            taxonomy_port: Arc::new(NoopBlogTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(mut self, port: Arc<dyn BlogTaxonomyPort>) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 }
 
@@ -341,7 +355,7 @@ fn normalize_locale(locale: &str) -> BlogResult<String> {
 /// normalizer is used for every locale. Non-ASCII titles are transliterated
 /// instead of being dropped. Returns an empty string when nothing usable remains.
 fn normalize_slug(slug: &str) -> String {
-    rustok_taxonomy::normalize_term_route_key(slug).unwrap_or_default()
+    crate::normalization::normalize_term_route_key(slug).unwrap_or_default()
 }
 
 const MAX_FEATURED_IMAGE_URL_CHARS: usize = 2048;

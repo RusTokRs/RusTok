@@ -1,12 +1,9 @@
 use super::*;
-use rustok_api::PLATFORM_FALLBACK_LOCALE;
-use rustok_taxonomy::{TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
-
-const PRODUCT_TAXONOMY_SCOPE: &str = "product";
 
 #[derive(FromQueryResult)]
 struct ProductCategoryHierarchyRow {
     category_id: Uuid,
+    parent_id: Option<Uuid>,
 }
 
 #[derive(FromQueryResult)]
@@ -434,7 +431,7 @@ where
     let rows = ProductCategoryHierarchyRow::find_by_statement(Statement::from_sql_and_values(
         connection.get_database_backend(),
         r#"
-            SELECT c.id AS category_id
+            SELECT c.id AS category_id, c.parent_id
             FROM catalog_categories c
             WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
             ORDER BY c.id ASC
@@ -448,56 +445,7 @@ where
         return Ok(HashMap::new());
     }
 
-    let category_ids: Vec<Uuid> = rows.iter().map(|row| row.category_id).collect();
-
-    let owners = TaxonomyOwnerCategoryReader::load_scoped_categories_in(
-        connection,
-        tenant_id,
-        TaxonomyScopeType::Module,
-        Some(PRODUCT_TAXONOMY_SCOPE),
-        Some(&category_ids),
-        PLATFORM_FALLBACK_LOCALE,
-        Some(PLATFORM_FALLBACK_LOCALE),
-    )
-    .await
-    .map_err(super::map_taxonomy_read_error)?;
-
-    compose_product_taxonomy_parent_map(rows, owners)
-}
-
-fn compose_product_taxonomy_parent_map(
-    categories: Vec<ProductCategoryHierarchyRow>,
-    owners: Vec<TaxonomyOwnerCategory>,
-) -> CommerceResult<HashMap<Uuid, Option<Uuid>>> {
-    let mut owners = owners
-        .into_iter()
-        .map(|owner| (owner.id, owner))
-        .collect::<HashMap<_, _>>();
-    let mut parent_map = HashMap::with_capacity(categories.len());
-
-    for category in categories {
-        let owner = owners.remove(&category.category_id).ok_or_else(|| {
-            super::taxonomy_projection_error(
-                "Product category is missing its Taxonomy hierarchy projection",
-            )
-        })?;
-        let expected_key = format!("product-category-{}", category.category_id);
-        if owner.canonical_key != expected_key {
-            return Err(super::taxonomy_projection_error(
-                "Product category has incompatible Taxonomy canonical key",
-            ));
-        }
-        if owner.scope_type != TaxonomyScopeType::Module
-            || owner.scope_value.as_deref() != Some(PRODUCT_TAXONOMY_SCOPE)
-        {
-            return Err(super::taxonomy_projection_error(
-                "Product category has incompatible Taxonomy scope",
-            ));
-        }
-        parent_map.insert(category.category_id, owner.parent_id);
-    }
-
-    Ok(parent_map)
+    Ok(rows.into_iter().map(|row| (row.category_id, row.parent_id)).collect())
 }
 
 fn taxonomy_ancestor_chain(

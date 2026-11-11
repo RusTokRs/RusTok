@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
-use rustok_taxonomy::{TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::error::{BlogError, BlogResult};
+use crate::ports::taxonomy::BlogTaxonomyPort;
 
 const BLOG_TAXONOMY_SCOPE: &str = "blog";
 
@@ -31,6 +31,7 @@ pub(crate) struct BlogCategoryProjectionInfo {
 /// `CategoryCommandService`), which read through the same Taxonomy reader and
 /// treat missing canonical ownership as an invariant violation.
 pub(crate) async fn load_category_projections_map(
+    port: &dyn BlogTaxonomyPort,
     db: &DatabaseConnection,
     tenant_id: Uuid,
     category_ids: &[Uuid],
@@ -45,17 +46,15 @@ pub(crate) async fn load_category_projections_map(
     category_ids.sort_unstable();
     category_ids.dedup();
 
-    let canonical = TaxonomyOwnerCategoryReader::new(db.clone())
-        .load_scoped_categories_strict(
+    let canonical = port
+        .load_scoped_categories(
+            db.into(),
             tenant_id,
-            TaxonomyScopeType::Module,
-            Some(BLOG_TAXONOMY_SCOPE),
             Some(&category_ids),
             locale,
             fallback_locale,
         )
-        .await
-        .map_err(BlogError::from)?;
+        .await?;
 
     // A duplicate identity is an owner contract breach, not per-row damage: the
     // reader must return at most one canonical copy per requested Category.
@@ -109,6 +108,7 @@ pub(crate) async fn load_category_projections_map(
 }
 
 pub(crate) async fn load_category_names_map(
+    port: &dyn BlogTaxonomyPort,
     db: &DatabaseConnection,
     tenant_id: Uuid,
     category_ids: &[Uuid],
@@ -116,7 +116,8 @@ pub(crate) async fn load_category_names_map(
     fallback_locale: Option<&str>,
 ) -> BlogResult<HashMap<Uuid, String>> {
     let projections =
-        load_category_projections_map(db, tenant_id, category_ids, locale, fallback_locale).await?;
+        load_category_projections_map(port, db, tenant_id, category_ids, locale, fallback_locale)
+            .await?;
     Ok(projections
         .into_iter()
         .map(|(id, info)| (id, info.name))

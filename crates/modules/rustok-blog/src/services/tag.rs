@@ -471,7 +471,7 @@ fn validate_optional_tag_slug(slug: Option<&str>) -> BlogResult<()> {
             "Tag slug cannot exceed 100 characters",
         ));
     }
-    if let Some(normalized) = rustok_taxonomy::normalize_term_route_key(slug)
+    if let Some(normalized) = crate::normalization::normalize_term_route_key(slug)
         && normalized.chars().count() > 120
     {
         return Err(BlogError::validation(

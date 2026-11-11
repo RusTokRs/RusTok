@@ -24,10 +24,6 @@ use crate::services::write_transaction::{
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
-use rustok_taxonomy::{
-    SyncModuleCategoryInput, TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
-    sync_module_category_in_tx,
-};
 
 const PRODUCT_TAXONOMY_SCOPE: &str = "product";
 const TAXONOMY_CATEGORY_ROUTE_KEY_MAX_BYTES: usize = 120;
@@ -63,6 +59,7 @@ impl ProductCatalogSchemaService {
             .unwrap_or_else(|| input.slug.clone());
 
         sync_created_category_to_taxonomy_in_tx(
+            self,
             &txn,
             tenant_id,
             category_id,
@@ -388,24 +385,23 @@ async fn list_categories_from_taxonomy(
 
     let taxonomy_category_ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
 
-    let owners = TaxonomyOwnerCategoryReader::new(service.db.clone())
+    let owners = service
+        .taxonomy()
         .load_scoped_categories(
+            (&service.db).into(),
             tenant_id,
-            TaxonomyScopeType::Module,
-            Some(PRODUCT_TAXONOMY_SCOPE),
             Some(&taxonomy_category_ids),
             locale,
             Some(PLATFORM_FALLBACK_LOCALE),
         )
-        .await
-        .map_err(super::map_taxonomy_read_error)?;
+        .await?;
 
     compose_taxonomy_category_list_records(rows, owners)
 }
 
 fn compose_taxonomy_category_list_records(
     mut rows: Vec<ProductCategoryTaxonomyReadRow>,
-    owners: Vec<TaxonomyOwnerCategory>,
+    owners: Vec<crate::ports::ProductTaxonomyCategorySnapshot>,
 ) -> CommerceResult<Vec<CatalogCategoryListRecord>> {
     let mut owners = owners
         .into_iter()
@@ -432,7 +428,7 @@ fn compose_taxonomy_category_list_records(
                     "Product category has incompatible Taxonomy canonical key",
                 ));
             }
-            if owner.scope_type != TaxonomyScopeType::Module
+            if owner.scope_type != "module"
                 || owner.scope_value.as_deref() != Some(PRODUCT_TAXONOMY_SCOPE)
             {
                 return Err(super::taxonomy_projection_error(
@@ -460,7 +456,7 @@ fn compose_taxonomy_category_list_records(
 }
 
 fn taxonomy_category_hierarchy_order(
-    owners: &HashMap<Uuid, TaxonomyOwnerCategory>,
+    owners: &HashMap<Uuid, crate::ports::ProductTaxonomyCategorySnapshot>,
 ) -> CommerceResult<Vec<Uuid>> {
     let mut roots = Vec::new();
     let mut children_by_parent = HashMap::<Uuid, Vec<Uuid>>::new();
@@ -562,6 +558,7 @@ fn category_translation_has_seo(translation: &CategoryTranslationInput) -> bool 
 }
 
 async fn sync_created_category_to_taxonomy_in_tx(
+    service: &ProductCatalogSchemaService,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_id: Uuid,
@@ -569,10 +566,10 @@ async fn sync_created_category_to_taxonomy_in_tx(
     translations: &[CategoryTranslationInput],
 ) -> CommerceResult<()> {
     for translation in translations {
-        sync_module_category_in_tx(
+        service.taxonomy().sync_category_translation_in_tx(
             txn,
             tenant_id,
-            SyncModuleCategoryInput {
+            crate::ports::ProductTaxonomyCategoryTranslationInput {
                 category_id,
                 module_scope: PRODUCT_TAXONOMY_SCOPE.to_owned(),
                 canonical_key: canonical_key_for_product_category(category_id),
@@ -583,12 +580,9 @@ async fn sync_created_category_to_taxonomy_in_tx(
                 description: translation.description.clone(),
                 parent_id: input.parent_id,
                 position: input.position,
-                icon_key: None,
-                color: None,
             },
         )
-        .await
-        .map_err(super::map_taxonomy_sync_error)?;
+        .await?;
     }
 
     Ok(())
@@ -604,9 +598,12 @@ fn validate_taxonomy_category_route(slug: &str, position: i32) -> CommerceResult
             "category position must be zero or greater".into(),
         ));
     }
-    let normalized = rustok_taxonomy::normalize_term_route_key(slug).ok_or_else(|| {
-        CommerceError::Validation("category slug must have a Taxonomy route representation".into())
-    })?;
+    let normalized = crate::services::catalog::helpers::slugify(slug);
+    if normalized.is_empty() {
+        return Err(CommerceError::Validation(
+            "category slug must have a Taxonomy route representation".into(),
+        ));
+    }
     if normalized.as_str() != slug {
         return Err(CommerceError::Validation(format!(
             "category slug must already be canonical for Taxonomy routing: {normalized}"
@@ -706,26 +703,18 @@ mod tests {
         name: &str,
         slug: &str,
         parent_id: Option<Uuid>,
-    ) -> TaxonomyOwnerCategory {
-        TaxonomyOwnerCategory {
+    ) -> crate::ports::ProductTaxonomyCategorySnapshot {
+        crate::ports::ProductTaxonomyCategorySnapshot {
             id,
-            scope_type: TaxonomyScopeType::Module,
-            scope_value: Some(PRODUCT_TAXONOMY_SCOPE.to_string()),
-            canonical_key: canonical_key_for_product_category(id),
-            requested_locale: "de".to_string(),
-            effective_locale: "en".to_string(),
-            available_locales: vec!["en".to_string()],
-            name: name.to_string(),
-            slug: slug.to_string(),
-            description: None,
             parent_id,
+            canonical_key: canonical_key_for_product_category(id),
+            scope_type: "module".to_string(),
+            scope_value: Some(PRODUCT_TAXONOMY_SCOPE.to_string()),
+            slug: slug.to_string(),
+            name: name.to_string(),
+            description: None,
             position: 0,
-            icon_key: None,
-            color: None,
-            image_media_id: None,
-            cover_media_id: None,
-            presentation_revision: 0,
-            created_at: chrono::Utc::now(),
+            available_locales: vec!["en".to_string()],
         }
     }
 

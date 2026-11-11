@@ -1,10 +1,19 @@
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
-use rustok_taxonomy::{TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyResult};
 use sea_orm::{
     ColumnTrait, Condition, DatabaseTransaction, EntityTrait, ExprTrait, PaginatorTrait,
     QueryFilter, QuerySelect,
@@ -12,6 +21,7 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::entities::{blog_category, blog_post};
+use crate::ports::taxonomy::{BlogCategoryDeleteCleanupPort, BlogTaxonomyPort};
 use crate::{BlogError, BlogResult};
 
 /// Blog-owned cleanup that participates in Taxonomy's canonical Category delete transaction.
@@ -23,7 +33,8 @@ pub(crate) struct BlogCategoryDeleteCleanup {
     blog_category_id: Uuid,
     actor_id: Option<Uuid>,
     event_bus: TransactionalEventBus,
-    capability_cleanup: Arc<dyn TaxonomyCategoryDeleteCleanupPort>,
+    capability_cleanup: Arc<dyn BlogCategoryDeleteCleanupPort>,
+    taxonomy_port: Arc<dyn BlogTaxonomyPort>,
 }
 
 impl BlogCategoryDeleteCleanup {
@@ -31,13 +42,15 @@ impl BlogCategoryDeleteCleanup {
         blog_category_id: Uuid,
         actor_id: Option<Uuid>,
         event_bus: TransactionalEventBus,
-        capability_cleanup: Arc<dyn TaxonomyCategoryDeleteCleanupPort>,
+        capability_cleanup: Arc<dyn BlogCategoryDeleteCleanupPort>,
+        taxonomy_port: Arc<dyn BlogTaxonomyPort>,
     ) -> Self {
         Self {
             blog_category_id,
             actor_id,
             event_bus,
             capability_cleanup,
+            taxonomy_port,
         }
     }
 
@@ -47,7 +60,9 @@ impl BlogCategoryDeleteCleanup {
         tenant_id: Uuid,
         taxonomy_category_id: Uuid,
     ) -> BlogResult<()> {
-        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(txn, tenant_id).await?;
+        self.taxonomy_port
+            .lock_category_hierarchy_writer_in_tx(txn, tenant_id)
+            .await?;
 
         if self.blog_category_id != taxonomy_category_id {
             return Err(BlogError::invariant(format!(
@@ -62,13 +77,10 @@ impl BlogCategoryDeleteCleanup {
             .one(txn)
             .await?
             .ok_or_else(|| BlogError::category_not_found(self.blog_category_id))?;
-        rustok_taxonomy::delete_module_category_placement_and_compact_in_tx(
-            txn,
-            tenant_id,
-            self.blog_category_id,
-            crate::services::category_taxonomy_sync::BLOG_TAXONOMY_SCOPE,
-        )
-        .await?;
+
+        self.taxonomy_port
+            .delete_category_placement_and_compact_in_tx(txn, tenant_id, self.blog_category_id)
+            .await?;
 
         detach_category_from_posts_in_tx(txn, tenant_id, self.blog_category_id).await?;
 
@@ -102,16 +114,15 @@ impl BlogCategoryDeleteCleanup {
 }
 
 #[async_trait]
-impl TaxonomyCategoryDeleteCleanupPort for BlogCategoryDeleteCleanup {
+impl BlogCategoryDeleteCleanupPort for BlogCategoryDeleteCleanup {
     async fn cleanup_in_tx(
         &self,
         txn: &DatabaseTransaction,
         tenant_id: Uuid,
         category_id: Uuid,
-    ) -> TaxonomyResult<()> {
+    ) -> Result<(), BlogError> {
         self.cleanup_blog_membership_in_tx(txn, tenant_id, category_id)
-            .await
-            .map_err(map_blog_error)?;
+            .await?;
         self.capability_cleanup
             .cleanup_in_tx(txn, tenant_id, category_id)
             .await
@@ -182,15 +193,4 @@ async fn detach_category_from_posts_in_tx(
     }
 
     Ok(())
-}
-
-fn map_blog_error(error: BlogError) -> TaxonomyError {
-    match error {
-        BlogError::Database(error) => TaxonomyError::Database(error),
-        BlogError::CategoryNotFound(category_id) => TaxonomyError::TermNotFound(category_id),
-        BlogError::Conflict(message) => TaxonomyError::conflict(message),
-        BlogError::Forbidden(message) => TaxonomyError::forbidden(message),
-        BlogError::Validation(message) => TaxonomyError::validation(message),
-        other => TaxonomyError::internal(format!("Blog Category delete cleanup failed: {other:?}")),
-    }
 }

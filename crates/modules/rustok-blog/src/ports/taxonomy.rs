@@ -70,6 +70,8 @@ pub struct BlogTaxonomyCategorySnapshot {
     pub description: Option<String>,
     pub position: i32,
     pub available_locales: Vec<String>,
+    pub requested_locale: Option<String>,
+    pub effective_locale: Option<String>,
 }
 
 /// Localized copy for an existing category term in taxonomy.
@@ -104,11 +106,15 @@ pub struct BlogTaxonomyPlacement {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlogTaxonomyTagSnapshot {
     pub id: Uuid,
+    pub tenant_id: Uuid,
     pub canonical_key: String,
     pub name: String,
     pub slug: String,
     pub scope_type: String,
     pub scope_value: Option<String>,
+    pub locale: Option<String>,
+    pub effective_locale: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Tag creation input for authoring a module tag term in taxonomy.
@@ -259,6 +265,16 @@ pub trait BlogTaxonomyPort: Send + Sync {
         conn: BlogTaxonomyConnection<'_>,
         tenant_id: Uuid,
     ) -> Result<HashSet<Uuid>, BlogError>;
+
+    /// Ensures module:blog tags exist for the specified names, optionally authoring missing ones in transaction.
+    async fn ensure_module_tags_in_tx(
+        &self,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        locale: &str,
+        tag_names: &[String],
+        allow_create: bool,
+    ) -> Result<Vec<Uuid>, BlogError>;
 
     /// Creates a module:blog tag term in taxonomy in transaction.
     async fn create_tag_in_tx(
@@ -427,6 +443,17 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
         Ok(HashSet::new())
     }
 
+    async fn ensure_module_tags_in_tx(
+        &self,
+        _txn: &DatabaseTransaction,
+        _tenant_id: Uuid,
+        _locale: &str,
+        tag_names: &[String],
+        _allow_create: bool,
+    ) -> Result<Vec<Uuid>, BlogError> {
+        Ok(tag_names.iter().map(|_| Uuid::new_v4()).collect())
+    }
+
     async fn create_tag_in_tx(
         &self,
         _txn: &DatabaseTransaction,
@@ -450,11 +477,15 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
     ) -> Result<BlogTaxonomyTagSnapshot, BlogError> {
         Ok(BlogTaxonomyTagSnapshot {
             id: tag_id,
+            tenant_id: _tenant_id,
             canonical_key: tag_id.to_string(),
             name: input.name.unwrap_or_default(),
             slug: input.slug.unwrap_or_default(),
             scope_type: "module".to_string(),
             scope_value: Some("blog".to_string()),
+            locale: Some(input.locale),
+            effective_locale: None,
+            created_at: chrono::Utc::now(),
         })
     }
 

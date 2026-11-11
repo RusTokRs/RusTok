@@ -17,6 +17,7 @@ mod entities;
 pub mod error;
 pub mod graphql;
 pub mod migrations;
+pub mod normalization;
 pub mod ports;
 pub mod services;
 

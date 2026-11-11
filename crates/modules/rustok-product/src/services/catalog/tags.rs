@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     entities,
-    error::{CommerceError, CommerceResult},
+    error::CommerceResult,
 };
 
 use crate::entities::product_tag;

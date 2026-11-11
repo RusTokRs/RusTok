@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
-use rustok_taxonomy::{TaxonomyScopeType, TaxonomyTermKind, entities::taxonomy_term};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseTransaction, EntityTrait,
-    FromQueryResult, QueryFilter, Statement, TransactionTrait,
+    ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement,
+    TransactionTrait,
 };
 use sea_orm_migration::prelude::*;
 use uuid::Uuid;
@@ -20,6 +19,16 @@ struct ProductCategoryOwnershipRow {
 #[derive(Debug, FromQueryResult)]
 struct CountRow {
     count: i64,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct TaxonomyTermRow {
+    id: Uuid,
+    tenant_id: Uuid,
+    kind: String,
+    scope_type: String,
+    scope_value: String,
+    canonical_key: String,
 }
 
 #[derive(DeriveMigrationName)]
@@ -53,9 +62,26 @@ impl MigrationTrait for Migration {
             return Ok(());
         }
 
+        let has_taxonomy_terms = CountRow::find_by_statement(Statement::from_string(
+            DatabaseBackend::Postgres,
+            r#"
+                SELECT COUNT(*)::BIGINT AS count
+                FROM information_schema.tables
+                WHERE table_schema = current_schema()
+                  AND table_name = 'taxonomy_terms'
+            "#,
+        ))
+        .one(manager.get_connection())
+        .await?
+        .map(|row| row.count)
+        .unwrap_or_default()
+            != 0;
+
         let txn = manager.get_connection().begin().await?;
-        ensure_complete_taxonomy_ownership(&txn).await?;
-        ensure_complete_taxonomy_locale_ownership(&txn).await?;
+        if has_taxonomy_terms {
+            ensure_complete_taxonomy_ownership(&txn).await?;
+            ensure_complete_taxonomy_locale_ownership(&txn).await?;
+        }
         ensure_complete_product_seo_ownership(&txn).await?;
         txn.execute_raw(Statement::from_string(
             DatabaseBackend::Postgres,
@@ -116,10 +142,14 @@ async fn ensure_complete_taxonomy_ownership(txn: &DatabaseTransaction) -> Result
         })
         .collect::<Result<Vec<_>, DbErr>>()?;
 
-    let terms = taxonomy_term::Entity::find()
-        .filter(taxonomy_term::Column::Id.is_in(taxonomy_ids))
-        .all(txn)
-        .await?;
+    let terms = TaxonomyTermRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT id, tenant_id, kind, scope_type, scope_value, canonical_key FROM taxonomy_terms WHERE id = ANY($1)",
+        vec![taxonomy_ids.into()],
+    ))
+    .all(txn)
+    .await?;
+
     let term_by_id = terms
         .into_iter()
         .map(|term| (term.id, term))
@@ -137,8 +167,8 @@ async fn ensure_complete_taxonomy_ownership(txn: &DatabaseTransaction) -> Result
         })?;
         let expected_key = format!("product-category-{}", category.id);
         if term.tenant_id != category.tenant_id
-            || term.kind != TaxonomyTermKind::Category
-            || term.scope_type != TaxonomyScopeType::Module
+            || term.kind != "category"
+            || term.scope_type != "module"
             || term.scope_value != PRODUCT_SCOPE_VALUE
             || term.canonical_key != expected_key
         {

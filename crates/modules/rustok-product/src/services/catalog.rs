@@ -91,8 +91,6 @@ use super::write_transaction::{
 };
 use helpers::*;
 
-const PRODUCT_SCOPE_VALUE: &str = "product";
-
 fn map_product_unique_violation(
     error: sea_orm::DbErr,
     handle: &str,
