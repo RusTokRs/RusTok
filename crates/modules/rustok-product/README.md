@@ -12,14 +12,13 @@
 
 ## Standalone catalog profile
 
-Product remains one domain module. Its public ports, DTOs and local implementation
-currently live in `rustok-product`. The existing infrastructure packages remain separate:
+Product follows the [canonical FBA layout](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout):
 
-- `rustok-product-catalog-service`: standalone provider for catalog projections, SKU identity and opt-in catalog commands.
-- `rustok-product-transport`: tonic client/server framing and bearer authentication.
+- `rustok-product-ports`: published owner ports, DTOs, domain models, and optional `grpc-client`/`grpc-server` tonic adapters in `ports/`.
+- `rustok-product`: canonical domain implementation, SeaORM entities, migrations, and standalone service binary in `src/bin/service.rs` (under feature `service`).
+- The standalone daemon binary is named `rustok-product-catalog-service` and executed via `cargo run -p rustok-product --bin rustok-product-catalog-service --features service`.
+- The modular monolith remains the default deployment mode.
 
-These packages are the current deployment inputs. Product's conversion target is
-the [canonical FBA layout](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout), with published contracts and gRPC adapters in `ports/` and the standalone binary in the Product owner.
 The remote capability remains bounded to its supported operations.
 
 ## Known Limitations / Pending Implementation

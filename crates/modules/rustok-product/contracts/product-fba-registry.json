@@ -88,8 +88,8 @@
     "status": "source_complete_consumer_cutover_complete"
   },
   "external_transport": {
-    "crate": "rustok-product-transport",
-    "source": "crates/modules/rustok-product-transport",
+    "crate": "rustok-product-ports",
+    "source": "crates/modules/rustok-product/ports",
     "protocol": "tonic_grpc_json_owner_contract",
     "client": "GrpcProductCatalogReadProvider",
     "connection_config": "GrpcProductCatalogReadConnectionConfig",
@@ -105,8 +105,8 @@
       "secret_debug_redacted",
       "authentication_failure_secret_not_echoed"
     ],
-    "proto": "crates/modules/rustok-product-transport/proto/rustok/product/product_catalog.proto",
-    "conformance_test": "crates/modules/rustok-product-transport/tests/port_conformance.rs",
+    "proto": "crates/modules/rustok-product/ports/proto/rustok/product/product_catalog.proto",
+    "conformance_test": "crates/modules/rustok-product/ports/tests/port_conformance.rs",
     "host_deployment": "apps/server/src/services/product_catalog_deployment.rs",
     "runtime_factory": "ProductCatalogReadRuntime::external",
     "variant_identity_port": "ProductVariantIdentityReadPort",
@@ -116,8 +116,8 @@
     "endpoint_env": "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT",
     "bearer_token_env": "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",
     "authentication_status": "source_complete_execution_pending",
-    "provider_host_crate": "rustok-product-catalog-service",
-    "provider_host_source": "crates/modules/rustok-product-catalog-service/src/main.rs",
+    "provider_host_crate": "rustok-product",
+    "provider_host_source": "crates/modules/rustok-product/src/bin/service.rs",
     "provider_host_binary": "rustok-product-catalog-service",
     "provider_host_owner_service": "CatalogService",
     "provider_host_event_transport": "OutboxTransport",
