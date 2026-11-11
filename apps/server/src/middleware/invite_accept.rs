@@ -31,7 +31,16 @@ pub async fn consume_once(
     let (parts, body) = request.into_parts();
     let tenant_id = match parts.tenant_context() {
         Some(tenant) => tenant.id,
-        None => return Error::InternalServerError.into_response(),
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({
+                    "error": "tenant_not_found",
+                    "message": "Tenant context is required"
+                })),
+            )
+                .into_response();
+        }
     };
     let bytes = match to_bytes(body, MAX_INVITE_REQUEST_BYTES).await {
         Ok(bytes) => bytes,
