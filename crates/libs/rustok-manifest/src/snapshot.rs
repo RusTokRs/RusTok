@@ -9,11 +9,12 @@ use sha2::{Digest, Sha256};
 /// Keys are serialized with canonical sorted ordering (via BTreeMap).
 #[cfg(feature = "snapshot-hash")]
 pub fn compute_modules_manifest_hash(manifest: &ModulesManifest) -> Result<String> {
-    let serialized = toml::to_string(manifest).map_err(ManifestError::TomlSerialize)?;
+    let json = serde_json::to_vec(manifest).map_err(|e| {
+        ManifestError::Validation(format!("JSON serialization error for hash: {e}"))
+    })?;
     let mut hasher = Sha256::new();
-    hasher.update(serialized.as_bytes());
-    let result = hasher.finalize();
-    Ok(hex::encode(result))
+    hasher.update(&json);
+    Ok(hex::encode(hasher.finalize()))
 }
 
 #[cfg(not(feature = "snapshot-hash"))]

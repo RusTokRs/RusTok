@@ -20,6 +20,7 @@
 //!   hashes of resolved module configurations under the `snapshot-hash` feature.
 
 pub mod error;
+pub mod snapshot;
 pub mod types;
 pub mod validation;
 
@@ -27,6 +28,7 @@ pub mod validation;
 mod contract_tests;
 
 pub use error::{ManifestError, Result};
+pub use snapshot::compute_modules_manifest_hash;
 pub use types::{
     AdminBuildConfig, BuildConfig, Manifest, ModuleGraphqlProvides, ModuleHttpProvides,
     ModulePackageAdminSupportProvides, ModulePackageAdminUiChildPage, ModulePackageAdminUiProvides,
@@ -71,18 +73,6 @@ pub fn load_module_package_manifest(path: impl AsRef<Path>) -> Result<ModulePack
         .map_err(|e| ManifestError::Io(path_ref.display().to_string(), e))?;
     toml::from_str(&content)
         .map_err(|e| ManifestError::TomlParse(path_ref.display().to_string(), e))
-}
-
-/// Compute deterministic SHA-256 hash of a ModulesManifest.
-#[cfg(feature = "snapshot-hash")]
-pub fn compute_modules_manifest_hash(manifest: &ModulesManifest) -> Result<String> {
-    use sha2::{Digest, Sha256};
-    let json = serde_json::to_vec(manifest).map_err(|e| {
-        ManifestError::Validation(format!("JSON serialization error for hash: {e}"))
-    })?;
-    let mut hasher = Sha256::new();
-    hasher.update(&json);
-    Ok(hex::encode(hasher.finalize()))
 }
 
 #[cfg(test)]
