@@ -599,6 +599,9 @@ fn extract_client_id_for_request(
 }
 
 fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {
+    if headers.get_all(header::AUTHORIZATION).iter().count() > 1 {
+        return None;
+    }
     headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())

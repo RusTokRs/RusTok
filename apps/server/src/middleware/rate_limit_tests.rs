@@ -486,3 +486,18 @@ fn matching_path_policy_returns_none_for_unmatched_path() {
 
     assert!(matching_path_policy(&policies, "/health/ready").is_none());
 }
+
+#[test]
+fn extract_bearer_token_rejects_duplicate_authorization_headers() {
+    let mut headers = HeaderMap::new();
+    headers.append(
+        header::AUTHORIZATION,
+        HeaderValue::from_static("Bearer token-one"),
+    );
+    headers.append(
+        header::AUTHORIZATION,
+        HeaderValue::from_static("Bearer token-two"),
+    );
+
+    assert_eq!(extract_bearer_token(&headers), None);
+}
