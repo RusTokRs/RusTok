@@ -2,7 +2,7 @@
 
 - Date: 2026-11-11
 - Decision status: Accepted
-- Implementation status: Complete
+- Implementation status: Implemented
 - Owners: rustok-product, rustok-inventory, rustok-taxonomy
 - Extends: [2026-09-18-canonical-native-module-reference-contract.md](./2026-09-18-canonical-native-module-reference-contract.md), [2026-11-05-pricing-entity-sovereignty-and-product-decoupling.md](./2026-11-05-pricing-entity-sovereignty-and-product-decoupling.md)
 - Supersedes: None
