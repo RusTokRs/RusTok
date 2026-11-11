@@ -532,6 +532,11 @@ The July 29 attestation is retained for its original projection and consumer har
 | Transactions | Product, Pricing and Inventory lifecycle/bootstrap operations share a local SQL transaction. Their transaction-participant interfaces cannot cross RPC. |
 | Packaging | Public contracts and implementation are in the existing owner crate, with unconditional implementation dependencies. A contracts-only feature is unimplemented and is not a prerequisite for this bounded FBA profile. |
 
+Product's next packaging change moves the gRPC adapter and service entry point
+into the [canonical nested transport package](../../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
+Update live workspace, launch and evidence inputs together. Retain historical
+evidence with its original source paths and commands.
+
 The bounded remote read profile is compatible with local commands. A shared database
 supports process extraction with coordinated schema. For independent storage, first
 route the remaining mounted consumers through Product ports. Decide whether to keep

@@ -19,6 +19,26 @@ fn close(open: u8) -> Option<u8> {
     }
 }
 
+/// Candidate column-filtered triggers in SQL literals, reported at `AFTER`.
+/// Migration ordering, database dialect, and BEFORE triggers require owner review.
+pub(super) fn column_update_triggers(code: &str, syntax: &str) -> Vec<usize> {
+    let trigger = re!(
+        r"(?is)\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:CONSTRAINT\s+)?TRIGGER\s+[^;]{1,512}?\b(AFTER\s+UPDATE\s+OF\s+[^;]{1,512}?\s+ON\b)"
+    );
+    trigger
+        .captures_iter(code)
+        .filter_map(|capture| {
+            let create = capture.get(0)?;
+            let after = capture.get(1)?;
+            // Rust literals are present in code but masked in syntax. Rust comments
+            // are masked in both, so this also excludes source-code comments.
+            (syntax.as_bytes().get(create.start()) == Some(&b' ')
+                && syntax.as_bytes().get(after.start()) == Some(&b' '))
+            .then_some(after.start())
+        })
+        .collect()
+}
+
 fn literal(value: &str) -> bool {
     let value = value.trim();
     if matches!(value, "true" | "false")

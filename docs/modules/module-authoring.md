@@ -115,8 +115,9 @@ Before any module PR is merged:
 For FBA translation, the same standard applies as in the unified plan
 `docs/research/fluid-backend-architecture-unified-plan.md`: local status block, central board,
 runtime metadata/registry, owner-owned contracts, anti-drift/fallback verification and evidence
-packet. The target crate structure is described in section `2.3` of the unified plan: `*-grpc` crate and
-repository interfaces are optional late-stage seams, not mandatory scaffolding for the first PR.
+packet. Apply the [remote FBA module layout](../backend/module-backend-implementation.md#remote-fba-module-layout)
+to a new or existing owner when it has a real remote port. The native scaffold starts with
+owner identity and uses the same packaging lint as a conversion.
 The working name FBA is not carried over into type names without necessity: code-facing
 contracts use neutral `*Port`, `PortContext`, `PortError`, `provider` and `consumer`.
 

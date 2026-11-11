@@ -45,6 +45,16 @@ and trigger tokens. This is a source-level candidate for
 `P-SQLSTATE-DISCRIM`; a specific misclassification against a PostgreSQL error
 has not been reproduced. [Forum error adapter](../../crates/modules/rustok-forum/src/error.rs)
 
+The Alloy executor currently discards errors from `record_error` after a script
+failure. If persistence fails, the failed execution may not advance the counter
+used to disable a repeatedly failing script, and the accounting failure is not
+reported by that call site. This is a confirmed source-level failure branch,
+not evidence that such a persistence failure has occurred in production.
+`P-ANTI-SWALLOW` reports the call for review. See the
+[executor](../../crates/modules/alloy/src/runner/executor.rs),
+[registry implementation](../../crates/modules/alloy/src/storage/sea_orm/mod.rs),
+and [threshold](../../crates/modules/alloy/src/model/script.rs).
+
 ---
 
 ## 1. Core Philosophy: The 6 Universal Logic Dimensions
@@ -489,7 +499,7 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-UNFINISHED-CODE` | Runtime completeness | Affected runtime paths cannot reach incomplete code | Heuristic: work marker or incomplete-code macro |
 | `P-SYNC-SLEEP-AWAIT` | Concurrency | Blocking delay runs outside executor workers | Heuristic: direct blocking sleep in async function |
 | `P-OWNER-READ-BOUNDARY` | Ownership and concurrency | Owner controls storage reads and the adapter preserves snapshot and admission semantics | Manual |
-| `P-TRIGGER-ROW-CHANGE` | Side effects | An update that derives a revision in a trigger commits the matching projection | Manual |
+| `P-TRIGGER-ROW-CHANGE` | Side effects | An update that derives a revision in a trigger commits the matching projection | Heuristic: column-filtered AFTER UPDATE trigger in migration SQL; inspect active migration chain and dialect |
 | `P-COMMAND-ADMISSION` | Concurrency | Same-key concurrent commands serialize admission before reading receipt state | Manual |
 | `P-REPLAY-PRECONDITION` | Idempotency | A replay preserves the original command identity and revision | Manual |
 

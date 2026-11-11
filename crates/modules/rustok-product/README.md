@@ -18,9 +18,9 @@ currently live in `rustok-product`. The existing infrastructure packages remain 
 - `rustok-product-catalog-service`: standalone provider for catalog projections, SKU identity and opt-in catalog commands.
 - `rustok-product-transport`: tonic client/server framing and bearer authentication.
 
-Keep these existing transport/service packages separate under repository policy. Their
-existence supports a bounded remote capability; it does not make the whole Product module
-remotely interchangeable. See [FBA scope](../../../docs/backend/module-backend-architecture.md#fba-contracts).
+These packages are the current deployment inputs. Product's conversion target is
+the [nested FBA transport package](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
+The remote capability remains bounded to its supported operations.
 
 ## Known Limitations / Pending Implementation
 

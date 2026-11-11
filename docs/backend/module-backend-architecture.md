@@ -163,8 +163,10 @@ and recovery contract.
   requirement. It requires optional implementation dependencies, independent public types
   and checks of the resolved feature graph. Cargo features are additive; they do not choose
   a runtime provider. Product does not currently publish such a build.
-- Keep the existing owner transport and standalone-service packages separate under
-  `AGENTS.md` section 5. Their package count does not establish remote completeness.
+- A native owner publishes its gRPC adapter and standalone binary in one nested
+  `transport/` package. New and converted owners use the same
+  [remote FBA module layout](./module-backend-implementation.md#remote-fba-module-layout).
+  Existing sibling packages are migration states.
 - Do not create empty contract, repository or transport layers for modules without a real
   boundary. Module-specific contracts do not move to `rustok-api` merely because another
   module consumes them.

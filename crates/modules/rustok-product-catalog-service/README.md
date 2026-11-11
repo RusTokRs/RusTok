@@ -1,6 +1,6 @@
 # RusTok Product catalog service
 
-> **FBA microservice extraction** — this is a domain-owned standalone deployment unit, not a platform host application. It MUST NOT be relocated to `apps/` or collapsed into `rustok-product`. See `AGENTS.md` §5 and `docs/modules/registry.md`.
+> This is the current Product standalone deployment package. The conversion target places its binary in the [Product-owned transport package](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
 
 For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
 

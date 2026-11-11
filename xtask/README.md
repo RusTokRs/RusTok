@@ -241,7 +241,8 @@ Use `--no-bootstrap` to only prepare env files, or `--dry-run` to inspect the ac
 - `cargo xtask validate-manifest` validates the central composition contract for every module declared in `modules.toml`.
 - `cargo xtask module validate` validates every local `source = "path"` module declared in `modules.toml`.
 - `cargo xtask module validate <slug>` validates one declared module.
-- `cargo xtask module lint <slug>` checks native source layout, FFA package structure and live Next.js package/route wiring. This is independent of publish-readiness; `module validate` does not run it, while the scaffold command explicitly runs lint before validate unless `--skip-validate` is supplied.
+- `cargo xtask module lint <slug>` checks native source layout, FFA package structure, live Next.js package/route wiring and the nested FBA transport package when present. This is independent of publish-readiness. The scaffold command runs lint before validate unless `--skip-validate` is supplied.
+- `cargo xtask module lint <slug> --fba` requires and checks the [remote FBA package](../docs/backend/module-backend-implementation.md#remote-fba-module-layout). The same packaging check applies to new and converted modules. The native generator records the recipe in the owner plan. Adding a transport requires a real owner port and its protocol implementation.
 - `cargo xtask module test <slug>` builds and runs the targeted smoke plan for one declared module.
 - Central docs drift is part of the contract: `validate-manifest` checks `docs/modules/registry.md`, and `module validate <slug>` checks that the module's row and dependency bucket stay aligned with `modules.toml`.
 - A crate under `crates/` is treated as a support/capability crate until it is added to `modules.toml`.

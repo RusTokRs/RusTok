@@ -1,6 +1,6 @@
 # rustok-product-transport
 
-> **FBA microservice extraction** — typed gRPC transport adapter for `rustok-product-catalog-service`. Part of the Product domain FBA extraction; MUST NOT be collapsed into `rustok-product`. See `AGENTS.md` §5 and `docs/modules/registry.md`.
+> This is the current Product gRPC adapter package. Its conversion target is the [nested Product transport package](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout), which also houses the standalone executable target.
 
 Typed tonic gRPC framing for the Product-owned `ProductCatalogReadPort`,
 `ProductVariantIdentityReadPort` and `ProductCatalogCommandPort`.

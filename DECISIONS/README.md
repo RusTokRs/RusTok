@@ -52,7 +52,9 @@ Non-ADR plans and research documents do not belong in this registry.
 ## Index
 
 | ADR | Title | Decision status | Implementation status | Relations |
+| --- | --- | --- | --- | --- |
 | [2026-11-11](./2026-11-11-messenger-write-and-sync.md) | Messenger write authority and resumable delivery | Proposed | Not started | Extends [Outbox runtime](./2026-03-11-queue-runtime-source-of-truth-outbox.md), [Port ownership](./2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md) |
+| [2026-11-11](./2026-11-11-canonical-fba-transport-layout.md) | Canonical FBA transport layout | Accepted | In progress | Extends [native source layout](./2026-09-18-canonical-native-module-source-layout.md) and [port contract ownership](./2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md) |
 | [2026-11-08](./2026-11-08-distribution-index-owner-read-contracts.md) | Distribution Index owner read contracts | Accepted | In progress | Extends [Index PostgreSQL storage model](./2026-07-24-index-storage-layout.md) |
 | [2026-11-05](./2026-11-05-pricing-entity-sovereignty-and-product-decoupling.md) | Pricing storage sovereignty and Product port decoupling | Accepted | Implemented | Extends [native module reference contract](./2026-09-18-canonical-native-module-reference-contract.md), [initial commerce split](./2026-03-25-commerce-module-split-product-pricing-inventory.md) |
 | [2026-11-05](./2026-11-05-migration-safety-assessment.md) | Shared migration safety assessment | Accepted | Implemented | Extends [migration consolidation](./2026-11-03-migration-consolidation.md), [release safety](./2026-08-06-module-release-rollback-safety.md) |
