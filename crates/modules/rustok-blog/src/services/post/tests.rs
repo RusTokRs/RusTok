@@ -215,7 +215,7 @@ fn schedule_patch_is_bounded_to_drafts_and_the_future() {
         Ok(Patch::Keep)
     ));
 }
-;
+
 fn post_edit_input(version: i32) -> UpdatePostInput {
     UpdatePostInput {
         locale: None,
@@ -695,7 +695,7 @@ async fn create_and_update_post_store_channel_visibility_in_typed_relation() {
     assert_eq!(updated.channel_slugs, vec!["storefront".to_string()]);
     assert_eq!(updated.metadata["custom"], "next");
 }
-;
+
 /// The customer-facing list is a public surface, so it applies the same corpus
 /// rule as the public keyset list, the SEO scan and the comment target gate.
 ///
@@ -1257,7 +1257,7 @@ async fn public_comment_target_uses_same_normalized_channel_as_post_listing() {
         "empty channel does not inherit another channel's authorization"
     );
 }
-;
+
 /// The wiring, not just the predicate: a caller that patches `scheduled_at` on a post it has
 /// already published is refused, and publishing a scheduled draft clears the field.
 
@@ -1379,7 +1379,7 @@ async fn published_posts_reject_a_schedule_patch() {
         .expect_err("a published post must not take a schedule");
     assert!(matches!(refused, BlogError::Validation(_)));
 }
-;
+
 /// Search must not treat a stale indexed `blog_post` row as authority: the
 /// Blog owner supplies current published/channel eligibility independently of
 /// whatever was previously projected into Search storage.
@@ -1467,7 +1467,7 @@ async fn search_audience_rechecks_live_publication_and_channel_binding() {
             .await.expect("other tenant is isolated").is_empty()
     );
 }
-;
+
 // Admin text filters (`title`, `slug`) on the authenticated post list.
 //
 // These tests pin the contract the admin tables rely on: a case-insensitive
@@ -2084,4 +2084,4 @@ async fn admin_list_text_filters_normalize_blank_and_reject_oversized_needles() 
         "an oversized title needle must be rejected"
     );
 }
-;
+
