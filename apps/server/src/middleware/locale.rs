@@ -482,8 +482,8 @@ pub async fn invalidate_all_tenant_locale_cache(ctx: &ServerRuntimeContext) {
 #[cfg(test)]
 mod tests {
     use super::{
-        TenantLocaleCache, TenantLocaleCacheKey, TenantLocaleRecord, constrain_locale_to_tenant,
-        tenant_locale_entry_weight,
+        TenantLocaleCache, TenantLocaleCacheKey, TenantLocaleCacheStats, TenantLocaleRecord,
+        constrain_locale_to_tenant, tenant_locale_entry_weight,
     };
     use rustok_api::request::ResolvedRequestLocale;
     use std::sync::Arc;
@@ -691,5 +691,85 @@ mod tests {
             constrain_locale_to_tenant(&resolved, &locales, "en-US"),
             "en"
         );
+    }
+
+    #[test]
+    fn falls_back_to_configured_fallback_locale_when_requested_is_disabled() {
+        let resolved = ResolvedRequestLocale {
+            requested_locale: Some("fr".to_string()),
+            effective_locale: "fr".to_string(),
+        };
+        let locales = vec![
+            TenantLocaleRecord {
+                locale: "en".to_string(),
+                is_enabled: true,
+                is_default: true,
+                fallback_locale: None,
+            },
+            TenantLocaleRecord {
+                locale: "es".to_string(),
+                is_enabled: true,
+                is_default: false,
+                fallback_locale: None,
+            },
+            TenantLocaleRecord {
+                locale: "fr".to_string(),
+                is_enabled: false,
+                is_default: false,
+                fallback_locale: Some("es".to_string()),
+            },
+        ];
+
+        assert_eq!(constrain_locale_to_tenant(&resolved, &locales, "en"), "es");
+    }
+
+    #[test]
+    fn falls_back_to_first_enabled_when_all_defaults_and_requested_are_disabled() {
+        let resolved = ResolvedRequestLocale {
+            requested_locale: Some("zh".to_string()),
+            effective_locale: "zh".to_string(),
+        };
+        let locales = vec![
+            TenantLocaleRecord {
+                locale: "fr".to_string(),
+                is_enabled: false,
+                is_default: true,
+                fallback_locale: None,
+            },
+            TenantLocaleRecord {
+                locale: "es".to_string(),
+                is_enabled: true,
+                is_default: false,
+                fallback_locale: None,
+            },
+        ];
+
+        assert_eq!(constrain_locale_to_tenant(&resolved, &locales, "de"), "es");
+    }
+
+    #[test]
+    fn falls_back_to_tenant_default_when_no_locales_enabled() {
+        let resolved = ResolvedRequestLocale {
+            requested_locale: Some("zh".to_string()),
+            effective_locale: "zh".to_string(),
+        };
+        let locales = vec![TenantLocaleRecord {
+            locale: "fr".to_string(),
+            is_enabled: false,
+            is_default: true,
+            fallback_locale: None,
+        }];
+
+        assert_eq!(constrain_locale_to_tenant(&resolved, &locales, "it"), "it");
+    }
+
+    #[test]
+    fn tenant_locale_cache_stats_default_is_zero() {
+        let stats = TenantLocaleCacheStats::default();
+        assert_eq!(stats.hits, 0);
+        assert_eq!(stats.misses, 0);
+        assert_eq!(stats.db_queries, 0);
+        assert_eq!(stats.invalidations, 0);
+        assert_eq!(stats.entries, 0);
     }
 }
