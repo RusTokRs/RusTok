@@ -1,11 +1,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::{Confidence, Finding, Severity, discovery, report, scan_source};
 
 #[derive(Default)]
 struct Options {
+    hotspots: bool,
+    top: Option<usize>,
     crate_names: Option<String>,
     path: Option<PathBuf>,
     all: bool,
@@ -29,6 +32,9 @@ struct Options {
 
 fn usage() {
     println!(
+        "Usage: cargo xtask doctor hotspots [--crate NAME | --path PATH | --all-modules | --all | --staged | --changed | --diff REF] [--top N] [--json]"
+    );
+    println!(
         "Usage: cargo xtask doctor hygiene [--crate NAME | --path PATH | --all-modules | --all | --staged | --changed | --diff REF]"
     );
     println!("  [--severity P0|P1|P2] [--strict | --fail-on P0|P1|P2] [--ignore-rule IDS]");
@@ -47,6 +53,7 @@ fn parse(args: &[String]) -> Result<Option<Options>, String> {
         };
         match argument.as_str() {
             "hygiene" => {}
+            "hotspots" if !options.hotspots => options.hotspots = true,
             "--help" | "-h" => {
                 usage();
                 return Ok(None);
@@ -83,6 +90,13 @@ fn parse(args: &[String]) -> Result<Option<Options>, String> {
                         .map_err(|_| "threads must be a positive integer".to_owned())?,
                 )
             }
+            "--top" => {
+                options.top = Some(
+                    value()?
+                        .parse()
+                        .map_err(|_| "top must be a positive integer".to_owned())?,
+                )
+            }
             _ => return Err(format!("unknown argument: {argument}")),
         }
     }
@@ -96,6 +110,27 @@ fn parse(args: &[String]) -> Result<Option<Options>, String> {
     }
     if options.threads == Some(0) {
         return Err("threads must be a positive integer".to_owned());
+    }
+    if options.top == Some(0) || (options.top.is_some() && !options.hotspots) {
+        return Err("--top requires hotspots and a positive integer".to_owned());
+    }
+    if options.hotspots
+        && (options.strict
+            || options.severity.is_some()
+            || options.fail_on.is_some()
+            || options.summary_only
+            || options.suggest_fixes
+            || options.csv.is_some()
+            || options.markdown.is_some()
+            || options.patch.is_some()
+            || options.annotations
+            || !options.ignored.is_empty()
+            || options.threads.is_some())
+    {
+        return Err("hotspots accepts selection, --top and --json options".to_owned());
+    }
+    if options.json && options.annotations {
+        return Err("--json and --github-annotations cannot be combined".to_owned());
     }
     Ok(Some(options))
 }
@@ -177,7 +212,8 @@ fn scan(
     root: &Path,
     targets: &[discovery::Target],
     threads: usize,
-) -> Result<Vec<(Vec<Finding>, String)>, String> {
+    capture_sources: bool,
+) -> Result<Vec<(Vec<Finding>, Option<String>)>, String> {
     let workers = if targets.len() > 20 {
         threads.min(targets.len()).max(1)
     } else {
@@ -194,6 +230,8 @@ fn scan(
                         .map(|target| {
                             let source = discovery::read(root, target)?;
                             let findings = scan_source(&target.path, &source);
+                            let source =
+                                (capture_sources && !findings.is_empty()).then_some(source);
                             Ok((findings, source))
                         })
                         .collect::<Result<Vec<_>, String>>()
@@ -221,17 +259,76 @@ fn threshold(severity: Severity, limit: &str) -> bool {
     severity <= maximum
 }
 
+fn output_identity(path: &Path) -> Result<PathBuf, String> {
+    if path.exists() {
+        return fs::canonicalize(path).map_err(|error| format!("{}: {error}", path.display()));
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("invalid output path: {}", path.display()))?;
+    let name = path
+        .file_name()
+        .ok_or_else(|| format!("invalid output path: {}", path.display()))?;
+    Ok(fs::canonicalize(parent)
+        .map_err(|error| format!("{}: {error}", parent.display()))?
+        .join(name))
+}
+
+fn validate_outputs(
+    root: &Path,
+    targets: &[discovery::Target],
+    options: &Options,
+) -> Result<(), String> {
+    if options.csv.is_none() && options.markdown.is_none() && options.patch.is_none() {
+        return Ok(());
+    }
+    let mut sources = BTreeSet::new();
+    for target in targets {
+        let path = root.join(&target.path);
+        if path.exists() || path.parent().is_some_and(Path::exists) {
+            sources.insert(output_identity(&path)?);
+        }
+    }
+    let mut outputs = BTreeSet::new();
+    for path in [&options.csv, &options.markdown, &options.patch]
+        .into_iter()
+        .flatten()
+    {
+        let identity = output_identity(&root.join(path))?;
+        if sources.contains(&identity) || !outputs.insert(identity) {
+            return Err(format!(
+                "output path conflicts with another output or scanned source: {}",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn execute(options: Options) -> Result<i32, String> {
     let root = root()?;
     let (targets, description) = targets(&root, &options)?;
+    if options.hotspots {
+        return crate::hotspots::run(
+            &root,
+            &targets,
+            &description,
+            options.top.unwrap_or(20),
+            options.json,
+        );
+    }
+    validate_outputs(&root, &targets, &options)?;
     let count = targets.len();
     let threads = options
         .threads
         .unwrap_or_else(|| std::thread::available_parallelism().map_or(4, |value| value.get()));
     let mut findings = Vec::new();
     let mut sources = BTreeMap::new();
-    for (index, (items, content)) in scan(&root, &targets, threads)?.into_iter().enumerate() {
-        if options.patch.is_some() && !items.is_empty() {
+    for (index, (items, content)) in scan(&root, &targets, threads, options.patch.is_some())?
+        .into_iter()
+        .enumerate()
+    {
+        if let Some(content) = content {
             sources.insert(targets[index].path.clone(), content);
         }
         findings.extend(items);
@@ -253,6 +350,19 @@ fn execute(options: Options) -> Result<i32, String> {
             finding.confidence == Confidence::High && threshold(finding.severity, limit)
         })
     }));
+    if let Some(path) = &options.csv {
+        report::write(&root, path, &report::csv(&findings)?)?;
+    }
+    if let Some(path) = &options.markdown {
+        report::write(
+            &root,
+            path,
+            &report::markdown(&findings, count, &description),
+        )?;
+    }
+    if let Some(path) = &options.patch {
+        report::write(&root, path, &report::patch(&findings, &sources)?)?;
+    }
     if options.json {
         println!("{}", serde_json::to_string_pretty(&serde_json::json!({
             "target": description, "scanned_files": count, "total_findings": findings.len(), "findings": findings
@@ -267,23 +377,8 @@ fn execute(options: Options) -> Result<i32, String> {
         options.suggest_fixes,
         options.all || options.all_modules,
     );
-    if !findings.is_empty() {
-        if let Some(path) = options.csv {
-            report::write(&root, &path, &report::csv(&findings)?)?;
-        }
-        if let Some(path) = options.markdown {
-            report::write(
-                &root,
-                &path,
-                &report::markdown(&findings, count, &description),
-            )?;
-        }
-        if let Some(path) = options.patch {
-            report::write(&root, &path, &report::patch(&findings, &sources)?)?;
-        }
-        if options.annotations {
-            report::annotations(&findings);
-        }
+    if options.annotations {
+        report::annotations(&findings);
     }
     Ok(exit)
 }

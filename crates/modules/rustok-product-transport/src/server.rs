@@ -78,7 +78,7 @@ pub enum ProductCatalogGrpcOperation {
 }
 
 impl ProductCatalogGrpcOperation {
-    pub const ALL: [Self; 24] = [
+    pub const READ: [Self; 9] = [
         Self::ReadProductProjection,
         Self::ReadVariantProductProjection,
         Self::ListPublishedProducts,
@@ -88,6 +88,9 @@ impl ProductCatalogGrpcOperation {
         Self::ListFilteredPublishedProducts,
         Self::LoadStorefrontCatalogFacets,
         Self::ReadStorefrontProductProjection,
+    ];
+
+    pub const COMMAND: [Self; 15] = [
         Self::CreateProduct,
         Self::UpdateProduct,
         Self::PublishProduct,
@@ -172,7 +175,7 @@ impl ProductCatalogGrpcBearerAuthenticator {
             actor,
             claims: Vec::new(),
             roles: Vec::new(),
-            allowed_operations: HashSet::from(ProductCatalogGrpcOperation::ALL),
+            allowed_operations: HashSet::from(ProductCatalogGrpcOperation::READ),
         }
     }
 
@@ -937,8 +940,11 @@ mod tests {
             .expect("trusted authority should be installed");
         assert_eq!(authority.tenant_id, tenant_id);
         assert_eq!(authority.actor, PortActor::service("rustok-server"));
-        for operation in ProductCatalogGrpcOperation::ALL {
+        for operation in ProductCatalogGrpcOperation::READ {
             assert!(authority.allowed_operations.contains(&operation));
+        }
+        for operation in ProductCatalogGrpcOperation::COMMAND {
+            assert!(!authority.allowed_operations.contains(&operation));
         }
     }
 

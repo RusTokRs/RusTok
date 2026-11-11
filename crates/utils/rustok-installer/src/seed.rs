@@ -384,6 +384,17 @@ fn validate_request(
             "seed request requires a non-empty actor".to_string(),
         ));
     }
+    for module in request
+        .enabled_modules
+        .iter()
+        .chain(&request.disabled_modules)
+    {
+        if !rustok_api::is_valid_module_slug(module) {
+            return Err(SeedExecutionError::Validation(
+                "seed request contains an invalid module slug".to_string(),
+            ));
+        }
+    }
     if request.profile == SeedProfile::Dev
         && request
             .demo_customer_password
@@ -788,6 +799,24 @@ mod tests {
         ] {
             assert!(matches!(
                 execute_seed_profile(request, &NoCalls, &NoCalls, &NoCalls, loader).await,
+                Err(SeedExecutionError::Validation(_))
+            ));
+        }
+        for (enabled, disabled) in [
+            (vec!["../blog".into()], vec![]),
+            (vec![], vec!["blog/other".into()]),
+            (vec!["Blog".into()], vec![]),
+            (vec!["blog".into()], vec![" ".into()]),
+        ] {
+            let invalid_modules = SeedExecutionRequest {
+                profile: SeedProfile::Minimal,
+                enabled_modules: enabled,
+                disabled_modules: disabled,
+                seed_data_path: None,
+                ..request.clone()
+            };
+            assert!(matches!(
+                execute_seed_profile(invalid_modules, &NoCalls, &NoCalls, &NoCalls, None).await,
                 Err(SeedExecutionError::Validation(_))
             ));
         }

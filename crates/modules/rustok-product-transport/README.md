@@ -70,7 +70,7 @@ node scripts/verify/verify-product-catalog-grpc-authentication.mjs
 node scripts/verify/verify-product-catalog-grpc-authentication.test.mjs
 ```
 
-`examples/product_catalog_runtime_probe.rs` is the allowlisted authenticated client used by the separate-process runtime capture. It reads operator-provided tenant, product, and variant fixture identifiers from environment variables, invokes all six RPCs, checks returned projections and SKU identities, and emits one bounded success marker without printing identifiers or credentials.
+`examples/product_catalog_runtime_probe.rs` is the allowlisted authenticated client used by the separate-process runtime capture. It reads operator-provided tenant, product, and variant fixture identifiers from environment variables, invokes all six RPCs, checks returned projections and SKU identities, and emits one bounded success marker without printing identifiers or credentials. When `RUSTOK_PRODUCT_CATALOG_EVIDENCE_ENABLE_COMMANDS=true`, it additionally executes an authenticated command probe (`preview_variant_axes`) over gRPC to verify `ProductCatalogCommandPort`.
 
 The source contract and mutation guard are checked with:
 

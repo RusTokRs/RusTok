@@ -448,6 +448,7 @@ async fn validate_refresh_token(
     Ok(token)
 }
 
+#[derive(Debug)]
 struct RefreshTokenFamily {
     family_id: Uuid,
     created_at: chrono::DateTime<Utc>,
@@ -971,7 +972,8 @@ mod tests {
         PreparedUserTokens, REFRESH_TOKEN_GRANT, commit_refresh_rotation, require_grant,
         resolve_client, validate_requested_scopes,
     };
-    use crate::models::{oauth_apps, oauth_tokens};
+    use chrono::Utc;
+    use crate::models::{oauth_apps, oauth_authorization_codes as oauth_codes, oauth_tokens};
     use rustok_auth::TokenRequest;
     use sea_orm::{
         ActiveModelTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema, Set,
@@ -1343,7 +1345,7 @@ mod tests {
             .expect("replay revocation succeeds");
 
         for (index, id) in ids.into_iter().enumerate() {
-            let stored = OAuthTokens::find_by_id(id)
+            let stored = oauth_tokens::Entity::find_by_id(id)
                 .one(&db)
                 .await
                 .expect("load token")

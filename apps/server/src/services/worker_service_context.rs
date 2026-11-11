@@ -332,6 +332,7 @@ mod tests {
             client_id: Some(Uuid::from_u128(4)),
             scopes: vec!["inventory:read".into()],
             grant_type: "client_credentials".into(),
+            access_token_expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
         }
     }
 

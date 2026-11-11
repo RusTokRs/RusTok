@@ -387,7 +387,7 @@ impl InventoryService {
             &self.db,
             tenant_id,
             super::public_channel::PublicChannelInventoryVariantProjectionInput {
-                variant_id: variant.id,
+                variant_id: variant.id(),
                 inventory_policy: &variant.inventory_policy,
             },
             requested_quantity,
@@ -468,7 +468,7 @@ impl InventoryService {
             {
                 self.available_quantity(&txn, inventory_item.id).await?
             } else {
-                variant.inventory_quantity
+                0
             };
             txn.commit().await?;
             return Ok(InventoryReservationWriteResult::from_quantities(
@@ -605,7 +605,7 @@ impl InventoryService {
             {
                 self.available_quantity(&txn, inventory_item.id).await?
             } else {
-                variant.inventory_quantity
+                0
             };
             txn.commit().await?;
             return Ok(InventoryReservationReleaseWriteResult::from_quantities(
@@ -682,22 +682,23 @@ impl InventoryService {
         conn: &C,
         tenant_id: Uuid,
         variant_id: Uuid,
-    ) -> CommerceResult<entities::product_variant::Model>
+    ) -> CommerceResult<crate::product_port::InventoryProductVariantInfo>
     where
         C: sea_orm::ConnectionTrait,
     {
-        entities::product_variant::Entity::find_by_id(variant_id)
-            .filter(entities::product_variant::Column::TenantId.eq(tenant_id))
-            .one(conn)
-            .await?
-            .ok_or(CommerceError::VariantNotFound(variant_id))
+        crate::product_port::get_variant_info_from_conn(conn, tenant_id, variant_id)
+            .await
+            .map_err(|err| match err.kind {
+                rustok_api::PortErrorKind::NotFound => CommerceError::VariantNotFound(variant_id),
+                _ => CommerceError::Database(sea_orm::DbErr::Custom(err.message)),
+            })
     }
 
     async fn ensure_inventory_state(
         &self,
         conn: &DatabaseTransaction,
         tenant_id: Uuid,
-        variant: &entities::product_variant::Model,
+        variant: &crate::product_port::InventoryProductVariantInfo,
     ) -> CommerceResult<InventoryState> {
         let inventory_item = self.ensure_inventory_item(conn, variant).await?;
         let location = self.ensure_default_location(conn, tenant_id).await?;
@@ -736,14 +737,14 @@ impl InventoryService {
     async fn ensure_inventory_item<C>(
         &self,
         conn: &C,
-        variant: &entities::product_variant::Model,
+        variant: &crate::product_port::InventoryProductVariantInfo,
     ) -> CommerceResult<entities::inventory_item::Model>
     where
         C: sea_orm::ConnectionTrait,
     {
         // INVARIANT: `inventory_item` has no tenant column; the tenant boundary is
         // the caller-provided variant, which is loaded tenant-scoped.
-        if let Some(item) = inventory_item_write_query(conn, variant.id)
+        if let Some(item) = inventory_item_write_query(conn, variant.variant_id)
             .one(conn)
             .await?
         {
@@ -753,7 +754,7 @@ impl InventoryService {
         let now = Utc::now();
         entities::inventory_item::ActiveModel {
             id: Set(Uuid::new_v4()),
-            variant_id: Set(variant.id),
+            variant_id: Set(variant.variant_id),
             sku: Set(variant.sku.clone()),
             requires_shipping: Set(true),
             metadata: Set(json!({ "source": "legacy_inventory_service" })),

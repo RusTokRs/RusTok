@@ -11,7 +11,39 @@ language: markdown
 
 # RusToK — Domain Logic, Invariant Integrity, and Anti-Slop Patterns
 
-This standard codifies systemic patterns and anti-patterns discovered across RusToK domain modules (such as `rustok-forum`, `rustok-commerce`, `rustok-marketplace`, `rustok-moderation`, and `rustok-auth`). It serves as the canonical reference for engineers and AI agents performing deep audits, refactoring, and feature implementation under [AGENTS.md](../../AGENTS.md) and [CONTINUOUS_CODE_REVIEW.md](../CONTINUOUS_CODE_REVIEW.md).
+This standard catalogs patterns and anti-patterns for RusToK. The evidence
+inventory below identifies confirmed cases. Other entries are review guidance
+until an actual owner path and its behavior have been verified. Illustrative
+snippets describe techniques and must be checked against the owner's contract.
+Doctor findings are candidates whose impact and confidence are reported separately.
+
+## Confirmed cases in RusToK
+
+These entries identify historical defects and their owner-side fixes. They do
+not claim that every caller or deployment has been verified. A source change
+without evidence of a failure is recorded separately below.
+
+| Pattern | Observed defect and fix | Evidence |
+|---|---|---|
+| `P-TRIGGER-ROW-CHANGE` | Product's earlier `AFTER UPDATE OF index_revision` trigger missed revisions changed by a `BEFORE` trigger on ordinary Product updates. Change `48e692c886` fixes the trigger and the freshness fixture exercises a scalar update. | [Trigger migration](../../crates/modules/rustok-product/src/migrations/m20261109_000040_fix_index_graph_update_trigger.rs), [PostgreSQL fixture](../../crates/modules/rustok-distribution/tests/product_materialized_query_freshness_postgres.rs) |
+| `P-OWNER-READ-BOUNDARY` | Distribution queried private Product and Channel tables. Change `8cc68c8fa2` moved the read contracts to their owners while retaining one PostgreSQL snapshot for admission. | [Decision](../../DECISIONS/2026-11-08-distribution-index-owner-read-contracts.md), [Product projection](../../crates/modules/rustok-product/src/index_projection.rs), [Channel projection](../../crates/modules/rustok-channel/src/index_projection.rs) |
+| `P-FIXTURE-OWNERSHIP` | A migration verifier could attempt cleanup after creation failed because a fixture name already existed. Change `8b407a1bb3` tracks successful acquisition before cleanup. | [Verifier](../../crates/utils/rustok-migrations/src/bin/verify_migrations.rs), [bootstrap](../../crates/utils/rustok-migrations/src/verification/bootstrap.rs) |
+| `P-DB-CHECK` | Forum reconciliation counted approved replies without excluding archived or deleted parent topics. Change `d55c32c990` aligns the predicates and adds corrective migration. | [Reconciler](../../crates/modules/rustok-forum/src/services/solution_reconciliation.rs), [migration](../../crates/modules/rustok-forum/src/migrations/m20261110_000045_reconcile_archived_counters.rs) |
+| `P-ANTI-SWALLOW` | Channel's SQLite migration discarded an `ALTER TABLE` error. Change `dfaab54060` handles the known duplicate-column case and propagates other errors. Its message-based compatibility branch remains a separate limitation. | [Channel migration](../../crates/modules/rustok-channel/src/migrations/m20260730_000010_add_channel_index_revision.rs) |
+| `P-ZERO-INCLUDE` | Forum's `1c5a07dc8b` mechanically inlined source when removing `include!`. Follow-up `37bb36fd80` repaired the resulting module structure. | [Forum services](../../crates/modules/rustok-forum/src/services/mod.rs) |
+
+For `P-ID-ENTROPY`, Forum's route identifier changed from 12 to 16 hex
+characters in `1c5a07dc8b`; this does not establish that a collision occurred.
+See the [route implementation](../../crates/modules/rustok-forum/src/services/topic_route.rs).
+
+The confirmed-cases inventory is intentionally narrower than the pattern
+catalog. Add a concrete affected path, historical change or reproduction, and
+verification status before describing another pattern as an observed defect.
+
+The Forum error adapter currently searches formatted error details for SQLSTATE
+and trigger tokens. This is a source-level candidate for
+`P-SQLSTATE-DISCRIM`; a specific misclassification against a PostgreSQL error
+has not been reproduced. [Forum error adapter](../../crates/modules/rustok-forum/src/error.rs)
 
 ---
 
@@ -38,7 +70,9 @@ flowchart TD
 ### Pattern 1: Scope-Generic Deduplication (`P-SCOPE-GENERIC`)
 * **Category:** Structural Architecture & Code Deduplication
 * **Problem:** In complex modules, multiple entities require nearly identical storage, multi-layer inheritance, or batch insertion logic (e.g. category visibility, category moderation, topic visibility, reply policies). Writing separate services for each entity creates thousands of lines of copy-pasted SQL/SeaORM queries.
-* **Pattern Solution:**
+* **Pattern Solution:** The following generic interface is illustrative.
+  Forum's actual scope types and ownership live in
+  [audience_policy.rs](../../crates/modules/rustok-forum/src/services/audience_policy.rs).
   1. Define a marker trait `EntityScope` with static metadata:
      ```rust
      pub trait EntityScope: Send + Sync + 'static {
@@ -66,27 +100,10 @@ flowchart TD
 ### Pattern 2: Database-Enforced State Invariants (`P-DB-CHECK`)
 * **Category:** State Transition & Data Integrity
 * **Problem:** Application-level validation is fragile. Migrations, raw SQL updates, or missed application branches can leave rows in corrupted states (e.g. `status = 'archived'` while `is_locked = false`, or `deleted_at IS NOT NULL` while `status = 'active'`). A database trigger can also overwrite a valid application update when it uses an older predicate. Forum's counter guards counted archived threads after the owner began excluding them. Inspect the trigger, command and reconciliation predicates together (`rg -n 'forum_enforce_.*reply_count|topic.status.*archived' crates/modules/rustok-forum/src`).
-* **Pattern Solution:**
-  Make invalid states unrepresentable in PostgreSQL and SQLite using DDL `CHECK` constraints.
-  ```sql
-  -- Soft-delete coherence
-  ALTER TABLE forum_topics ADD CONSTRAINT forum_topics_deleted_at_status_coherent
-      CHECK ((deleted_at IS NULL AND status != 'deleted') OR (deleted_at IS NOT NULL AND status = 'deleted'));
-
-  -- Terminal lock coherence
-  ALTER TABLE forum_topics ADD CONSTRAINT forum_topics_archived_implies_locked
-      CHECK (status != 'archived' OR is_locked = TRUE);
-  ```
-* **Application Across Domains:**
-  * **`commerce` / `order`:**
-    ```sql
-    CHECK ((cancelled_at IS NULL AND status != 'cancelled') OR (cancelled_at IS NOT NULL AND status = 'cancelled'));
-    CHECK (status NOT IN ('completed', 'cancelled') OR is_locked = TRUE);
-    ```
-  * **`marketplace-seller`:**
-    ```sql
-    CHECK (suspended_at IS NULL OR status = 'suspended');
-    ```
+* **Pattern Solution:** Enforce the owner's actual invariant in each supported
+  database and verify command, trigger, and repair predicates together. Forum's
+  archived-topic lock invariant is implemented by its
+  [owner migration](../../crates/modules/rustok-forum/src/migrations/m20261109_000043_enforce_archived_locked_invariant.rs).
 
 ---
 
@@ -186,9 +203,9 @@ flowchart TD
 
 ### Pattern 8: Configuration & Settings Bounding (`P-CONFIG-BOUND`)
 * **Category:** Preconditions & Anti-DoS
-* **Problem:** Accepting tenant settings without mathematical and logical bounds validation allows operators or attackers to save impossible limits (e.g. `min_length = 20`, `max_length = 10`), causing immediate DoS on all subsequent write operations.
+* **Problem:** Inconsistent settings bounds can make an owner's operations reject valid inputs. Confirm the relevant settings and write paths for each owner.
 * **Pattern Solution:**
-  Implement a mandatory `validate(&self) -> Result<(), DomainError>` method on all module settings DTOs:
+  The following illustrative validation demonstrates an ordering check:
   ```rust
   impl ModuleSettings {
       pub fn validate(&self) -> Result<(), DomainError> {
@@ -202,7 +219,7 @@ flowchart TD
       }
   }
   ```
-  Invoke this validator in every `put_settings` / `update_settings` lifecycle handler.
+  Apply the owner's actual bounds at its settings write boundary.
 
 ---
 
@@ -217,16 +234,16 @@ flowchart TD
 
 ### Pattern 10: Bounded Tree Projections (`P-BOUNDED-TREE`)
 * **Category:** Algorithmic Correctness & Memory Safety
-* **Problem:** Recursive hierarchy traversals (categories, reply threads, organization units) without depth limits or page limits cause Out-Of-Memory (OOM) crashes when catalogs grow.
+* **Problem:** Recursive hierarchy traversals without an owner-defined bound can exhaust memory on sufficiently large inputs. Confirm the affected entrypoint and its actual bounds before classifying a finding as a defect.
 * **Pattern Solution:**
-  1. Enforce strict `MAX_TREE_NODES` bounds (e.g. 512 or 2048) in single-query projections.
+  1. Establish a node or depth bound from the owner's requirements and resource budget.
   2. When hierarchy exceeds the bounded memory envelope, require depth-limited queries (`?depth=2`) or streaming traversals.
 
 ---
 
 ### Pattern 11: Transactional Batching & Anti-N+1 (`P-BATCH-QUERY`)
 * **Category:** Algorithmic & Concurrency Performance
-* **Problem:** Executing round-trip database queries inside iterative loops (`for id in ids { Entity::find_by_id(id).one(txn).await? }`) inside an open database transaction creates severe connection bottlenecks and 100–200 RTTs while holding row locks.
+* **Problem:** Executing per-item queries inside a transaction can increase round trips and extend lock duration. Measure the affected path and check transaction semantics before changing it.
 * **Pattern Solution:**
   1. Batch all IDs into an `is_in` set:
      ```rust
@@ -252,7 +269,7 @@ flowchart TD
 
 ### Pattern 13: Allocation Hygiene & Late Clones (`P-HOTPATH-ALLOC`)
 * **Category:** Algorithmic Efficiency & Memory Optimization
-* **Problem:** Prematurely cloning inputs (`let canonical = input.name.clone();`) before running preconditions or validations wastes heap allocations on payloads that are immediately rejected.
+* **Problem:** Cloning an input before a rejection can add allocations. Establish whether that cost matters for the actual path before refactoring.
 * **Pattern Solution:**
   1. Validate borrowed slices (`&str`, `&[u8]`) first.
   2. Allocate and normalize (`.to_string()`, `.into()`, `.clone()`) strictly *after* all precondition gates have succeeded.
@@ -340,7 +357,7 @@ flowchart TD
 
 ### Pattern 19: Tenant Isolation Fallback & Identity Leaks (`P-TENANT-FALLBACK-LEAK`)
 * **Category:** Multi-Tenancy & Fail-Closed Security
-* **Problem:** Calling `.unwrap_or_default()` or using default UUIDs (`Uuid::nil()`) on optional tenant context variables silently coerces unauthenticated or cross-tenant requests into the default tenant or zero UUID. This breaks tenant isolation and leaks shared catalog, order, or user state.
+* **Problem:** A default UUID used as a tenant selector can violate the authorization boundary if it reaches data access without an owner-defined denial. A source match alone does not establish a cross-tenant leak.
 * **Pattern Solution:**
   1. Multi-tenant operations must fail closed:
      ```rust
@@ -365,7 +382,7 @@ flowchart TD
 
 ### Pattern 21: UI Reactive Signal Invalidation (`P-LEPTOS-DEAD-SIGNAL`)
 * **Category:** Client Architecture & UI Reactivity
-* **Problem:** Calling `let _ = signal.get();` outside of a reactive tracking context (such as `view!` or `create_effect`) reads the signal value without establishing a reactive subscriber dependency. Subsequent signal updates will not trigger UI rerendering, causing silent UI desynchronization.
+* **Problem:** A discarded signal read outside a reactive tracking context does not establish a subscriber. Verify the actual consumer before treating the source match as a UI defect.
 * **Pattern Solution:**
   1. Bind signal dependencies inside an effect when the operation needs reactive tracking:
      ```rust
@@ -473,6 +490,8 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-SYNC-SLEEP-AWAIT` | Concurrency | Blocking delay runs outside executor workers | Heuristic: direct blocking sleep in async function |
 | `P-OWNER-READ-BOUNDARY` | Ownership and concurrency | Owner controls storage reads and the adapter preserves snapshot and admission semantics | Manual |
 | `P-TRIGGER-ROW-CHANGE` | Side effects | An update that derives a revision in a trigger commits the matching projection | Manual |
+| `P-COMMAND-ADMISSION` | Concurrency | Same-key concurrent commands serialize admission before reading receipt state | Manual |
+| `P-REPLAY-PRECONDITION` | Idempotency | A replay preserves the original command identity and revision | Manual |
 
 ---
 
@@ -482,12 +501,12 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 > **Автономная периодическая чистка (Offline Periodic Maintenance Utility):**
 > `rustok-doctor` предоставляет вспомогательную утилиту для периодической фоновой санитарной чистки кодовой базы.
 > Он **НЕ** входит в обязательный протокол непрерывного аудита (`CONTINUOUS_CODE_REVIEW.md`, `continuous-review-ledger.md`) и **НЕ** заменяет глубокую архитектурную проверку и 6 Universal Logic Dimensions.
-> Агенты, выполняющие директиву `реализуй план аудита`, **НЕ ДОЛЖНЫ** подменять аудит крейта поверхностным запуском этого скрипта или требовать его выполнения как критерий завершения фазы аудита.
+> Агенты, выполняющие директиву `реализуй план аудита`, выполняют проверку крейта по контракту аудита. Doctor предоставляет дополнительные данные для анализа.
 
 Doctor проверяет исходный код Rust и находит кандидатов из матрицы антипаттернов для плановой чистки:
 
 ```bash
-# Periodic repository-wide maintenance sweep (e.g. monthly cleanup)
+# Periodic domain-module maintenance sweep (e.g. monthly cleanup)
 npm run verify:hygiene:strict
 
 # Scan a specific domain module (smart resolution: forum -> crates/modules/rustok-forum)
@@ -551,7 +570,7 @@ invariants with the owner’s tests and runtime evidence.
 
 - [RusToK Doctor](../../crates/utils/rustok-doctor/README.md) — Repository hygiene diagnostics
 - [Coding Standards](./coding.md) — Rust syntax and styling rules
-- [Patterns vs Antipatterns](./patterns-vs-antipatterns.md) — Platform-wide architectural DOs and DON'Ts
+- [Engineering standards navigation](./patterns-vs-antipatterns.md) — Links to the owners of platform contracts
 - [Continuous Code Review Protocol](../CONTINUOUS_CODE_REVIEW.md) — The audit workflow
 - [Continuous Review Ledger](./continuous-review-ledger.md) — Living audit progress
 - [AGENTS.md](../../AGENTS.md) — Canonical platform contract

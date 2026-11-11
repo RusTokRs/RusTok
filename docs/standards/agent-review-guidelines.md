@@ -17,7 +17,7 @@ The goal of the **Autonomous Continuous Review & Remediation Engine (ACRE)** is 
 
 ## 1. Core Principles & Governance
 
-All automated remediations MUST comply with [AGENTS.md](../../AGENTS.md), [patterns-vs-antipatterns.md](patterns-vs-antipatterns.md), and [KNOWN_PITFALLS.md](../ai/KNOWN_PITFALLS.md).
+All automated remediations MUST comply with [AGENTS.md](../../AGENTS.md), [logic-hygiene-patterns.md](logic-hygiene-patterns.md), and [KNOWN_PITFALLS.md](../ai/KNOWN_PITFALLS.md).
 
 ### The Invariants
 

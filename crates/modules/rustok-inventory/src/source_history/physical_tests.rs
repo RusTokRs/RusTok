@@ -14,7 +14,7 @@ async fn source_physical_multi_location_equal_availability_advances_once_and_pre
     // outbox storage are real. Full Product/native transactions live in Commerce regressions.
     for sql in [
         "CREATE TABLE products (id BLOB PRIMARY KEY, tenant_id BLOB NOT NULL)",
-        "CREATE TABLE product_variants (id BLOB PRIMARY KEY, product_id BLOB NOT NULL, tenant_id BLOB NOT NULL)",
+        "CREATE TABLE product_variants (id BLOB PRIMARY KEY, product_id BLOB NOT NULL, tenant_id BLOB NOT NULL, sku TEXT, inventory_policy TEXT NOT NULL DEFAULT 'deny')",
         "CREATE TABLE inventory_items (id BLOB PRIMARY KEY, variant_id BLOB NOT NULL)",
         "CREATE TABLE stock_locations (id BLOB PRIMARY KEY, tenant_id BLOB NOT NULL)",
         "CREATE TABLE inventory_levels (id BLOB PRIMARY KEY, inventory_item_id BLOB NOT NULL, location_id BLOB NOT NULL, stocked_quantity INTEGER NOT NULL, reserved_quantity INTEGER NOT NULL, incoming_quantity INTEGER NOT NULL)",
@@ -47,7 +47,7 @@ async fn source_physical_multi_location_equal_availability_advances_once_and_pre
             vec![product.into(), tenant.into()],
         ),
         (
-            "INSERT INTO product_variants VALUES (?, ?, ?)",
+            "INSERT INTO product_variants (id, product_id, tenant_id) VALUES (?, ?, ?)",
             vec![variant.into(), product.into(), tenant.into()],
         ),
         (

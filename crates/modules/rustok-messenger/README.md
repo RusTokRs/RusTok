@@ -1,39 +1,33 @@
 # `rustok-messenger`
 
-Highload distributed team messaging, channels, direct messages, topic threads, and E2EE engine for RusToK.
+RusToK's owner module for team messaging, direct messages, channels, and conversation history.
 
 ## Purpose
 
-`rustok-messenger` provides high-throughput real-time team messaging, channels, direct communications, and entity-attached chat threads across the RusToK platform. It serves as the single sovereign owner for conversation lifecycles, message delivery ordering, member sync cursors, and multilingual channel metadata.
+`rustok-messenger` owns conversation lifecycles, membership, message state, member cursors, and multilingual channel metadata. The source contains a PostgreSQL-backed application service, API adapters and Leptos packages. See the [implementation plan](docs/implementation-plan.md) for the gaps between the current scaffold and the first private messaging release.
 
 ## Responsibilities
 
-- **Monotonic Highload Messaging:** Uses Snowflake 64-bit monotonically increasing identifiers and per-conversation sequence clocks (`pts`) for linearizability and gap-free sync.
-- **Multilingual Channels:** Channel titles and descriptions are localized via dedicated translation projections (`messenger_channels_translations`) complying with the platform i18n contract.
-- **Fast-Sync State Machine:** Enables instant offline client reconciliation using monotonic `pts` delta ranges.
-- **Universal Entity Reference (UER):** Contextual conversations attachable to orders, CRM deals, blog posts, or support tickets.
-- **E2EE Ready:** Message schema supports Zero-Knowledge Double Ratchet payload encryption (`vodozemac`).
+- Conversations, membership, message history and read markers in the Messenger schema.
+- Localized channel titles and descriptions in `messenger_channels_translations`.
+- Owner APIs and cross-module operations through `MessengerPort`.
 
 ## Entry Points
 
 - `MessengerModule`: Platform module registration implementing `RusToKModule` and `MigrationSource`.
 - `MessengerService`: Transactional application service managing conversations, messages, membership, and sync cursors.
-- `MessengerPort`: Cross-module port for other modules to create conversations and post notifications.
+- `MessengerPort`: Cross-module entry point for system messages, direct messages, contextual conversations and unread counts.
 - `router`: Axum HTTP REST and WebSocket controller routing.
 
 ## Interactions
 
 - **`rustok-api`:** Supplies permission constants (`MESSAGES_READ`, `CONVERSATIONS_WRITE`, etc.) and canonical contexts.
 - **`rustok-core`:** Provides module extension contracts, `RusToKModule`, and migration traits.
-- **`rustok-outbox`:** Durable transactional event publishing for cross-module notifications and WebSocket push broadcasts.
+- **`rustok-outbox`:** Transactional publication of message creation references. Notifications uses its Messenger source provider to resolve those references.
 
-## Features
+## Readiness
 
-- **Highload Architecture:** Append-only message log with monotonic sequence cursors (`pts`), Snowflake 64-bit IDs, and decoupled ingestion.
-- **Multilingual Channels:** Localized channel titles and descriptions conforming to the platform translation contract.
-- **Fast-Sync State Machine:** Gap-free offline reconciliation for mobile and web clients.
-- **Universal Entity Reference:** Direct contextual conversations attached to CRM deals, orders, blog posts, and calendar events.
-- **E2EE Ready:** Data contracts support Zero-Knowledge Double Ratchet payload encryption (`vodozemac`).
+The current service uses Snowflake IDs and in-place message edits and deletes. Its existing FastSync endpoint does not replay those changes. The process-local room hub, encrypted envelope and device registry, Iggy dispatcher and Matrix adapter require the release evidence described in the owner plan. The proposed [write and sync ADR](../../../DECISIONS/2026-11-11-messenger-write-and-sync.md) defines the target under review.
 
 ## Module Layout
 

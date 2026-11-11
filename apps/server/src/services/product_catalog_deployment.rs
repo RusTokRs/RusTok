@@ -108,7 +108,7 @@ pub async fn configure_product_catalog_deployment(ctx: &ServerRuntimeContext) ->
                 capability = "read",
                 authentication = "bearer",
                 insecure_loopback = remote.allow_insecure_loopback,
-                "Product catalog read deployment provider initialized"
+                "Product catalog deployment provider initialized"
             );
         }
 
@@ -236,35 +236,32 @@ fn parse_product_deployment_config(
     connect_timeout_ms: Option<&str>,
     allow_insecure_loopback: Option<&str>,
 ) -> std::result::Result<ProductDeploymentConfig, String> {
-    let deployment_mode = deployment.map(str::trim).filter(|v| !v.is_empty());
-    let read_mode = read_provider
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .or(deployment_mode);
-    let command_mode = command_provider
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-        .or(deployment_mode);
+    let default_remote = uses_grpc(deployment, DEPLOYMENT_ENV)?.unwrap_or(false);
+    let read_remote = uses_grpc(read_provider, PROVIDER_ENV)?.unwrap_or(default_remote);
+    let command_remote =
+        uses_grpc(command_provider, COMMAND_PROVIDER_ENV)?.unwrap_or(default_remote);
 
-    let read = parse_deployment(
-        read_mode,
+    let deployment = parse_deployment(
+        Some(if read_remote || command_remote { "grpc" } else { "embedded" }),
         endpoint,
         bearer_token,
         tls_domain,
         connect_timeout_ms,
         allow_insecure_loopback,
     )?;
+    Ok(ProductDeploymentConfig {
+        read: if read_remote { deployment.clone() } else { ProductCatalogDeployment::Embedded },
+        command: if command_remote { deployment } else { ProductCatalogDeployment::Embedded },
+    })
+}
 
-    let command = parse_deployment(
-        command_mode,
-        endpoint,
-        bearer_token,
-        tls_domain,
-        connect_timeout_ms,
-        allow_insecure_loopback,
-    )?;
-
-    Ok(ProductDeploymentConfig { read, command })
+fn uses_grpc(value: Option<&str>, variable: &str) -> std::result::Result<Option<bool>, String> {
+    match normalize_optional(value).as_deref() {
+        None => Ok(None),
+        Some(mode) if mode.eq_ignore_ascii_case("embedded") => Ok(Some(false)),
+        Some(mode) if mode.eq_ignore_ascii_case("grpc") => Ok(Some(true)),
+        Some(_) => Err(format!("{variable} must be either embedded or grpc")),
+    }
 }
 
 fn parse_timeout(value: Option<&str>) -> std::result::Result<u64, String> {
@@ -491,7 +488,25 @@ mod tests {
     }
 
     #[test]
-    fn unified_deployment_flag_configures_both_read_and_command() {
+    fn legacy_read_provider_keeps_default_commands_embedded() {
+        let config = parse_product_deployment_config(
+            None,
+            Some("grpc"),
+            None,
+            Some("http://127.0.0.1:7443"),
+            Some("catalog-secret"),
+            None,
+            Some("2500"),
+            Some("true"),
+        )
+        .expect("remote read settings apply to the selected read provider");
+
+        assert!(matches!(config.read, ProductCatalogDeployment::Grpc(_)));
+        assert_eq!(config.command, ProductCatalogDeployment::Embedded);
+    }
+
+    #[test]
+    fn unified_deployment_flag_configures_both_read_and_command_minimal() {
         let config = parse_product_deployment_config(
             Some("grpc"),
             None,

@@ -167,9 +167,13 @@ fn validate_auth_deployment(config: &crate::auth::AuthConfig, production: bool) 
         return Ok(());
     }
 
-    if config.issuer == DEFAULT_JWT_ISSUER || !config.issuer.starts_with("https://") {
+    if config.issuer == DEFAULT_JWT_ISSUER
+        || !config.issuer.starts_with("https://")
+        || config.issuer.trim().len() <= 8
+        || config.issuer.chars().any(char::is_whitespace)
+    {
         return Err(Error::BadRequest(
-            "Production JWT issuer must be an explicit HTTPS identifier and must not use the `rustok` default"
+            "Production JWT issuer must be an explicit HTTPS identifier, contain a valid host, contain no whitespace, and must not use the `rustok` default"
                 .to_string(),
         ));
     }
@@ -181,6 +185,24 @@ fn validate_auth_deployment(config: &crate::auth::AuthConfig, production: bool) 
         return Err(Error::BadRequest(
             "Production JWT audience must be explicit, contain at least 8 characters, contain no whitespace, and must not use the `rustok-admin` default"
                 .to_string(),
+        ));
+    }
+
+    if config.access_expiration == 0 {
+        return Err(Error::BadRequest(
+            "Production JWT access_expiration must be greater than zero".to_string(),
+        ));
+    }
+
+    if config.refresh_expiration == 0 {
+        return Err(Error::BadRequest(
+            "Production JWT refresh_expiration must be greater than zero".to_string(),
+        ));
+    }
+
+    if config.min_password_length < 8 {
+        return Err(Error::BadRequest(
+            "Production min_password_length must be at least 8 characters".to_string(),
         ));
     }
 
@@ -225,11 +247,18 @@ fn validate_database_deployment(database_uri: &str, production: bool) -> Result<
     }
 
     let normalized = database_uri.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return Err(Error::BadRequest(
+            "Production database URI must not be empty".to_string(),
+        ));
+    }
+
     const FORBIDDEN_PROD_DATABASE_PATTERNS: &[&str] = &[
         "rustok:rustok",
         "postgres:postgres",
         "admin:admin",
         "root:root",
+        "user:password",
         "sqlite:",
         "localhost:5432/rustok_dev",
         "127.0.0.1:5432/rustok_dev",
@@ -314,7 +343,7 @@ async fn connect_database(
     options.connect_timeout(timeout);
     options.acquire_timeout(timeout);
     if config.idle_timeout > 0 {
-        options.idle_timeout(Duration::from_millis(config.idle_timeout));
+        options.idle_timeout(Duration::from_millis(config.idle_timeout.max(1000)));
     }
     if config.min_connections > 0 {
         options.min_connections(config.min_connections);
@@ -331,7 +360,7 @@ async fn load_config() -> Result<HostConfig> {
 
     let config_dir = std::env::var("RUSTOK_CONFIG_DIR")
         .ok()
-        .map(PathBuf::from)
+        .map(|s| PathBuf::from(s.trim()))
         .filter(|path| !path.as_os_str().is_empty())
         .or_else(|| {
             std::env::current_exe()
@@ -358,8 +387,16 @@ async fn load_config() -> Result<HostConfig> {
 
 fn resolve_server_endpoint(config: &ServerConfig) -> Result<(String, u16)> {
     let binding = std::env::var("RUSTOK_BINDING")
-        .or_else(|_| std::env::var("HOST"))
-        .unwrap_or_else(|_| config.binding.clone());
+        .ok()
+        .or_else(|| std::env::var("HOST").ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| config.binding.trim().to_string());
+    if binding.is_empty() {
+        return Err(Error::BadRequest(
+            "Server binding address must not be empty".to_string(),
+        ));
+    }
     let port = if let Ok(port_str) = std::env::var("RUSTOK_PORT").or_else(|_| std::env::var("PORT"))
     {
         port_str.trim().parse::<u16>().map_err(|error| {
@@ -612,8 +649,47 @@ mod tests {
         .expect("development allows dev credentials");
     }
 
+    static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct EnvGuard {
+        _guard: std::sync::MutexGuard<'static, ()>,
+        vars: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn new(keys: &[&'static str]) -> Self {
+            let guard = TEST_ENV_LOCK.lock().unwrap();
+            let mut vars = Vec::new();
+            for &k in keys {
+                vars.push((k, std::env::var(k).ok()));
+                unsafe {
+                    std::env::remove_var(k);
+                }
+            }
+            Self {
+                _guard: guard,
+                vars,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (k, v) in &self.vars {
+                unsafe {
+                    if let Some(val) = v {
+                        std::env::set_var(k, val);
+                    } else {
+                        std::env::remove_var(k);
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn resolve_server_endpoint_uses_config_defaults() {
+        let _env = EnvGuard::new(&["PORT", "RUSTOK_PORT", "HOST", "RUSTOK_BINDING"]);
         let config = super::ServerConfig {
             binding: "127.0.0.1".to_string(),
             port: 5150,
@@ -625,6 +701,7 @@ mod tests {
 
     #[test]
     fn resolve_server_endpoint_rejects_invalid_port() {
+        let _env = EnvGuard::new(&["PORT", "RUSTOK_PORT", "HOST", "RUSTOK_BINDING"]);
         unsafe {
             std::env::set_var("PORT", "not-a-port");
         }
@@ -634,9 +711,6 @@ mod tests {
         };
         let error = super::resolve_server_endpoint(&config).expect_err("invalid port must fail");
         assert!(error.to_string().contains("Invalid port"));
-        unsafe {
-            std::env::remove_var("PORT");
-        }
     }
 
     #[tokio::test]
@@ -654,5 +728,89 @@ mod tests {
             .await
             .expect_err("min_connections exceeding max_connections must be rejected");
         assert!(error.to_string().contains("cannot exceed max_connections"));
+    }
+
+    #[test]
+    fn validate_auth_deployment_rejects_empty_or_whitespace_issuer() {
+        let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
+            .with_issuer("https://")
+            .with_audience("rustok-production-admin");
+        let error = validate_auth_deployment(&config, true)
+            .expect_err("issuer without host must fail");
+        assert!(error.to_string().contains("issuer"));
+
+        let config_ws = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
+            .with_issuer("https://api .example.com")
+            .with_audience("rustok-production-admin");
+        let error_ws = validate_auth_deployment(&config_ws, true)
+            .expect_err("issuer with whitespace must fail");
+        assert!(error_ws.to_string().contains("issuer"));
+    }
+
+    #[test]
+    fn validate_auth_deployment_rejects_zero_expiration_and_short_password() {
+        let mut config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
+            .with_issuer("https://api.example.com")
+            .with_audience("rustok-production-admin");
+        config.access_expiration = 0;
+        let error = validate_auth_deployment(&config, true)
+            .expect_err("access_expiration of zero must fail");
+        assert!(error.to_string().contains("access_expiration"));
+
+        config.access_expiration = 900;
+        config.refresh_expiration = 0;
+        let error_refresh = validate_auth_deployment(&config, true)
+            .expect_err("refresh_expiration of zero must fail");
+        assert!(error_refresh.to_string().contains("refresh_expiration"));
+
+        config.refresh_expiration = 604800;
+        config.min_password_length = 6;
+        let error_pwd = validate_auth_deployment(&config, true)
+            .expect_err("min_password_length < 8 must fail in production");
+        assert!(error_pwd.to_string().contains("min_password_length"));
+    }
+
+    #[test]
+    fn validate_database_deployment_rejects_empty_uri_and_user_password_pattern() {
+        let error_empty = super::validate_database_deployment("", true)
+            .expect_err("empty database URI in production must fail");
+        assert!(error_empty.to_string().contains("must not be empty"));
+
+        let error_ws = super::validate_database_deployment("   ", true)
+            .expect_err("whitespace database URI in production must fail");
+        assert!(error_ws.to_string().contains("must not be empty"));
+
+        let error_pattern = super::validate_database_deployment(
+            "postgres://user:password@prod-host:5432/rustok",
+            true,
+        )
+        .expect_err("user:password placeholder pattern must fail");
+        assert!(error_pattern.to_string().contains("development credentials"));
+    }
+
+    #[test]
+    fn resolve_server_endpoint_trims_binding_and_rejects_empty() {
+        let _env = EnvGuard::new(&["PORT", "RUSTOK_PORT", "HOST", "RUSTOK_BINDING"]);
+        unsafe {
+            std::env::set_var("RUSTOK_BINDING", "  10.0.0.1  ");
+        }
+        let config = super::ServerConfig {
+            binding: "127.0.0.1".to_string(),
+            port: 8080,
+        };
+        let (binding, port) = super::resolve_server_endpoint(&config).expect("valid trimmed binding");
+        assert_eq!(binding, "10.0.0.1");
+        assert_eq!(port, 8080);
+
+        unsafe {
+            std::env::remove_var("RUSTOK_BINDING");
+        }
+        let config_empty = super::ServerConfig {
+            binding: "   ".to_string(),
+            port: 8080,
+        };
+        let error = super::resolve_server_endpoint(&config_empty)
+            .expect_err("empty binding must fail");
+        assert!(error.to_string().contains("must not be empty"));
     }
 }

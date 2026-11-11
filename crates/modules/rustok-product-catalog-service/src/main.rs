@@ -22,14 +22,15 @@ use rustok_product::{
     entities::{Product, ProductVariant},
 };
 use rustok_product_transport::{
-    ProductCatalogCommandGrpcService, ProductCatalogGrpcBearerInterceptor,
-    ProductCatalogGrpcService,
+    ProductCatalogCommandGrpcService, ProductCatalogGrpcBearerAuthenticator,
+    ProductCatalogGrpcBearerInterceptor, ProductCatalogGrpcOperation, ProductCatalogGrpcService,
     proto::product_catalog_command_service_server::ProductCatalogCommandServiceServer,
     proto::product_catalog_read_service_server::ProductCatalogReadServiceServer,
 };
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait};
 use tonic::transport::{Identity, Server, ServerTlsConfig};
 use url::Url;
+use uuid::Uuid;
 
 const DEFAULT_BIND: &str = "127.0.0.1:7443";
 const DEFAULT_DATABASE_CONNECT_TIMEOUT_MS: u64 = 5_000;
@@ -44,6 +45,8 @@ const DATABASE_CONNECT_TIMEOUT_MS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_DATABASE_C
 const DATABASE_MAX_CONNECTIONS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_DATABASE_MAX_CONNECTIONS";
 const BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN";
 const TRUSTED_SERVICE_ACTOR_ENV: &str = "RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR";
+const COMMAND_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN";
+const COMMAND_ACTOR_ID_ENV: &str = "RUSTOK_PRODUCT_CATALOG_COMMAND_ACTOR_ID";
 const TLS_CERT_PATH_ENV: &str = "RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_CERT_PATH";
 const TLS_KEY_PATH_ENV: &str = "RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_KEY_PATH";
 const ALLOW_INSECURE_LOOPBACK_ENV: &str = "RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK";
@@ -94,6 +97,7 @@ struct ServiceConfig {
     database_max_connections: u32,
     bearer_token: RedactedSecret,
     trusted_service_actor: String,
+    command_authentication: Option<ProductCatalogGrpcBearerAuthenticator>,
     transport: ServiceTransport,
 }
 
@@ -131,6 +135,11 @@ impl ServiceConfig {
         let bearer_token = RedactedSecret::new(required_secret_env(BEARER_TOKEN_ENV)?);
         let trusted_service_actor =
             validate_service_actor(required_env(TRUSTED_SERVICE_ACTOR_ENV)?)?;
+        let command_authentication = command_authentication(
+            env::var(COMMAND_BEARER_TOKEN_ENV).ok().as_deref(),
+            optional_env(COMMAND_ACTOR_ID_ENV).as_deref(),
+            &bearer_token,
+        )?;
         let transport = validate_transport_security(
             bind,
             optional_path_env(TLS_CERT_PATH_ENV),
@@ -146,6 +155,7 @@ impl ServiceConfig {
             database_max_connections,
             bearer_token,
             trusted_service_actor,
+            command_authentication,
             transport,
         })
     }
@@ -188,12 +198,13 @@ async fn run() -> Result<()> {
         PortActor::service(config.trusted_service_actor.clone()),
     )
     .map_err(|error| anyhow!("Product catalog service authentication is invalid: {error}"))?;
-    let command_interceptor = interceptor.clone();
     let service = ProductCatalogReadServiceServer::with_interceptor(service, interceptor);
-    let command_service = ProductCatalogCommandServiceServer::with_interceptor(
-        ProductCatalogCommandGrpcService::new(command_provider),
-        command_interceptor,
-    );
+    let command_service = config.command_authentication.map(|authentication| {
+        ProductCatalogCommandServiceServer::with_interceptor(
+            ProductCatalogCommandGrpcService::new(command_provider),
+            ProductCatalogGrpcBearerInterceptor::new(authentication),
+        )
+    });
 
     let mut server = Server::builder();
     if let ServiceTransport::Tls {
@@ -210,11 +221,12 @@ async fn run() -> Result<()> {
     tracing::info!(
         bind = %config.bind,
         transport = config.transport.label(),
+        commands_enabled = command_service.is_some(),
         "Product catalog gRPC service listening"
     );
     server
         .add_service(service)
-        .add_service(command_service)
+        .add_optional_service(command_service)
         .serve_with_shutdown(config.bind, shutdown_signal())
         .await
         .context("Product catalog gRPC service failed")
@@ -307,6 +319,32 @@ fn validate_service_actor(value: String) -> Result<String> {
         bail!("{TRUSTED_SERVICE_ACTOR_ENV} must be 1..=128 visible non-whitespace ASCII bytes");
     }
     Ok(value)
+}
+
+fn command_authentication(
+    token: Option<&str>,
+    actor_id: Option<&str>,
+    read_token: &RedactedSecret,
+) -> Result<Option<ProductCatalogGrpcBearerAuthenticator>> {
+    let (token, actor_id) = match (token, actor_id) {
+        (None, None) => return Ok(None),
+        (Some(token), Some(actor_id)) => (token, actor_id),
+        _ => bail!("{COMMAND_BEARER_TOKEN_ENV} and {COMMAND_ACTOR_ID_ENV} must be configured together"),
+    };
+    if token == read_token.expose() {
+        bail!("{COMMAND_BEARER_TOKEN_ENV} must differ from {BEARER_TOKEN_ENV}");
+    }
+    let actor_id = Uuid::parse_str(actor_id)
+        .ok()
+        .filter(|id| !id.is_nil())
+        .ok_or_else(|| anyhow!("{COMMAND_ACTOR_ID_ENV} must be a non-nil UUID"))?;
+    let authentication = ProductCatalogGrpcBearerAuthenticator::new(
+        token,
+        PortActor::service(actor_id.to_string()),
+    )
+    .map_err(|error| anyhow!("Product catalog command authentication is invalid: {error}"))?
+    .with_allowed_operations(ProductCatalogGrpcOperation::COMMAND);
+    Ok(Some(authentication))
 }
 
 fn validate_transport_security(

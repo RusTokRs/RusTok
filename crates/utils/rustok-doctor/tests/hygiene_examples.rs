@@ -60,3 +60,39 @@ fn vendored_paths_only_suppress_unfinished_markers() {
             .any(|finding| finding.pattern_id == "P-ZERO-INCLUDE")
     );
 }
+
+#[test]
+fn incomplete_markers_in_inline_tests_are_excluded() {
+    let source = "#[cfg(test)]\nmod tests {\n  // TODO test fixture\n  #[test] fn t() { todo!(\"fixture\"); }\n}\n// TODO production\n";
+    let findings = rustok_doctor::scan_source(Path::new("src/lib.rs"), source);
+    let lines: Vec<_> = findings
+        .iter()
+        .filter(|finding| finding.pattern_id == "P-UNFINISHED-CODE")
+        .map(|finding| finding.line)
+        .collect();
+    assert_eq!(lines, [6]);
+}
+
+#[test]
+fn detects_queries_after_an_inner_loop() {
+    let source = "async fn load() {\n for first in items {\n  for second in first.children {\n   inspect(second);\n  }\n  Entity::find().all(db).await;\n }\n}\n";
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding.pattern_id == "P-BATCH-QUERY" && finding.line == 6)
+    );
+}
+
+#[test]
+fn detects_multiline_include_without_flagging_generated_sources() {
+    let source =
+        "include!(\n  \"local.rs\"\n);\ninclude!(concat!(env!(\"OUT_DIR\"), \"generated.rs\"));\n";
+    let findings = rustok_doctor::scan_source(Path::new("src/lib.rs"), source);
+    let includes: Vec<_> = findings
+        .iter()
+        .filter(|finding| finding.pattern_id == "P-ZERO-INCLUDE")
+        .collect();
+    assert_eq!(includes.len(), 1);
+    assert_eq!(includes[0].line, 1);
+}

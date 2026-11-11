@@ -114,5 +114,5 @@ If the task touches Axum runtime/Iggy/MCP/Outbox/Telemetry/Database/Frontend:
    - `docs/references/outbox/README.md`
    - `docs/references/telemetry/README.md`
 2. Read [Forbidden Actions](../standards/forbidden-actions.md) — hard prohibitions.
-3. Read [Patterns vs Antipatterns](../standards/patterns-vs-antipatterns.md) — summary table.
+3. Read [Logic hygiene patterns](../standards/logic-hygiene-patterns.md) — documented cases and review guidance.
 4. Only after that change code/documentation.

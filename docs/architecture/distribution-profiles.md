@@ -94,7 +94,7 @@ RusToK defines 6 standard platform distribution profiles:
 - **Target:** Enterprise communication, internal operations, team collaboration (governed by [Workplace Collaboration SuperApp Plan](./workplace-collaboration-superapp-plan.md)).
 - **Included Modules:**
   - *All `core` modules*
-  - **Highload Messaging:** `rustok-messenger` (Iggy stream fabric, monotonic cursors)
+  - **Messaging:** `rustok-messenger` (durable history and reconnect, with separate realtime deployment gates in the [owner plan](../../crates/modules/rustok-messenger/docs/implementation-plan.md))
   - **Collaborative Docs:** `rustok-docs` (Loro CRDT, live blocks)
   - **Conferencing & Audio:** `rustok-calls` (LiveKit SFU integration)
   - **Scheduling:** `rustok-calendar` (CalDAV, booking slots)

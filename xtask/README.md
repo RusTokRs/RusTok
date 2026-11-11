@@ -31,6 +31,7 @@ cargo xtask module validate
 cargo xtask module validate <slug>
 cargo xtask module test <slug>
 cargo xtask doctor hygiene --crate <slug>
+cargo xtask doctor hotspots --all --top 20
 cargo xtask install-dev --create-db
 cargo xtask generate-registry
 cargo xtask list-modules

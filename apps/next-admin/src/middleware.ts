@@ -1,6 +1,9 @@
 import { auth } from '@/auth';
-import { EFFECTIVE_LOCALE_HEADER, LOCALE_COOKIE } from '@/i18n/config';
-import { resolveLocale } from '@/i18n/request';
+import {
+  EFFECTIVE_LOCALE_HEADER,
+  LOCALE_COOKIE,
+  resolveLocale
+} from '@/i18n/config';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 

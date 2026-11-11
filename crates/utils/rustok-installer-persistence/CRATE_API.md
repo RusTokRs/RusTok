@@ -60,7 +60,9 @@
   reuses the owner journal's original revision. Missing historical revision,
   conflicting command identity, and a later observed change to the requested
   intent fail explicitly; the final intent read does not lock out later writes.
-  Seed toggles still require host composition of static settings schemas.
+  Fresh enables fail before journal admission when the admitted release cannot
+  supply its schema. Current releases do not yet supply it, so new seed enables
+  remain blocked; exact completed-command replay and disable remain available.
 
 ---
 

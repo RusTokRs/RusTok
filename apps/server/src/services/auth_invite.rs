@@ -37,6 +37,7 @@ impl From<InviteAcceptanceError> for Error {
     }
 }
 
+#[derive(Debug)]
 pub struct AcceptedInvite {
     pub user: users::Model,
     pub email: String,

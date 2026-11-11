@@ -268,7 +268,7 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
     let mut depth = 0usize;
     let mut test_scopes = Vec::new();
     let mut pending_test = false;
-    let mut loop_depth = None;
+    let mut loop_depths = Vec::new();
     let mut pending_loop = false;
     let mut static_depth = None;
     let mut pending_static = false;
@@ -286,7 +286,17 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
         let statement_offset = line_start + syntax_line.len() - syntax_line.trim_start().len();
         offset += syntax_line.len() + 1;
 
-        if !scan.test_file && !scan.build_file && !scan.vendored {
+        let test_attribute =
+            re!(r"#\s*\[\s*(?:cfg\s*\(\s*test\s*\)|(?:tokio::)?test(?:\s*\([^]]*\))?)\s*\]")
+                .is_match(code_part)
+                || re!(r"\bmod\s+tests?\b").is_match(code_part);
+        if !scan.test_file
+            && !scan.build_file
+            && !scan.vendored
+            && test_scopes.is_empty()
+            && !pending_test
+            && !test_attribute
+        {
             let marker = re!(r"\b(?:todo|unimplemented)\s*!\s*[(\[{]")
                 .find(code_part)
                 .or_else(|| re!(r"\b(?:FIXME|TODO)\b").find(&comment));
@@ -311,10 +321,7 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
         }
         let opens = code_part.bytes().filter(|byte| *byte == b'{').count();
         let closes = code_part.bytes().filter(|byte| *byte == b'}').count();
-        if re!(r"#\s*\[\s*(?:cfg\s*\(\s*test\s*\)|(?:tokio::)?test(?:\s*\([^]]*\))?)\s*\]")
-            .is_match(code_part)
-            || re!(r"\bmod\s+tests?\b").is_match(code_part)
-        {
+        if test_attribute {
             pending_test = true;
         }
         let test_context = scan.test_file || !test_scopes.is_empty() || pending_test;
@@ -328,12 +335,12 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
         }
         if re!(r"\b(?:for\s+[^;{]+?\s+in\b|while\b)").is_match(code_part) {
             if opens > 0 {
-                loop_depth = Some(depth);
+                loop_depths.push(depth);
             } else {
                 pending_loop = true;
             }
         } else if pending_loop && opens > 0 {
-            loop_depth = Some(depth);
+            loop_depths.push(depth);
             pending_loop = false;
         }
         let static_decl = re!(r"^\s*(?:pub(?:\s*\([^)]*\))?\s+)?(?:static|const)\b")
@@ -426,7 +433,7 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
             RuleContext {
                 index,
                 test_context,
-                loop_depth,
+                loop_depth: loop_depths.last().copied(),
                 static_depth,
                 depth,
                 statement_offset,
@@ -445,8 +452,8 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
         while test_scopes.last().is_some_and(|scope| depth <= *scope) {
             test_scopes.pop();
         }
-        if loop_depth.is_some_and(|scope| depth <= scope) {
-            loop_depth = None;
+        while loop_depths.last().is_some_and(|scope| depth <= *scope) {
+            loop_depths.pop();
         }
         if async_depth.is_some_and(|scope| depth <= scope) {
             async_depth = None;
@@ -497,8 +504,25 @@ fn check_rules(
     let text = syntax.trim();
 
     let include = re!(r#"\binclude\s*!\s*\(\s*"([^"\\]+\.rs)"\s*\)"#);
-    if !test_context && !scan.build_file {
-        if let Some(found) = matched_with_literals(include, &code, &syntax) {
+    if !test_context && !scan.build_file && syntax.contains("include") {
+        let end = scan.lines.len();
+        let code_window = scan.lines[index..end]
+            .iter()
+            .map(|line| line.code.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let syntax_window = scan.lines[index..end]
+            .iter()
+            .map(|line| line.syntax.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if let Some(found) =
+            matched_with_literals(include, &code_window, &syntax_window).filter(|found| {
+                found
+                    .get(0)
+                    .is_some_and(|matched| matched.start() < code.len())
+            })
+        {
             let included = &found[1];
             let module = Path::new(included)
                 .file_stem()

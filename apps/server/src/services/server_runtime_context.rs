@@ -88,8 +88,12 @@ impl ServerSharedValues {
     {
         let mut lock = self.write_lock();
         let value = lock.remove(&TypeId::of::<T>())?;
-        let Ok(typed) = Arc::downcast::<T>(value) else {
-            return None;
+        let typed = match Arc::downcast::<T>(value) {
+            Ok(typed) => typed,
+            Err(value) => {
+                lock.insert(TypeId::of::<T>(), value);
+                return None;
+            }
         };
         match Arc::try_unwrap(typed) {
             Ok(inner) => Some(inner),
@@ -99,6 +103,13 @@ impl ServerSharedValues {
                 None
             }
         }
+    }
+
+    fn remove<T>(&self) -> bool
+    where
+        T: 'static + Send + Sync,
+    {
+        self.write_lock().remove(&TypeId::of::<T>()).is_some()
     }
 
     fn contains<T>(&self) -> bool
@@ -152,6 +163,14 @@ impl ServerRuntimeContext {
         self.shared_values.get_or_insert_with(make)
     }
 
+    /// Atomically resolve or insert a shared runtime singleton value.
+    pub fn shared_get_or_insert<T>(&self, value: T) -> T
+    where
+        T: 'static + Send + Sync + Clone,
+    {
+        self.shared_values.get_or_insert_with(move || value)
+    }
+
     pub fn shared_insert<T>(&self, value: T)
     where
         T: 'static + Send + Sync,
@@ -175,6 +194,14 @@ impl ServerRuntimeContext {
         T: 'static + Send + Sync,
     {
         self.shared_values.take::<T>()
+    }
+
+    /// Unconditionally removes a shared typed value from the context, returning whether it was present.
+    pub fn shared_remove<T>(&self) -> bool
+    where
+        T: 'static + Send + Sync,
+    {
+        self.shared_values.remove::<T>()
     }
 
     pub fn shared_contains<T>(&self) -> bool
@@ -229,6 +256,12 @@ impl ServerAuthRuntime {
     pub fn auth_config(&self) -> Option<&AuthConfig> {
         self.auth_config.as_ref()
     }
+
+    pub fn require_auth_config(&self) -> Result<&AuthConfig, crate::error::Error> {
+        self.auth_config
+            .as_ref()
+            .ok_or_else(|| crate::error::Error::Message("Auth runtime configuration is missing".to_string()))
+    }
 }
 
 impl FromRef<ServerAuthRuntime> for ServerRuntimeContext {
@@ -246,6 +279,18 @@ impl FromRef<ServerAuthRuntime> for DatabaseConnection {
 impl FromRef<ServerRuntimeContext> for DatabaseConnection {
     fn from_ref(input: &ServerRuntimeContext) -> Self {
         input.db_clone()
+    }
+}
+
+impl FromRef<ServerRuntimeContext> for Arc<RustokSettings> {
+    fn from_ref(input: &ServerRuntimeContext) -> Self {
+        input.settings.clone()
+    }
+}
+
+impl FromRef<ServerAuthRuntime> for Arc<RustokSettings> {
+    fn from_ref(input: &ServerAuthRuntime) -> Self {
+        input.runtime_ctx.settings.clone()
     }
 }
 
@@ -305,6 +350,54 @@ mod tests {
         let unwrapped = values.take::<Vec<i32>>();
         assert_eq!(unwrapped.as_deref(), Some(&[1, 2, 3][..]));
         assert!(!values.contains::<Vec<i32>>());
+    }
+
+    #[test]
+    fn shared_remove_unconditionally_clears_the_type() {
+        let values = ServerSharedValues::default();
+        values.insert(String::from("temporary"));
+        assert!(values.contains::<String>());
+        assert!(values.remove::<String>());
+        assert!(!values.contains::<String>());
+        assert!(!values.remove::<String>());
+    }
+
+    #[test]
+    fn shared_get_or_insert_returns_existing_or_inserts_new() {
+        let values = ServerSharedValues::default();
+        assert_eq!(values.get_or_insert_with(|| 100_u32), 100);
+        assert_eq!(values.get_or_insert_with(|| 200_u32), 100);
+    }
+
+    #[test]
+    fn require_auth_config_behavior() {
+        use super::{ServerAuthRuntime, ServerRuntimeContext};
+        use crate::auth::AuthConfig;
+        use crate::common::settings::RustokSettings;
+        use sea_orm::DatabaseConnection;
+
+        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let unauth = ServerAuthRuntime::without_auth(ctx.clone());
+        assert!(unauth.require_auth_config().is_err());
+
+        let authed = ServerAuthRuntime::new(ctx, AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(4)));
+        assert!(authed.require_auth_config().is_ok());
+    }
+
+    #[test]
+    fn from_ref_extracts_arc_rustok_settings() {
+        use super::{ServerAuthRuntime, ServerRuntimeContext};
+        use crate::common::settings::RustokSettings;
+        use axum::extract::FromRef;
+        use sea_orm::DatabaseConnection;
+        use std::sync::Arc;
+
+        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let auth_rt = ServerAuthRuntime::without_auth(ctx.clone());
+
+        let settings_from_ctx: Arc<RustokSettings> = FromRef::from_ref(&ctx);
+        let settings_from_auth: Arc<RustokSettings> = FromRef::from_ref(&auth_rt);
+        assert_eq!(settings_from_ctx.runtime.host_mode, settings_from_auth.runtime.host_mode);
     }
 
     #[test]

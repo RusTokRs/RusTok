@@ -107,8 +107,11 @@ lookup, so failures in that earlier work can still prevent a lifecycle replay.
 The host co-requisite loader also substitutes an empty set when a package
 manifest is missing; release-owned policy evidence is needed before that
 effective-policy projection can be considered safe in those images.
-Installer seed toggles still need schema composition. Their deterministic replay
-now recovers the original command revision from the owner journal, handles a
+Installer seed toggles still need release-bound schema composition. A fresh
+seed enable now fails before journal admission while that evidence is absent;
+this blocks installations that require a new module enable. Disable and exact
+completed-command replay do not need a new schema. Deterministic replay
+recovers the original command revision from the owner journal, handles a
 concurrent same-key admission, and checks that the persisted enablement intent
 still matches after replay. A missing historic revision or changed intent fails
 closed. This post-replay read is not a fence against subsequent writes.

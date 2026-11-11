@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 
 use rustok_api::sha256_digest;
-use rustok_commerce_foundation::entities::{product, product_variant};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, EntityTrait, FromQueryResult, QueryFilter, QueryOrder,
     QuerySelect,
@@ -59,26 +58,13 @@ pub(super) async fn load_with_budget<C: ConnectionTrait>(
         return Err(E::LimitExceeded);
     }
     // Narrow, current structural proof only. Never acquire a Product lock after child locks.
-    let parent = product_variant::Entity::find_by_id(variant)
-        .select_only()
-        .column(product_variant::Column::ProductId)
-        .filter(product_variant::Column::TenantId.eq(tenant))
-        .into_tuple::<Uuid>()
-        .one(conn)
-        .await?
-        .ok_or(E::StateUnverified)?;
-    if parent.is_nil()
-        || product::Entity::find_by_id(parent)
-            .select_only()
-            .column(product::Column::Id)
-            .filter(product::Column::TenantId.eq(tenant))
-            .into_tuple::<Uuid>()
-            .one(conn)
-            .await?
-            != Some(parent)
-    {
+    let info = crate::product_port::get_variant_info_from_conn(conn, tenant, variant)
+        .await
+        .map_err(|_| E::StateUnverified)?;
+    if info.product_id.is_nil() {
         return Err(E::StateUnverified);
     }
+    let parent = info.product_id;
     let items = inventory_item::Entity::find()
         .select_only()
         .column(inventory_item::Column::Id)

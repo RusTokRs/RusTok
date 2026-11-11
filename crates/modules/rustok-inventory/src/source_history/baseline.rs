@@ -1,10 +1,9 @@
 use chrono::Utc;
 use rustok_api::PortContext;
-use rustok_commerce_foundation::entities::product_variant;
 use rustok_core::resilience::with_timeout;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    QueryFilter, Set, TransactionTrait, sea_query::Expr,
 };
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -216,17 +215,16 @@ async fn advance_in(
             return Err(E::StateUnverified);
         }
     }
-    let mut query = product_variant::Entity::find()
-        .select_only()
-        .column(product_variant::Column::Id)
-        .filter(product_variant::Column::TenantId.eq(tenant))
-        .order_by_asc(product_variant::Column::Id)
-        .limit((request.limit + 1) as u64);
-    if let Some(after) = request.after_variant_id {
-        query = query.filter(product_variant::Column::Id.gt(after));
-    }
-    let mut ids = query.into_tuple::<Uuid>().all(txn).await?;
+    let ids = crate::product_port::list_tenant_variant_ids_from_conn(
+        txn,
+        tenant,
+        request.after_variant_id,
+        request.limit,
+    )
+    .await
+    .map_err(|_| E::StateUnverified)?;
     let more = ids.len() > request.limit;
+    let mut ids = ids;
     ids.truncate(request.limit);
     let mut snapshots = Vec::with_capacity(ids.len());
     let mut level_count = 0_usize;

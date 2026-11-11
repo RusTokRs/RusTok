@@ -5,10 +5,9 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use crate::dto::bounded_forum_read_limit;
 use crate::model::{
     ForumCategoryConnection, ForumMemberCard, ForumReplyPage, ForumTopicDetail, ForumTopicPage,
-    StorefrontForumData,
+    StorefrontForumData, bounded_forum_read_limit,
 };
 
 use super::StorefrontForumBulkReadResult;

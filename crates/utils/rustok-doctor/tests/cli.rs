@@ -252,3 +252,201 @@ fn crate_resolution_and_reports_use_the_same_findings() {
     assert!(csv.contains("crates/modules/rustok-forum/src/service.rs"));
     assert!(csv.contains("high"));
 }
+
+#[test]
+fn requested_reports_are_written_for_json_and_clean_scans() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    fs::write(root.join("source.rs"), b"include!(\"local.rs\");\n").unwrap();
+    let output = doctor(
+        root,
+        &[
+            "--path",
+            "source.rs",
+            "--json",
+            "--csv",
+            "report.csv",
+            "--markdown-report",
+            "report.md",
+            "--patch",
+            "report.patch",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["total_findings"], 1);
+    assert!(
+        fs::read_to_string(root.join("report.csv"))
+            .unwrap()
+            .contains("P-ZERO-INCLUDE")
+    );
+    assert!(
+        fs::read_to_string(root.join("report.md"))
+            .unwrap()
+            .contains("P-ZERO-INCLUDE")
+    );
+    assert!(
+        fs::read_to_string(root.join("report.patch"))
+            .unwrap()
+            .contains("P-ZERO-INCLUDE")
+    );
+
+    fs::write(root.join("source.rs"), b"fn clean() {}\n").unwrap();
+    let output = doctor(
+        root,
+        &[
+            "--path",
+            "source.rs",
+            "--json",
+            "--csv",
+            "report.csv",
+            "--markdown-report",
+            "report.md",
+            "--patch",
+            "report.patch",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["total_findings"], 0);
+    assert!(
+        !fs::read_to_string(root.join("report.csv"))
+            .unwrap()
+            .contains("P-ZERO-INCLUDE")
+    );
+    assert!(
+        !fs::read_to_string(root.join("report.md"))
+            .unwrap()
+            .contains("P-ZERO-INCLUDE")
+    );
+    assert!(fs::read(root.join("report.patch")).unwrap().is_empty());
+
+    let output = doctor(
+        root,
+        &[
+            "--path",
+            "source.rs",
+            "--json",
+            "--csv",
+            "missing/report.csv",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let output = doctor(root, &["--json", "--github-annotations"]);
+    assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn output_paths_cannot_overwrite_sources_or_each_other() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    let original = b"include!(\"local.rs\");\n";
+    fs::write(root.join("source.rs"), original).unwrap();
+    let output = doctor(root, &["--path", "source.rs", "--csv", "source.rs"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(fs::read(root.join("source.rs")).unwrap(), original);
+    let output = doctor(
+        root,
+        &["--path", "source.rs", "--csv", "same", "--patch", "same"],
+    );
+    assert_eq!(output.status.code(), Some(2));
+    assert!(!root.join("same").exists());
+    let output = doctor(root, &["--crate", "missing,also_missing", "--json"]);
+    assert_eq!(output.status.code(), Some(2));
+    fs::create_dir_all(root.join("crates/modules/rustok-forum")).unwrap();
+    fs::create_dir_all(root.join("crates/modules/rustok-forum-extra")).unwrap();
+    let output = doctor(root, &["--crate", "forum,missing", "--json"]);
+    assert_eq!(output.status.code(), Some(2));
+    let output = doctor(root, &["--crate", "foru", "--json"]);
+    assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn annotations_escape_file_properties() {
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("source,part.rs"),
+        b"include!(\"local.rs\");\n",
+    )
+    .unwrap();
+    let output = doctor(
+        dir.path(),
+        &["--path", "source,part.rs", "--github-annotations"],
+    );
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("file=source%2Cpart.rs,"));
+}
+
+#[test]
+fn strict_mode_rejects_multiline_include() {
+    let dir = TempDir::new().unwrap();
+    fs::write(
+        dir.path().join("source.rs"),
+        b"include!(\n \"local.rs\"\n);\n",
+    )
+    .unwrap();
+    let output = doctor(dir.path(), &["--path", "source.rs", "--strict", "--json"]);
+    assert_eq!(output.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["findings"][0]["pattern_id"], "P-ZERO-INCLUDE");
+    assert_eq!(report["findings"][0]["line"], 1);
+}
+
+#[test]
+fn hotspots_rank_selected_files_and_exclude_generated_and_vendored() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::create_dir_all(root.join("tests")).unwrap();
+    fs::create_dir_all(root.join("vendor")).unwrap();
+    fs::write(root.join("src/long.rs"), "a\nb\nc\n").unwrap();
+    fs::write(root.join("src/short.rs"), "a\n").unwrap();
+    fs::write(root.join("tests/test.rs"), "a\nb\n").unwrap();
+    fs::write(root.join("src/generated.rs"), "// @generated\na\nb\nc\nd\n").unwrap();
+    fs::write(root.join("vendor/copied.rs"), "a\nb\nc\nd\n").unwrap();
+    let output = doctor(root, &["hotspots", "--path", ".", "--top", "2", "--json"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["selected_files"], 5);
+    assert_eq!(report["ranked_files"], 3);
+    assert_eq!(report["excluded_generated"], 1);
+    assert_eq!(report["excluded_vendor"], 1);
+    assert_eq!(report["files"][0]["file"], "src/long.rs");
+    assert_eq!(report["files"][0]["lines"], 3);
+    assert_eq!(report["files"][1]["kind"], "test");
+    assert_eq!(
+        doctor(root, &["hotspots", "--top", "0"]).status.code(),
+        Some(2)
+    );
+}
+
+#[test]
+fn hotspots_measure_staged_contents() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    git(root, &["init", "-q", "--template="]);
+    fs::write(root.join("source.rs"), b"a\nb\nc\n").unwrap();
+    git(root, &["add", "--", "source.rs"]);
+    fs::write(root.join("source.rs"), b"a\n").unwrap();
+    let output = doctor(root, &["hotspots", "--staged", "--json"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["files"][0]["lines"], 3);
+}

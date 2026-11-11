@@ -307,7 +307,7 @@ pub async fn delete_search_query_rule(
         .await
         .map_err(ApiError::from)
 }
-;
+
 #[server(prefix = "/api/fn", endpoint = "search/bootstrap")]
 async fn search_admin_bootstrap_native() -> Result<SearchAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -455,7 +455,7 @@ async fn search_admin_preview_native(
         ))
     }
 }
-;
+
 #[server(prefix = "/api/fn", endpoint = "search/filter-presets")]
 async fn search_admin_filter_presets_native(
     surface: String,
@@ -581,7 +581,7 @@ async fn search_admin_consistency_issues_native(
         ))
     }
 }
-;
+
 #[server(prefix = "/api/fn", endpoint = "search/analytics")]
 async fn search_admin_analytics_native(
     days: Option<i32>,
@@ -706,7 +706,7 @@ async fn track_search_click_native(
         ))
     }
 }
-;
+
 #[server(prefix = "/api/fn", endpoint = "search/update-settings")]
 async fn update_search_settings_native(
     active_engine: String,
@@ -850,7 +850,7 @@ async fn trigger_search_rebuild_native(
         ))
     }
 }
-;
+
 #[server(prefix = "/api/fn", endpoint = "search/upsert-synonym")]
 async fn upsert_search_synonym_native(
     term: String,
@@ -1080,7 +1080,7 @@ async fn delete_search_query_rule_native(
         ))
     }
 }
-;
+
 #[cfg(feature = "ssr")]
 struct ResolvedSearchInput {
     preset_key: Option<String>,
@@ -1368,7 +1368,7 @@ fn resolve_preset_and_ranking(
         ranking_profile,
     })
 }
-;
+
 #[cfg(feature = "ssr")]
 async fn run_search_with_dictionaries(
     db: &sea_orm::DatabaseConnection,
@@ -1497,7 +1497,7 @@ fn map_search_settings_payload(
         updated_at: value.updated_at.to_rfc3339(),
     }
 }
-;
+
 #[cfg(feature = "ssr")]
 fn map_search_preview_payload(
     value: rustok_search::SearchResult,
@@ -1717,7 +1717,7 @@ fn map_dictionary_snapshot(
 fn map_dictionary_mutation_payload(success: bool) -> SearchDictionaryMutationPayload {
     SearchDictionaryMutationPayload { success }
 }
-;
+
 #[cfg(feature = "ssr")]
 fn map_core_error(error: rustok_core::Error) -> ServerFnError {
     ServerFnError::new(error.to_string())
@@ -1828,4 +1828,3 @@ fn ensure_engine_available(engine: rustok_search::SearchEngineKind) -> Result<()
         )))
     }
 }
-;

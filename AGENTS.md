@@ -211,7 +211,7 @@ Agents MUST explain the engineering rationale and material tradeoffs. If an impr
 Contributors and AI agents MUST NOT merely fix discovered architectural defects, crooked patterns ("косяки"), and AI slop locally, but MUST actively capture recurring findings in the platform standards.
 
 When an agent identifies a recurring flawed pattern, anti-pattern, or a clean reusable remediation pattern across domain modules:
-1. Cross-check whether the pattern is already cataloged in [`docs/standards/logic-hygiene-patterns.md`](docs/standards/logic-hygiene-patterns.md) or [`docs/standards/patterns-vs-antipatterns.md`](docs/standards/patterns-vs-antipatterns.md).
+1. Cross-check whether the pattern is already cataloged in [`docs/standards/logic-hygiene-patterns.md`](docs/standards/logic-hygiene-patterns.md).
 2. If it is a new or recurring defect (such as hidden TOCTOU races, N+1 transactional loops, panicking in production paths, database/code state desync, unvalidated DTO boundaries, or macro text-injection), the agent MUST update [`docs/standards/logic-hygiene-patterns.md`](docs/standards/logic-hygiene-patterns.md) in the same change set, adding:
    - A standardized pattern ID (`P-XXXX`), category, and affected logic dimension.
    - A concise description of the root cause and concrete failure mode ("косяк / антипаттерн").

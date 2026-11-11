@@ -1,5 +1,7 @@
 # rustok-messenger / CRATE_API
 
+This inventory describes source entry points. Release readiness, current gaps and proposed contract changes are tracked in the [implementation plan](docs/implementation-plan.md).
+
 ## Public surface
 
 ### Module Facade
@@ -80,15 +82,17 @@
 - `ListMessagesQuery` (`conversation_id`, `limit`, `before_id`, `after_id`)
 - `SearchMessagesQuery` (`query`, `conversation_id`, `limit`, `offset`)
 
-### Domain Invariants
-- **Zero-Knowledge E2EE**: Server never receives or stores private ratchet keys. For encrypted chats and messages, plaintext is never indexed in search and never leaked in notification payloads.
-- **Monotonic Sequences**: Message identifiers use 64-bit strictly monotonic Snowflake IDs. Cursors advance monotonically and reject regressions.
-- **Tenant & Membership Isolation**: All message mutations, reads, and WebSocket streams enforce strict tenant scoping and verified active room membership.
-- **Bounds Checking**: Search query length <= 500 characters, message content length <= 64 KiB, channel title <= 255 characters, locale code <= 32 characters.
+### Current validation and limits
+
+- Message IDs come from per-service Snowflake generators. History and FastSync use message IDs as positions. An in-place edit or delete does not create a new position.
+- Cursor progression rejects a lower value in a single update. The current write lacks atomic monotonicity and tenant-scoped room admission.
+- Tenant and membership checks vary by operation. Consult the plan's source baseline and privacy gates before releasing the existing entry points.
+- Search query length is limited to 500 characters, message content to 64 KiB, channel title to 255 characters, and locale code to 32 characters.
+- The device registry and encrypted envelopes supply building blocks. A supported E2EE client protocol and durable tenant-scoped key storage remain separate work.
 
 ### Events / Outbox Side Effects
 - `MessengerMessageDispatched` published to transactional outbox on every successful message creation.
-- Streaming events (`MessageDispatched`, `CursorUpdated`) broadcast via WebSocket room hub and optional Iggy stream topic.
+- Realtime adapter calls publish to a process-local WebSocket hub. The optional Iggy dispatcher in this crate does not send a broker message.
 
 ### Errors / Failure Codes
 - `MessengerError::ConversationNotFound` — conversation does not exist.

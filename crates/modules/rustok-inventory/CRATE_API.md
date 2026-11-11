@@ -6,6 +6,7 @@
 - `migrations`: SeaORM migration definitions for inventory tables.
 - `module`: Core `InventoryModule` definition and platform registration.
 - `ports`: Canonical availability/reservation contracts and admitted wrappers, explicitly re-exported at crate root. Persistence implementation is private (`ports_impl`).
+- `product_port`: Hexagonal boundary for Product catalog interactions (`InventoryProductPort`, `InventoryProductVariantInfo`, `DatabaseFallbackProductAdapter`), eliminating direct cross-module SQL queries into Product tables.
 - `return_restock`: Return restock logic and idempotency handling.
 - `services`: Domain services for stock adjustments, reservations, and public channel inventory projections.
 - `shipment_stock`: Shipment stock movement ports and consumption logic.

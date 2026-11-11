@@ -9,22 +9,12 @@ import {
   defaultLocale,
   EFFECTIVE_LOCALE_HEADER,
   locales,
+  matchSupportedLocale,
+  resolveLocale,
   type Locale
 } from './config';
 
-function matchSupportedLocale(value?: string | null): Locale | undefined {
-  const normalized = value?.trim().replaceAll('_', '-').toLowerCase();
-  if (!normalized) return undefined;
-
-  return (
-    locales.find((locale) => locale.toLowerCase() === normalized) ??
-    locales.find((locale) => locale.toLowerCase() === normalized.split('-')[0])
-  );
-}
-
-export function resolveLocale(value?: string | null): Locale {
-  return matchSupportedLocale(value) ?? defaultLocale;
-}
+export { matchSupportedLocale, resolveLocale };
 
 /**
  * Applies the supported-locale allowlist to quality-ordered client

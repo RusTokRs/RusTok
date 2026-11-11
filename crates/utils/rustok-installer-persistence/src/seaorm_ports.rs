@@ -524,8 +524,20 @@ impl SeedModulePort for SeaOrmInstallerBootstrapPorts<'_> {
             "module-toggle",
             &format!("{tenant_id}/{module_slug}/{enabled}/{actor}"),
         );
-        let lifecycle = ModuleControlPlane::new(self.db.clone())
+        let mut lifecycle = ModuleControlPlane::new(self.db.clone())
             .lifecycle(self.registry, self.defaults.clone());
+        if enabled {
+            // The release ledger does not yet carry static settings schemas.
+            // Preserve exact journal replay, but never enable a new module with
+            // an unknown schema or guess one from the host filesystem.
+            lifecycle = lifecycle.with_static_settings_schema_result(
+                module_slug.to_string(),
+                Err(
+                    "installer cannot resolve settings schema from the admitted static release"
+                        .to_string(),
+                ),
+            );
+        }
         let context = ModuleCommandContext {
             actor_id,
             tenant_id: Some(tenant_id),

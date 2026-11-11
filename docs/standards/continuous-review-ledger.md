@@ -4,8 +4,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-01 — Entrypoint & Composition Root (`apps/server`)  
-**Next pending component:** [`apps/server`](../../apps/server) (485 files, 190,468 LOC)  
-**Current main SHA:** `60267e392b`  
+**Next pending component:** [`apps/server` (Track FS-01.06 — routes.rs & error.rs)](../../apps/server)  
+**Current main SHA:** `0f6f9435da`  
 **Active branch:** `main`
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **285 components** (~2.5M LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -32,7 +32,7 @@ The single canonical trigger to continue this audit sequence is:
 
 ### Phase Backlog — Architectural Sequence (285 Components Total — 0% COMPLETE)
 
-- [ ] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (0/1 completed)
+- [ ] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (5/33 tracks completed)
 - [ ] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (0/10 completed)
 - [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (0/24 completed)
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (0/37 completed)
@@ -47,9 +47,50 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-01 — Entrypoint & Composition Root (`apps/server`)
-*Host binary, Axum HTTP/gRPC server composition, runtime context, middleware pipeline, global error handling, and background service lifecycle.* (0/1 completed)
+*Host binary, Axum HTTP/gRPC server composition, runtime context, middleware pipeline, global error handling, and background service lifecycle.* (5/33 tracks completed)
 
-- [ ] **[`apps/server`](../../apps/server)** (485 files, 190,468 LOC)
+- [ ] **[`apps/server`](../../apps/server)** (485 files, 190,468 LOC) — decomposed into 33 focused audit tracks:
+
+#### 1. Bootstrap, Host & Configuration
+- [x] **FS-01.01 — `apps/server/src/main.rs` & `apps/server/src/bin/*`** — entrypoint, CLI arguments, signal handling, process lifecycle. *(Done: bounded thread stack size parsing with [2MB, 64MB] bounds and 8MB default; case-insensitive log format normalization; robust falsy parsing for RUSTOK_METRICS; trimmed service name fallback; fail-closed duplicate/whitespace argument handling in `export_api_contracts`; 5 unit tests in `main.rs` + 9 unit tests in `export_api_contracts.rs` all passing; verified with `cargo test` and `cargo clippy --no-deps`).*
+- [x] **FS-01.02 — `apps/server/src/host.rs` & `apps/server/src/host_authority.rs`** — host wiring, socket binding, TLS/HTTPS, shutdown signals. *(Done: fail-closed validation of server binding in `resolve_server_endpoint` trimming inputs and rejecting empty/whitespace; HTTPS/HSTS enforcement in production; strict production validation in `validate_auth_deployment` enforcing valid issuer without whitespace, minimum length > 8, access/refresh expirations > 0, and minimum password length >= 8; strict production validation in `validate_database_deployment` rejecting empty URI and dev credential placeholders; idle_timeout clamped to minimum 1000ms; host authority token whitespace trimming and fail-closed empty/whitespace denial; RAII test environment isolation; 4 unit tests in `host.rs` + 9 unit tests in `host_authority.rs` all passing; verified with `cargo test -p rustok-server --lib host` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
+- [x] **FS-01.03 — `apps/server/src/services/server_bootstrap.rs`** — bootstrap sequence, database pool initialization, migration execution, state validation. *(Done: fail-closed validation of trimmed production secrets; rejection of empty/whitespace-only JWT secrets and database URIs; parity with host.rs on user:password database credentials pattern; strict superadmin password validation enforcing minimum length of 8 characters and expanded known weak/sample passwords list; thread-safe RAII EnvGuard for concurrent test isolation; 11 unit tests all passing; verified with `cargo test -p rustok-server --lib server_bootstrap` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
+- [x] **FS-01.04 — `apps/server/src/services/server_runtime_context.rs`** — shared server context, state injection, thread safety. *(Done: anti-loss value restoration in `take` upon downcast failure; `shared_remove` unconditional type clearing; `shared_get_or_insert` atomic singleton resolution; `require_auth_config` fail-closed configuration guard; `FromRef` implementations for `Arc<RustokSettings>`; 9 unit tests all passing; verified with `cargo test -p rustok-server --lib server_runtime_context` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
+- [x] **FS-01.05 — `apps/server/src/services/app_runtime.rs` & `apps/server/src/services/app_lifecycle.rs`** — runtime background worker lifecycle, cancellation, drain on shutdown. *(Done: guaranteed supervisor abort on shutdown using `shared_get` + `abort()` + `shared_remove` for Channel, RBAC, Watchdog, and EventForwarder listeners even when live clones exist; graceful shutdown timeout handling; 15 unit tests all passing; verified with `cargo test -p rustok-server --lib app_lifecycle` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
+- [ ] **FS-01.06 — `apps/server/src/routes.rs` & `apps/server/src/error.rs`** — global routing table, 404 fallback, top-level Axum error mapping.
+
+#### 2. Middleware & Context Guards
+- [ ] **FS-01.07 — `apps/server/src/middleware/tenant.rs`** — multi-tenant header/host resolution, domain mapping, fail-closed tenant boundary.
+- [ ] **FS-01.08 — `apps/server/src/middleware/channel.rs`** — sales channel resolution, default fallback, header precedence.
+- [ ] **FS-01.09 — `apps/server/src/middleware/locale.rs`** — locale header negotiation, fallback normalization, language validation.
+- [ ] **FS-01.10 — `apps/server/src/middleware/auth_context.rs`** — JWT/session authentication context extraction, bearer token parsing, claims validation.
+- [ ] **FS-01.11 — `apps/server/src/middleware/rbac.rs`** — route-level role/permission enforcement, policy evaluation, 403 handling.
+- [ ] **FS-01.12 — `apps/server/src/middleware/rate_limit.rs`** — tier-based rate limiting, token bucket algorithm, header emission.
+- [ ] **FS-01.13 — `apps/server/src/middleware/security_headers.rs`** — CSP, CORS, HSTS, frame options, clickjacking defense.
+- [ ] **FS-01.14 — `apps/server/src/middleware/telemetry.rs` & `request_id.rs`** — trace propagation, OpenTelemetry spans, request correlation IDs.
+- [ ] **FS-01.15 — `apps/server/src/middleware/body_limit.rs`** — payload size guards, DoS defense, streaming boundaries.
+- [ ] **FS-01.16 — `apps/server/src/middleware/idempotency.rs`** — mutation idempotency keys, cache lookups, duplicate detection.
+- [ ] **FS-01.17 — `apps/server/src/middleware/cache_control.rs`** — dynamic HTTP caching directives, ETag negotiation, 304 handling.
+
+#### 3. Core API Controllers
+- [ ] **FS-01.18 — `apps/server/src/controllers/health.rs`** — liveness, readiness, deep dependency checks (DB, Iggy, Redis).
+- [ ] **FS-01.19 — `apps/server/src/controllers/metrics.rs`** — Prometheus metric exposition, telemetry sanitization.
+- [ ] **FS-01.20 — `apps/server/src/controllers/graphql.rs`** — async-graphql HTTP/WS execution, schema stitching, error formatting.
+- [ ] **FS-01.21 — `apps/server/src/controllers/auth.rs`** — login, register, token refresh, password reset endpoints.
+- [ ] **FS-01.22 — `apps/server/src/controllers/tenant.rs`** — tenant provisioning, domain management, settings CRUD.
+- [ ] **FS-01.23 — `apps/server/src/controllers/modules.rs`** — dynamic module registry inspection, lifecycle control (enable/disable).
+- [ ] **FS-01.24 — `apps/server/src/controllers/admin_proxy.rs`** — admin SPA routing, SSR fallback, asset streaming.
+- [ ] **FS-01.25 — `apps/server/src/controllers/admin_permissions.rs`** — role assignment, permission matrix query endpoints.
+- [ ] **FS-01.26 — `apps/server/src/controllers/admin_events.rs`** — outbox/event inspection, DLQ management, retry dispatch.
+- [ ] **FS-01.27 — `apps/server/src/controllers/channel.rs`** — channel admin endpoints, CRUD, tenant scoping.
+- [ ] **FS-01.28 — `apps/server/src/controllers/swagger.rs`** — OpenAPI/Swagger UI endpoints, schema generation safety.
+
+#### 4. Event Bus, Outbox & Background Services in Server
+- [ ] **FS-01.29 — `apps/server/src/services/event_bus.rs` & `module_event_dispatcher.rs`** — host event bus composition, module dispatch.
+- [ ] **FS-01.30 — `apps/server/src/services/outbox_retention_worker.rs`** — outbox cleanup worker, batch retention pruning.
+- [ ] **FS-01.31 — `apps/server/src/services/module_transition_watchdog.rs`** — module state machine watchdog, timeout recovery.
+- [ ] **FS-01.32 — `apps/server/src/services/settings_service.rs`** — static & dynamic tenant settings loading and caching.
+- [ ] **FS-01.33 — `apps/server/src/services/rbac_*.rs`** — server-level RBAC caching, runtime invalidation.
 
 ---
 
@@ -374,9 +415,9 @@ The single canonical trigger to continue this audit sequence is:
 
 | Status | Component | Category | Files | LOC | Last Audited | Notes |
 |:---:|---|---|---:|---:|---|---|
-| [ ] | [admin](../../apps/admin) | `apps` | 102 | 24,736 | None |  |
+| [ ] | [admin](../../apps/admin) | `apps` | 102 | 24,752 | None |  |
 | [ ] | [dioxus-admin](../../apps/dioxus-admin) | `apps` | 1 | 13 | None |  |
-| [ ] | [next-admin](../../apps/next-admin) | `apps` | 576 | 93,116 | None |  |
+| [ ] | [next-admin](../../apps/next-admin) | `apps` | 577 | 93,716 | None |  |
 | [ ] | [blog](../../apps/next-admin/packages/blog) | `apps` | 22 | 3,671 | None |  |
 | [ ] | [cache](../../apps/next-admin/packages/cache) | `apps` | 6 | 528 | None |  |
 | [ ] | [commerce](../../apps/next-admin/packages/commerce) | `apps` | 13 | 2,822 | None |  |
@@ -395,20 +436,20 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [search](../../apps/next-admin/packages/search) | `apps` | 2 | 2,952 | None |  |
 | [ ] | [translation](../../apps/next-admin/packages/translation) | `apps` | 4 | 5,449 | None |  |
 | [ ] | [workflow](../../apps/next-admin/packages/workflow) | `apps` | 13 | 1,606 | None |  |
-| [ ] | [next-frontend](../../apps/next-frontend) | `apps` | 191 | 28,848 | None |  |
+| [ ] | [next-frontend](../../apps/next-frontend) | `apps` | 191 | 28,708 | None |  |
 | [ ] | [rustok-blog](../../apps/next-frontend/packages/rustok-blog) | `apps` | 22 | 2,753 | None |  |
 | [ ] | [rustok-cart](../../apps/next-frontend/packages/rustok-cart) | `apps` | 8 | 2,564 | None |  |
 | [ ] | [rustok-comments](../../apps/next-frontend/packages/rustok-comments) | `apps` | 2 | 123 | None |  |
 | [ ] | [rustok-forum](../../apps/next-frontend/packages/rustok-forum) | `apps` | 23 | 4,775 | None |  |
 | [ ] | [rustok-notifications](../../apps/next-frontend/packages/rustok-notifications) | `apps` | 7 | 916 | None |  |
 | [ ] | [rustok-order](../../apps/next-frontend/packages/rustok-order) | `apps` | 5 | 1,361 | None |  |
-| [ ] | [rustok-pages](../../apps/next-frontend/packages/rustok-pages) | `apps` | 8 | 816 | None |  |
+| [ ] | [rustok-pages](../../apps/next-frontend/packages/rustok-pages) | `apps` | 8 | 676 | None |  |
 | [ ] | [rustok-pricing](../../apps/next-frontend/packages/rustok-pricing) | `apps` | 9 | 1,424 | None |  |
 | [ ] | [rustok-product](../../apps/next-frontend/packages/rustok-product) | `apps` | 13 | 3,359 | None |  |
 | [ ] | [rustok-profiles](../../apps/next-frontend/packages/rustok-profiles) | `apps` | 8 | 803 | None |  |
 | [ ] | [rustok-seo](../../apps/next-frontend/packages/rustok-seo) | `apps` | 6 | 1,551 | None |  |
 | [ ] | [search](../../apps/next-frontend/packages/search) | `apps` | 2 | 718 | None |  |
-| [ ] | [server](../../apps/server) | `apps` | 498 | 207,690 | None |  |
+| [ ] | [server](../../apps/server) | `apps` | 498 | 207,960 | None |  |
 | [ ] | [storefront](../../apps/storefront) | `apps` | 36 | 6,511 | None |  |
 | [ ] | [rustok-content-revisions](../../crates/integration/rustok-content-revisions) | `integration` | 7 | 1,256 | None |  |
 | [ ] | [rustok-api](../../crates/libs/rustok-api) | `libs` | 35 | 7,691 | None |  |
@@ -423,7 +464,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-translation-targets](../../crates/libs/rustok-translation-targets) | `libs` | 4 | 1,780 | None |  |
 | [ ] | [rustok-web](../../crates/libs/rustok-web) | `libs` | 3 | 1,023 | None |  |
 | [ ] | [alloy](../../crates/modules/alloy) | `modules` | 79 | 25,285 | None |  |
-| [ ] | [flex](../../crates/modules/flex) | `modules` | 53 | 17,279 | None |  |
+| [ ] | [flex](../../crates/modules/flex) | `modules` | 53 | 17,299 | None |  |
 | [ ] | [rustok-accounting](../../crates/modules/rustok-accounting) | `modules` | 15 | 1,809 | None |  |
 | [ ] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 77 | 43,059 | None |  |
 | [ ] | [rustok-ai-alloy](../../crates/modules/rustok-ai-alloy) | `modules` | 2 | 423 | None |  |
@@ -434,8 +475,8 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-ai-product](../../crates/modules/rustok-ai-product) | `modules` | 2 | 358 | None |  |
 | [ ] | [rustok-ai-translation](../../crates/modules/rustok-ai-translation) | `modules` | 2 | 1,702 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-ai/admin) | `modules` | 18 | 8,566 | None |  |
-| [ ] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 62 | 15,026 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 21 | 7,373 | None |  |
+| [ ] | [rustok-auth](../../crates/modules/rustok-auth) | `modules` | 62 | 15,066 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-auth/admin) | `modules` | 21 | 7,404 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 2 | 376 | None |  |
 | [ ] | [rustok-billing](../../crates/modules/rustok-billing) | `modules` | 18 | 987 | None |  |
 | [ ] | [rustok-billing-admin](../../crates/modules/rustok-billing/admin) | `modules` | 6 | 324 | None |  |
@@ -460,7 +501,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 46 | 11,514 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 9 | 1,891 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-comments/storefront) | `modules` | 4 | 382 | None |  |
-| [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 323 | 155,679 | None |  |
+| [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 323 | 155,694 | None |  |
 | [ ] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 17 | 2,126 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 22 | 6,412 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 17 | 2,983 | None |  |
@@ -470,7 +511,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [admin](../../crates/modules/rustok-customer/admin) | `modules` | 10 | 3,177 | None |  |
 | [ ] | [rustok-deal](../../crates/modules/rustok-deal) | `modules` | 18 | 970 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-deal/admin) | `modules` | 6 | 312 | None |  |
-| [ ] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 40 | 16,360 | None |  |
+| [ ] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 40 | 16,364 | None |  |
 | [ ] | [rustok-docs](../../crates/modules/rustok-docs) | `modules` | 23 | 3,821 | None |  |
 | [ ] | [rustok-email](../../crates/modules/rustok-email) | `modules` | 8 | 1,131 | None |  |
 | [ ] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 13 | 883 | None |  |
@@ -479,21 +520,21 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [admin](../../crates/modules/rustok-finance/admin) | `modules` | 6 | 315 | None |  |
 | [ ] | [rustok-forms](../../crates/modules/rustok-forms) | `modules` | 21 | 2,419 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-forms/admin) | `modules` | 6 | 582 | None |  |
-| [ ] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 612 | 180,514 | None |  |
+| [ ] | [rustok-forum](../../crates/modules/rustok-forum) | `modules` | 614 | 181,014 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-forum/admin) | `modules` | 36 | 13,498 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-forum/storefront) | `modules` | 20 | 7,854 | None |  |
 | [ ] | [rustok-fulfillment](../../crates/modules/rustok-fulfillment) | `modules` | 86 | 31,472 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-fulfillment/admin) | `modules` | 9 | 2,077 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-fulfillment/storefront) | `modules` | 13 | 1,730 | None |  |
-| [ ] | [rustok-groups](../../crates/modules/rustok-groups) | `modules` | 116 | 43,764 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-groups/admin) | `modules` | 35 | 9,144 | None |  |
+| [ ] | [rustok-groups](../../crates/modules/rustok-groups) | `modules` | 117 | 34,525 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-groups/admin) | `modules` | 35 | 9,142 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-groups/storefront) | `modules` | 18 | 3,357 | None |  |
 | [ ] | [rustok-iggy](../../crates/modules/rustok-iggy) | `modules` | 32 | 8,363 | None |  |
 | [ ] | [rustok-iggy-connector](../../crates/modules/rustok-iggy-connector) | `modules` | 19 | 4,769 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-iggy-connector/admin) | `modules` | 9 | 705 | None |  |
 | [ ] | [rustok-index](../../crates/modules/rustok-index) | `modules` | 142 | 60,081 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-index/admin) | `modules` | 10 | 2,989 | None |  |
-| [ ] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 65 | 22,039 | None |  |
+| [ ] | [rustok-inventory](../../crates/modules/rustok-inventory) | `modules` | 66 | 22,218 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-inventory/admin) | `modules` | 11 | 4,908 | None |  |
 | [ ] | [rustok-marketplace](../../crates/modules/rustok-marketplace) | `modules` | 12 | 2,144 | None |  |
 | [ ] | [rustok-marketplace-allocation](../../crates/modules/rustok-marketplace-allocation) | `modules` | 14 | 1,797 | None |  |
@@ -506,7 +547,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [admin](../../crates/modules/rustok-marketplace-seller/admin) | `modules` | 14 | 2,508 | None |  |
 | [ ] | [rustok-mcp](../../crates/modules/rustok-mcp) | `modules` | 27 | 7,106 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-mcp/admin) | `modules` | 8 | 1,970 | None |  |
-| [ ] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 48 | 14,286 | None |  |
+| [ ] | [rustok-media](../../crates/modules/rustok-media) | `modules` | 48 | 14,287 | None |  |
 | [ ] | [rustok-media-transport](../../crates/modules/rustok-media-transport) | `modules` | 7 | 2,393 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-media/admin) | `modules` | 11 | 2,445 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-media/cli) | `modules` | 2 | 422 | None |  |
@@ -514,7 +555,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [admin](../../crates/modules/rustok-messenger/admin) | `modules` | 10 | 1,226 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-messenger/storefront) | `modules` | 10 | 1,972 | None |  |
 | [ ] | [rustok-moderation](../../crates/modules/rustok-moderation) | `modules` | 40 | 10,727 | None |  |
-| [ ] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 284 | 158,871 | None |  |
+| [ ] | [rustok-modules](../../crates/modules/rustok-modules) | `modules` | 284 | 159,027 | None |  |
 | [ ] | [cli](../../crates/modules/rustok-modules/cli) | `modules` | 2 | 1,905 | None |  |
 | [ ] | [rustok-navigation](../../crates/modules/rustok-navigation) | `modules` | 43 | 5,894 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-navigation/storefront) | `modules` | 10 | 652 | None |  |
@@ -527,11 +568,11 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 13 | 2,333 | None |  |
 | [ ] | [rustok-outbox](../../crates/modules/rustok-outbox) | `modules` | 29 | 5,559 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-outbox/admin) | `modules` | 9 | 580 | None |  |
-| [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 123 | 38,467 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-page-builder/admin) | `modules` | 67 | 21,124 | None |  |
+| [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 123 | 39,760 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-page-builder/admin) | `modules` | 67 | 22,326 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-page-builder/storefront) | `modules` | 7 | 1,846 | None |  |
-| [ ] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 204 | 59,718 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 28 | 9,341 | None |  |
+| [ ] | [rustok-pages](../../crates/modules/rustok-pages) | `modules` | 205 | 60,760 | None |  |
+| [ ] | [admin](../../crates/modules/rustok-pages/admin) | `modules` | 28 | 9,748 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 18 | 5,076 | None |  |
 | [ ] | [rustok-party](../../crates/modules/rustok-party) | `modules` | 22 | 1,734 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-party/admin) | `modules` | 6 | 325 | None |  |
@@ -540,13 +581,13 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 89 | 24,188 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 27 | 8,619 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 12 | 2,777 | None |  |
-| [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 238 | 102,193 | None |  |
+| [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 240 | 102,317 | None |  |
 | [ ] | [rustok-product-bundles](../../crates/modules/rustok-product-bundles) | `modules` | 28 | 7,122 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product-bundles/admin) | `modules` | 10 | 2,961 | None |  |
-| [ ] | [rustok-product-catalog-service](../../crates/modules/rustok-product-catalog-service) | `modules` | 2 | 535 | None |  |
+| [ ] | [rustok-product-catalog-service](../../crates/modules/rustok-product-catalog-service) | `modules` | 2 | 544 | None |  |
 | [ ] | [rustok-product-relations](../../crates/modules/rustok-product-relations) | `modules` | 30 | 4,491 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product-relations/admin) | `modules` | 11 | 1,851 | None |  |
-| [ ] | [rustok-product-transport](../../crates/modules/rustok-product-transport) | `modules` | 9 | 2,111 | None |  |
+| [ ] | [rustok-product-transport](../../crates/modules/rustok-product-transport) | `modules` | 9 | 3,261 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 52 | 28,526 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-product/storefront) | `modules` | 16 | 5,584 | None |  |
 | [ ] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 59 | 9,706 | None |  |
@@ -560,7 +601,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-region](../../crates/modules/rustok-region) | `modules` | 54 | 9,829 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-region/admin) | `modules` | 9 | 3,095 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-region/storefront) | `modules` | 10 | 1,783 | None |  |
-| [ ] | [rustok-search](../../crates/modules/rustok-search) | `modules` | 94 | 35,041 | None |  |
+| [ ] | [rustok-search](../../crates/modules/rustok-search) | `modules` | 94 | 35,047 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-search/admin) | `modules` | 21 | 10,161 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-search/storefront) | `modules` | 10 | 3,267 | None |  |
 | [ ] | [rustok-security](../../crates/modules/rustok-security) | `modules` | 33 | 3,028 | None |  |
@@ -575,20 +616,20 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-tasks](../../crates/modules/rustok-tasks) | `modules` | 18 | 983 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-tasks/admin) | `modules` | 6 | 325 | None |  |
 | [ ] | [rustok-tax](../../crates/modules/rustok-tax) | `modules` | 15 | 1,847 | None |  |
-| [ ] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 55 | 15,141 | None |  |
+| [ ] | [rustok-taxonomy](../../crates/modules/rustok-taxonomy) | `modules` | 55 | 15,143 | None |  |
 | [ ] | [rustok-tenant](../../crates/modules/rustok-tenant) | `modules` | 32 | 4,633 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-tenant/admin) | `modules` | 9 | 867 | None |  |
-| [ ] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 86 | 46,676 | None |  |
+| [ ] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 86 | 46,706 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-translation/admin) | `modules` | 10 | 14,268 | None |  |
 | [ ] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 55 | 7,817 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 15 | 1,533 | None |  |
-| [ ] | [fly](../../crates/ui/fly) | `ui` | 117 | 44,615 | None |  |
+| [ ] | [fly](../../crates/ui/fly) | `ui` | 117 | 45,535 | None |  |
 | [ ] | [browser](../../crates/ui/fly/browser) | `ui` | 13 | 1,707 | None |  |
-| [ ] | [dioxus](../../crates/ui/fly/dioxus) | `ui` | 3 | 462 | None |  |
+| [ ] | [dioxus](../../crates/ui/fly/dioxus) | `ui` | 3 | 739 | None |  |
 | [ ] | [leptos](../../crates/ui/fly/leptos) | `ui` | 6 | 2,965 | None |  |
-| [ ] | [ui](../../crates/ui/fly/ui) | `ui` | 23 | 6,407 | None |  |
+| [ ] | [ui](../../crates/ui/fly/ui) | `ui` | 23 | 6,426 | None |  |
 | [ ] | [web](../../crates/ui/fly/web) | `ui` | 7 | 2,307 | None |  |
-| [ ] | [leptos-auth](../../crates/ui/leptos-auth) | `ui` | 11 | 1,970 | None |  |
+| [ ] | [leptos-auth](../../crates/ui/leptos-auth) | `ui` | 11 | 1,984 | None |  |
 | [ ] | [leptos-ui](../../crates/ui/leptos-ui) | `ui` | 6 | 504 | None |  |
 | [ ] | [leptos-ui-routing](../../crates/ui/leptos-ui-routing) | `ui` | 2 | 383 | None |  |
 | [ ] | [rustok-graphql](../../crates/ui/rustok-graphql) | `ui` | 2 | 528 | None |  |
@@ -596,7 +637,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-grid-dioxus](../../crates/ui/rustok-grid/dioxus) | `ui` | 9 | 1,798 | None |  |
 | [ ] | [rustok-grid-leptos](../../crates/ui/rustok-grid/leptos) | `ui` | 9 | 1,587 | None |  |
 | [ ] | [rustok-ui](../../crates/ui/rustok-ui) | `ui` | 49 | 5,501 | None |  |
-| [ ] | [rustok-ui-auth](../../crates/ui/rustok-ui-auth) | `ui` | 2 | 158 | None |  |
+| [ ] | [rustok-ui-auth](../../crates/ui/rustok-ui-auth) | `ui` | 2 | 180 | None |  |
 | [ ] | [rustok-ui-core](../../crates/ui/rustok-ui-core) | `ui` | 10 | 2,476 | None |  |
 | [ ] | [rustok-ui-forms](../../crates/ui/rustok-ui-forms) | `ui` | 24 | 9,549 | None |  |
 | [ ] | [rustok-forms-dioxus](../../crates/ui/rustok-ui-forms/dioxus) | `ui` | 7 | 2,296 | None |  |
@@ -612,10 +653,11 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-cli-core](../../crates/utils/rustok-cli-core) | `utils` | 2 | 288 | None |  |
 | [ ] | [rustok-cli-platform](../../crates/utils/rustok-cli-platform) | `utils` | 4 | 602 | None |  |
 | [ ] | [rustok-cli-registry](../../crates/utils/rustok-cli-registry) | `utils` | 3 | 244 | None |  |
-| [ ] | [rustok-installer](../../crates/utils/rustok-installer) | `utils` | 12 | 4,940 | None |  |
+| [ ] | [rustok-doctor](../../crates/utils/rustok-doctor) | `utils` | 10 | 2,543 | None |  |
+| [ ] | [rustok-installer](../../crates/utils/rustok-installer) | `utils` | 12 | 5,264 | None |  |
 | [ ] | [rustok-installer-cli](../../crates/utils/rustok-installer-cli) | `utils` | 2 | 984 | None |  |
-| [ ] | [rustok-installer-persistence](../../crates/utils/rustok-installer-persistence) | `utils` | 10 | 2,098 | None |  |
-| [ ] | [rustok-migrations](../../crates/utils/rustok-migrations) | `utils` | 66 | 15,856 | None |  |
+| [ ] | [rustok-installer-persistence](../../crates/utils/rustok-installer-persistence) | `utils` | 10 | 2,267 | None |  |
+| [ ] | [rustok-migrations](../../crates/utils/rustok-migrations) | `utils` | 66 | 15,995 | None |  |
 | [ ] | [rustok-module-sdk](../../crates/utils/rustok-module-sdk) | `utils` | 3 | 124 | None |  |
 | [ ] | [rustok-module-template](../../crates/utils/rustok-module-template) | `utils` | 3 | 436 | None |  |
 | [ ] | [rustok-secrets](../../crates/utils/rustok-secrets) | `utils` | 4 | 1,697 | None |  |

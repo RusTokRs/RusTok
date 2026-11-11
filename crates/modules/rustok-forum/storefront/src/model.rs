@@ -2,6 +2,15 @@ use rustok_api::RichTextView;
 use rustok_ui_core::normalize_css_hex_color;
 use serde::{Deserialize, Deserializer, Serialize};
 
+pub const DEFAULT_FORUM_READ_LIMIT: u64 = 20;
+pub const MAX_FORUM_READ_LIMIT: u64 = 100;
+
+pub fn bounded_forum_read_limit(requested: Option<u64>) -> u64 {
+    requested
+        .unwrap_or(DEFAULT_FORUM_READ_LIMIT)
+        .clamp(1, MAX_FORUM_READ_LIMIT)
+}
+
 fn deserialize_optional_css_hex_color<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: Deserializer<'de>,
