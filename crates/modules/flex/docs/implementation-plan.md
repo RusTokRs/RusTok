@@ -1,9 +1,17 @@
 # Implementation plan for `flex`
 
+## FBA target
+
+Publish Flex schema and policy contracts in `flex-ports`. Bind donor values through
+each donor's public ports. Preserve atomic donor writes, scoped policy admission,
+Translation revisions and change delivery during the migration from shared attached
+storage. Both embedded and remote provider profiles require operation evidence.
+See the [owner ports ADR](../../../../DECISIONS/2026-11-11-canonical-fba-owner-ports.md).
+
 ## Current state
 
-`flex` is a capability-only custom-fields module, not a donor-persistence owner or a separate
-business domain. Attached mode extends explicit donor contracts; standalone mode owns schemas and
+`flex` currently runs as an embedded custom-fields capability with `capability_only` metadata.
+Attached mode extends explicit donor contracts. Standalone mode owns schemas and
 entries. Registered attached donors remain `user`, `product`, `order` and `topic`; `taxonomy.category`
 is now the reference generic attached donor and uses the shared Flex definition/value/localization
 boundary rather than a Category-specific custom-field engine.

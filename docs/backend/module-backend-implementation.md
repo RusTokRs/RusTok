@@ -19,57 +19,60 @@ Before changing backend code:
 ## FBA implementation boundary
 
 Use the [FBA architecture contract](./module-backend-architecture.md#fba-contracts)
-before changing deployment or package boundaries. Public owner ports and DTOs may stay
-in the same crate as their implementation. Keep their responsibility distinct from ORM
-entities, concrete service constructors and native transaction-participant interfaces.
-A separate owner contracts package or a contracts-only feature profile is optional;
-neither is scaffolding required for every module.
-
-When implementing a contracts-only build, remove implementation-only types and transitive
-dependencies from that build, gate all local constructors/registration/migration paths,
-and inspect resolved features for each actual consumer binary. Check both contract-only
-and embedded profiles; an all-features build alone cannot prove this separation. This is
-future packaging work for Product, not an existing supported feature.
-
-For a remote profile, inventory required operations and outgoing capabilities, register
-the selected provider before consumer composition, and ensure mounted entrypoints use it.
-Keep network handlers thin and call the owner port. Document unsupported capabilities
-and native transaction dependencies before claiming whole-module extraction.
+before changing a module boundary. Inventory actual operations, dependencies and
+ownership. Select providers in the host and test the mounted consumer paths.
+Keep protocol framing in the adapter and use cases in the owner implementation.
 
 ### Remote FBA module layout
 
-The [canonical FBA layout ADR](../../DECISIONS/2026-11-11-canonical-fba-transport-layout.md)
-applies to a new owner and to an existing owner adding a remote profile.
+The [canonical FBA owner ports ADR](../../DECISIONS/2026-11-11-canonical-fba-owner-ports.md)
+applies to all native domain and capability owners. A new scaffold and an existing
+conversion use the same responsibility slots.
 
 ```text
 crates/modules/rustok-<owner>/
-  Cargo.toml
-  rustok-module.toml
-  src/                          # owner contracts, services and local execution
-  transport/
-    Cargo.toml                  # rustok-<owner>-transport
-    build.rs                    # protobuf generation
-    proto/                      # published owner RPC contracts
-    src/
-      lib.rs                    # client and server adapters
-      bin/service.rs            # standalone process composition
+  Cargo.toml                     # owner implementation
+  rustok-module.toml             # one module identity
+  src/
+    lib.rs
+    module.rs                    # embedded registration
+    services/                    # owner use cases
+    entities/                    # private persistence
+    migrations/                  # owner data lifecycle
+    bin/service.rs               # standalone composition, when implemented
+  ports/
+    Cargo.toml                   # <owner-package>-ports
+    src/lib.rs                   # published owner ports and DTOs
+    src/grpc/                    # client and server adapters for real RPCs
+    proto/                       # published wire schema for those operations
+    build.rs                     # feature-gated protocol code generation
 ```
 
-The transport package depends on the owner. Register its path explicitly in root
-`workspace.members` and keep the owner as the module in `modules.toml`. Set
-`package.autobins = false` and declare one `[[bin]]` with an explicit executable
-name, `path = "src/bin/service.rs"` and `required-features = ["service"]`.
-Declare `service` outside the default features. Put dependencies used only by
-process startup behind that feature. A conversion can preserve the executable's
-published name while moving the source and updating the Cargo package selector.
+Derive the ports package name from the root package name, for example
+`rustok-product-ports` or `flex-ports`. Explicitly register `ports/` in Cargo
+`workspace.members`. The ports package has no separate `modules.toml` entry.
+The owner depends on the ports package. Use published owner ports and events for
+cross-module calls and keep outgoing requirements and native transaction seams
+in the owner implementation. Keep owner runtimes, ORM types and storage drivers
+out of the ports package and verify the resolved client-only dependency graph.
 
-The native scaffold starts with owner identity and documents this extension point.
-Once a real owner port has a remote caller, add the same `transport/` package to
-the generated or existing owner and run `cargo xtask module lint <slug> --fba`.
-That command requires the remote package. Standard module lint checks its shape
-when present. An embedded-only module has no transport package. Record real
-operations, provider bindings, failure behavior and verification evidence in the
-owner plan before promoting the remote profile.
+Expose `grpc-client` and `grpc-server` as additive opt-in features when publishing
+request/response operations over gRPC. Gate protocol code generation and its build
+dependencies. An event-only owner uses its event contracts and delivery adapter.
+Declare the standalone binary explicitly in the owner manifest with
+`path = "src/bin/service.rs"`, `required-features = ["service"]` and
+`package.autobins = false`. Keep `service` out of default features. For a gRPC owner,
+`service` enables `grpc-server` in its ports package. A conversion can preserve the
+published executable name.
+
+The native scaffold starts with owner identity and records these same slots in
+its plan. Add the ports package when a real contract is published and add network
+and service source when those profiles are implemented. Use
+`cargo xtask module lint <slug> --fba` to require the published-contract package and
+verify its layout and dependency boundary, including present gRPC and service source.
+Layout lint is independent of execution evidence. Verify the actual owner library,
+contract-only and gRPC client profiles, and standalone binary before promoting
+the supported profile.
 
 ## Scaffold profiles and generation contract
 
@@ -106,7 +109,8 @@ Additional slots depend on **implemented responsibilities**:
 - `dto/` — real owner command, query and response types;
 - `entities/` and `migrations/` — actual owner mappings and concrete schema changes;
 - `services/` — executable use cases and transactional ownership;
-- `ports/` — stable cross-owner contracts with a real consumer;
+- `src/ports/` — transport-neutral local port requirements;
+- `ports/src/` — published cross-owner contracts with a real consumer;
 - `integrations/` — concrete adapters to another capability;
 - `graphql/` — published GraphQL mapping into owner services/ports;
 - `controllers/` or `rest/` — published HTTP transport mapping.
@@ -217,7 +221,7 @@ crates/modules/rustok-<module>/
     dto/                           owner request/response and command/query data contracts
     entities/                      persistence mappings when the module owns tables
     services/                      application/domain use cases and transactions
-    ports/                         owner-defined cross-boundary ports, only when consumed
+    ports/                         implementation-local port requirements
     integrations/                  adapters to SEO/reactions/index/translation/etc.
     migrations/                    owner migrations and dependency descriptors
     graphql/                       owner GraphQL adapters when published
@@ -239,7 +243,7 @@ The responsibility meaning is normative:
 | Module metadata, migration export, runtime capability/listener registration | `src/module.rs` | Composition only; no business policy |
 | Pure domain state/invariants/policies | `src/domain/` | Must not depend on SeaORM, Axum, GraphQL, Leptos or `rustok-web` |
 | Owner application/use-case logic | `src/services/` | May use domain/DTO/entity/port contracts; must not depend on transport frameworks |
-| Stable cross-owner API | `src/ports/` | Add only for a real consumer boundary |
+| Stable cross-owner API | `ports/src/` | Add only for a real consumer boundary |
 | Persistence mappings/migrations | `src/entities/`, `src/migrations/` | No transport ownership |
 | Capability adapters owned by the module | `src/integrations/` | Adapt owner services/ports to another capability; do not become a second source of truth |
 | GraphQL/HTTP | `src/graphql/`, `src/controllers/` or `src/rest/` | Thin mapping into owner services/ports |
@@ -289,7 +293,7 @@ Use these placement rules:
 | Domain state machine, value object or invariant | `src/domain/` |
 | Owner DTO/command/query data contract | `src/dto/` |
 | Application/domain service or transactional use case | `src/services/` |
-| Cross-module stable backend port | `src/ports/` |
+| Cross-module stable backend port | `ports/src/` |
 | Domain event | owner service/event module under the narrowest responsibility; extract `src/events/` when it becomes a real family |
 | Module/runtime registration | `src/module.rs` |
 | Module runtime handle bundle | `src/runtime.rs` in the general layout; the enrolled reference
@@ -325,7 +329,8 @@ their API. Materialize each file only when the corresponding behavior exists.
 | Private persistence access shared by operations | `src/services/<capability>/repository.rs` when there is distinct storage access to share |
 | Owner table mappings | `src/entities/<table>.rs` under private `src/entities/mod.rs` |
 | Ordered schema changes | `src/migrations/m<YYYYMMDD>_<sequence>_<change>.rs`, exported from `src/migrations/mod.rs` |
-| Owner port, capability adapter and event | `src/ports/<capability>.rs`, `src/integrations/<provider>.rs`, `src/events/<event>.rs` respectively |
+| Published port and event contracts | `ports/src/` under the published owner capability |
+| Local provider adapter and event construction | `src/integrations/<provider>.rs`, `src/events/<event>.rs` respectively |
 | GraphQL roots and input/output mappings | `src/graphql/query.rs`, `src/graphql/mutation.rs`, `src/graphql/types.rs`; extract cohesive groups to `query/<capability>.rs`, `mutation/<capability>.rs` or `types/<capability>.rs` |
 | HTTP handlers and schema | `src/controllers/<capability>.rs`, `src/controllers/authorization.rs` for shared HTTP request guards, and `src/controllers/openapi.rs`; an existing `src/rest/` slot follows the same internal roles |
 | Crate-private contracts and public integration scenarios | `src/tests/contract.rs`, `src/tests/<capability>.rs`, `tests/<capability>.rs` |

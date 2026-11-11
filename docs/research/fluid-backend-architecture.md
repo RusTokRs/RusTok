@@ -119,37 +119,33 @@ The host composition root selects providers, reads deployment configuration, sup
 credentials and manages resource lifecycle. Transport packages encapsulate connection,
 authentication, serialization and status mapping. Domain services take explicit dependencies.
 
-Public ports and DTOs may stay in the owner crate with local implementation. An optional
-owner contracts package can reduce consumer dependencies without creating a new domain
-module. A contracts-only Cargo feature profile is separate, verified packaging work;
-compiling ORM code into a consumer does not by itself establish a runtime ownership violation.
-
-Existing standalone transport/service packages remain separate under repository policy.
-Create new packages and repository abstractions only for actual responsibilities.
-Executable contracts belong in Rust source; module-local `contracts/` holds published
-schemas, registries and evidence, not runtime code.
+Public ports, DTOs and optional gRPC adapters live in one nested
+`<owner-package>-ports` package. The owner implementation depends on the
+ports package and supplies the opt-in standalone binary. Use the
+[canonical layout](../backend/module-backend-implementation.md#remote-fba-module-layout)
+for new and converted native owners. Existing sibling transport/service packages
+are migration states. The modular monolith stays the default deployment.
 
 ## Architectural Skeleton for RusTok
 
 ```text
 crates/modules/rustok-<module>/
-  src/                 owner contracts and canonical implementation
-  rustok-module.toml   identity, dependencies and supported capability metadata
-  contracts/          published schema/registry/evidence artifacts
+  src/                 owner implementation, private data and embedded registration
+    bin/service.rs     standalone composition, when supported
+  rustok-module.toml   module identity and capability metadata
+  ports/               one lightweight Cargo package for real owner contracts
+    src/grpc/          optional client/server adapters
+    proto/             wire schemas for supported request/response operations
+  contracts/          published registries and evidence artifacts
   docs/               current contract and implementation plan
-
-crates/modules/rustok-<module>-transport/  when a real remote profile exists
-  src/                client/server adapters, context/auth/error mapping
-  proto/              wire framing
-
-crates/modules/<owner-service-package>/   when a standalone provider exists
-  src/main.rs         composition, configuration, readiness and shutdown
 
 apps/server/
   selected provider construction, public API composition and host lifecycle
 ```
 
-This describes responsibilities, not mandatory empty directories or a fixed package count.
+Add source for real responsibilities. Every native owner targets both
+execution modes and can stay embedded in a deployment. A remote caller can
+reach an adapter in the monolith while its provider remains embedded there.
 `rustok-fba` supplies metadata types and registry shape. It does not select providers,
 negotiate capabilities, route calls or create remote services at runtime.
 

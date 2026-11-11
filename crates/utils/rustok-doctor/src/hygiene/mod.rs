@@ -109,6 +109,56 @@ fn discarded_result_propagates(statement: &str) -> bool {
     false
 }
 
+fn json_decode_defaults(syntax: &str, first_line_len: usize) -> bool {
+    let decode = re!(r"\bserde_json\s*::\s*from_(?:value|str|slice)\s*(?:::<[\w\s:,<>]+>)?\s*\(");
+    for found in decode
+        .find_iter(syntax)
+        .take_while(|found| found.start() < first_line_len)
+    {
+        let mut delimiters = vec![b')'];
+        for (relative, byte) in syntax.as_bytes()[found.end()..].iter().copied().enumerate() {
+            if let Some(end) = closing(byte) {
+                delimiters.push(end);
+            } else if delimiters.last() == Some(&byte) {
+                delimiters.pop();
+                if delimiters.is_empty() {
+                    let rest = &syntax[found.end() + relative + 1..];
+                    if re!(r"^\s*\.\s*unwrap_or_default\s*\(\s*\)").is_match(rest) {
+                        return true;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn filter_discards_errors(syntax: &str, first_line_len: usize) -> bool {
+    let filter = re!(r"\.\s*filter_map\s*\(");
+    let error_to_none = re!(r"\.\s*ok\s*\(\s*\)|\bResult\s*::\s*ok\b");
+    for found in filter
+        .find_iter(syntax)
+        .take_while(|found| found.start() < first_line_len)
+    {
+        let mut delimiters = vec![b')'];
+        for (relative, byte) in syntax.as_bytes()[found.end()..].iter().copied().enumerate() {
+            if let Some(end) = closing(byte) {
+                delimiters.push(end);
+            } else if delimiters.last() == Some(&byte) {
+                delimiters.pop();
+                if delimiters.is_empty() {
+                    if error_to_none.is_match(&syntax[found.end()..found.end() + relative]) {
+                        return true;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    false
+}
+
 fn reactive_boundaries(syntax: &str) -> Vec<usize> {
     let tokens = re!(
         r"(?P<reactive>\b(?:create_effect|create_memo|create_resource|create_local_resource|Effect::new|Memo::new|Resource::new|LocalResource::new)\s*\(|\bview!\s*[{(\[])|[(){}\[\]]"
@@ -238,6 +288,7 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
             part.as_str(),
             "tests"
                 | "benches"
+                | "rustok-test-utils"
                 | "test_helpers"
                 | "test_support"
                 | "testing"
@@ -594,6 +645,52 @@ fn check_rules(
     }
 
     if !test_context {
+        if re!(r"^\s*(?:[A-Za-z_]\w*\s*\.\s*)?(?:transaction|txn|tx)\b").is_match(text) {
+            let continuation_of_discarded = scan.lines[..index]
+                .iter()
+                .rev()
+                .take(5)
+                .take_while(|line| !line.syntax.contains(';'))
+                .any(|line| re!(r"^\s*let\s+_\s*=").is_match(&line.syntax));
+            let window = scan.lines[index..(index + 12).min(scan.lines.len())]
+                .iter()
+                .map(|line| line.syntax.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            if let Some(capture) = re!(r"\b(?:transaction|txn|tx)\s*\.\s*(rollback|commit)\s*\(\s*\)\s*\.\s*await\s*\.\s*ok\s*\(\s*\)")
+                .captures(&window).filter(|capture| capture.get(0).is_some_and(|found| found.start() < syntax.len())) {
+                if !continuation_of_discarded {
+                let operation = &capture[1];
+                scan.add(number, "P-TXN-ROLLBACK-SWALLOW", "Transaction Error Converted to Option", Severity::Critical,
+                    format!("{operation} error is converted to Option. Check whether the failure is observable and affects recovery."),
+                    "Handle the finalization error while preserving the primary error and recovery contract.");
+                }
+            }
+        }
+        if syntax.contains("serde_json") {
+            let window = scan.lines[index..(index + 16).min(scan.lines.len())]
+                .iter()
+                .map(|line| line.syntax.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            if json_decode_defaults(&window, syntax.len()) {
+                scan.add(number, "P-JSON-DECODE-DEFAULT", "JSON Decode Failure Defaulted", Severity::High,
+                    "JSON decode failure becomes a default value. Verify compatibility policy and whether invalid stored data must be surfaced.",
+                    "Propagate a typed decode error, or explicitly handle and observe a documented compatibility fallback.");
+            }
+        }
+        if syntax.contains("filter_map") {
+            let window = scan.lines[index..(index + 16).min(scan.lines.len())]
+                .iter()
+                .map(|line| line.syntax.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            if filter_discards_errors(&window, syntax.len()) {
+                scan.add(number, "P-FILTER-DROPPED-ERROR", "Fallible Items Silently Dropped", Severity::High,
+                    "filter_map converts item errors to None. Check whether partial results or lost diagnostics are allowed by the owner.",
+                    "Propagate item errors or explicitly record and handle rejected items under the owner contract.");
+            }
+        }
         if re!(r"^\s*let\s+_\s*=").is_match(text) {
             let mut statement = text.to_owned();
             if !statement.contains(';') {

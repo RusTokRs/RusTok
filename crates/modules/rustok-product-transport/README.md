@@ -1,6 +1,6 @@
 # rustok-product-transport
 
-> This is the current Product gRPC adapter package. Its conversion target is the [nested Product transport package](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout), which also houses the standalone executable target.
+> This is the current Product gRPC adapter package. The [FBA conversion target](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout) places the adapters and published contracts in `rustok-product-ports` and the standalone binary in the Product owner.
 
 Typed tonic gRPC framing for the Product-owned `ProductCatalogReadPort`,
 `ProductVariantIdentityReadPort` and `ProductCatalogCommandPort`.

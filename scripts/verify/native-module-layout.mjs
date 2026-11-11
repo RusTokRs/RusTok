@@ -834,6 +834,12 @@ export function lintNativeModule(root, modulePath, slug, { embedded = false } = 
       const guidance = destination ? `move or merge into ${destination}` : "move into its responsibility slot";
       diagnostics.push(relative(repo, join(src, entry.name)) +
         `: noncanonical src/ root Rust file; ${guidance}`);
+    } else if (entry.isDirectory() && entry.name === "bin") {
+      const bin = join(src, "bin");
+      const files = readdirSync(bin, { withFileTypes: true });
+      if (files.length !== 1 || files[0].name !== "service.rs" || !files[0].isFile()) {
+        diagnostics.push(relative(repo, bin) + ": only src/bin/service.rs is a native standalone entrypoint");
+      }
     } else if (entry.isDirectory() && !BACKEND_SLOTS.has(entry.name)) {
       diagnostics.push(relative(repo, join(src, entry.name)) +
         ": unrecognized native responsibility directory");
@@ -863,6 +869,9 @@ export function lintNativeModule(root, modulePath, slug, { embedded = false } = 
   checkImports(repo, join(src, "entities"), FORBIDDEN_ENTITY, diagnostics);
   checkImports(repo, join(src, "services"), FORBIDDEN_SERVICE, diagnostics);
   checkSizes(repo, src, BACKEND_LIMIT, diagnostics);
+  const portsSource = join(moduleRoot, "ports", "src");
+  checkImports(repo, portsSource, FORBIDDEN_DOMAIN, diagnostics);
+  checkSizes(repo, portsSource, BACKEND_LIMIT, diagnostics);
 
   const classification = keyInSection(manifest, "module", "ui_classification");
   const liveProfiles = {

@@ -61,9 +61,9 @@ cross-module port. SEO and AI-media continue to consume descriptors and typed
 degraded outcomes.
 
 **Sovereignty & Anti-Collapse Invariant:**
-The adapter remains a Cargo package outside the Media owner library. When Media
-adds a standalone host, move the adapter into the owner's nested package and place
-the executable there under the [canonical FBA layout](./2026-11-11-canonical-fba-transport-layout.md).
+Publish Media contracts and adapters in the nested `rustok-media-ports` package.
+The Media runtime depends on that package and the standalone host is a binary in
+the owner runtime under the [canonical FBA layout](./2026-11-11-canonical-fba-owner-ports.md).
 The current Product catalog host provides evidence for bounded read operations.
 
 ### Search boundary

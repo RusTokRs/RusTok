@@ -18,6 +18,11 @@ modules:
 Flex is opt-in. A domain entity is a Flex donor only when the product explicitly allows runtime
 extension; a JSON/metadata column alone does not imply support.
 
+The [FBA owner ports ADR](../../DECISIONS/2026-11-11-canonical-fba-owner-ports.md)
+defines the target storage authority. Taxonomy owns values attached to its categories;
+Flex owns schemas, policies and standalone entries. Existing shared attached storage
+and retained Translation evidence describe the current implementation.
+
 ## Implementation status
 
 The architecture remains staged across consumers, but Blog is no longer a pending Category owner

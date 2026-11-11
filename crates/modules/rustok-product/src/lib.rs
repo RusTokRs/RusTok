@@ -15,7 +15,8 @@
 
 pub use async_trait::async_trait;
 pub use rustok_events::{
-    PRODUCT_INDEX_LOCALE_REFRESH_REQUESTED_EVENT_TYPE, PRODUCT_INDEX_VARIANT_REFRESH_REQUESTED_EVENT_TYPE,
+    PRODUCT_INDEX_LOCALE_REFRESH_REQUESTED_EVENT_TYPE,
+    PRODUCT_INDEX_VARIANT_REFRESH_REQUESTED_EVENT_TYPE,
 };
 
 mod catalog_command_port;
@@ -67,15 +68,18 @@ pub use media_reference::{
     ProductMediaReleaseReport, ProductMediaReleaseStatus, process_product_media_releases,
 };
 pub use ports::{
-    AdminCatalogFacetsRequest, AdminProductsRequest, CatalogBasePriceSnapshot,
-    EmbeddedInventoryBootstrapAdapter, FilteredPublishedProductsRequest, InitialPrice,
-    LegacyAdminProductsRequest, LegacyStorefrontProductList, LegacyStorefrontProductListItem,
-    LegacyStorefrontProductsRequest, MAX_ADMIN_PRODUCTS_PER_PAGE, MAX_PUBLISHED_PRODUCTS_PER_PAGE,
-    PricingConnection, ProductCatalogReadPort, ProductInitialInventory,
-    ProductInventoryBootstrapPort, ProductPricingPort, ProductProjectionRequest,
+    AdminCatalogFacetsRequest, AdminProductsRequest, AsInventoryConnection, AsPricingConnection,
+    AsTaxonomyConnection, CatalogBasePriceSnapshot, FilteredPublishedProductsRequest, InitialPrice,
+    InventoryConnection, LegacyAdminProductsRequest, LegacyStorefrontProductList,
+    LegacyStorefrontProductListItem, LegacyStorefrontProductsRequest, MAX_ADMIN_PRODUCTS_PER_PAGE,
+    MAX_CATALOG_DELETE_VARIANTS, MAX_PUBLISHED_PRODUCTS_PER_PAGE, NoopProductInventoryPort,
+    NoopProductTaxonomyPort, PricingConnection, ProductCatalogReadPort, ProductInitialInventory,
+    ProductInventoryDeletionBlocker, ProductInventoryPort, ProductInventoryQuantityBlocker,
+    ProductPricingPort, ProductProjectionRequest, ProductTaxonomyCategoryInput,
+    ProductTaxonomyCategorySnapshot, ProductTaxonomyCategoryTranslationInput, ProductTaxonomyPort,
     PublishedProductsRequest, StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
     StorefrontProductProjectionSubject, StorefrontVariantProductProjectionRequest,
-    VariantProductProjectionRequest,
+    TaxonomyConnection, VariantProductProjectionRequest,
 };
 pub use public_error::{ProductPublicError, map_product_public_error};
 pub use runtime::{

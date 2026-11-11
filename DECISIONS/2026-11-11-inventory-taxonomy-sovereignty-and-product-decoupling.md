@@ -88,3 +88,4 @@ Mirror the established and verified `ProductPricingPort` pattern across both Inv
 - `cargo test -p rustok-product --lib` passes with mock/unattached ports.
 - `cargo check -p rustok-inventory` and `cargo check -p rustok-taxonomy` pass with port implementations.
 - `cargo check -p rustok-product-catalog-service` passes.
+

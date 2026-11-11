@@ -115,9 +115,11 @@ Before any module PR is merged:
 For FBA translation, the same standard applies as in the unified plan
 `docs/research/fluid-backend-architecture-unified-plan.md`: local status block, central board,
 runtime metadata/registry, owner-owned contracts, anti-drift/fallback verification and evidence
-packet. Apply the [remote FBA module layout](../backend/module-backend-implementation.md#remote-fba-module-layout)
-to a new or existing owner when it has a real remote port. The native scaffold starts with
-owner identity and uses the same packaging lint as a conversion.
+packet. All native owners target embedded and independent execution. Use the
+[canonical FBA layout](../backend/module-backend-implementation.md#remote-fba-module-layout)
+for new modules and conversions. The native scaffold starts with owner identity,
+records the published `ports/` and standalone composition slots, and uses the same
+packaging lint as a conversion.
 The working name FBA is not carried over into type names without necessity: code-facing
 contracts use neutral `*Port`, `PortContext`, `PortError`, `provider` and `consumer`.
 
@@ -130,9 +132,10 @@ query, event, background, migration/lifecycle and UI paths must all be covered b
 the last claim is made. Missing optional capabilities fail explicitly; they must not be
 described as implemented merely because the trait has a default method.
 
-One owner crate may contain both contracts and implementation. A separate contracts
-package and a contracts-only Cargo build are optional packaging choices. Native SQL
-transaction participants are local collaboration interfaces, not remote contracts.
+Publish real cross-owner contracts and optional gRPC adapters in `<owner-package>-ports`.
+Put implementation, owner data and the opt-in standalone binary in the owner package.
+Keep native SQL transaction participants in the local implementation until their
+business operation has an explicit cross-process consistency contract.
 The composition root selects and constructs providers. See the
 [canonical FBA contract](../backend/module-backend-architecture.md#fba-contracts).
 

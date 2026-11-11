@@ -145,68 +145,56 @@ pub(crate) fn inventory_deletion_blocker(
         })
 }
 
-/// Preserve owner storage/unknown classes; publication validation is never user validation.
-impl From<rustok_inventory::QuantityWriteError> for CommerceError {
-    fn from(error: rustok_inventory::QuantityWriteError) -> Self {
-        use rustok_inventory::{QuantityWriteBlocker, QuantityWriteError};
-        match error {
-            QuantityWriteError::Rejected(blocker) => Self::InventoryQuantityBlocked(blocker),
-            QuantityWriteError::VariantNotFound(id) => Self::VariantNotFound(id),
-            QuantityWriteError::Database(error)
-            | QuantityWriteError::Publication(CoreError::Database(error)) => Self::Database(error),
-            QuantityWriteError::Publication(_) => {
-                Self::InventoryQuantityBlocked(QuantityWriteBlocker::PublicationUnverified)
-            }
-        }
-    }
-}
-
 fn inventory_quantity_error_policy(
-    blocker: &rustok_inventory::QuantityWriteBlocker,
+    blocker: &crate::ports::ProductInventoryQuantityBlocker,
 ) -> (rustok_api::PortErrorKind, &'static str, &'static str) {
-    use rustok_inventory::QuantityWriteBlocker;
+    use crate::ports::ProductInventoryQuantityBlocker;
     let (code, public_code) = match blocker {
-        QuantityWriteBlocker::InvalidRequest => (
+        ProductInventoryQuantityBlocker::InvalidRequest => (
             "product.inventory_quantity_invalid",
             "PRODUCT_INVENTORY_QUANTITY_INVALID",
         ),
-        QuantityWriteBlocker::LimitExceeded => (
+        ProductInventoryQuantityBlocker::LimitExceeded => (
             "product.inventory_quantity_limit",
             "PRODUCT_INVENTORY_QUANTITY_LIMIT",
         ),
-        QuantityWriteBlocker::IdentityUnavailable => (
+        ProductInventoryQuantityBlocker::IdentityUnavailable => (
             "product.inventory_quantity_identity_unavailable",
             "PRODUCT_INVENTORY_QUANTITY_IDENTITY_UNAVAILABLE",
         ),
-        QuantityWriteBlocker::StateUnverified => (
+        ProductInventoryQuantityBlocker::StateUnverified => (
             "product.inventory_quantity_state_unverified",
             "PRODUCT_INVENTORY_QUANTITY_STATE_UNVERIFIED",
         ),
-        QuantityWriteBlocker::LocationUnavailable => (
+        ProductInventoryQuantityBlocker::LocationUnavailable => (
             "product.inventory_quantity_location_unavailable",
             "PRODUCT_INVENTORY_QUANTITY_LOCATION_UNAVAILABLE",
         ),
-        QuantityWriteBlocker::QuantityUnrepresentable => (
+        ProductInventoryQuantityBlocker::QuantityUnrepresentable => (
             "product.inventory_quantity_unrepresentable",
             "PRODUCT_INVENTORY_QUANTITY_UNREPRESENTABLE",
         ),
-        QuantityWriteBlocker::InsufficientStock => (
+        ProductInventoryQuantityBlocker::InsufficientStock => (
             "product.inventory_quantity_insufficient",
             "PRODUCT_INVENTORY_QUANTITY_INSUFFICIENT",
         ),
-        QuantityWriteBlocker::ConcurrentChange => (
+        ProductInventoryQuantityBlocker::ConcurrentChange => (
             "product.inventory_quantity_changed",
             "PRODUCT_INVENTORY_QUANTITY_CHANGED",
         ),
-        QuantityWriteBlocker::IsolationUnsupported => (
+        ProductInventoryQuantityBlocker::IsolationUnsupported => (
             "product.inventory_quantity_isolation_unsupported",
             "PRODUCT_INVENTORY_QUANTITY_ISOLATION_UNSUPPORTED",
         ),
-        QuantityWriteBlocker::EventUnrepresentable => (
+        ProductInventoryQuantityBlocker::EventUnrepresentable => (
             "product.inventory_quantity_event_unrepresentable",
             "PRODUCT_INVENTORY_QUANTITY_EVENT_UNREPRESENTABLE",
         ),
-        QuantityWriteBlocker::PublicationUnverified => (
+        ProductInventoryQuantityBlocker::HistoryPresent => (
+            "product.inventory_quantity_history_present",
+            "PRODUCT_INVENTORY_QUANTITY_HISTORY_PRESENT",
+        ),
+        ProductInventoryQuantityBlocker::PublicationUnverified => (
             "product.inventory_quantity_publication_unverified",
             "PRODUCT_INVENTORY_QUANTITY_PUBLICATION_UNVERIFIED",
         ),
@@ -215,20 +203,20 @@ fn inventory_quantity_error_policy(
 }
 
 pub fn inventory_quantity_port_error(
-    blocker: &rustok_inventory::QuantityWriteBlocker,
+    blocker: &crate::ports::ProductInventoryQuantityBlocker,
 ) -> rustok_api::PortError {
     let (kind, code, _) = inventory_quantity_error_policy(blocker);
     rustok_api::PortError::new(kind, code, blocker.message(), false)
 }
 
 pub(crate) fn inventory_quantity_error_code(
-    blocker: &rustok_inventory::QuantityWriteBlocker,
+    blocker: &crate::ports::ProductInventoryQuantityBlocker,
 ) -> &'static str {
     inventory_quantity_error_policy(blocker).1
 }
 
 pub fn inventory_quantity_public_policy(
-    blocker: &rustok_inventory::QuantityWriteBlocker,
+    blocker: &crate::ports::ProductInventoryQuantityBlocker,
 ) -> (&'static str, &'static str, bool) {
     let (_, _, code) = inventory_quantity_error_policy(blocker);
     (blocker.message(), code, false)
@@ -245,8 +233,8 @@ pub fn inventory_quantity_public_failure(
 
 pub(crate) fn inventory_quantity_blocker(
     error: &rustok_api::PortError,
-) -> Option<rustok_inventory::QuantityWriteBlocker> {
-    rustok_inventory::QuantityWriteBlocker::ALL
+) -> Option<crate::ports::ProductInventoryQuantityBlocker> {
+    crate::ports::ProductInventoryQuantityBlocker::ALL
         .into_iter()
         .find(|blocker| {
             let (kind, code, _) = inventory_quantity_error_policy(blocker);
@@ -466,7 +454,7 @@ mod tests {
     #[test]
     fn inventory_deletion_refusals_have_closed_kind_code_and_public_copy() {
         use rustok_api::PortErrorKind as K;
-        use rustok_inventory::CatalogDeletionBlocker as B;
+        use crate::ports::ProductInventoryDeletionBlocker as B;
         let cases = [
             (
                 B::InvalidRequest,
@@ -552,7 +540,7 @@ mod tests {
     #[test]
     fn inventory_deletion_code_kind_mismatch_and_unknown_codes_are_not_trusted() {
         let original = inventory_deletion_port_error(
-            &rustok_inventory::CatalogDeletionBlocker::HistoryPresent,
+            &crate::ports::ProductInventoryDeletionBlocker::HistoryPresent,
         );
         for kind in [
             rustok_api::PortErrorKind::Unavailable,
@@ -577,9 +565,9 @@ mod tests {
 
     #[test]
     fn inventory_deletion_storage_failure_remains_unavailable_not_a_domain_refusal() {
-        let error = CommerceError::from(rustok_inventory::CatalogDeletionError::Database(
+        let error = CommerceError::Database(
             sea_orm::DbErr::Custom("private-database-details".into()),
-        ));
+        );
         assert!(matches!(&error, CommerceError::Database(_)));
         let public = crate::map_product_public_error(&error, "delete_product", "deletion_test");
         assert_eq!(public.code, "PRODUCT_TEMPORARILY_UNAVAILABLE");
@@ -591,7 +579,7 @@ mod tests {
 #[cfg(test)]
 mod quantity_errors {
     use super::*;
-    use rustok_inventory::QuantityWriteBlocker as B;
+    use crate::ports::ProductInventoryQuantityBlocker as B;
 
     #[test]
     fn quantity_refusals_have_closed_owner_codes_public_copy_and_separate_terminal_classes() {
@@ -643,9 +631,7 @@ mod quantity_errors {
 
     #[test]
     fn quantity_publication_and_storage_errors_never_become_terminal_client_validation() {
-        let publication = CommerceError::from(rustok_inventory::QuantityWriteError::Publication(
-            CoreError::Validation("private-provider-details".into()),
-        ));
+        let publication = CommerceError::InventoryQuantityBlocked(B::PublicationUnverified);
         assert!(matches!(
             &publication,
             CommerceError::InventoryQuantityBlocked(B::PublicationUnverified)
@@ -653,17 +639,15 @@ mod quantity_errors {
         let port = inventory_quantity_port_error(&B::PublicationUnverified);
         assert!(!crate::product_catalog_command_error_is_terminal(&port));
         for error in [
-            rustok_inventory::QuantityWriteError::Database(sea_orm::DbErr::Custom(
+            CommerceError::Database(sea_orm::DbErr::Custom(
                 "private-provider-details".into(),
             )),
-            rustok_inventory::QuantityWriteError::Publication(CoreError::Database(
+            CommerceError::Core(CoreError::Database(
                 sea_orm::DbErr::Custom("private-provider-details".into()),
             )),
         ] {
-            let mapped = CommerceError::from(error);
-            assert!(matches!(&mapped, CommerceError::Database(_)));
             let public =
-                crate::map_product_public_error(&mapped, "update_variant", "quantity_test");
+                crate::map_product_public_error(&error, "update_variant", "quantity_test");
             assert!(public.retryable);
             assert!(!public.message.contains("private-provider-details"));
         }

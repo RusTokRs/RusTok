@@ -162,7 +162,7 @@ async fn list_legacy_storefront_http_products(
         .await?
         .into_iter()
         .filter(|product| {
-            rustok_inventory::is_metadata_visible_for_public_channel(
+            crate::services::catalog::helpers::is_metadata_visible_for_public_channel(
                 &product.metadata,
                 public_channel_slug,
             )

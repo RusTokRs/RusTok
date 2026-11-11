@@ -320,8 +320,14 @@ retry/restart, recovery and operational evidence. Do not replace those with a sm
 Preserve historical attestations with their revision/date and limitations. Recompile and
 rerun affected cases after contract changes; a past pass without current source identity
 does not certify the current tree. A stale fixture is a defect even if its metadata gate
-still passes. Check contracts-only and embedded builds separately when that packaging
-capability is claimed; Product does not currently publish a contracts-only build.
+still passes. For owners adopting the [canonical ports layout](./module-backend-implementation.md#remote-fba-module-layout),
+run the layout lint and inspect the resolved base and `grpc-client` Cargo graphs
+separately with `cargo tree -p <owner-package>-ports --no-default-features -e normal,build`
+and the same command with `--features grpc-client` for an RPC provider. Verify
+that the graphs exclude owner runtimes, host runtimes and database drivers.
+Compile the embedded owner and `service` target separately. Run the same
+business contract cases through both modes. Product's current transport packages
+are migration inputs, not evidence for the new package layout.
 
 Use module-local verifier scripts for source consistency and list their actual results.
 For the existing Product read slice, the owner plan also lists conformance and process

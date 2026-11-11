@@ -267,3 +267,70 @@ pub trait ProductInventoryPort: Send + Sync {
         variant_ids: &[Uuid],
     ) -> Result<(), CommerceError>;
 }
+
+/// Default no-op inventory implementation used when running Product in standalone microservice mode
+/// or in tests without an inventory service attached.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NoopProductInventoryPort;
+
+#[async_trait]
+impl ProductInventoryPort for NoopProductInventoryPort {
+    async fn load_available_quantities(
+        &self,
+        _conn: InventoryConnection<'_>,
+        _variant_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, i32>, CommerceError> {
+        Ok(HashMap::new())
+    }
+
+    async fn load_available_inventory_by_variant_for_public_channel(
+        &self,
+        _conn: InventoryConnection<'_>,
+        _tenant_id: Uuid,
+        _public_channel_slug: Option<&str>,
+        _variant_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, i32>, CommerceError> {
+        Ok(HashMap::new())
+    }
+
+    async fn bootstrap_variants_in_tx(
+        &self,
+        _txn: &DatabaseTransaction,
+        _tenant_id: Uuid,
+        _actor_id: Uuid,
+        items: Vec<ProductInitialInventory>,
+    ) -> Result<(), CommerceError> {
+        if items.iter().any(|item| item.available_quantity != 0) {
+            return Err(CommerceError::InventoryQuantityBlocked(
+                ProductInventoryQuantityBlocker::LocationUnavailable,
+            ));
+        }
+        Ok(())
+    }
+
+    async fn update_initial_quantity_in_tx(
+        &self,
+        _txn: &DatabaseTransaction,
+        _tenant_id: Uuid,
+        _actor_id: Uuid,
+        _variant_id: Uuid,
+        quantity: i32,
+    ) -> Result<(), CommerceError> {
+        if quantity != 0 {
+            return Err(CommerceError::InventoryQuantityBlocked(
+                ProductInventoryQuantityBlocker::LocationUnavailable,
+            ));
+        }
+        Ok(())
+    }
+
+    async fn delete_records_for_variants_in_tx(
+        &self,
+        _txn: &DatabaseTransaction,
+        _tenant_id: Uuid,
+        _actor_id: Uuid,
+        _variant_ids: &[Uuid],
+    ) -> Result<(), CommerceError> {
+        Ok(())
+    }
+}

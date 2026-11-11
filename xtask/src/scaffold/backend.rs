@@ -191,13 +191,20 @@ Establish native ownership before implementing a business capability.
 - Last verified at (UTC): not verified; record scoped execution evidence before promotion.
 - Owner: {slug} module owner.
 
-### Remote FBA layout
+### FBA owner ports and deployment
 
-When a real owner port gains a remote caller, use the
-[remote FBA module layout](../../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
-Place the adapter and feature-gated standalone binary in `transport/` within
-this owner directory. Apply the same layout when converting an existing owner.
-Run `cargo xtask module lint {slug} --fba` once the transport package exists.
+Use the [canonical FBA layout](../../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout)
+for each published owner contract. Put real ports and their DTOs in
+`ports/` (`{crate_name}-ports`). The owner implements the same ports in-process
+and through optional gRPC adapters. Put standalone composition in the root
+`src/bin/service.rs` binary behind the `service` feature.
+
+Choose providers in the host and keep data ownership and transactions in the
+owner. Configuration, schemas and policies stay with their defining owners;
+values attached to this owner's records stay in this owner's transactions.
+Apply the same layout when converting an existing owner. Run
+`cargo xtask module lint {slug} --fba` after publishing the ports package and
+verify both execution profiles before promoting readiness.
 
 ## Release and Data Rollback Readiness
 
@@ -559,6 +566,8 @@ mod tests {
             for required in [
                 "## FFA/FBA status",
                 "#remote-fba-module-layout",
+                "`ports/` (`rustok-example-ports`)",
+                "`src/bin/service.rs` binary behind the `service` feature",
                 "cargo xtask module lint example --fba",
                 "## Release and Data Rollback Readiness",
                 "Runtime kind: Optional",

@@ -25,11 +25,12 @@ transport roots from its crate.
 
 ## Backend Module Physical Shape
 
-A module backend is a small hexagonal package with optional adapter packages around it:
+A module backend groups its implementation, published contracts and adapters under one owner:
 
 ```text
 crates/modules/rustok-<module>/
   src/                 domain, application services, ports, events, migrations
+  ports/               published owner contracts and optional gRPC adapters
   contracts/           published OpenAPI/GraphQL/FBA evidence, not executable code
   docs/                local contract and implementation plan
   admin/               optional module-owned Leptos admin UI adapter package
@@ -127,9 +128,10 @@ uses `rustok_web::json_response`; do not add a second routing model.
 
 Fluid Backend Architecture preserves a module's identity, owner implementation and
 business semantics while allowing an explicitly supported boundary to execute in-process
-or through a remote adapter. The modular monolith remains the default. The active
+or through a remote adapter. The modular monolith remains the default deployment. Every native domain and
+capability owner targets embedded and independent execution. The
 [embedded-first plan](../research/fluid-backend-architecture-unified-plan.md#24-active-embedded-first-foundation-plan-2026-h2)
-does not require a remote service for every module.
+sequences that work. Deploying a module as its own service is a separate decision.
 
 ### Scope of a deployment claim
 
@@ -156,17 +158,14 @@ and recovery contract.
 
 - Shared `PortContext`, `PortError`, `PortCallPolicy` and `PortOperationKind`
   belong to `rustok-api`. Domain ports, DTOs and published events belong to their module.
-- Contracts and implementation may stay in one owner crate. A separate owner contracts
-  package is optional when demonstrated consumers need a smaller dependency boundary;
-  it does not create another domain module or tenant lifecycle entry.
-- A contracts-only Cargo build is an additional packaging capability, not an FBA readiness
-  requirement. It requires optional implementation dependencies, independent public types
-  and checks of the resolved feature graph. Cargo features are additive; they do not choose
-  a runtime provider. Product does not currently publish such a build.
-- A native owner publishes its gRPC adapter and standalone binary in one nested
-  `transport/` package. New and converted owners use the same
-  [remote FBA module layout](./module-backend-implementation.md#remote-fba-module-layout).
-  Existing sibling packages are migration states.
+- Published native owner contracts and optional gRPC adapters belong to one
+  nested `ports/` package named `<owner-package>-ports`. The owner implementation
+  depends on it. Client-only builds exclude owner runtimes, persistence drivers and
+  the service host. The [canonical layout](./module-backend-implementation.md#remote-fba-module-layout)
+  applies to new and converted owners. Existing layouts are migration states.
+- The standalone composition root is `src/bin/service.rs` in the owner package.
+  Embedded and standalone hosts can publish the same gRPC server adapter. Cargo
+  features add build capabilities. Host configuration selects the runtime provider.
 - Do not create empty contract, repository or transport layers for modules without a real
   boundary. Module-specific contracts do not move to `rustok-api` merely because another
   module consumes them.
@@ -191,6 +190,12 @@ Process placement and storage placement are separate decisions. Controlled remot
 execution may use the same physical database, subject to owner access boundaries;
 autonomous service-owned storage and read-model replicas require their own deployment,
 migration and recovery contracts. A separate database per port is not an FBA rule.
+
+A schema or policy owner owns its definitions. The aggregate owner owns attached
+values and commits them with the aggregate where atomicity requires it. For example,
+Flex owns field definitions and policies, and each donor owns values attached to
+its records. Extensions use donor ports for reads and writes. This is the general
+ownership rule for extensions, including those with existing shared storage.
 
 An interface accepting a SeaORM `DatabaseTransaction` is a native co-located
 transaction-participant contract. It cannot cross RPC, even when both processes connect

@@ -444,7 +444,7 @@ impl CatalogService {
                 .await?;
         }
         if !initial_inventories.is_empty() {
-            self.inventory_bootstrap()
+            self.inventory()
                 .bootstrap_variants_in_tx(&txn, tenant_id, actor_id, initial_inventories)
                 .await?;
         }
@@ -1225,25 +1225,25 @@ impl CatalogService {
             .column(entities::product_variant::Column::TenantId)
             .filter(entities::product_variant::Column::ProductId.eq(product_id))
             .order_by_asc(entities::product_variant::Column::Id)
-            .limit((rustok_inventory::MAX_CATALOG_DELETE_VARIANTS + 1) as u64)
+            .limit((crate::ports::MAX_CATALOG_DELETE_VARIANTS + 1) as u64)
             .into_tuple::<(Uuid, Uuid)>()
             .all(&txn)
             .await?;
-        if variants.len() > rustok_inventory::MAX_CATALOG_DELETE_VARIANTS {
+        if variants.len() > crate::ports::MAX_CATALOG_DELETE_VARIANTS {
             return Err(CommerceError::InventoryDeletionBlocked(
-                rustok_inventory::CatalogDeletionBlocker::LimitExceeded,
+                crate::ports::ProductInventoryDeletionBlocker::LimitExceeded,
             ));
         }
         if variants.iter().any(|(_, owner)| *owner != tenant_id) {
             return Err(CommerceError::InventoryDeletionBlocked(
-                rustok_inventory::CatalogDeletionBlocker::IdentityUnavailable,
+                crate::ports::ProductInventoryDeletionBlocker::IdentityUnavailable,
             ));
         }
         if variants.is_empty() {
             return Err(CommerceError::NoVariants);
         }
         let variant_ids = variants.iter().map(|(id, _)| *id).collect::<Vec<_>>();
-        self.inventory_bootstrap()
+        self.inventory()
             .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &variant_ids)
             .await?;
         if let Some(port) = &self.pricing_port {
@@ -1266,7 +1266,7 @@ impl CatalogService {
             .await?;
         if deleted_variants.rows_affected != variant_ids.len() as u64 {
             return Err(CommerceError::InventoryDeletionBlocked(
-                rustok_inventory::CatalogDeletionBlocker::ConcurrentChange,
+                crate::ports::ProductInventoryDeletionBlocker::ConcurrentChange,
             ));
         }
 
@@ -1327,7 +1327,7 @@ impl CatalogService {
             .await?;
         if deleted_product.rows_affected != 1 {
             return Err(CommerceError::InventoryDeletionBlocked(
-                rustok_inventory::CatalogDeletionBlocker::ConcurrentChange,
+                crate::ports::ProductInventoryDeletionBlocker::ConcurrentChange,
             ));
         }
 
@@ -1451,7 +1451,7 @@ impl CatalogService {
                 .await?;
         }
 
-        self.inventory_bootstrap()
+        self.inventory()
             .bootstrap_variants_in_tx(
                 &txn,
                 tenant_id,
@@ -1706,10 +1706,8 @@ impl CatalogService {
         }
 
         if let Some(quantity) = input.inventory_quantity {
-            self.inventory_bootstrap()
-                .update_initial_quantity_in_tx(
-                    &txn, tenant_id, actor_id, variant_id, quantity,
-                )
+            self.inventory()
+                .update_initial_quantity_in_tx(&txn, tenant_id, actor_id, variant_id, quantity)
                 .await?;
         }
 
@@ -1766,13 +1764,8 @@ impl CatalogService {
             return Err(CommerceError::CannotDeleteOnlyVariant);
         }
 
-        self.inventory_bootstrap()
-            .delete_records_for_variants_in_tx(
-                &txn,
-                tenant_id,
-                actor_id,
-                &[variant_id],
-            )
+        self.inventory()
+            .delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &[variant_id])
             .await?;
         if let Some(port) = &self.pricing_port {
             port.delete_prices_for_variants_in_tx(&txn, &[variant_id])
@@ -1791,7 +1784,7 @@ impl CatalogService {
             .await?;
         if deleted_variant.rows_affected != 1 {
             return Err(CommerceError::InventoryDeletionBlocked(
-                rustok_inventory::CatalogDeletionBlocker::ConcurrentChange,
+                crate::ports::ProductInventoryDeletionBlocker::ConcurrentChange,
             ));
         }
 

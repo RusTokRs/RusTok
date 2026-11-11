@@ -32,6 +32,69 @@ fn doctor(root: &Path, args: &[&str]) -> Output {
 }
 
 #[test]
+fn conflicting_targets_and_failure_thresholds_are_rejected() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    let cases: &[&[&str]] = &[
+        &["hygiene", "--changed", "--path", "missing.rs", "--json"],
+        &["hygiene", "--crate", "product", "--all-modules"],
+        &["hygiene", "--staged", "--diff", "HEAD"],
+        &["hygiene", "--all", "--all-modules"],
+        &["hotspots", "--path", ".", "--all"],
+        &["hygiene", "--strict", "--fail-on", "P0"],
+    ];
+    for args in cases {
+        let output = doctor(root, args);
+        assert_eq!(output.status.code(), Some(2), "{args:?}");
+        assert!(output.stdout.is_empty(), "{args:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("mutually exclusive"),
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+fn markdown_and_csv_include_every_json_finding() {
+    let dir = TempDir::new().unwrap();
+    let source = (0..25)
+        .map(|index| format!("fn example_{index}(v: Option<u8>) {{ v.unwrap(); }}\n"))
+        .collect::<String>();
+    fs::write(dir.path().join("source.rs"), source).unwrap();
+    let output = doctor(
+        dir.path(),
+        &[
+            "--path",
+            "source.rs",
+            "--json",
+            "--csv",
+            "all.csv",
+            "--markdown-report",
+            "all.md",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let findings = json["findings"].as_array().unwrap();
+    assert_eq!(findings.len(), 25);
+    let mut csv = csv::Reader::from_path(dir.path().join("all.csv")).unwrap();
+    assert_eq!(csv.records().count(), findings.len());
+    let markdown = fs::read_to_string(dir.path().join("all.md")).unwrap();
+    for finding in findings {
+        let line = finding["line"].as_u64().unwrap();
+        assert!(
+            markdown.contains(&format!("`source.rs:{line}`")),
+            "missing line {line}"
+        );
+    }
+    assert!(!markdown.contains("more occurrences"));
+}
+
+#[test]
 fn staged_scan_uses_index_blobs_and_patches_them() {
     let dir = TempDir::new().expect("temporary Git repository");
     let root = dir.path();

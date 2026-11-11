@@ -4,7 +4,7 @@ use rustok_commerce_foundation::{
     entities::{inventory_item, inventory_level, stock_location},
     error::{CommerceError, CommerceResult},
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -179,12 +179,15 @@ fn public_channel_inventory_projection_map(
         .collect()
 }
 
-pub async fn load_available_inventory_by_variant_for_public_channel(
-    db: &DatabaseConnection,
+pub async fn load_available_inventory_by_variant_for_public_channel<C>(
+    db: &C,
     tenant_id: Uuid,
     variant_ids: &[Uuid],
     public_channel_slug: Option<&str>,
-) -> Result<HashMap<Uuid, i32>, sea_orm::DbErr> {
+) -> Result<HashMap<Uuid, i32>, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
     if tenant_id.is_nil() {
         return Err(sea_orm::DbErr::Custom(
             "tenant_id cannot be nil".to_string(),

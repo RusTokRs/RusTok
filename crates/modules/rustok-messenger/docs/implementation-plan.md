@@ -30,7 +30,7 @@ The detailed owner surfaces are in the [crate API](../CRATE_API.md), [module man
 
 ## Module decomposition
 
-Keep the write, history and membership responsibilities within `rustok-messenger` in the [native FBA layout](../../../../docs/backend/module-backend-implementation.md). Give conversation and membership, timeline commands, and synchronization and read state separate application modules during the owner refactor. Share owner transaction logic where invariants intersect. Implement the connection adapter in the separate `rustok-messenger-gateway` crate from MSG-03. It consumes a narrow, database-free owner contract. Use an owner contracts package if the gateway cannot import that contract through an independent build of the owner package. Select process placement using the release and scale gates below.
+Keep the write, history and membership responsibilities within `rustok-messenger` in the [native FBA layout](../../../../docs/backend/module-backend-implementation.md). Give conversation and membership, timeline commands, and synchronization and read state separate application modules during the owner refactor. Share owner transaction logic where invariants intersect. Implement the connection adapter in the separate `rustok-messenger-gateway` crate from MSG-03. It consumes the narrow, database-free `rustok-messenger-ports` contract. Select process placement using the release and scale gates below.
 
 | Boundary | Owns | Interfaces and dependencies |
 | --- | --- | --- |

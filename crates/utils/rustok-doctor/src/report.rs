@@ -80,7 +80,7 @@ pub(crate) fn print(
     println!(" Target: {target}");
     println!("======================================================================");
     println!(
-        "Scanned {count} Rust file(s). Found {} issue(s).\n",
+        "Scanned {count} Rust file(s). Found {} finding(s).\n",
         findings.len()
     );
     if findings.is_empty() {
@@ -210,7 +210,7 @@ pub(crate) fn markdown(findings: &[Finding], scanned: usize, target: &str) -> St
             "| File | Line | Confidence | Snippet | Recommendation |".to_owned(),
             "|---|---|---|---|---|".to_owned(),
         ]);
-        for finding in items.iter().take(15) {
+        for finding in &items {
             let snippet = finding.content.replace('|', "\\|").replace('`', "'");
             let snippet: String = snippet.chars().take(60).collect();
             let fix = finding
@@ -227,12 +227,6 @@ pub(crate) fn markdown(findings: &[Finding], scanned: usize, target: &str) -> St
                 confidence(finding.confidence),
                 snippet.trim(),
                 fix
-            ));
-        }
-        if items.len() > 15 {
-            lines.push(format!(
-                "| *... and {} more occurrences* | | | | |",
-                items.len() - 15
             ));
         }
         lines.push(String::new());

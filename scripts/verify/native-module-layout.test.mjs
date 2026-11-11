@@ -95,6 +95,15 @@ test("a minimal native module omits unused responsibility directories", () => {
   });
 });
 
+test("the owner standalone binary does not require a library module", () => {
+  fixture((ctx) => {
+    ctx.write("src/bin/service.rs", "fn main() {}\n");
+    assert.deepEqual(lint(ctx), []);
+    ctx.write("src/bin/extra.rs", "fn main() {}\n");
+    assert.match(lint(ctx).join("\n"), /only src\/bin\/service.rs/);
+  });
+});
+
 test("unknown and non-path module registry entries are rejected", () => {
   fixture((ctx) => {
     assert.throws(() => resolveNativeModule(ctx.root, "missing"), /Unknown native/);

@@ -69,7 +69,7 @@ pub(crate) fn module_lint_command(args: &[String]) -> Result<()> {
     if let [slug, mode] = args {
         if mode == "--fba" {
             crate::fba_layout::lint(&crate::manifest_io::workspace_root(), slug, true)?;
-            println!("FBA transport layout passed for '{slug}'.");
+            println!("FBA owner ports layout passed for '{slug}'.");
             return Ok(());
         }
     }

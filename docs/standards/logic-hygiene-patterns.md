@@ -34,7 +34,11 @@ without evidence of a failure is recorded separately below.
 
 For `P-ID-ENTROPY`, Forum's route identifier changed from 12 to 16 hex
 characters in `1c5a07dc8b`; this does not establish that a collision occurred.
-See the [route implementation](../../crates/modules/rustok-forum/src/services/topic_route.rs).
+The current [Forum route owner](../../crates/modules/rustok-forum/src/services/topic_route.rs)
+generates and accepts 16 characters, while [Search](../../crates/modules/rustok-search/src/engine.rs)
+requires 12. Search consequently rejects current owner-projected topic and reply
+URLs; its unit examples still exercise 12-character routes. This is a route
+contract drift, not evidence of an identifier collision.
 
 The confirmed-cases inventory is intentionally narrower than the pattern
 catalog. Add a concrete affected path, historical change or reproduction, and
@@ -54,6 +58,16 @@ not evidence that such a persistence failure has occurred in production.
 [executor](../../crates/modules/alloy/src/runner/executor.rs),
 [registry implementation](../../crates/modules/alloy/src/storage/sea_orm/mod.rs),
 and [threshold](../../crates/modules/alloy/src/model/script.rs).
+
+In AI accounting, two branches turn rollback errors into `None` and discard
+them. A rollback failure is therefore not reported at those call sites; whether
+the affected database connection recovers depends on the driver and runtime.
+See [accounting](../../crates/modules/rustok-ai/src/accounting.rs).
+
+The AI admin [approval actions](../../crates/modules/rustok-ai/admin/src/ui/components/chat_session_panel.rs)
+discard the transport result and refresh the session for both approve and reject.
+When the operation fails, these handlers do not surface that failure to the
+operator. This conclusion is from the source path; the UI was not exercised.
 
 ---
 
@@ -489,7 +503,7 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-HOTPATH-ALLOC` | Allocation | Invalid requests avoid unnecessary allocations on the affected path | Heuristic: early clone |
 | `P-SQLSTATE-DISCRIM` | Error mapping | Real SQLSTATE and constraint failures map correctly | Heuristic: error-message substring match |
 | `P-STRUCTURED-TRACE` | Observability | Emitted or inherited spans contain required context | Heuristic: mutation name and nearby span marker |
-| `P-TXN-ROLLBACK-SWALLOW` | Failure paths | Commit errors propagate and rollback errors remain observable | Heuristic: discarded finalization call |
+| `P-TXN-ROLLBACK-SWALLOW` | Failure paths | Commit errors propagate and rollback errors remain observable | Heuristic: discarded finalization call or direct `.await.ok()` conversion |
 | `P-FIXTURE-OWNERSHIP` | Side effects | Name collisions leave pre-existing fixtures intact | Manual |
 | `P-SYNC-LOCK-AWAIT` | Concurrency | Actual synchronous guard lifetimes exclude suspension | Heuristic: lock and await in lexical scope |
 | `P-RAW-SQL-INTERP` | Security | Runtime values are bound and interpolated identifiers are trusted | Heuristic: formatted direct SQL or local binding |
@@ -500,6 +514,9 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-SYNC-SLEEP-AWAIT` | Concurrency | Blocking delay runs outside executor workers | Heuristic: direct blocking sleep in async function |
 | `P-OWNER-READ-BOUNDARY` | Ownership and concurrency | Owner controls storage reads and the adapter preserves snapshot and admission semantics | Manual |
 | `P-TRIGGER-ROW-CHANGE` | Side effects | An update that derives a revision in a trigger commits the matching projection | Heuristic: column-filtered AFTER UPDATE trigger in migration SQL; inspect active migration chain and dialect |
+| `P-JSON-DECODE-DEFAULT` | Failure paths | Invalid stored or external JSON is handled according to the owner's compatibility contract | Heuristic: direct `serde_json::from_*` followed by `unwrap_or_default` |
+| `P-FILTER-DROPPED-ERROR` | Failure paths | Partial results and rejected items follow the owner's contract | Heuristic: `filter_map` converts item errors into `None` |
+| `P-PAGE-AGGREGATE` | Calculation | An aggregate represents all matching records under the owner's filter and consistency contract | Manual |
 | `P-COMMAND-ADMISSION` | Concurrency | Same-key concurrent commands serialize admission before reading receipt state | Manual |
 | `P-REPLAY-PRECONDITION` | Idempotency | A replay preserves the original command identity and revision | Manual |
 
@@ -575,6 +592,92 @@ means the scanner found no matches in the selected sources; verify behavioral
 invariants with the owner’s tests and runtime evidence.
 
 ---
+
+## P-JSON-DECODE-DEFAULT — Preserve JSON decode failures
+
+- **Category:** Persisted-data integrity and compatibility.
+- **Logic dimensions:** Preconditions, failure paths, side-effect completeness.
+- **Observed behavior:** The AI run projections currently apply
+  `serde_json::from_value(model.decision_trace).unwrap_or_default()` in two
+  [mapping paths](../../crates/modules/rustok-ai/src/service/mapping.rs). An
+  incompatible stored value is represented as an empty/default trace without
+  exposing the decoding error. Whether a particular historical value is supposed
+  to fall back requires the owner compatibility contract; a malformed row or
+  production incident was not reproduced here.
+  In [MCP policy mapping](../../apps/server/src/models/mcp_policies.rs), an
+  invalid `denied_tools` value becomes an empty list. A tool present in both
+  the valid allow-list and the intended deny-list may then pass the deny-list
+  check if its other authorization requirements are also satisfied. See
+  [the authorization order](../../crates/modules/rustok-mcp/src/access.rs).
+- **Remediation:** If the owner requires a valid trace, propagate the typed
+  decode failure, as the same mapper does for `tool_calls`. For an accepted
+  legacy representation, handle that representation explicitly and make unexpected
+  failures observable rather than defaulting every decoding error.
+
+```rust
+let trace = serde_json::from_value(model.decision_trace).map_err(json_err)?;
+```
+
+Detection: `cargo xtask doctor hygiene --crate ai` or
+`rg -n 'serde_json::from_(value|str|slice)' crates/modules/rustok-ai/src`.
+Doctor detects direct chained defaults within 16 source lines as candidates;
+it does not infer provenance, validate schemas, or follow intermediate bindings.
+
+## P-FILTER-DROPPED-ERROR — Account for rejected batch items
+
+- **Category:** Batch completeness and error visibility.
+- **Logic dimensions:** Branch completeness, side-effect completeness.
+- **Observed behavior:** The AI provider-target migration decodes profile slugs
+  using `filter_map(... .ok())` when constructing a blocking error. If a slug
+  cannot be decoded, that slug is omitted from the diagnostic; the migration
+  still fails closed because it checks the original row count. See the
+  [migration](../../crates/modules/rustok-ai/src/migrations/m20260712_000001_provider_targets.rs).
+  The [SEO projection](../../crates/modules/rustok-seo/src/services/meta.rs)
+  similarly drops translations whose JSON cannot be decoded; whether partial
+  results are acceptable must be resolved by the SEO owner. The Payment
+  storefront's [refund summary](../../crates/modules/rustok-payment/storefront/src/transport/graphql_adapter.rs)
+  excludes amounts that fail decimal parsing, which can understate the displayed
+  sum for malformed input. This describes a source-level failure path; malformed
+  GraphQL refund data was not reproduced against a running backend.
+- **Remediation:** Propagate errors when a batch must be complete, or explicitly
+  document and observe rejected entries when partial results are supported.
+
+```rust
+let entries = values.into_iter().map(parse_entry).collect::<Result<Vec<_>, _>>()?;
+```
+
+Detection: `rg -n 'filter_map\(.*(\.ok\(\)|Result::ok)' crates/modules`.
+Doctor handles calls within a 16-line window. Matches do not establish that a
+particular owner forbids partial results, and it does not follow helper functions.
+
+## P-PAGE-AGGREGATE — Do not present a page subtotal as a full aggregate
+
+- **Category:** Pagination and calculation correctness.
+- **Logic dimensions:** Preconditions and bounds; calculation correctness.
+- **Observed behavior:** The Payment storefront requests the first 50 refunds
+  and computes `refunded_amount` from that page while returning the count of all
+  matches. This occurs in the [GraphQL adapter](../../crates/modules/rustok-payment/storefront/src/transport/graphql_adapter.rs)
+  and the [native read path](../../crates/modules/rustok-commerce/src/storefront_checkout_runtime.rs)
+  with its [summary mapping](../../crates/modules/rustok-payment/storefront/src/transport/native_server_adapter/server_functions.rs).
+  If an order has more than 50 matching positive refunds, the amount returned is
+  a page subtotal even though `total` includes later pages. This follows from
+  the code; a database containing 51 refunds was not exercised in this review.
+  Both storefront summaries also add all returned statuses, while the
+  [Payment owner](../../crates/modules/rustok-payment/src/services/payment.rs)
+  counts only `Refunded` for `refunded_amount`. The GraphQL adapter's existing
+  unit example adds a `pending` amount to a `refunded` amount, demonstrating
+  this predicate drift without requiring a database.
+- **Remediation:** The owning payment read contract should return an aggregate
+  over the complete authorized, tenant-scoped filter, independently of page size.
+  Preserve the owner's status and currency semantics and define snapshot behavior.
+
+```text
+count, refunded_amount = owner.aggregate_refunds(tenant, authorized_order, filter)
+items = owner.list_refunds(tenant, authorized_order, filter, page)
+```
+
+Detection: `rg -n 'per_page: 50|refunded_amount|summarize.*refund' crates/modules/rustok-payment/storefront/src crates/modules/rustok-commerce/src`.
+Doctor does not currently detect this cross-function relationship.
 
 ## Related Documents
 
