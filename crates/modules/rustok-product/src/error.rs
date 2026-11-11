@@ -41,11 +41,11 @@ pub enum CommerceError {
     #[error("Cannot delete published product")]
     CannotDeletePublished,
 
-    #[error("Inventory prevents catalog deletion: {0}")]
-    InventoryDeletionBlocked(rustok_inventory::CatalogDeletionBlocker),
+    #[error("Inventory prevents catalog deletion: {0:?}")]
+    InventoryDeletionBlocked(crate::ports::ProductInventoryDeletionBlocker),
 
-    #[error("Inventory prevents quantity update: {0}")]
-    InventoryQuantityBlocked(rustok_inventory::QuantityWriteBlocker),
+    #[error("Inventory prevents quantity update: {0:?}")]
+    InventoryQuantityBlocked(crate::ports::ProductInventoryQuantityBlocker),
 
     #[error("Product core operation failed: {0}")]
     Core(#[from] CoreError),
@@ -53,60 +53,48 @@ pub enum CommerceError {
 
 pub type CommerceResult<T> = Result<T, CommerceError>;
 
-/// Preserve the typed Inventory refusal without rendering dependency/database details.
-impl From<rustok_inventory::CatalogDeletionError> for CommerceError {
-    fn from(error: rustok_inventory::CatalogDeletionError) -> Self {
-        match error {
-            rustok_inventory::CatalogDeletionError::Database(error) => Self::Database(error),
-            rustok_inventory::CatalogDeletionError::Rejected(blocker) => {
-                Self::InventoryDeletionBlocked(blocker)
-            }
-        }
-    }
-}
-
 fn inventory_deletion_error_policy(
-    blocker: &rustok_inventory::CatalogDeletionBlocker,
+    blocker: &crate::ports::ProductInventoryDeletionBlocker,
 ) -> (rustok_api::PortErrorKind, &'static str, &'static str) {
+    use crate::ports::ProductInventoryDeletionBlocker;
     use rustok_api::PortErrorKind;
-    use rustok_inventory::CatalogDeletionBlocker;
     match blocker {
-        CatalogDeletionBlocker::InvalidRequest => (
+        ProductInventoryDeletionBlocker::InvalidRequest => (
             PortErrorKind::Validation,
             "product.inventory_deletion_invalid",
             "PRODUCT_INVENTORY_DELETION_INVALID",
         ),
-        CatalogDeletionBlocker::LimitExceeded => (
+        ProductInventoryDeletionBlocker::LimitExceeded => (
             PortErrorKind::Validation,
             "product.inventory_deletion_limit",
             "PRODUCT_INVENTORY_DELETION_LIMIT",
         ),
-        CatalogDeletionBlocker::IdentityUnavailable => (
+        ProductInventoryDeletionBlocker::IdentityUnavailable => (
             PortErrorKind::InvariantViolation,
             "product.inventory_deletion_identity_unavailable",
             "PRODUCT_INVENTORY_DELETION_IDENTITY_UNAVAILABLE",
         ),
-        CatalogDeletionBlocker::StateUnverified => (
+        ProductInventoryDeletionBlocker::StateUnverified => (
             PortErrorKind::InvariantViolation,
             "product.inventory_deletion_state_unverified",
             "PRODUCT_INVENTORY_DELETION_STATE_UNVERIFIED",
         ),
-        CatalogDeletionBlocker::IsolationUnsupported => (
+        ProductInventoryDeletionBlocker::IsolationUnsupported => (
             PortErrorKind::InvariantViolation,
             "product.inventory_deletion_isolation_unsupported",
             "PRODUCT_INVENTORY_DELETION_ISOLATION_UNSUPPORTED",
         ),
-        CatalogDeletionBlocker::HistoryPresent => (
+        ProductInventoryDeletionBlocker::HistoryPresent => (
             PortErrorKind::Conflict,
             "product.inventory_deletion_history_present",
             "PRODUCT_INVENTORY_DELETION_HISTORY_PRESENT",
         ),
-        CatalogDeletionBlocker::StockPresent => (
+        ProductInventoryDeletionBlocker::StockPresent => (
             PortErrorKind::Conflict,
             "product.inventory_deletion_stock_present",
             "PRODUCT_INVENTORY_DELETION_STOCK_PRESENT",
         ),
-        CatalogDeletionBlocker::ConcurrentChange => (
+        ProductInventoryDeletionBlocker::ConcurrentChange => (
             PortErrorKind::Conflict,
             "product.inventory_deletion_changed",
             "PRODUCT_INVENTORY_DELETION_CHANGED",
@@ -116,21 +104,21 @@ fn inventory_deletion_error_policy(
 
 /// Safe finite Inventory-deletion classification for Product transport adapters.
 pub fn inventory_deletion_port_error(
-    blocker: &rustok_inventory::CatalogDeletionBlocker,
+    blocker: &crate::ports::ProductInventoryDeletionBlocker,
 ) -> rustok_api::PortError {
     let (kind, code, _) = inventory_deletion_error_policy(blocker);
     rustok_api::PortError::new(kind, code, blocker.message(), false)
 }
 
 pub(crate) fn inventory_deletion_error_code(
-    blocker: &rustok_inventory::CatalogDeletionBlocker,
+    blocker: &crate::ports::ProductInventoryDeletionBlocker,
 ) -> &'static str {
     inventory_deletion_error_policy(blocker).1
 }
 
 /// Fixed public copy/code for a typed owner refusal, with no dependency rendering.
 pub fn inventory_deletion_public_policy(
-    blocker: &rustok_inventory::CatalogDeletionBlocker,
+    blocker: &crate::ports::ProductInventoryDeletionBlocker,
 ) -> (&'static str, &'static str, bool) {
     let (_, _, code) = inventory_deletion_error_policy(blocker);
     (blocker.message(), code, false)
@@ -148,8 +136,8 @@ pub fn inventory_deletion_public_failure(
 
 pub(crate) fn inventory_deletion_blocker(
     error: &rustok_api::PortError,
-) -> Option<rustok_inventory::CatalogDeletionBlocker> {
-    rustok_inventory::CatalogDeletionBlocker::ALL
+) -> Option<crate::ports::ProductInventoryDeletionBlocker> {
+    crate::ports::ProductInventoryDeletionBlocker::ALL
         .into_iter()
         .find(|blocker| {
             let (kind, code, _) = inventory_deletion_error_policy(blocker);

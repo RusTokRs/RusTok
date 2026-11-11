@@ -11,7 +11,9 @@ mod types;
 
 pub use catalog_read::ProductCatalogReadPort;
 pub use inventory::{
-    EmbeddedInventoryBootstrapAdapter, ProductInitialInventory, ProductInventoryBootstrapPort,
+    AsInventoryConnection, InventoryConnection, MAX_CATALOG_DELETE_VARIANTS,
+    ProductInitialInventory, ProductInventoryDeletionBlocker, ProductInventoryPort,
+    ProductInventoryQuantityBlocker,
 };
 pub use pricing::{
     AsPricingConnection, CatalogBasePriceSnapshot, InitialPrice, PricingConnection,
