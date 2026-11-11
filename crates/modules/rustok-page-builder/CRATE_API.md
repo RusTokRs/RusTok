@@ -31,7 +31,8 @@
 
 ### Domain Invariants
 - Visual authoring contracts maintain vendor-neutral `grapesjs` write/read semantics.
-- Static publish policy: strict sanitization of CSS, attributes, subresources, and URLs (`validate_static_publish_document`).
+- Static publish policy: strict sanitization of CSS, attributes, subresources, and URLs (`validate_static_publish_document`). The policy is a fixed compile-time contract (`PageBuilderStaticPublishPolicy::default()`), not an operator setting.
+- Preview/publish render parity: `static_landing::static_publish_render_policy()` (`allow_http: false`) is the one `RenderPolicy` used by `StaticLandingCompiler::new` and by consumer previews, so a preview never shows an `http://` resource that publication rejects.
 - Materialization identity: context, locale, and scenario are deterministic components of the build artifact identity (`compile_materialized_static_landing`).
 - Interaction providers: host form runtime verifies registered providers (`forms/submit`) and blocks publication on unregistered interaction forms.
 - Rollout toggles: capability flags narrow configured rollout while keeping read paths alive.

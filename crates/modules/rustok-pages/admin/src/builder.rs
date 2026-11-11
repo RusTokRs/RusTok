@@ -16,7 +16,7 @@ use std::sync::Arc;
 #[cfg(feature = "ssr")]
 use async_trait::async_trait;
 #[cfg(feature = "ssr")]
-use fly::{PageSelection, RenderPolicy};
+use fly::PageSelection;
 #[cfg(feature = "ssr")]
 use rustok_api::{Action, Permission, PortActor, PortContext, Resource};
 #[cfg(feature = "ssr")]
@@ -35,6 +35,8 @@ use rustok_page_builder::service::{
     PageBuilderCapabilityPortPolicies, PageBuilderProjectSaveResult, PageBuilderProjectStore,
     PageBuilderRequestAuth, PageBuilderServiceError, PageBuilderServiceResult,
 };
+#[cfg(feature = "ssr")]
+use rustok_page_builder::static_landing::static_publish_render_policy;
 #[cfg(feature = "ssr")]
 use std::time::Duration;
 
@@ -522,12 +524,20 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
         .await
         .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))?;
         if let Some(page) = page {
+            // The starter document must not stand in for a document this principal is not
+            // shown: a capability that passed the preflight with read authority only stops
+            // here instead of previewing a page that is not the stored one.
+            ensure_document_readable(&page)?;
             let seed = crate::core::edit_form_seed_from_page(&page, &self.default_locale);
             let mut project = crate::core::parse_project_data(&seed.project_data_text)
                 .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))?;
             if !page.template.is_empty() && page.template != "default" {
+                // A page that names a template is only meaningful composed into it. When
+                // the composition fails, report it: silently falling back to the bare
+                // project would preview — and let the author keep editing — a document
+                // that is not the one being published (audit §6.2).
                 let locale = page_locale(&page, self.default_locale.clone());
-                if let Ok(preview_json_str) = transport::preview_page_template_document(
+                let composed = transport::preview_page_template_document(
                     Some(self.token.clone()),
                     Some(self.tenant_slug.clone()),
                     page.template.clone(),
@@ -535,10 +545,18 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
                     seed.project_data_text.clone(),
                 )
                 .await
-                    && let Ok(injected) = serde_json::from_str::<Value>(&preview_json_str)
-                {
-                    project = injected;
-                }
+                .map_err(|error| {
+                    PageBuilderServiceError::Runtime(format!(
+                        "Pages template `{}` could not be composed for the builder: {error}",
+                        page.template
+                    ))
+                })?;
+                project = serde_json::from_str::<Value>(&composed).map_err(|error| {
+                    PageBuilderServiceError::Runtime(format!(
+                        "Pages template `{}` returned an invalid composed document: {error}",
+                        page.template
+                    ))
+                })?;
             }
             let canonical = canonicalize_builder_project(project)
                 .map_err(|error| PageBuilderServiceError::Validation(error.to_string()))?;
@@ -567,6 +585,10 @@ impl PageBuilderProjectStore for PagesPageBuilderProjectStore {
         .ok_or_else(|| {
             PageBuilderServiceError::Runtime("Pages document no longer exists".into())
         })?;
+        // A withheld document has no readable revision: comparing against it would report
+        // lost authority (for example a permission revoked during the session) as a
+        // revision conflict, which invites a reload-and-retry that cannot succeed.
+        ensure_document_readable(&current_page)?;
         let current_revision = page_revision(&current_page);
         if revision_id != current_revision {
             return Err(PageBuilderServiceError::Validation(format!(
@@ -633,11 +655,14 @@ impl PageBuilderPreviewRenderingPort for PagesPageBuilderRenderer {
         .ok_or_else(|| {
             PageBuilderServiceError::Runtime("Pages document no longer exists".into())
         })?;
+        // The preview is rendered with the publish compiler's own policy, so it never
+        // shows a resource (for example an `http://` image) that the static publication
+        // of this page would then reject (audit §6.2).
         PageBuilderRenderer
             .render_runtime_document_html(
                 input.project_data.clone(),
                 PageSelection::First,
-                RenderPolicy::default(),
+                static_publish_render_policy(),
                 input.runtime.context.clone(),
             )
             .map_err(|error| PageBuilderServiceError::Runtime(error.to_string()))
@@ -676,6 +701,25 @@ pub fn controller_from_project(
     let project = canonicalize_builder_project(project)?;
     AdminCanvasController::new(page_id, revision_id, project)
         .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))
+}
+
+/// Refuses a page whose authoring document is withheld from the principal.
+///
+/// The project store reads a page before it loads or saves its document. A
+/// withheld document arrives as an absent body, which is also how a page with
+/// no document yet arrives; only `document_readable` tells them apart. Both
+/// store operations stop here, so the starter document is never loaded in
+/// place of a withheld one and a save is never compared against a revision the
+/// principal cannot read.
+#[cfg(feature = "ssr")]
+fn ensure_document_readable(page: &PageDetail) -> PageBuilderServiceResult<()> {
+    if page.document_readable {
+        Ok(())
+    } else {
+        Err(PageBuilderServiceError::Forbidden(
+            crate::core::DOCUMENT_UNAVAILABLE_MESSAGE.to_string(),
+        ))
+    }
 }
 
 pub fn page_revision(page: &PageDetail) -> String {
@@ -735,4 +779,52 @@ fn default_root_component() -> Value {
         "type": "wrapper",
         "components": []
     })
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod document_gate_tests {
+    use super::*;
+
+    fn page_without_body(document_readable: bool) -> PageDetail {
+        PageDetail {
+            id: "page-1".to_string(),
+            version: 3,
+            status: "published".to_string(),
+            template: "default".to_string(),
+            updated_at: "2026-11-10T00:00:00Z".to_string(),
+            available_locales: vec!["en".to_string()],
+            channel_slugs: Vec::new(),
+            translation: None,
+            body: None,
+            document_readable,
+        }
+    }
+
+    #[test]
+    fn a_page_with_no_document_yet_passes_the_document_gate() {
+        assert!(ensure_document_readable(&page_without_body(true)).is_ok());
+    }
+
+    #[test]
+    fn a_withheld_document_is_refused_as_forbidden() {
+        let error = ensure_document_readable(&page_without_body(false))
+            .expect_err("a withheld document must not be loaded or saved");
+        match error {
+            PageBuilderServiceError::Forbidden(message) => {
+                assert_eq!(message, crate::core::DOCUMENT_UNAVAILABLE_MESSAGE);
+            }
+            other => panic!("expected Forbidden, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_withheld_document_reports_the_same_revision_as_an_empty_page() {
+        // This is why the gate runs before the revision comparison: without
+        // it a save against a withheld document would be judged by a revision
+        // token that only says "no body".
+        assert_eq!(
+            page_revision(&page_without_body(false)),
+            page_revision(&page_without_body(true))
+        );
+    }
 }

@@ -15,7 +15,8 @@ Canonical public contract and domain architecture specification for `rustok-page
 - `render_storefront_page`: Renders project data into a `StorefrontPageOutput` with default policy.
 - `render_storefront_page_with_rich_text`: Renders project data with optional platform rich-text renderer.
 - `render_storefront_page_with_context`: Renders project data with dynamic runtime context for repeaters/conditions.
-- `scope_landing_css`: Utilities wrapping project CSS in `@scope` rules and remapping root selectors (`body`, `html`) to `:scope`.
+- `scope_landing_css(raw_css, scope_selector)`: Returns the stylesheet as one complete `@scope (<scope_selector>)` block with the document-level selectors (`body`, `html`, `:root`) remapped to `:scope` where they appear in selector position. The stylesheet is tokenized by the CSS Syntax rules; a `}` that would close the wrapper early is dropped, and unclosed blocks, strings, comments and `url()` tokens are closed. Only the function's own output for the same selector passes through unchanged. The result never contains `</style` (written `<\/style`). Empty or whitespace-only input yields `""`.
+- `LANDING_SCOPE_SELECTOR`: The scope root every surface of this crate uses — `[data-fly-page-body]`, the element each surface renders around the landing markup.
 - `SharedRichTextRenderer`: Thread-safe shared handle to host rich-text renderer.
 
 ### Output Models
@@ -56,7 +57,8 @@ Canonical public contract and domain architecture specification for `rustok-page
 
 ### Domain Invariants
 - **Fluid Frontend Architecture (FFA)**: Strict separation between pure Rust view-models in `core.rs` and Leptos UI rendering components in `ui.rs` and `lib.rs`.
-- **CSS Isolation & Containment**: User-generated styles are strictly scoped via `@scope` with `isolation: isolate; contain: style layout;` preventing host shell contamination.
+- **CSS Isolation & Containment**: Every surface that emits project CSS scopes it with `scope_landing_css` to `LANDING_SCOPE_SELECTOR`; no surface emits it unscoped, and the scope root does not depend on the host-supplied `class`. At-rules that define document-wide names (`@keyframes`, `@font-face`, `@property`) are not confined by `@scope`.
+- **Storefront parity**: `scope_landing_css` and `scopeLandingCss` (`apps/next-frontend/packages/rustok-pages/src/components/css-scope.ts`) return the same text for the same input and selector. `contracts/landing-css-scope-parity.json` holds the shared vectors; both test suites assert it. The Next.js storefront also renders the vectors in a browser (`apps/next-frontend/tests/e2e/landing-css-scope.spec.ts`); that check reaches this crate only through the parity of the two functions.
 - **HTML Sanitization**: All rendered markup passes through Fly's strict sanitizer, stripping raw scripts, invalid URLs, and unauthorized event handlers.
 - **Deterministic Action Forwarding**: Storefront action buttons emit standard custom events without bypassing platform cart or navigation pipelines.
 

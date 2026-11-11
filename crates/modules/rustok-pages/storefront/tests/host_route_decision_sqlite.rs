@@ -19,9 +19,7 @@ use rustok_channel::{
 };
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
-use rustok_pages::dto::{
-    CreatePageInput, PageBodyInput, PageTranslationInput, PatchPageMetadataInput,
-};
+use rustok_pages::dto::{CreatePageInput, PageTranslationInput, PatchPageMetadataInput};
 use rustok_pages::entities::page_route_alias;
 use rustok_pages::{PageService, PagesModule};
 use rustok_pages_storefront as _;
@@ -32,6 +30,8 @@ use sea_orm::{
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use tower::ServiceExt;
 use uuid::Uuid;
+
+mod support;
 
 const RESPONSE_BODY_LIMIT: usize = 1024 * 1024;
 const SERVER_FN_PATH: &str = "/api/fn/pages/route-decision";
@@ -61,6 +61,18 @@ async fn registered_host_route_decision_respects_admission_aliases_and_terminal_
     let app = native_server_fn_router(host);
     let tenant = tenant_context(tenant_id);
     let channel_context = channel_context(&channel);
+
+    // A storefront route renders only the published landing: a published page without one has
+    // nothing to render, so neither its canonical route nor its aliases resolve.
+    let without_landing = call_route(&app, &tenant, &channel_context, "company", "en").await?;
+    assert_eq!(without_landing.status, StatusCode::OK);
+    assert!(without_landing.body.contains("not_found"));
+    assert!(!without_landing.body.contains(&page_id.to_string()));
+    let alias_without_landing = call_route(&app, &tenant, &channel_context, "about", "en").await?;
+    assert_eq!(alias_without_landing.status, StatusCode::OK);
+    assert!(alias_without_landing.body.contains("not_found"));
+
+    support::publish_landing(&db, tenant_id, page_id, "host-route-landing").await?;
 
     let first_alias = call_route(&app, &tenant, &channel_context, "about", "en").await?;
     assert_eq!(first_alias.status, StatusCode::OK);
@@ -210,13 +222,9 @@ async fn create_and_rename_published_page(
             CreatePageInput {
                 translations: vec![translation("About", "about")],
                 template: Some("default".to_string()),
-                body: Some(PageBodyInput {
-                    locale: "en".to_string(),
-                    document: serde_json::json!({
-                        "pages": [],
-                        "test_content": "host-route-source",
-                    }),
-                }),
+                // A page without a Page Builder document is the only kind the non-builder
+                // publish accepts; the test binds its landing separately.
+                body: None,
                 channel_slugs: Some(vec!["web".to_string()]),
                 publish: false,
             },

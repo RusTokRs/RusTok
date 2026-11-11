@@ -10,27 +10,24 @@ use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Method, Request, StatusCode, header};
 use axum::routing::post;
-use chrono::Utc;
 use leptos::prelude::provide_context;
 use leptos_axum::handle_server_fns_with_context;
 use rustok_api::{HostRuntimeContext, TenantContext, TenantContextExtension};
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
-use rustok_pages::dto::{CreatePageInput, PageBodyInput, PageTranslationInput};
-use rustok_pages::entities::page_body;
+use rustok_pages::dto::{CreatePageInput, PageTranslationInput};
 use rustok_pages::services::PageService;
 use rustok_pages::{
     PAGES_STOREFRONT_CACHE_TTL_SECS, PageCacheError, PageCacheGenerationSnapshot,
     PagesCacheReadPort, PagesCacheReadRuntime, PagesModule,
 };
 use rustok_pages_storefront as _;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectOptions, Database, DatabaseConnection, EntityTrait,
-    QueryFilter, Set,
-};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use tower::ServiceExt;
 use uuid::Uuid;
+
+mod support;
 
 const RESPONSE_BODY_LIMIT: usize = 1024 * 1024;
 const SERVER_FN_PATH: &str = "/api/fn/pages/storefront-data";
@@ -170,9 +167,16 @@ async fn native_storefront_server_fn_misses_hits_rotates_and_fails_open() -> Tes
     let tenant = tenant_context(tenant_id);
 
     let first = call_storefront(&app, &tenant).await?;
-    assert!(first.contains("source-v1"));
-    assert!(first.contains("selected_page"));
-    assert!(first.contains("\"format\":\"html\""));
+    // The page content is the published landing; the response carries no authoring document.
+    let first_response: serde_json::Value = serde_json::from_str(&first)?;
+    let first_landing = &first_response["selected_page"]["landing"];
+    assert_eq!(first_landing["locale"], serde_json::json!("en"));
+    assert!(
+        first_landing["html"]
+            .as_str()
+            .is_some_and(|html| html.contains("source-v1"))
+    );
+    assert!(first_response["selected_page"].get("body").is_none());
 
     let first_cache = cache.snapshot();
     assert_eq!(first_cache.generation_reads, 1);
@@ -185,7 +189,7 @@ async fn native_storefront_server_fn_misses_hits_rotates_and_fails_open() -> Tes
     );
     let old_generation_key = first_cache.put_keys[0].clone();
 
-    update_body(&db, page_id, "<main>source-v2</main>").await?;
+    support::publish_landing(&db, tenant_id, page_id, "source-v2").await?;
     let second = call_storefront(&app, &tenant).await?;
     assert_eq!(second, first);
     assert!(!second.contains("source-v2"));
@@ -204,7 +208,7 @@ async fn native_storefront_server_fn_misses_hits_rotates_and_fails_open() -> Tes
     assert!(rotated_cache.keys.contains(&old_generation_key));
     assert!(rotated_cache.keys.contains(&new_generation_key));
 
-    update_body(&db, page_id, "<main>source-v3</main>").await?;
+    support::publish_landing(&db, tenant_id, page_id, "source-v3").await?;
     cache.set_generations(PageCacheGenerationSnapshot::new(5, 7, 9));
     cache.set_get_error(true);
     let fourth = call_storefront(&app, &tenant).await?;
@@ -218,7 +222,7 @@ async fn native_storefront_server_fn_misses_hits_rotates_and_fails_open() -> Tes
             .all(|ttl| *ttl == Duration::from_secs(PAGES_STOREFRONT_CACHE_TTL_SECS))
     );
 
-    update_body(&db, page_id, "<main>source-v4</main>").await?;
+    support::publish_landing(&db, tenant_id, page_id, "source-v4").await?;
     cache.set_get_error(false);
     cache.set_generation_error(true);
     let before_generation_failure = cache.snapshot();
@@ -313,13 +317,9 @@ async fn create_published_page(
                     meta_description: Some("Server function cache packet".to_string()),
                 }],
                 template: Some("default".to_string()),
-                body: Some(PageBodyInput {
-                    locale: "en".to_string(),
-                    document: serde_json::json!({
-                        "pages": [],
-                        "test_content": "source-v1",
-                    }),
-                }),
+                // A page without a Page Builder document is the only kind the non-builder
+                // publish accepts; its landing is bound below.
+                body: None,
                 channel_slugs: None,
                 publish: false,
             },
@@ -333,20 +333,8 @@ async fn create_published_page(
             Some(draft.version),
         )
         .await?;
+    support::publish_landing(db, tenant_id, published.id, "source-v1").await?;
     Ok(published.id)
-}
-
-async fn update_body(db: &DatabaseConnection, page_id: Uuid, content: &str) -> TestResult<()> {
-    let body = page_body::Entity::find()
-        .filter(page_body::Column::PageId.eq(page_id))
-        .one(db)
-        .await?
-        .ok_or_else(|| std::io::Error::other("published page body is missing"))?;
-    let mut active: page_body::ActiveModel = body.into();
-    active.content = Set(content.to_string());
-    active.updated_at = Set(Utc::now().into());
-    active.update(db).await?;
-    Ok(())
 }
 
 fn tenant_context(tenant_id: Uuid) -> TenantContext {

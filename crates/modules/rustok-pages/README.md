@@ -37,6 +37,21 @@ channel visibility, deterministic published landing artifacts and page routes.
   snapshots, owner-local resource/source/target CAS, durable receipts and a
   content-free change cursor.
 - Build, persist and serve deterministic immutable landing artifacts.
+- Keep the page source and the published content apart on every read. `body` (the
+  authoring document) is returned only to a principal that may save or publish that
+  document: `pages:update` or `pages:publish` over the page, the same rules as the write
+  paths, and the draft of a published page follows the same rule. Public readers,
+  customers and read-only staff get `body: null`. Published content is the typed GraphQL
+  field `landing { locale html css artifactHash }`, resolved from the artifact bound to
+  the page for the effective locale and the request channel, and read through the
+  generation-aware Pages cache (see
+  [`DECISIONS/2026-11-10-published-page-landing-transport.md`](../../../DECISIONS/2026-11-10-published-page-landing-transport.md)).
+- Keep unpublished pages with their authors. The record of a page that is not published
+  is readable only with a page authoring permission (`pages:create`, `pages:update`,
+  `pages:delete`, `pages:publish`); on GraphQL every other principal, signed in or not,
+  is a visitor of the request channel. The by-slug read (`pageBySlug`, REST by slug) is the
+  storefront route lookup and resolves published pages only, for an author too; an
+  unpublished page is read by id.
 - Publish module-owned Leptos admin and storefront packages.
 - Enforce `pages:*` permissions in adapters and services.
 
@@ -118,8 +133,9 @@ These are gaps in what the runtime actually does, not accepted design:
   Behaviour notes that come with it: draft saves on published pages no longer bump
   `pages.updated_at`, so list-level `updated_at` stops reflecting unpublished draft edits;
   inline editing of a published page now commits into its body draft (the live page changes
-  only at the next publish or unpublish); body revision history and restore require
-  `pages:update` and history never exposes stored body content; duplication copies current
+  only at the next publish or unpublish); restore requires `pages:update`, body
+  revision history is readable under the document read rule (`pages:update` or
+  `pages:publish` over the page) and never exposes stored body content; duplication copies current
   bodies only and ignores a published source's drafts. Runtime coverage lives in
   `tests/page_body_draft_and_history_sqlite.rs` (SQLite); the Postgres suites and the full
   cargo verification matrix remain CI's authority for this change.
@@ -142,6 +158,49 @@ These are gaps in what the runtime actually does, not accepted design:
   suite for the catalog sync (helper-level unit
   coverage lives in `services/page/symbols.rs`; the cargo verification matrix remains CI's
   authority).
+- **SEO content values come from the published landing only.** The fallback description
+  (used when the translation has no `meta_description`) is the visible text of the landing,
+  and the primary image is its first `<img>`. An image that exists only as a CSS background
+  is not picked up, and a page without a landing has neither value. An authoring view (the
+  SEO editor passes no channel) reads the landing of a channel-restricted page on a channel
+  that admits the page; a public route reads it on the request channel only. The record is
+  tested against a reviewed publish in `src/seo_target_tests.rs`.
+- **Search and the sitemap advertise only pages that have a published landing.** The search
+  document of a page locale carries the text of the landing bound to that locale; the page
+  body and superseded landings are never indexed. A published page without any bound landing
+  has no storefront route and therefore no search document and no sitemap entry. A locale
+  without a landing of its own is indexed with the page titles only.
+- **There is no read-only access to authoring state.** The page body is returned only to a
+  principal that may save or publish the document, and the record of an unpublished page
+  only to a principal that holds a page authoring permission (`pages:create`,
+  `pages:update`, `pages:delete`, `pages:publish`). `pages:read` and `pages:list` grant
+  neither, because public readers and customers hold both; a read-only reviewer role would
+  need a permission of its own. No Pages read decides from the role label alone; the label
+  only narrows `pages:update` of a non-staff principal to its own pages, as it does for the
+  save command.
+- **Only the landing of a page read is cached.** GraphQL `landing` and the document of
+  `GET /api/pages/{id}/artifact` are read through the generation-aware Pages cache (60 s
+  TTL) under one key rule (`published_landing_cache_variant`), so every page event evicts
+  both. The page record (status, translation, channel list) is read from the database on
+  every request, because it decides what each principal may see.
+- **`GET /api/pages/{id}/artifact` is not used by the storefronts of this repository.** It
+  serves the complete standalone document over a cacheable `GET` for iframes, CDNs and
+  external clients; both storefronts embed `landing` instead. The server answers from no
+  entry older than the last page event, but a downstream cache may keep the document for
+  the freshness the response declares (`max-age=60, stale-while-revalidate=300`), also
+  after the page was unpublished or hidden on a channel.
+- **REST `GET /api/pages` is not a storefront transport.** It requires a token and returns
+  the page record without a landing. A token without a page authoring permission reads as
+  a visitor of the request channel, as on GraphQL.
+- **A published page without a landing has no storefront route.** The Next route answers
+  404 and the Leptos host route decision answers `not_found`. The production publish
+  command always binds a landing; only the non-builder service lifecycle
+  (`publish_non_builder`) produces such a page.
+- **Write commands answer with the caller's read.** Create, document save, metadata patch
+  and lifecycle commands return the page as the calling principal may read it, so a
+  principal that may create but neither save nor publish gets its own page back without
+  the body and with `document_readable: false`. This is the rule, not a gap: no response
+  carries more than a read by the same principal would.
 - **Draft state has no dedicated signal in the page list.** `PageBody.state` reports
   `draft` vs `current` on page detail reads only; the admin document list cannot show at a
   glance which published pages carry unpublished draft edits.
@@ -164,6 +223,14 @@ These are gaps in what the runtime actually does, not accepted design:
 - **The admin UI does not surface the revision history.** `rustok-pages-admin` reads the current
   baseline and the scenario release status only, so the trail is reachable through GraphQL and SQL
   rather than in the editor.
+- **Reviewed publish compiles on the request task and reads its inputs twice.** The scenario
+  gate and the compilation are first run before the publish transaction so the page lock is
+  not held during them, and the transaction then re-reads the same inputs to confirm the
+  result (`precompiled_evaluation` in
+  `rustok-page-builder/contracts/page-builder-publish-runtime-review.json`). The work still
+  runs on the async task, not on a blocking pool; symbol and layout expansion still runs under
+  the lock; when the inputs change in between, the gate and the compilation run a second time
+  under the lock. Lock-hold time has not been measured.
 - **Scenario baselines captured before 2026-10-08 are migrated on read, not on deploy.** Their
   integrity hash was FNV-1a 64 and is rewritten to a SHA-256 digest the first time the row is read
   (`upgrade_legacy_baseline_hashes`). A row that is never read keeps the retired hash; that is

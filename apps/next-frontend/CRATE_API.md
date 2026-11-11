@@ -5,7 +5,7 @@
 `@rustok/next-frontend` (`apps/next-frontend`) is the Next.js storefront customer-facing application host and composition root for RusToK. It operates in parallel with `apps/storefront` (Leptos) to deliver a modern, multi-locale, tenant-isolated e-commerce and content portal.
 
 ### Architectural Orientation (FSD)
-- **`src/app`**: Next.js App Router root layouts, locale segments (`/[locale]/...`), SEO endpoints (`robots.ts`, `sitemap.ts`), and route handlers (`/api/draft`, `/api/revalidate`, `/richtext/frame`).
+- **`src/app`**: Next.js App Router root layouts, locale segments (`/[locale]/...`), SEO endpoints (`robots.ts`, `sitemap.ts`), and the `/richtext/frame` route handler.
 - **`src/modules`**: Storefront slot registry and module composition root (`registerStorefrontModule`, `getModulesForSlot`).
 - **`src/features`**: Cross-cutting composite feature integrations (e.g. `src/features/search` wiring product catalog search options to search UI).
 - **`src/shared`**: Reusable integration primitives:
@@ -71,8 +71,9 @@ export function getModulesForSlot(slot: StorefrontSlot, enabledModules?: Iterabl
 - **Backend-Driven Contract**: Maps backend `SeoPageContext` directly to Next.js `Metadata` via `buildSeoMetadata` and JSON-LD scripts via `buildSeoStructuredDataScripts`.
 - **Dynamic Endpoints**: `sitemap.ts` is explicitly marked `dynamic = "force-dynamic"` to ensure newly private or unlisted content is omitted without waiting for redeployment.
 
-### Preview & Revalidation Security
-- `/api/draft` and `/api/revalidate` verify caller tokens using timing-safe buffer comparison (`timingSafeEqual`) to prevent timing attacks.
+### Caching and preview
+- Every storefront read is `cache: "no-store"`; the application keeps no Next.js data cache, so it has no revalidation endpoint and no revalidation secret.
+- There is no storefront Draft Mode: the storefront holds no author credential and renders published content only.
 
 ---
 

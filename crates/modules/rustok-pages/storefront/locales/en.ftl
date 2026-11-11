@@ -16,18 +16,13 @@ pages-block-spacer = spacer
 pages-block-testimonials = testimonials
 pages-block-text = text
 pages-block-video = video
-pages-body-empty = No page body or legacy blocks yet.
+pages-body-empty = This page has no published content yet.
 pages-body-legacyMany =
     { $count ->
         [one] Legacy block-driven page with { $count } block. First block: { $block_type }.
        *[other] Legacy block-driven page with { $count } blocks. First block: { $block_type }.
     }
 pages-body-legacySingle = Legacy block-driven page with 1 { $block_type } block.
-pages-body-rawFormat =
-    { $count ->
-        [one] Stored in `{ $format }` format. Raw body length: { $count } character.
-       *[other] Stored in `{ $format }` format. Raw body length: { $count } characters.
-    }
 pages-error-load = Failed to load pages storefront data
 pages-list-empty = No published pages are available for storefront rendering yet.
 pages-list-missingSlug = missing-slug

@@ -85,6 +85,13 @@ transaction as the domain mutation.
 - Metadata-only changes must not replace an existing page body.
 - Publishing a Fly document validates readiness, compiles a deterministic
   artifact and binds it before the published state becomes visible.
+- `publish_reviewed` decides everything on data read under its transaction's
+  locks, in the order recorded in
+  `rustok-page-builder/contracts/page-builder-publish-runtime-review.json`
+  (`new_operation_order`). The scenario gate and the compilation may be computed
+  before the transaction; the transaction uses that result only when the
+  expanded documents and the promoted baseline it read under its locks are the
+  ones the result was computed from, and otherwise runs both steps itself.
 - Missing providers or invalid projects fail visibly; no fallback model is
   synthesized.
 

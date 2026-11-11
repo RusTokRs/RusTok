@@ -643,3 +643,129 @@ let revision = match original {
 Detection: `rg -n 'idempotency_key|expected_revision' crates/modules crates/utils`;
 trace retries through the owning journal and test both repeated commands and a
 later opposing transition.
+
+## P-CONSUMER-GRAMMAR — Contain untrusted text with the consumer's grammar
+
+- **Category:** Output containment and parser differentials.
+- **Logic dimensions:** Preconditions and bounds, algorithmic correctness.
+- **Observed defect:** Both storefronts wrapped landing CSS in `@scope (…) { … }` after
+  scanning it with a hand-written approximation of CSS: a quote was "escaped" when
+  the previous character was a backslash, `url(` was recognised by its neighbours,
+  and Unicode whitespace was treated as CSS whitespace. A stylesheet could show the
+  scanner one block structure and the browser another, so a `}` the scanner kept
+  closed the wrapper and released the remaining rules onto the host page. The
+  Leptos twin also returned any input starting with `@scope` unchanged, and the
+  result could contain `</style` although it is emitted as `<style>` text.
+- **Canonical solution:** Recognise tokens exactly where the consuming parser
+  starts them (for CSS: comments, strings, escapes, names, hash/at-keyword/numeric
+  tokens, `url()` tokens, `{}`/`()`/`[]` blocks). Make the output well-formed by
+  construction: drop a closer that would end the wrapper, close what the input left
+  open, and pass through only the function's own output. Escape for every grammar
+  the result is embedded in (here CSS inside an HTML raw-text element). Upstream
+  sanitization narrows the input; it does not replace containment at the boundary.
+
+```rust
+let scan = scan_blocks(&css, true); // tokenizer-accurate block structure
+let mut completed = scan.text;      // stray top-level `}` already dropped
+if !scan.open.is_empty() {
+    completed.push('\n');           // backslash-newline is not an escape
+    completed.extend(scan.open.iter().rev().map(|block| block.closer()));
+}
+```
+
+Detection: `rg -n -F -e "[i - 1]" -e "starts_with(\"@scope\")" -e "inner_html" -e "dangerouslySetInnerHTML" crates apps`
+lists previous-character checks, prefix-based pass-through and raw embedding
+sites. A match is a place to read, not a defect: confirm which parser consumes
+the text and compare the scanner with that parser's token rules.
+
+## P-TWIN-VECTORS — Pin twin implementations with shared vectors
+
+- **Category:** Leptos ↔ Next.js parity.
+- **Logic dimensions:** Branch completeness, side-effect completeness.
+- **Observed defect:** `scopeLandingCss` (Next.js) was hardened while its Rust twin
+  `scope_landing_css` (Leptos) kept the original defects; each side had its own
+  copy of the tests, so nothing failed. The Rust side had drifted further: the
+  stylesheet was scoped to a class the host could replace, which left published
+  landings unstyled in `rustok-pages-storefront`, and two of four surfaces emitted
+  project CSS unscoped.
+- **Canonical solution:** When the same pure function exists in Rust and
+  TypeScript, keep one vector file under the owning module's `contracts/` and
+  assert it from both test suites with exact expected output. Change both
+  implementations in one change and add a vector for each behaviour change. Anchor
+  a UI contract to something the component renders itself, never to a value the
+  caller may override, and assert that every surface goes through the shared
+  function.
+
+```rust
+let vectors: ParityVectors =
+    serde_json::from_str(include_str!("../../contracts/landing-css-scope-parity.json"))?;
+for case in vectors.cases {
+    assert_eq!(scope_landing_css(&case.css, SELECTOR), wrap(SELECTOR, &case.inner));
+}
+```
+
+Detection: `rg -n "byte-exact copy|Rust twin|must stay in sync" apps crates` lists
+declared twins; for each, check that a shared fixture exists and that both suites
+read it. Shared vectors prove agreement on the listed inputs only.
+
+## P-RETRY-PROGRESS — A retry must make progress or reach its deadline
+
+- **Category:** Retry loops and repeated side effects.
+- **Logic dimensions:** Branch completeness, state transitions, order/concurrency.
+- **Observed defect:** The draft-session token lock broke a stale lock with
+  `let _ = fs::remove_file(..); continue;`. When the removal failed, the lock was
+  found stale again on every pass and the `continue` skipped the deadline check: an
+  unbounded busy loop on a request thread. In the Pages builder, a draft whose save
+  had failed was saved again on every later intent, including ones that changed
+  nothing, so a persistent failure answered each click with an error and a reload.
+- **Canonical solution:** A branch that retries must either observe the state
+  change that justifies the retry or fall through to the bound. Propagate the
+  failure of the step the retry depends on. Key automatic retries to a change in
+  the input that failed (here the document hash), and leave an explicit action as
+  the way to retry unchanged input. Count a cleanup as done only when it happened.
+
+```rust
+if stale {
+    remove_file_if_present(&lock_path)
+        .map_err(|err| SsrDraftSessionError::Io(err.to_string()))?;
+    continue; // sound only because the stale lock is gone
+}
+```
+
+Detection: `rg -n -B3 "continue;" crates | rg "let _ ="` and
+`rg -n "\.is_ok\(\)|let _ = .*remove|let _ = .*delete" crates` list retries and
+counters that follow a discarded result. Read each loop for the path that reaches
+its deadline.
+
+## P-UNRECOGNIZED-TO-SINK — Input a reader does not recognise never reaches the sink
+
+- **Category:** Output containment and fail-open fallbacks.
+- **Logic dimensions:** Preconditions and bounds, branch completeness.
+- **Observed defect:** The Next storefront fetched a landing artifact only when the
+  page body announced one of two formats that no server path produces. Every real
+  page took the last branch, which wrapped the received text in a `<div>` and
+  rendered it with `dangerouslySetInnerHTML`. That text was the authoring document
+  from GraphQL, so published landings showed their source instead of the page, and
+  markup in an authoring text field reached the browser without the publish
+  sanitizer. The artifact splitter had the same shape: when it found no `<body>` it
+  returned the whole input as the body.
+- **Canonical solution:** A reader accepts the one format its producer writes and
+  rejects everything else with a typed error; it has no branch that returns the
+  input unchanged. Markup reaches an HTML sink only from the reader's success
+  path. Address the trusted resource by identity (page id and locale) instead of
+  deciding from the content what it might be. Pin the reader to the producer with
+  a test that compares the two definitions. Where the owner can expose the trusted
+  value as a typed field, prefer that to any reader: the consumer then has one
+  shape to render and an explicit absent state, and nothing to recognise.
+
+```tsx
+// `landing` is the typed published content; the authoring `body` is not selected.
+const landing = page?.status === "published" ? page.landing : null;
+if (!landing) {
+  notFound();
+}
+```
+
+Detection: `rg -n "dangerouslySetInnerHTML|inner_html" apps crates` lists the sinks;
+for each, follow the value back and read every branch of its reader for one that
+returns or wraps the input (`rg -n "return \{ html: " apps` finds the direct form).

@@ -39,6 +39,33 @@ channel visibility and deterministic published artifacts.
   owns metadata, persistence, lifecycle, routing and artifact selection.
 - Missing providers and invalid documents fail visibly rather than falling back
   to another document model.
+- The page body is authoring state: reads return it only to a principal that may
+  save or publish the document. Storefronts render the published landing (`landing` in
+  GraphQL, the bound artifact in the native adapter) and have no fallback
+  content source. A published page without a landing has no storefront route.
+- Every page read says whether the body was withheld: `document_readable`
+  (`documentReadable` in GraphQL) is `false` when the principal may not read the
+  document, and `true` with an absent body when the page has no document in the
+  effective locale. Write commands answer with the caller's read, so the same
+  rule applies to their responses. The Leptos admin opens the editor only when
+  the field is `true`.
+- SEO values that describe page content (the fallback description, the primary
+  image) are derived from the published landing, never from the page body.
+- The search document of a page carries the text of the landing bound to the
+  page locale. A published page without a bound landing has no search document
+  and no sitemap entry.
+- The revision journal of a document is readable under the document read rule
+  (`pages:update` or `pages:publish` over the page); restoring a revision
+  requires `pages:update`.
+- An unpublished page exists only for principals that hold a page authoring
+  permission; any other principal is a visitor of the request channel, on
+  GraphQL and on REST.
+- The published landing is cached once, on the server, in the generation-aware
+  Pages cache. The GraphQL `landing` entry and the REST landing document entry
+  share one key rule and rotate with every page event; storefront applications
+  keep no cache of their own.
+- These rules are recorded in the [published page landing transport
+  decision](../../../../DECISIONS/2026-11-10-published-page-landing-transport.md).
 
 ## Known Limitations
 

@@ -2,8 +2,8 @@
 
 use crate::access::pages_editor_permissions_from_effective;
 use crate::browser_problem::{
-    BROWSER_DRAFT_GENERATION_CONFLICT_CODE, BROWSER_PROJECT_HASH_CONFLICT_CODE,
-    BROWSER_REVISION_CONFLICT_CODE,
+    BROWSER_DOCUMENT_UNAVAILABLE_CODE, BROWSER_DRAFT_GENERATION_CONFLICT_CODE,
+    BROWSER_PROJECT_HASH_CONFLICT_CODE, BROWSER_REVISION_CONFLICT_CODE,
 };
 use crate::core::{
     SiteSymbolUsageInfo, SymbolValidationError, TemplateValidationError, compute_symbol_usage,
@@ -155,4 +155,5 @@ fn stable_problem_detail_conflict_codes() {
         BROWSER_DRAFT_GENERATION_CONFLICT_CODE,
         "DRAFT_GENERATION_CONFLICT"
     );
+    assert_eq!(BROWSER_DOCUMENT_UNAVAILABLE_CODE, "DOCUMENT_UNAVAILABLE");
 }

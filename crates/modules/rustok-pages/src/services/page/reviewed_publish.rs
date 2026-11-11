@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::Utc;
 use rustok_api::{Action, Resource};
@@ -17,7 +17,7 @@ use rustok_page_builder::{
 use rustok_tenant::TenantService;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseTransaction,
-    DbBackend, EntityTrait, QueryFilter, QuerySelect, TransactionTrait,
+    DbBackend, EntityTrait, QueryFilter, QuerySelect, Select, TransactionTrait,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -41,6 +41,7 @@ use super::helpers::{
 use super::{PAGE_KIND, PageService, PageTransition, WorkingBody};
 
 const PAGE_PUBLISH_OPERATION_FORMAT: &str = "page_publish_operation_v1";
+const REVIEWED_PUBLISH_EVALUATION_FORMAT: &str = "page_reviewed_publish_evaluation_v1";
 const MAX_PUBLISH_IDEMPOTENCY_KEY_BYTES: usize = 191;
 const MAX_DOCUMENT_HTML_BYTES: usize = 2 * 1024 * 1024;
 const MAX_BODY_HTML_BYTES: usize = 1536 * 1024;
@@ -48,10 +49,44 @@ const MAX_CSS_BYTES: usize = 512 * 1024;
 
 type BodyRevisionSnapshot = Vec<(String, String)>;
 type BuilderSourceSet = BTreeMap<String, String>;
+/// Site symbol definitions per locale.
+type SiteSymbolCatalog = BTreeMap<String, Vec<serde_json::Value>>;
+/// Layout template rows of one template key, per locale.
+type TemplateRecordSet = BTreeMap<String, PageTemplateRecord>;
 
 struct ReviewedCompiledLanding {
     compiled: CompiledLandingArtifact,
     sanitized_hash: String,
+}
+
+/// The promoted scenario baseline row as stored, before integrity checks.
+#[derive(Serialize)]
+struct StoredScenarioBaseline {
+    baseline_id: String,
+    baseline_hash: String,
+    source_project_hash: String,
+    baseline: serde_json::Value,
+}
+
+impl From<page_builder_scenario_baseline::Model> for StoredScenarioBaseline {
+    fn from(model: page_builder_scenario_baseline::Model) -> Self {
+        Self {
+            baseline_id: model.baseline_id,
+            baseline_hash: model.baseline_hash,
+            source_project_hash: model.source_project_hash,
+            baseline: model.baseline,
+        }
+    }
+}
+
+/// The scenario gate and compilation of a reviewed publish, computed before
+/// the publish transaction took its locks (audit §4.2).
+struct PrecompiledReviewedPublish {
+    /// [`reviewed_publish_fingerprint`] of the inputs `outcome` was computed
+    /// from.
+    fingerprint: String,
+    /// What the gate followed by the compilation returned for those inputs.
+    outcome: PagesResult<Vec<ReviewedCompiledLanding>>,
 }
 
 impl PageService {
@@ -61,6 +96,14 @@ impl PageService {
     /// runtime materialization, immutable artifact staging, binding switch, page state,
     /// transactional outbox events and the durable operation receipt. An exact replay returns the
     /// stored receipt without rebuilding artifacts or emitting duplicate events.
+    ///
+    /// The scenario gate, sanitization and materialization are CPU-heavy, so they are first
+    /// attempted before the transaction opens (see `precompile_reviewed_publish`). The
+    /// transaction still reads every input under its locks, in the same order and with the same
+    /// checks as without that attempt, and reuses the attempt's result only when the expanded
+    /// documents and the promoted baseline are the ones it was computed from; otherwise it gates
+    /// and compiles under the locks. The attempt changes how long the locks are held, not what
+    /// is published or which error is reported.
     pub async fn publish_reviewed(
         &self,
         tenant_id: Uuid,
@@ -81,6 +124,18 @@ impl PageService {
             &expected_body_revisions,
             reviewed.review_hash.as_str(),
         ))?;
+
+        let precompiled = self
+            .precompile_reviewed_publish(
+                tenant_id,
+                &security,
+                page_id,
+                input.expected_version,
+                &expected_body_revisions,
+                &idempotency_key,
+                &reviewed,
+            )
+            .await;
 
         let txn = self.db.begin().await?;
         let existing_page = self.find_page_for_update(&txn, tenant_id, page_id).await?;
@@ -129,50 +184,30 @@ impl PageService {
         // Layout templates and site symbols resolve freshly at publish: the stored catalogs win over
         // each body's embedded working copy, and every instance expands into its
         // definition before sanitization so re-publishing re-issues occurrences.
-        let site_symbols = super::symbols::load_site_symbols_by_locale(&txn, tenant_id).await?;
-        let template_records =
-            if existing_page.template.is_empty() || existing_page.template == "default" {
-                HashMap::new()
-            } else {
-                let rows = page_template::Entity::find()
-                    .filter(page_template::Column::TenantId.eq(tenant_id))
-                    .filter(page_template::Column::TemplateKey.eq(&existing_page.template))
-                    .all(&txn)
-                    .await?;
-                let mut by_locale = HashMap::new();
-                for row in rows {
-                    let record = PageTemplateRecord::try_from(row)?;
-                    by_locale.insert(record.locale.clone(), record);
-                }
-                by_locale
-            };
-        let mut builder_sources = builder_sources;
-        for (locale, content) in builder_sources.iter_mut() {
-            let symbols = site_symbols.get(locale).cloned().unwrap_or_default();
-            super::symbols::assert_reviewed_symbol_snapshot(content, &symbols)?;
-            if existing_page.template.is_empty() || existing_page.template == "default" {
-                *content = super::symbols::apply_site_symbols_to_content(content, &symbols)?;
-            } else {
-                let template_record = template_records.get(locale).ok_or_else(|| {
-                    PagesError::validation(format!(
-                        "Page template `{}` is not defined for locale `{}`",
-                        existing_page.template, locale
-                    ))
-                })?;
-                *content = super::layout::compose_layout_document(
-                    content,
-                    &template_record.header_symbol_ids,
-                    &template_record.footer_symbol_ids,
-                    &symbols,
-                )?;
-            }
-        }
+        let (site_symbols, template_records) =
+            load_reviewed_publish_catalogs(&txn, tenant_id, &existing_page.template).await?;
+        let builder_sources = expand_builder_sources(
+            &existing_page.template,
+            builder_sources,
+            &site_symbols,
+            &template_records,
+        )?;
         let project_values = parse_builder_project_values(&builder_sources)?;
         ensure_builder_publish_enabled_in_tx(&txn, tenant_id).await?;
-        ensure_candidates_allowed_in_tx(&txn, tenant_id, page_id, &reviewed, project_values)
-            .await?;
+        let baseline = load_scenario_baseline_in_tx(&txn, tenant_id, page_id).await?;
 
-        let compiled = compile_builder_sources_with_reviewed_runtime(builder_sources, &reviewed)?;
+        // The gate and the compilation read nothing but the expanded documents, the promoted
+        // baseline and the reviewed runtime of this request. A result computed before the locks
+        // were taken is used only if it was computed from these documents and this baseline;
+        // otherwise both steps run here.
+        let fingerprint = reviewed_publish_fingerprint(&builder_sources, baseline.as_ref())?;
+        let compiled = match precompiled {
+            Some(precompiled) if precompiled.fingerprint == fingerprint => precompiled.outcome?,
+            _ => {
+                ensure_candidates_allowed(baseline, &reviewed, project_values)?;
+                compile_builder_sources_with_reviewed_runtime(builder_sources, &reviewed)?
+            }
+        };
         let sanitized_set_hash = sanitized_set_hash(&compiled)?;
         let artifact_set_hash = artifact_set_hash(&compiled)?;
         for item in &compiled {
@@ -253,6 +288,224 @@ impl PageService {
         txn.commit().await?;
         Ok(result)
     }
+
+    /// Runs the scenario gate and the compilation of a reviewed publish before the publish
+    /// transaction, without locks (audit §4.2).
+    ///
+    /// Returns `None` whenever the publish transaction would not reach those steps anyway
+    /// (missing page, missing permission, replay, version or body-revision conflict, feature
+    /// switched off, a document that does not expand or parse) or a read fails; such a failure
+    /// is logged at debug level. Nothing decided here is authoritative: the transaction repeats
+    /// every check under its locks and reports the real error, so a failure in this method only
+    /// means the gate and the compilation run under the locks.
+    #[allow(clippy::too_many_arguments)]
+    async fn precompile_reviewed_publish(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        page_id: Uuid,
+        expected_version: i32,
+        expected_body_revisions: &BodyRevisionSnapshot,
+        idempotency_key: &str,
+        reviewed: &PageBuilderReviewedPublishRuntime,
+    ) -> Option<PrecompiledReviewedPublish> {
+        match self
+            .try_precompile_reviewed_publish(
+                tenant_id,
+                security,
+                page_id,
+                expected_version,
+                expected_body_revisions,
+                idempotency_key,
+                reviewed,
+            )
+            .await
+        {
+            Ok(precompiled) => precompiled,
+            Err(error) => {
+                tracing::debug!(
+                    %error,
+                    %tenant_id,
+                    %page_id,
+                    "Reviewed publish was not precompiled; the publish transaction decides"
+                );
+                None
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn try_precompile_reviewed_publish(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        page_id: Uuid,
+        expected_version: i32,
+        expected_body_revisions: &BodyRevisionSnapshot,
+        idempotency_key: &str,
+        reviewed: &PageBuilderReviewedPublishRuntime,
+    ) -> PagesResult<Option<PrecompiledReviewedPublish>> {
+        let page = self.find_page(tenant_id, page_id).await?;
+        // Authorize before spending CPU: a caller who may not publish this page must not be
+        // able to make the server compile it.
+        enforce_owned_scope(security, Resource::Pages, Action::Publish, page.author_id)?;
+        if page.version != expected_version {
+            return Ok(None);
+        }
+        let replayed = page_publish_operation::Entity::find()
+            .filter(page_publish_operation::Column::TenantId.eq(tenant_id))
+            .filter(page_publish_operation::Column::PageId.eq(page_id))
+            .filter(page_publish_operation::Column::IdempotencyKey.eq(idempotency_key))
+            .one(&self.db)
+            .await?;
+        if replayed.is_some() {
+            return Ok(None);
+        }
+        let bodies = self.load_working_bodies(tenant_id, page_id).await?;
+        if body_revision_snapshot(&bodies) != *expected_body_revisions {
+            return Ok(None);
+        }
+        let builder_sources = collect_builder_sources(&bodies, None, true);
+        if builder_sources.is_empty() {
+            return Ok(None);
+        }
+        let module = TenantService::new(self.db.clone())
+            .find_tenant_module(tenant_id, "pages")
+            .await?;
+        if !builder_publish_enabled(module.as_ref().map(|module| &module.settings)) {
+            return Ok(None);
+        }
+
+        let (site_symbols, template_records) =
+            load_reviewed_publish_catalogs(&self.db, tenant_id, &page.template).await?;
+        let builder_sources = expand_builder_sources(
+            &page.template,
+            builder_sources,
+            &site_symbols,
+            &template_records,
+        )?;
+        let project_values = parse_builder_project_values(&builder_sources)?;
+        let baseline = scenario_baseline_query(tenant_id, page_id)
+            .one(&self.db)
+            .await?
+            .map(StoredScenarioBaseline::from);
+        let fingerprint = reviewed_publish_fingerprint(&builder_sources, baseline.as_ref())?;
+        // The same two steps, in the same order, as the transaction runs when it cannot reuse
+        // this result.
+        let outcome =
+            ensure_candidates_allowed(baseline, reviewed, project_values).and_then(|()| {
+                compile_builder_sources_with_reviewed_runtime(builder_sources, reviewed)
+            });
+        Ok(Some(PrecompiledReviewedPublish {
+            fingerprint,
+            outcome,
+        }))
+    }
+}
+
+/// Whether a page uses the built-in layout, which has no stored template rows.
+fn uses_default_template(template_key: &str) -> bool {
+    template_key.is_empty() || template_key == "default"
+}
+
+/// Identity of everything the scenario gate and the compilation read besides
+/// the reviewed runtime of the request: every locale's expanded document and
+/// the promoted baseline as stored. A result computed for an equal
+/// fingerprint can be reused; anything else is recomputed, so a spurious
+/// mismatch costs time and never correctness.
+fn reviewed_publish_fingerprint(
+    builder_sources: &BuilderSourceSet,
+    baseline: Option<&StoredScenarioBaseline>,
+) -> PagesResult<String> {
+    stable_hash(&(
+        REVIEWED_PUBLISH_EVALUATION_FORMAT,
+        builder_sources,
+        baseline,
+    ))
+}
+
+/// Loads the site symbol catalog and the page's layout template rows, keyed by
+/// locale. Runs on the pool for the attempt before the publish transaction and
+/// on the transaction for the authoritative read.
+async fn load_reviewed_publish_catalogs<C: ConnectionTrait>(
+    conn: &C,
+    tenant_id: Uuid,
+    template_key: &str,
+) -> PagesResult<(SiteSymbolCatalog, TemplateRecordSet)> {
+    let site_symbols: SiteSymbolCatalog =
+        super::symbols::load_site_symbols_by_locale(conn, tenant_id)
+            .await?
+            .into_iter()
+            .collect();
+    let mut template_records = TemplateRecordSet::new();
+    if !uses_default_template(template_key) {
+        let rows = page_template::Entity::find()
+            .filter(page_template::Column::TenantId.eq(tenant_id))
+            .filter(page_template::Column::TemplateKey.eq(template_key))
+            .all(conn)
+            .await?;
+        for row in rows {
+            let record = PageTemplateRecord::try_from(row)?;
+            template_records.insert(record.locale.clone(), record);
+        }
+    }
+    Ok((site_symbols, template_records))
+}
+
+fn scenario_baseline_query(
+    tenant_id: Uuid,
+    page_id: Uuid,
+) -> Select<page_builder_scenario_baseline::Entity> {
+    page_builder_scenario_baseline::Entity::find()
+        .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
+        .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
+}
+
+/// Loads the promoted scenario baseline of a page under the shared row lock
+/// that keeps it stable until the publish commits.
+async fn load_scenario_baseline_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+) -> PagesResult<Option<StoredScenarioBaseline>> {
+    let query = || scenario_baseline_query(tenant_id, page_id);
+    let model = match txn.get_database_backend() {
+        DbBackend::Sqlite => query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
+        _ => unreachable!("unsupported SeaORM database backend"),
+    };
+    Ok(model.map(StoredScenarioBaseline::from))
+}
+
+/// Expands site symbols and the page's layout template into every locale's
+/// document. The stored catalogs win over each body's embedded working copy.
+/// No I/O.
+fn expand_builder_sources(
+    template_key: &str,
+    mut builder_sources: BuilderSourceSet,
+    site_symbols: &SiteSymbolCatalog,
+    template_records: &TemplateRecordSet,
+) -> PagesResult<BuilderSourceSet> {
+    for (locale, content) in builder_sources.iter_mut() {
+        let symbols = site_symbols.get(locale).cloned().unwrap_or_default();
+        super::symbols::assert_reviewed_symbol_snapshot(content, &symbols)?;
+        if uses_default_template(template_key) {
+            *content = super::symbols::apply_site_symbols_to_content(content, &symbols)?;
+        } else {
+            let template_record = template_records.get(locale).ok_or_else(|| {
+                PagesError::validation(format!(
+                    "Page template `{template_key}` is not defined for locale `{locale}`"
+                ))
+            })?;
+            *content = super::layout::compose_layout_document(
+                content,
+                &template_record.header_symbol_ids,
+                &template_record.footer_symbol_ids,
+                &symbols,
+            )?;
+        }
+    }
+    Ok(builder_sources)
 }
 
 fn require_builder_sources(sources: BuilderSourceSet) -> PagesResult<BuilderSourceSet> {
@@ -348,38 +601,32 @@ fn compile_builder_sources_with_reviewed_runtime(
         .collect()
 }
 
+/// Whether the tenant's `pages` module settings allow Page Builder publication.
+/// A tenant without a `pages` module row runs on the defaults, which allow it.
+fn builder_publish_enabled(settings: Option<&serde_json::Value>) -> bool {
+    settings
+        .is_none_or(|settings| is_builder_enabled(settings) && is_builder_publish_enabled(settings))
+}
+
 async fn ensure_builder_publish_enabled_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
 ) -> PagesResult<()> {
     let module = TenantService::find_tenant_module_locked_in_tx(txn, tenant_id, "pages").await?;
-    let enabled = module.as_ref().is_none_or(|module| {
-        is_builder_enabled(&module.settings) && is_builder_publish_enabled(&module.settings)
-    });
-    if !enabled {
+    if !builder_publish_enabled(module.as_ref().map(|module| &module.settings)) {
         return Err(PagesError::feature_disabled("builder.publish.enabled"));
     }
     Ok(())
 }
 
-async fn ensure_candidates_allowed_in_tx(
-    txn: &DatabaseTransaction,
-    tenant_id: Uuid,
-    page_id: Uuid,
+/// Gates the publish candidates against the promoted scenario baseline, when
+/// the page has one.
+fn ensure_candidates_allowed(
+    stored: Option<StoredScenarioBaseline>,
     reviewed: &PageBuilderReviewedPublishRuntime,
     project_data: Vec<serde_json::Value>,
 ) -> PagesResult<()> {
-    let query = || {
-        page_builder_scenario_baseline::Entity::find()
-            .filter(page_builder_scenario_baseline::Column::TenantId.eq(tenant_id))
-            .filter(page_builder_scenario_baseline::Column::PageId.eq(page_id))
-    };
-    let model = match txn.get_database_backend() {
-        DbBackend::Sqlite => query().one(txn).await?,
-        DbBackend::Postgres | DbBackend::MySql => query().lock_shared().one(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
-    };
-    let Some(model) = model else {
+    let Some(model) = stored else {
         return Ok(());
     };
     let baseline: RuntimeScenarioReleaseBaseline = serde_json::from_value(model.baseline.clone())
@@ -723,6 +970,103 @@ mod tests {
         reviewed.context = json!({ "page": { "title": "Changed" } });
 
         assert!(compile_builder_sources_with_reviewed_runtime(BTreeMap::new(), &reviewed).is_err());
+    }
+
+    fn sources(locale: &str, source: &str) -> BuilderSourceSet {
+        BTreeMap::from([(locale.to_string(), source.to_string())])
+    }
+
+    fn stored_baseline(baseline_hash: &str) -> StoredScenarioBaseline {
+        StoredScenarioBaseline {
+            baseline_id: "baseline-1".to_string(),
+            baseline_hash: baseline_hash.to_string(),
+            source_project_hash: "source".to_string(),
+            baseline: json!({}),
+        }
+    }
+
+    fn reviewed_runtime() -> PageBuilderReviewedPublishRuntime {
+        PageBuilderReviewedPublishRuntime::new(
+            "landing-primary",
+            json!({ "page": { "title": "Reviewed" } }),
+        )
+        .expect("reviewed runtime")
+    }
+
+    /// A result precompiled outside the publish locks is reused only for an
+    /// equal fingerprint, so the fingerprint has to move with everything the
+    /// gate and the compilation read (audit §4.2).
+    #[test]
+    fn evaluation_fingerprint_tracks_documents_and_baseline() {
+        const SOURCE: &str = r#"{"pages":[]}"#;
+        let base = reviewed_publish_fingerprint(&sources("en", SOURCE), None).expect("fingerprint");
+        assert!(is_sha256(&base));
+        assert_eq!(
+            base,
+            reviewed_publish_fingerprint(&sources("en", SOURCE), None).expect("fingerprint")
+        );
+
+        let changed = [
+            reviewed_publish_fingerprint(&sources("en", r#"{"pages":[{}]}"#), None),
+            reviewed_publish_fingerprint(&sources("de", SOURCE), None),
+            reviewed_publish_fingerprint(&sources("en", SOURCE), Some(&stored_baseline("hash"))),
+            reviewed_publish_fingerprint(&sources("en", SOURCE), Some(&stored_baseline("other"))),
+        ];
+        let mut fingerprints = BTreeSet::from([base]);
+        for fingerprint in changed {
+            fingerprints.insert(fingerprint.expect("fingerprint"));
+        }
+        assert_eq!(fingerprints.len(), 5);
+    }
+
+    #[test]
+    fn expansion_requires_the_layout_template_for_every_locale() {
+        let error = expand_builder_sources(
+            "landing",
+            sources("en", r#"{"pages":[]}"#),
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        )
+        .expect_err("a missing template must fail the expansion");
+        assert!(
+            error
+                .to_string()
+                .contains("Page template `landing` is not defined for locale `en`")
+        );
+    }
+
+    #[test]
+    fn scenario_gate_applies_only_to_pages_with_a_promoted_baseline() {
+        let reviewed = reviewed_runtime();
+        assert!(ensure_candidates_allowed(None, &reviewed, vec![json!({})]).is_ok());
+
+        // A stored baseline that does not decode is rejected, not skipped.
+        let corrupt = StoredScenarioBaseline {
+            baseline_id: "baseline-1".to_string(),
+            baseline_hash: "hash".to_string(),
+            source_project_hash: "source".to_string(),
+            baseline: json!("not a baseline"),
+        };
+        assert!(ensure_candidates_allowed(Some(corrupt), &reviewed, vec![json!({})]).is_err());
+    }
+
+    #[test]
+    fn builder_publish_gate_reads_the_pages_module_settings() {
+        assert!(builder_publish_enabled(None));
+        assert!(builder_publish_enabled(Some(&json!({}))));
+        assert!(!builder_publish_enabled(Some(
+            &json!({ "builder": { "enabled": false } })
+        )));
+        assert!(!builder_publish_enabled(Some(
+            &json!({ "builder": { "publish": { "enabled": false } } })
+        )));
+    }
+
+    #[test]
+    fn default_template_keys_have_no_stored_rows() {
+        assert!(uses_default_template(""));
+        assert!(uses_default_template("default"));
+        assert!(!uses_default_template("landing"));
     }
 
     #[test]

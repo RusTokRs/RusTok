@@ -31,7 +31,7 @@ use rustok_pages::dto::{
     ReviewedPagePublishRuntimeInput,
 };
 use rustok_pages::entities::page_publish_operation;
-use rustok_pages::services::PageService;
+use rustok_pages::services::{PageBuilderArtifactService, PageService};
 use rustok_pages::{
     PAGES_CACHE_ENTITY_KIND, PAGES_STOREFRONT_CACHE_TTL_SECS, PageCacheError,
     PageCacheGenerationSnapshot, PageCacheInvalidationCause, PageCacheInvalidationEventHandler,
@@ -58,7 +58,8 @@ type TestResult<T> = Result<T, Box<dyn StdError + Send + Sync>>;
 struct ReviewedFixture {
     page_id: Uuid,
     publish_operation_id: Uuid,
-    expected_artifact_url: String,
+    landing_artifact_hash: String,
+    landing_html: String,
 }
 
 #[derive(Default)]
@@ -301,12 +302,7 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
 
     let before_published_delivery = call_storefront(&app, &tenant, &channel).await?;
     assert_eq!(before_published_delivery.status, StatusCode::OK);
-    assert!(
-        before_published_delivery
-            .body
-            .contains(&fixture.expected_artifact_url)
-    );
-    assert!(before_published_delivery.body.contains("fly_artifact_url"));
+    assert_published_landing(&before_published_delivery.body, &fixture)?;
     let old_cache = cache.snapshot();
     assert_eq!(
         old_cache.generations,
@@ -369,7 +365,7 @@ async fn reviewed_node_published_relay_rotates_registered_native_route_key_befor
     let after_rotation = call_storefront(&app, &tenant, &channel).await?;
     assert_eq!(after_rotation.status, StatusCode::OK);
     assert_eq!(after_rotation.body, before_published_delivery.body);
-    assert!(after_rotation.body.contains(&fixture.expected_artifact_url));
+    assert_published_landing(&after_rotation.body, &fixture)?;
     let refilled = cache.snapshot();
     assert_eq!(
         refilled.generations,
@@ -634,11 +630,35 @@ async fn create_reviewed_published_page(
     assert_eq!(publish.sanitized_set_hash.len(), 64);
     assert_eq!(publish.artifact_set_hash.len(), 64);
 
+    let landing = PageBuilderArtifactService::new(db.clone())
+        .load_public_bound_artifact_with_fallback(tenant_id, draft.id, "en", None, Some("web"))
+        .await?
+        .ok_or_else(|| std::io::Error::other("reviewed publish did not bind a public landing"))?;
+    assert_eq!(landing.artifact_hash.len(), 64);
+    assert!(landing.body_html.contains("Relay continuity artifact"));
+
     Ok(ReviewedFixture {
         page_id: draft.id,
         publish_operation_id: publish.operation_id,
-        expected_artifact_url: format!("/api/pages/{}/artifact?locale=en&channel=web", draft.id),
+        landing_artifact_hash: landing.artifact_hash,
+        landing_html: landing.body_html,
     })
+}
+
+/// The storefront response carries the published landing of the selected page, as stored by
+/// the reviewed publish, and nothing of the authoring document.
+fn assert_published_landing(response_body: &str, fixture: &ReviewedFixture) -> TestResult<()> {
+    let response: serde_json::Value = serde_json::from_str(response_body)?;
+    let landing = &response["selected_page"]["landing"];
+    assert_eq!(landing["locale"], json!("en"));
+    assert_eq!(
+        landing["artifactHash"],
+        json!(fixture.landing_artifact_hash)
+    );
+    assert_eq!(landing["html"], json!(fixture.landing_html));
+    assert!(response["selected_page"].get("body").is_none());
+    assert!(!response_body.contains("flyPageMeta"));
+    Ok(())
 }
 
 async fn publication_events(

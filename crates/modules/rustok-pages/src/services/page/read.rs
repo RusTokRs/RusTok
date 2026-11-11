@@ -17,9 +17,7 @@ use crate::entities::{
     page, page_body, page_body_draft, page_channel_visibility, page_translation,
 };
 use crate::error::{PagesError, PagesResult};
-use crate::services::rbac::{
-    can_read_draft_bodies, can_read_non_public_pages, enforce_owned_scope, enforce_scope,
-};
+use crate::services::rbac::{can_read_non_public_pages, can_read_page_source, enforce_scope};
 
 use super::helpers::{
     apply_public_page_channel_filter, available_locales, body_for_locale, body_for_locale_draft,
@@ -60,12 +58,16 @@ impl PageService {
         }
         let channel_slugs = self.load_channel_slugs(tenant_id, page_id).await?;
         let translations = self.load_translations(tenant_id, page_id).await?;
-        let bodies = self.load_bodies(tenant_id, page_id).await?;
-        let include_drafts = can_read_draft_bodies(&security);
-        let drafts = if include_drafts {
-            self.load_drafts(tenant_id, page_id).await?
+        // The working copy (current bodies and drafts) is loaded only for a reader that may
+        // save or publish this document.
+        let include_drafts = can_read_page_source(&security, page.author_id);
+        let (bodies, drafts) = if include_drafts {
+            (
+                self.load_bodies(tenant_id, page_id).await?,
+                self.load_drafts(tenant_id, page_id).await?,
+            )
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
         self.build_page_response(
             &security,
@@ -83,6 +85,12 @@ impl PageService {
         .await
     }
 
+    /// Resolves the page a storefront route names by its slug.
+    ///
+    /// Only a published page is returned, whoever asks: an unpublished page has no public
+    /// route, and an author reads it by id ([`Self::get_with_locale_fallback`]). The document
+    /// of the page is included for a caller that may read the page source, as on the by-id
+    /// read.
     #[instrument(skip(self, security))]
     pub async fn get_by_slug_with_locale_fallback(
         &self,
@@ -115,7 +123,11 @@ impl PageService {
         }
         let channel_slugs = self.load_channel_slugs(tenant_id, page.id).await?;
         let translations = self.load_translations(tenant_id, page.id).await?;
-        let bodies = self.load_bodies(tenant_id, page.id).await?;
+        let bodies = if can_read_page_source(&security, page.author_id) {
+            self.load_bodies(tenant_id, page.id).await?
+        } else {
+            Vec::new()
+        };
         self.build_page_response(
             &security,
             page,
@@ -484,25 +496,31 @@ impl PageService {
             parts.locale.as_str(),
             parts.fallback_locale.as_deref(),
         );
-        let mut response_body = translation.translation.and_then(|_| {
-            let locale = translation.effective_locale.as_str();
-            if include_drafts && let Some(draft) = body_for_locale_draft(&drafts, locale) {
-                return Some(page_body_response(
-                    &WorkingBody::from(draft),
-                    PageBodyState::Draft,
-                ));
-            }
-            body_for_locale(&bodies, locale)
-                .map(|body| page_body_response(&WorkingBody::from(body), PageBodyState::Current))
-        });
+        // The body is the authoring document, not render authority: readers without source
+        // authority get none, whatever the caller loaded. They render the published landing
+        // artifact (`PageBuilderArtifactService::load_public_bound_artifact_with_fallback`).
+        let document_readable = can_read_page_source(security, page.author_id);
+        let mut response_body = if document_readable {
+            translation.translation.and_then(|_| {
+                let locale = translation.effective_locale.as_str();
+                if include_drafts && let Some(draft) = body_for_locale_draft(&drafts, locale) {
+                    return Some(page_body_response(
+                        &WorkingBody::from(draft),
+                        PageBodyState::Draft,
+                    ));
+                }
+                body_for_locale(&bodies, locale).map(|body| {
+                    page_body_response(&WorkingBody::from(body), PageBodyState::Current)
+                })
+            })
+        } else {
+            None
+        };
         // The site symbol catalog is shared across pages: the document's embedded
         // `flySymbols` block is a working cache and the stored catalog wins on
-        // every read, so operators always edit the current definitions.
-        if include_drafts
-            && enforce_owned_scope(security, Resource::Pages, Action::Update, page.author_id)
-                .is_ok()
-            && let Some(response_body) = response_body.as_mut()
-        {
+        // every read, so the working copy is shown with the definitions a save or a publish
+        // would use. A body is present here only for a reader that may save or publish it.
+        if include_drafts && let Some(response_body) = response_body.as_mut() {
             let symbols = super::symbols::load_site_symbols_by_locale(&self.db, page.tenant_id)
                 .await?
                 .remove(&response_body.locale)
@@ -530,6 +548,7 @@ impl PageService {
             translation: translation.translation.map(page_translation_response),
             translations: translations.iter().map(page_translation_response).collect(),
             body: response_body,
+            document_readable,
             channel_slugs: parts.channel_slugs,
             metadata: page.metadata,
         })

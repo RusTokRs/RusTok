@@ -49,7 +49,7 @@
       "path": "crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs",
       "markers": [
         "load_public_bound_artifact_with_fallback",
-        "published_artifact_page_body"
+        "fn published_landing("
       ]
     }
   ],

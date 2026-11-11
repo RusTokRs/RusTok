@@ -1,4 +1,4 @@
-use crate::model::{PageDetail, PageListItem};
+use crate::model::{PageDetail, PageListItem, PublishedLanding};
 
 pub fn selected_page_title(page: &PageDetail, default_title: String) -> String {
     page.translation
@@ -18,18 +18,12 @@ pub fn selected_page_effective_locale(page: &PageDetail, default_locale: String)
     page.effective_locale.clone().unwrap_or(default_locale)
 }
 
-pub fn summarize_page_content<F>(
-    page: &PageDetail,
-    summarize_content: F,
-    empty_fallback: String,
-) -> String
-where
-    F: Fn(&str, &str) -> String,
-{
-    page.body
-        .as_ref()
-        .map(|body| summarize_content(body.content.as_str(), body.format.as_str()))
-        .unwrap_or(empty_fallback)
+/// The content of the selected page: its published landing, when it has one.
+///
+/// This is the only content source. A page without a published landing has nothing to render;
+/// the authoring document is not part of [`PageDetail`].
+pub fn selected_page_landing(page: &PageDetail) -> Option<PublishedLanding> {
+    page.landing.clone()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,12 +34,6 @@ pub struct SelectedPageEmptyState {
 
 pub fn selected_page_empty_state(title: String, body: String) -> SelectedPageEmptyState {
     SelectedPageEmptyState { title, body }
-}
-
-pub fn raw_body_format_summary(format: &str, char_count: usize, template: &str) -> String {
-    template
-        .replace("{format}", format)
-        .replace("{count}", &char_count.to_string())
 }
 
 pub fn count_label(template: &str, count: u64) -> String {
@@ -136,7 +124,7 @@ pub fn storefront_page_list_item_view(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{PageBody, PageDetail, PageTranslation};
+    use crate::model::{PageDetail, PageTranslation, PublishedLanding};
 
     #[test]
     fn storefront_link_and_status_helpers_are_core_owned() {
@@ -181,8 +169,14 @@ mod tests {
     }
 
     #[test]
-    fn storefront_grapesjs_summary_uses_only_current_body() {
-        let page = PageDetail {
+    fn selected_page_content_is_the_published_landing_only() {
+        let landing = PublishedLanding {
+            locale: "en".to_string(),
+            html: "<h1>Landing</h1>".to_string(),
+            css: "h1 { color: red; }".to_string(),
+            artifact_hash: "hash".to_string(),
+        };
+        let mut page = PageDetail {
             effective_locale: Some("en".to_string()),
             translation: Some(PageTranslation {
                 locale: "en".to_string(),
@@ -191,19 +185,11 @@ mod tests {
                 meta_title: None,
                 meta_description: None,
             }),
-            body: Some(PageBody {
-                locale: "en".to_string(),
-                content: "{\"pages\":[]}".to_string(),
-                format: "grapesjs".to_string(),
-            }),
+            landing: Some(landing.clone()),
         };
+        assert_eq!(selected_page_landing(&page), Some(landing));
 
-        let summary = summarize_page_content(
-            &page,
-            |content, format| raw_body_format_summary(format, content.len(), "{format}:{count}"),
-            "empty".to_string(),
-        );
-
-        assert_eq!(summary, "grapesjs:12");
+        page.landing = None;
+        assert_eq!(selected_page_landing(&page), None);
     }
 }

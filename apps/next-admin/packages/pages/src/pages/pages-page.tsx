@@ -12,10 +12,8 @@ interface PagesPageProps {
   tenantId?: string | null;
   /** Origin of the Rust (FFA/Leptos) admin that owns the visual builder UI. */
   builderBaseUrl?: string | null;
-  /** Storefront base URL for live storefront preview links. */
+  /** Storefront base URL for "View live" links of published pages. */
   storefrontBaseUrl?: string | null;
-  /** Secret token to activate Next.js storefront draft mode. */
-  previewSecret?: string | null;
   locale?: string;
 }
 
@@ -31,7 +29,6 @@ export default async function PagesPage({
   tenantId,
   builderBaseUrl,
   storefrontBaseUrl,
-  previewSecret,
   locale = 'en'
 }: PagesPageProps) {
   const opts: GqlOpts = { token, tenantSlug, tenantId };
@@ -100,25 +97,18 @@ export default async function PagesPage({
                   )}
                 </td>
                 <td>
-                  {storefrontBaseUrl && page.slug ? (
-                    <a
-                      href={storefrontUrlForPage(
-                        storefrontBaseUrl,
-                        page.slug,
-                        locale,
-                        page.status,
-                        previewSecret ?? undefined
-                      )}
-                      target='_blank'
-                      rel='noreferrer'
-                    >
-                      {page.status === 'published'
-                        ? 'View live'
-                        : 'Preview draft'}
-                    </a>
-                  ) : (
-                    '—'
-                  )}
+                  <StorefrontLink
+                    href={
+                      storefrontBaseUrl && page.slug
+                        ? storefrontUrlForPage(
+                            storefrontBaseUrl,
+                            page.slug,
+                            locale,
+                            page.status
+                          )
+                        : null
+                    }
+                  />
                 </td>
                 <td>
                   <PageActions
@@ -137,5 +127,20 @@ export default async function PagesPage({
         offered here on purpose.
       </p>
     </section>
+  );
+}
+
+/**
+ * "View live" link of a published page. A page that is not published has no
+ * storefront URL; its working copy is previewed in the builder.
+ */
+function StorefrontLink({ href }: { href: string | null }) {
+  if (!href) {
+    return <>—</>;
+  }
+  return (
+    <a href={href} target='_blank' rel='noreferrer'>
+      View live
+    </a>
   );
 }

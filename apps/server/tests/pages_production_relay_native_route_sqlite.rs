@@ -30,7 +30,7 @@ use rustok_pages::dto::{
     CreatePageInput, PageBodyInput, PageBodyRevisionInput, PageTranslationInput, PublishPageInput,
     ReviewedPagePublishRuntimeInput,
 };
-use rustok_pages::services::PageService;
+use rustok_pages::services::{PageBuilderArtifactService, PageService};
 use rustok_pages::{
     PAGES_CACHE_ENTITY_KIND, PAGES_STOREFRONT_CACHE_TTL_SECS, PageCacheError,
     PageCacheGenerationSnapshot, PageCacheInvalidationEventHandler, PagesCacheInvalidationRuntime,
@@ -59,7 +59,8 @@ type TestResult<T> = Result<T, Box<dyn StdError + Send + Sync>>;
 #[derive(Clone)]
 struct ReviewedFixture {
     page_id: Uuid,
-    expected_artifact_url: String,
+    landing_artifact_hash: String,
+    landing_html: String,
 }
 
 #[derive(Default)]
@@ -258,12 +259,7 @@ async fn production_relay_gate_rotates_registered_native_route_before_outbox_ack
 
     let before_published_delivery = call_storefront(&app, &tenant, &channel).await?;
     assert_eq!(before_published_delivery.status, StatusCode::OK);
-    assert!(
-        before_published_delivery
-            .body
-            .contains(&fixture.expected_artifact_url)
-    );
-    assert!(before_published_delivery.body.contains("fly_artifact_url"));
+    assert_published_landing(&before_published_delivery.body, &fixture)?;
     let before_rotation = read_port.snapshot();
     assert_eq!(before_rotation.generation_reads, 1);
     assert_eq!(before_rotation.get_keys.len(), 1);
@@ -563,10 +559,38 @@ async fn create_reviewed_published_page(
     assert_eq!(publish.sanitized_set_hash.len(), 64);
     assert_eq!(publish.artifact_set_hash.len(), 64);
 
+    let landing = PageBuilderArtifactService::new(db.clone())
+        .load_public_bound_artifact_with_fallback(tenant_id, draft.id, "en", None, Some("web"))
+        .await?
+        .ok_or_else(|| std::io::Error::other("reviewed publish did not bind a public landing"))?;
+    assert_eq!(landing.artifact_hash.len(), 64);
+    assert!(
+        landing
+            .body_html
+            .contains("Production relay native route artifact")
+    );
+
     Ok(ReviewedFixture {
         page_id: draft.id,
-        expected_artifact_url: format!("/api/pages/{}/artifact?locale=en&channel=web", draft.id),
+        landing_artifact_hash: landing.artifact_hash,
+        landing_html: landing.body_html,
     })
+}
+
+/// The storefront response carries the published landing of the selected page, as stored by
+/// the reviewed publish, and nothing of the authoring document.
+fn assert_published_landing(response_body: &str, fixture: &ReviewedFixture) -> TestResult<()> {
+    let response: serde_json::Value = serde_json::from_str(response_body)?;
+    let landing = &response["selected_page"]["landing"];
+    assert_eq!(landing["locale"], json!("en"));
+    assert_eq!(
+        landing["artifactHash"],
+        json!(fixture.landing_artifact_hash)
+    );
+    assert_eq!(landing["html"], json!(fixture.landing_html));
+    assert!(response["selected_page"].get("body").is_none());
+    assert!(!response_body.contains("flyPageMeta"));
+    Ok(())
 }
 
 async fn publication_events(

@@ -22,20 +22,22 @@ export function builderUrlForPage(
 }
 
 /**
- * Generates storefront URL or live draft preview link for a page.
- * If status is draft and previewSecret is provided, links to /api/draft.
+ * Storefront URL of a published page.
+ *
+ * The storefront renders the published landing only, so a page that is not
+ * published has no storefront URL: `null`. The working copy is previewed in the
+ * builder, never on the storefront.
  */
 export function storefrontUrlForPage(
   storefrontBaseUrl: string,
   slug: string,
   locale = 'en',
-  status: PageStatus = 'published',
-  previewSecret?: string
-): string {
+  status: PageStatus = 'published'
+): string | null {
+  if (status !== 'published') {
+    return null;
+  }
   const base = storefrontBaseUrl.replace(/\/+$/, '');
   const cleanSlug = slug.replace(/^\/+/, '');
-  if (status === 'draft' && previewSecret) {
-    return `${base}/api/draft?slug=${encodeURIComponent(cleanSlug)}&locale=${encodeURIComponent(locale)}&secret=${encodeURIComponent(previewSecret)}`;
-  }
   return `${base}/${encodeURIComponent(locale)}/pages/${encodeURIComponent(cleanSlug)}`;
 }

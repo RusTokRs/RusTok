@@ -9,20 +9,18 @@
  */
 
 import type { Metadata } from "next";
-import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import {
   getStorefrontTenantId,
   getStorefrontTenantSlug,
 } from "@/shared/api/modules";
 import { buildSeoMetadata } from "@/shared/seo/metadata";
 import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
-import {
-  fetchPublishedPage,
-  fetchPageArtifact,
-  PageBuilderContent,
-  DraftPreviewBanner,
-} from "@rustok/pages-frontend";
+import { fetchPublishedPage, PageBuilderContent } from "@rustok/pages-frontend";
+
+// `generateMetadata` and the page render the same page: one read per request.
+const loadPublishedPage = cache(fetchPublishedPage);
 
 interface StorefrontPageProps {
   params: Promise<{ locale: string; slug: string }>;
@@ -37,14 +35,11 @@ export async function generateMetadata({
 
   let page = null;
   try {
-    page = await fetchPublishedPage(slug, locale, tenantSlug, tenantId);
+    page = await loadPublishedPage(slug, locale, tenantSlug, tenantId);
   } catch {
     // Fail gracefully for metadata generation
   }
-
-  const draft = await draftMode();
-  const isDraft = draft.isEnabled;
-  if (page && page.status !== "published" && !isDraft) {
+  if (page && page.status !== "published") {
     page = null;
   }
 
@@ -73,37 +68,26 @@ export default async function StorefrontCustomPage({
   const { locale, slug } = await params;
   const tenantSlug = getStorefrontTenantSlug();
   const tenantId = getStorefrontTenantId();
-  const draft = await draftMode();
-  const isDraft = draft.isEnabled;
 
   let page = null;
   try {
-    page = await fetchPublishedPage(slug, locale, tenantSlug, tenantId);
+    page = await loadPublishedPage(slug, locale, tenantSlug, tenantId);
   } catch (error) {
     console.error(`[StorefrontPage] Failed to fetch page "${slug}":`, error);
     notFound();
   }
 
-  if (!page || !page.body || (page.status !== "published" && !isDraft)) {
-    notFound();
-  }
-
-  let artifact = { html: "", css: "" };
-  try {
-    artifact = await fetchPageArtifact(page.body.content, page.body.format, {
-      slug,
-      revalidate: isDraft ? false : 60,
-      cache: isDraft ? "no-store" : undefined,
-    });
-  } catch (error) {
-    console.error(`[StorefrontPage] Failed to fetch artifact for "${slug}":`, error);
+  // Only the published landing is rendered: it is the output of the reviewed
+  // publish. A page without one has nothing to show; there is no other content
+  // source to fall back to.
+  const landing = page?.status === "published" ? page.landing : null;
+  if (!landing) {
     notFound();
   }
 
   return (
     <main className="rustok-page-wrapper min-h-screen">
-      {isDraft && <DraftPreviewBanner slug={slug} locale={locale} />}
-      <PageBuilderContent html={artifact.html} css={artifact.css} />
+      <PageBuilderContent html={landing.html} css={landing.css} />
     </main>
   );
 }

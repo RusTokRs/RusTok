@@ -77,6 +77,17 @@ pub fn pages_editor_permissions_from_effective(permissions: &[String]) -> Capabi
     }
 }
 
+/// Whether the principal may restore a journaled body revision.
+///
+/// Restoring a revision is a save, so it needs `pages:update`. The journal
+/// itself is readable with `pages:publish` as well, and a principal that
+/// reads it that way is not offered an action the server would refuse. The
+/// server stays the authority: it also applies the ownership scope of the
+/// grant.
+pub fn pages_can_restore_body_revision(permissions: &[String]) -> bool {
+    effective_permissions_grant(permissions, "pages:update")
+}
+
 pub fn pages_editor_provider_state(assembly: &ContributionAssemblyResult) -> EditorProviderState {
     if assembly
         .diagnostics
@@ -99,6 +110,24 @@ pub fn pages_editor_provider_state(assembly: &ContributionAssemblyResult) -> Edi
 mod tests {
     use super::*;
     use fly_ui::{ContributionAssemblyDiagnostic, ContributionAssemblyResult};
+
+    #[test]
+    fn restoring_a_body_revision_needs_the_save_grant() {
+        let grants = |granted: &[&str]| {
+            pages_can_restore_body_revision(
+                &granted
+                    .iter()
+                    .map(|grant| grant.to_string())
+                    .collect::<Vec<_>>(),
+            )
+        };
+        assert!(grants(&["pages:update"]));
+        assert!(grants(&["pages:manage"]));
+        // The journal is readable with the publish grant; restoring is not.
+        assert!(!grants(&["pages:publish"]));
+        assert!(!grants(&["pages:read", "pages:list"]));
+        assert!(!grants(&[]));
+    }
 
     #[test]
     fn manage_grant_receives_full_editor_access() {

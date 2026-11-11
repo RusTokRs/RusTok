@@ -20,6 +20,7 @@ SSR-first JavaScript browser adapter assets, event bridging, CSRF security token
 ## 2. Invariants & Business Rules
 - **Safe Rust**: The entire crate strictly forbids unsafe code (`#![forbid(unsafe_code)]`).
 - **Zero Framework Coupling**: No DOM, WebSys, Leptos, or WASM bindings inside Rust; SSR-first architecture with embedded JS distribution.
+- **Save Failure Reporting**: A successful intent response may carry `save_failure` (`status`, `code`, `error`, `intent`) with `reload: true`. The adapter reports it as a browser problem (fallback code `SAVE_FAILED`) and keeps it in `sessionStorage` across the reload. It stands until a response reports a saved working copy: a response without `save_failure` whose state is still `dirty: true` keeps the message (root attribute `data-fly-save-failed="true"`), a response with `dirty` other than `true` clears it.
 - **CSRF & Revision Protection**: Mutating intents require valid CSRF headers and expected revision tracking to guard against stale updates and lost-update races.
 - **Protocol Parity**: Cross-protocol requests and invalid envelopes are rejected fail-closed.
 
