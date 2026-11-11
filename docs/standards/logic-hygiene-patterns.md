@@ -769,3 +769,38 @@ if (!landing) {
 Detection: `rg -n "dangerouslySetInnerHTML|inner_html" apps crates` lists the sinks;
 for each, follow the value back and read every branch of its reader for one that
 returns or wraps the input (`rg -n "return \{ html: " apps` finds the direct form).
+
+## P-CHECK-FOLLOWS-SOURCE — A source-pinning check changes with the source it pins
+
+- **Category:** Verification integrity.
+- **Logic dimensions:** Preconditions and bounds, branch completeness.
+- **Observed defect:** Source verifiers of Pages and Page Builder pin Rust, TypeScript
+  and Markdown by text. Sources changed without them, in six ways. A cleanup removed
+  the statements that read deleted documents by text and left 75 scripts that do not
+  parse. A governance change deleted three plans that verifiers and contracts still
+  read. A module implementation moved from `lib.rs` to `module.rs` and three checks
+  kept reading the old file. A formatter rewrote quotes, so required markers stopped
+  matching and forbidden ones (`trace: "on"`) could never match. A check on one
+  struct read to the end of the file and failed on an unrelated type added later.
+  An ordering check compared positions of helper functions in a file instead of the
+  order of calls. More than half of the affected scripts ran in no workflow, so
+  nothing showed the drift; the workflows that ran the rest were already red.
+- **Canonical solution:** A change that moves, renames, reformats or deletes pinned
+  source updates the check in the same commit, and runs it. Remove a reference by
+  editing the syntax tree or by hand, never by deleting lines, and parse the result.
+  Slice the source to the item the check is about (one function, one struct) and
+  assert order inside the function that makes the calls. Compare data as data: split
+  a table row into cells, compare strings without their quote form. After changing a
+  check, break the source once and see the check fail. A check that no workflow runs
+  is not evidence; wire it or delete it.
+
+```js
+// One struct, not the rest of the file.
+const start = model.indexOf("pub struct PageMetadataPatch {");
+const patch = model.slice(start, model.indexOf("\n}\n", start) + 2);
+```
+
+Detection: `for f in $(git ls-files '*.mjs'); do node --check "$f" || echo "$f"; done`
+lists scripts that do not parse. Running every verifier at the commit and at its
+parent separates new failures from old ones. For each path string in a verifier or
+contract, `test -e` finds references to deleted files.

@@ -279,20 +279,102 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
       reviewer role is wanted. Until then such a principal sees the page record and
       "Document not available" in the Leptos admin (`documentReadable: false`). Owner:
       `rustok-pages`, `rustok-pages-admin`, `rustok-page-builder` (preflight mapping contract).
-    - The evidence packet `contracts/evidence/pages-artifact-http-cache-source.json` (dated
-      2026-08-04) describes the artifact endpoint before its cache entry followed every page
-      event. It is left as the record of that change: its verifier
-      `crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs` does
-      not parse (`SyntaxError`), was committed that way, and history holds no complete copy,
-      so what the verifier pins in the packet is unknown. Restore the verifier from its
-      author's copy, then re-issue the packet with the second harness test
-      (`artifact_http_entry_does_not_outlive_a_page_update`). Owner: `rustok-pages`.
-    - 75 `verify-*.mjs` scripts do not parse (same set on `357a961`), among them eight of the
-      nine that the step "Verify cache-consumer source boundaries" of
-      `.github/workflows/pages-cache-consumer-exact-main-evidence.yml` runs under
-      `set -euo pipefail`; the ninth, `verify-pages-cache-invalidation.mjs`, fails on a missing
-      `fn register_event_listeners(`. That step cannot pass as committed. Owner: `rustok-pages`,
-      repository tooling.
+    - Source verifiers of Pages, Page Builder and Fly: repaired on 2026-11-11, the rest listed
+      here. Earlier text of this item said that 75 `verify-*.mjs` scripts do not parse and that
+      history holds no complete copy of `verify-pages-artifact-http-cache.mjs`; both were
+      symptoms of one commit and the second statement was wrong. Causes found:
+      - `111d6dd4bf` (2026-11-04) deleted 103 dated documents and removed the code that read
+        them from 85 verifiers by text; 75 stopped parsing. Every one has a parsable copy in
+        the parent `0be5f1fd`. All 85 were rebuilt from that copy with only the statements
+        that read a deleted document removed.
+      - `0caf312a4b358285ed3b79c3a2f8279af93d8976` (2026-11-05, DAR-04) removed
+        `docs/modules/page-builder-implementation-plan.md`,
+        `pages-page-builder-parity-continuation-plan.md` and
+        `pages-page-builder-inline-edit-execution-plan.md` while verifiers and contracts still
+        read them. `docs/standards/docs-governance-ledger.md` records them as archived to
+        `docs/archive/plans/`; that directory does not exist.
+      - `b0a4c97c93` (2026-10-22) moved the Pages `RusToKModule` implementation from
+        `src/lib.rs` to `src/module.rs`; three verifiers kept reading `lib.rs`.
+      - The published-landing series changed sources that seven verifiers and
+        `page-builder-service-boundary.json` pin (configured composition entrypoint,
+        `published_landing`, the artifact owner split into `public_landing_locale_candidates_in_tx`
+        and `find_landing_binding_in_tx`, the reviewed-publish gate, the audit scan).
+      - Markers written with double quotes against Prettier-formatted Next sources (single
+        quotes), a repository root computed one directory short in two verifiers, a struct
+        check that read to the end of the file, and exact-text comparison of a padded
+        Markdown table row.
+      State after the repair, measured on 176 scripts (all of
+      `crates/modules/rustok-{pages,page-builder}/scripts/verify`, the `page-builder|pages|fly`
+      scripts of `scripts/verify`, and their `scripts/evidence/*.test.mjs`): 137 pass, 39 fail;
+      at `c6629e7` 73 passed, at `0be5f1fd` 121. No script that passed at either commit fails
+      now. All `node` verifier steps of `fly-page-builder.yml`,
+      `pages-cache-consumer-exact-main-evidence.yml`, `pages-page-builder-parity.yml` and
+      `pages-consumer-properties-source-evidence.yml` exit 0 locally; in
+      `pages-page-builder-provider-health.yml` one fails (next entry). Not run: the Rust steps
+      of these workflows (no toolchain in the repair environment). Open:
+      - The 39 failing scripts failed before 2026-11-04 as well and no workflow runs them,
+        apart from the one in the next entry. Each needs the same reading as the repaired
+        ones: is the pinned source gone, or only its wording. Owner: `rustok-pages`,
+        `rustok-page-builder`, repository tooling.
+      - Six workflows still name deleted documents in their `paths:` filters
+        (`fly-page-builder.yml`, `pages-page-builder-parity.yml`,
+        `pages-page-builder-provider-health.yml`,
+        `pages-artifact-repair-rollback-continuity-postgres-evidence.yml`,
+        `pages-rollback-activated-repair-rollback-continuity-postgres-evidence.yml`,
+        `pages-consumer-properties-source-evidence.yml`). The entries are inert. Owner:
+        repository tooling.
+      - `pages-artifact-http-cache-source.json` (dated 2026-08-04) still describes the
+        artifact endpoint before its cache entry followed every page event. Re-issue it with
+        the second harness test (`artifact_http_entry_does_not_outlive_a_page_update`).
+        Owner: `rustok-pages`.
+    - The classic SSR browser adapter has no producer for its palette and layer contract.
+      `crates/ui/fly/browser/assets/fly-browser.js` binds palette blocks through
+      `[data-fly-block-id]` with `data-fly-action="insert-block"` / `"begin-block-drag"`, and
+      layer rows through `data-fly-action="select-component"`. No Rust source emits
+      `data-fly-block-id` or these action values since `2661a270ed` (2026-10-14) removed
+      `crates/modules/rustok-page-builder/admin/src/editor/palette_layers.rs`: the Leptos
+      `FlyPalette` (`crates/ui/fly/leptos/src/editor.rs`) renders `data-fly-block` with an
+      `on:click` handler, which exists only after hydration. The server side of the intent
+      (`browser_intent.rs`, `palette_access.rs`, `SsrDropSource::Block`) is intact, and
+      `apps/next-admin/tests/e2e/fly-browser-runtime.spec.ts` exercises the adapter against
+      hand-written markup, so nothing fails when the real palette stops matching.
+      Consumers that already fail on it: `scripts/evidence/admit-forum-page-builder-wave.test.mjs`
+      (step of `pages-page-builder-provider-health.yml`),
+      `scripts/verify/verify-forum-page-builder-browser-evidence-harness.mjs`, the Forum
+      contract `forum-page-builder-browser-execution-contract.json` (lists the deleted file) and
+      the Forum Playwright spec, which clicks `[data-fly-action='insert-block']`. Also
+      `toolbar.rs` emits `data-fly-action="set-viewport"`, which the adapter ignores (it
+      handles the three values above and `intent:*`). Not reproduced in a browser: the admin
+      cannot be built in the repair environment. Decide whether the SSR adapter is a supported
+      editing path; if it is, the palette and the layer tree emit its attributes and a test
+      renders the real components. Owner: `fly-leptos`, `fly-browser`, Page Builder admin.
+    - The readiness of `page_builder` is stated three ways. `docs/modules/registry.md` has
+      `admin + storefront | in_progress | boundary_ready | core_transport_ui` since
+      `74e4a62324` (2026-10-15). `crates/modules/rustok-page-builder/docs/implementation-plan.md`,
+      which the registry names as the source of truth, says both "FFA: `core_transport_ui` for
+      the browser-host slice" and "FFA status: `not_started`", "Structural shape:
+      `no_ui_boundary`", and lists the deleted `admin/src/editor/palette_layers.rs` and two
+      deleted dated documents as evidence. The contracts
+      `pages-page-builder-terminal-readiness-admission-source.json` and
+      `pages-page-builder-terminal-evidence-inventory-source.json` require the registry row
+      `no module-owned UI | not_started | boundary_ready | no_ui_boundary` and state that
+      readiness rows do not change before owner and platform approval. Both terminal verifiers
+      and `admit-pages-page-builder-terminal-readiness.test.mjs` fail on this row only. Owner
+      decision; not changed here. Owner: `rustok-page-builder`, platform.
+    - `verify-page-builder-static-sanitization-registry-admission.mjs` requires
+      `/provider/static_sanitization_contract/executed_evidence` of
+      `page-builder-fba-registry.json` to be `pending` before admission; the registry says
+      `verified`, and the verifier failed the same way at `0be5f1fd`. Either the admission ran
+      and the verifier describes the state before it, or the value was set without it. Owner:
+      `rustok-page-builder`.
+    - `scripts/verify/verify-fly-grapesjs-roundtrip.mjs` (step of `browser-e2e.yml`) resolves
+      `grapesjs` and `grapesjs-preset-webpage` from `apps/next-admin`; `2661a270ed` removed both
+      from its `package.json`, and the step fails (latest `main` run). They are back as exact-version
+      `devDependencies` (`0.23.6`, `1.0.3`, the versions of the committed capture). The script
+      passes locally with Chromium 153. It round-trips `baseline.json` and
+      `browser-current.json` through GrapesJS; the nine numbered fixtures are declared
+      `browser_roundtrip: false` and are covered by the Rust codec tests only, so item 4 above
+      overstates "all 9 fixture documents in real GrapesJS".
     - `npm run typecheck` fails in `apps/next-frontend` (3 errors, `rustok-blog` and
       `rustok-pricing`) and in `apps/next-admin` (10 errors, `packages/blog`): the script
       regenerates `src/types/i18n.d.ts` from `messages/en.ftl`, and the result differs from the
