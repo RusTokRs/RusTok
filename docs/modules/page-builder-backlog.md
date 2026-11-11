@@ -551,6 +551,34 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
       `rustok-pages-storefront` (that step fails on `main` as well, so it cannot show
       whether the series added a warning). Owner: maintainer.
 
+11. **Host delivery of the editor — OPEN.** Decision 8 of
+    `DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`.
+    - [x] `apps/admin` and `rustok-pages-admin` enabled `rustok-page-builder-admin/ssr` without
+          `browser-js`; the admin binary rendered no adapter. Both now enable the pair.
+    - [x] The adapter script and the canvas `srcdoc` document carried no CSP nonce. The host
+          provides `UiCspNonce`; the editor writes it on its three inline elements.
+    - [ ] Load the editor in a browser under the policy of `apps/admin/src/app/security.rs`.
+          The two Playwright suites serve their pages without a policy, and `apps/admin` does
+          not build in this workspace. A probe page with that policy showed, in Chromium, that
+          an inline `<script>` or `<style>` without the nonce is dropped, that a sandboxed
+          `srcdoc` iframe inherits the policy, and that both run with the nonce. The probe
+          did not use the rendered editor. Owner: Page Builder admin, repository tooling.
+    - [ ] `apps/server` serves the embedded admin with its own nonce
+          (`middleware/security_headers.rs`) and provides no `UiCspNonce` to the render
+          context. The editor there renders its inline elements without a nonce.
+          Owner: `apps/server`.
+    - [ ] `ServerPreviewPanel` puts published HTML into `srcdoc`; its `<style>` has no nonce
+          and is dropped under the host policy, so the preview is unstyled.
+          Owner: Page Builder admin, `rustok-page-builder` (publish renderer).
+    - [ ] `fly-leptos` `FlyCanvasPreview` renders an inline `<style>` and a `style` attribute,
+          and `fly-dioxus` renders `style` attributes. The admin editor uses neither; a host
+          that composes them under a nonce policy loses those styles. Owner: `fly-leptos`,
+          `fly-dioxus`.
+    - [ ] The step "Check admin SSR Page Builder endpoint" of the "Fly Page Builder" workflow
+          fails on this branch after the merges of `main` (`7ce2048c`, `728ba4f8`) and passed
+          on `eb17526f`. The job log cannot be read from this workspace. The change to
+          `apps/admin/src/main.rs` is therefore not compiled by any green job. Owner: maintainer.
+
 ## Rules for this backlog
 
 - New Fly/Page Builder work adds its remaining items here, not in a new plan

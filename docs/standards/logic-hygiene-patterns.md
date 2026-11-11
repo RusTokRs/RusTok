@@ -1024,3 +1024,35 @@ format!(".fly-canvas--interactive [data-fly-component-id=\"{id}\"] {{ outline: �
 Detection: search for the attribute name in selectors and queries, not only in the views
 that emit it. `scripts/verify/verify-fly-ssr-control-contract.mjs` (part 7) fails on a
 canvas style rule keyed on a contract attribute without a class scope.
+
+## P-HOST-DELIVERY — A capability is verified in the configuration that the host builds
+
+- **Category:** Build configuration, verification integrity.
+- **Logic dimensions:** Parity across surfaces, preconditions and bounds.
+- **Observed defect:** `rustok-page-builder-admin` declares `default = ["ssr", "browser-js"]`,
+  and its tests ran with the default features. Both of its consumers depend on it with
+  `default-features = false` and enabled `ssr` alone, so the admin binary rendered
+  `<span data-fly-browser-adapter="disabled">` where the tested build rendered the adapter.
+  The adapter script also took a `script_nonce` property that no caller passed, and the
+  canvas `srcdoc` document had no nonce at all, while the host answers with a
+  `script-src … 'nonce-<n>'` policy that drops an inline element without it. The browser
+  tests served their pages without a policy. Every check was green; no control worked in
+  the host.
+- **Canonical solution:** A capability has three conditions outside its own crate: the
+  features that the host enables, the inputs that the host passes, and the policy under
+  which the host serves it. Each is stated at the consumer and checked there. A default
+  feature is not a guarantee for a consumer that turns defaults off; an optional input
+  with no caller is an unconnected capability.
+
+```toml
+ssr = [
+  "rustok-page-builder-admin/ssr",
+  "rustok-page-builder-admin/browser-js",
+]
+```
+
+Detection: for a crate with default features, list the consumers that set
+`default-features = false` and compare the features they name with the features the tests
+use. For an optional property or context value, search for a writer. `scripts/verify/
+verify-fly-ssr-first.mjs` fails on a manifest feature that enables the editor's `ssr`
+without `browser-js` and on a missing nonce hand-off.

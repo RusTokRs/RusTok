@@ -39,6 +39,14 @@ The admin package's direct DOM bindings are owned by its `browser-js` feature;
 `csr` and `hydrate` enable that feature through `wasm-client`, while `ssr`
 keeps the native rendering path independent from browser APIs.
 
+The same feature decides whether the server-rendered editor emits the `fly-browser` adapter.
+A consumer sets `default-features = false`, so a consumer feature that enables `ssr` must also
+enable `browser-js`; without it the editor renders `<span data-fly-browser-adapter="disabled">`
+and no control works. Under a host Content Security Policy with a nonce, the host provides
+`rustok_ui_core::UiCspNonce` as render context. The editor writes it on the adapter `<script>`
+and on the `<style>` and `<script>` of the canvas `srcdoc` document, which inherits the host
+policy.
+
 The current canvas supports rendering, geometry, hover, selection, overlays and persistence. It
 also provides the block palette, drag-and-drop insertion, resize handles, keyboard editing,
 traits/styles editors and asset management. Storefront real-DOM editing remains outside this

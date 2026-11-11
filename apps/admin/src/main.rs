@@ -222,6 +222,11 @@ async fn main() {
                     .unwrap_or_default();
                 provide_server_auth_snapshot(snapshot);
                 if let Some(nonce) = request_csp_nonce() {
+                    // Module surfaces cannot name the Axum-side nonce type. They read the UI
+                    // contract and put the value on the inline elements they render.
+                    if let Some(ui_nonce) = rustok_ui_core::UiCspNonce::new(nonce.as_str()) {
+                        provide_context(ui_nonce);
+                    }
                     provide_context(nonce);
                 }
             },

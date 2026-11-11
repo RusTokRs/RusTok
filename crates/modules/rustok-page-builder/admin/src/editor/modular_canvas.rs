@@ -26,7 +26,7 @@ use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineCh
 use rustok_page_builder::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
 };
-use rustok_ui_core::UiRouteContext;
+use rustok_ui_core::{UiCspNonce, UiRouteContext};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -144,6 +144,8 @@ pub fn AdminCanvas(
         .controller
         .with(|controller| controller.editor().revision().project_hash.hex());
     let root_intent_endpoint = browser_intent_endpoint.clone();
+    // The host policy admits an inline script only with the nonce of this response.
+    let browser_script_nonce = use_context::<UiCspNonce>().map(|nonce| nonce.as_str().to_string());
     let root_csrf_token = browser_csrf_token.clone();
     let adapter_runtime = runtime.clone();
     let adapter_assembly = contribution_assembly.clone();
@@ -195,6 +197,7 @@ pub fn AdminCanvas(
             <PageBuilderBrowserAdapter
                 intent_endpoint=browser_intent_endpoint
                 csrf_token=browser_csrf_token
+                script_nonce=browser_script_nonce
             />
             <AuthoringToolbar runtime=toolbar_runtime />
             <AdapterWorkspacePanel

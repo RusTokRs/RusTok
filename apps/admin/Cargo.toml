@@ -142,6 +142,7 @@ ssr = [
   "rustok-iggy-connector-admin/ssr",
   "rustok-messenger-admin/ssr",
   "rustok-page-builder-admin/ssr",
+  "rustok-page-builder-admin/browser-js",
   "rustok-pages-admin/ssr",
   "rustok-forms-admin/ssr",
   "rustok-seo-admin/ssr",

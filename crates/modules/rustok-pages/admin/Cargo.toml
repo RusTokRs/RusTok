@@ -34,6 +34,7 @@ ssr = [
   "leptos-auth/ssr",
   "rustok-page-builder/server",
   "rustok-page-builder-admin/ssr",
+  "rustok-page-builder-admin/browser-js",
   "rustok-media-admin/ssr",
   "dep:async-trait",
   "dep:rustok-api",

@@ -257,6 +257,17 @@ Engineering audit remediation — see
 
 ### Fixed
 
+- **The editor reached no browser in the admin host.** `apps/admin` and `rustok-pages-admin`
+  enabled `rustok-page-builder-admin/ssr` without `browser-js`, so the binary rendered
+  `<span data-fly-browser-adapter="disabled">` instead of the adapter. The adapter script and
+  the canvas `srcdoc` document also carried no CSP nonce, and the host policy drops an inline
+  element without one. Both consumers now enable the feature pair; the host provides
+  `rustok_ui_core::UiCspNonce`, and the editor writes it on its inline `<script>` and `<style>`
+  elements. `verify-fly-ssr-first.mjs` checks the feature pair in every manifest and the nonce
+  hand-off. Not verified in a browser under the host policy.
+- **Formatting.** 19 files of the crates that the "Focused formatting" job checks were not in
+  `rustfmt` form (14 of them before this change set). They are formatted now.
+
 - **The canvas selection style no longer reaches the layer tree.** `FlyCanvasPreview` writes
   its interactive styles as a plain `<style>` element, and the rule for the selected component
   was `[data-fly-component-id="<id>"]` with no scope. Once `FlyLayerTree` rendered

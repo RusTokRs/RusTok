@@ -92,6 +92,18 @@ a read-only caller has no draft session, by design.
    form shape to `ssr_form_intent` in one guarded arm, `is_ssr_page_form`, before the arms that
    read the envelope shape. A new shape is a new term of that guard or a new intent name, never an
    arm that happens to come first.
+8. **The contract is delivered to the host, not only to the crate.** Two things stood between
+   the markup and a browser, and neither was visible in a test of the crate.
+   - *Feature.* Every consumer of `rustok-page-builder-admin` sets `default-features = false`.
+     A consumer feature that enables `rustok-page-builder-admin/ssr` enables
+     `rustok-page-builder-admin/browser-js` in the same list. Without it the editor compiles with
+     `<span data-fly-browser-adapter="disabled">` in place of the adapter.
+   - *Policy.* The standalone admin answers with `script-src … 'nonce-<n>'` and
+     `style-src … 'nonce-<n>'`. The host provides the nonce of the response as
+     `rustok_ui_core::UiCspNonce`. The editor writes it on the three inline elements it renders:
+     the adapter `<script>`, and the `<style>` and `<script>` of the canvas `srcdoc` document,
+     which inherits the policy of the document that embeds it. A surface that receives no nonce
+     renders the elements without the attribute.
 
 ## Sources of truth and ownership
 
@@ -125,6 +137,10 @@ a read-only caller has no draft session, by design.
 - No arm of `ssr_form_intent` is shadowed by a dispatcher arm that never hands the payload over.
 - A selection input that the server rendered with a component keeps that component until the
   browser selects another one.
+- A host feature that enables the editor's `ssr` feature enables its `browser-js` feature.
+- Under a host policy that names a nonce, every inline `<script>` and `<style>` of the editor
+  carries the nonce of that response. The value is checked against the CSP `base64-value`
+  alphabet before it is written into markup.
 
 ### Allowed states
 
@@ -215,9 +231,18 @@ Not applicable. The contract emits no domain event and owns no projection.
   `crates/modules/rustok-page-builder/admin/src/ssr_page_forms_browser_tests.rs`, which sends the
   fields of each page form through `dispatch_browser_intent`.
 - Unit tests of `route_viewport` in `toolbar.rs`.
+- Host delivery: `scripts/verify/verify-fly-ssr-first.mjs` reads every tracked `Cargo.toml` for
+  the feature pair and the sources for the nonce hand-off; the `canvas_document.rs` test
+  `canvas_document_carries_the_host_nonce_on_its_inline_elements`; the `UiCspNonce` tests in
+  `crates/ui/rustok-ui-core/src/ui.rs`. No test loads the editor in a browser under the host
+  policy (see the backlog).
 
 ## Consequences
 
+- The canvas document holds the page's script nonce. The document is sandboxed without
+  `allow-same-origin` and shows authored content. The nonce is valid for one response, and
+  authored markup is rendered by the Fly renderer, which emits no `<script>`. A change that lets
+  authored markup reach the canvas document unescaped would let it reuse the nonce there.
 - The palette, the layer tree and the viewport switch work in the default runtime.
 - Adding an SSR control means adding both sides, a render test and a browser test; the check names
   the missing part.

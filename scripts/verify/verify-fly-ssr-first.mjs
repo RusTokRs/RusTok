@@ -1,6 +1,7 @@
 // The SSR-first runtime is only as real as its controls: importing the control-contract gate
 // here makes every run of this gate also prove that the adapter and the Rust views agree.
 import './verify-fly-ssr-control-contract.mjs';
+import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 
 const paths = {
@@ -19,6 +20,8 @@ const paths = {
   adminAdapter: 'crates/modules/rustok-page-builder/admin/src/ui/browser_adapter.rs',
   adminCanvas: 'crates/modules/rustok-page-builder/admin/src/editor/modular_canvas.rs',
   adminEditorMod: 'crates/modules/rustok-page-builder/admin/src/editor/mod.rs',
+  adminCanvasDocument: 'crates/modules/rustok-page-builder/admin/src/editor/canvas_document.rs',
+  adminIsolatedCanvas: 'crates/modules/rustok-page-builder/admin/src/editor/isolated_canvas.rs',
   browserIntent: 'crates/modules/rustok-page-builder/admin/src/browser_intent.rs',
   capabilityAccess: 'crates/modules/rustok-page-builder/admin/src/capability_access.rs',
   draftSession: 'crates/modules/rustok-page-builder/admin/src/draft_session.rs',
@@ -338,6 +341,62 @@ const en = parseFtl(source.localeEn);
 const ru = parseFtl(source.localeRu);
 if (JSON.stringify(flattenKeys(en)) !== JSON.stringify(flattenKeys(ru))) {
   failures.push('Page Builder en/ru locale key parity failed');
+}
+
+// Delivery of the adapter to a real host. The default features of `rustok-page-builder-admin` are
+// `ssr + browser-js`, but every consumer depends on it with `default-features = false` and names
+// the features itself. A consumer that named `ssr` alone compiled the editor with the adapter
+// replaced by `<span data-fly-browser-adapter="disabled">`: every control rendered and none worked,
+// while the crate's own tests (default features) stayed green.
+const manifests = execFileSync('git', ['ls-files', '--', 'Cargo.toml', '*/Cargo.toml'], {
+  encoding: 'utf8',
+})
+  .split('\n')
+  .filter(Boolean);
+let ssrConsumers = 0;
+for (const manifest of manifests) {
+  const content = await readFile(manifest, 'utf8');
+  for (const [, feature, body] of content.matchAll(/^([A-Za-z0-9_-]+)\s*=\s*\[([^\]]*)\]/gm)) {
+    if (!body.includes('"rustok-page-builder-admin/ssr"')) continue;
+    ssrConsumers += 1;
+    if (!body.includes('"rustok-page-builder-admin/browser-js"')) {
+      failures.push(
+        `${manifest}: feature "${feature}" enables rustok-page-builder-admin/ssr without ` +
+          'rustok-page-builder-admin/browser-js; that host renders the editor without its adapter',
+      );
+    }
+  }
+}
+if (ssrConsumers === 0) {
+  failures.push('no manifest enables rustok-page-builder-admin/ssr; the delivery check matched nothing');
+}
+
+// The standalone admin answers with `script-src ... 'nonce-<n>'` and `style-src ... 'nonce-<n>'`.
+// An inline element without that nonce is dropped by the browser, and a `srcdoc` iframe inherits
+// the policy. The host therefore hands the nonce to module surfaces as `UiCspNonce`, and the
+// editor writes it on the three inline elements it renders.
+requireMarkers('appsAdminMain', [
+  'rustok_ui_core::UiCspNonce::new(nonce.as_str())',
+  'provide_context(ui_nonce)',
+], 'admin host nonce hand-off');
+requireMarkers('adminCanvas', [
+  'use_context::<UiCspNonce>()',
+  'script_nonce=browser_script_nonce',
+], 'Page Builder adapter script nonce');
+requireMarkers('adminIsolatedCanvas', [
+  'use_context::<UiCspNonce>()',
+  'csp_nonce.as_ref()',
+], 'Page Builder canvas nonce');
+requireMarkers('adminCanvasDocument', [
+  '<style{nonce_attribute}>',
+  '<script{nonce_attribute}>',
+], 'Page Builder canvas document nonce');
+for (const forbidden of ['<style>{}{}</style>', '<script>{script}</script>']) {
+  rejectMarker(
+    'adminCanvasDocument',
+    forbidden,
+    `Page Builder canvas document must not render ${forbidden} without the host nonce`,
+  );
 }
 
 if (failures.length > 0) {
