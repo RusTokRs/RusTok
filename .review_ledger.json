@@ -17,9 +17,10 @@
       "category": "libs",
       "files": 35,
       "loc": 7691,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-11T20:03:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: BCP 47 locale normalization, candidate hierarchy and script-level fallback in locale.rs; fixed-work constant-time SHA-256 digest comparison and RFC 2104 HMAC in digest.rs; typed ChannelContext, TenantContext, and HostAuthority in context/; bidirectional Display/FromStr platform resource mapping and effective permission calculation in permissions.rs; fail-closed port deadline semantics, trimmed whitespace idempotency validation and sanitized technical messages in ports.rs",
+      "last_audited": "2026-11-11"
     },
     "crates/libs/rustok-core": {
       "name": "rustok-core",
