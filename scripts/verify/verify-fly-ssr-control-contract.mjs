@@ -847,6 +847,19 @@ for (const match of workspaceProduction.matchAll(
     continue;
   }
   scopedCanvasRules += 1;
+  // A rule that names one component writes its id into the selector string of a `<style>`
+  // element. `crates/ui/fly/SECURITY.md` promises the allow-list escape at every such writer.
+  const interpolated = /=\\"\{(\w+)\}\\"/.exec(match[0]);
+  if (
+    interpolated &&
+    !new RegExp(`let\\s+${interpolated[1]}\\s*=\\s*escape_css_attribute\\(`).test(workspaceProduction)
+  ) {
+    const line = before.split('\n').length;
+    fail(
+      `${workspacePath}:${line}: \`{${interpolated[1]}}\` is written into a selector of a <style> ` +
+        'element without `escape_css_attribute`',
+    );
+  }
 }
 if (scopedCanvasRules === 0 && !failures.some((message) => message.includes('is not scoped by a class'))) {
   fail(`${workspacePath}: no canvas style rule keyed on a contract attribute was found; update this check with the source`);

@@ -265,6 +265,11 @@ Engineering audit remediation — see
   `rustok_ui_core::UiCspNonce`, and the editor writes it on its inline `<script>` and `<style>`
   elements. `verify-fly-ssr-first.mjs` checks the feature pair in every manifest and the nonce
   hand-off. Not verified in a browser under the host policy.
+- **The selection rule of the `fly-leptos` canvas wrote the selected id into a `<style>`
+  element unescaped.** `SECURITY.md` promises an allow-list escape for every CSS selector built
+  from an id; the renderer did that, `FlyCanvasPreview` did not. A valid document holds only
+  inert ids and the editor refuses a selection that is not in the document, so no injection is
+  known; the sink no longer depends on either. `fly::escape_css_attribute` is public for this.
 - **The viewport select could not leave a preset.** The initial 1280 × 720 frame is no built-in
   preset. Its option was rendered only while that frame was in effect, and
   `navigateRouteQuery()` ignored the empty value, so after a preset was chosen the only way back

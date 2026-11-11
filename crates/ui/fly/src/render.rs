@@ -1214,7 +1214,11 @@ fn escape_attribute(value: &str) -> String {
 /// is emitted as a CSS numeric escape (`\\XX `). A deny-list here is not sufficient, because the
 /// result is embedded in a `<style>` element and therefore has to survive both the CSS grammar
 /// and the HTML tokenizer.
-fn escape_css_attribute(value: &str) -> String {
+///
+/// Public because the renderer is not the only writer of such a selector: a framework adapter
+/// that styles one component by its id (the selection outline of the authoring canvas) writes
+/// the id into a `<style>` element too, and uses this function at that sink.
+pub fn escape_css_attribute(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for character in value.chars() {
         if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':') {

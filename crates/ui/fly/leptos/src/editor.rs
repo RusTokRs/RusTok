@@ -12,8 +12,8 @@
 use fly::{
     AssetCatalog, AssetCommand, DesignToken, EditorCommand, FlyEditor, PageCommand, PageLocator,
     PageMetadata, PagePatch, PageSelection, PageSummary, ProjectDocument, RegistrySet,
-    RenderPolicy, ThemeCommand, blank_page, normalize_slug, render_page, validate_token_name,
-    validate_token_value,
+    RenderPolicy, ThemeCommand, blank_page, escape_css_attribute, normalize_slug, render_page,
+    validate_token_name, validate_token_value,
 };
 use fly_browser::BrowserIntentEnvelope;
 use fly_ui::{
@@ -576,9 +576,13 @@ pub fn FlyCanvasPreview(
         // `.fly-canvas--interactive`. `data-fly-component-id` is not unique to the canvas: a
         // selectable row of `FlyLayerTree` carries the id of the same component, and an
         // unscoped selection rule would outline that row as well.
+        // The id is written into a selector of a `<style>` element, so it is escaped here even
+        // though a valid document holds only inert ids: the selection is a property, and this
+        // sink must not depend on what the caller validated.
         let selection_css = selected
             .as_deref()
             .map(|id| {
+                let id = escape_css_attribute(id);
                 format!(
                     ".fly-canvas--interactive [data-fly-component-id=\"{id}\"] {{ outline: 2px solid #2563eb !important; outline-offset: 2px !important; position: relative; z-index: 5; }}"
                 )
@@ -3258,6 +3262,44 @@ mod tests {
             "{ outline: 2px solid #2563eb !important;"
         )));
         assert!(interactive_html.contains(".fly-canvas--interactive [contenteditable=\"true\"]"));
+    }
+
+    #[test]
+    fn canvas_selection_rule_escapes_the_selected_id() {
+        let document: ProjectDocument = serde_json::from_value(serde_json::json!({
+            "project": {
+                "pages": [{
+                    "id": "home",
+                    "name": "Home",
+                    "component": { "type": "wrapper", "id": "root" }
+                }]
+            }
+        }))
+        .expect("document");
+        // Not an id a valid document can hold; the property accepts any string.
+        let hostile = "x\"] {} body { display: none } [y=\"";
+        let html = view! {
+            <FlyCanvasPreview
+                document=document
+                page_index=Some(0)
+                selected=Some(hostile.to_string())
+                on_select=Some(Callback::new(|_| ()))
+                interactive=Some(true)
+                viewport_width=Some(1024)
+            />
+        }
+        .to_html();
+
+        // `data-fly-selected` carries the same value as an attribute, where the quote is an HTML
+        // entity. A raw quote followed by the rest of the id can only come from the style rule.
+        assert!(
+            !html.contains("x\"] {} body"),
+            "the selected id must not close the selector and open a rule of its own"
+        );
+        assert!(
+            html.contains(".fly-canvas--interactive [data-fly-component-id=\"x\\22 \\5d "),
+            "the quote and the bracket of the id must be CSS escapes inside the selector string"
+        );
     }
 
     #[test]
