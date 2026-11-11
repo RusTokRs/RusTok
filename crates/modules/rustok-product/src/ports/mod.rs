@@ -7,17 +7,23 @@ mod catalog_read;
 mod diagnostics;
 pub mod inventory;
 pub mod pricing;
+pub mod taxonomy;
 mod types;
 
 pub use catalog_read::ProductCatalogReadPort;
 pub use inventory::{
     AsInventoryConnection, InventoryConnection, MAX_CATALOG_DELETE_VARIANTS,
-    ProductInitialInventory, ProductInventoryDeletionBlocker, ProductInventoryPort,
-    ProductInventoryQuantityBlocker,
+    NoopProductInventoryPort, ProductInitialInventory, ProductInventoryDeletionBlocker,
+    ProductInventoryPort, ProductInventoryQuantityBlocker,
 };
 pub use pricing::{
     AsPricingConnection, CatalogBasePriceSnapshot, InitialPrice, PricingConnection,
     ProductPricingPort,
+};
+pub use taxonomy::{
+    AsTaxonomyConnection, NoopProductTaxonomyPort, ProductTaxonomyCategoryInput,
+    ProductTaxonomyCategorySnapshot, ProductTaxonomyCategoryTranslationInput,
+    ProductTaxonomyPort, TaxonomyConnection,
 };
 pub use types::{
     AdminCatalogFacetsRequest, AdminProductsRequest, FilteredPublishedProductsRequest,

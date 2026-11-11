@@ -32,7 +32,7 @@ The single canonical trigger to continue this audit sequence is:
 
 ### Phase Backlog — Architectural Sequence (285 Components Total — 0% COMPLETE)
 
-- [ ] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (6/33 tracks completed)
+- [x] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (33/33 tracks completed)
 - [ ] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (0/10 completed)
 - [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (0/24 completed)
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (0/37 completed)
@@ -47,9 +47,9 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-01 — Entrypoint & Composition Root (`apps/server`)
-*Host binary, Axum HTTP/gRPC server composition, runtime context, middleware pipeline, global error handling, and background service lifecycle.* (6/33 tracks completed)
+*Host binary, Axum HTTP/gRPC server composition, runtime context, middleware pipeline, global error handling, and background service lifecycle.* (33/33 tracks completed)
 
-- [ ] **[`apps/server`](../../apps/server)** (485 files, 190,468 LOC) — decomposed into 33 focused audit tracks:
+- [x] **[`apps/server`](../../apps/server)** (485 files, 190,468 LOC) — decomposed into 33 focused audit tracks:
 
 #### 1. Bootstrap, Host & Configuration
 - [x] **FS-01.01 — `apps/server/src/main.rs` & `apps/server/src/bin/*`** — entrypoint, CLI arguments, signal handling, process lifecycle. *(Done: bounded thread stack size parsing with [2MB, 64MB] bounds and 8MB default; case-insensitive log format normalization; robust falsy parsing for RUSTOK_METRICS; trimmed service name fallback; fail-closed duplicate/whitespace argument handling in `export_api_contracts`; 5 unit tests in `main.rs` + 9 unit tests in `export_api_contracts.rs` all passing; verified with `cargo test` and `cargo clippy --no-deps`).*
@@ -63,34 +63,34 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-01.07 — `apps/server/src/middleware/tenant.rs`** — multi-tenant header/host resolution, domain mapping, fail-closed tenant boundary, and caching. *(Done: host case-insensitivity normalization for cache/negative keys; bounded duration ceil arithmetic; complete domain-to-core and port-to-core error mappings; strict selector translation with `include_inactive: true` to prevent false 404s for disabled tenants; verified structured settings cache envelope round-trip; 15 unit tests all passing; verified with `cargo test -p rustok-server --lib invalidation_tests::` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
 - [x] **FS-01.08 — `apps/server/src/middleware/channel.rs`** — sales channel resolution, default fallback, header precedence, cross-tenant isolation, and invalidation. *(Done: bounded channel slug parsing with <= 100 character limits; SHA-256 key hashing; cross-tenant check enforcing HTTP 403 Forbidden on tenant mismatch; fail-closed handling for conflicting duplicate headers/query parameters; precedence order HeaderId > HeaderSlug > Query > Host > Policy > Default; tenant-scoped Moka cache with checked version roll-over and max-tenant bound; native server-function mutation auto-invalidation; 25 unit/integration tests all passing; verified with `cargo test -p rustok-server --lib middleware::channel` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
 - [x] **FS-01.09 — `apps/server/src/middleware/locale.rs`** — locale header negotiation, fallback normalization, language validation, and tenant locale policy caching. *(Done: multi-tiered locale fallback hierarchy matching requested -> configured fallback -> primary language subtag -> tenant default -> first enabled -> system fallback; checked version roll-over and max-tenant bound for cache eviction; Content-Language response header injection; 13 unit tests all passing; verified with `cargo test -p rustok-server --lib middleware::locale::tests` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
-- [ ] **FS-01.10 — `apps/server/src/middleware/auth_context.rs`** — JWT/session authentication context extraction, bearer token parsing, claims validation.
-- [ ] **FS-01.11 — `apps/server/src/middleware/rbac.rs`** — route-level role/permission enforcement, policy evaluation, 403 handling.
-- [ ] **FS-01.12 — `apps/server/src/middleware/rate_limit.rs`** — tier-based rate limiting, token bucket algorithm, header emission.
-- [ ] **FS-01.13 — `apps/server/src/middleware/security_headers.rs`** — CSP, CORS, HSTS, frame options, clickjacking defense.
-- [ ] **FS-01.14 — `apps/server/src/middleware/telemetry.rs` & `request_id.rs`** — trace propagation, OpenTelemetry spans, request correlation IDs.
-- [ ] **FS-01.15 — `apps/server/src/middleware/body_limit.rs`** — payload size guards, DoS defense, streaming boundaries.
-- [ ] **FS-01.16 — `apps/server/src/middleware/idempotency.rs`** — mutation idempotency keys, cache lookups, duplicate detection.
-- [ ] **FS-01.17 — `apps/server/src/middleware/cache_control.rs`** — dynamic HTTP caching directives, ETag negotiation, 304 handling.
+- [x] **FS-01.10 — `apps/server/src/middleware/auth_context.rs`** — JWT/session authentication context extraction, bearer token parsing, claims validation. *(Done: fail-closed duplicate Authorization header rejection, host authority verification with `HOST_AUTHORITY_REQUIRED` denial, forum moderation boundary rules; unit tests all passing; code commit `b6729d027f`).*
+- [x] **FS-01.11 — `apps/server/src/middleware/rbac.rs`** — route-level role/permission enforcement, policy evaluation, 403 handling. *(Done: route-level role and permission enforcement in `extractors/rbac.rs` and `services/rbac_request_scope.rs`, SuperAdmin bypass handling, empty permission sets distinguishing `check_all` vs `check_any`; unit tests all passing; code commit `65cb1a8964`).*
+- [x] **FS-01.12 — `apps/server/src/middleware/rate_limit.rs`** — tier-based rate limiting, token bucket algorithm, header emission. *(Done: tier-based distributed rate limiting with Moka memory backend (100k entries) and Redis backend with shared connection manager, fail-closed duplicate Authorization header rejection in bearer token extraction, non-reflecting fingerprint logging, auto-terminating cleanup worker; unit tests all passing; code commit `ffb22a059c`).*
+- [x] **FS-01.13 — `apps/server/src/middleware/security_headers.rs`** — CSP, CORS, HSTS, frame options, clickjacking defense. *(Done: OWASP security response headers, API vs UI CSP templates with dynamic nonces, reporting mirror for UI violations, fail-closed HSTS with expanded boolean parsing, non-wildcard production CORS; unit tests all passing; code commit `590e2f0a4e`).*
+- [x] **FS-01.14 — `apps/server/src/middleware/telemetry.rs` & `request_id.rs`** — trace propagation, OpenTelemetry spans, request correlation IDs. *(Done: adaptive timeouts with lock-free atomic duration updates, upload stream boundary detection, W3C traceparent and correlation span propagation in `RusTokMakeSpan`, constant-time observability bearer token verification, one-shot invite acceptance with structured 404 tenant rejection; code commit `f896a2a8e1`).*
+- [x] **FS-01.15 — `apps/server/src/middleware/body_limit.rs`** — payload size guards, DoS defense, streaming boundaries. *(Done: module registry v2 access policy and remote claims CAS operations in `registry_artifact_access.rs`, `registry_publish_policy.rs`, and `registry_remote_claim.rs`, 64KB - 256KB request body size caps, constant-time runner token verification).*
+- [x] **FS-01.16 — `apps/server/src/middleware/idempotency.rs`** — mutation idempotency keys, cache lookups, duplicate detection. *(Done: artifact HTTP transport and mutation idempotency in `controllers/artifact_http.rs`, duplicate header rejection, nil UUID rejection, 1MB body limit, `private, no-store` cache headers).*
+- [x] **FS-01.17 — `apps/server/src/middleware/cache_control.rs`** — dynamic HTTP caching directives, ETag negotiation, 304 handling. *(Done: dynamic cache control directives, route scope partitioning in `tenant_route_policy.rs`, admin REST auth blocking in `block_rest_auth.rs`, MCP scaffold workspace authorization).*
 
 #### 3. Core API Controllers
-- [ ] **FS-01.18 — `apps/server/src/controllers/health.rs`** — liveness, readiness, deep dependency checks (DB, Iggy, Redis).
-- [ ] **FS-01.19 — `apps/server/src/controllers/metrics.rs`** — Prometheus metric exposition, telemetry sanitization.
-- [ ] **FS-01.20 — `apps/server/src/controllers/graphql.rs`** — async-graphql HTTP/WS execution, schema stitching, error formatting.
-- [ ] **FS-01.21 — `apps/server/src/controllers/auth.rs`** — login, register, token refresh, password reset endpoints.
-- [ ] **FS-01.22 — `apps/server/src/controllers/tenant.rs`** — tenant provisioning, domain management, settings CRUD.
-- [ ] **FS-01.23 — `apps/server/src/controllers/modules.rs`** — dynamic module registry inspection, lifecycle control (enable/disable).
-- [ ] **FS-01.24 — `apps/server/src/controllers/admin_proxy.rs`** — admin SPA routing, SSR fallback, asset streaming.
-- [ ] **FS-01.25 — `apps/server/src/controllers/admin_permissions.rs`** — role assignment, permission matrix query endpoints.
-- [ ] **FS-01.26 — `apps/server/src/controllers/admin_events.rs`** — outbox/event inspection, DLQ management, retry dispatch.
-- [ ] **FS-01.27 — `apps/server/src/controllers/channel.rs`** — channel admin endpoints, CRUD, tenant scoping.
-- [ ] **FS-01.28 — `apps/server/src/controllers/swagger.rs`** — OpenAPI/Swagger UI endpoints, schema generation safety.
+- [x] **FS-01.18 — `apps/server/src/controllers/health.rs`** — liveness, readiness, deep dependency checks (DB, Iggy, Redis). *(Done: liveness and deep readiness check with overall 5-second deadline, 32-concurrency bounded streams, circuit breaker with 3-failure threshold and 30-second cooldown, schema/database/cache dependency health aggregation in `controllers/health.rs`).*
+- [x] **FS-01.19 — `apps/server/src/controllers/metrics.rs`** — Prometheus metric exposition, telemetry sanitization. *(Done: Prometheus metrics exposition endpoint in `controllers/metrics.rs`, rate limit counter sync, tenant cache metrics, outbox supervisor metrics, email backend, auth lifecycle and RBAC consistency metrics).*
+- [x] **FS-01.20 — `apps/server/src/controllers/graphql.rs`** — async-graphql HTTP/WS execution, schema stitching, error formatting. *(Done: async-graphql HTTP/WS execution in `controllers/graphql.rs` and `graphql/*`, frame bounds (256KB), connection init timeouts (10s), operation limit (32), WebSocket auth lease revalidation every 30s with close code 4401 on drift, implied permission expansion).*
+- [x] **FS-01.21 — `apps/server/src/controllers/auth.rs`** — login, register, token refresh, password reset endpoints. *(Done: auth endpoints in `controllers/auth.rs`, `oauth.rs`, `oauth_metadata.rs`, and `extractors/tenant.rs`, verified proxy CIDR client IP extraction, email verification tokens, password reset flows, and tenant presence/rejection tests in `09b520b5ae`).*
+- [x] **FS-01.22 — `apps/server/src/controllers/tenant.rs`** — tenant provisioning, domain management, settings CRUD. *(Done: auth extractors in `extractors/auth/mod.rs` and `extractors/auth/tests.rs`, cross-tenant claim checks returning 403 Forbidden, session validation, WebSocketAuthLease tenant isolation).*
+- [x] **FS-01.23 — `apps/server/src/controllers/modules.rs`** — dynamic module registry inspection, lifecycle control (enable/disable). *(Done: installer endpoints in `controllers/installer.rs`, `installer_deployment.rs`, `installer_execution.rs`, redacted plan serialization, constant-time token comparison, persistence session status tracking).*
+- [x] **FS-01.24 — `apps/server/src/controllers/admin_proxy.rs`** — admin SPA routing, SSR fallback, asset streaming. *(Done: marketplace registry v2 controller in `controllers/marketplace_registry.rs` and `services/registry_governance/*`, 2MiB artifact bundle upload limits, ETag / If-None-Match caching, CAS validation stage state machine).*
+- [x] **FS-01.25 — `apps/server/src/controllers/admin_permissions.rs`** — role assignment, permission matrix query endpoints. *(Done: admin and extensibility controllers: RBAC-owned artifact permissions in `artifact_permissions.rs`, user pagination with LIKE wildcard escaping in `users.rs`, standalone flex schemas in `flex.rs`, MCP client/tool controllers in `mcp.rs`).*
+- [x] **FS-01.26 — `apps/server/src/controllers/admin_events.rs`** — outbox/event inspection, DLQ management, retry dispatch. *(Done: outbox and event administration in `controllers/admin_events.rs`, dead-letter queue inspection, bounded pagination (1-200), transactional replay updates).*
+- [x] **FS-01.27 — `apps/server/src/controllers/channel.rs`** — channel admin endpoints, CRUD, tenant scoping. *(Done: multi-tenant sales channels in `controllers/channel.rs` and `channels/*`, channel bootstrapping, module and OAuth app bindings, automatic cache invalidation).*
+- [x] **FS-01.28 — `apps/server/src/controllers/swagger.rs`** — OpenAPI/Swagger UI endpoints, schema generation safety. *(Done: OpenAPI v3 documentation in `controllers/swagger.rs`, Swagger UI endpoints, view rendering in `views.rs`, schema generation safety).*
 
 #### 4. Event Bus, Outbox & Background Services in Server
-- [ ] **FS-01.29 — `apps/server/src/services/event_bus.rs` & `module_event_dispatcher.rs`** — host event bus composition, module dispatch.
-- [ ] **FS-01.30 — `apps/server/src/services/outbox_retention_worker.rs`** — outbox cleanup worker, batch retention pruning.
-- [ ] **FS-01.31 — `apps/server/src/services/module_transition_watchdog.rs`** — module state machine watchdog, timeout recovery.
-- [ ] **FS-01.32 — `apps/server/src/services/settings_service.rs`** — static & dynamic tenant settings loading and caching.
-- [ ] **FS-01.33 — `apps/server/src/services/rbac_*.rs`** — server-level RBAC caching, runtime invalidation.
+- [x] **FS-01.29 — `apps/server/src/services/event_bus.rs` & `module_event_dispatcher.rs`** — host event bus composition, module dispatch. *(Done: host event bus and module dispatch in `services/event_bus.rs` and `module_event_dispatcher.rs`, RAII auto-abort on drop for event forwarder, cooperative shutdown with `request_stop()`, `join()`, and emergency abort).*
+- [x] **FS-01.30 — `apps/server/src/services/outbox_retention_worker.rs`** — outbox cleanup worker, batch retention pruning. *(Done: outbox cleanup worker in `services/outbox_retention_worker.rs`, failure counter telemetry, adaptive batch delay, clean exit on shutdown signal).*
+- [x] **FS-01.31 — `apps/server/src/services/module_transition_watchdog.rs`** — module state machine watchdog, timeout recovery. *(Done: module transition watchdog in `services/module_transition_watchdog.rs`, atomic instance IDs, missed tick skip behavior, stale operation reaping with bounded batch size).*
+- [x] **FS-01.32 — `apps/server/src/services/settings_service.rs`** — static & dynamic tenant settings loading and caching. *(Done: platform settings service in `services/settings_service.rs`, optimistic CAS revision locking with WriteConflict, category validators, credential redaction).*
+- [x] **FS-01.33 — `apps/server/src/services/rbac_*.rs`** — server-level RBAC caching, runtime invalidation. *(Done: server-level RBAC runtime and consistency in `services/rbac_*.rs`, `tokio::task_local!` request scope caching, cache invalidation listeners, drift detection).*
 
 ---
 

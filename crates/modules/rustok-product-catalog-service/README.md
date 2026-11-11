@@ -1,6 +1,6 @@
 # RusTok Product catalog service
 
-> This is the current Product standalone deployment package. The conversion target places its binary in the [Product-owned transport package](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
+> This is the current Product standalone deployment package. The [FBA conversion target](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout) places its binary at `src/bin/service.rs` in the Product owner package.
 
 For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
 

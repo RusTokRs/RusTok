@@ -19,7 +19,7 @@ currently live in `rustok-product`. The existing infrastructure packages remain 
 - `rustok-product-transport`: tonic client/server framing and bearer authentication.
 
 These packages are the current deployment inputs. Product's conversion target is
-the [nested FBA transport package](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
+the [canonical FBA layout](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout), with published contracts and gRPC adapters in `ports/` and the standalone binary in the Product owner.
 The remote capability remains bounded to its supported operations.
 
 ## Known Limitations / Pending Implementation

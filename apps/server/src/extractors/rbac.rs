@@ -571,4 +571,28 @@ mod tests {
         );
         assert!(result.is_err()); // Customer doesn't have DELETE
     }
+
+    #[test]
+    fn test_check_all_permissions_empty_is_ok() {
+        let customer_user = create_test_user(UserRole::Customer);
+        let result = check_all_permissions(&customer_user, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_any_permission_empty_is_forbidden() {
+        let customer_user = create_test_user(UserRole::Customer);
+        let result = check_any_permission(&customer_user, &[]);
+        assert!(result.is_err());
+        if let Err((code, _msg)) = result {
+            assert_eq!(code, StatusCode::FORBIDDEN);
+        }
+    }
+
+    #[test]
+    fn test_super_admin_has_effective_permissions() {
+        let admin = create_test_user(UserRole::SuperAdmin);
+        assert!(check_permission(&admin, Permission::USERS_DELETE).is_ok());
+        assert!(check_permission(&admin, Permission::SETTINGS_UPDATE).is_ok());
+    }
 }

@@ -140,8 +140,8 @@ pub struct CatalogService {
     pub(crate) shipping_profile_port: Option<std::sync::Arc<dyn crate::ProductShippingProfilePort>>,
     pub(crate) media_reference_port: Option<std::sync::Arc<dyn crate::ProductMediaReferencePort>>,
     pub(crate) pricing_port: Option<std::sync::Arc<dyn ProductPricingPort>>,
-    pub(crate) inventory_bootstrap_port:
-        Option<std::sync::Arc<dyn crate::ports::ProductInventoryBootstrapPort>>,
+    pub(crate) inventory_port: Option<std::sync::Arc<dyn crate::ports::ProductInventoryPort>>,
+    pub(crate) taxonomy_port: Option<std::sync::Arc<dyn crate::ports::ProductTaxonomyPort>>,
 }
 
 impl CatalogService {
@@ -152,7 +152,8 @@ impl CatalogService {
             media_reference_port: None,
             shipping_profile_port: None,
             pricing_port: None,
-            inventory_bootstrap_port: None,
+            inventory_port: None,
+            taxonomy_port: None,
         }
     }
 
@@ -169,20 +170,39 @@ impl CatalogService {
         self
     }
 
-    pub fn with_inventory_bootstrap_port(
+    pub fn with_inventory_port(
         mut self,
-        port: std::sync::Arc<dyn crate::ports::ProductInventoryBootstrapPort>,
+        port: std::sync::Arc<dyn crate::ports::ProductInventoryPort>,
     ) -> Self {
-        self.inventory_bootstrap_port = Some(port);
+        self.inventory_port = Some(port);
         self
     }
 
-    pub(crate) fn inventory_bootstrap(
-        &self,
-    ) -> std::sync::Arc<dyn crate::ports::ProductInventoryBootstrapPort> {
-        self.inventory_bootstrap_port
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ports::ProductTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = Some(port);
+        self
+    }
+
+    pub fn with_inventory_bootstrap_port(
+        self,
+        port: std::sync::Arc<dyn crate::ports::ProductInventoryPort>,
+    ) -> Self {
+        self.with_inventory_port(port)
+    }
+
+    pub(crate) fn inventory(&self) -> std::sync::Arc<dyn crate::ports::ProductInventoryPort> {
+        self.inventory_port
             .clone()
-            .unwrap_or_else(|| std::sync::Arc::new(crate::ports::EmbeddedInventoryBootstrapAdapter))
+            .unwrap_or_else(|| std::sync::Arc::new(crate::ports::NoopProductInventoryPort))
+    }
+
+    pub(crate) fn taxonomy(&self) -> std::sync::Arc<dyn crate::ports::ProductTaxonomyPort> {
+        self.taxonomy_port
+            .clone()
+            .unwrap_or_else(|| std::sync::Arc::new(crate::ports::NoopProductTaxonomyPort))
     }
 
     pub(crate) fn database(&self) -> &DatabaseConnection {

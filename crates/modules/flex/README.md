@@ -22,6 +22,16 @@ Flex is explicit product opt-in. A domain entity does not become a Flex donor me
 - Flex-owned attached-field governance policy keyed by tenant + donor entity type + field key, with typed data classification, explicit AI-export admission, fail-closed resolution, and owner-visible explicit/default provenance.
 - `FlexModule` capability-only runtime metadata for the manifest-driven module registry.
 
+## FBA ownership target
+
+Flex is a capability owner. It owns field schemas, policies and standalone entries.
+Donor owners retain attached values and atomic updates with their aggregates.
+Flex calls a donor's port to read or edit its values. Donors use Flex's port to obtain
+definitions and policies. The [canonical FBA layout](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout)
+supports local and remote bindings. Current shared attached storage and host wiring
+remain in use pending a donor-by-donor migration that preserves Translation and
+change history. The `capability_only` classification is current module metadata.
+
 ## Donor policy
 
 The runtime donor registry is a product contract, not an inventory of tables that happen to support JSON.

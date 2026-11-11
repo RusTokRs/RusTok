@@ -13,6 +13,7 @@ pub mod entities {
 
 pub mod migrations;
 pub mod module;
+pub mod product_inventory_port;
 pub mod product_port;
 #[path = "ports.rs"]
 mod ports_impl;
@@ -20,6 +21,9 @@ mod ports_impl;
 /// Canonical owner contracts and admitted in-process entry points. The persistent
 /// implementation stays private; all public paths use the same diagnostic boundary.
 pub mod ports {
+    pub use crate::product_inventory_port::{
+        InventoryProductInventoryPortAdapter, in_process_product_inventory_port,
+    };
     pub use crate::ports_impl::{
         InventoryAvailabilityRequest, InventoryAvailabilitySnapshot,
         InventoryIdentityReservationAdoptionItem, InventoryIdentityReservationAdoptionRequest,
@@ -84,6 +88,9 @@ pub use services::{
     load_available_inventory_for_variant_in_public_channel,
     load_inventory_projection_by_variant_for_public_channel, normalize_public_channel_slug,
     public_channel_inventory_projection,
+};
+pub use product_inventory_port::{
+    InventoryProductInventoryPortAdapter, in_process_product_inventory_port,
 };
 pub use translation_changes::{
     StockLocationTranslationChangeLifecycle, StockLocationTranslationChangeRecord,

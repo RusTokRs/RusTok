@@ -212,10 +212,9 @@ status above `in_progress`:
 3. **Runtime metadata:** `rustok-module.toml` or module-owned machine-readable registry
    captures the provider/consumer dependency profile, contract versions, degraded modes and
    toggle/fallback profiles if the module participates in a provider/consumer track.
-4. **Contract location:** transport-neutral DTO/port/error contracts live in the owner module
-   or an optional owner contracts package; only genuinely shared platform primitives belong
-   in a foundation crate. Having multiple consumers does not transfer domain ownership; host apps do not
-   become owners of domain/application contracts.
+4. **Contract location:** published DTO, port and error contracts live in the owner's
+   nested `<owner-package>-ports` package. Shared platform primitives belong in foundation
+   crates. Host composition uses published contracts without taking domain ownership.
 5. **Verification location:** alongside machine-readable metadata there is an anti-drift/fallback gate
    (`scripts/verify/*` or module-local verifier), and the local plan lists command/evidence.
 6. **Evidence packet:** for Wave/pilot rollout there are actual or explicitly marked
@@ -337,14 +336,32 @@ mandatory template:
    `page_builder -> pages` this is `page-builder-fba-registry.json` + `rustok-module.toml`; new
    provider/consumer tracks must repeat this pattern or extend it within the unified plan.
 
-Contracts and implementation may remain in the same owner crate. Neither a second
-domain module nor an owner-contracts package is required. A contracts-only Cargo build
-must be implemented and checked independently; Product currently has unconditional
-implementation dependencies. The [remote FBA module layout](../backend/module-backend-implementation.md#remote-fba-module-layout)
-defines the same nested transport package for new and converted owners. Materialize
-each responsibility when it has an implemented owner contract and a real consumer.
+The [canonical FBA layout](../backend/module-backend-implementation.md#remote-fba-module-layout)
+applies to both new and converted native owners. The nested ports package belongs
+to the same module identity. Runtime readiness requires independent compile and
+operation evidence. Add source for implemented responsibilities.
 
----
+### Converge existing owners on published ports
+
+1. Run `python scripts/architecture_dependency_guard.py --fba-inventory` to locate
+   direct runtime-package edges. Inventory real consumers, foreign SQL and native
+   shared transactions in each owner plan. A dependency edge is a review candidate.
+   Separate neutral shared facilities, such as the outbox producer contract, from
+   independently deployed owner runtimes.
+2. Publish narrow owner ports and move consumers to explicit host bindings. Preserve
+   deployed wire identities and eliminate duplicate authoritative data. Use the same
+   owner port and workflow in the monolith and across process boundaries.
+3. Establish the data, migration and transaction boundary, including attached
+   values owned by donors and schemas/policies owned by their defining capability.
+   Replace cross-owner SQL transactions only with verified equivalent operation
+   guarantees or an explicit business consistency decision.
+4. Verify the lightweight contract/client build, embedded execution and standalone
+   profile for each migrated scope. Update its owner plan and the existing readiness
+   board together. Deploy independently according to product and operational needs.
+
+Product, Flex, Inventory and Taxonomy have existing shared-storage and host binding
+work to reconcile. Media's bounded read profile offers a smaller packaging slice.
+Complete provider contracts before converting their multi-owner orchestrators.
 
 ## 2.4 Active Embedded-First Foundation Plan (2026-H2)
 
@@ -352,8 +369,8 @@ each responsibility when it has an implemented owner contract and a real consume
 
 The active platform priority is to make owner modules production-ready in the
 modular monolith. FBA is applied now as boundary discipline, not as a mandate
-to deploy modules remotely. The default and only newly introduced runtime
-profile during this focus is embedded execution.
+to deploy modules remotely. Embedded execution remains the default while each
+owner works toward verified embedded and independent execution.
 
 This focus does not change the later stages in this document or authorize a
 remote deployment. It makes their prerequisites real while improving the

@@ -56,8 +56,9 @@ Some admin paths construct local services directly. The
 is the scope of the present claim, not all Product API entries in this document.
 
 `ProductPricingPort` and bootstrap interfaces taking `DatabaseTransaction` are native
-transaction-participant contracts. Their signatures are not remotely callable. Contract
-types may stay in this crate; no contracts-only Cargo feature profile currently exists.
+transaction-participant contracts. Their signatures are not remotely callable. Published
+contract types currently live here. The [FBA target](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout)
+moves them into `rustok-product-ports` with a runtime-independent build.
 
 ## Domain Collaborations
 

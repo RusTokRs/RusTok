@@ -6,6 +6,7 @@ boundaries (server/core/domain), while allowing frontend-specific workspace libs
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import subprocess
@@ -228,9 +229,50 @@ def check_internal_module_imports(metadata: dict, rules: dict, errors: list[str]
                         )
 
 
+def report_fba_inventory(metadata: dict) -> None:
+    with (ROOT / "modules.toml").open("rb") as manifest:
+        owners = {
+            spec["crate"]: slug
+            for slug, spec in tomllib.load(manifest)["modules"].items()
+            if spec.get("source") == "path"
+        }
+    edges = set()
+    for package in metadata["packages"]:
+        consumer = owners.get(package["name"])
+        if consumer is None:
+            continue
+        for dep in package["dependencies"]:
+            provider = owners.get(dep["name"])
+            if provider is not None and provider != consumer and kind_is_runtime(dep):
+                edges.add(
+                    (consumer, provider, dep["kind"] or "normal", dep.get("target") or "", dep["optional"])
+                )
+
+    pairs = {(consumer, provider) for consumer, provider, *_ in edges}
+    consumers = {consumer for consumer, _ in pairs}
+    print(
+        f"[fba-inventory] {len(owners)} local owners, {len(pairs)} direct runtime-package edges "
+        f"from {len(consumers)} consumers. Review candidates, not confirmed violations."
+    )
+    for consumer, provider, kind, target, optional in sorted(edges):
+        qualifiers = [kind, "optional" if optional else "required"]
+        if target:
+            qualifiers.append(target)
+        print(f"  {consumer} -> {provider} ({', '.join(qualifiers)})")
+
+
 def main() -> int:
-    rules = load_rules()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--fba-inventory", action="store_true", help="List direct runtime-package edges between native owners"
+    )
+    args = parser.parse_args()
     metadata = run_metadata()
+    if args.fba_inventory:
+        report_fba_inventory(metadata)
+        return 0
+
+    rules = load_rules()
     errors: list[str] = []
 
     check_app_workspace_rules(metadata, rules, errors)

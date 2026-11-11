@@ -43,58 +43,7 @@ use super::catalog_schema::{
 };
 use super::write_transaction::ProductWriteTransaction;
 
-/// Sync accepts user intent; its authoritative domain refusals retain their class.
-fn map_taxonomy_sync_error(error: rustok_taxonomy::TaxonomyError) -> CommerceError {
-    use rustok_core::error::Error as CoreError;
-    use rustok_taxonomy::TaxonomyError;
-    match error {
-        TaxonomyError::Database(error) => CommerceError::Database(error),
-        TaxonomyError::Internal(_) => CommerceError::Core(CoreError::Internal(
-            "Taxonomy category synchronization failed".into(),
-        )),
-        TaxonomyError::Forbidden(_) => CommerceError::Core(CoreError::Forbidden(
-            "Taxonomy category access is denied".into(),
-        )),
-        TaxonomyError::TermNotFound(_) => CommerceError::Core(CoreError::NotFound(
-            "Referenced Taxonomy category was not found".into(),
-        )),
-        TaxonomyError::DuplicateCanonicalKey(_)
-        | TaxonomyError::DuplicateSlug(_)
-        | TaxonomyError::DuplicateAlias(_)
-        | TaxonomyError::Conflict(_)
-        | TaxonomyError::TranslationRevisionExhausted { .. } => {
-            CommerceError::Conflict("Taxonomy category conflicts with current state".into())
-        }
-        TaxonomyError::Validation(_) => {
-            CommerceError::Validation("Taxonomy category request is invalid".into())
-        }
-    }
-}
-
-/// A read projection does not accept a Taxonomy mutation: domain-shaped read failures
-/// other than permission denial indicate broken owner/projection state, not invalid user input.
-fn map_taxonomy_read_error(error: rustok_taxonomy::TaxonomyError) -> CommerceError {
-    use rustok_core::error::Error as CoreError;
-    use rustok_taxonomy::TaxonomyError;
-    match error {
-        TaxonomyError::Database(error) => CommerceError::Database(error),
-        TaxonomyError::Forbidden(_) => CommerceError::Core(CoreError::Forbidden(
-            "Taxonomy category access is denied".into(),
-        )),
-        TaxonomyError::Internal(_)
-        | TaxonomyError::TermNotFound(_)
-        | TaxonomyError::DuplicateCanonicalKey(_)
-        | TaxonomyError::DuplicateSlug(_)
-        | TaxonomyError::DuplicateAlias(_)
-        | TaxonomyError::Conflict(_)
-        | TaxonomyError::TranslationRevisionExhausted { .. }
-        | TaxonomyError::Validation(_) => {
-            taxonomy_projection_error("Taxonomy category projection could not be read safely")
-        }
-    }
-}
-
-fn taxonomy_projection_error(message: &'static str) -> CommerceError {
+pub(crate) fn taxonomy_projection_error(message: &'static str) -> CommerceError {
     CommerceError::Core(rustok_core::error::Error::Internal(message.into()))
 }
 
@@ -117,11 +66,30 @@ fn ensure_schema_list_within_limit(row_count: usize, subject: &str) -> CommerceR
 pub struct ProductCatalogSchemaService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
+    pub(crate) taxonomy_port: Option<std::sync::Arc<dyn crate::ports::ProductTaxonomyPort>>,
 }
 
 impl ProductCatalogSchemaService {
     pub fn new(db: DatabaseConnection, event_bus: TransactionalEventBus) -> Self {
-        Self { db, event_bus }
+        Self {
+            db,
+            event_bus,
+            taxonomy_port: None,
+        }
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ports::ProductTaxonomyPort>,
+    ) -> Self {
+        self.taxonomy_port = Some(port);
+        self
+    }
+
+    pub(crate) fn taxonomy(&self) -> std::sync::Arc<dyn crate::ports::ProductTaxonomyPort> {
+        self.taxonomy_port
+            .clone()
+            .unwrap_or_else(|| std::sync::Arc::new(crate::ports::NoopProductTaxonomyPort))
     }
 }
 

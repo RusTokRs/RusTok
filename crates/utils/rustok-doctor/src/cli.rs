@@ -108,6 +108,21 @@ fn parse(args: &[String]) -> Result<Option<Options>, String> {
             return Err(format!("invalid severity: {threshold}"));
         }
     }
+    let selections = [
+        options.crate_names.is_some(),
+        options.path.is_some(),
+        options.all,
+        options.all_modules,
+        options.staged,
+        options.changed,
+        options.diff.is_some(),
+    ];
+    if selections.into_iter().filter(|selected| *selected).count() > 1 {
+        return Err("target options are mutually exclusive: choose one of --crate, --path, --all, --all-modules, --staged, --changed, or --diff".to_owned());
+    }
+    if options.strict && options.fail_on.is_some() {
+        return Err("--strict and --fail-on are mutually exclusive".to_owned());
+    }
     if options.threads == Some(0) {
         return Err("threads must be a positive integer".to_owned());
     }

@@ -17,11 +17,10 @@ owns platform composition, each module's `rustok-module.toml` owns its published
 identity/surfaces, and local owner plans own readiness. Documentation indexes
 are projections. Server/distribution files compose native runtime entrypoints.
 
-Generated owner plans point to the shared
-[remote FBA module layout](../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
-The same packaging lint runs for an existing owner. A follow-up generation
-workflow can add the package from a real owner port and wire schema. The current
-native renderer creates the owner and its implementation plan.
+Generated owner plans point to the [canonical FBA layout](../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
+The same packaging lint runs for an existing owner. The native renderer creates
+the owner and its plan. Published ports, wire adapters and standalone composition
+are added when their real operations are implemented.
 
 Alloy MCP drafts are a separate reviewed design-assistance flow owned by
 [`rustok-mcp`](../../crates/modules/rustok-mcp/docs/implementation-plan.md).

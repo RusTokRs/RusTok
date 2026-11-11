@@ -13,7 +13,7 @@
 
 ## Purpose
 
-`flex` defines the custom fields capability layer for RusToK: attached-mode extends donor modules, while standalone mode provides schema/entry runtime for extension scenarios without turning `flex` into a separate business bounded context.
+`flex` owns custom-field schemas, policies and standalone entries. Attached mode extends donors through their owner contracts. Standalone schema/entry behavior is separate from process placement. The [FBA target](../../../../docs/backend/module-backend-architecture.md#storage-and-transactions) keeps donor values with their aggregate owners.
 
 ## Scope
 

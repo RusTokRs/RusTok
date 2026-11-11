@@ -4,6 +4,11 @@
 
 Accepted — 2026-08-22
 
+The later [FBA owner ports decision](./2026-11-11-canonical-fba-owner-ports.md)
+supersedes donor-attached value authority and cross-owner shared-storage requirements.
+Existing attached storage and Translation evidence describe the live migration state.
+Flex schema, policy and standalone-entry ownership remains in force.
+
 ## Context
 
 The original Taxonomy rollout intentionally started with `TaxonomyTermKind::Tag` and kept category

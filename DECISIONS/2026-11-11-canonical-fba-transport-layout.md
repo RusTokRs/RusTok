@@ -1,12 +1,12 @@
 # Canonical FBA transport layout
 
 - Date: 2026-11-11
-- Decision status: Accepted
+- Decision status: Superseded
 - Implementation status: In progress
 - Owners: platform architecture / native module owners / xtask
 - Extends: [Canonical native module source layout](./2026-09-18-canonical-native-module-source-layout.md), [Port contract ownership](./2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md)
 - Supersedes: The former separate transport and service placement rule for native FBA modules
-- Superseded by: None
+- Superseded by: [Canonical FBA owner ports and deployment](./2026-11-11-canonical-fba-owner-ports.md)
 
 ## Context
 

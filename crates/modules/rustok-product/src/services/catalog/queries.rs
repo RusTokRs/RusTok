@@ -451,6 +451,7 @@ impl CatalogService {
         }
 
         apply_public_channel_inventory_to_product(
+            self.inventory_port.as_ref(),
             &self.db,
             tenant_id,
             &mut product,

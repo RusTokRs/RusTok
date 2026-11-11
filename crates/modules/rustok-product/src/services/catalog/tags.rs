@@ -1,4 +1,4 @@
-use super::{CatalogService, PRODUCT_SCOPE_VALUE, ProductTagState, helpers::normalize_tag_names};
+use super::{CatalogService, ProductTagState, helpers::normalize_tag_names};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseTransaction, EntityTrait, QueryFilter,
@@ -11,7 +11,6 @@ use crate::{
     entities,
     error::{CommerceError, CommerceResult},
 };
-use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
 
 use crate::entities::product_tag;
 
@@ -55,10 +54,15 @@ impl CatalogService {
         let names = if ordered_term_ids.is_empty() {
             HashMap::new()
         } else {
-            TaxonomyService::new(self.db.clone())
-                .resolve_term_names(tenant_id, &ordered_term_ids, locale, fallback_locale)
-                .await
-                .map_err(|error| CommerceError::Validation(error.to_string()))?
+            self.taxonomy()
+                .resolve_term_names(
+                    (&self.db).into(),
+                    tenant_id,
+                    &ordered_term_ids,
+                    locale,
+                    fallback_locale,
+                )
+                .await?
         };
 
         let mut tags_by_product = HashMap::new();
@@ -98,10 +102,16 @@ impl CatalogService {
             .iter()
             .map(|relation| relation.term_id)
             .collect::<Vec<_>>();
-        let names = TaxonomyService::new(self.db.clone())
-            .resolve_term_names_in(conn, tenant_id, &term_ids, locale, fallback_locale)
-            .await
-            .map_err(|error| CommerceError::Validation(error.to_string()))?;
+        let names = self
+            .taxonomy()
+            .resolve_term_names(
+                (&self.db).into(),
+                tenant_id,
+                &term_ids,
+                locale,
+                fallback_locale,
+            )
+            .await?;
 
         let mut tags = Vec::new();
         for relation in relations {
@@ -133,17 +143,10 @@ impl CatalogService {
             return Ok(());
         }
 
-        let term_ids = TaxonomyService::new(self.db.clone())
-            .ensure_terms_for_module_in_tx(
-                txn,
-                tenant_id,
-                TaxonomyTermKind::Tag,
-                PRODUCT_SCOPE_VALUE,
-                locale,
-                &normalized_tags,
-            )
-            .await
-            .map_err(|error| CommerceError::Validation(error.to_string()))?;
+        let term_ids = self
+            .taxonomy()
+            .ensure_product_tags_in_tx(txn, tenant_id, locale, &normalized_tags)
+            .await?;
 
         let now = Utc::now();
         for (position, term_id) in term_ids.into_iter().enumerate() {

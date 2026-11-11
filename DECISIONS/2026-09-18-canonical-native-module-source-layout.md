@@ -8,6 +8,9 @@
 - Supersedes: None
 - Superseded by: None
 
+Published cross-owner contracts follow the later [FBA owner ports decision](./2026-11-11-canonical-fba-owner-ports.md).
+Root `src/ports/` remains available for transport-neutral local port requirements. Keep native SQL transaction participants in implementation services or integrations.
+
 ## Context
 
 RusToK already defines semantic module ownership and backend boundaries, but native

@@ -532,8 +532,10 @@ The July 29 attestation is retained for its original projection and consumer har
 | Transactions | Product, Pricing and Inventory lifecycle/bootstrap operations share a local SQL transaction. Their transaction-participant interfaces cannot cross RPC. |
 | Packaging | Public contracts and implementation are in the existing owner crate, with unconditional implementation dependencies. A contracts-only feature is unimplemented and is not a prerequisite for this bounded FBA profile. |
 
-Product's next packaging change moves the gRPC adapter and service entry point
-into the [canonical nested transport package](../../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
+Product's next packaging change follows the [canonical FBA layout](../../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
+Move published contracts and gRPC adapters to `rustok-product-ports`. The owner
+keeps the implementation and composes the standalone process in `src/bin/service.rs`.
+Reconcile shared transactions and donor-attached Flex value ownership by capability.
 Update live workspace, launch and evidence inputs together. Retain historical
 evidence with its original source paths and commands.
 

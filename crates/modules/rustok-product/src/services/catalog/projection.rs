@@ -461,7 +461,9 @@ impl CatalogService {
 
     /// Build the public snapshot on the write connection before its commit.
     pub(super) async fn get_product_in<
-        C: ConnectionTrait + crate::ports::pricing::AsPricingConnection,
+        C: ConnectionTrait
+            + crate::ports::pricing::AsPricingConnection
+            + crate::ports::AsInventoryConnection,
     >(
         &self,
         conn: &C,
@@ -588,9 +590,14 @@ impl CatalogService {
                 }
             },
             async {
-                rustok_inventory::BootstrapService::load_available_quantities(conn, &variant_ids)
-                    .await
-                    .map_err(CommerceError::from)
+                if variant_ids.is_empty() {
+                    Ok::<_, CommerceError>(HashMap::new())
+                } else if let Some(port) = &self.inventory_port {
+                    port.load_available_quantities(conn.as_inventory_connection(), &variant_ids)
+                        .await
+                } else {
+                    Ok(HashMap::new())
+                }
             },
             load_variant_axis_values(
                 conn,
@@ -799,7 +806,9 @@ impl CatalogService {
     }
 
     pub(super) async fn get_variant_in<
-        C: ConnectionTrait + crate::ports::pricing::AsPricingConnection,
+        C: ConnectionTrait
+            + crate::ports::pricing::AsPricingConnection
+            + crate::ports::AsInventoryConnection,
     >(
         &self,
         conn: &C,
@@ -835,9 +844,14 @@ impl CatalogService {
                 )
             },
             async {
-                rustok_inventory::BootstrapService::load_available_quantities(conn, &variant_ids)
-                    .await
-                    .map_err(CommerceError::from)
+                if variant_ids.is_empty() {
+                    Ok::<_, CommerceError>(HashMap::new())
+                } else if let Some(port) = &self.inventory_port {
+                    port.load_available_quantities(conn.as_inventory_connection(), &variant_ids)
+                        .await
+                } else {
+                    Ok(HashMap::new())
+                }
             },
             load_variant_axis_values(
                 conn,

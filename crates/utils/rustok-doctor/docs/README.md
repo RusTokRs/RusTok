@@ -12,6 +12,8 @@ Select a single Rust file or directory with `--path`, one
 or more comma-separated crate names with `--crate`, all modules with
 `--all-modules`, or `crates/`, `apps/`, and `xtask/` with `--all`.
 Unknown and ambiguous crate names return exit code 2.
+Target options are mutually exclusive: combining selectors returns exit code 2
+instead of silently choosing one. `--strict` and `--fail-on` are also exclusive.
 
 The Git selectors examine full files. `--changed` selects tracked changes
 relative to HEAD and untracked files. `--diff REF` selects tracked changes
@@ -32,7 +34,17 @@ Discarding a success value after `?` does not by itself discard the error;
 the ignored-result heuristic excludes that syntactic form.
 Files named `test_support.rs` or ending in `_test_support.rs` follow the same
 test-file convention as files in `tests/`: production-only rules are skipped.
+The `rustok-test-utils` crate is also treated as test-only, as its owner
+contract defines it exclusively as test fixtures and helpers.
 The scanner does not resolve a file's module declarations or feature gates.
+JSON decoding followed directly by `unwrap_or_default()` is reported for review:
+the scanner cannot determine whether a compatibility fallback is appropriate.
+It also recognizes direct transaction finalization followed by `.await.ok()`;
+it cannot establish database-driver recovery behavior.
+`filter_map` with `Result::ok` or a nested `.ok()` is a candidate for silently
+dropping failed items; partial-result policies remain with the owning component.
+These JSON and `filter_map` checks inspect at most 16 source lines from the
+start of the call and do not follow values across intermediate bindings.
 
 Selection supports a crate, a path, all modules, the workspace, staged Git
 blobs, modified and untracked working-tree files, and files changed relative to
@@ -40,7 +52,9 @@ a Git commit. Target selection and source-reading failures exit with code 2.
 High-confidence findings meeting the requested threshold exit with code 1.
 
 Text, JSON, CSV, Markdown, GitHub annotations, and advisory patches report the
-same selected findings. Git selections examine full files. Patches preserve
+same selected findings. The console summary lists up to ten examples per rule;
+JSON, CSV, Markdown, annotations, and patches include every selected finding.
+Git selections examine full files. Patches preserve
 the scanned content and append comments with the original line numbers.
 Requested report files are written even for an empty result and alongside JSON
 output. Report paths must be distinct from each other and scanned files.

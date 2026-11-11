@@ -3,7 +3,61 @@ use crate::entities;
 use crate::error::{CommerceError, CommerceResult};
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, locale_tags_match};
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition};
-pub use rustok_inventory::{is_metadata_visible_for_public_channel, normalize_public_channel_slug};
+pub fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
+    channel_slug
+        .map(str::trim)
+        .filter(|slug| !slug.is_empty())
+        .map(|slug| slug.to_ascii_lowercase())
+}
+
+pub fn extract_allowed_channel_slugs(metadata: &Value) -> Vec<String> {
+    let Some(values) = metadata
+        .as_object()
+        .and_then(|object| object.get("channel_visibility"))
+        .and_then(|value| value.as_object())
+        .and_then(|object| object.get("allowed_channel_slugs"))
+        .and_then(|value| value.as_array())
+    else {
+        return Vec::new();
+    };
+
+    let mut normalized = std::collections::BTreeSet::new();
+    for value in values {
+        if let Some(slug) = value
+            .as_str()
+            .and_then(|value| normalize_public_channel_slug(Some(value)))
+        {
+            normalized.insert(slug);
+        }
+    }
+
+    normalized.into_iter().collect()
+}
+
+pub fn is_allowlist_visible_for_public_channel(
+    allowed_channel_slugs: &[String],
+    public_channel_slug: Option<&str>,
+) -> bool {
+    if allowed_channel_slugs.is_empty() {
+        return true;
+    }
+
+    let Some(public_channel_slug) = normalize_public_channel_slug(public_channel_slug) else {
+        return false;
+    };
+
+    allowed_channel_slugs
+        .iter()
+        .any(|slug| slug == &public_channel_slug)
+}
+
+pub fn is_metadata_visible_for_public_channel(
+    metadata: &Value,
+    public_channel_slug: Option<&str>,
+) -> bool {
+    let allowed_channel_slugs = extract_allowed_channel_slugs(metadata);
+    is_allowlist_visible_for_public_channel(&allowed_channel_slugs, public_channel_slug)
+}
 use sea_orm::{
     ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
     QueryFilter, QueryOrder, Value as SqlValue, sea_query::Expr,
@@ -501,24 +555,28 @@ pub fn product_channel_visibility_condition(
 }
 
 pub async fn apply_public_channel_inventory_to_product(
+    inventory_port: Option<&std::sync::Arc<dyn crate::ports::ProductInventoryPort>>,
     db: &DatabaseConnection,
     tenant_id: Uuid,
     product: &mut ProductResponse,
     public_channel_slug: Option<&str>,
-) -> Result<(), sea_orm::DbErr> {
+) -> CommerceResult<()> {
     let variant_ids = product
         .variants
         .iter()
         .map(|variant| variant.id)
         .collect::<Vec<_>>();
-    let available_by_variant =
-        rustok_inventory::load_available_inventory_by_variant_for_public_channel(
-            db,
+    let available_by_variant = if let Some(port) = inventory_port {
+        port.load_available_inventory_by_variant_for_public_channel(
+            db.into(),
             tenant_id,
-            &variant_ids,
             public_channel_slug,
+            &variant_ids,
         )
-        .await?;
+        .await?
+    } else {
+        std::collections::HashMap::new()
+    };
 
     for variant in &mut product.variants {
         let available_inventory = available_by_variant.get(&variant.id).copied().unwrap_or(0);

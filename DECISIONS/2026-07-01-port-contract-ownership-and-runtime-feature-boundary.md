@@ -39,6 +39,10 @@ API would pull in the entire core runtime, while the `server` feature maintained
 
 ## Scope clarification (2026-11-06)
 
+The [canonical FBA owner ports decision](./2026-11-11-canonical-fba-owner-ports.md)
+now governs placement of published native owner contracts. This clarification records
+prior packaging guidance. Shared platform primitive ownership remains in force.
+
 This decision places shared platform primitives in `rustok-api`. Module-specific ports,
 DTOs and integration-event contracts remain owned by their domain module. They may live
 with its implementation or in an optional owner contracts package. This ADR neither
