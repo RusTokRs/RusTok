@@ -1130,17 +1130,25 @@ export class FlyBrowserAdapter {
   // route, next to the draft token. It needs no draft session, so it also works for a read-only
   // caller, and it survives the reload that follows every mutating intent. The server ignores
   // a value it does not know, so a stale or hand-edited route renders the default.
+  //
+  // The empty value states "no route value": it removes the key, which is how a control leaves
+  // a value it wrote. Nothing is navigated when the route already says what was chosen.
   navigateRouteQuery(key, value) {
     if (typeof key !== "string" || !key) return false;
-    if (typeof value !== "string" || !value) return false;
+    if (typeof value !== "string") return false;
     let url;
     try {
       url = new URL(globalThis.location.href);
     } catch (_) {
       return false;
     }
-    if (url.searchParams.get(key) === value) return false;
-    url.searchParams.set(key, value);
+    if (value) {
+      if (url.searchParams.get(key) === value) return false;
+      url.searchParams.set(key, value);
+    } else {
+      if (!url.searchParams.has(key)) return false;
+      url.searchParams.delete(key);
+    }
     globalThis.location.assign(url.toString());
     return true;
   }

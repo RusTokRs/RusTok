@@ -265,6 +265,13 @@ Engineering audit remediation — see
   `rustok_ui_core::UiCspNonce`, and the editor writes it on its inline `<script>` and `<style>`
   elements. `verify-fly-ssr-first.mjs` checks the feature pair in every manifest and the nonce
   hand-off. Not verified in a browser under the host policy.
+- **The viewport select could not leave a preset.** The initial 1280 × 720 frame is no built-in
+  preset. Its option was rendered only while that frame was in effect, and
+  `navigateRouteQuery()` ignored the empty value, so after a preset was chosen the only way back
+  was to edit the address. The Page Builder toolbar now always offers the frame held without a
+  route preset under the empty value. **Behaviour change in `fly-browser.js`:** a
+  `data-fly-route-query` control whose value is empty removes its key from the route and
+  navigates; it used to do nothing.
 - **A selection could change without `fly:select`.** A `dragstart` on a layer row and a
   `select-component` control added after mount changed `selectedId` silently, and the host
   bootstrap, which retargets the server-rendered forms on that event, kept the previous

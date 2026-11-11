@@ -409,12 +409,13 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
         a page that hydration had already updated; editor state that only the hydrated client
         holds does not survive that reload. Before the select became route state, a hydrated
         build changed the viewport without a reload. Owner: Page Builder admin.
-      - The viewport select cannot return to the initial 1280 × 720 frame. That frame is no
-        built-in preset; it renders as a leading option with an empty value, only while it is
-        in effect, and the adapter does not navigate for an empty value. After a preset is
-        chosen the option is gone and the only way back is to remove `fly_viewport` from the
-        route by hand. Decide whether the initial frame becomes a preset or the empty option
-        stays and clears the key. Owner: `fly-ui` (presets), Page Builder admin (toolbar).
+      - DONE: the viewport select could not return to the initial 1280 × 720 frame. Its option
+        was rendered only while the frame was in effect, and the adapter ignored the empty
+        value. The toolbar now always offers the frame the editor holds without a route preset
+        under the empty value, and the adapter removes `fly_viewport` for it. The initial
+        frame did not become a preset: a preset id for it would have to be resolved against
+        whatever frame the editor holds, which is not a constant of `fly-ui`. The browser half
+        ran in Chromium; the render tests are executed by CI only.
       - DONE: `fly-browser.js` changed its selection without `fly:select` on a `dragstart`
         of a layer row and in the delegated `select-component` case, so the SSR forms kept
         the earlier target. Every selection now goes through `select()`, which announces a

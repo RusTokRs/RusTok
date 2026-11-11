@@ -116,7 +116,7 @@ outbox, exactly like an interactive publish. No read projections are added.
   only until the next sweep reaps the expired lease — back to `scheduled` when attempts
   remain (recorded with `PAGE_PUBLISH_JOB_LEASE_EXPIRED`), terminal `failed` when attempts
   are exhausted, and terminal `canceled` when a newer schedule superseded the stranded
-  claim (the newer schedule wins; requeueing would violate the one-pending-job index).
+  claim (the newer schedule wins; requeuing would violate the one-pending-job index).
   NULL leases (rows claimed before the lease column existed) count as expired; replays
   stay safe through the captured command's `idempotency_key`.
 - No automatic retry after `failed`; rescheduling is explicit and creates a fresh

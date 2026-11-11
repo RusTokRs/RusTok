@@ -38,8 +38,31 @@ fn active_viewport_preset_id(viewport: ViewportState) -> Option<String> {
         .map(|preset| preset.id)
 }
 
+/// Label of the option that stands for the frame the editor holds without a route preset.
+///
+/// `None` when that frame is a built-in preset: the preset's own option already names it, and a
+/// second option for the same frame would let the control state one frame two ways.
+fn base_viewport_option_label(base_viewport: ViewportState) -> Option<String> {
+    active_viewport_preset_id(base_viewport).is_none().then(|| {
+        custom_viewport(
+            base_viewport.width,
+            base_viewport.height,
+            base_viewport.zoom,
+        )
+        .label
+    })
+}
+
+/// Toolbar of the authoring surface.
+///
+/// `base_viewport` is the viewport the editor holds when the route names no preset, read before
+/// [`route_viewport`] is applied. The device select offers it under the empty value, which
+/// removes [`VIEWPORT_ROUTE_QUERY_KEY`] from the route, so a chosen preset can be left again.
 #[component]
-pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
+pub fn AuthoringToolbar(
+    runtime: AdminEditorRuntime,
+    base_viewport: ViewportState,
+) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
     let undo = t(locale.as_deref(), "page_builder.action.undo", "Undo");
@@ -95,21 +118,16 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
 
     install_keyboard_bindings(runtime.clone());
     let presets = builtin_viewport_presets();
-    // The select states the viewport the canvas is rendered with. A frame that is no built-in
-    // preset (the initial 1280 × 720 one, or a custom size) gets its own leading option, so the
-    // control never names a preset that is not in effect.
+    // The select states the viewport the canvas is rendered with, so it never names a preset
+    // that is not in effect. The frame held without a route preset (the initial 1280 × 720 one,
+    // or a custom size) is no built-in preset and gets the leading option with the empty value.
+    // That option is rendered whether or not it is in effect: it is the way back from a preset.
     let current_viewport = runtime
         .controller
         .with_untracked(|controller| controller.ui().state.viewport);
     let active_preset_id = active_viewport_preset_id(current_viewport);
-    let unlisted_viewport_label = active_preset_id.is_none().then(|| {
-        custom_viewport(
-            current_viewport.width,
-            current_viewport.height,
-            current_viewport.zoom,
-        )
-        .label
-    });
+    let base_option_label = base_viewport_option_label(base_viewport);
+    let base_option_selected = active_preset_id.is_none();
     let status_runtime = runtime.clone();
 
     view! {
@@ -248,7 +266,9 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
                         let runtime = runtime.clone();
                         move |event| {
                             let id = event_target_value(&event);
-                            if let Some(preset) = viewport_preset(&id) {
+                            if id.is_empty() {
+                                runtime.dispatch(UiIntent::SetViewport(base_viewport));
+                            } else if let Some(preset) = viewport_preset(&id) {
                                 let viewport = runtime.controller.with(|controller| {
                                     preset.apply(controller.ui().state.viewport)
                                 });
@@ -257,8 +277,8 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
                         }
                     }
                 >
-                    {unlisted_viewport_label.map(|label| view! {
-                        <option value="" selected=true>{label}</option>
+                    {base_option_label.map(|label| view! {
+                        <option value="" selected=base_option_selected>{label}</option>
                     })}
                     {presets.into_iter().map(|preset| {
                         let selected = active_preset_id.as_deref() == Some(preset.id.as_str());
@@ -422,5 +442,18 @@ mod tests {
         // 1280 × 720 is no built-in preset; the toolbar renders it as its own option instead of
         // presenting the first preset as if it were in effect.
         assert_eq!(active_viewport_preset_id(ViewportState::default()), None);
+    }
+
+    #[test]
+    fn the_base_frame_gets_an_option_unless_a_preset_already_names_it() {
+        assert_eq!(
+            base_viewport_option_label(ViewportState::default()).as_deref(),
+            Some("Custom 1280 × 720")
+        );
+
+        let tablet = viewport_preset("tablet")
+            .expect("tablet preset")
+            .apply(ViewportState::default());
+        assert_eq!(base_viewport_option_label(tablet), None);
     }
 }

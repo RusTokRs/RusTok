@@ -451,16 +451,55 @@ test('the viewport select replaces a preset that is already in the route', async
   expect(url.searchParams.get('fly_draft')).toBe('draft-1');
 });
 
-test('the viewport select does not navigate for the preset in effect or for no preset', async ({
+test('the viewport select does not navigate for the preset in effect', async ({
   page
 }) => {
   await openEditorRoute(page, '?fly_viewport=tablet');
   const before = page.url();
 
   await page.locator('#viewport').selectOption('tablet');
+
+  // The choice does not change what the server would render, so the mounted page stays.
+  await expect(page.locator('#fly-root')).toHaveAttribute(
+    'data-fly-browser-mounted',
+    'true'
+  );
+  expect(page.url()).toBe(before);
+  expect(await requests(page)).toEqual([]);
+});
+
+test('the option without a preset removes the key and keeps the rest of the route', async ({
+  page
+}) => {
+  await openEditorRoute(
+    page,
+    '?fly_draft=draft-1&fly_viewport=tablet&tab=builder'
+  );
+
   await page.locator('#viewport').selectOption('');
 
-  // Neither choice changes what the server would render, so the mounted page stays.
+  await page.waitForURL((url) => !url.searchParams.has('fly_viewport'));
+  const url = new URL(page.url());
+  expect(url.origin + url.pathname).toBe(`${editorOrigin}/admin/pages/home`);
+  expect(url.searchParams.get('fly_draft')).toBe('draft-1');
+  expect(url.searchParams.get('tab')).toBe('builder');
+  // The server answered the navigation: this is a new document, not the mounted one.
+  await expect(page.locator('body')).toHaveAttribute('data-fly-navigated', '');
+});
+
+test('the option without a preset does not navigate when the route names none', async ({
+  page
+}) => {
+  await openEditorRoute(page, '?fly_draft=draft-1');
+  const before = page.url();
+
+  // The fixture renders the empty option selected; leave it and come back.
+  await page.locator('#viewport').evaluate((select: HTMLSelectElement) => {
+    select.value = 'tablet';
+    select.value = '';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
   await expect(page.locator('#fly-root')).toHaveAttribute(
     'data-fly-browser-mounted',
     'true'

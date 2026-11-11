@@ -59,6 +59,11 @@ a read-only caller has no draft session, by design.
    The first such key is `fly_viewport`, resolved by `route_viewport` in
    `crates/modules/rustok-page-builder/admin/src/editor/toolbar.rs` and applied in `AdminCanvas`
    before any child renders.
+   The empty control value means "no route value": the adapter removes `<key>` and navigates, and
+   it does nothing when the key is already absent. A control of this kind therefore renders an
+   option with the empty value for the state the server holds without the key. For the viewport
+   that is the frame read before `route_viewport` is applied; it is omitted only when a built-in
+   preset already names that frame.
 
 4. **A control is not rendered without its transport.** The palette drag control renders only when
    the host passes `on_begin_drag`, which `FlyEditorWorkspace` does in intent mode only.
@@ -127,6 +132,8 @@ a read-only caller has no draft session, by design.
   workspace.
 - A `data-fly-route-query` value is a constant that a server resolver reads and that is applied
   before render.
+- A route value that a control writes can be left through the same control: the view renders an
+  option with the empty value, and the adapter removes the key for it.
 - A contract attribute can sit on a control and on a canvas node of the same document
   (`data-fly-component-id` does). A style rule of the canvas that is keyed on a contract
   attribute is scoped to the canvas by a class.

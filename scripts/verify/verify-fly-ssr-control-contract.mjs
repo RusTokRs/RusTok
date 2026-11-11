@@ -340,6 +340,25 @@ for (const file of emittedAttributes.get(routeQueryAttribute) ?? []) {
   }
 }
 
+//    A route value that a control writes can also be left through that control: the view renders
+//    an option with the empty value, and the adapter turns the empty value into a route without
+//    the key. Without either half the only way back is to edit the address by hand.
+for (const file of emittedAttributes.get(routeQueryAttribute) ?? []) {
+  if (!/<option\s+value=""/.test(productionSource(read(file)))) {
+    fail(`${file}: the control that writes a route value renders no \`<option value="">\` to leave it`);
+  }
+}
+const routeNavigation = adapter.match(/\n  navigateRouteQuery\(key, value\) \{\n([\s\S]*?)\n  \}\n/);
+if (!routeNavigation) {
+  fail(`${adapterPath}: the adapter has no navigateRouteQuery(key, value) method`);
+} else {
+  for (const marker of ['url.searchParams.set(key, value)', 'url.searchParams.delete(key)']) {
+    if (!routeNavigation[1].includes(marker)) {
+      fail(`${adapterPath}: navigateRouteQuery() is missing \`${marker}\``);
+    }
+  }
+}
+
 // 4. Both sides are exercised: rendered markup by render tests, behaviour in a browser. Every
 //    part is asserted on the composed admin surface, because that is what the default runtime
 //    serves and what CI executes (`cargo test -p rustok-page-builder-admin --lib`); a part that

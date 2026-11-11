@@ -117,10 +117,12 @@ pub fn AdminCanvas(
 
     // The previewed viewport is view state carried by the route (see `VIEWPORT_ROUTE_QUERY_KEY`).
     // It is applied before any child renders: the toolbar and the canvas frame both read it.
-    let current_viewport = runtime
+    // The viewport held before the route is applied stays known to the toolbar, which offers it
+    // as the way back from a preset.
+    let base_viewport = runtime
         .controller
         .with_untracked(|controller| controller.ui().state.viewport);
-    if let Some(viewport) = route_viewport(&route_context.query, current_viewport) {
+    if let Some(viewport) = route_viewport(&route_context.query, base_viewport) {
         runtime.dispatch(UiIntent::SetViewport(viewport));
     }
 
@@ -199,7 +201,7 @@ pub fn AdminCanvas(
                 csrf_token=browser_csrf_token
                 script_nonce=browser_script_nonce
             />
-            <AuthoringToolbar runtime=toolbar_runtime />
+            <AuthoringToolbar runtime=toolbar_runtime base_viewport=base_viewport />
             <AdapterWorkspacePanel
                 runtime=adapter_runtime.clone()
                 contribution_assembly=adapter_assembly.clone()

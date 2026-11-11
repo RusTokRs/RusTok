@@ -150,6 +150,24 @@ fn route_viewport_is_rendered_into_the_canvas_frame_and_the_select() {
 }
 
 #[test]
+fn route_preset_keeps_the_option_that_leads_back_to_the_initial_frame() {
+    let html = render_admin(CapabilityState::full(), &[("fly_viewport", "tablet")]);
+
+    // The initial frame is no preset, so no preset id can name it. Its option carries the empty
+    // value, which the adapter turns into a route without the key.
+    let base = option_tag(&html, "Custom 1280 × 720");
+    assert!(
+        base.contains("value=\"\""),
+        "the option of the initial frame must carry no preset id: {base}"
+    );
+    assert!(
+        !is_selected(base),
+        "the initial frame is not in effect while the route names a preset: {base}"
+    );
+    assert!(is_selected(option_tag(&html, "Tablet 768")));
+}
+
+#[test]
 fn route_viewport_applies_to_a_read_only_caller() {
     // A read-only caller has no draft session, which is why the viewport travels in the route.
     let html = render_admin(CapabilityState::read_only(), &[("fly_viewport", "mobile")]);
