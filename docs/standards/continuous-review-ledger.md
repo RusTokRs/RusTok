@@ -4,8 +4,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-01 — Entrypoint & Composition Root (`apps/server`)  
-**Next pending component:** [`apps/server` (Track FS-01.09 — middleware/locale.rs)](../../apps/server)  
-**Current main SHA:** `56829760b9`  
+**Next pending component:** [`apps/server` (Track FS-01.10 — middleware/auth_context.rs)](../../apps/server)  
+**Current main SHA:** `f2d3e853da`  
 **Active branch:** `main`
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **285 components** (~2.5M LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -62,7 +62,7 @@ The single canonical trigger to continue this audit sequence is:
 #### 2. Middleware & Context Guards
 - [x] **FS-01.07 — `apps/server/src/middleware/tenant.rs`** — multi-tenant header/host resolution, domain mapping, fail-closed tenant boundary, and caching. *(Done: host case-insensitivity normalization for cache/negative keys; bounded duration ceil arithmetic; complete domain-to-core and port-to-core error mappings; strict selector translation with `include_inactive: true` to prevent false 404s for disabled tenants; verified structured settings cache envelope round-trip; 15 unit tests all passing; verified with `cargo test -p rustok-server --lib invalidation_tests::` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
 - [x] **FS-01.08 — `apps/server/src/middleware/channel.rs`** — sales channel resolution, default fallback, header precedence, cross-tenant isolation, and invalidation. *(Done: bounded channel slug parsing with <= 100 character limits; SHA-256 key hashing; cross-tenant check enforcing HTTP 403 Forbidden on tenant mismatch; fail-closed handling for conflicting duplicate headers/query parameters; precedence order HeaderId > HeaderSlug > Query > Host > Policy > Default; tenant-scoped Moka cache with checked version roll-over and max-tenant bound; native server-function mutation auto-invalidation; 25 unit/integration tests all passing; verified with `cargo test -p rustok-server --lib middleware::channel` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
-- [ ] **FS-01.09 — `apps/server/src/middleware/locale.rs`** — locale header negotiation, fallback normalization, language validation.
+- [x] **FS-01.09 — `apps/server/src/middleware/locale.rs`** — locale header negotiation, fallback normalization, language validation, and tenant locale policy caching. *(Done: multi-tiered locale fallback hierarchy matching requested -> configured fallback -> primary language subtag -> tenant default -> first enabled -> system fallback; checked version roll-over and max-tenant bound for cache eviction; Content-Language response header injection; 13 unit tests all passing; verified with `cargo test -p rustok-server --lib middleware::locale::tests` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
 - [ ] **FS-01.10 — `apps/server/src/middleware/auth_context.rs`** — JWT/session authentication context extraction, bearer token parsing, claims validation.
 - [ ] **FS-01.11 — `apps/server/src/middleware/rbac.rs`** — route-level role/permission enforcement, policy evaluation, 403 handling.
 - [ ] **FS-01.12 — `apps/server/src/middleware/rate_limit.rs`** — tier-based rate limiting, token bucket algorithm, header emission.
