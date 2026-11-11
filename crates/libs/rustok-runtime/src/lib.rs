@@ -298,13 +298,18 @@ impl ModuleWorkScheduler {
     }
 
     /// Registers one module-owned durable source with its matching handler.
-    /// A duplicate worker slug is rejected before either side becomes visible.
+    /// An empty slug or a duplicate worker slug is rejected before either side becomes visible.
     pub async fn register(
         &self,
         source: Arc<dyn ModuleWorkSource>,
         handler: Arc<dyn ModuleWorkHandler>,
     ) -> Result<(), ModuleWorkError> {
         let slug = handler.worker_slug().to_string();
+        if slug.trim().is_empty() {
+            return Err(ModuleWorkError::Handler(
+                "worker slug cannot be empty or whitespace".to_string(),
+            ));
+        }
         let mut workers = self.workers.write().await;
         if workers.contains_key(&slug) {
             return Err(ModuleWorkError::DuplicateHandler(slug));
@@ -340,6 +345,7 @@ impl ModuleWorkScheduler {
         mut stop: tokio::sync::watch::Receiver<bool>,
         poll_interval: Duration,
     ) {
+        let poll_interval = poll_interval.max(Duration::from_millis(1));
         let mut interval = tokio::time::interval(poll_interval);
         loop {
             tokio::select! {
@@ -556,5 +562,27 @@ mod tests {
         assert!(debug.contains("RuntimeComposition"));
         assert!(debug.contains("settings"));
         assert!(debug.contains("instance_root"));
+    }
+
+    #[tokio::test]
+    async fn scheduler_rejects_empty_worker_slug() {
+        let scheduler = ModuleWorkScheduler::new();
+        let source = Arc::new(TestSource::default());
+        let err = scheduler
+            .register(source.clone(), Arc::new(TestHandler("   ")))
+            .await
+            .expect_err("whitespace slug must be rejected");
+        assert!(matches!(err, rustok_api::ModuleWorkError::Handler(_)));
+    }
+
+    #[tokio::test]
+    async fn scheduler_handles_zero_poll_interval_without_panic() {
+        let scheduler = ModuleWorkScheduler::new();
+        let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+        stop_tx.send(true).expect("stop receiver");
+        // Must not panic on Duration::ZERO
+        scheduler
+            .run_until_stopped(stop_rx, std::time::Duration::ZERO)
+            .await;
     }
 }
