@@ -14273,6 +14273,7 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "slug",
  "thiserror 2.0.21",
  "tokio",
  "tower",
