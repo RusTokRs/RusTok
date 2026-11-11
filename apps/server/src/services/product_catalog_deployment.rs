@@ -159,25 +159,39 @@ fn deployment_from_environment() -> std::result::Result<ProductDeploymentConfig,
         optional_env(DEPLOYMENT_ENV).as_deref(),
         optional_env(PROVIDER_ENV).as_deref(),
         optional_env(COMMAND_PROVIDER_ENV).as_deref(),
-        optional_env(GRPC_ENDPOINT_ENV).as_deref(),
-        optional_secret_env(GRPC_BEARER_TOKEN_ENV).as_deref(),
-        optional_secret_env(COMMAND_GRPC_BEARER_TOKEN_ENV).as_deref(),
-        optional_env(TLS_DOMAIN_ENV).as_deref(),
-        optional_env(CONNECT_TIMEOUT_MS_ENV).as_deref(),
-        optional_env(ALLOW_INSECURE_LOOPBACK_ENV).as_deref(),
+        ProductGrpcEnvironment {
+            endpoint: optional_env(GRPC_ENDPOINT_ENV).as_deref(),
+            bearer_token: optional_secret_env(GRPC_BEARER_TOKEN_ENV).as_deref(),
+            command_bearer_token: optional_secret_env(COMMAND_GRPC_BEARER_TOKEN_ENV).as_deref(),
+            tls_domain: optional_env(TLS_DOMAIN_ENV).as_deref(),
+            connect_timeout_ms: optional_env(CONNECT_TIMEOUT_MS_ENV).as_deref(),
+            allow_insecure_loopback: optional_env(ALLOW_INSECURE_LOOPBACK_ENV).as_deref(),
+        },
     )
+}
+
+#[derive(Default)]
+struct ProductGrpcEnvironment<'a> {
+    endpoint: Option<&'a str>,
+    bearer_token: Option<&'a str>,
+    command_bearer_token: Option<&'a str>,
+    tls_domain: Option<&'a str>,
+    connect_timeout_ms: Option<&'a str>,
+    allow_insecure_loopback: Option<&'a str>,
 }
 
 fn parse_product_deployment_config(
     deployment: Option<&str>,
     read_provider: Option<&str>,
     command_provider: Option<&str>,
-    endpoint: Option<&str>,
-    bearer_token: Option<&str>,
-    command_bearer_token: Option<&str>,
-    tls_domain: Option<&str>,
-    connect_timeout_ms: Option<&str>,
-    allow_insecure_loopback: Option<&str>,
+    ProductGrpcEnvironment {
+        endpoint,
+        bearer_token,
+        command_bearer_token,
+        tls_domain,
+        connect_timeout_ms,
+        allow_insecure_loopback,
+    }: ProductGrpcEnvironment<'_>,
 ) -> std::result::Result<ProductDeploymentConfig, String> {
     let default_remote = uses_grpc(deployment, DEPLOYMENT_ENV)?.unwrap_or(false);
     let read_remote = uses_grpc(read_provider, PROVIDER_ENV)?.unwrap_or(default_remote);
@@ -301,7 +315,7 @@ fn optional_secret_env(name: &str) -> Option<String> {
 mod tests {
     use super::{
         COMMAND_GRPC_BEARER_TOKEN_ENV, ProductCatalogBearerSecret, ProductCatalogDeployment,
-        ProductCatalogGrpcDeployment, parse_product_deployment_config,
+        ProductCatalogGrpcDeployment, ProductGrpcEnvironment, parse_product_deployment_config,
     };
 
     fn parse_deployment(
@@ -316,12 +330,14 @@ mod tests {
             None,
             provider,
             None,
-            endpoint,
-            bearer_token,
-            None,
-            tls_domain,
-            timeout,
-            loopback,
+            ProductGrpcEnvironment {
+                endpoint,
+                bearer_token,
+                tls_domain,
+                connect_timeout_ms: timeout,
+                allow_insecure_loopback: loopback,
+                ..Default::default()
+            },
         )
         .map(|config| config.read)
     }
@@ -448,12 +464,14 @@ mod tests {
             Some("grpc"),
             None,
             None,
-            Some("https://product-catalog.internal:7443"),
-            Some("catalog-secret"),
-            Some("command-secret"),
-            Some("product-catalog.internal"),
-            Some("3000"),
-            Some("false"),
+            ProductGrpcEnvironment {
+                endpoint: Some("https://product-catalog.internal:7443"),
+                bearer_token: Some("catalog-secret"),
+                command_bearer_token: Some("command-secret"),
+                tls_domain: Some("product-catalog.internal"),
+                connect_timeout_ms: Some("3000"),
+                allow_insecure_loopback: Some("false"),
+            },
         )
         .expect("unified deployment should configure both");
 
@@ -485,12 +503,11 @@ mod tests {
             Some("embedded"),
             None,
             Some("grpc"),
-            Some("https://product-catalog.internal:7443"),
-            None,
-            Some("command-secret"),
-            None,
-            None,
-            None,
+            ProductGrpcEnvironment {
+                endpoint: Some("https://product-catalog.internal:7443"),
+                command_bearer_token: Some("command-secret"),
+                ..Default::default()
+            },
         )
         .expect("independent command provider should configure command");
 
@@ -504,12 +521,11 @@ mod tests {
             Some("grpc"),
             None,
             Some("embedded"),
-            Some("https://product-catalog.internal:7443"),
-            Some("catalog-secret"),
-            None,
-            None,
-            None,
-            None,
+            ProductGrpcEnvironment {
+                endpoint: Some("https://product-catalog.internal:7443"),
+                bearer_token: Some("catalog-secret"),
+                ..Default::default()
+            },
         )
         .expect("independent read provider should configure read");
 
@@ -523,12 +539,13 @@ mod tests {
             None,
             Some("grpc"),
             None,
-            Some("http://127.0.0.1:7443"),
-            Some("catalog-secret"),
-            None,
-            None,
-            Some("2500"),
-            Some("true"),
+            ProductGrpcEnvironment {
+                endpoint: Some("http://127.0.0.1:7443"),
+                bearer_token: Some("catalog-secret"),
+                connect_timeout_ms: Some("2500"),
+                allow_insecure_loopback: Some("true"),
+                ..Default::default()
+            },
         )
         .expect("remote read settings apply to the selected read provider");
 
@@ -546,12 +563,12 @@ mod tests {
                 Some("grpc"),
                 None,
                 None,
-                Some("https://product-catalog.internal:7443"),
-                Some("catalog-secret"),
-                token,
-                None,
-                None,
-                None,
+                ProductGrpcEnvironment {
+                    endpoint: Some("https://product-catalog.internal:7443"),
+                    bearer_token: Some("catalog-secret"),
+                    command_bearer_token: token,
+                    ..Default::default()
+                },
             )
             .unwrap_err();
             assert!(error.contains(COMMAND_GRPC_BEARER_TOKEN_ENV));
