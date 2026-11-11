@@ -22,6 +22,7 @@ impl ImportService {
         path: impl AsRef<Path>,
         context: ImportContext,
     ) -> Result<Vec<T>, PortabilityError> {
+        context.validate()?;
         if context.format != Format::Json {
             return Err(PortabilityError::format_not_supported(format!(
                 "expected JSON, got {}",
@@ -40,6 +41,7 @@ impl ImportService {
         context: ImportContext,
         options: &FormatOptions,
     ) -> Result<Vec<T>, PortabilityError> {
+        context.validate()?;
         if context.format != Format::Csv {
             return Err(PortabilityError::format_not_supported(format!(
                 "expected CSV, got {}",
@@ -57,6 +59,7 @@ impl ImportService {
         context: &ImportContext,
         options: &FormatOptions,
     ) -> Result<Vec<T>, PortabilityError> {
+        context.validate()?;
         match context.format {
             Format::Json => JsonFormatHandler::parse_array(data),
             Format::Csv => CsvFormatHandler::parse(data, options),
@@ -87,6 +90,7 @@ impl ExportService {
         context: ExportContext,
         options: &FormatOptions,
     ) -> Result<ExportResult<()>, PortabilityError> {
+        context.validate()?;
         if context.format != Format::Json {
             return Err(PortabilityError::format_not_supported(format!(
                 "expected JSON, got {}",
@@ -116,6 +120,7 @@ impl ExportService {
         context: ExportContext,
         options: &FormatOptions,
     ) -> Result<ExportResult<()>, PortabilityError> {
+        context.validate()?;
         if context.format != Format::Csv {
             return Err(PortabilityError::format_not_supported(format!(
                 "expected CSV, got {}",
@@ -143,6 +148,7 @@ impl ExportService {
         context: &ExportContext,
         options: &FormatOptions,
     ) -> Result<Vec<u8>, PortabilityError> {
+        context.validate()?;
         match context.format {
             Format::Json => JsonFormatHandler::serialize_array(items, options),
             Format::Csv => CsvFormatHandler::serialize(items, options),

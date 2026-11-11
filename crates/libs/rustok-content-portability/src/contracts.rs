@@ -60,6 +60,16 @@ impl ImportContext {
         self.progress_callback = Some(callback);
         self
     }
+
+    pub fn validate(&self) -> Result<(), PortabilityError> {
+        if self.tenant_id.is_nil() {
+            return Err(PortabilityError::validation("tenant_id cannot be nil UUID"));
+        }
+        if self.user_id.is_nil() {
+            return Err(PortabilityError::validation("user_id cannot be nil UUID"));
+        }
+        Ok(())
+    }
 }
 
 /// Context for export operations.
@@ -115,6 +125,16 @@ impl ExportContext {
     pub fn with_progress_callback(mut self, callback: ProgressCallback) -> Self {
         self.progress_callback = Some(callback);
         self
+    }
+
+    pub fn validate(&self) -> Result<(), PortabilityError> {
+        if self.tenant_id.is_nil() {
+            return Err(PortabilityError::validation("tenant_id cannot be nil UUID"));
+        }
+        if self.user_id.is_nil() {
+            return Err(PortabilityError::validation("user_id cannot be nil UUID"));
+        }
+        Ok(())
     }
 }
 
@@ -411,5 +431,28 @@ pub trait ContentExporter<Source: Send + 'static, Target: Send + 'static>: Send 
 
         let duration_ms = start.elapsed().as_millis() as u64;
         Ok(ExportResult::new(exported, context.format, duration_ms))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn context_validation_rejects_nil_uuids() {
+        let nil_tenant = ImportContext::new(Uuid::nil(), Uuid::new_v4(), Format::Json);
+        assert!(nil_tenant.validate().is_err());
+
+        let nil_user = ImportContext::new(Uuid::new_v4(), Uuid::nil(), Format::Json);
+        assert!(nil_user.validate().is_err());
+
+        let valid_import = ImportContext::new(Uuid::new_v4(), Uuid::new_v4(), Format::Json);
+        assert!(valid_import.validate().is_ok());
+
+        let nil_export = ExportContext::new(Uuid::nil(), Uuid::new_v4(), Format::Json);
+        assert!(nil_export.validate().is_err());
+
+        let valid_export = ExportContext::new(Uuid::new_v4(), Uuid::new_v4(), Format::Json);
+        assert!(valid_export.validate().is_ok());
     }
 }
