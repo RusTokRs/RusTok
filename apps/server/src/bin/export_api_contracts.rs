@@ -54,12 +54,21 @@ where
 {
     let mut iter = args.into_iter();
     let mut output_dir = PathBuf::from("target/api-contracts");
+    let mut output_dir_set = false;
 
     while let Some(argument) = iter.next() {
         match argument.as_ref() {
             "--output-dir" => {
+                if output_dir_set {
+                    return Err("duplicate --output-dir argument provided".into());
+                }
                 let value = iter.next().ok_or("--output-dir requires a path argument")?;
-                output_dir = PathBuf::from(value.as_ref());
+                let trimmed = value.as_ref().trim();
+                if trimmed.is_empty() {
+                    return Err("--output-dir path must not be empty or whitespace".into());
+                }
+                output_dir = PathBuf::from(trimmed);
+                output_dir_set = true;
             }
             "--help" | "-h" => {
                 return Ok(None);
@@ -95,6 +104,13 @@ mod tests {
     }
 
     #[test]
+    fn trims_whitespace_in_output_dir() {
+        let args = vec!["--output-dir", "  custom/contracts  "];
+        let result = parse_output_dir_from_args(args).unwrap();
+        assert_eq!(result, Some(PathBuf::from("custom/contracts")));
+    }
+
+    #[test]
     fn returns_none_on_help_flag() {
         let args = vec!["--help"];
         let result = parse_output_dir_from_args(args).unwrap();
@@ -116,9 +132,48 @@ mod tests {
     }
 
     #[test]
+    fn errors_on_empty_output_dir_argument() {
+        let args = vec!["--output-dir", ""];
+        let err = parse_output_dir_from_args(args).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("--output-dir path must not be empty or whitespace")
+        );
+
+        let args_whitespace = vec!["--output-dir", "   "];
+        let err_whitespace = parse_output_dir_from_args(args_whitespace).unwrap_err();
+        assert!(
+            err_whitespace
+                .to_string()
+                .contains("--output-dir path must not be empty or whitespace")
+        );
+    }
+
+    #[test]
+    fn errors_on_duplicate_output_dir_argument() {
+        let args = vec!["--output-dir", "dir1", "--output-dir", "dir2"];
+        let err = parse_output_dir_from_args(args).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("duplicate --output-dir argument provided")
+        );
+    }
+
+    #[test]
     fn errors_on_unknown_argument() {
         let args = vec!["--invalid-flag"];
         let err = parse_output_dir_from_args(args).unwrap_err();
         assert!(err.to_string().contains("unknown argument: --invalid-flag"));
+    }
+
+    #[test]
+    fn write_contract_normalizes_crlf_and_appends_single_newline() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("contract.txt");
+        let raw = "line1\r\nline2\r\n\r\n";
+        write_contract(&file_path, raw).unwrap();
+
+        let read_back = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(read_back, "line1\nline2\n");
     }
 }
