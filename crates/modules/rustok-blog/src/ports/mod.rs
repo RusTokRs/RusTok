@@ -11,5 +11,6 @@ pub use taxonomy::{
     AsBlogTaxonomyConnection, BlogCategoryDeleteCleanupPort, BlogTaxonomyCategoryLocaleCopy,
     BlogTaxonomyCategorySnapshot, BlogTaxonomyConnection, BlogTaxonomyCreateTagInput,
     BlogTaxonomyCreatedTag, BlogTaxonomyPlacement, BlogTaxonomyPort, BlogTaxonomySyncCategoryInput,
-    BlogTaxonomyTagSnapshot, BlogTaxonomyUpdateTagInput, NoopBlogTaxonomyPort,
+    BlogTaxonomyTagSnapshot, BlogTaxonomyUpdateTagInput, NoopBlogCategoryDeleteCleanupPort,
+    NoopBlogTaxonomyPort,
 };

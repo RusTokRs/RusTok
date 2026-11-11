@@ -151,6 +151,22 @@ pub trait BlogCategoryDeleteCleanupPort: Send + Sync {
     ) -> Result<(), BlogError>;
 }
 
+/// Default no-op cleanup port implementation.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NoopBlogCategoryDeleteCleanupPort;
+
+#[async_trait]
+impl BlogCategoryDeleteCleanupPort for NoopBlogCategoryDeleteCleanupPort {
+    async fn cleanup_in_tx(
+        &self,
+        _txn: &DatabaseTransaction,
+        _tenant_id: Uuid,
+        _category_id: Uuid,
+    ) -> Result<(), BlogError> {
+        Ok(())
+    }
+}
+
 /// Transactional and projection port for Blog taxonomy operations (categories and tags).
 #[async_trait]
 pub trait BlogTaxonomyPort: Send + Sync {

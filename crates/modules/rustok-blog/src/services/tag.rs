@@ -1,4 +1,15 @@
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok.
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use chrono::Utc;
 use sea_orm::{
@@ -16,16 +27,14 @@ use rustok_content::normalize_locale_code;
 use rustok_core::SecurityContext;
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
-use rustok_taxonomy::{
-    ModuleTermCreateInput, ModuleTermMutationResult, ModuleTermUpdateInput, TaxonomyOwnerReader,
-    TaxonomyOwnerTerm, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-    delete_module_term_in_tx, entities::TaxonomyTerm, lock_module_term_in_tx,
-    update_module_term_in_tx,
-};
 
 use crate::dto::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};
 use crate::entities::{blog_post, blog_post_tag, blog_tag_usage};
 use crate::error::{BlogError, BlogResult};
+use crate::ports::taxonomy::{
+    BlogTaxonomyCreateTagInput, BlogTaxonomyPort, BlogTaxonomyTagSnapshot,
+    BlogTaxonomyUpdateTagInput, NoopBlogTaxonomyPort,
+};
 use crate::services::rbac::enforce_scope;
 
 mod relations;
@@ -40,11 +49,20 @@ const MAX_TAGS_PER_PAGE: u64 = 100;
 
 pub struct TagService {
     db: DatabaseConnection,
+    pub(crate) taxonomy_port: Arc<dyn BlogTaxonomyPort>,
 }
 
 impl TagService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            taxonomy_port: Arc::new(NoopBlogTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(mut self, port: Arc<dyn BlogTaxonomyPort>) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     #[instrument(skip(self, security, input))]
@@ -62,33 +80,20 @@ impl TagService {
         validate_optional_tag_slug(input.slug.as_deref())?;
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
-        let tag_id = TaxonomyService::new(self.db.clone())
-            .create_module_term_in_tx(
+        let created = self
+            .taxonomy_port
+            .create_tag_in_tx(
                 &txn,
                 tenant_id,
-                TaxonomyTermKind::Tag,
-                BLOG_SCOPE_VALUE,
-                ModuleTermCreateInput {
-                    locale: normalize_locale(&input.locale)?,
+                BlogTaxonomyCreateTagInput {
                     name: input.name,
                     slug: input.slug,
-                    canonical_key: None,
+                    locale: normalize_locale(&input.locale)?,
                 },
             )
             .await?;
-        let term = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
-            &txn,
-            tenant_id,
-            TaxonomyTermKind::Tag,
-            &[tag_id],
-            PLATFORM_FALLBACK_LOCALE,
-            None,
-        )
-        .await?
-        .into_iter()
-        .next()
-        .ok_or_else(|| BlogError::invariant("Created Blog tag is missing from Taxonomy"))?;
-        initialize_tag_usage_in_tx(&txn, tenant_id, tag_id, &term.canonical_key).await?;
+        let tag_id = created.id;
+        initialize_tag_usage_in_tx(&txn, tenant_id, tag_id, &created.canonical_key).await?;
         relations::publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
         Ok(tag_id)
@@ -111,7 +116,7 @@ impl TagService {
         enforce_scope(&security, Resource::Tags, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let term = self.find_visible_term(tenant_id, tag_id, &locale).await?;
-        let require_usage_projection = term.scope_type == TaxonomyScopeType::Module
+        let require_usage_projection = term.scope_type == "module"
             && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE);
         let use_count = self
             .load_tag_usage_count(tenant_id, tag_id, require_usage_projection)
@@ -141,42 +146,24 @@ impl TagService {
         self.ensure_blog_owned_tag(tenant_id, tag_id, &locale)
             .await?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
-        // The ownership pre-check above runs outside this transaction. Lock
-        // the scoped term row before writing, mirroring `delete_tag`, so a
-        // concurrent scope change by the Taxonomy owner cannot interleave
-        // between the check and the update and leave a Blog write on a term
-        // that is no longer Blog-owned.
-        lock_module_term_in_tx(
-            &txn,
-            tenant_id,
-            tag_id,
-            TaxonomyTermKind::Tag,
-            BLOG_SCOPE_VALUE,
-        )
-        .await?;
-        let term = update_module_term_in_tx(
-            &txn,
-            tenant_id,
-            tag_id,
-            &security,
-            TaxonomyTermKind::Tag,
-            BLOG_SCOPE_VALUE,
-            ModuleTermUpdateInput {
-                locale: locale.clone(),
-                name: input.name,
-                slug: input.slug,
-            },
-        )
-        .await?;
-        // The projection row is derived state, and `list_tags` pages and orders
-        // by it, so the tag's own mutation re-derives it from the canonical
-        // sources instead of trusting whatever the row held. Taxonomy
-        // `canonical_key` is immutable identity and does not move on a rename
-        // (`DECISIONS/2026-09-22-blog-tag-bounded-pagination.md`), so this is a
-        // repair and re-count, not a re-sort: a row created by the backfill, or
-        // left behind by a writer outside this service, is brought back to the
-        // projection invariant on the next tag write.
-        relations::refresh_tag_usage_in_tx(&txn, tenant_id, &[tag_id]).await?;
+        self.taxonomy_port
+            .lock_tag_in_tx(&txn, tenant_id, tag_id)
+            .await?;
+        let term = self
+            .taxonomy_port
+            .update_tag_in_tx(
+                &txn,
+                tenant_id,
+                tag_id,
+                &security,
+                BlogTaxonomyUpdateTagInput {
+                    locale: locale.clone(),
+                    name: input.name,
+                    slug: input.slug,
+                },
+            )
+            .await?;
+        relations::refresh_tag_usage_in_tx(Some(&*self.taxonomy_port), &txn, tenant_id, &[tag_id]).await?;
         relations::publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
 
@@ -202,24 +189,13 @@ impl TagService {
         self.ensure_blog_owned_tag(tenant_id, tag_id, PLATFORM_FALLBACK_LOCALE)
             .await?;
         let txn = self.db.begin().await.map_err(BlogError::from)?;
-        lock_module_term_in_tx(
-            &txn,
-            tenant_id,
-            tag_id,
-            TaxonomyTermKind::Tag,
-            BLOG_SCOPE_VALUE,
-        )
-        .await?;
+        self.taxonomy_port
+            .lock_tag_in_tx(&txn, tenant_id, tag_id)
+            .await?;
         relations::bump_posts_for_tag_relation_removal_in_tx(&txn, tenant_id, tag_id).await?;
-        delete_module_term_in_tx(
-            &txn,
-            tenant_id,
-            tag_id,
-            &security,
-            TaxonomyTermKind::Tag,
-            BLOG_SCOPE_VALUE,
-        )
-        .await?;
+        self.taxonomy_port
+            .delete_tag_in_tx(&txn, tenant_id, tag_id, &security)
+            .await?;
         relations::publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
         Ok(())
@@ -242,27 +218,13 @@ impl TagService {
         let per_page = bounded_tag_page_size(filter.per_page);
 
         let txn = self.db.begin().await.map_err(BlogError::from)?;
-        // Count only tag-usage rows whose Taxonomy term still exists and is
-        // visible to Blog: global terms, or module:blog terms. Rows referencing
-        // a deleted term or a foreign module's term are broken derived state and
-        // must not inflate `total` — otherwise clients see pages that return
-        // fewer items than advertised.
-        let valid_tag_ids = Query::select()
-            .column(rustok_taxonomy::entities::taxonomy_term::Column::Id)
-            .from(TaxonomyTerm)
-            .cond_where(
-                Condition::all()
-                    .add(
-                        rustok_taxonomy::entities::taxonomy_term::Column::ScopeType
-                            .ne(TaxonomyScopeType::Module),
-                    )
-                    .or(rustok_taxonomy::entities::taxonomy_term::Column::ScopeValue
-                        .eq(BLOG_SCOPE_VALUE)),
-            )
-            .to_owned();
+        let valid_tag_ids = self
+            .taxonomy_port
+            .find_all_valid_tag_ids((&txn).into(), tenant_id)
+            .await?;
         let paginator = blog_tag_usage::Entity::find()
             .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
-            .filter(blog_tag_usage::Column::TagId.in_subquery(valid_tag_ids))
+            .filter(blog_tag_usage::Column::TagId.is_in(valid_tag_ids))
             .order_by_desc(blog_tag_usage::Column::UseCount)
             .order_by_asc(blog_tag_usage::Column::CanonicalKey)
             .order_by_asc(blog_tag_usage::Column::TagId)
@@ -273,6 +235,7 @@ impl TagService {
             txn.commit().await.map_err(BlogError::from)?;
             return Ok((Vec::new(), 0));
         }
+
         let last_page = total.saturating_add(per_page.saturating_sub(1)) / per_page;
         if page > last_page {
             txn.commit().await.map_err(BlogError::from)?;
@@ -284,28 +247,20 @@ impl TagService {
             .await
             .map_err(BlogError::from)?;
         let term_ids = usage_rows.iter().map(|row| row.tag_id).collect::<Vec<_>>();
-        let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
-            &txn,
-            tenant_id,
-            TaxonomyTermKind::Tag,
-            &term_ids,
-            &locale,
-            None,
-        )
-        .await?;
-        let terms_by_id = terms
-            .into_iter()
-            .map(|term| (term.id, term))
-            .collect::<HashMap<_, _>>();
+        let terms_by_id = self
+            .taxonomy_port
+            .load_tags_by_ids(
+                (&txn).into(),
+                tenant_id,
+                &term_ids,
+                &locale,
+                None,
+            )
+            .await?;
 
         let mut items = Vec::with_capacity(usage_rows.len());
         for usage in usage_rows {
             let Some(term) = terms_by_id.get(&usage.tag_id) else {
-                // A projection row whose Taxonomy term is gone is broken derived
-                // state, not a reason to fail the whole public listing: skip the
-                // row and leave a trace, as the post list does for malformed
-                // rows. The write path repairs the projection on the next
-                // mutation (`refresh_tag_usage_in_tx`).
                 tracing::warn!(
                     tenant_id = %tenant_id,
                     tag_id = %usage.tag_id,
@@ -313,7 +268,7 @@ impl TagService {
                 );
                 continue;
             };
-            if term.scope_type == TaxonomyScopeType::Module
+            if term.scope_type == "module"
                 && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
             {
                 tracing::warn!(
@@ -345,7 +300,7 @@ impl TagService {
         locale: &str,
     ) -> BlogResult<()> {
         let term = self.find_visible_term(tenant_id, tag_id, locale).await?;
-        if term.scope_type != TaxonomyScopeType::Module
+        if term.scope_type != "module"
             || term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
         {
             return Err(BlogError::forbidden(
@@ -360,39 +315,20 @@ impl TagService {
         tenant_id: Uuid,
         tag_id: Uuid,
         locale: &str,
-    ) -> BlogResult<TaxonomyOwnerTerm> {
-        let reader = TaxonomyOwnerReader::new(self.db.clone());
-        let term_ids = [tag_id];
-        if let Some(term) = reader
-            .load_scoped_terms(
+    ) -> BlogResult<BlogTaxonomyTagSnapshot> {
+        let terms = self
+            .taxonomy_port
+            .load_tags_by_ids(
+                (&self.db).into(),
                 tenant_id,
-                TaxonomyTermKind::Tag,
-                TaxonomyScopeType::Module,
-                Some(BLOG_SCOPE_VALUE),
-                Some(&term_ids),
+                &[tag_id],
                 locale,
                 Some(PLATFORM_FALLBACK_LOCALE),
             )
-            .await?
-            .into_iter()
-            .next()
-        {
-            return Ok(term);
-        }
-
-        reader
-            .load_scoped_terms(
-                tenant_id,
-                TaxonomyTermKind::Tag,
-                TaxonomyScopeType::Global,
-                None,
-                Some(&term_ids),
-                locale,
-                Some(PLATFORM_FALLBACK_LOCALE),
-            )
-            .await?
-            .into_iter()
-            .next()
+            .await?;
+        terms
+            .get(&tag_id)
+            .cloned()
             .ok_or_else(|| BlogError::tag_not_found(tag_id))
     }
 
@@ -428,31 +364,11 @@ fn validate_tag_name(name: &str) -> BlogResult<()> {
     }
     if name.chars().count() > crate::services::post::MAX_TAG_NAME_CHARS {
         return Err(BlogError::validation(format!(
-            "Tag name cannot exceed {} characters",
+            "Tag name exceeds maximum length of {} characters",
             crate::services::post::MAX_TAG_NAME_CHARS
         )));
     }
     Ok(())
-}
-
-fn normalize_tag_names(tag_names: &[String]) -> Vec<String> {
-    let mut seen = HashSet::new();
-    let mut normalized = Vec::new();
-    for name in tag_names {
-        let trimmed = name.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        // Unicode-aware case folding: ASCII-only folding let pairs like
-        // "Новости"/"НОВОСТИ" through as distinct names, which then resolved
-        // to duplicate Taxonomy terms and failed the post write on the
-        // relation primary key instead of deduplicating here.
-        let key = trimmed.to_lowercase();
-        if seen.insert(key) {
-            normalized.push(trimmed.to_string());
-        }
-    }
-    normalized
 }
 
 fn validate_tag_name_if_present(name: Option<&str>) -> BlogResult<()> {
@@ -486,26 +402,43 @@ mod slug_validation_tests {
     use super::validate_optional_tag_slug;
 
     #[test]
-    fn normalized_tag_slug_respects_taxonomy_storage_limit() {
-        let unicode_slug = "北".repeat(100);
-        assert!(validate_optional_tag_slug(Some(unicode_slug.as_str())).is_err());
+    fn unicode_slug_with_long_ascii_expansion_is_bounded_by_taxonomy_limit() {
+        let non_ascii_slug = "щ".repeat(31);
+        assert!(validate_optional_tag_slug(Some(&non_ascii_slug)).is_err());
+    }
+}
+
+fn normalize_tag_names(names: &[String]) -> Vec<String> {
+    let mut normalized = Vec::with_capacity(names.len());
+    let mut seen = HashSet::with_capacity(names.len());
+
+    for name in names {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let canonical_comparison = trimmed.to_lowercase();
+        if seen.insert(canonical_comparison) {
+            normalized.push(trimmed.to_string());
+        }
     }
 
-    #[test]
-    fn ordinary_tag_slug_stays_valid() {
-        assert!(validate_optional_tag_slug(Some("summer-sale")).is_ok());
-    }
+    normalized
 }
 
 fn normalize_locale(locale: &str) -> BlogResult<String> {
     normalize_locale_code(locale).ok_or_else(|| BlogError::validation("Locale cannot be empty"))
 }
 
-fn to_tag_owner_response(tenant_id: Uuid, term: TaxonomyOwnerTerm, use_count: i32) -> TagResponse {
+fn to_tag_owner_response(
+    tenant_id: Uuid,
+    term: BlogTaxonomyTagSnapshot,
+    use_count: i32,
+) -> TagResponse {
     TagResponse {
         id: term.id,
         tenant_id,
-        locale: term.requested_locale,
+        locale: term.locale.unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()),
         effective_locale: term.effective_locale,
         name: term.name,
         slug: term.slug,
@@ -514,11 +447,14 @@ fn to_tag_owner_response(tenant_id: Uuid, term: TaxonomyOwnerTerm, use_count: i3
     }
 }
 
-fn to_tag_mutation_response(term: ModuleTermMutationResult, use_count: i32) -> TagResponse {
+fn to_tag_mutation_response(
+    term: BlogTaxonomyTagSnapshot,
+    use_count: i32,
+) -> TagResponse {
     TagResponse {
         id: term.id,
         tenant_id: term.tenant_id,
-        locale: term.locale,
+        locale: term.locale.unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()),
         effective_locale: term.effective_locale,
         name: term.name,
         slug: term.slug,

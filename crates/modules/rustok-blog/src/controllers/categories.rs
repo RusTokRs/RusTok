@@ -52,7 +52,7 @@ fn category_service(runtime: &BlogHttpRuntime) -> CategoryService {
 }
 
 fn category_command_service(runtime: &BlogHttpRuntime) -> CategoryCommandService {
-    CategoryCommandService::new(runtime.db_clone(), runtime.event_bus())
+    runtime.category_command_service()
 }
 
 #[utoipa::path(

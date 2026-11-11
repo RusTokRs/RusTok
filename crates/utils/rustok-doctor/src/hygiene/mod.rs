@@ -159,6 +159,34 @@ fn filter_discards_errors(syntax: &str, first_line_len: usize) -> bool {
     false
 }
 
+fn orphan_task_spawn(syntax: &str, first_line_len: usize) -> bool {
+    let spawn = re!(
+        r"^\s*(?:let\s+_\s*=\s*)?(?:(?:tokio|std\s*::\s*thread)\s*::\s*(?:task\s*::\s*)?)?spawn\s*\("
+    );
+    for found in spawn
+        .find_iter(syntax)
+        .take_while(|found| found.start() < first_line_len)
+    {
+        let mut delimiters = vec![b')'];
+        let after_open = found.end();
+        for (relative, byte) in syntax.as_bytes()[after_open..].iter().copied().enumerate() {
+            if let Some(end) = closing(byte) {
+                delimiters.push(end);
+            } else if delimiters.last() == Some(&byte) {
+                delimiters.pop();
+                if delimiters.is_empty() {
+                    let rest = syntax[after_open + relative + 1..].trim_start();
+                    if rest.starts_with(';') {
+                        return true;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    false
+}
+
 fn reactive_boundaries(syntax: &str) -> Vec<usize> {
     let tokens = re!(
         r"(?P<reactive>\b(?:create_effect|create_memo|create_resource|create_local_resource|Effect::new|Memo::new|Resource::new|LocalResource::new)\s*\(|\bview!\s*[{(\[])|[(){}\[\]]"
@@ -691,6 +719,27 @@ fn check_rules(
                     "Propagate item errors or explicitly record and handle rejected items under the owner contract.");
             }
         }
+        if syntax.contains("spawn") {
+            let window = scan.lines[index..(index + 128).min(scan.lines.len())]
+                .iter()
+                .map(|line| line.syntax.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            if orphan_task_spawn(&window, syntax.len()) {
+                scan.add(number, "P-ORPHAN-SPAWN", "Unsupervised Task Spawn", Severity::High,
+                    "Unsupervised background task spawned without retaining its JoinHandle. Panics are silently swallowed and the task will not participate in lifecycle shutdown.",
+                    "Bind to a JoinHandle, store in a JoinSet or task supervisor, or pass a CancellationToken to manage task lifecycle.");
+            }
+        }
+        if syntax.contains("set_len") && !scan.build_file {
+            let set_len = re!(r"\b([A-Za-z_]\w*)\s*\.\s*set_len\s*\(");
+            if let Some(captures) = set_len.captures(text) {
+                let var = &captures[1];
+                scan.add(number, "P-UNSAFE-VEC-SETLEN", "Unchecked Vector Length Mutation", Severity::Critical,
+                    format!("Direct invocation of 'set_len' on '{var}' exposes uninitialized memory if capacity or bounds diverge."),
+                    "Use resize, extend, or validate length <= capacity() with explicit memory initialization before setting length.");
+            }
+        }
         if re!(r"^\s*let\s+_\s*=").is_match(text) {
             let mut statement = text.to_owned();
             if !statement.contains(';') {
@@ -727,6 +776,8 @@ fn check_rules(
                         "Discarded signal read outside a recognized reactive scope. Verify the actual reactive consumer.",
                         "If tracking is required, read the signal in the owning reactive consumer.");
                 }
+            } else if re!(r"\blet\s+_\s*=\s*(?:(?:tokio|std\s*::\s*thread)\s*::\s*(?:task\s*::\s*)?)?spawn\s*\(").is_match(&statement) {
+                // Handled directly by P-ORPHAN-SPAWN above
             } else if re!(r"\b(?:\w+\s*\(|await\b)").is_match(&statement) {
                 scan.add(number, "P-ANTI-SWALLOW", "Zero Error Swallowing", Severity::High,
                     "Discarded call result via 'let _ ='. Verify whether it can fail.",

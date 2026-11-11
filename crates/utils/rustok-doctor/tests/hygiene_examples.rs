@@ -330,3 +330,91 @@ fn detects_multiline_include_without_flagging_generated_sources() {
     assert_eq!(includes.len(), 1);
     assert_eq!(includes[0].line, 1);
 }
+
+#[test]
+fn identifies_unsupervised_task_spawns_without_flagging_supervised_or_tail_returns() {
+    let source = r#"fn run() {
+    // 1: comment spawn
+    let text = "tokio::spawn(async move {});";
+    // Standalone discarded spawn (line 4)
+    tokio::spawn(async move {
+        worker().await;
+    });
+    // Discarded with let _ = (line 8)
+    let _ = tokio::spawn(async move {
+        worker().await;
+    });
+    // Supervised: bound to a task handle
+    let handle = tokio::spawn(async move {
+        worker().await;
+    });
+    // Supervised: stored in a collection
+    tasks.push(tokio::spawn(async move {
+        worker().await;
+    }));
+    // Immediately awaited
+    tokio::spawn(async move {
+        worker().await;
+    }).await.unwrap();
+}
+
+pub fn start_worker() -> JoinHandle<()> {
+    tokio::spawn(async move {
+        supervised_loop().await;
+    })
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/worker.rs"), source);
+    let orphans: Vec<_> = findings
+        .iter()
+        .filter(|finding| finding.pattern_id == "P-ORPHAN-SPAWN")
+        .collect();
+
+    assert_eq!(orphans.len(), 2);
+    assert_eq!(orphans[0].line, 5);
+    assert_eq!(orphans[1].line, 9);
+    assert!(orphans.iter().all(|f| f.severity == rustok_doctor::Severity::High));
+
+    // Ensure let _ = tokio::spawn did not trigger duplicate P-ANTI-SWALLOW
+    assert!(
+        findings
+            .iter()
+            .filter(|f| f.pattern_id == "P-ANTI-SWALLOW")
+            .all(|f| f.line != 9)
+    );
+}
+
+#[test]
+fn identifies_unchecked_vec_set_len() {
+    let source = r#"unsafe fn decompress() {
+    let mut out = Vec::with_capacity(1024);
+    out.set_len(512);
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/ffi.rs"), source);
+    let set_len_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-UNSAFE-VEC-SETLEN")
+        .collect();
+
+    assert_eq!(set_len_findings.len(), 1);
+    assert_eq!(set_len_findings[0].line, 3);
+    assert_eq!(set_len_findings[0].severity, rustok_doctor::Severity::Critical);
+}
+
+#[test]
+fn detects_real_cron_scheduler_orphan_spawn() {
+    let cron_file = include_str!("../../../modules/rustok-workflow/src/services/cron_scheduler.rs");
+    let findings = rustok_doctor::scan_source(
+        Path::new("crates/modules/rustok-workflow/src/services/cron_scheduler.rs"),
+        cron_file,
+    );
+    let orphans: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-ORPHAN-SPAWN")
+        .collect();
+
+    // Line 109 is orphaned, line 37 returns JoinHandle (not orphaned)
+    assert_eq!(orphans.len(), 1);
+    assert_eq!(orphans[0].line, 109);
+}

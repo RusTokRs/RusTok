@@ -153,7 +153,7 @@ impl PostService {
         self.replace_channel_visibility_in_tx(txn, tenant_id, post_id, &channel_slugs)
             .await?;
         sync_post_tags_in_tx(
-            &self.db,
+            &*self.taxonomy_port,
             txn,
             tenant_id,
             post_id,

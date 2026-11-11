@@ -5,14 +5,17 @@ use axum::{Router, http::StatusCode};
 use rustok_api::{HostRuntimeContext, SharedStaticModuleSettingsReader};
 use rustok_comments::CommentsThreadPort;
 use rustok_outbox::TransactionalEventBus;
-use rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort;
 use rustok_web::{HttpError, HttpResult};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::services::MAX_POST_ARTICLE_BYTES;
-use crate::{CategoryService, CommentService};
+use crate::ports::taxonomy::{
+    BlogCategoryDeleteCleanupPort, BlogTaxonomyPort, NoopBlogCategoryDeleteCleanupPort,
+    NoopBlogTaxonomyPort,
+};
+use crate::services::{CategoryCommandService, MAX_POST_ARTICLE_BYTES};
+use crate::{CategoryService, CommentService, PostService, TagService};
 
 /// Upper bound of a Blog HTTP request body.
 ///
@@ -45,29 +48,45 @@ pub struct BlogHttpRuntime {
     event_bus: TransactionalEventBus,
     comments_thread_port: Option<Arc<dyn CommentsThreadPort>>,
     settings_reader: Option<SharedStaticModuleSettingsReader>,
-    category_delete_cleanup: Arc<dyn TaxonomyCategoryDeleteCleanupPort>,
+    category_delete_cleanup: Arc<dyn BlogCategoryDeleteCleanupPort>,
+    taxonomy_port: Arc<dyn BlogTaxonomyPort>,
 }
 
 impl BlogHttpRuntime {
-    fn db_clone(&self) -> DatabaseConnection {
+    pub(crate) fn db_clone(&self) -> DatabaseConnection {
         self.db.clone()
     }
 
-    fn event_bus(&self) -> TransactionalEventBus {
+    pub(crate) fn event_bus(&self) -> TransactionalEventBus {
         self.event_bus.clone()
     }
 
-    fn category_service(&self) -> CategoryService {
+    pub(crate) fn category_service(&self) -> CategoryService {
         CategoryService::new(self.db_clone(), self.event_bus())
             .with_category_delete_cleanup(self.category_delete_cleanup.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
     }
 
-    fn comment_service(&self) -> CommentService {
+    pub(crate) fn category_command_service(&self) -> CategoryCommandService {
+        CategoryCommandService::new(self.db_clone(), self.event_bus())
+            .with_taxonomy_port(self.taxonomy_port.clone())
+    }
+
+    pub(crate) fn comment_service(&self) -> CommentService {
         CommentService::from_runtime_capabilities(
             self.db_clone(),
             self.comments_thread_port.clone(),
             self.settings_reader.clone(),
         )
+    }
+
+    pub(crate) fn tag_service(&self) -> TagService {
+        TagService::new(self.db_clone()).with_taxonomy_port(self.taxonomy_port.clone())
+    }
+
+    pub(crate) fn post_service(&self) -> PostService {
+        PostService::new(self.db_clone(), self.event_bus())
+            .with_taxonomy_port(self.taxonomy_port.clone())
     }
 }
 
@@ -77,16 +96,18 @@ impl BlogHttpRuntime {
             .shared_get::<TransactionalEventBus>()
             .context("blog HTTP routes require TransactionalEventBus in HostRuntimeContext")?;
         let category_delete_cleanup = runtime
-            .shared_get::<Arc<dyn TaxonomyCategoryDeleteCleanupPort>>()
-            .context(
-                "blog HTTP routes require Taxonomy Category delete cleanup in HostRuntimeContext",
-            )?;
+            .shared_get::<Arc<dyn BlogCategoryDeleteCleanupPort>>()
+            .unwrap_or_else(|| Arc::new(NoopBlogCategoryDeleteCleanupPort));
+        let taxonomy_port = runtime
+            .shared_get::<Arc<dyn BlogTaxonomyPort>>()
+            .unwrap_or_else(|| Arc::new(NoopBlogTaxonomyPort));
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
             comments_thread_port: runtime.shared_get::<Arc<dyn CommentsThreadPort>>(),
             settings_reader: runtime.shared_get::<SharedStaticModuleSettingsReader>(),
             category_delete_cleanup,
+            taxonomy_port,
         })
     }
 }

@@ -288,30 +288,6 @@ impl BlogError {
     }
 }
 
-impl From<rustok_taxonomy::TaxonomyError> for BlogError {
-    fn from(value: rustok_taxonomy::TaxonomyError) -> Self {
-        use rustok_taxonomy::TaxonomyError;
-        match value {
-            TaxonomyError::Database(err) => Self::Database(err),
-            TaxonomyError::Internal(message) => {
-                Self::Invariant(format!("Taxonomy dependency failed: {message}"))
-            }
-            TaxonomyError::Forbidden(message) => Self::Forbidden(message),
-            TaxonomyError::Validation(message) => Self::Validation(message),
-            TaxonomyError::DuplicateCanonicalKey(message)
-            | TaxonomyError::DuplicateSlug(message)
-            | TaxonomyError::DuplicateAlias(message)
-            | TaxonomyError::Conflict(message) => Self::Conflict(message),
-            TaxonomyError::TermNotFound(term_id) => Self::TaxonomyTermNotFound(term_id),
-            TaxonomyError::TranslationRevisionExhausted { term_id, locale } => {
-                Self::Conflict(format!(
-                    "Taxonomy translation revision is exhausted for term {term_id} and locale {locale}"
-                ))
-            }
-        }
-    }
-}
-
 impl From<rustok_channel::ChannelError> for BlogError {
     fn from(value: rustok_channel::ChannelError) -> Self {
         match value {
@@ -375,16 +351,12 @@ mod tests {
 
     #[test]
     fn taxonomy_error_classes_survive_the_blog_boundary() {
-        let missing: BlogError =
-            rustok_taxonomy::TaxonomyError::TermNotFound(Uuid::new_v4()).into();
+        let missing = BlogError::TaxonomyTermNotFound(Uuid::new_v4());
         let missing: RichError = missing.into();
         assert_eq!(missing.kind, ErrorKind::NotFound);
         assert_eq!(missing.status_code, 404);
 
-        let conflict: BlogError = rustok_taxonomy::TaxonomyError::Conflict(
-            "internal taxonomy predecessor detail".to_string(),
-        )
-        .into();
+        let conflict = BlogError::Conflict("internal taxonomy predecessor detail".to_string());
         let conflict: RichError = conflict.into();
         assert_eq!(conflict.kind, ErrorKind::Conflict);
         assert_eq!(conflict.status_code, 409);

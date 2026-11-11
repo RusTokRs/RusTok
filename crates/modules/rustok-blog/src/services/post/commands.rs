@@ -300,7 +300,7 @@ impl PostService {
                 BlogError::invariant("tag mutation reached persistence without a canonical locale")
             })?;
             sync_post_tags_in_tx(
-                &self.db,
+                &*self.taxonomy_port,
                 &txn,
                 tenant_id,
                 post_id,

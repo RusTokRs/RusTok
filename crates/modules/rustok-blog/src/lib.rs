@@ -59,8 +59,12 @@ pub use ports::{
     ensure_blog_category_exists_in_tx, ensure_blog_slug_unique_in_tx, load_post_for_demotion_in_tx,
     load_post_tag_ids_in_tx,
 };
+pub use ports::BlogCategoryDeleteCleanupPort as TaxonomyCategoryDeleteCleanupPort;
+pub use ports::{
+    BlogCategoryDeleteCleanupPort, BlogTaxonomyConnection, BlogTaxonomyPort,
+    NoopBlogCategoryDeleteCleanupPort, NoopBlogTaxonomyPort,
+};
 pub use rustok_comments::CommentsThreadPort;
-pub use rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort;
 pub use services::BlogWidgetService;
 pub use services::{
     BLOG_ROUTE_PREFIX, BlogPostRedirect, BlogPostRouteOwner, CANONICAL_POST_ROUTE_LOCALE,

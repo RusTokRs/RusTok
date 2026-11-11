@@ -872,3 +872,52 @@ if (!landing) {
 Detection: `rg -n "dangerouslySetInnerHTML|inner_html" apps crates` lists the sinks;
 for each, follow the value back and read every branch of its reader for one that
 returns or wraps the input (`rg -n "return \{ html: " apps` finds the direct form).
+
+## P-ORPHAN-SPAWN — Supervise background tasks and retain JoinHandles
+
+- **Category:** Concurrency, task supervision, and lifecycle shutdown.
+- **Logic dimensions:** Side-effect completeness, order/concurrency, branch completeness.
+- **Observed behavior:** Discarding the `JoinHandle` returned by `tokio::spawn` (either directly as a standalone statement `tokio::spawn(async move { ... });` or via `let _ = tokio::spawn(...)`) leaves background execution unmanaged. If a spawned task panics, Tokio silently swallows the panic without propagating it to any caller or supervisor. Furthermore, when the owning runtime or component shuts down, orphan tasks continue running untracked or are abruptly terminated mid-operation, risking partial writes and resource leaks. Observed in workflow task dispatch ([cron_scheduler.rs](../../crates/modules/rustok-workflow/src/services/cron_scheduler.rs), [trigger_handler.rs](../../crates/modules/rustok-workflow/src/services/trigger_handler.rs)) and HTTP request handlers ([auth.rs](../../apps/server/src/controllers/auth.rs)).
+- **Remediation:** Always retain the returned `JoinHandle`. For long-lived background workers, pass ownership to a supervisor struct (e.g. `JoinHandle<()>`), store in a `tokio::task::JoinSet` / `TaskTracker`, or coordinate cooperative cancellation via a `tokio_util::sync::CancellationToken`. For fire-and-forget background jobs, log panics explicitly using `tokio::spawn` with a monitored wrapper or supervisor channel.
+
+```rust
+// Vulnerable: unmanaged fire-and-forget task
+tokio::spawn(async move {
+    engine.execute(workflow_id, tenant_id, None, steps, ctx).await;
+});
+
+// Remediation: retain handle in supervisor or track via JoinSet
+let handle = tokio::spawn(async move {
+    if let Err(e) = engine.execute(workflow_id, tenant_id, None, steps, ctx).await {
+        error!(%workflow_id, error = %e, "workflow execution failed");
+    }
+});
+self.tasks.lock().await.push(handle);
+```
+
+Detection: `cargo xtask doctor hygiene --crate <crate>` or
+`rg -n '^\s*(let\s+_\s*=\s*)?(tokio::)?spawn\(' crates/ apps/`.
+Doctor detects unassigned `spawn(...)` statements that terminate with a semicolon, while exempting test suites, tail expressions returning `JoinHandle`, and bound variables.
+
+## P-UNSAFE-VEC-SETLEN — Validate capacity and bounds before mutating vector length
+
+- **Category:** Memory safety and `unsafe` invariant preservation.
+- **Logic dimensions:** Preconditions and bounds, algorithmic correctness.
+- **Observed behavior:** In low-level buffer manipulation or C-style FFI wrappers, code allocates a vector via `Vec::with_capacity(capacity)` and subsequently updates its length using `unsafe { vec.set_len(written) }`. If the foreign function or decoder returns an error, fails to fully populate elements in `0..written`, or if `written > capacity`, uninitialized memory is exposed to safe Rust, producing Undefined Behavior (UB) and potential segfaults under edge cases.
+- **Remediation:** Avoid `set_len` in safe application crates (`#![forbid(unsafe_code)]`). Where raw buffer interaction is required, initialize the buffer before passing (e.g. `vec![0u8; capacity]` or `Vec::resize`), or assert `written <= vec.capacity()` and verify that the write operation completed successfully before invoking `unsafe { vec.set_len(written) }`.
+
+```rust
+// Vulnerable: uninitialized memory exposed on partial write or overflow
+let mut out = Vec::with_capacity(estimated_size);
+let written = unsafe { decompress(input.as_ptr(), input.len(), out.as_mut_ptr(), out.capacity()) };
+unsafe { out.set_len(written); }
+
+// Remediation: initialize memory safely or strictly validate bounds
+let mut out = vec![0u8; estimated_size];
+let written = decompress_safe(&input, &mut out)?;
+out.truncate(written);
+```
+
+Detection: `cargo xtask doctor hygiene` or
+`rg -n '\.set_len\(' crates/ apps/`.
+Doctor flags direct invocations of `.set_len(...)` in non-test source files.

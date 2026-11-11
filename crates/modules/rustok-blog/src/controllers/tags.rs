@@ -48,7 +48,8 @@ pub async fn list_tags(
     )?;
     filter.locale = filter.locale.or(Some(request_context.locale.clone()));
 
-    let (items, total) = TagService::new(runtime.db_clone())
+    let (items, total) = runtime
+        .tag_service()
         .list_tags(tenant.id, security_context(&auth), filter)
         .await
         .map_err(crate::error::public::to_http_error)?;
@@ -96,7 +97,8 @@ pub async fn get_tag(
         .map(String::as_str)
         .unwrap_or(request_context.locale.as_str());
 
-    let tag = TagService::new(runtime.db_clone())
+    let tag = runtime
+        .tag_service()
         .get_tag(tenant.id, security_context(&auth), id, locale)
         .await
         .map_err(crate::error::public::to_http_error)?;
@@ -129,7 +131,8 @@ pub async fn create_tag(
         "Permission denied: tags:create required",
     )?;
 
-    let tag_id = TagService::new(runtime.db_clone())
+    let tag_id = runtime
+        .tag_service()
         .create_tag(tenant.id, security_context(&auth), input)
         .await
         .map_err(crate::error::public::to_http_error)?;
@@ -171,7 +174,8 @@ pub async fn update_tag(
         "Permission denied: tags:update required",
     )?;
 
-    let tag = TagService::new(runtime.db_clone())
+    let tag = runtime
+        .tag_service()
         .update_tag(tenant.id, id, security_context(&auth), input)
         .await
         .map_err(crate::error::public::to_http_error)?;
@@ -210,7 +214,8 @@ pub async fn delete_tag(
         "Permission denied: tags:delete required",
     )?;
 
-    TagService::new(runtime.db_clone())
+    runtime
+        .tag_service()
         .delete_tag(tenant.id, id, security_context(&auth))
         .await
         .map_err(crate::error::public::to_http_error)?;

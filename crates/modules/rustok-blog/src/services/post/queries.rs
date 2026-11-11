@@ -74,6 +74,7 @@ impl PostService {
 
         if let Some(ref tag) = tag_filter {
             let Some(tag_id) = resolve_tag_id_for_posts(
+                &*self.taxonomy_port,
                 &self.db,
                 tenant_id,
                 tag,
@@ -187,6 +188,7 @@ impl PostService {
         let translations_map = self.load_translations_map(tenant_id, &post_ids).await?;
         let channel_slugs_map = self.load_channel_slugs_map(tenant_id, &post_ids).await?;
         let tags_map = load_post_tags_map(
+            &*self.taxonomy_port,
             &self.db,
             tenant_id,
             &post_ids,
@@ -265,6 +267,7 @@ impl PostService {
         let translations_map = self.load_translations_map(tenant_id, &post_ids).await?;
         let channel_slugs_map = self.load_channel_slugs_map(tenant_id, &post_ids).await?;
         let tags_map = load_post_tags_map(
+            &*self.taxonomy_port,
             &self.db,
             tenant_id,
             &post_ids,
@@ -355,6 +358,7 @@ impl PostService {
 
         if let Some(ref tag) = query.tag {
             let Some(tag_id) = resolve_tag_id_for_posts(
+                &*self.taxonomy_port,
                 &self.db,
                 tenant_id,
                 tag,
@@ -523,6 +527,7 @@ impl PostService {
         fallback_locale: Option<&str>,
     ) -> BlogResult<HashMap<Uuid, String>> {
         crate::services::category_name_projection::load_category_names_map(
+            &*self.taxonomy_port,
             &self.db,
             tenant_id,
             category_ids,
@@ -541,6 +546,7 @@ impl PostService {
         fallback_locale: Option<&str>,
     ) -> BlogResult<PostResponse> {
         let tags_map = load_post_tags_map(
+            &*self.taxonomy_port,
             &self.db,
             post.tenant_id,
             &[post.id],
