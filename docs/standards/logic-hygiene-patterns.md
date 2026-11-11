@@ -998,3 +998,29 @@ same identifier in `contracts/` and in the owner plan and compare the values.
 Detection: list the string arms of the dispatcher and of every resolver it falls back
 to; a name in both is a candidate. For each, send the payload of every producer through
 the entry point.
+
+## P-ATTRIBUTE-REACH — A reused attribute is checked against everything that already reads it
+
+- **Category:** Markup contracts, verification integrity.
+- **Logic dimensions:** Preconditions and bounds, parity across surfaces.
+- **Observed defect:** `data-fly-component-id` marked the nodes of the canvas preview. A
+  later change put the same attribute on the rows of the layer tree, so that the browser
+  adapter could select a component from a row. The canvas preview also wrote a global
+  style rule for the selected component, `[data-fly-component-id="<id>"] { outline … }`,
+  with no canvas scope: it was correct while only canvas nodes carried the attribute. In
+  the workspace, which renders both in one document, the row of the selected component
+  took the canvas outline, `position: relative` and `z-index`. The change that added the
+  attribute was reviewed against the consumer it was written for and against no other.
+- **Canonical solution:** An attribute is a public name. Before an element gains an
+  attribute that already exists, list every reader of that attribute in the same document
+  — style rules, `querySelector`, `closest`, observers — and decide for each whether the
+  new element belongs to it. A style rule or a query that means "inside this surface"
+  says so with the scope of the surface.
+
+```rust
+format!(".fly-canvas--interactive [data-fly-component-id=\"{id}\"] {{ outline: … }}")
+```
+
+Detection: search for the attribute name in selectors and queries, not only in the views
+that emit it. `scripts/verify/verify-fly-ssr-control-contract.mjs` (part 7) fails on a
+canvas style rule keyed on a contract attribute without a class scope.

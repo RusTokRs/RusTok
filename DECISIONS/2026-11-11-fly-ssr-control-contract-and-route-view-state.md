@@ -115,6 +115,9 @@ a read-only caller has no draft session, by design.
   workspace.
 - A `data-fly-route-query` value is a constant that a server resolver reads and that is applied
   before render.
+- A contract attribute can sit on a control and on a canvas node of the same document
+  (`data-fly-component-id` does). A style rule of the canvas that is keyed on a contract
+  attribute is scoped to the canvas by a class.
 
 - Every `data-fly-intent-form` names a `BrowserIntentKind` that is resolved for the payload the
   form sends: by the dispatcher arm whose guard holds, by `ssr_form_intent`, or by the host
@@ -178,6 +181,8 @@ Not applicable. The contract emits no domain event and owns no projection.
 ## Migration and cutover
 
 - `data-fly-block` is removed from the Leptos and Dioxus palettes; nothing read it.
+- `data-fly-component-id` on layer rows widened the reach of the canvas selection rule of
+  `FlyCanvasPreview`, which had no scope. The rule moved under `.fly-canvas--interactive`.
 - `EditorMessages` gains `insert_block` and `drag_block` with serde defaults, so message sets
   serialized before this change still deserialize.
 - No data migration. No external contract changes: the intent names and payloads are those the

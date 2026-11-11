@@ -20,6 +20,9 @@
 // and the two selection controls. Part 6 derives that contract the same way and follows it to
 // the server: every form names a protocol intent that some handler resolves, and the fields a
 // form sends are the fields its request type reads, with the JSON types the bootstrap produces.
+//
+// Part 7 covers the reach of a contract attribute: `data-fly-component-id` is on canvas nodes and
+// on layer rows of one document, so a canvas style rule keyed on it must carry the canvas scope.
 
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -795,6 +798,38 @@ for (const [what, needle] of [
   if (!hostSpec.includes(needle)) fail(`${hostSpecPath} must load ${what}`);
 }
 
+// ---------------------------------------------------------------------------------------------
+// 7. A contract attribute on a control must not pull the control under a canvas style.
+// ---------------------------------------------------------------------------------------------
+//
+// The workspace renders the canvas preview and the controls into one document, and the canvas
+// styles are a plain `<style>` element. `data-fly-component-id` is on the canvas nodes and, for
+// this contract, on the layer rows too: a canvas rule keyed on a contract attribute and not
+// scoped by a class also styles the control that names the same component.
+const contractAttributes = new Set([...boundAttributes, ...hostBoundAttributes]);
+const workspaceProduction = productionSource(read(workspacePath));
+let scopedCanvasRules = 0;
+for (const match of workspaceProduction.matchAll(
+  /\[(data-fly-[a-z-]+)(?:=[^\]\n]*)?\](?::[a-z-]+)*\s*\{\{?/g,
+)) {
+  if (!contractAttributes.has(match[1])) continue;
+  const before = workspaceProduction.slice(0, match.index);
+  const selectorStart = Math.max(...['"', '}', ';', '\n'].map((stop) => before.lastIndexOf(stop))) + 1;
+  const scope = before.slice(selectorStart).trim();
+  if (!/^\.[\w-]+(?:\s|$)/.test(scope)) {
+    const line = before.split('\n').length;
+    fail(
+      `${workspacePath}:${line}: a style rule keyed on \`${match[1]}\` is not scoped by a class; ` +
+        'it also styles every control that carries the attribute',
+    );
+    continue;
+  }
+  scopedCanvasRules += 1;
+}
+if (scopedCanvasRules === 0 && !failures.some((message) => message.includes('is not scoped by a class'))) {
+  fail(`${workspacePath}: no canvas style rule keyed on a contract attribute was found; update this check with the source`);
+}
+
 if (failures.length > 0) {
   console.error('Fly SSR control contract verification failed:');
   for (const message of failures) console.error(`- ${message}`);
@@ -805,5 +840,5 @@ console.log(
   `Fly SSR control contract verified: ${boundAttributes.size} bound attributes, ` +
     `${handledActions.size} adapter actions, ${emittedActions.size} emitted actions ` +
     `(${recordedUnhandledActions.size} recorded as unhandled); ${hostBoundAttributes.size} host-bound ` +
-    `attributes, ${verifiedForms} SSR forms.`,
+    `attributes, ${verifiedForms} SSR forms; ${scopedCanvasRules} scoped canvas rules.`,
 );

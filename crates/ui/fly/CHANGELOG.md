@@ -257,6 +257,15 @@ Engineering audit remediation — see
 
 ### Fixed
 
+- **The canvas selection style no longer reaches the layer tree.** `FlyCanvasPreview` writes
+  its interactive styles as a plain `<style>` element, and the rule for the selected component
+  was `[data-fly-component-id="<id>"]` with no scope. Once `FlyLayerTree` rendered
+  `data-fly-component-id` on selectable rows (the entry below), the row of the selected
+  component in `FlyEditorWorkspace` took the canvas outline, `position: relative` and
+  `z-index: 5`. The rule is now under `.fly-canvas--interactive`, like the two rules next to
+  it. Part 7 of `scripts/verify/verify-fly-ssr-control-contract.mjs` rejects an unscoped canvas
+  rule keyed on a contract attribute; `fly-leptos` has a render test for it.
+
 - **The palette, the layer tree and the viewport switch work on a server-rendered page.**
   In the default `ssr + browser-js` runtime a control works only when a view renders the
   `data-fly-*` attribute that `fly-browser.js` binds. `FlyPalette` rendered `data-fly-block` with

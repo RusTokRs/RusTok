@@ -98,10 +98,12 @@ pub fn FlyContributionSummary(
 /// Renaming or dropping any of them silently disables the palette in the default
 /// `ssr + browser-js` runtime.
 ///
-/// The drag control arms a block drag without a pointer gesture, so a keyboard author can
-/// place a block at a chosen target. It renders only when the host passes `on_begin_drag`,
-/// which [`FlyEditorWorkspace`] does in intent mode: a surface with no drag transport must not
-/// show a control that does nothing.
+/// The drag control arms a block drag without a drag gesture: the author activates it and then
+/// releases the pointer over the target in the canvas. It is the single-pointer alternative to
+/// dragging, not a keyboard-only one — in the `ssr + browser-js` runtime the drop is still a
+/// pointer release that the canvas reports. It renders only when the host passes
+/// `on_begin_drag`, which [`FlyEditorWorkspace`] does in intent mode: a surface with no drag
+/// transport must not show a control that does nothing.
 #[component]
 pub fn FlyPalette(
     blocks: Vec<PaletteBlockItem>,
@@ -570,11 +572,15 @@ pub fn FlyCanvasPreview(
     };
 
     let interactive_css = if is_interactive {
+        // The rules below are a plain `<style>` in the host page, so each one stays under
+        // `.fly-canvas--interactive`. `data-fly-component-id` is not unique to the canvas: a
+        // selectable row of `FlyLayerTree` carries the id of the same component, and an
+        // unscoped selection rule would outline that row as well.
         let selection_css = selected
             .as_deref()
             .map(|id| {
                 format!(
-                    "[data-fly-component-id=\"{id}\"] {{ outline: 2px solid #2563eb !important; outline-offset: 2px !important; position: relative; z-index: 5; }}"
+                    ".fly-canvas--interactive [data-fly-component-id=\"{id}\"] {{ outline: 2px solid #2563eb !important; outline-offset: 2px !important; position: relative; z-index: 5; }}"
                 )
             })
             .unwrap_or_default();
@@ -3231,10 +3237,61 @@ mod tests {
         assert!(interactive_html.contains("data-fly-component-id=\"hero-title\""));
         assert!(interactive_html.contains("data-fly-selected=\"hero-title\""));
         assert!(interactive_html.contains(".fly-canvas--interactive [data-fly-component-id]"));
-        assert!(interactive_html.contains(
-            "[data-fly-component-id=\"hero-title\"] { outline: 2px solid #2563eb !important;"
-        ));
+        assert!(interactive_html.contains(concat!(
+            ".fly-canvas--interactive [data-fly-component-id=\"hero-title\"] ",
+            "{ outline: 2px solid #2563eb !important;"
+        )));
         assert!(interactive_html.contains(".fly-canvas--interactive [contenteditable=\"true\"]"));
+    }
+
+    #[test]
+    fn canvas_styles_keyed_on_the_component_id_stay_inside_the_canvas() {
+        // `FlyLayerTree` renders `data-fly-component-id` on the row of the same component, next
+        // to the canvas in `FlyEditorWorkspace`. The canvas styles are global, so a rule keyed
+        // on that attribute outside `.fly-canvas--interactive` restyles the layer row too.
+        let document: ProjectDocument = serde_json::from_value(serde_json::json!({
+            "project": {
+                "pages": [{
+                    "id": "home",
+                    "name": "Home",
+                    "component": {
+                        "type": "wrapper",
+                        "id": "root",
+                        "components": [{ "id": "hero-title", "tagName": "h1", "content": "Hi" }]
+                    }
+                }]
+            }
+        }))
+        .expect("document");
+        let html = view! {
+            <FlyCanvasPreview
+                document=document
+                page_index=Some(0)
+                selected=Some("hero-title".to_string())
+                on_select=Some(Callback::new(|_| ()))
+                interactive=Some(true)
+                viewport_width=Some(1024)
+            />
+        }
+        .to_html();
+
+        let style_start = position(&html, "<style");
+        let style_end = style_start + position(&html[style_start..], "</style>");
+        let style = &html[style_start..style_end];
+        let scope = ".fly-canvas--interactive ";
+        let rules: Vec<usize> = style
+            .match_indices("[data-fly-component-id")
+            .map(|(at, _)| at)
+            .collect();
+        // Two rules for every component and one for the selected one.
+        assert_eq!(rules.len(), 3, "{style}");
+        for at in rules {
+            assert!(
+                style[..at].ends_with(scope),
+                "a canvas rule keyed on the component id is not scoped to the canvas: {}",
+                &style[at..]
+            );
+        }
     }
 
     #[test]

@@ -403,8 +403,29 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
       - Hydrated `wasm-client` builds mount the adapter too (`wasm-client` enables
         `browser-js`, `post_intents` defaults to `true`). A toolbar button then has both
         `data-fly-action="intent:…"` and a live `on:click`. Whether both fire, and which one
-        must own the control, is not established: the profile cannot be built here. Owner:
-        Page Builder admin.
+        must own the control, is not established: the profile cannot be built here. The
+        viewport select is in the same position since it became route state: its `on:change`
+        sets the viewport locally and the adapter navigates to `?fly_viewport=`, which reloads
+        a page that hydration had already updated; editor state that only the hydrated client
+        holds does not survive that reload. Before the select became route state, a hydrated
+        build changed the viewport without a reload. Owner: Page Builder admin.
+      - The viewport select cannot return to the initial 1280 × 720 frame. That frame is no
+        built-in preset; it renders as a leading option with an empty value, only while it is
+        in effect, and the adapter does not navigate for an empty value. After a preset is
+        chosen the option is gone and the only way back is to remove `fly_viewport` from the
+        route by hand. Decide whether the initial frame becomes a preset or the empty option
+        stays and clears the key. Owner: `fly-ui` (presets), Page Builder admin (toolbar).
+      - `fly-browser.js` changes its selection without `fly:select` in three places: a
+        `dragstart` on a layer row, the delegated `select-component` case (the per-element
+        listener of the same row dispatches the event first, so this matters only for a row
+        added after mount), and the canvas `teardown` message. The host bootstrap retargets
+        the SSR forms on `fly:select` only, so after a cancelled row drag the forms keep the
+        earlier target while `selected_component_id` names the dragged component. Owner:
+        `fly-browser`.
+      - A code review of this change found that `data-fly-component-id` on layer rows pulled
+        the row of the selected component under the unscoped selection rule of
+        `FlyCanvasPreview`. Fixed: the rule is scoped to `.fly-canvas--interactive`, part 7
+        of the contract check rejects an unscoped one. Pattern: `P-ATTRIBUTE-REACH`.
       - `fly-dioxus` renders the same palette and layer markup now and the contract check
         compares the twins, but the crate has no render test of its own and no host mounts
         it with `fly-browser.js`. Owner: `fly-dioxus`.
