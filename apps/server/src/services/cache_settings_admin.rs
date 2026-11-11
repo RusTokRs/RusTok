@@ -80,10 +80,16 @@ mod tests {
 
     #[tokio::test]
     async fn cache_settings_round_trip_through_the_host_port() {
+        use sea_orm::ActiveModelTrait;
+
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
         let port = ServerCacheSettingsAdmin::shared(&ctx);
-        let tenant_id = Uuid::new_v4();
+        let tenant = crate::models::tenants::ActiveModel::new("Cache Tenant", "cache-tenant")
+            .insert(ctx.db())
+            .await
+            .expect("insert test tenant");
+        let tenant_id = tenant.id;
 
         // The cache target is deployment-owned, so the environment decides what the document
         // contains; the test asserts the round trip, not a specific deployment.
@@ -92,11 +98,12 @@ mod tests {
             .read(tenant_id)
             .await
             .expect("cache settings read");
+        let actor_id = Some(Uuid::new_v4());
         let written = port
             .port()
             .update(
                 tenant_id,
-                None,
+                actor_id,
                 current.settings.clone(),
                 current.schema_version,
             )

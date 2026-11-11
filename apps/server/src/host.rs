@@ -649,8 +649,47 @@ mod tests {
         .expect("development allows dev credentials");
     }
 
+    static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct EnvGuard {
+        _guard: std::sync::MutexGuard<'static, ()>,
+        vars: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn new(keys: &[&'static str]) -> Self {
+            let guard = TEST_ENV_LOCK.lock().unwrap();
+            let mut vars = Vec::new();
+            for &k in keys {
+                vars.push((k, std::env::var(k).ok()));
+                unsafe {
+                    std::env::remove_var(k);
+                }
+            }
+            Self {
+                _guard: guard,
+                vars,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (k, v) in &self.vars {
+                unsafe {
+                    if let Some(val) = v {
+                        std::env::set_var(k, val);
+                    } else {
+                        std::env::remove_var(k);
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn resolve_server_endpoint_uses_config_defaults() {
+        let _env = EnvGuard::new(&["PORT", "RUSTOK_PORT", "HOST", "RUSTOK_BINDING"]);
         let config = super::ServerConfig {
             binding: "127.0.0.1".to_string(),
             port: 5150,
@@ -662,6 +701,7 @@ mod tests {
 
     #[test]
     fn resolve_server_endpoint_rejects_invalid_port() {
+        let _env = EnvGuard::new(&["PORT", "RUSTOK_PORT", "HOST", "RUSTOK_BINDING"]);
         unsafe {
             std::env::set_var("PORT", "not-a-port");
         }
@@ -671,9 +711,6 @@ mod tests {
         };
         let error = super::resolve_server_endpoint(&config).expect_err("invalid port must fail");
         assert!(error.to_string().contains("Invalid port"));
-        unsafe {
-            std::env::remove_var("PORT");
-        }
     }
 
     #[tokio::test]
@@ -753,6 +790,7 @@ mod tests {
 
     #[test]
     fn resolve_server_endpoint_trims_binding_and_rejects_empty() {
+        let _env = EnvGuard::new(&["PORT", "RUSTOK_PORT", "HOST", "RUSTOK_BINDING"]);
         unsafe {
             std::env::set_var("RUSTOK_BINDING", "  10.0.0.1  ");
         }
@@ -763,10 +801,10 @@ mod tests {
         let (binding, port) = super::resolve_server_endpoint(&config).expect("valid trimmed binding");
         assert_eq!(binding, "10.0.0.1");
         assert_eq!(port, 8080);
+
         unsafe {
             std::env::remove_var("RUSTOK_BINDING");
         }
-
         let config_empty = super::ServerConfig {
             binding: "   ".to_string(),
             port: 8080,
