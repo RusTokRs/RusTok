@@ -628,7 +628,12 @@ fn summarize_text(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod landing_markup_tests {
-    use super::{first_image_in_markup, landing_primary_image, strip_html_tags, summarize_text};
+    use rustok_seo_targets::SeoTargetLoadScope;
+
+    use super::{
+        first_image_in_markup, landing_channel, landing_primary_image, strip_html_tags,
+        summarize_text,
+    };
 
     fn image(src: &str, alt: Option<&str>) -> Option<(String, Option<String>)> {
         Some((src.to_string(), alt.map(str::to_string)))
