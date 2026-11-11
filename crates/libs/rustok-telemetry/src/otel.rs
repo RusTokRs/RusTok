@@ -69,6 +69,15 @@ impl OtelConfig {
             sampling_rate: std::env::var("OTEL_SAMPLING_RATE")
                 .ok()
                 .and_then(|s| s.parse().ok())
+                .map(|r: f64| {
+                    if r.is_nan() || r <= 0.0 {
+                        0.0
+                    } else if r >= 1.0 {
+                        1.0
+                    } else {
+                        r
+                    }
+                })
                 .unwrap_or(1.0),
             enabled: std::env::var("OTEL_ENABLED")
                 .map(|v| v == "true" || v == "1")
@@ -182,9 +191,17 @@ fn build_tracer_provider(config: &OtelConfig) -> Result<SdkTracerProvider, OtelE
         .with_batch_config(batch_config)
         .build();
 
+    let sampling_rate = if config.sampling_rate.is_nan() || config.sampling_rate <= 0.0 {
+        0.0
+    } else if config.sampling_rate >= 1.0 {
+        1.0
+    } else {
+        config.sampling_rate
+    };
+
     Ok(SdkTracerProvider::builder()
         .with_span_processor(processor)
-        .with_sampler(Sampler::TraceIdRatioBased(config.sampling_rate))
+        .with_sampler(Sampler::TraceIdRatioBased(sampling_rate))
         .with_id_generator(RandomIdGenerator::default())
         .with_max_events_per_span(64)
         .with_max_attributes_per_span(32)
@@ -297,6 +314,26 @@ mod tests {
 
         let result = init_tracing(config).await;
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_otel_config_sampling_rate_clamping() {
+        // SAFETY: Test-only env manipulation, serialized by test runner.
+        unsafe {
+            std::env::set_var("OTEL_SAMPLING_RATE", "2.5");
+        }
+        let config = OtelConfig::from_env();
+        assert_eq!(config.sampling_rate, 1.0);
+
+        unsafe {
+            std::env::set_var("OTEL_SAMPLING_RATE", "-0.5");
+        }
+        let config_neg = OtelConfig::from_env();
+        assert_eq!(config_neg.sampling_rate, 0.0);
+
+        unsafe {
+            std::env::remove_var("OTEL_SAMPLING_RATE");
+        }
     }
 
     // Note: Full integration tests require a running OTLP collector
