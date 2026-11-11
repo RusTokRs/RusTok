@@ -21,7 +21,10 @@ export function calculateReadingTime(plainText: string, wordsPerMinute = 200): n
 }
 
 /** Format through the host's canonical Fluent translator, never a language branch. */
-export function formatReadingTime(minutes: number, translate: (key: string, args: { minutes: number }) => string): string {
+export function formatReadingTime(
+  minutes: number,
+  translate: (key: 'readingTime', args: { minutes: number }) => string
+): string {
   const safeMinutes = Number.isFinite(minutes) ? Math.max(1, Math.round(minutes)) : 1;
   return translate('readingTime', { minutes: safeMinutes });
 }
