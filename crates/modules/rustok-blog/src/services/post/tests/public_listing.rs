@@ -4,7 +4,6 @@
 /// A published row whose `published_at` was lost is damaged state: an editor with
 /// tenant-wide read authority still sees it (that is how it gets repaired), a
 /// customer does not — the list used to filter on `status` only and showed it.
-
 #[tokio::test]
 async fn public_visible_listing_filters_by_typed_channel_relation() {
     let db = setup_test_db().await;
@@ -333,7 +332,6 @@ async fn customer_list_hides_a_published_post_without_a_publication_timestamp() 
 
 /// The public cursor must be calculated over renderable posts, not a page
 /// containing posts whose translations have been lost.
-
 #[tokio::test]
 async fn public_keyset_skips_untranslated_pinned_post_before_limit() {
     let db = setup_test_db().await;
@@ -394,7 +392,6 @@ async fn public_keyset_skips_untranslated_pinned_post_before_limit() {
 
 /// The authenticated post endpoints used to expose channel-restricted posts to
 /// non-editor readers, even though the public Blog list hid them.
-
 #[tokio::test]
 async fn customer_channel_scope_applies_before_post_list_keyset() {
     let db = setup_test_db().await;
@@ -513,7 +510,6 @@ async fn customer_channel_scope_applies_before_post_list_keyset() {
 /// Comments and post listings must agree on a canonical channel slug. A route
 /// carrying an uppercase/space-padded slug must not turn a visible post into a
 /// false 404 or mask a Channel owner failure as missing content.
-
 #[tokio::test]
 async fn public_comment_target_uses_same_normalized_channel_as_post_listing() {
     let db = setup_test_db().await;

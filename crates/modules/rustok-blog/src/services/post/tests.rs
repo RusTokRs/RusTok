@@ -182,7 +182,6 @@ fn post_title_limit_counts_unicode_characters_not_utf8_bytes() {
 /// with `publish: true`, `update_post` may only set it while the row is a draft, and a publish
 /// clears it. Clearing and keeping stay available on every status, so a stale schedule can
 /// still be removed from a published post.
-
 #[test]
 fn schedule_patch_is_bounded_to_drafts_and_the_future() {
     let now = chrono::Utc::now();
@@ -702,7 +701,6 @@ async fn create_and_update_post_store_channel_visibility_in_typed_relation() {
 /// A published row whose `published_at` was lost is damaged state: an editor with
 /// tenant-wide read authority still sees it (that is how it gets repaired), a
 /// customer does not — the list used to filter on `status` only and showed it.
-
 #[tokio::test]
 async fn public_visible_listing_filters_by_typed_channel_relation() {
     let db = setup_test_db().await;
@@ -1031,7 +1029,6 @@ async fn customer_list_hides_a_published_post_without_a_publication_timestamp() 
 
 /// The public cursor must be calculated over renderable posts, not a page
 /// containing posts whose translations have been lost.
-
 #[tokio::test]
 async fn public_keyset_skips_untranslated_pinned_post_before_limit() {
     let db = setup_test_db().await;
@@ -1092,7 +1089,6 @@ async fn public_keyset_skips_untranslated_pinned_post_before_limit() {
 
 /// The authenticated post endpoints used to expose channel-restricted posts to
 /// non-editor readers, even though the public Blog list hid them.
-
 #[tokio::test]
 async fn customer_channel_scope_applies_before_post_list_keyset() {
     let db = setup_test_db().await;
@@ -1211,7 +1207,6 @@ async fn customer_channel_scope_applies_before_post_list_keyset() {
 /// Comments and post listings must agree on a canonical channel slug. A route
 /// carrying an uppercase/space-padded slug must not turn a visible post into a
 /// false 404 or mask a Channel owner failure as missing content.
-
 #[tokio::test]
 async fn public_comment_target_uses_same_normalized_channel_as_post_listing() {
     let db = setup_test_db().await;
@@ -1260,7 +1255,6 @@ async fn public_comment_target_uses_same_normalized_channel_as_post_listing() {
 
 /// The wiring, not just the predicate: a caller that patches `scheduled_at` on a post it has
 /// already published is refused, and publishing a scheduled draft clears the field.
-
 #[tokio::test]
 async fn published_posts_reject_a_schedule_patch() {
     let db = setup_test_db().await;
@@ -1383,7 +1377,6 @@ async fn published_posts_reject_a_schedule_patch() {
 /// Search must not treat a stale indexed `blog_post` row as authority: the
 /// Blog owner supplies current published/channel eligibility independently of
 /// whatever was previously projected into Search storage.
-
 #[tokio::test]
 async fn search_audience_rechecks_live_publication_and_channel_binding() {
     let db = setup_test_db().await;

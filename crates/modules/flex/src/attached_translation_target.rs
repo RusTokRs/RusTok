@@ -39,7 +39,6 @@ const PATCH_FINGERPRINT_NAMESPACE: &str = "rustok-flex/attached-neutral-patch/v1
 /// resource subresource id and in the list cursor. This keeps one future-proof provider namespace
 /// instead of creating a provider kind per donor while still preventing UUID collisions between
 /// different donor entity types.
-
 static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
     TranslationTargetProviderDescriptor {
             // INVARIANT: TRANSLATION_OWNER_SLUG ("flex") is a compile-time static ASCII identifier under 191 bytes.

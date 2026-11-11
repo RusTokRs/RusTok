@@ -1,6 +1,5 @@
 /// The wiring, not just the predicate: a caller that patches `scheduled_at` on a post it has
 /// already published is refused, and publishing a scheduled draft clears the field.
-
 #[tokio::test]
 async fn published_posts_reject_a_schedule_patch() {
     let db = setup_test_db().await;

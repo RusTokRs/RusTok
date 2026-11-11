@@ -119,7 +119,6 @@ fn post_title_limit_counts_unicode_characters_not_utf8_bytes() {
 /// with `publish: true`, `update_post` may only set it while the row is a draft, and a publish
 /// clears it. Clearing and keeping stay available on every status, so a stale schedule can
 /// still be removed from a published post.
-
 #[test]
 fn schedule_patch_is_bounded_to_drafts_and_the_future() {
     let now = chrono::Utc::now();
