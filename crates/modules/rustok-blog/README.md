@@ -127,6 +127,10 @@ The current boundary is:
 - `rustok-taxonomy` owns canonical Blog Category localized copy and route
   history;
 - Blog Category reads and mutation responses project canonical Taxonomy state;
+- a `BlogTaxonomyPort` snapshot states the locale it was asked for and the locale
+  of the copy it returned; Blog rejects a Category or tag snapshot that omits
+  them as a broken projection and does not substitute a locale. A tag update
+  checks this inside its transaction, so the update rolls back;
 - Blog Category create/update and hierarchy commands synchronize Taxonomy in the
   owner transaction;
 - Blog Category delete delegates canonical lifecycle cleanup to Taxonomy;

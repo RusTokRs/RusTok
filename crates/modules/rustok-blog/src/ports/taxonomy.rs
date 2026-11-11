@@ -70,7 +70,9 @@ pub struct BlogTaxonomyCategorySnapshot {
     pub description: Option<String>,
     pub position: i32,
     pub available_locales: Vec<String>,
+    /// Locale the provider was asked for. Blog rejects a snapshot that omits it.
     pub requested_locale: Option<String>,
+    /// Locale of the copy the provider returned. Blog rejects a snapshot that omits it.
     pub effective_locale: Option<String>,
 }
 
@@ -113,6 +115,7 @@ pub struct BlogTaxonomyTagSnapshot {
     pub scope_type: String,
     pub scope_value: Option<String>,
     pub locale: Option<String>,
+    /// Locale of the copy the provider returned. Blog rejects a snapshot that omits it.
     pub effective_locale: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }

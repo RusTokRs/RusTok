@@ -21,7 +21,7 @@ use crate::dto::{
 use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
 use crate::ports::taxonomy::{
-    BlogCategoryDeleteCleanupPort, BlogTaxonomyPort, NoopBlogTaxonomyPort,
+    AsBlogTaxonomyConnection, BlogCategoryDeleteCleanupPort, BlogTaxonomyPort, NoopBlogTaxonomyPort,
 };
 
 const BLOG_TAXONOMY_SCOPE: &str = "blog";
@@ -254,32 +254,60 @@ impl CategoryService {
             .into_iter()
             .skip(offset)
             .take(per_page as usize)
-            .map(|(category, canonical)| CategoryListItem {
-                id: category.id,
-                locale: canonical.requested_locale,
-                effective_locale: canonical.effective_locale,
-                name: canonical.name,
-                slug: canonical.slug,
-                description: canonical.description,
-                parent_id: canonical.parent_id,
-                position: canonical.position,
-                settings: category.settings,
-                created_at: category.created_at.into(),
-                updated_at: category.updated_at.into(),
+            .map(|(category, canonical)| {
+                let (locale, effective_locale) = projection_locales(
+                    category.id,
+                    canonical.requested_locale,
+                    canonical.effective_locale,
+                )?;
+                Ok(CategoryListItem {
+                    id: category.id,
+                    locale,
+                    effective_locale,
+                    name: canonical.name,
+                    slug: canonical.slug,
+                    description: canonical.description,
+                    parent_id: canonical.parent_id,
+                    position: canonical.position,
+                    settings: category.settings,
+                    created_at: category.created_at.into(),
+                    updated_at: category.updated_at.into(),
+                })
             })
-            .collect();
+            .collect::<BlogResult<Vec<_>>>()?;
 
         Ok((items, total))
     }
 }
 
-pub(super) async fn load_category_response(
+/// The Taxonomy provider states the locale it was asked for and the locale of the copy
+/// it returned. A projection without either cannot be presented as a localized Category,
+/// so it is rejected as a broken projection instead of being given an assumed locale.
+fn projection_locales(
+    category_id: Uuid,
+    requested_locale: Option<String>,
+    effective_locale: Option<String>,
+) -> BlogResult<(String, String)> {
+    match (requested_locale, effective_locale) {
+        (Some(requested), Some(effective)) => Ok((requested, effective)),
+        _ => Err(BlogError::invariant(format!(
+            "Blog category {category_id} Taxonomy projection does not state its locale"
+        ))),
+    }
+}
+
+/// Reads one Category through `db`, which is the pool for a query and the open
+/// transaction for a command that must see its own uncommitted writes.
+pub(super) async fn load_category_response<C>(
     port: &dyn BlogTaxonomyPort,
-    db: &DatabaseConnection,
+    db: &C,
     tenant_id: Uuid,
     category_id: Uuid,
     locale: &str,
-) -> BlogResult<CategoryResponse> {
+) -> BlogResult<CategoryResponse>
+where
+    C: ConnectionTrait + AsBlogTaxonomyConnection,
+{
     let locale = normalize_locale(locale)?;
     let category = blog_category::Entity::find_by_id(category_id)
         .filter(blog_category::Column::TenantId.eq(tenant_id))
@@ -289,7 +317,7 @@ pub(super) async fn load_category_response(
     let taxonomy_ids = [category_id];
     let canonical = port
         .load_scoped_categories(
-            db.into(),
+            db.as_blog_taxonomy_connection(),
             tenant_id,
             Some(&taxonomy_ids),
             &locale,
@@ -310,12 +338,17 @@ pub(super) async fn load_category_response(
     }
     let parent_id = canonical.parent_id;
     validate_persisted_category_settings(&category.settings)?;
+    let (locale, effective_locale) = projection_locales(
+        category_id,
+        canonical.requested_locale,
+        canonical.effective_locale,
+    )?;
 
     Ok(CategoryResponse {
         id: category.id,
         tenant_id,
-        locale: canonical.requested_locale,
-        effective_locale: canonical.effective_locale,
+        locale,
+        effective_locale,
         available_locales: canonical.available_locales,
         name: canonical.name,
         slug: canonical.slug,
