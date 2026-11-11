@@ -4,8 +4,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-01 — Entrypoint & Composition Root (`apps/server`)  
-**Next pending component:** [`apps/server` (Track FS-01.07 — middleware/tenant.rs)](../../apps/server)  
-**Current main SHA:** `98cf2bab7c`  
+**Next pending component:** [`apps/server` (Track FS-01.08 — middleware/channel.rs)](../../apps/server)  
+**Current main SHA:** `f4d87a4cd6`  
 **Active branch:** `main`
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **285 components** (~2.5M LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -60,7 +60,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-01.06 — `apps/server/src/routes.rs` & `apps/server/src/error.rs`** — global routing table, 404 fallback, top-level Axum error mapping. *(Done: safe non-reflecting `not_found_fallback` returning structured JSON error envelope; mapping of `rustok_core::Error::Database(RecordNotFound)` to HTTP 404 Not Found instead of 500; verified RegistryOnly mode mounting read-only catalog while excluding auth/graphql; 5 unit tests in `routes.rs` + 15 unit tests in `error.rs` all passing; verified with `cargo test -p rustok-server --lib routes::` and `cargo test -p rustok-server --lib error::tests::` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
 
 #### 2. Middleware & Context Guards
-- [ ] **FS-01.07 — `apps/server/src/middleware/tenant.rs`** — multi-tenant header/host resolution, domain mapping, fail-closed tenant boundary.
+- [x] **FS-01.07 — `apps/server/src/middleware/tenant.rs`** — multi-tenant header/host resolution, domain mapping, fail-closed tenant boundary, and caching. *(Done: host case-insensitivity normalization for cache/negative keys; bounded duration ceil arithmetic; complete domain-to-core and port-to-core error mappings; strict selector translation with `include_inactive: true` to prevent false 404s for disabled tenants; verified structured settings cache envelope round-trip; 15 unit tests all passing; verified with `cargo test -p rustok-server --lib invalidation_tests::` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
 - [ ] **FS-01.08 — `apps/server/src/middleware/channel.rs`** — sales channel resolution, default fallback, header precedence.
 - [ ] **FS-01.09 — `apps/server/src/middleware/locale.rs`** — locale header negotiation, fallback normalization, language validation.
 - [ ] **FS-01.10 — `apps/server/src/middleware/auth_context.rs`** — JWT/session authentication context extraction, bearer token parsing, claims validation.
