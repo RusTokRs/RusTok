@@ -415,13 +415,13 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
         chosen the option is gone and the only way back is to remove `fly_viewport` from the
         route by hand. Decide whether the initial frame becomes a preset or the empty option
         stays and clears the key. Owner: `fly-ui` (presets), Page Builder admin (toolbar).
-      - `fly-browser.js` changes its selection without `fly:select` in three places: a
-        `dragstart` on a layer row, the delegated `select-component` case (the per-element
-        listener of the same row dispatches the event first, so this matters only for a row
-        added after mount), and the canvas `teardown` message. The host bootstrap retargets
-        the SSR forms on `fly:select` only, so after a cancelled row drag the forms keep the
-        earlier target while `selected_component_id` names the dragged component. Owner:
-        `fly-browser`.
+      - DONE: `fly-browser.js` changed its selection without `fly:select` on a `dragstart`
+        of a layer row and in the delegated `select-component` case, so the SSR forms kept
+        the earlier target. Every selection now goes through `select()`, which announces a
+        change once. The canvas `teardown` message stays silent on purpose: it is not a
+        selection, and the server-rendered forms keep the component that the server holds.
+        Part 8 of `verify-fly-ssr-control-contract.mjs`; three browser tests in
+        `fly-browser-ssr-controls.spec.ts`.
       - The browser tests of the contract run in Chromium only
         (`apps/next-admin/playwright.config.ts` has one project). The pointer drag sources are
         a layer row, which is a `<button>`, and a palette item whose only content is its two

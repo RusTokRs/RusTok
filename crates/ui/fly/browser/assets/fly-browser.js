@@ -830,6 +830,24 @@ export class FlyBrowserAdapter {
     return this;
   }
 
+  // The one place where the adapter changes the selection. A selection that changes is
+  // announced with `fly:select`, whatever caused it: the host bootstrap retargets the
+  // server-rendered forms on that event, so a change without it leaves the forms on the
+  // previous component. Selecting the selected component again announces nothing.
+  select(componentId, source) {
+    const next = componentId || null;
+    const changed = next !== this.selectedId;
+    this.selectedId = next;
+    this.drawSelection();
+    if (!changed) return;
+    this.root.dispatchEvent(
+      new CustomEvent("fly:select", {
+        bubbles: true,
+        detail: { componentId: next, source },
+      }),
+    );
+  }
+
   onMessage(event) {
     if (event.source !== this.iframe.contentWindow) return;
     if (event.origin !== this.expectedOrigin) return;
@@ -938,14 +956,7 @@ export class FlyBrowserAdapter {
         this.drawDrop();
         break;
       case "focus_requested":
-        this.selectedId = message.component_id || null;
-        this.drawSelection();
-        this.root.dispatchEvent(
-          new CustomEvent("fly:select", {
-            bubbles: true,
-            detail: { componentId: this.selectedId, source: "iframe" },
-          }),
-        );
+        this.select(message.component_id, "iframe");
         break;
       case "hover_requested":
         this.hoveredId = message.component_id || null;
@@ -963,6 +974,8 @@ export class FlyBrowserAdapter {
       case "teardown":
         this.root.dataset.flyCanvasConnected = "false";
         this.geometry.clear();
+        // Not a selection: the canvas went away, and the forms that the server rendered still
+        // name the component that the server holds. They keep it, so nothing is announced.
         this.selectedId = null;
         this.hoveredId = null;
         this.cancelDrag();
@@ -1001,16 +1014,7 @@ export class FlyBrowserAdapter {
       const componentId = element.dataset.flyComponentId;
       element.addEventListener(
         "click",
-        () => {
-          this.selectedId = componentId || null;
-          this.drawSelection();
-          this.root.dispatchEvent(
-            new CustomEvent("fly:select", {
-              bubbles: true,
-              detail: { componentId: this.selectedId, source: "ssr-control" },
-            }),
-          );
-        },
+        () => this.select(componentId, "ssr-control"),
         { signal },
       );
       element.setAttribute("draggable", "true");
@@ -1023,7 +1027,7 @@ export class FlyBrowserAdapter {
             componentId,
           );
           event.dataTransfer?.setData("text/plain", componentId);
-          this.selectedId = componentId;
+          this.select(componentId, "ssr-control");
           this.activeDrag = { kind: "component", component_id: componentId };
           this.activeDrop = null;
           this.root.dataset.flyDragging = "component";
@@ -1063,8 +1067,7 @@ export class FlyBrowserAdapter {
             break;
           }
           case "select-component":
-            this.selectedId = actionElement.dataset.flyComponentId || null;
-            this.drawSelection();
+            this.select(actionElement.dataset.flyComponentId, "ssr-control");
             break;
           default: {
             if (!action.startsWith("intent:")) break;

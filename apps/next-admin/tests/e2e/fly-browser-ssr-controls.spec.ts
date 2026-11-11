@@ -329,6 +329,67 @@ test('a layer row selects its component and later intents carry the selection', 
   });
 });
 
+async function selections(page: Page): Promise<unknown[]> {
+  return page.evaluate(() => (globalThis as FlyGlobal).__flySelections ?? []);
+}
+
+// The host bootstrap retargets the server-rendered forms on `fly:select`. A selection that
+// changes without the event leaves those forms on the previous component, so each cause of a
+// change is pinned here, not only the click on a row that existed at mount.
+test('a row added after the mount selects its component and announces it', async ({
+  page
+}) => {
+  await mountSsrControls(page);
+
+  await page.evaluate(() => {
+    const row = document.createElement('button');
+    row.id = 'layer-late';
+    row.type = 'button';
+    row.textContent = 'Late row';
+    row.dataset.flyAction = 'select-component';
+    row.dataset.flyComponentId = 'late-component';
+    document.querySelector('#fly-root')?.append(row);
+  });
+  await page.locator('#layer-late').click();
+
+  expect(await adapterState(page)).toMatchObject({
+    selectedId: 'late-component'
+  });
+  expect(await selections(page)).toEqual([
+    { componentId: 'late-component', source: 'ssr-control' }
+  ]);
+});
+
+test('dragging a layer row announces the selection it makes', async ({
+  page
+}) => {
+  await mountSsrControls(page);
+
+  await page.locator('#layer-hero').dispatchEvent('dragstart');
+
+  expect(await adapterState(page)).toMatchObject({
+    selectedId: 'hero-title',
+    dragging: 'component'
+  });
+  expect(await selections(page)).toEqual([
+    { componentId: 'hero-title', source: 'ssr-control' }
+  ]);
+});
+
+test('selecting the selected component again announces nothing', async ({
+  page
+}) => {
+  await mountSsrControls(page);
+
+  await page.locator('#layer-hero').click();
+  await page.locator('#layer-hero').click();
+  await page.locator('#layer-hero').dispatchEvent('dragstart');
+
+  expect(await selections(page)).toEqual([
+    { componentId: 'hero-title', source: 'ssr-control' }
+  ]);
+});
+
 test('a row without a component id is not a selection or drag source', async ({
   page
 }) => {

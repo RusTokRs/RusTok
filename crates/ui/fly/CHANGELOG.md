@@ -265,6 +265,13 @@ Engineering audit remediation — see
   `rustok_ui_core::UiCspNonce`, and the editor writes it on its inline `<script>` and `<style>`
   elements. `verify-fly-ssr-first.mjs` checks the feature pair in every manifest and the nonce
   hand-off. Not verified in a browser under the host policy.
+- **A selection could change without `fly:select`.** A `dragstart` on a layer row and a
+  `select-component` control added after mount changed `selectedId` silently, and the host
+  bootstrap, which retargets the server-rendered forms on that event, kept the previous
+  component. A click on a row could announce the same selection twice. `fly-browser.js` now
+  changes the selection in `select()` only; a change is announced once and a repeated
+  selection is not announced. **Behaviour change:** `fly:select` is no longer dispatched when
+  the selected component is selected again.
 - **Formatting.** 19 files of the crates that the "Focused formatting" job checks were not in
   `rustfmt` form (14 of them before this change set). They are formatted now.
 

@@ -23,6 +23,9 @@
 //
 // Part 7 covers the reach of a contract attribute: `data-fly-component-id` is on canvas nodes and
 // on layer rows of one document, so a canvas style rule keyed on it must carry the canvas scope.
+//
+// Part 8 covers the selection: the host bootstrap retargets the SSR forms on `fly:select`, so the
+// adapter may change its selection in one method only, and that method announces the change.
 
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -830,6 +833,42 @@ if (scopedCanvasRules === 0 && !failures.some((message) => message.includes('is 
   fail(`${workspacePath}: no canvas style rule keyed on a contract attribute was found; update this check with the source`);
 }
 
+// 8. A selection change is announced. `this.selectedId` is written by `select()`, by the listener
+//    of the announcement itself, and by the resets that are not selections (constructor, unmount,
+//    canvas teardown). A write of anything else, anywhere else, is a change that the forms miss.
+const selectionWrites = [...adapter.matchAll(/this\.selectedId = ([^;]+);/g)].map((match) =>
+  match[1].replace(/\s+/g, ' ').trim(),
+);
+const silentSelectionWrites = new Set(['null', 'next', 'event.detail?.componentId || null']);
+for (const value of selectionWrites) {
+  if (!silentSelectionWrites.has(value)) {
+    fail(
+      `${adapterPath}: \`this.selectedId = ${value}\` changes the selection outside select(); ` +
+        'the host bootstrap is not told and the SSR forms keep the previous component',
+    );
+  }
+}
+const selectMethod = adapter.match(/\n  select\(componentId, source\) \{\n([\s\S]*?)\n  \}\n/);
+if (!selectMethod) {
+  fail(`${adapterPath}: the adapter has no select(componentId, source) method`);
+} else {
+  for (const marker of ['this.selectedId = next;', 'new CustomEvent("fly:select"', 'this.drawSelection()']) {
+    if (!selectMethod[1].includes(marker)) {
+      fail(`${adapterPath}: select() is missing ${marker}`);
+    }
+  }
+}
+if (selectionWrites.filter((value) => value === 'next').length !== 1) {
+  fail(`${adapterPath}: exactly one write of the selection belongs to select()`);
+}
+const selectionCalls = [...adapter.matchAll(/this\.select\(/g)].length;
+if (selectionCalls < 4) {
+  fail(
+    `${adapterPath}: expected the four causes of a selection (canvas focus, row click, row drag, ` +
+      `delegated select-component) to call select(), found ${selectionCalls}`,
+  );
+}
+
 if (failures.length > 0) {
   console.error('Fly SSR control contract verification failed:');
   for (const message of failures) console.error(`- ${message}`);
@@ -840,5 +879,6 @@ console.log(
   `Fly SSR control contract verified: ${boundAttributes.size} bound attributes, ` +
     `${handledActions.size} adapter actions, ${emittedActions.size} emitted actions ` +
     `(${recordedUnhandledActions.size} recorded as unhandled); ${hostBoundAttributes.size} host-bound ` +
-    `attributes, ${verifiedForms} SSR forms; ${scopedCanvasRules} scoped canvas rules.`,
+    `attributes, ${verifiedForms} SSR forms; ${scopedCanvasRules} scoped canvas rules; ` +
+    `${selectionCalls} announced selection causes.`,
 );

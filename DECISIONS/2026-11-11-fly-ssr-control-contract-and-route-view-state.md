@@ -137,6 +137,8 @@ a read-only caller has no draft session, by design.
 - No arm of `ssr_form_intent` is shadowed by a dispatcher arm that never hands the payload over.
 - A selection input that the server rendered with a component keeps that component until the
   browser selects another one.
+- The adapter changes its selection in `select()` only. A change dispatches `fly:select` once;
+  the reset on canvas teardown is not a selection and dispatches nothing.
 - A host feature that enables the editor's `ssr` feature enables its `browser-js` feature.
 - Under a host policy that names a nonce, every inline `<script>` and `<style>` of the editor
   carries the nonce of that response. The value is checked against the CSP `base64-value`
