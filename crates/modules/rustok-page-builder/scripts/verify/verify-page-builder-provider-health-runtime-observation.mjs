@@ -88,9 +88,54 @@ for (const [key, expected] of Object.entries({
   if (contract[key] !== expected) failures.push(`source_contract.${key} must equal ${JSON.stringify(expected)}`);
 }
 
-, marker, "runtime observation overlay");
+for (const marker of [
+  "pub const PROVIDER_HEALTH_WINDOW_CAPACITY: usize = 256;",
+  "pub const PROVIDER_HEALTH_MINIMUM_SAMPLES_PER_OPERATION: usize = 20;",
+  "pub enum ProviderHealthOperation",
+  "Preview,",
+  "Publish,",
+  "pub enum ProviderHealthOutcome",
+  "pub fn record_provider_health_observation",
+  "pub fn provider_health_runtime_snapshot() -> Option<ProviderHealthSnapshot>",
+  "window.preview.len() < PROVIDER_HEALTH_MINIMUM_SAMPLES_PER_OPERATION",
+  "window.publish.len() < PROVIDER_HEALTH_MINIMUM_SAMPLES_PER_OPERATION",
+  "ProviderHealthSnapshot::evaluate(ProviderSloObservations",
+  "process-local provider-health snapshot",
+]) need(sources.health, marker, "health runtime window");
 
-, marker, "plan parity actualization");
+for (const marker of [
+  "const PROVIDER_HEALTH_PENDING_CALL_CAPACITY: usize = 1024;",
+  "pub struct ProviderHealthRuntimeTelemetry",
+  "PageBuilderRuntimeOperation::RenderPreview => Some(ProviderHealthOperation::Preview)",
+  "PageBuilderRuntimeOperation::SaveProject => Some(ProviderHealthOperation::Publish)",
+  "PageBuilderRuntimeOperation::LoadProject => None",
+  "Some(PageBuilderErrorKind::Sanitize) => ProviderHealthOutcome::SanitizeFailed",
+  "Some(PageBuilderErrorKind::Runtime) => ProviderHealthOutcome::RuntimeFailed",
+  // The elapsed value is sampled once and shared with the platform metrics call below, so the
+  // reachable form is the `elapsed` binding; pinning the inlined expression matched nothing.
+  "record_provider_health_observation(operation, elapsed, outcome)",
+]) need(sources.telemetry, marker, "runtime telemetry observer");
+
+for (const marker of [
+  "T = ProviderHealthRuntimeTelemetry",
+  "FlyAdapterBackedPageBuilderService::with_telemetry",
+  "ProviderHealthRuntimeTelemetry::default()",
+  "process-local Preview/Publish runtime observations",
+]) need(sources.composition, marker, "default composition");
+
+for (const marker of [
+  "PageBuilderRuntimeCallEvidence::render_preview",
+  "self.telemetry.record_runtime_call(&evidence);",
+  "self.telemetry.record_runtime_call(&evidence.succeeded());",
+  "PageBuilderRuntimeCallEvidence::save_project",
+  "self.telemetry.record_runtime_call(&evidence.failed(&error));",
+]) need(sources.flyService, marker, "Fly terminal telemetry seam");
+
+// This first slice must not promote process-local observations into authoritative Pages health.
+need(sources.pagesGraphql, "provider_health_observed: false", "Pages GraphQL remains unobserved");
+need(sources.pagesFacade, "PageBuilderAdminProviderStatus::unobserved", "Pages admin remains unobserved");
+forbid(sources.pagesGraphql, "provider_health_runtime_snapshot()", "Pages GraphQL must not consume process-local health yet");
+forbid(sources.pagesFacade, "provider_health_runtime_snapshot()", "Pages admin must not consume process-local health yet");
 
 if (evidence.next_cursor?.deployment_aggregation_and_freshness_contract !== "open") {
   failures.push("next cursor must keep deployment aggregation/freshness open");

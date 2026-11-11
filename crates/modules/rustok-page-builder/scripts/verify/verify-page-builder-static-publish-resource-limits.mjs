@@ -98,9 +98,256 @@ for (const [key, value] of Object.entries(expectedLimits)) {
     failures.push(`source_contract.${key} drifted`);
   }
 }
-, marker, "resource-limit packet");
+for (const key of [
+  "sanitization_hash_payload_unchanged",
+  "limits_are_positive_and_policy_hashed",
+  "project_bytes_use_a_bounded_streaming_counter",
+  "component_count_and_depth_use_a_bounded_iterative_current_tree_scan",
+  "page_asset_and_style_counts_are_bounded",
+  "limit_rejections_are_typed_and_path_bound",
+  "compiler_checks_limits_before_stable_id_and_recursive_policy_traversal",
+  "compiler_rechecks_limits_after_stable_id_normalization",
+  "compiler_rechecks_limits_on_exact_materialized_document",
+  "resource_validation_runs_before_sanitized_project_hashing",
+  "resource_validation_is_repeated_during_integrity_verification",
+  "reviewed_publish_calls_resource_validation_before_materialization",
+  "pages_sanitized_set_hash_contract_is_unchanged",
+  "database_graphql_rest_event_and_artifact_schemas_are_unchanged",
+  "anonymous_rendering_persistence_and_public_routes_are_unchanged",
+]) {
+  if (evidence.source_contract?.[key] !== true) {
+    failures.push(`source_contract.${key} must be true`);
+  }
+}
+for (const key of [
+  "tests_run",
+  "static_verifiers_run",
+  "cargo_run",
+  "formatting_run",
+  "publish_or_materialization_run",
+  "database_or_http_run",
+  "workflows_or_ci_run",
+]) {
+  if (evidence.source_contract?.[key] !== false) {
+    failures.push(`source_contract.${key} must remain false`);
+  }
+}
 
-, marker, "parity actualization");
+if (
+  evidence.source_contract?.sanitization_format !==
+    "page_builder_static_publish_sanitization_v2"
+) {
+  failures.push("source evidence sanitization format drifted");
+}
+if (
+  runtimeContract.provider?.sanitization?.format !==
+    "page_builder_static_publish_sanitization_v2" ||
+  JSON.stringify(runtimeContract.provider?.sanitization?.hash_payload) !==
+    JSON.stringify(["format", "policy_format", "policy_hash", "sanitized_project"])
+) {
+  failures.push("existing publish runtime sanitization identity contract drifted");
+}
+
+for (const marker of [
+  '"page_builder_static_publish_resource_limits_v1"',
+  "max_project_bytes: 16 * 1024 * 1024",
+  "max_pages: 128",
+  "max_components: 50_000",
+  "max_component_depth: 128",
+  "max_assets: 4_096",
+  "max_style_rules: 20_000",
+  "serde_json::to_writer(&mut counter, &document.project)",
+  "BoundedByteCounter::new(maximum)",
+  "document.project.pages.len()",
+  "document.project.assets.len()",
+  "document.project.styles.len()",
+  "component_observation(document, &limits)",
+  "ComponentChildren::Nodes(children)",
+  "depth.saturating_add(1)",
+  "component_count > limits.max_components",
+  "max_component_depth > limits.max_component_depth",
+  '"landing_project_bytes_exceeded"',
+  '"landing_page_count_exceeded"',
+  '"landing_component_count_exceeded"',
+  '"landing_component_depth_exceeded"',
+  '"landing_asset_count_exceeded"',
+  '"landing_style_rule_count_exceeded"',
+  "limits_hash: limits.limits_hash()?",
+  "resource_limits_reject_excess_pages",
+  "resource_limits_reject_excess_component_depth",
+]) need(sources.limits, marker, "resource-limit source");
+
+const boundedWriter = sliceBetween(
+  sources.limits,
+  "impl Write for BoundedByteCounter",
+  "fn component_observation",
+  "bounded byte counter write boundary",
+);
+requireOrdered(
+  boundedWriter,
+  [
+    "let next = self.bytes.saturating_add(buffer.len());",
+    "if next > self.maximum",
+    "self.exceeded = true;",
+    "return Err(io::Error::other(",
+    '"static publish project byte limit exceeded"',
+  ],
+  "bounded byte counter rejection",
+);
+
+const stableEvidenceTest = sliceBetween(
+  sources.limits,
+  "fn resource_evidence_is_stable_and_policy_bound",
+  "fn resource_limits_reject_excess_pages",
+  "resource evidence integrity test",
+);
+requireOrdered(
+  stableEvidenceTest,
+  [
+    "let first = validate_static_publish_resource_limits(&document)",
+    "let second = validate_static_publish_resource_limits(&document)",
+    "assert_eq!(first, second);",
+    ".verify_integrity()",
+  ],
+  "resource evidence integrity verification",
+);
+
+for (const marker of [
+  '"page_builder_static_publish_sanitization_v2"',
+  "static_publish_resource_limits::{",
+  "PageBuilderStaticPublishResourceLimitError",
+  "validate_static_publish_resource_limits(&document)?",
+  "sanitization_hash(&sanitized_project, &policy_format, &policy_hash)?",
+  "result.verify_integrity()?",
+  "sanitization_rejects_excess_global_resources",
+]) need(sources.sanitization, marker, "sanitization source");
+for (const marker of [
+  "page_builder_static_publish_sanitization_v3",
+  "pub resource_limits:",
+  "resource_limits: Some(",
+  '#[path = "static_publish_resource_limits.rs"]',
+]) forbid(sources.sanitization, marker, "unchanged sanitization identity and compiler ownership");
+
+const sanitizationResourceLimitTest = sliceBetween(
+  sources.sanitization,
+  "fn sanitization_rejects_excess_global_resources",
+  "fn sanitization_rejects_insecure_public_resources",
+  "sanitization resource-limit rejection test",
+);
+requireOrdered(
+  sanitizationResourceLimitTest,
+  [
+    "PageBuilderStaticPublishResourceLimits::default().max_pages",
+    '"id": format!("page-{index}")',
+    '"component": {',
+    '"id": format!("root-{index}")',
+    '"type": "wrapper"',
+    'let error = sanitize_static_landing_project(&project).expect_err("resource rejection");',
+    "PageBuilderStaticLandingSanitizationError::Landing(",
+    "LandingProjectError::Validation {",
+    "diagnostics,",
+    'diagnostic.code == "landing_page_count_exceeded"',
+  ],
+  "sanitization resource-limit rejection boundary",
+);
+forbid(
+  sanitizationResourceLimitTest,
+  "PageBuilderStaticLandingSanitizationError::Resource(error)",
+  "sanitization resource-limit rejection boundary",
+);
+
+const sanitizeFunction = sliceBetween(
+  sources.sanitization,
+  "pub fn sanitize_static_landing_project",
+  "fn sanitization_hash",
+  "reviewed sanitization function",
+);
+requireOrdered(
+  sanitizeFunction,
+  [
+    "validate_static_publish_document(&document)?",
+    "validate_static_publish_resource_limits(&document)?",
+    "sanitization_hash(&sanitized_project, &policy_format, &policy_hash)?",
+  ],
+  "reviewed sanitization order",
+);
+
+const integrityFunction = sliceBetween(
+  sources.sanitization,
+  "pub fn verify_integrity",
+  "#[derive(Debug, thiserror::Error)]",
+  "sanitization integrity function",
+);
+if (
+  integrityFunction.indexOf("validate_static_publish_document(&document)?") < 0 ||
+  integrityFunction.indexOf("validate_static_publish_resource_limits(&document)?") < 0
+) {
+  failures.push("sanitization integrity must repeat policy and resource validation");
+}
+
+for (const marker of [
+  '#[path = "static_publish_resource_limits.rs"]',
+  "pub mod static_publish_resource_limits;",
+  "PageBuilderStaticPublishResourceLimitError",
+  "require_static_publish_resource_limits(&document)?",
+  "require_static_publish_resource_limits(document)?",
+  '"landing_static_publish_resource_limits_integrity"',
+  "compiler_rechecks_materialized_resource_limits_before_recursive_policy",
+]) need(sources.staticLanding, marker, "static landing compiler");
+
+const prepareDocument = sliceBetween(
+  sources.staticLanding,
+  "pub(crate) fn prepare_document",
+  "pub(crate) fn compile_prepared_document",
+  "static landing prepare checkpoint",
+);
+requireOrdered(
+  prepareDocument,
+  [
+    "let mut document = inspection.document().clone();",
+    "require_static_publish_resource_limits(&document)?;",
+    "document.ensure_stable_ids",
+    "require_static_publish_resource_limits(&document)?;",
+    "require_secure_resource_urls(&document)?;",
+    "require_static_publish_policy(&document)?;",
+  ],
+  "static landing prepared policy order",
+);
+
+const compilePrepared = sliceBetween(
+  sources.staticLanding,
+  "pub(crate) fn compile_prepared_document",
+  "pub(crate) fn render_policy",
+  "exact materialized compiler checkpoint",
+);
+requireOrdered(
+  compilePrepared,
+  [
+    "require_static_publish_resource_limits(document)?;",
+    "require_secure_resource_urls(document)?;",
+    "require_static_publish_policy(document)?;",
+    "build_static_landing_artifact_with_renderer",
+  ],
+  "exact materialized policy order",
+);
+
+for (const marker of [
+  "max_project_bytes: usize::MAX",
+  "max_pages: usize::MAX",
+  "max_components: usize::MAX",
+  "max_component_depth: usize::MAX",
+]) forbid(sources.limits, marker, "fail-closed resource boundary");
+
+for (const marker of [
+  "source-ready / maintainer-validation-pending",
+  "serialized prepared project: 16 MiB",
+  "component nodes: 50,000",
+  "page_builder_static_publish_sanitization_v2",
+  "Its SHA-256 payload remains exactly",
+  "No new persisted DTO",
+  "No raw runtime context",
+  "intentionally not run",
+]) need(sources.packet, marker, "resource-limit packet");
 
 if (failures.length > 0) {
   console.error("[verify-page-builder-static-publish-resource-limits] FAIL");

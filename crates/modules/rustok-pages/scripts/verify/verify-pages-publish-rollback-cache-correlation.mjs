@@ -26,7 +26,6 @@ const storefront = read(
   "crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs",
 );
 const artifact = read("crates/modules/rustok-pages/src/controllers/mod.rs");
-const parityPlan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -175,8 +174,8 @@ for (const [value, label] of [
   ["envelope.correlation_id", "correlation identity binding"],
   ["receipt.validate_for(&request)?", "receipt validation"],
   ["storefront_pages_cache_key", "storefront generation key"],
-  ['"rg-{}:pg-{}:ag-{}"', "three-generation storefront identity"],
-  ['":g-{generation}:page:{page_id}:{variant_hash}"', "generation-bound artifact identity"],
+  [":rg-{}:pg-{}:ag-{}:{variant_hash}", "three-generation storefront identity"],
+  [":g-{generation}:page:{page_id}:{variant_hash}", "generation-bound artifact identity"],
 ]) {
   requireText(cacheOwner, value, label);
 }
@@ -235,16 +234,6 @@ for (const [value, label] of [
   ["get_json::<Value>(&old_artifact_key)", "old artifact value retained"],
 ]) {
   requireText(regression, value, label);
-}
-
-for (const marker of [
-  "production-relay-generation-gate-source-ready",
-  "Production gate PostgreSQL publish/rollback restart: source-ready",
-  "event/correlation-bound receipt",
-  "retain old-generation values physically",
-  "execution remains pending",
-]) {
-  requireText(parityPlan, marker, "parity continuation plan");
 }
 
 if (failures.length > 0) {

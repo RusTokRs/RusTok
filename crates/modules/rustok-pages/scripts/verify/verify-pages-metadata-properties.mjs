@@ -26,7 +26,6 @@ const pagesOwnerPortProduction = pagesOwnerPort.split("#[cfg(test)]")[0];
 const pagesBoundary = read(contract.pages_consumer.composition_source);
 const pagesWorkspace = read(contract.pages_consumer.workspace_source);
 const pagesPublishedSurface = read(contract.pages_consumer.published_surface_source);
-const parityPlan = read(contract.parity_plan);
 
 function fail(message) {
   console.error(`[verify-pages-metadata-properties] ${message}`);
@@ -400,17 +399,6 @@ for (const forbidden of [
   "transport::patch_page_metadata(",
 ]) {
   forbidMarker(pagesWorkspace, forbidden, "Pages legacy metadata workspace");
-}
-
-for (const marker of [
-  "`source-ready` means code, contracts, build source or retained harness source exists.",
-  "Pages and Page Builder remain one vertical pipeline with explicit owners:",
-  "Pages owns persistence, lifecycle, immutable bindings",
-  "Pages admin owns the optional same-origin authoring launch control",
-  "Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization",
-  "No build, workflow, Docker, HTTP or browser execution is claimed by source inspection.",
-]) {
-  requireMarker(parityPlan, marker, "Pages/Page Builder parity continuation plan");
 }
 
 console.log(

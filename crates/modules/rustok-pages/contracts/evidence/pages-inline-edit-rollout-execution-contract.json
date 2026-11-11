@@ -86,8 +86,7 @@
     "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-rollout-evidence-harness-source.json",
     "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-browser-execution-contract.json",
     "scripts/evidence/assemble-pages-inline-edit-rollout-evidence.mjs",
-    "crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-rollout-evidence-harness.mjs",
-    "docs/modules/pages-page-builder-inline-edit-execution-plan.md"
+    "crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-rollout-evidence-harness.mjs"
   ],
   "privacy_boundary": {
     "allowed_identity_values": [

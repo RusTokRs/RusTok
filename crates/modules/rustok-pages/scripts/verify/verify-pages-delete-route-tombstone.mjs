@@ -37,7 +37,6 @@ const entities = read("crates/modules/rustok-pages/src/entities/mod.rs");
 const route = read("crates/modules/rustok-pages/src/services/page/route.rs");
 const lifecycle = read("crates/modules/rustok-pages/src/services/page/lifecycle.rs");
 const regression = read("crates/modules/rustok-pages/tests/page_delete_route_tombstone_sqlite.rs");
-const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
 
 if (evidence.format !== "pages_delete_route_tombstone_source_v1") {
   failures.push(`evidence format mismatch: ${evidence.format}`);
@@ -51,8 +50,101 @@ if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
 for (const [key, value] of Object.entries(evidence.validation ?? {})) {
   if (value !== false) failures.push(`validation.${key} must remain false`);
 }
-, marker, "parity actualization");
-, marker, "delete tombstone packet");
+for (const key of [
+  "published_route_snapshot_table_added",
+  "snapshot_claim_unique_by_tenant_locale_slug",
+  "snapshot_history_survives_page_delete",
+  "published_routes_snapshotted_before_unpublish",
+  "published_routes_snapshotted_before_archive",
+  "never_published_draft_routes_not_snapshotted",
+  "delete_tombstones_written_in_owner_transaction",
+  "current_public_route_becomes_gone",
+  "multiple_public_route_snapshots_become_gone",
+  "existing_redirect_history_preserved",
+  "redirect_to_deleted_page_folds_to_gone",
+  "deleted_public_claims_cannot_be_reused",
+  "draft_only_deleted_claim_can_be_reused",
+  "focused_sqlite_regression_added",
+]) {
+  if (evidence.source_contract?.[key] !== true) {
+    failures.push(`source_contract.${key} must be true`);
+  }
+}
+for (const key of [
+  "production_page_builder_behavior_changed",
+  "page_body_schema_changed",
+  "page_artifact_schema_changed",
+  "graphql_schema_changed",
+  "rest_http_api_changed",
+  "cache_policy_changed",
+  "event_schema_changed",
+  "optional_event_infrastructure_changed",
+  "historical_backfill_added",
+  "ffa_promoted",
+  "fba_promoted",
+]) {
+  if (evidence.source_contract?.[key] !== false) {
+    failures.push(`source_contract.${key} must be false`);
+  }
+}
+
+for (const marker of [
+  ".table(PageRoutePublications::Table)",
+  'name("idx_page_route_publications_claim")',
+  ".col(PageRoutePublications::TenantId)",
+  ".col(PageRoutePublications::Locale)",
+  ".col(PageRoutePublications::Slug)",
+  ".unique()",
+  'name("idx_page_route_publications_page")',
+]) need(migration, marker, "published route snapshot migration");
+forbid(migration, ".foreign_key(", "forward-only published route snapshot migration");
+need(migrations, "m20260806_000011_create_page_route_publications", "migration registry");
+for (const marker of [
+  '#[sea_orm(table_name = "page_route_publications")]',
+  "pub tenant_id: Uuid",
+  "pub page_id: Uuid",
+  "pub locale: String",
+  "pub slug: String",
+]) need(entity, marker, "published route snapshot entity");
+need(entities, "pub mod page_route_publication;", "entity registry");
+need(entities, "PageRoutePublication", "entity export");
+
+for (const marker of [
+  "record_published_route_snapshots_in_tx",
+  "storage_to_status(page_status)? != ContentStatus::Published",
+  "page_route_publication::Entity::find()",
+  "record_delete_route_tombstones_in_tx",
+  'const PAGE_DELETED_ROUTE_REASON: &str = "Page deleted"',
+  "record_gone_alias_in_tx",
+  "Preserve immutable redirect history",
+  "page_has_gone_tombstone",
+  "PageRouteDisposition::Gone",
+]) need(route, marker, "route owner");
+
+ordered(lifecycle, [
+  "if existing.status == \"published\"",
+  "record_delete_route_tombstones_in_tx(&txn, tenant_id, page_id).await?",
+  "page_translation::Entity::delete_many()",
+  "page::Entity::delete_by_id(page_id)",
+  "DomainEvent::NodeDeleted",
+  "txn.commit().await?",
+], "delete owner transaction ordering");
+ordered(lifecycle, [
+  "if transition == PageTransition::Publish",
+  "} else {",
+  "record_published_route_snapshots_in_tx(",
+  "let mut active: page::ActiveModel = existing.into()",
+  "active.update(&txn).await?",
+], "public route snapshot transition ordering");
+
+for (const marker of [
+  "delete_turns_every_retained_public_route_into_gone_without_rewriting_redirects",
+  "deleting_a_never_published_draft_does_not_reserve_its_slug",
+  'for slug in ["about", "about-us", "company"]',
+  "PageRouteDisposition::Gone",
+  "PagesError::DuplicateSlug",
+  'create_draft(&service, tenant_id, "Replacement", "temporary")',
+]) need(regression, marker, "SQLite source regression");
 
 for (const text of [migration, route, lifecycle, regression]) {
   forbid(text, "Iggy", "Pages route deletion slice");

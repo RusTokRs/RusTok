@@ -90,7 +90,63 @@ if (evidence.current_boundary?.ffa_fba_promotion !== "not_claimed") {
   failures.push(`${evidencePath}: source packet must not promote FFA/FBA`);
 }
 
-, marker, actualizationPath);
+for (const profile of ["all_on", "publish_off", "preview_off", "builder_off"]) {
+  const outcome = evidence.gate?.required_profile_outcomes?.[profile];
+  if (!outcome) failures.push(`${evidencePath}: missing outcome for ${profile}`);
+  if (outcome?.pages_owned_reads !== "pass") {
+    failures.push(`${evidencePath}: ${profile} must keep Pages-owned reads available`);
+  }
+}
+if (evidence.gate?.required_profile_outcomes?.publish_off?.publish_dry !== "typed_feature_disabled") {
+  failures.push(`${evidencePath}: publish_off must typed-disable publish`);
+}
+if (evidence.gate?.required_profile_outcomes?.preview_off?.preview !== "typed_feature_disabled") {
+  failures.push(`${evidencePath}: preview_off must typed-disable preview`);
+}
+if (evidence.gate?.required_profile_outcomes?.builder_off?.publish_dry !== "typed_feature_disabled") {
+  failures.push(`${evidencePath}: builder_off must typed-disable publish`);
+}
+
+for (const relativePath of evidence.gate?.required_source_guards ?? []) {
+  if (!fs.existsSync(path.join(repoRoot, relativePath))) {
+    failures.push(`${evidencePath}: required source guard is missing: ${relativePath}`);
+  }
+}
+
+for (const marker of [
+  '[dependencies.page_builder]',
+  'contract_version = "1.1"',
+  'builder_contract_version = "1.1"',
+  '[fba.builder_consumer.toggle_profiles]',
+  'all_on = [',
+  'publish_off = [',
+  'preview_off = [',
+  'builder_off = [',
+  '[fba.builder_consumer.rollout_policy]',
+  'audit_trail = "control_plane_builder_wave_audit"',
+  'before_snapshot_required = true',
+  'after_snapshot_required = true',
+  'decision_required = true',
+  'owner_signoff_required = true',
+  'rollback_without_redeploy_target_minutes = 10',
+  'pages_owned_list_and_document_read_paths_stay_available_when_builder_capabilities_are_disabled',
+]) {
+  requireText(pagesManifest, marker, pagesManifestPath);
+}
+
+for (const marker of [
+  'id = "rustok.forum.widget-catalog"',
+  'id = "rustok.forum.widget-preview"',
+  '"forum.topic_list"',
+  '"forum.topic_detail"',
+  '"forum.reply_stream"',
+  'adapter_state = "fly_contract_ready"',
+  'preview_data_state = "owner_preview_transport_ready"',
+  'property_data_state = "owner_property_editor_ready"',
+  'persistence_owner = "forum"',
+  'authorization_owner = "forum"',
+]) {
+  requireText(forumManifest, marker, forumManifestPath);
 }
 
 for (const forbidden of [

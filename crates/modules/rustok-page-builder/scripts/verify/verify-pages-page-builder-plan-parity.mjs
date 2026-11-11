@@ -9,9 +9,7 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
   : path.resolve(scriptDir, "..", "..", "..", "..", "..");
 
-const sharedPlanPath = "docs/modules/pages-page-builder-parity-continuation-plan.md";
 const localPlanPath = "crates/modules/rustok-page-builder/docs/implementation-plan.md";
-const centralPlanPath = "docs/modules/page-builder-implementation-plan.md";
 const gatePath = "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-source.json";
 const gateAcceptancePath = "crates/modules/rustok-pages/contracts/evidence/pages-reference-consumer-gate-acceptance-source.json";
 const forumManifestPath = "crates/modules/rustok-forum/rustok-module.toml";
@@ -66,9 +64,7 @@ function section(source, startMarker, endMarker) {
   return end > start ? source.slice(start, end) : source.slice(start);
 }
 
-const sharedPlan = read(sharedPlanPath);
 const localPlan = read(localPlanPath);
-const centralPlan = read(centralPlanPath);
 const gate = parseJson(read(gatePath), gatePath);
 const gateAcceptance = parseJson(read(gateAcceptancePath), gateAcceptancePath);
 const forumManifest = read(forumManifestPath);
@@ -79,75 +75,7 @@ const forumWaveObservedAcceptance = parseJson(
   forumWaveObservedAcceptancePath,
 );
 
-const sharedCurrent = section(
-  sharedPlan,
-  "## 2026-08-10 current source reconciliation",
-  "## Rechecked merged cursor",
-);
-const sharedNext = section(sharedPlan, "## Next cursor", "## Maintainer validation");
 const localOpen = section(localPlan, "## Open results", "## Verification");
-
-for (const marker of [
-  "provider-health-runtime-source-ready",
-  "provider-health-observed-acceptance-source-ready",
-  "forum-runtime-composition-source-ready",
-  "forum-evidence-harness-source-ready",
-  "pages-reference-consumer-gate-source-ready",
-  "pages-reference-consumer-gate-acceptance-source-ready",
-  "pages-gate-owner-runner-synthetic-ready",
-  "forum-wave-admission-source-ready",
-  "forum-wave-admission-runner-synthetic-ready",
-  "forum-wave-live-lineage-source-ready",
-  "forum-wave-observed-owner-acceptance-source-ready",
-  "generic-editor-accessibility-source-ready",
-  "generic-accessibility-browser-packet-verifier-source-ready",
-  "execution-acceptance-pending",
-]) requireText(sharedPlan, marker, `${sharedPlanPath}: status`);
-for (const stale of [
-  "observed-health-open",
-  "repository still has no authoritative live Page Builder SLO observation source",
-  "No live SLO source exists yet",
-  "Connect real provider-health observation only after an authoritative Page Builder SLO source exists",
-  "forum-fly-adapter-open",
-]) forbidText(sharedPlan, stale, `${sharedPlanPath}: stale current state`);
-
-for (const marker of [
-  "PR #3239",
-  "PR #3247",
-  "PR #3254",
-  "PR #3264",
-  "PR #3266",
-  "PR #3274",
-  "PR #3320",
-  "PRs #3389, #3391, #3395 and #3399",
-  "PRs #3424 and #3426",
-  "PR #3429",
-  "PR #3435",
-  "PR #3453",
-  "PR #3456",
-  "PR #3458",
-  "PR #3459",
-  "PR #3460",
-  "PR #3461",
-  "PR #3464",
-  "PR #3465",
-  "adapter_state = \"fly_contract_ready\"",
-  "preview_data_state = \"owner_preview_transport_ready\"",
-  "property_data_state = \"owner_property_editor_ready\"",
-  "Current deployment health is still not asserted by source inspection",
-  "accepted owner evidence is only eligible input for a separate FFA/FBA promotion review",
-]) requireText(sharedCurrent, marker, `${sharedPlanPath}: current reconciliation`);
-
-for (const marker of [
-  "Execute exact provider-health",
-  "rollout-only reference candidate",
-  "run Forum Wave admission",
-  "observed control-plane Wave",
-  "verify freshness and exact retained-admission lineage",
-  "retrospective observed-Wave owner decision",
-  "Current provider health is not inferred by this plan",
-  "Only after accepted observed-Wave owner evidence",
-]) requireText(sharedNext, marker, `${sharedPlanPath}: next cursor`);
 
 for (const marker of [
   "provider-health observation/evaluation/binding",
@@ -172,23 +100,6 @@ for (const marker of [
   "take the explicit Pages gate owner + rollback decision",
   "run `forum_page_builder_wave_admission_v1`",
 ]) requireText(localOpen, marker, `${localPlanPath}: open results`);
-
-for (const marker of [
-  "Provider health observation/evaluator/binding/consumer chain: source-ready",
-  "Observed-health runtime harness/owner acceptance: source-ready",
-  "Pages reference-consumer gate acceptance: source-ready",
-  "Forum Fly adapter/component registry: source-ready",
-  "Forum owner preview transport/Pages host composition: source-ready",
-  "Forum owner-backed property editing: source-ready",
-  "Forum Wave admission: source-ready",
-  "missing, invalid, expired or uninstalled accepted health packet",
-]) requireText(centralPlan, marker, centralPlanPath);
-for (const stale of [
-  "Live SLO health remains a separate open cursor",
-  "Live SLO health is deliberately `unobserved` until a real source exists",
-  "Connect a real provider-health observation source to the admin status seam",
-]) forbidText(centralPlan, stale, `${centralPlanPath}: stale current state`);
-
 
 if (gate.artifact !== "pages_reference_consumer_gate_source") {
   failures.push(`${gatePath}: gate artifact identity drifted`);

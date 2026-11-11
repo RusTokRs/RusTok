@@ -19,8 +19,6 @@ const files = {
     "crates/modules/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs",
   assetRoute: "crates/modules/rustok-pages/src/http/inline_edit_assets.rs",
   auth: "apps/server/src/middleware/auth_context.rs",
-  executionPlan: "docs/modules/pages-page-builder-inline-edit-execution-plan.md",
-  canonicalPlan: "docs/modules/pages-page-builder-parity-continuation-plan.md",
   localPlan: "crates/modules/rustok-pages/docs/implementation-plan.md",
 };
 
@@ -313,28 +311,6 @@ const requiredMarkers = {
     "current_user.session_id.is_nil()",
     "Permission::PAGES_UPDATE",
   ],
-  packet: [
-    "source-ready / maintainer-execution-pending / browser-rollout-pending",
-    "artifact_http_execution_passed_browser_rollout_pending",
-    "deployment image digest binding",
-    "anonymous          → 401",
-    "direct_user        → 200",
-    "permission_denied  → 403",
-    "Artifact, HTTP, browser and rollout evidence remain pending",
-  ],
-  executionPlan: [
-    "artifact-http-evidence-harness-source-ready",
-    "inline-edit-artifact-http-evidence-harness-source-ready",
-    "artifact/HTTP evidence harness: source-ready",
-    "Supply the immutable deployment RepoDigest recorded in Gate C",
-    "artifact_http_execution_passed_browser_rollout_pending",
-    "Browser edit/save/replay/expiry and tenant rollout remain pending",
-  ],
-  canonicalPlan: [
-    "release-composition-source-ready / execution-browser-rollout-pending",
-    "inline-edit-release-composition-source-ready",
-    "Execution evidence remains pending",
-  ],
   localPlan: [
     "release-composition-source-ready / execution-browser-rollout-pending",
     "Release composition: source-ready",
@@ -349,11 +325,6 @@ for (const sourceName of ["buildCapture", "dockerCapture", "httpCapture", "assem
   forbid(sources[sourceName], "shell: true", sourceName);
   forbid(sources[sourceName], "|| true", sourceName);
 }
-forbid(
-  sources.assembler,
-  "docs/modules/pages-page-builder-parity-continuation-plan.md",
-  "assembler canonical mutation",
-);
 forbid(
   sources.assembler,
   "crates/modules/rustok-pages/docs/implementation-plan.md",

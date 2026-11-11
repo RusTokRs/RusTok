@@ -10,7 +10,8 @@ const files = {
   contract: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-server-binding-source.json",
   consumer: "crates/modules/rustok-pages/contracts/evidence/pages-builder-provider-health-consumer-binding-source.json",
   binding: "crates/modules/rustok-pages/src/provider_health_binding.rs",
-  lib: "crates/modules/rustok-pages/src/lib.rs",
+  // The `RusToKModule` implementation lives in `module.rs`; `lib.rs` keeps the exports.
+  module: "crates/modules/rustok-pages/src/module.rs",
   manifest: "crates/modules/rustok-pages/rustok-module.toml",
   graphqlMod: "crates/modules/rustok-pages/src/graphql/mod.rs",
   runtimeData: "crates/modules/rustok-pages/src/graphql/runtime_data.rs",
@@ -134,9 +135,86 @@ for (const [object, key, expected] of [
   if (object?.[key] !== expected) failures.push(`${key} must equal ${JSON.stringify(expected)}`);
 }
 
-?? "", marker, "server binding actualization");
+for (const marker of [
+  '"RUSTOK_PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH"',
+  '"RUSTOK_PAGES_PROVIDER_HEALTH_DEPLOYMENT_ID"',
+  '"RUSTOK_PAGES_PROVIDER_HEALTH_DEPLOYMENT_IMAGE_DIGEST"',
+  '"RUSTOK_SOURCE_COMMIT"',
+  'const ACCEPTED_STATUS: &str = "owner_accepted_server_binding_pending"',
+  'const ACCEPT_DECISION: &str = "accept_for_pages_binding"',
+  'const ROLLBACK_ACTION: &str = "restore_unobserved_provider_health"',
+  "PagesProviderHealthLiveIdentity",
+  "PagesProviderHealthAuthoritySource::RetainedPacket",
+  "from_retained_packet_path",
+  "read_retained_packet(path)",
+  "fs::symlink_metadata",
+  "ErrorKind::NotFound",
+  "MAX_ACCEPTANCE_PACKET_BYTES",
+  "#[serde(deny_unknown_fields)]",
+  "max_target_operation_freshness_age_seconds",
+  "health_valid_until",
+  "expected_valid_until",
+  "ProviderHealthSnapshot::evaluate(packet.evaluation.snapshot.observed)",
+  "ProviderSloEvaluation::evaluate(",
+  "snapshot_at(Utc::now())",
+  "now > self.health_valid_until + skew",
+  "IncompleteEnvironment",
+  "IdentityMismatch",
+  "HealthPolicyMismatch",
+]) need(sources.binding ?? "", marker, "provider health authority");
 
-?? "", marker, "plan parity actualization");
+for (const marker of [
+  "maximumFreshnessAge",
+  "remainingFreshnessSeconds",
+  "healthValidUntilMs",
+  "health_valid_until: admitted.healthValidUntil",
+  "max_target_operation_freshness_age_seconds: admitted.maximumFreshnessAge",
+  "accepted decision is outside the retained health freshness deadline",
+]) need(sources.acceptanceRunner ?? "", marker, "owner acceptance remaining freshness");
+
+for (const marker of [
+  "page_builder_provider_health_authority_from_environment()",
+  "extensions.insert(authority)",
+  "provider health remains unobserved",
+  "PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH_ENV",
+]) need(sources.module ?? "", marker, "Pages module host composition");
+
+need(
+  sources.manifest ?? "",
+  'runtime_data_factory = "graphql::attach_schema_data"',
+  "Pages manifest GraphQL runtime data",
+);
+need(sources.graphqlMod ?? "", "pub use runtime_data::attach_schema_data", "Pages GraphQL runtime factory export");
+need(sources.graphqlMod ?? "", "pub use runtime_data::PagesGraphqlRuntimeData", "Pages GraphQL runtime data export");
+for (const marker of [
+  "PagesGraphqlRuntimeData",
+  "inputs.shared_get::<SharedPagesProviderHealthAuthority>()",
+  "authority.current_snapshot()",
+]) need(sources.runtimeData ?? "", marker, "Pages GraphQL runtime data");
+
+for (const marker of [
+  "provider_health_observed: false",
+  "provider_health: None",
+  "data_opt::<PagesGraphqlRuntimeData>()",
+  "PagesGraphqlRuntimeData::provider_health_snapshot",
+  "Some(health) => snapshot.with_provider_health(&health)",
+  "None => snapshot",
+]) need(sources.owner ?? "", marker, "Pages rollout query server binding");
+forbid(sources.owner ?? "", "std::fs::", "GraphQL query must consume runtime authority rather than files directly");
+forbid(sources.owner ?? "", "RUSTOK_PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH", "GraphQL query must not own host configuration");
+
+for (const marker of [
+  ".provider_status();",
+  ".with_provider_status(provider_status)",
+]) need(sources.composition ?? "", marker, "workspace consumes validated provider health");
+for (const marker of [
+  "trusted_rollout.effective_runtime_flags()",
+  "compose_configured_fly_page_builder_handlers(\n        service,\n        effective_flags,",
+]) need(sources.builder ?? "", marker, "SSR consumes health-limited runtime flags");
+for (const marker of [
+  "pages_editor_capabilities_for_snapshot",
+  "pages_editor_capabilities_for_snapshot(role_capabilities, &rollout)",
+]) need(sources.adminMain ?? "", marker, "browser intent consumes validated provider health");
 
 if (contract.next_cursor?.server_provider_health_binding !== "source_ready_maintainer_activation_pending") {
   failures.push("server binding cursor drifted");

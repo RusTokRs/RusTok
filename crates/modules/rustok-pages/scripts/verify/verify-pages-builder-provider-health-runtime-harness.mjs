@@ -38,6 +38,11 @@ if (failures.length) {
 }
 
 const sources = Object.fromEntries(Object.entries(files).map(([label, relativePath]) => [label, read(relativePath)]));
+// The Next admin sources are Prettier-formatted with single quotes, the markers below are written
+// with double quotes: compare both in one quote form.
+const tsQuotes = (text) => text.replaceAll("'", '"');
+const needTs = (source, marker, label) => need(tsQuotes(source), tsQuotes(marker), label);
+const forbidTs = (source, marker, label) => forbid(tsQuotes(source), tsQuotes(marker), label);
 const contract = JSON.parse(sources.contract);
 const source = JSON.parse(sources.source);
 const identity = JSON.parse(sources.identity);
@@ -88,8 +93,66 @@ for (const [object, key, expected] of [
   [source.observed_owner_acceptance, "automatic_pages_gate_acceptance", false],
 ]) if (object?.[key] !== expected) failures.push(`${key} must equal ${JSON.stringify(expected)}`);
 
-, marker, "runtime harness actualization");
-, marker, "plan parity actualization");
+for (const marker of [
+  "fullyParallel: false", "workers: 1", "retries: 0", 'trace: "off"', 'screenshot: "off"', 'video: "off"',
+  'name: "pages-builder-provider-health-runtime-chromium"',
+]) needTs(sources.config, marker, "Playwright config");
+
+for (const marker of [
+  "type PredecessorSpec = {",
+  "decision?: string",
+  "rollback_action?: string",
+  "runtime evidence page id must be a UUID",
+  "runtime evidence page id collides with non-mutating mismatch sentinel",
+  "validateEvidenceChain(",
+  "identityDeployment.source_commit",
+  "acceptanceEvaluation.evaluation_sha256 !== evaluation.record.sha256",
+  "accepted provider health is expired before runtime observation begins",
+  "runtime evidence requires configured all_on rollout flags",
+  "runtime snapshot did not observe provider health",
+  "runtime GraphQL health differs from accepted provider snapshot",
+  'result.errorKind !== "feature-disabled"',
+  'result.errorCode !== "FEATURE_DISABLED"',
+  "data-fly-provider-control-state",
+  "data-fly-provider-health",
+  "data-page-builder-provider-preview",
+  "safeSsrPreviewObservation(",
+  "safeBrowserIntentDenial(",
+  "page_id: mismatchPageId",
+  "mismatched page id prevents mutation if health was revoked",
+  "rollout_settings_mutated: false",
+  "publish_mutation_executed: false",
+  "owner_observed_health_acceptance: false",
+  "pages_reference_consumer_gate_accepted: false",
+  "raw_evidence_paths_persisted: false",
+  "writeAtomic(output",
+]) needTs(sources.spec, marker, "runtime evidence spec");
+
+for (const marker of [
+  "updateModuleSettings", "writePagesSettings(", "PublishPageBuilderInput", "save_project(",
+  "owner_observed_health_acceptance: true", "pages_reference_consumer_gate_accepted: true",
+  'trace: "on"', 'screenshot: "on"', 'video: "on"',
+]) forbidTs(sources.spec, marker, "runtime evidence spec");
+
+for (const marker of [
+  "let envelope = preflight_pages_intent(envelope, capabilities)?;",
+  "validate_browser_capability_access(&envelope, capabilities)?;",
+]) need(sources.browserIntent, marker, "browser-intent capability-before-dispatch safety");
+for (const marker of [
+  "pages_editor_capabilities_for_snapshot(role_capabilities, &rollout)",
+  "dispatch_pages_browser_intent_with_capabilities(snapshot, envelope, editor_capabilities)",
+]) need(sources.adminMain, marker, "standalone browser-intent health binding");
+
+for (const relativePath of contract.required_source_files ?? []) {
+  if (!fs.existsSync(abs(relativePath))) failures.push(`required source file missing: ${relativePath}`);
+}
+if (!(contract.required_source_files ?? []).includes("apps/next-admin/tests/pages-builder-provider-health-runtime/runtime.spec.ts")) failures.push("runtime spec is absent from required source hashes");
+
+if (preflight.next_cursor?.observed_health_runtime_evidence_harness !== "source_ready_maintainer_execution_pending") failures.push("capability-preflight cursor must point to source-ready runtime harness");
+if (consumerBinding.next_cursor?.observed_health_runtime_evidence_harness !== "source_ready_maintainer_execution_pending") failures.push("consumer-binding cursor must point to source-ready runtime harness");
+if (source.next_cursor?.observed_health_runtime_evidence_harness !== "source_ready_maintainer_execution_pending") failures.push("runtime harness cursor drifted");
+if (source.next_cursor?.observed_health_owner_acceptance !== "source_ready_maintainer_execution_pending") failures.push("observed-health owner acceptance must be source-ready/execution-pending");
+if (observedAcceptance.next_cursor?.observed_health_owner_acceptance !== "source_ready_maintainer_execution_pending") failures.push("observed-health owner acceptance source cursor drifted");
 
 if (failures.length) {
   console.error("[verify-pages-builder-provider-health-runtime-harness] FAIL");

@@ -111,7 +111,120 @@ const expectedFacts = {
     "pageNavigationKeyboardAvailable",
   ],
 };
-, marker, "accessibility actualization");
+for (const profile of ["full", "read_only"]) {
+  if (verifierContract.profiles?.[profile]?.minimum_page_count !== 2) {
+    failures.push(`${profile} verifier minimum page count drifted`);
+  }
+  if (
+    JSON.stringify(verifierContract.profiles?.[profile]?.required_boolean_facts) !==
+    JSON.stringify(expectedFacts[profile])
+  ) {
+    failures.push(`${profile} verifier required facts drifted`);
+  }
+}
+
+for (const [flag, expected] of [
+  ["retained_secrets", false],
+  ["raw_dom_retained", false],
+  ["aria_snapshot_text_retained", false],
+  ["screen_reader_execution_pending", true],
+  ["wcag_conformance_not_claimed", true],
+]) {
+  if (verifierContract.required_input_flags?.[flag] !== expected) {
+    failures.push(`required input flag ${flag} drifted`);
+  }
+}
+
+if (
+  verifierContract.output?.format !==
+    "page_builder_generic_accessibility_browser_packet_verification_v1" ||
+  verifierContract.output?.status !==
+    "browser_packet_verified_owner_review_ready_screen_reader_pending" ||
+  verifierContract.output?.default_path !==
+    "target/page-builder-accessibility-browser-packet-verification.json"
+) {
+  failures.push("packet verifier output identity drifted");
+}
+
+for (const [key, expected] of [
+  ["expected_digest_is_maintainer_supplied_reviewed_identity", true],
+  ["digest_equality_is_not_cryptographic_origin_binding", true],
+  ["deployment_provenance_must_be_verified_outside_this_verifier", true],
+]) {
+  if (verifierContract.deployment_identity?.[key] !== expected) {
+    failures.push(`deployment identity boundary ${key} drifted`);
+  }
+}
+
+for (const nonClaim of [
+  "browser execution by the packet verifier",
+  "screen-reader execution",
+  "WCAG conformance",
+  "cryptographic origin-to-RepoDigest binding",
+  "provider SLO health",
+  "Pages gate acceptance",
+  "Forum Wave admission",
+  "tenant rollout or promotion",
+]) {
+  if (!(verifierContract.not_claimed ?? []).includes(nonClaim)) {
+    failures.push(`packet verifier non-claim missing ${nonClaim}`);
+  }
+}
+
+if (
+  verifierContract.runner !== paths.runner ||
+  verifierContract.runner_test !== paths.runnerTest ||
+  verifierContract.source_verifier !==
+    "scripts/verify/verify-page-builder-accessibility-browser-packet-verifier.mjs"
+) {
+  failures.push("packet verifier source path binding drifted");
+}
+
+for (const marker of [
+  'execFileSync("git", ["rev-parse", "HEAD"]',
+  '"--expected-source"',
+  '"--expected-deployment-digest"',
+  "requireExactKeys(packet.source_files, required, \"packet source_files\")",
+  "retained source hash does not match checkout",
+  "browser packet deployment_digest does not match the separately supplied expected RepoDigest",
+  "verifyObservation(profile, packet.observations[profile])",
+  "screen_reader_execution_pending: true",
+  "wcag_conformance_not_claimed: true",
+  "deployment_provenance_verified_by_this_packet: false",
+  "cryptographic_origin_to_repo_digest_binding_claimed: false",
+  "owner_review_required: true",
+  "provider_slo_health_not_claimed: true",
+  "pages_gate_acceptance_not_claimed: true",
+  "forum_wave_admission_not_claimed: true",
+  "tenant_rollout_not_claimed: true",
+]) {
+  need(runner, marker, "packet verifier runner");
+}
+for (const marker of [
+  "fetch(",
+  "@playwright/test",
+  'spawnSync("cargo"',
+  "playwright test",
+  "screen_reader_execution_pending: false",
+  "wcag_conformance_not_claimed: false",
+  "deployment_provenance_verified_by_this_packet: true",
+  "cryptographic_origin_to_repo_digest_binding_claimed: true",
+  "owner_review_required: false",
+]) {
+  forbid(runner, marker, "packet verifier runner");
+}
+
+for (const marker of [
+  'requireSuccess("valid"',
+  'requireFailure("source-tamper"',
+  'requireFailure("screen-reader-overclaim"',
+  'requireFailure("wcag-overclaim"',
+  'requireFailure("missing-fact"',
+  'requireFailure("retained-data-drift"',
+  '"digest-mismatch"',
+  "PASS cases=7",
+]) {
+  need(runnerTest, marker, "packet verifier synthetic tests");
 }
 
 for (const marker of [

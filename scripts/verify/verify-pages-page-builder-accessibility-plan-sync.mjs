@@ -8,8 +8,6 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   : process.cwd();
 
 const paths = {
-  shared: "docs/modules/pages-page-builder-parity-continuation-plan.md",
-  central: "docs/modules/page-builder-implementation-plan.md",
   local: "crates/modules/rustok-page-builder/docs/implementation-plan.md",
   accessibilityGuard: "scripts/verify/verify-page-builder-admin-accessibility.mjs",
   accessibilityBrowserGuard:
@@ -50,10 +48,7 @@ function forbidText(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: stale marker remains '${marker}'`);
 }
 
-const shared = read(paths.shared);
-const central = read(paths.central);
 const local = read(paths.local);
-const accessibilityActualization = read(paths.accessibilityActualization);
 const accessibilityGuard = read(paths.accessibilityGuard);
 const accessibilityBrowserGuard = read(paths.accessibilityBrowserGuard);
 const accessibilityBrowserContract = read(paths.accessibilityBrowserContract);
@@ -62,14 +57,15 @@ const accessibilityPacketVerifierRunner = read(paths.accessibilityPacketVerifier
 const accessibilityPacketVerifierTest = read(paths.accessibilityPacketVerifierTest);
 const accessibilityPacketVerifierGuard = read(paths.accessibilityPacketVerifierGuard);
 
-, marker, paths.actualization);
-
 for (const marker of [
-  "generic-editor-control-accessibility-source-ready",
-  "source-guard-ready",
+  "2026-08-12 parity/accessibility reconciliation",
+  "generic-editor-accessibility-source-ready",
   "browser-accessibility-evidence-pending",
-  "scripts/verify/verify-page-builder-admin-accessibility.mjs",
-]) requireText(accessibilityActualization, marker, paths.accessibilityActualization);
+  "Generic editor control semantics are also source-ready after PR #3444",
+  "Retain generic editor keyboard/focus/accessible-name/state/browser/screen-reader evidence",
+  "verify-page-builder-admin-accessibility.mjs",
+  "verify-pages-page-builder-accessibility-plan-sync.mjs",
+]) requireText(local, marker, paths.local);
 
 for (const marker of [
   'aria-current=is_active.then_some("page")',

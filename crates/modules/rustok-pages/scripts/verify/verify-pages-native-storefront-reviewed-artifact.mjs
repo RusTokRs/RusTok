@@ -27,11 +27,6 @@ const reviewedPublish = read(
 const artifactService = read(
   "crates/modules/rustok-pages/src/services/page_builder_artifact.rs",
 );
-const packet = read(
-);
-const continuation = read(
-  "docs/modules/pages-page-builder-parity-continuation-plan.md",
-);
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -115,10 +110,210 @@ requireText(
   "rustok-page-builder",
   "reviewed artifact dev dependency",
 );
-, marker, "reviewed artifact packet");
+for (const marker of [
+  '#![cfg(feature = "ssr")]',
+  "use rustok_pages_storefront as _;",
+  "handle_server_fns_with_context",
+  "TenantContextExtension(tenant.clone())",
+  "ChannelContextExtension(channel.clone())",
+  "PageBuilderReviewedPublishRuntime::new(",
+  ".publish_reviewed(",
+  "expected_version: draft.version",
+  "PageBodyRevisionInput",
+  "ReviewedPagePublishRuntimeInput",
+  "assert!(artifact.materialization_hash.is_some())",
+  "assert!(artifact.materialization_identity.is_some())",
+  "assert!(artifact.runtime_snapshots.is_some())",
+  'create_enabled_channel(&channel_service, tenant_id, "web", "Web")',
+  'create_enabled_channel(&channel_service, tenant_id, "mobile", "Mobile")',
+  'visible_page["landing"],',
+  '"html": fixture.body_html,',
+  '"css": fixture.css,',
+  '"artifactHash": fixture.artifact_hash,',
+  'assert!(visible_page.get("body").is_none())',
+  'assert!(!visible.body.contains("flyPageMeta"))',
+  'assert_eq!(hidden_response["selected_page"], serde_json::Value::Null)',
+  "assert!(!hidden.body.contains(&fixture.artifact_hash))",
+  "assert_ne!(hidden_cache.get_keys[0], hidden_cache.get_keys[1])",
+  "corrupt_artifact_document(&db, fixture.artifact_id).await?",
+  "assert_ne!(corrupt.status, StatusCode::OK)",
+  "after_corrupt_read.put_keys",
+  "before_corrupt_read.put_keys",
+  "PAGES_STOREFRONT_CACHE_TTL_SECS",
+]) {
+  requireText(harness, marker, "reviewed artifact route harness");
 }
-, marker, "parity continuation plan");
+
+const routeTest = between(
+  harness,
+  "async fn native_storefront_returns_reviewed_artifact_for_visible_channel_and_refuses_unverified_fill(",
+  "fn native_server_fn_router(",
+  "reviewed artifact route test",
+);
+requireOrder(
+  routeTest,
+  [
+    "let visible = call_storefront",
+    "assert_eq!(visible.status, StatusCode::OK)",
+    "let visible_cache = cache.snapshot()",
+    "let hidden = call_storefront",
+    "assert_eq!(hidden.status, StatusCode::OK)",
+    "let hidden_cache = cache.snapshot()",
+    "corrupt_artifact_document",
+    "let before_corrupt_read = cache.snapshot()",
+    "let corrupt = call_storefront",
+    "assert_ne!(corrupt.status, StatusCode::OK)",
+    "let after_corrupt_read = cache.snapshot()",
+    "after_corrupt_read.put_keys",
+    "before_corrupt_read.put_keys",
+  ],
+  "visible hidden corrupt ordering",
+);
+
+const publishOwner = between(
+  reviewedPublish,
+  "pub async fn publish_reviewed(",
+  "fn require_builder_sources(",
+  "reviewed publish owner",
+);
+requireOrder(
+  publishOwner,
+  [
+    "normalize_expected_body_revisions",
+    "input.runtime.try_into()",
+    "enforce_expected_version",
+    "load_working_bodies_in_tx",
+    "ensure_builder_publish_enabled_in_tx",
+    "load_scenario_baseline_in_tx(&txn, tenant_id, page_id)",
+    "reviewed_publish_fingerprint(&builder_sources, baseline.as_ref())",
+    "ensure_candidates_allowed(baseline, &reviewed, project_values)?",
+    "compile_builder_sources_with_reviewed_runtime",
+    "PageBuilderArtifactService::stage_compiled_in_tx",
+    "PageBuilderArtifactService::bind_existing_body_in_tx",
+    "apply_transition(&mut active, Some(PageTransition::Publish)",
+    "txn.commit().await?",
+  ],
+  "reviewed publish transaction ordering",
+);
+const compileOwner = between(
+  reviewedPublish,
+  "fn compile_builder_sources_with_reviewed_runtime(",
+  "async fn ensure_builder_publish_enabled_in_tx(",
+  "reviewed compile owner",
+);
+requireOrder(
+  compileOwner,
+  [
+    "reviewed.validate()",
+    "reviewed.preview_runtime()",
+    "sanitize_static_landing_project",
+    ".verify_integrity()",
+    "compile_materialized_static_landing",
+    ".verify_integrity()",
+    "materialization_hash",
+    "materialization_identity",
+    "runtime_snapshots",
+  ],
+  "sanitization materialization ordering",
+);
+
+const nativeOwner = between(
+  nativeAdapter,
+  "async fn storefront_pages_native(",
+  '#[cfg(not(feature = "ssr"))]',
+  "native storefront owner",
+);
+requireOrder(
+  nativeOwner,
+  [
+    "is_module_enabled(channel_id, MODULE_SLUG)",
+    "generation_snapshot(tenant_id).await",
+    "get_json::<StorefrontPagesData>(cache_key)",
+    "get_by_slug_with_locale_fallback(",
+    "is_visible_for_public_channel",
+    "PageBuilderArtifactService::new(runtime_ctx.db_clone())",
+    ".load_public_bound_artifact_with_fallback(",
+    ".map(published_landing)",
+    "put_json(cache_key, &data).await",
+  ],
+  "native artifact selection before fill ordering",
+);
+// The public response carries the published landing as the artifact owner stored it: the body
+// markup and stylesheet. It is never the authoring document or an artifact payload wrapper.
+const landingProjection = between(
+  nativeAdapter,
+  "fn published_landing(artifact: rustok_pages::PublishedLandingArtifact) -> PublishedLanding {",
+  "\n}\n",
+  "published landing projection",
+);
+for (const marker of [
+  "locale: artifact.locale,",
+  "html: artifact.body_html,",
+  "css: artifact.css,",
+  "artifact_hash: artifact.artifact_hash,",
+]) {
+  requireText(landingProjection, marker, "published landing projection");
 }
+forbidText(landingProjection, "document_html", "published landing projection");
+for (const forbidden of [
+  "STATIC_LANDING_PAYLOAD_BODY_FORMAT",
+  "fly_artifact_payload",
+  "body.format == PAGE_BUILDER_DOCUMENT_FORMAT",
+  "/api/pages/{page_id}/artifact?",
+]) {
+  forbidText(nativeOwner, forbidden, "native storefront owner derives nothing from the page body");
+}
+
+// Each step is checked inside the function that owns it: the order of calls, not the order in
+// which helper functions happen to be declared in the file.
+for (const [start, end, markers, label] of [
+  [
+    "pub async fn load_public_bound_artifact_with_fallback(",
+    "pub async fn has_public_bound_artifact_with_fallback(",
+    [
+      "public_landing_locale_candidates_in_tx(",
+      "load_bound_artifact_in_tx(&txn, tenant_id, page_id, &candidate)",
+      "txn.commit().await?",
+    ],
+    "public read resolves visibility before the binding",
+  ],
+  [
+    "async fn public_landing_locale_candidates_in_tx(",
+    "fn artifact_model(",
+    [
+      'page.status == "published"',
+      "page_is_visible_for_channel_in_tx(txn, tenant_id, page_id, channel_slug)",
+      "return Ok(None);",
+      "build_locale_candidates(",
+    ],
+    "status and channel visibility gate the locale candidates",
+  ],
+  [
+    "async fn find_landing_binding_in_tx(",
+    "async fn load_bound_artifact_in_tx(",
+    ["page_body::Entity::find()", "page_published_landing_artifact::Entity::find_by_id(body.id)"],
+    "landing binding follows the page body",
+  ],
+  [
+    "async fn load_bound_artifact_in_tx(",
+    "async fn find_canonical_artifact_in_tx(",
+    [
+      "find_landing_binding_in_tx(txn, tenant_id, page_id, locale)",
+      "page_static_landing_artifact::Entity::find_by_id(binding.artifact_id)",
+      "PagesError::artifact_integrity(",
+      "published_record(record).map(Some)",
+    ],
+    "bound artifact read ends in the integrity check",
+  ],
+]) {
+  requireOrder(between(artifactService, start, end, label), markers, `${label} ordering`);
+}
+requireText(artifactService, "verify_record(&record)?;", "artifact verification");
+requireText(
+  artifactService,
+  "PageBuilderMaterializedStaticLandingArtifact",
+  "materialization envelope reconstruction",
+);
 
 for (const forbidden of [
   "redis::",

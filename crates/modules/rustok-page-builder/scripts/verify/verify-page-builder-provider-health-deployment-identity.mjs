@@ -100,9 +100,54 @@ for (const [key, expected] of Object.entries({
   }
 }
 
-, marker, "deployment identity overlay");
+for (const marker of [
+  'PAGE_BUILDER_PROVIDER_SOURCE_COMMIT_ENV: &str = "RUSTOK_SOURCE_COMMIT"',
+  '"rustok_page_builder_provider_build_info"',
+  '&["source_commit"]',
+  "fn canonical_source_commit",
+  "fn deployed_source_commit",
+  "PAGE_BUILDER_PROVIDER_BUILD_INFO",
+  ".with_label_values(&[source_commit.as_str()])",
+  ".set(1);",
+]) need(sources.telemetryMetrics, marker, "provider build-info metric");
+for (const forbidden of [
+  '&["deployment_id"]',
+  '&["target_id"]',
+  '&["tenant_id"]',
+  '&["page_id"]',
+  '&["correlation_id"]',
+]) forbid(sources.telemetryMetrics, forbidden, "provider build-info metric cardinality");
 
-, marker, "plan parity actualization");
+for (const marker of [
+  "ARG OCI_REVISION=unknown",
+  'org.opencontainers.image.revision="${OCI_REVISION}"',
+  "RUSTOK_SOURCE_COMMIT=${OCI_REVISION}",
+]) need(sources.releaseDockerfile, marker, "release source identity");
+need(
+  sources.releaseWorkflow,
+  '--build-arg "OCI_REVISION=$GITHUB_SHA"',
+  "release workflow exact source commit",
+);
+
+for (const marker of [
+  "--inventory",
+  "--deployment-image-digest",
+  "--source-commit",
+  "inventory_complete must be true",
+  "inventory targets must contain between 1 and 64 expected targets",
+  "duplicate target_id",
+  "duplicate metrics_url",
+  "redirect: \"manual\"",
+  "function requireBuildInfo",
+  "must expose exactly one Page Builder provider build-info series",
+  "does not match git HEAD",
+  "partial expected-target capture is forbidden",
+  "raw_metrics_url_persisted: false",
+  "raw_response_persisted: false",
+  "deployment_identity_verified_health_evaluation_pending",
+  "provider_health_snapshot_evaluated: false",
+  "pages_provider_health_observed: false",
+]) need(sources.capture, marker, "deployment identity capture harness");
 
 need(sources.pagesGraphql, "provider_health_observed: false", "Pages GraphQL remains unobserved");
 forbid(sources.pagesGraphql, "provider_health_observed: true", "Pages GraphQL health promotion");

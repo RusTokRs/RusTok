@@ -107,7 +107,7 @@
         ".with_idempotency_key",
         "PagesPageBuilderRenderer {",
         "PagesPageBuilderProjectStore {",
-        "let handlers = compose_fly_page_builder_handlers(",
+        "let handlers = compose_configured_fly_page_builder_handlers(",
         ".handle(&context, &auth, request)"
       ],
       "capability_dispatch_marker": ".handle(&context, &auth, request)",
@@ -129,7 +129,7 @@
         "async fn execute_publish(",
         "PageBuilderCapabilityRequest::Publish(input)"
       ],
-      "composition_call_marker": "let handlers = compose_fly_page_builder_handlers(",
+      "composition_call_marker": "let handlers = compose_configured_fly_page_builder_handlers(",
       "composition_call_count": 1,
       "tenant_ports": [
         "PagesPageBuilderProjectStore",

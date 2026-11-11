@@ -24,7 +24,7 @@
 - consumed by `rustok-pages` and other layout/content modules through canonical capability envelopes;
 - mounted by `apps/admin` through generated manifest composition;
 - delegates canonical project semantics to `fly`, presentation state to `fly-ui`, and browser/Leptos lifecycle to `fly-leptos`;
-- aligned with the central rollout plan in `docs/modules/page-builder-implementation-plan.md`.
+- remaining work is tracked in the one owned backlog, `docs/modules/page-builder-backlog.md`.
 
 ## Known Limitations
 - The browser editor now has a Site symbols panel: convert a selected component
