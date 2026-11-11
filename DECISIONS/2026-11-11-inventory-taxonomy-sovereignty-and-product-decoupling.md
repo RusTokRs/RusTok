@@ -2,7 +2,7 @@
 
 - Date: 2026-11-11
 - Decision status: Accepted
-- Implementation status: Implemented
+- Implementation status: In progress
 - Owners: rustok-product, rustok-inventory, rustok-taxonomy
 - Extends: [2026-09-18-canonical-native-module-reference-contract.md](./2026-09-18-canonical-native-module-reference-contract.md), [2026-11-05-pricing-entity-sovereignty-and-product-decoupling.md](./2026-11-05-pricing-entity-sovereignty-and-product-decoupling.md)
 - Supersedes: None
@@ -127,7 +127,7 @@ Mirror the established and verified `ProductPricingPort` pattern across both Inv
 
 The decision names no schema change and no data migration.
 
-Implementation state when these sections were added (2026-11-11): of step 1, the `ProductInventoryPort` contract is in the tree (`crates/modules/rustok-product/src/ports/inventory.rs`). `ProductTaxonomyPort`, both adapters, `with_inventory_port` / `with_taxonomy_port` and step 5 are not: `crates/modules/rustok-product/Cargo.toml` still lists `rustok-taxonomy` and `rustok-inventory`. The Invariants and the checks in Verification describe the target and do not hold yet.
+Implementation state at `8bcd9b749d` (2026-11-11), read from the tree: steps 1, 2, 3 and 5 are present. Both port contracts and both adapters exist, `rustok-product` has no reference to `rustok_inventory` or `rustok_taxonomy` in `src`, and `crates/modules/rustok-product/Cargo.toml` lists `rustok-taxonomy` under `[dev-dependencies]` only. Step 4 is not present: `in_process_product_inventory_port`, `in_process_product_taxonomy_port`, `with_inventory_port` and `with_taxonomy_port` have no caller outside the crates that define them, while the pricing port of the mirrored decision is attached in `apps/server/src/services/commerce_provider_runtime.rs`. Until a composition root attaches the two ports, every Product service runs on `NoopProductInventoryPort` and `NoopProductTaxonomyPort`, with the effects listed under Failure semantics. The invariant "Monolith composition in `apps/server` preserves transactional atomicity through port connections" does not hold yet, which is why the implementation status is `In progress`.
 
 ## Alternatives considered
 
