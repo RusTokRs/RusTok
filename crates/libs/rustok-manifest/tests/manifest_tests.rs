@@ -184,3 +184,48 @@ fn test_hash_determinism() {
 
     assert_eq!(hash1, hash2, "BTreeMap sorting ensures deterministic hash");
 }
+
+#[test]
+fn test_empty_app_name_rejected() {
+    let toml_str = r#"
+        schema = 2
+        app = "   "
+        [modules]
+        blog = { crate = "rustok-blog", source = "path" }
+    "#;
+    let manifest = parse_modules_manifest(toml_str).unwrap();
+    let err = validate_modules_manifest(&manifest).unwrap_err();
+    match err {
+        ManifestError::Validation(msg) => {
+            assert!(msg.contains("App name cannot be empty"));
+        }
+        other => panic!("expected Validation error, got: {other:?}"),
+    }
+}
+
+#[test]
+fn test_empty_module_name_or_version_rejected() {
+    let toml_str = r#"
+        [module]
+        slug = "blog"
+        name = "   "
+        version = "0.1.0"
+        description = "Blog"
+        ui_classification = "no_ui"
+    "#;
+    let manifest = parse_module_package_manifest(toml_str).unwrap();
+    let err = validate_module_package_manifest(&manifest).unwrap_err();
+    assert!(matches!(err, ManifestError::Validation(msg) if msg.contains("empty or missing name")));
+
+    let toml_str2 = r#"
+        [module]
+        slug = "blog"
+        name = "Blog"
+        version = "   "
+        description = "Blog"
+        ui_classification = "no_ui"
+    "#;
+    let manifest2 = parse_module_package_manifest(toml_str2).unwrap();
+    let err2 = validate_module_package_manifest(&manifest2).unwrap_err();
+    assert!(matches!(err2, ManifestError::Validation(msg) if msg.contains("empty or missing version")));
+}

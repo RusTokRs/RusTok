@@ -60,9 +60,9 @@
       "category": "libs",
       "files": 5,
       "loc": 2548,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-11T20:44:00Z",
+      "notes": "Verified host-neutral composition, deployment role materialization, layout safety and hardened ModuleWorkScheduler with non-panicking interval and whitespace slug rejection"
     },
     "crates/libs/rustok-telemetry": {
       "name": "rustok-telemetry",
@@ -70,9 +70,9 @@
       "category": "libs",
       "files": 15,
       "loc": 3383,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-11T22:04:00Z",
+      "notes": "Verified Prometheus registry, MetricsHandle, runtime collectors, bounded label cardinality across domain metrics, clamped OpenTelemetry sampling rate against NaN and bounds"
     },
     "crates/libs/rustok-web": {
       "name": "rustok-web",
@@ -2325,9 +2325,9 @@
       "category": "libs",
       "files": 7,
       "loc": 1045,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-11T21:30:00Z",
+      "notes": "Verified slug rules, Kahn topological dependency resolution, UI classification invariants, wired snapshot module with deterministic SHA-256 hash and validated non-empty app name and module name/version"
     },
     "crates/modules/rustok-messenger": {
       "name": "rustok-messenger",

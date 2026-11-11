@@ -57,6 +57,28 @@ impl CapabilityId {
             version: version.into(),
         }
     }
+
+    pub fn validate(&self) -> Result<(), PortError> {
+        if self.module.trim().is_empty() {
+            return Err(PortError::validation(
+                "FBA_INVALID_CAPABILITY",
+                "capability module cannot be empty or whitespace",
+            ));
+        }
+        if self.capability.trim().is_empty() {
+            return Err(PortError::validation(
+                "FBA_INVALID_CAPABILITY",
+                "capability name cannot be empty or whitespace",
+            ));
+        }
+        if self.version.trim().is_empty() {
+            return Err(PortError::validation(
+                "FBA_INVALID_CAPABILITY",
+                "capability version cannot be empty or whitespace",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -90,6 +112,17 @@ impl FbaProviderDescriptor {
             degraded_modes: Vec::new(),
         }
     }
+
+    pub fn validate(&self) -> Result<(), PortError> {
+        self.id.validate()?;
+        if self.transports.is_empty() {
+            return Err(PortError::validation(
+                "FBA_INVALID_PROVIDER",
+                "provider descriptor must declare at least one transport profile",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -98,6 +131,18 @@ pub struct FbaConsumerDependency {
     pub provider: CapabilityId,
     pub required: bool,
     pub fallback_modes: Vec<String>,
+}
+
+impl FbaConsumerDependency {
+    pub fn validate(&self) -> Result<(), PortError> {
+        if self.consumer.trim().is_empty() {
+            return Err(PortError::validation(
+                "FBA_INVALID_CONSUMER",
+                "consumer name cannot be empty or whitespace",
+            ));
+        }
+        self.provider.validate()
+    }
 }
 
 #[cfg(test)]
@@ -166,5 +211,41 @@ mod tests {
         let parsed: FbaConsumerDependency =
             serde_json::from_str(&json).expect("deserialize consumer dependency");
         assert_eq!(dep, parsed);
+    }
+
+    #[test]
+    fn validation_rejects_empty_identifiers_and_empty_transports() {
+        let empty_module = CapabilityId::new("  ", "pricing", "1.0.0");
+        assert!(empty_module.validate().is_err());
+
+        let valid_cap = CapabilityId::new("rustok-commerce", "pricing", "1.0.0");
+        assert!(valid_cap.validate().is_ok());
+
+        let valid_desc = FbaProviderDescriptor::embedded(valid_cap.clone());
+        assert!(valid_desc.validate().is_ok());
+
+        let invalid_desc = FbaProviderDescriptor {
+            id: valid_cap.clone(),
+            topology: BackendTopology::Embedded,
+            transports: Vec::new(),
+            degraded_modes: Vec::new(),
+        };
+        assert!(invalid_desc.validate().is_err());
+
+        let valid_dep = FbaConsumerDependency {
+            consumer: "rustok-storefront".to_string(),
+            provider: valid_cap.clone(),
+            required: true,
+            fallback_modes: vec![],
+        };
+        assert!(valid_dep.validate().is_ok());
+
+        let invalid_dep = FbaConsumerDependency {
+            consumer: "  ".to_string(),
+            provider: valid_cap,
+            required: true,
+            fallback_modes: vec![],
+        };
+        assert!(invalid_dep.validate().is_err());
     }
 }

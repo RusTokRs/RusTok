@@ -1,8 +1,8 @@
 # Inventory and Taxonomy storage sovereignty and Product port decoupling
 
 - Date: 2026-11-11
-- Decision status: Proposed
-- Implementation status: In progress
+- Decision status: Accepted
+- Implementation status: Complete
 - Owners: rustok-product, rustok-inventory, rustok-taxonomy
 - Extends: [2026-09-18-canonical-native-module-reference-contract.md](./2026-09-18-canonical-native-module-reference-contract.md), [2026-11-05-pricing-entity-sovereignty-and-product-decoupling.md](./2026-11-05-pricing-entity-sovereignty-and-product-decoupling.md)
 - Supersedes: None

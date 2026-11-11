@@ -49,7 +49,9 @@ fn map_taxonomy_error(err: TaxonomyError) -> CommerceError {
         TaxonomyError::Database(db_err) => CommerceError::Database(db_err),
         TaxonomyError::Validation(msg) => CommerceError::Validation(msg),
         TaxonomyError::Forbidden(msg) => CommerceError::Validation(format!("Forbidden: {msg}")),
-        TaxonomyError::TermNotFound(id) => CommerceError::CategoryNotFound(id),
+        TaxonomyError::TermNotFound(id) => {
+            CommerceError::Validation(format!("Taxonomy term not found: {id}"))
+        }
         TaxonomyError::DuplicateCanonicalKey(msg)
         | TaxonomyError::DuplicateSlug(msg)
         | TaxonomyError::DuplicateAlias(msg)

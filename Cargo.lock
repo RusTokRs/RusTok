@@ -17244,6 +17244,7 @@ dependencies = [
  "rustok-events",
  "rustok-outbox",
  "rustok-seo-targets",
+ "rustok-taxonomy",
  "rustok-test-utils",
  "rustok-translation-targets",
  "sea-orm",

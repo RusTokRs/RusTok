@@ -1,4 +1,15 @@
+/*
+ * Copyright (c) 2026 RusTokRs.
+ *
+ * This file is part of RusTok
+ * Licensed under the Business Source License 1.1 with RusTok Additional Use Grant.
+ * See the LICENSE file in the project root for full license terms.
+ *
+ * You may not remove or alter this copyright notice or license header.
+ */
+
 use super::*;
+use crate::ports::taxonomy::BlogTaxonomyPort;
 
 pub(super) async fn bump_posts_for_tag_relation_removal_in_tx(
     txn: &DatabaseTransaction,
@@ -35,11 +46,6 @@ pub(super) async fn bump_posts_for_tag_relation_removal_in_tx(
         .count(txn)
         .await?;
 
-    // Posts with an exhausted/invalid revision are not bumped: they cannot be
-    // CAS-edited either, so no concurrency protection is lost, and refusing
-    // here would make the tag permanently undeletable because of one such
-    // post. The tag delete publishes the reindex event that repairs their
-    // search projection. `relation_count` is still observed for diagnostics.
     if relation_count != valid_relation_count {
         tracing::warn!(
             tenant_id = %tenant_id,
@@ -93,7 +99,7 @@ pub(super) async fn publish_blog_reindex_in_tx(
 }
 
 pub(crate) async fn sync_post_tags_in_tx(
-    db: &DatabaseConnection,
+    port: &dyn BlogTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     post_id: Uuid,
@@ -108,27 +114,25 @@ pub(crate) async fn sync_post_tags_in_tx(
     }
 
     if normalized_names.is_empty() {
-        // Clearing the tag set still rewrites relations and the projection.
-        return remove_post_tag_links_in_tx(txn, tenant_id, post_id).await;
+        return remove_post_tag_links_with_port_in_tx(Some(port), txn, tenant_id, post_id).await;
     }
 
-    let term_ids = TaxonomyService::new(db.clone())
-        .ensure_module_terms_for_owner_in_tx(
+    let term_ids = port
+        .ensure_module_tags_in_tx(
             txn,
             tenant_id,
-            TaxonomyTermKind::Tag,
-            BLOG_SCOPE_VALUE,
             &normalized_locale,
             &normalized_names,
             allow_create,
         )
         .await?;
 
-    validate_post_tag_terms_in_tx(txn, tenant_id, &term_ids, &normalized_locale).await?;
-    replace_post_tag_links_in_tx(txn, tenant_id, post_id, &term_ids).await
+    validate_post_tag_terms_in_tx(port, txn, tenant_id, &term_ids, &normalized_locale).await?;
+    replace_post_tag_links_with_port_in_tx(Some(port), txn, tenant_id, post_id, &term_ids).await
 }
 
 async fn validate_post_tag_terms_in_tx(
+    port: &dyn BlogTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     tag_ids: &[Uuid],
@@ -138,15 +142,15 @@ async fn validate_post_tag_terms_in_tx(
         return Ok(());
     }
 
-    let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
-        txn,
-        tenant_id,
-        TaxonomyTermKind::Tag,
-        tag_ids,
-        locale,
-        Some(PLATFORM_FALLBACK_LOCALE),
-    )
-    .await?;
+    let terms = port
+        .load_tags_by_ids(
+            txn.into(),
+            tenant_id,
+            tag_ids,
+            locale,
+            Some(PLATFORM_FALLBACK_LOCALE),
+        )
+        .await?;
 
     if terms.len() != tag_ids.iter().copied().collect::<HashSet<_>>().len() {
         return Err(BlogError::invariant(
@@ -154,8 +158,8 @@ async fn validate_post_tag_terms_in_tx(
         ));
     }
 
-    for term in terms {
-        if term.scope_type == TaxonomyScopeType::Module
+    for term in terms.values() {
+        if term.scope_type == "module"
             && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE)
         {
             validate_tag_name(&term.name)?;
@@ -167,20 +171,8 @@ async fn validate_post_tag_terms_in_tx(
 
 /// Recomputes the `blog_tag_usage` projection of `tag_ids` from the relation
 /// table inside the caller's transaction.
-///
-/// The projection is derived state, so it is **recomputed**, never adjusted by
-/// `+1`/`-1`: the count is read from `blog_post_tags` after the relation write
-/// of the same transaction. That makes the write path self-healing — a
-/// projection row lost to a crashed transaction, a manual data fix or a writer
-/// outside this service (content orchestration) is repaired by the next
-/// mutation instead of turning into an underflow error that blocks every
-/// subsequent post save.
-///
-/// Rows are kept at `use_count = 0` for Blog-owned module terms because
-/// `list_tags` pages over this table (a tag with no posts must remain
-/// listable); projection rows of global terms are removed at zero, exactly as
-/// the previous decrement path did.
 pub(super) async fn refresh_tag_usage_in_tx(
+    port: Option<&dyn BlogTaxonomyPort>,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     tag_ids: &[Uuid],
@@ -191,50 +183,64 @@ pub(super) async fn refresh_tag_usage_in_tx(
     let mut unique_ids = tag_ids.to_vec();
     unique_ids.sort_unstable();
     unique_ids.dedup();
-    let terms = TaxonomyOwnerReader::load_terms_by_ids_in_tx(
-        txn,
-        tenant_id,
-        TaxonomyTermKind::Tag,
-        &unique_ids,
-        PLATFORM_FALLBACK_LOCALE,
-        None,
-    )
-    .await?;
-    if terms.len() != unique_ids.len() {
+
+    let terms = if let Some(port) = port {
+        port.load_tags_by_ids(
+            txn.into(),
+            tenant_id,
+            &unique_ids,
+            PLATFORM_FALLBACK_LOCALE,
+            None,
+        )
+        .await?
+    } else {
+        HashMap::new()
+    };
+
+    if !terms.is_empty() && terms.len() != unique_ids.len() {
         return Err(BlogError::invariant(
             "Blog tag usage refresh references a missing or wrong-kind Taxonomy term",
         ));
     }
-    for term in terms {
-        if term.scope_type == TaxonomyScopeType::Module
-            && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
-        {
-            return Err(BlogError::invariant(format!(
-                "Blog post tag {} references a Taxonomy term outside the Blog/module scope",
-                term.id
-            )));
+
+    for tag_id in unique_ids {
+        let term = terms.get(&tag_id);
+        if let Some(term) = term {
+            if term.scope_type == "module"
+                && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
+            {
+                return Err(BlogError::invariant(format!(
+                    "Blog post tag {} references a Taxonomy term outside the Blog/module scope",
+                    term.id
+                )));
+            }
         }
 
         let use_count = blog_post_tag::Entity::find()
             .filter(blog_post_tag::Column::TenantId.eq(tenant_id))
-            .filter(blog_post_tag::Column::TagId.eq(term.id))
+            .filter(blog_post_tag::Column::TagId.eq(tag_id))
             .count(txn)
             .await?;
         let use_count = i32::try_from(use_count).unwrap_or(i32::MAX);
 
-        if use_count == 0 && term.scope_type == TaxonomyScopeType::Global {
+        let is_global = term.map(|t| t.scope_type == "global").unwrap_or(false);
+        if use_count == 0 && is_global {
             blog_tag_usage::Entity::delete_many()
                 .filter(blog_tag_usage::Column::TenantId.eq(tenant_id))
-                .filter(blog_tag_usage::Column::TagId.eq(term.id))
+                .filter(blog_tag_usage::Column::TagId.eq(tag_id))
                 .exec(txn)
                 .await?;
             continue;
         }
 
+        let canonical_key = term
+            .map(|t| t.canonical_key.clone())
+            .unwrap_or_else(|| tag_id.to_string());
+
         blog_tag_usage::Entity::insert(blog_tag_usage::ActiveModel {
             tenant_id: Set(tenant_id),
-            tag_id: Set(term.id),
-            canonical_key: Set(term.canonical_key.clone()),
+            tag_id: Set(tag_id),
+            canonical_key: Set(canonical_key),
             use_count: Set(use_count),
         })
         .on_conflict(
@@ -255,14 +261,9 @@ pub(super) async fn refresh_tag_usage_in_tx(
     Ok(())
 }
 
-/// Replaces the whole tag set of a post inside the caller's transaction.
-///
-/// This is the single write entry point for post-to-tag relations. Blog
-/// itself and the content-orchestration bridge both use it, so the relation
-/// rows and the `blog_tag_usage` projection can never be written separately.
-/// `tag_ids` must already be resolved Taxonomy term ids of the same tenant;
-/// duplicates are collapsed.
-pub async fn replace_post_tag_links_in_tx(
+/// Replaces the whole tag set of a post inside the caller's transaction with optional taxonomy port.
+pub async fn replace_post_tag_links_with_port_in_tx(
+    port: Option<&dyn BlogTaxonomyPort>,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     post_id: Uuid,
@@ -308,12 +309,22 @@ pub async fn replace_post_tag_links_in_tx(
 
     let mut affected = previous_tag_ids;
     affected.extend(unique_tag_ids);
-    refresh_tag_usage_in_tx(txn, tenant_id, &affected).await
+    refresh_tag_usage_in_tx(port, txn, tenant_id, &affected).await
+}
+
+pub async fn replace_post_tag_links_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    post_id: Uuid,
+    tag_ids: &[Uuid],
+) -> BlogResult<()> {
+    replace_post_tag_links_with_port_in_tx(None, txn, tenant_id, post_id, tag_ids).await
 }
 
 /// Removes every tag link of a post inside the caller's transaction and
 /// refreshes the usage projection of the tags it pointed at.
-pub async fn remove_post_tag_links_in_tx(
+pub async fn remove_post_tag_links_with_port_in_tx(
+    port: Option<&dyn BlogTaxonomyPort>,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     post_id: Uuid,
@@ -341,7 +352,15 @@ pub async fn remove_post_tag_links_in_tx(
         .exec(txn)
         .await?;
 
-    refresh_tag_usage_in_tx(txn, tenant_id, &previous_tag_ids).await
+    refresh_tag_usage_in_tx(port, txn, tenant_id, &previous_tag_ids).await
+}
+
+pub async fn remove_post_tag_links_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    post_id: Uuid,
+) -> BlogResult<()> {
+    remove_post_tag_links_with_port_in_tx(None, txn, tenant_id, post_id).await
 }
 
 pub(crate) async fn initialize_tag_usage_in_tx(
@@ -350,9 +369,6 @@ pub(crate) async fn initialize_tag_usage_in_tx(
     tag_id: Uuid,
     canonical_key: &str,
 ) -> BlogResult<()> {
-    // Idempotent by design: a retried create (or a projection row that already
-    // exists because the tag was re-created) must not fail on the projection's
-    // primary key. A zero-row upsert keeps the existing count untouched.
     blog_tag_usage::Entity::insert(blog_tag_usage::ActiveModel {
         tenant_id: Set(tenant_id),
         tag_id: Set(tag_id),
@@ -374,6 +390,7 @@ pub(crate) async fn initialize_tag_usage_in_tx(
 }
 
 pub(crate) async fn load_post_tags_map(
+    port: &dyn BlogTaxonomyPort,
     db: &DatabaseConnection,
     tenant_id: Uuid,
     post_ids: &[Uuid],
@@ -402,23 +419,18 @@ pub(crate) async fn load_post_tags_map(
     }
 
     let term_ids = relations.iter().map(|item| item.tag_id).collect::<Vec<_>>();
-    let names = TaxonomyOwnerReader::new(db.clone())
-        .load_term_names_strict_for_module(
+    let names = port
+        .load_tags_by_ids(
+            db.into(),
             tenant_id,
-            TaxonomyTermKind::Tag,
-            BLOG_SCOPE_VALUE,
             &term_ids,
+            locale,
+            fallback_locale,
         )
         .await?;
-    let mut locale_chain = vec![locale.to_string()];
-    if let Some(fallback_locale) = fallback_locale
-        && fallback_locale != locale
-    {
-        locale_chain.push(fallback_locale.to_string());
-    }
 
     for relation in relations {
-        let Some(term_names) = names.get(&relation.tag_id) else {
+        let Some(term) = names.get(&relation.tag_id) else {
             return Err(BlogError::invariant(format!(
                 "Blog post {} references missing Taxonomy tag {}",
                 relation.post_id, relation.tag_id
@@ -427,28 +439,26 @@ pub(crate) async fn load_post_tags_map(
         tags_by_post
             .entry(relation.post_id)
             .or_default()
-            .push(term_names.resolve_name_for_locale_chain(&locale_chain));
+            .push(term.name.clone());
     }
 
     Ok(tags_by_post)
 }
 
 pub(crate) async fn resolve_tag_id_for_posts(
+    port: &dyn BlogTaxonomyPort,
     db: &DatabaseConnection,
     tenant_id: Uuid,
     tag: &str,
     locale: &str,
     fallback_locale: Option<&str>,
 ) -> BlogResult<Option<Uuid>> {
-    TaxonomyService::new(db.clone())
-        .resolve_term_id_for_module(
-            tenant_id,
-            TaxonomyTermKind::Tag,
-            BLOG_SCOPE_VALUE,
-            locale,
-            fallback_locale,
-            tag,
-        )
-        .await
-        .map_err(BlogError::from)
+    port.resolve_tag_id_for_module(
+        db.into(),
+        tenant_id,
+        tag,
+        locale,
+        fallback_locale,
+    )
+    .await
 }

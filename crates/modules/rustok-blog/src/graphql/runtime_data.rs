@@ -5,9 +5,9 @@ use rustok_comments::CommentsThreadPort;
 use rustok_profiles::ProfileSummaryReader;
 use sea_orm::DatabaseConnection;
 
-use rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort;
-
-use crate::{CategoryService, CommentService, PublicCommentsSnapshotStore};
+use crate::ports::taxonomy::{BlogCategoryDeleteCleanupPort, BlogTaxonomyPort};
+use crate::services::CategoryCommandService;
+use crate::{CategoryService, CommentService, PostService, PublicCommentsSnapshotStore, TagService};
 
 /// Manifest-attached Blog GraphQL runtime capabilities.
 ///
@@ -22,7 +22,8 @@ pub struct BlogGraphqlRuntimeData {
     settings_reader: Option<SharedStaticModuleSettingsReader>,
     public_comments_snapshot_store: Option<Arc<dyn PublicCommentsSnapshotStore>>,
     profile_summary_reader: Option<Arc<dyn ProfileSummaryReader>>,
-    category_delete_cleanup: Option<Arc<dyn TaxonomyCategoryDeleteCleanupPort>>,
+    category_delete_cleanup: Option<Arc<dyn BlogCategoryDeleteCleanupPort>>,
+    taxonomy_port: Option<Arc<dyn BlogTaxonomyPort>>,
 }
 
 pub fn attach_schema_data(inputs: &GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String> {
@@ -31,7 +32,8 @@ pub fn attach_schema_data(inputs: &GraphqlRuntimeInputs) -> Result<BlogGraphqlRu
         settings_reader: inputs.shared_get::<SharedStaticModuleSettingsReader>(),
         public_comments_snapshot_store: inputs.shared_get::<Arc<dyn PublicCommentsSnapshotStore>>(),
         profile_summary_reader: inputs.shared_get::<Arc<dyn ProfileSummaryReader>>(),
-        category_delete_cleanup: inputs.shared_get::<Arc<dyn TaxonomyCategoryDeleteCleanupPort>>(),
+        category_delete_cleanup: inputs.shared_get::<Arc<dyn BlogCategoryDeleteCleanupPort>>(),
+        taxonomy_port: inputs.shared_get::<Arc<dyn BlogTaxonomyPort>>(),
     })
 }
 
@@ -52,6 +54,41 @@ impl BlogGraphqlRuntimeData {
         let mut service = CategoryService::new(db, event_bus);
         if let Some(cleanup) = self.category_delete_cleanup.clone() {
             service = service.with_category_delete_cleanup(cleanup);
+        }
+        if let Some(taxonomy) = self.taxonomy_port.clone() {
+            service = service.with_taxonomy_port(taxonomy);
+        }
+        service
+    }
+
+    pub(crate) fn post_service(
+        &self,
+        db: DatabaseConnection,
+        event_bus: rustok_outbox::TransactionalEventBus,
+    ) -> PostService {
+        let mut service = PostService::new(db, event_bus);
+        if let Some(taxonomy) = self.taxonomy_port.clone() {
+            service = service.with_taxonomy_port(taxonomy);
+        }
+        service
+    }
+
+    pub(crate) fn tag_service(&self, db: DatabaseConnection) -> TagService {
+        let mut service = TagService::new(db);
+        if let Some(taxonomy) = self.taxonomy_port.clone() {
+            service = service.with_taxonomy_port(taxonomy);
+        }
+        service
+    }
+
+    pub(crate) fn category_command_service(
+        &self,
+        db: DatabaseConnection,
+        event_bus: rustok_outbox::TransactionalEventBus,
+    ) -> CategoryCommandService {
+        let mut service = CategoryCommandService::new(db, event_bus);
+        if let Some(taxonomy) = self.taxonomy_port.clone() {
+            service = service.with_taxonomy_port(taxonomy);
         }
         service
     }

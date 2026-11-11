@@ -45,6 +45,12 @@ pub fn validate_modules_manifest(manifest: &ModulesManifest) -> Result<()> {
         return Err(ManifestError::UnsupportedSchema(manifest.schema));
     }
 
+    if manifest.app.trim().is_empty() {
+        return Err(ManifestError::Validation(
+            "App name cannot be empty or whitespace".to_string(),
+        ));
+    }
+
     // 1. Validate slugs
     for slug in manifest.modules.keys() {
         if !is_valid_module_slug(slug) {
@@ -144,6 +150,18 @@ pub fn validate_module_package_manifest(manifest: &ModulePackageManifest) -> Res
     let slug = &manifest.module.slug;
     if !is_valid_module_slug(slug) {
         return Err(ManifestError::InvalidSlug(slug.clone()));
+    }
+
+    if manifest.module.name.trim().is_empty() {
+        return Err(ManifestError::Validation(format!(
+            "Module '{slug}' has an empty or missing name"
+        )));
+    }
+
+    if manifest.module.version.trim().is_empty() {
+        return Err(ManifestError::Validation(format!(
+            "Module '{slug}' has an empty or missing version"
+        )));
     }
 
     let ownership = &manifest.module.ownership;

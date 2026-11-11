@@ -20,6 +20,7 @@ use crate::entities::{
     blog_post, blog_post_channel_visibility, blog_post_tag, blog_post_translation,
 };
 use crate::error::{BlogError, BlogResult};
+use crate::ports::taxonomy::{BlogTaxonomyPort, NoopBlogTaxonomyPort};
 use crate::services::category_name_projection::{
     BlogCategoryProjectionInfo, load_category_projections_map,
 };
@@ -29,7 +30,6 @@ use crate::services::post::{
     status_to_storage,
 };
 use crate::services::tag::load_post_tags_map;
-use rustok_taxonomy::{TaxonomyOwnerReader, TaxonomyScopeType, TaxonomyTermKind};
 
 pub const BLOG_SOURCE_MODULE: &str = "blog";
 pub const BLOG_POST_ENTITY_TYPE: &str = "blog_post";
@@ -131,7 +131,11 @@ impl SearchProjectionSourceFactory for BlogSearchProjectionSourceFactory {
     }
 
     fn build(&self, db: DatabaseConnection) -> Arc<dyn SearchProjectionSource> {
-        Arc::new(BlogSearchProjectionSource::new(db, None))
+        Arc::new(BlogSearchProjectionSource::new(
+            db,
+            None,
+            Arc::new(NoopBlogTaxonomyPort),
+        ))
     }
 
     fn build_with_extensions(
@@ -140,7 +144,15 @@ impl SearchProjectionSourceFactory for BlogSearchProjectionSourceFactory {
         extensions: &ModuleRuntimeExtensions,
     ) -> Arc<dyn SearchProjectionSource> {
         let profiles_reader = extensions.get::<Arc<dyn ProfileSummaryReader>>().cloned();
-        Arc::new(BlogSearchProjectionSource::new(db, profiles_reader))
+        let taxonomy_port = extensions
+            .get::<Arc<dyn BlogTaxonomyPort>>()
+            .cloned()
+            .unwrap_or_else(|| Arc::new(NoopBlogTaxonomyPort));
+        Arc::new(BlogSearchProjectionSource::new(
+            db,
+            profiles_reader,
+            taxonomy_port,
+        ))
     }
 }
 
@@ -148,16 +160,19 @@ impl SearchProjectionSourceFactory for BlogSearchProjectionSourceFactory {
 pub struct BlogSearchProjectionSource {
     db: DatabaseConnection,
     profiles_reader: Option<Arc<dyn ProfileSummaryReader>>,
+    taxonomy_port: Arc<dyn BlogTaxonomyPort>,
 }
 
 impl BlogSearchProjectionSource {
     pub fn new(
         db: DatabaseConnection,
         profiles_reader: Option<Arc<dyn ProfileSummaryReader>>,
+        taxonomy_port: Arc<dyn BlogTaxonomyPort>,
     ) -> Self {
         Self {
             db,
             profiles_reader,
+            taxonomy_port,
         }
     }
 
@@ -254,6 +269,7 @@ impl BlogSearchProjectionSource {
         let mut tag_keys_by_locale: HashMap<String, HashMap<Uuid, Vec<String>>> = HashMap::new();
         for locale in &locales {
             let category_map = load_category_projections_map(
+                &*self.taxonomy_port,
                 &self.db,
                 tenant_id,
                 &category_ids,
@@ -264,17 +280,22 @@ impl BlogSearchProjectionSource {
             .map_err(|error| Error::External(error.to_string()))?;
             category_maps_by_locale.insert(locale.clone(), category_map);
 
-            let tag_map =
-                load_post_tags_map(&self.db, tenant_id, &post_ids, locale, fallback_locale)
-                    .await
-                    .map_err(|error| Error::External(error.to_string()))?;
+            let tag_map = load_post_tags_map(
+                &*self.taxonomy_port,
+                &self.db,
+                tenant_id,
+                &post_ids,
+                locale,
+                fallback_locale,
+            )
+            .await
+            .map_err(|error| Error::External(error.to_string()))?;
             tag_maps_by_locale.insert(locale.clone(), tag_map);
-            let canonical_terms = TaxonomyOwnerReader::new(self.db.clone())
-                .load_scoped_terms(
+            let canonical_terms = self
+                .taxonomy_port
+                .load_scoped_tags(
+                    (&self.db).into(),
                     tenant_id,
-                    TaxonomyTermKind::Tag,
-                    TaxonomyScopeType::Module,
-                    Some(BLOG_SOURCE_MODULE),
                     Some(&distinct_tag_ids),
                     locale,
                     fallback_locale,

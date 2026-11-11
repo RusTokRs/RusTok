@@ -61,7 +61,7 @@ pub async fn list_posts(
     query.locale = query.locale.or(Some(request_context.locale.clone()));
     let requested_limit = query.per_page.map(u64::from);
     let effective_limit = query.per_page() as u64;
-    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.post_service();
     let list_started_at = Instant::now();
     let result = service
         .list_posts_with_locale_fallback_on_channel(
@@ -139,7 +139,7 @@ pub async fn get_post(
         .get("locale")
         .map(String::as_str)
         .unwrap_or(request_context.locale.as_str());
-    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.post_service();
     let post = service
         .get_post_with_locale_fallback_on_channel(
             tenant.id,
@@ -187,7 +187,7 @@ pub async fn create_post(
         "Permission denied: blog_posts:create required",
     )?;
 
-    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.post_service();
     let post_id = service
         .create_post(tenant.id, security_context(&auth), input)
         .await
@@ -237,7 +237,7 @@ pub async fn update_post(
         "Permission denied: blog_posts:update required",
     )?;
 
-    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.post_service();
     service
         .update_post(tenant.id, id, security_context(&auth), input)
         .await
@@ -285,7 +285,7 @@ pub async fn delete_post(
         "Permission denied: blog_posts:delete required",
     )?;
 
-    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.post_service();
     service
         .delete_post(tenant.id, id, security_context(&auth))
         .await
@@ -333,7 +333,7 @@ pub async fn publish_post(
         "Permission denied: blog_posts:publish required",
     )?;
 
-    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.post_service();
     service
         .publish_post(tenant.id, id, security_context(&auth))
         .await
@@ -381,7 +381,7 @@ pub async fn unpublish_post(
         "Permission denied: blog_posts:publish required",
     )?;
 
-    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.post_service();
     service
         .unpublish_post(tenant.id, id, security_context(&auth))
         .await
@@ -430,7 +430,7 @@ pub async fn archive_post(
         "Permission denied: blog_posts:publish required",
     )?;
 
-    PostService::new(runtime.db_clone(), runtime.event_bus())
+    runtime.post_service()
         .archive_post(tenant.id, id, security_context(&auth), input.reason)
         .await
         .map_err(crate::error::public::to_http_error)
@@ -475,7 +475,7 @@ pub async fn restore_post(
         "Permission denied: blog_posts:publish required",
     )?;
 
-    PostService::new(runtime.db_clone(), runtime.event_bus())
+    runtime.post_service()
         .restore_post(tenant.id, id, security_context(&auth))
         .await
         .map_err(crate::error::public::to_http_error)
@@ -582,7 +582,7 @@ pub async fn pin_post(
         "Permission denied: blog_posts:update required",
     )?;
 
-    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.post_service();
     service
         .pin_post(tenant.id, id, security_context(&auth))
         .await
@@ -630,7 +630,7 @@ pub async fn unpin_post(
         "Permission denied: blog_posts:update required",
     )?;
 
-    let service = PostService::new(runtime.db_clone(), runtime.event_bus());
+    let service = runtime.post_service();
     service
         .unpin_post(tenant.id, id, security_context(&auth))
         .await
@@ -664,7 +664,7 @@ async fn bulk_transition(
         &[Permission::BLOG_POSTS_PUBLISH],
         "Permission denied: blog_posts:publish required",
     )?;
-    let result = PostService::new(runtime.db_clone(), runtime.event_bus())
+    let result = runtime.post_service()
         .bulk_transition_posts(tenant.id, &post_ids, target, security_context(auth))
         .await
         .map_err(crate::error::public::to_http_error)?;
@@ -722,7 +722,7 @@ pub async fn bulk_unpublish_posts(
         &[Permission::BLOG_POSTS_PUBLISH],
         "Permission denied: blog_posts:publish required",
     )?;
-    let result = PostService::new(runtime.db_clone(), runtime.event_bus())
+    let result = runtime.post_service()
         .bulk_unpublish_posts(tenant.id, &input.post_ids, security_context(&auth))
         .await
         .map_err(crate::error::public::to_http_error)?;
@@ -753,7 +753,7 @@ pub async fn bulk_restore_posts(
         &[Permission::BLOG_POSTS_PUBLISH],
         "Permission denied: blog_posts:publish required",
     )?;
-    let result = PostService::new(runtime.db_clone(), runtime.event_bus())
+    let result = runtime.post_service()
         .bulk_restore_posts(tenant.id, &input.post_ids, security_context(&auth))
         .await
         .map_err(crate::error::public::to_http_error)?;
@@ -811,7 +811,7 @@ pub async fn bulk_delete_posts(
         &[Permission::BLOG_POSTS_DELETE],
         "Permission denied: blog_posts:delete required",
     )?;
-    let result = PostService::new(runtime.db_clone(), runtime.event_bus())
+    let result = runtime.post_service()
         .bulk_delete_posts(tenant.id, &input.post_ids, security_context(&auth))
         .await
         .map_err(crate::error::public::to_http_error)?;
