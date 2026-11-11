@@ -78,15 +78,36 @@ const __flyBindSsrAdapter = (adapter) => {
   if (routeDraft && adapter.draftSession?.token !== routeDraft) {
     adapter.draftSession = { token: routeDraft, generation: null };
   }
-  const updateSelectedInputs = () => {
+  // The server renders every `[data-fly-selected-component-input]` with the component its form
+  // was rendered for, and the picker with the option that names it. That is the target until
+  // something is selected in the browser, and the target an emptied selection returns to: the
+  // adapter starts with no selection, so writing its selection unconditionally would erase the
+  // rendered component id and leave the forms with no component to act on. The rendered value
+  // is remembered here because assigning `value` to a hidden input rewrites its attribute.
+  const __flyRenderedTargets = new WeakMap();
+  const __flyRenderedTarget = (control) => {
+    if (!__flyRenderedTargets.has(control)) __flyRenderedTargets.set(control, control.value);
+    return __flyRenderedTargets.get(control);
+  };
+  const syncSelectionControls = () => {
+    const selected = adapter.selectedId || "";
     for (const input of adapter.root.querySelectorAll('[data-fly-selected-component-input]')) {
-      input.value = adapter.selectedId || "";
+      const rendered = __flyRenderedTarget(input);
+      input.value = selected || rendered;
+    }
+    for (const picker of adapter.root.querySelectorAll('[data-fly-component-picker]')) {
+      if (!(picker instanceof HTMLSelectElement)) continue;
+      const target = selected || __flyRenderedTarget(picker);
+      // A component the picker does not list keeps the option that is shown.
+      if (Array.from(picker.options).some((option) => option.value === target)) {
+        picker.value = target;
+      }
     }
   };
-  updateSelectedInputs();
+  syncSelectionControls();
   adapter.root.addEventListener(
     "fly:select",
-    () => queueMicrotask(updateSelectedInputs),
+    () => queueMicrotask(syncSelectionControls),
     __flyLifecycleOptions,
   );
   adapter.root.addEventListener("change", (event) => {
