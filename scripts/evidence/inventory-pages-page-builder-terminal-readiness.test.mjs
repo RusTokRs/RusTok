@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   collectPendingEvidence,
   evaluateInventory,
+  registryHasRow,
 } from "./inventory-pages-page-builder-terminal-readiness.mjs";
 
 function caseRun(name, callback) {
@@ -132,4 +133,35 @@ caseRun("does not infer readiness from a reduced but nonzero blocker set", () =>
   });
   assert.equal(result.complete, false);
   assert.equal(result.owner_platform_review_ready, false);
+});
+
+caseRun("matches a required registry row by cells, not by column padding", () => {
+  const required =
+    "| `page_builder` | admin + storefront | `in_progress` | `boundary_ready` | `core_transport_ui` |";
+  const padded = [
+    "| Module slug      | UI surfaces        | FFA status    | FBA status       | Structural shape    | Source plan |",
+    "| ---------------- | ------------------ | ------------- | ---------------- | ------------------- | ----------- |",
+    "| `page_builder`   | admin + storefront | `in_progress` | `boundary_ready` | `core_transport_ui` | [Live plan] |",
+  ].join("\n");
+  assert.equal(registryHasRow(padded, required), true);
+});
+
+caseRun("rejects a registry row whose status or shape differs", () => {
+  const required =
+    "| `page_builder` | admin + storefront | `in_progress` | `boundary_ready` | `core_transport_ui` |";
+  const stale =
+    "| `page_builder` | no module-owned UI | `not_started` | `boundary_ready` | `no_ui_boundary` | [Live plan] |";
+  assert.equal(registryHasRow(stale, required), false);
+  // A row of another module with the same statuses must not satisfy the precondition.
+  const otherModule =
+    "| `pages` | admin + storefront | `in_progress` | `boundary_ready` | `core_transport_ui` | [Live plan] |";
+  assert.equal(registryHasRow(otherModule, required), false);
+});
+
+caseRun("rejects a malformed required row instead of matching anything", () => {
+  const registry =
+    "| `page_builder` | admin + storefront | `in_progress` | `boundary_ready` | `core_transport_ui` | [Live plan] |";
+  assert.equal(registryHasRow(registry, undefined), false);
+  assert.equal(registryHasRow(registry, ""), false);
+  assert.equal(registryHasRow(registry, "| `page_builder` |"), false);
 });

@@ -60,6 +60,22 @@ function requireRegistryRow(source, expectedRow, label) {
   if (!found) failures.push(`${label}: missing registry row '${expectedRow}'`);
 }
 
+// The registry rule makes the local plan the source of truth for a module's status, so a
+// required registry row is only a real precondition while the plan states the same three
+// values. Checking both closes the gap that let the registry, the plan and this contract
+// describe one module three different ways.
+function requireLocalPlanStatus(plan, requiredRow, label) {
+  const [, , ffaStatus, fbaStatus, structuralShape] = tableCells(requiredRow);
+  for (const line of [
+    `- FFA status: ${ffaStatus}`,
+    `- FBA status: ${fbaStatus}`,
+    `- Structural shape: ${structuralShape}`,
+  ]) {
+    const found = plan.split("\n").some((planLine) => planLine.trim() === line);
+    if (!found) failures.push(`${label}: local status block must contain '${line}'`);
+  }
+}
+
 function countPendingExecutedEvidence(value, prefix = "$") {
   const paths = [];
   if (Array.isArray(value)) {
@@ -91,6 +107,7 @@ const accessibilityContractPath =
 const registryPath = "docs/modules/registry.md";
 const fbaRegistryPath = "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json";
 const pagesPlanPath = "crates/modules/rustok-pages/docs/implementation-plan.md";
+const pageBuilderPlanPath = "crates/modules/rustok-page-builder/docs/implementation-plan.md";
 
 const contract = json(contractPath);
 const inventorySource = json(inventorySourcePath);
@@ -101,6 +118,11 @@ const runner = read(runnerPath);
 const tests = read(testsPath);
 const registry = read(registryPath);
 const pagesPlan = read(pagesPlanPath);
+const pageBuilderPlan = read(pageBuilderPlanPath);
+// Registry cells of the two required rows: the contract's target mapping must agree with them.
+const cellValue = (row, index) => (tableCells(row ?? "")[index] ?? "").replaceAll("`", "");
+const pagesRow = contract.registry_precondition?.pages_row_required;
+const pageBuilderRow = contract.registry_precondition?.page_builder_row_required;
 
 requireValue(
   contract.format === "pages_page_builder_terminal_readiness_admission_source_v1" &&
@@ -113,10 +135,14 @@ requireValue(
     contract.potential_terminal_targets?.pages_ffa?.readiness_axis === "ffa" &&
     contract.potential_terminal_targets?.pages_ffa?.required_current_registry_status ===
       "in_progress" &&
+    contract.potential_terminal_targets?.pages_ffa?.required_current_registry_status ===
+      cellValue(pagesRow, 2) &&
+    contract.potential_terminal_targets?.pages_ffa?.local_plan === pagesPlanPath &&
     contract.potential_terminal_targets?.pages_ffa?.potential_terminal_status ===
       "parity_verified" &&
     contract.potential_terminal_targets?.pages_ffa?.terminal_candidate_ready === false &&
-    contract.potential_terminal_targets?.pages_ffa?.structural_shape === "core_transport_ui",
+    contract.potential_terminal_targets?.pages_ffa?.structural_shape ===
+      cellValue(pagesRow, 4),
   `${contractPath}: Pages FFA potential target mapping drifted`,
 );
 requireValue(
@@ -124,10 +150,14 @@ requireValue(
     contract.potential_terminal_targets?.page_builder_fba?.readiness_axis === "fba" &&
     contract.potential_terminal_targets?.page_builder_fba?.required_current_registry_status ===
       "boundary_ready" &&
+    contract.potential_terminal_targets?.page_builder_fba?.required_current_registry_status ===
+      cellValue(pageBuilderRow, 3) &&
+    contract.potential_terminal_targets?.page_builder_fba?.local_plan === pageBuilderPlanPath &&
     contract.potential_terminal_targets?.page_builder_fba?.potential_terminal_status ===
       "transport_verified" &&
     contract.potential_terminal_targets?.page_builder_fba?.terminal_candidate_ready === false &&
-    contract.potential_terminal_targets?.page_builder_fba?.structural_shape === "no_ui_boundary",
+    contract.potential_terminal_targets?.page_builder_fba?.structural_shape ===
+      cellValue(pageBuilderRow, 4),
   `${contractPath}: Page Builder FBA potential target mapping drifted`,
 );
 for (const key of [
@@ -279,6 +309,8 @@ for (const label of [
 
 requireRegistryRow(registry, contract.registry_precondition.pages_row_required, registryPath);
 requireRegistryRow(registry, contract.registry_precondition.page_builder_row_required, registryPath);
+requireLocalPlanStatus(pagesPlan, pagesRow, pagesPlanPath);
+requireLocalPlanStatus(pageBuilderPlan, pageBuilderRow, pageBuilderPlanPath);
 requireText(registry, contract.registry_precondition.source_of_truth_rule_required, registryPath);
 requireText(
   registry,

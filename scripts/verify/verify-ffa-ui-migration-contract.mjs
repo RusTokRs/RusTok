@@ -672,7 +672,14 @@ function collectStructuralShapeErrors(registry) {
     errors.push("docs/modules/registry.md must describe Structural shape for the FFA/FBA board");
   }
 
-  if (!registry.includes("| Module slug | UI surfaces | FFA status | FBA status | Structural shape | Source plan |")) {
+  // The board is column-padded by the formatter, so the header is compared by cells.
+  const boardHeader = ["Module slug", "UI surfaces", "FFA status", "FBA status", "Structural shape", "Source plan"];
+  const hasBoardHeader = registry.split("\n").some((line) => {
+    if (!line.trim().startsWith("|")) return false;
+    const cells = line.split("|").slice(1, -1).map((cell) => cell.trim());
+    return cells.length === boardHeader.length && cells.every((cell, index) => cell === boardHeader[index]);
+  });
+  if (!hasBoardHeader) {
     errors.push("docs/modules/registry.md FFA/FBA board must contain the Structural shape column");
   }
 

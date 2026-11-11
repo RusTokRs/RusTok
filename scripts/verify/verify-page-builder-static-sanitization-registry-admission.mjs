@@ -148,9 +148,14 @@ requireValue(
   `${files.contract}: target boundary drifted`,
 );
 requireValue(registry.status === "boundary_ready", `${files.registry}: status must remain boundary_ready`);
+// The admission is a one-way transition of exactly this node. Before it the node holds the
+// contract's before-value; once a maintainer has admitted the receipt it holds the admitted
+// value, and the runner then refuses a second admission. Any third value is drift.
+const targetValue = pointerValue(registry, contract.target?.executed_evidence_json_pointer);
+const admissionConsumed = targetValue === contract.target?.admitted_after_value;
 requireValue(
-  pointerValue(registry, contract.target?.executed_evidence_json_pointer) === "pending",
-  `${files.registry}: target executed_evidence must remain pending before admission execution`,
+  targetValue === contract.target?.required_before_value || admissionConsumed,
+  `${files.registry}: target executed_evidence must be the contract before-value or the admitted value, found ${JSON.stringify(targetValue)}`,
 );
 
 requireValue(
@@ -296,5 +301,7 @@ if (failures.length > 0) {
 
 console.log("[verify-page-builder-static-sanitization-registry-admission] PASS");
 console.log(
-  "target=/provider/static_sanitization_contract/executed_evidence; current=pending; exact_main_execution=pending; admission_source=ready; registry_update=blocked",
+  admissionConsumed
+    ? `target=${contract.target.executed_evidence_json_pointer}; current=${targetValue}; admission=consumed; admission_source=ready; registry_update=done`
+    : `target=${contract.target.executed_evidence_json_pointer}; current=${targetValue}; exact_main_execution=pending; admission_source=ready; registry_update=blocked`,
 );

@@ -60,6 +60,22 @@ function requireRegistryRow(source, expectedRow, label) {
   if (!found) failures.push(`${label}: missing registry row '${expectedRow}'`);
 }
 
+// The registry rule makes the local plan the source of truth for a module's status, so a
+// required registry row is only a real precondition while the plan states the same three
+// values. Checking both closes the gap that let the registry, the plan and this contract
+// describe one module three different ways.
+function requireLocalPlanStatus(plan, requiredRow, label) {
+  const [, , ffaStatus, fbaStatus, structuralShape] = tableCells(requiredRow);
+  for (const line of [
+    `- FFA status: ${ffaStatus}`,
+    `- FBA status: ${fbaStatus}`,
+    `- Structural shape: ${structuralShape}`,
+  ]) {
+    const found = plan.split("\n").some((planLine) => planLine.trim() === line);
+    if (!found) failures.push(`${label}: local status block must contain '${line}'`);
+  }
+}
+
 function pointerToken(value) {
   return String(value).replaceAll("~", "~0").replaceAll("/", "~1");
 }
@@ -280,6 +296,16 @@ for (const row of [
 ]) {
   requireRegistryRow(centralRegistry, row, centralRegistryPath);
 }
+requireLocalPlanStatus(
+  pagesPlan,
+  source.readiness_precondition.pages_row_required,
+  pagesPlanPath,
+);
+requireLocalPlanStatus(
+  pageBuilderPlan,
+  source.readiness_precondition.page_builder_row_required,
+  pageBuilderPlanPath,
+);
 for (const marker of [
   source.readiness_precondition.source_of_truth_rule_required,
   "If status = `parity_verified` or `transport_verified`, the PR must contain verification evidence.",

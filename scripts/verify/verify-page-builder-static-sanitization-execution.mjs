@@ -104,9 +104,10 @@ requireValue(
   `${files.contract}: target boundary drifted`,
 );
 requireValue(registry.status === "boundary_ready", `${files.registry}: status must remain boundary_ready`);
+const targetValue = pointerValue(registry, contract.target?.executed_evidence_json_pointer);
 requireValue(
-  ["pending", "verified"].includes(pointerValue(registry, contract.target?.executed_evidence_json_pointer)),
-  `${files.registry}: static sanitization executed_evidence is no longer pending; actualize this source gate`,
+  ["pending", "verified"].includes(targetValue),
+  `${files.registry}: static sanitization executed_evidence must be pending or verified, found ${JSON.stringify(targetValue)}`,
 );
 
 const expectedCommands = [
@@ -253,5 +254,5 @@ if (failures.length > 0) {
 
 console.log("[verify-page-builder-static-sanitization-execution] PASS");
 console.log(
-  "target=/provider/static_sanitization_contract/executed_evidence; current=pending; execution_source=ready; registry_update=pending",
+  `target=${contract.target.executed_evidence_json_pointer}; current=${targetValue}; execution_source=ready; registry_update=${targetValue === "verified" ? "done" : "pending"}`,
 );

@@ -179,13 +179,39 @@ export function evaluateInventory({ prerequisiteValid, pendingEvidencePaths, pag
   };
 }
 
+// The registry is a formatted Markdown table: a required row is compared cell by cell, so
+// column padding can neither break nor satisfy the precondition.
+function tableCells(row) {
+  return row
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+export function registryHasRow(registry, requiredRow) {
+  if (typeof requiredRow !== "string") return false;
+  const expected = tableCells(requiredRow);
+  // slug, UI surfaces, FFA status, FBA status, structural shape
+  if (expected.length !== 5 || expected.some((cell) => cell.length === 0)) return false;
+  return registry
+    .split("\n")
+    .filter((line) => line.trimStart().startsWith("|"))
+    .map(tableCells)
+    .some((cells) => expected.every((cell, index) => cells[index] === cell));
+}
+
 function validateRegistry(contract) {
   const source = repoFile(contract.authorities.central_registry, "central module readiness registry");
   const text = source.bytes.toString("utf8");
   const precondition = objectValue(contract.readiness_precondition, "readiness_precondition");
+  for (const row of [precondition.pages_row_required, precondition.page_builder_row_required]) {
+    if (!registryHasRow(text, row)) {
+      fail(`central readiness precondition drifted: ${row}`);
+    }
+  }
   for (const marker of [
-    precondition.pages_row_required,
-    precondition.page_builder_row_required,
     precondition.source_of_truth_rule_required,
     "If status = `parity_verified` or `transport_verified`, the PR must contain verification evidence.",
   ]) {
