@@ -34,7 +34,7 @@
     "test:storefront-buyer": "node --experimental-strip-types --test packages/rustok-product/src/catalog/buyer.test.mjs packages/rustok-product/src/catalog/pricing.test.mjs packages/rustok-cart/src/core.test.mjs packages/rustok-pricing/src/core.test.mjs"
   },
   "dependencies": {
-    "@apollo/client": "^4.3.6",
+    "@apollo/client": "^4.3.7",
     "@radix-ui/react-slot": "^1.5.0",
     "@rustok/blog-frontend": "file:./packages/rustok-blog",
     "@rustok/cart-frontend": "file:./packages/rustok-cart",
@@ -52,7 +52,7 @@
     "@rustok/richtext": "file:../../packages/richtext",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
-    "graphql": "^17.0.2",
+    "graphql": "^17.1.0",
     "@rustok/ui-auth": "file:../../packages/rustok-ui-auth",
     "@rustok/ui-grid": "file:../../packages/rustok-ui-grid",
     "lucide-react": "^1.48.0",
@@ -66,8 +66,8 @@
     "@rustok/ui-controls": "file:../../packages/rustok-ui-controls"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.1",
-    "@tailwindcss/postcss": "^4.3.4",
+    "@playwright/test": "^1.65.0",
+    "@tailwindcss/postcss": "^4.3.5",
     "@types/node": "^26.1.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
