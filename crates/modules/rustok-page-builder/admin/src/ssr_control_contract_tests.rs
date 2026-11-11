@@ -218,3 +218,134 @@ fn layer_rows_render_the_ssr_select_control() {
     );
     assert!(!is_disabled(row), "a selectable layer row must be enabled: {row}");
 }
+
+// The classic SSR inspector. Its controls are bound by the host bootstrap
+// (`PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS`), not by `fly-browser.js`: a form posts its fields
+// as an intent, the picker retargets every form. The browser half is pinned by
+// `apps/next-admin/tests/e2e/fly-browser-host-bootstrap.spec.ts`.
+
+/// The rendered SSR inspector, from its section marker to the end of the document.
+fn ssr_inspector(html: &str) -> &str {
+    let start = html
+        .find("data-fly-ssr-inspector=\"true\"")
+        .expect("the composed admin must render the SSR inspector");
+    &html[start..]
+}
+
+/// The `<form>` that posts `intent`, from its opening tag to its closing tag.
+fn intent_form<'a>(html: &'a str, intent: &str) -> &'a str {
+    let marker = format!("data-fly-intent-form=\"{intent}\"");
+    let opening = opening_tag(html, &marker, "<form");
+    let start = opening.as_ptr() as usize - html.as_ptr() as usize;
+    let end = html[start..]
+        .find("</form>")
+        .map(|offset| start + offset)
+        .unwrap_or_else(|| panic!("the {intent:?} form is never closed"));
+    &html[start..end]
+}
+
+/// Value of the attribute `name` of an opening tag.
+fn attribute<'a>(opening_tag: &'a str, name: &str) -> Option<&'a str> {
+    let marker = format!(" {name}=\"");
+    let start = opening_tag.find(&marker)? + marker.len();
+    let end = start + opening_tag[start..].find('"')?;
+    Some(&opening_tag[start..end])
+}
+
+#[test]
+fn ssr_inspector_renders_the_forms_and_the_picker_the_host_bootstrap_binds() {
+    let html = render_admin(CapabilityState::full(), &[]);
+    let inspector = ssr_inspector(&html);
+
+    for intent in [
+        "patch_component_property",
+        "patch_page_metadata",
+        "create_page",
+        "rename_page",
+        "remove_page",
+    ] {
+        // Panics with the name of the form when the bootstrap would find nothing to bind.
+        intent_form(inspector, intent);
+    }
+    let picker = opening_tag(inspector, "data-fly-component-picker=\"true\"", "<select");
+    assert!(
+        attribute(picker, "name").is_none(),
+        "the picker retargets the forms and is not itself a field of one: {picker}"
+    );
+}
+
+#[test]
+fn selected_component_input_is_rendered_with_the_component_the_picker_shows() {
+    let html = render_admin(CapabilityState::full(), &[]);
+    let inspector = ssr_inspector(&html);
+
+    let form = intent_form(inspector, "patch_component_property");
+    let target = opening_tag(form, "data-fly-selected-component-input=\"true\"", "<input");
+    assert_eq!(
+        attribute(target, "name"),
+        Some("component_id"),
+        "the selection input is the `component_id` field of its form: {target}"
+    );
+    let rendered = attribute(target, "value").unwrap_or_default();
+    assert!(
+        !rendered.is_empty(),
+        "without a selection the form must still name a component: {target}"
+    );
+
+    // A select without a selected option shows its first one.
+    let picker_start = inspector
+        .find("data-fly-component-picker=\"true\"")
+        .expect("component picker");
+    let options = &inspector[picker_start..];
+    let options = &options[..options.find("</select>").expect("end of the picker")];
+    let shown = opening_tag(options, "value=\"", "<option");
+    assert_eq!(
+        attribute(shown, "value"),
+        Some(rendered),
+        "the form must target the component the picker shows: {shown}"
+    );
+    assert!(
+        options.contains("value=\"hero\""),
+        "the picker must list every component of the active page: {options}"
+    );
+}
+
+#[test]
+fn page_forms_render_the_fields_their_request_types_read() {
+    let html = render_admin(CapabilityState::full(), &[]);
+    let inspector = ssr_inspector(&html);
+
+    let create = intent_form(inspector, "create_page");
+    let page_id = opening_tag(create, "name=\"page_id\"", "<input");
+    assert!(
+        page_id.contains(" required"),
+        "a new page needs the id the author types: {page_id}"
+    );
+    opening_tag(create, "name=\"name\"", "<input");
+
+    let rename = intent_form(inspector, "rename_page");
+    opening_tag(rename, "name=\"page_id\"", "<select");
+    assert!(
+        rename.contains("value=\"home\""),
+        "the page select must offer the pages of the project by id: {rename}"
+    );
+    let new_page_id = opening_tag(rename, "name=\"new_page_id\"", "<input");
+    assert!(
+        new_page_id.contains(" required"),
+        "a rename must state the new id: {new_page_id}"
+    );
+    opening_tag(rename, "name=\"name\"", "<input");
+
+    let remove = intent_form(inspector, "remove_page");
+    opening_tag(remove, "name=\"page_id\"", "<select");
+
+    let metadata = intent_form(inspector, "patch_page_metadata");
+    let page = opening_tag(metadata, "name=\"page_id\"", "<input");
+    assert_eq!(attribute(page, "value"), Some("home"));
+    let no_index = opening_tag(metadata, "name=\"no_index\"", "<input");
+    assert_eq!(
+        attribute(no_index, "type"),
+        Some("checkbox"),
+        "`no_index` is a boolean of the request type: {no_index}"
+    );
+}

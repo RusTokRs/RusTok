@@ -14,6 +14,12 @@
 // `apps/next-admin/tests/e2e/fly-browser-ssr-controls.spec.ts`; this check also requires that
 // both of those exist and cover every part of the contract, and that the `fly-dioxus` twin of the
 // workspace emits the same contract markup.
+//
+// The adapter is not the only consumer. The Page Builder host bootstrap
+// (`PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS`) binds the SSR forms: `form[data-fly-intent-form]`
+// and the two selection controls. Part 6 derives that contract the same way and follows it to
+// the server: every form names a protocol intent that some handler resolves, and the fields a
+// form sends are the fields its request type reads, with the JSON types the bootstrap produces.
 
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -38,6 +44,11 @@ const adminSourceDir = 'crates/modules/rustok-page-builder/admin/src';
 const adminEditorDir = `${adminSourceDir}/editor`;
 const twinWorkspacePath = 'crates/ui/fly/dioxus/src/editor.rs';
 const browserSpecPath = 'apps/next-admin/tests/e2e/fly-browser-ssr-controls.spec.ts';
+const hostBootstrapPath = 'crates/modules/rustok-page-builder/src/browser_host.rs';
+const hostBootstrapConstant = 'PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS';
+const hostSpecPath = 'apps/next-admin/tests/e2e/fly-browser-host-bootstrap.spec.ts';
+const moduleCratesDir = 'crates/modules';
+const intentFormAttribute = 'data-fly-intent-form';
 const backlogPath = 'docs/modules/page-builder-backlog.md';
 
 // Actions a Rust view emits that the adapter does not handle yet. Every entry is a control that
@@ -386,6 +397,404 @@ for (const action of [...handledActions].sort()) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// 6. The host bootstrap: the consumer of the SSR forms.
+// ---------------------------------------------------------------------------------------------
+
+const hostSource = read(hostBootstrapPath);
+const hostBootstrap = new RegExp(
+  `pub const ${hostBootstrapConstant}: &str = r#"([\\s\\S]*?)"#;`,
+).exec(hostSource)?.[1];
+if (hostBootstrap === undefined) {
+  fail(`${hostBootstrapPath}: ${hostBootstrapConstant} was not found as a raw string constant`);
+}
+
+// 6a. Everything the bootstrap binds is emitted by a view.
+const hostBoundAttributes = new Set();
+for (const match of (hostBootstrap ?? '').matchAll(
+  /(?:querySelectorAll|closest)\(\s*["'][a-z]*\[(data-fly-[a-z-]+)\]["']/g,
+)) {
+  hostBoundAttributes.add(match[1]);
+}
+for (const match of (hostBootstrap ?? '').matchAll(/\b\w+\.dataset\.(fly[A-Za-z]+)/g)) {
+  hostBoundAttributes.add(kebab(match[1]));
+}
+if (hostBootstrap !== undefined && !hostBoundAttributes.has(intentFormAttribute)) {
+  fail(`${hostBootstrapPath}: the bootstrap no longer binds [${intentFormAttribute}]; update this check with the contract`);
+}
+for (const attribute of [...hostBoundAttributes].sort()) {
+  if (!emittedAttributes.has(attribute)) {
+    fail(
+      `no Rust view emits \`${attribute}\`, which ${hostBootstrapConstant} binds: ` +
+        'the control it belongs to is dead in the default ssr + browser-js runtime',
+    );
+  }
+}
+
+/**
+ * Arms of a Rust `match` on an intent name: name -> its arms in source order, each with the
+ * text of the arm and the guard of its head (`"a" | "b" if guard => …`), if it has one.
+ *
+ * Order and guards are part of the answer to "which code handles this form": Rust takes the
+ * first arm whose pattern and guard both hold, so an arm that comes later is never reached for
+ * a payload an earlier one accepts.
+ */
+function intentArms(body) {
+  const arms = new Map();
+  const head = /^[ \t]*((?:"[a-z_]+"\s*\|\s*)*"[a-z_]+")\s*(?:if\s+([^=]+?)\s*)?=>/gm;
+  const heads = [...body.matchAll(head)];
+  const ends = [
+    ...heads.map((match) => match.index),
+    ...[...body.matchAll(/^[ \t]*(?:_|[a-z_]+)\s*=>/gm)].map((match) => match.index),
+  ].sort((left, right) => left - right);
+  for (const match of heads) {
+    const end = ends.find((index) => index > match.index) ?? body.length;
+    const arm = { text: body.slice(match.index, end), guard: match[2]?.trim() ?? null };
+    for (const name of match[1].matchAll(/"([a-z_]+)"/g)) {
+      arms.set(name[1], [...(arms.get(name[1]) ?? []), arm]);
+    }
+  }
+  return arms;
+}
+
+function rustFiles(directory) {
+  const files = [];
+  for (const entry of readdirSync(path.join(repoRoot, directory), { withFileTypes: true })) {
+    const relative = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) files.push(...rustFiles(relative));
+    else if (entry.name.endsWith('.rs')) files.push(relative);
+  }
+  return files.sort();
+}
+
+// Handlers. The dispatcher resolves an intent in an arm of its own, or hands the name to the
+// form resolver: through the helper it calls for every name it has no arm for, and from an arm
+// that calls the same helper for a payload its guard recognizes as a form. A host that serves
+// the endpoint may resolve an intent before it reaches the dispatcher.
+const dispatcherArms = intentArms(dispatchBody ?? '');
+const formHelperName = /\bother\s*=>\s*(\w+)\(\s*controller,\s*other,\s*payload\s*\)/.exec(dispatchBody ?? '')?.[1];
+const formResolverName = formHelperName
+  ? /\bcontroller\s*\.(\w+)\(\s*intent,\s*payload\s*\)/.exec(blockBody(dispatchSource, `fn ${formHelperName}(`) ?? '')?.[1]
+  : undefined;
+const delegatesToFormResolver = (arm) =>
+  new RegExp(`\\b${formHelperName}\\(\\s*controller,\\s*intent,\\s*payload\\s*\\)`).test(arm.text);
+const adminProducers = producerPaths.filter((file) => file !== workspacePath);
+const adminSources = new Map(adminProducers.map((file) => [file, productionSource(read(file))]));
+let formResolverArms = new Map();
+if (!formResolverName) {
+  fail(`${dispatchPath}: dispatch_named_intent no longer hands an unknown intent to a form resolver`);
+} else {
+  const owner = [...adminSources].find(([, source]) => source.includes(`fn ${formResolverName}(`));
+  if (!owner) fail(`${adminEditorDir}: \`fn ${formResolverName}\`, which the dispatcher calls, was not found`);
+  else formResolverArms = intentArms(blockBody(owner[1], `fn ${formResolverName}(`) ?? '');
+  for (const [name, arms] of formResolverArms) {
+    if (arms.length !== 1 || arms[0].guard !== null) {
+      fail(`${owner?.[0]}: \`${formResolverName}\` resolves \`${name}\` in ${arms.length} arms or behind a guard; this check reads one unguarded arm per form`);
+    }
+    // A name the dispatcher takes in an arm of its own never reaches the resolver, unless one
+    // of those arms hands the payload over.
+    const own = dispatcherArms.get(name) ?? [];
+    if (own.length > 0 && !own.some(delegatesToFormResolver)) {
+      fail(
+        `${owner?.[0]}: the \`${name}\` arm of \`${formResolverName}\` is unreachable: ${dispatchPath} resolves ` +
+          `\`${name}\` in an arm of its own and never hands it to \`${formHelperName}\``,
+      );
+    }
+  }
+}
+
+/**
+ * Evaluates the guard of a dispatcher arm for the payload of one form.
+ *
+ * A guard this check can read is one call `predicate(payload)` of a function whose body is a
+ * conjunction of `payload.get("key").is_some()` / `.is_none()` terms. The bootstrap sends a key
+ * for every named control except an empty number input, so a key is present exactly when the
+ * form has a control of that name. Returns `undefined` when the guard cannot be decided.
+ */
+function guardHolds(guard, controls) {
+  const predicate = /^(\w+)\(\s*payload\s*\)$/.exec(guard)?.[1];
+  const body = predicate ? blockBody(dispatchSource, `fn ${predicate}(`) : undefined;
+  if (!body) return undefined;
+  let holds = true;
+  for (const term of body.split('&&')) {
+    const match = /^\s*payload\s*\.get\("(\w+)"\)\s*\.is_(some|none)\(\)\s*$/.exec(term);
+    if (!match || controls.get(match[1]) === 'number') return undefined;
+    if (controls.has(match[1]) !== (match[2] === 'some')) holds = false;
+  }
+  return holds;
+}
+
+/** The control a component renders for its `name` prop: `<select name=name …>` -> `select`. */
+function componentControl(component) {
+  for (const source of adminSources.values()) {
+    const body = blockBody(source, `fn ${component}(`);
+    if (body == null) continue;
+    const controls = [...body.matchAll(/<(input|select|textarea)\b([^<]*?)\/?>/g)].filter((tag) =>
+      /(?:^|\s)name=/.test(tag[2]),
+    );
+    if (controls.length !== 1 || !/(?:^|\s)name=name(?:\s|$)/.test(controls[0][2])) return undefined;
+    return { tag: controls[0][1], attributes: controls[0][2] };
+  }
+  return undefined;
+}
+const dispatchEntry = /pub fn (dispatch_\w+)\s*\(/.exec(dispatchSource)?.[1];
+const hostEndpoints = [];
+if (!dispatchEntry) {
+  fail(`${dispatchPath}: the public dispatch entry point was not found`);
+} else {
+  for (const entry of readdirSync(path.join(repoRoot, moduleCratesDir), { withFileTypes: true })) {
+    const hostDir = `${moduleCratesDir}/${entry.name}/admin/src`;
+    if (!entry.isDirectory() || hostDir === adminSourceDir) continue;
+    let files;
+    try {
+      files = rustFiles(hostDir);
+    } catch {
+      continue;
+    }
+    for (const file of files) {
+      const source = productionSource(read(file));
+      if (source.includes(`${dispatchEntry}(`)) hostEndpoints.push({ file, source, arms: intentArms(source) });
+    }
+  }
+  if (hostEndpoints.length === 0) {
+    fail(`no host under ${moduleCratesDir}/*/admin/src calls ${dispatchEntry}; the SSR forms have no endpoint`);
+  }
+}
+
+// Request types: `pub struct Ssr…Request { … }` of the admin editor.
+const requestTypes = new Map();
+for (const [file, source] of adminSources) {
+  for (const match of source.matchAll(/((?:#\[[^\]]*\]\s*)*)pub struct (\w+)\s*\{([^}]*)\}/g)) {
+    if (!/\bDeserialize\b/.test(match[1])) continue;
+    const containerDefault = /#\[serde\([^)]*\bdefault\b/.test(match[1]);
+    const fields = new Map();
+    for (const field of match[3].matchAll(/((?:[ \t]*#\[[^\]]*\]\s*)*)[ \t]*pub (\w+):\s*([^\n]+?),?[ \t]*\n/g)) {
+      const type = field[3].trim();
+      fields.set(/rename\s*=\s*"([^"]+)"/.exec(field[1])?.[1] ?? field[2], {
+        type,
+        optional: containerDefault || /#\[serde\([^)]*\bdefault\b/.test(field[1]) || type.startsWith('Option<'),
+      });
+    }
+    requestTypes.set(match[2], { file, fields });
+  }
+}
+
+/** The request type an arm deserializes the payload into, or null when it reads keys itself. */
+function requestTypeOf({ text: arm }) {
+  if (!/\bfrom_value\b/.test(arm)) return null;
+  const explicit = /from_value::<(\w+)>/.exec(arm)?.[1];
+  if (explicit) return explicit;
+  // `self.ssr_x_intent(serde_json::from_value(payload.clone()))`: the parameter type decides.
+  const callee = /\.(\w+)\(\s*serde_json::from_value\(/.exec(arm)?.[1];
+  if (!callee) return undefined;
+  for (const source of adminSources.values()) {
+    const parameter = new RegExp(`fn ${callee}\\(\\s*&(?:mut )?self,\\s*\\w+:\\s*(\\w+)`).exec(source)?.[1];
+    if (parameter) return parameter;
+  }
+  return undefined;
+}
+
+// Readers that fail when a key is absent: `fn reader(payload: &Value, field: &str)` whose body
+// builds the missing-field error.
+const requiredReaders = [...dispatchSource.matchAll(/fn (\w+)\(\s*payload: &Value,\s*field: &str\s*\)/g)]
+  .map((match) => match[1])
+  .filter((name) => /\bMissingField\b/.test(blockBody(dispatchSource, `fn ${name}(`) ?? ''));
+
+/**
+ * Keys an arm that reads the payload itself cannot do without: read through a required reader,
+ * through `.get("key")….ok_or_else(…)`, or by a helper the arm passes the whole payload to.
+ */
+function requiredKeysOf(text, seen = new Set()) {
+  const keys = new Set();
+  for (const reader of requiredReaders) {
+    for (const match of text.matchAll(new RegExp(`\\b${reader}\\(\\s*payload,\\s*"(\\w+)"\\s*\\)`, 'g'))) {
+      keys.add(match[1]);
+    }
+  }
+  const call = '\\s*\\.\\w+(?:::<[^>]*>)?\\((?:[^()]|\\((?:[^()]|\\([^()]*\\))*\\))*\\)';
+  for (const match of text.matchAll(new RegExp(`\\.get\\("(\\w+)"\\)(?:${call})*?\\s*\\.ok_or_else\\(`, 'g'))) {
+    keys.add(match[1]);
+  }
+  for (const match of text.matchAll(/\b(\w+)\(\s*payload\s*\)/g)) {
+    if (seen.has(match[1])) continue;
+    seen.add(match[1]);
+    const body = blockBody(dispatchSource, `fn ${match[1]}(`);
+    if (body) for (const key of requiredKeysOf(body, seen)) keys.add(key);
+  }
+  return keys;
+}
+
+// Keys the adapter removes from every payload before it posts it.
+const reservedPayloadKeys = new Set(
+  [...(blockBody(adapter, 'function normalizedIntent(') ?? '').matchAll(/delete payload\.(\w+)/g)].map(
+    (match) => match[1],
+  ),
+);
+// JSON types the bootstrap produces for a named control.
+const producesBoolean = /querySelectorAll\(\s*'input\[type="checkbox"\]\[name\]'\s*\)/.test(hostBootstrap ?? '');
+const producesNumber = /querySelectorAll\(\s*'input\[type="number"\]\[name\]'\s*\)/.test(hostBootstrap ?? '');
+if (hostBootstrap !== undefined && (!producesBoolean || !producesNumber)) {
+  fail(`${hostBootstrapPath}: the bootstrap no longer types checkbox and number inputs; update this check with the contract`);
+}
+const isBooleanType = (type) => type === 'bool';
+const isNumberType = (type) => /^(?:Option<)?(?:[ui](?:8|16|32|64|size)|f(?:32|64))>?$/.test(type);
+
+// 6b, 6c. Every form names an intent the server resolves, and sends what the handler reads.
+let verifiedForms = 0;
+for (const [file, source] of adminSources) {
+  const literalForms = [...source.matchAll(
+    new RegExp(`<form\\b[^>]*?${intentFormAttribute}="([a-z_]+)"([\\s\\S]*?)</form>`, 'g'),
+  )];
+  const emitted = [...source.matchAll(new RegExp(`(?<![[\\w-])${intentFormAttribute}=`, 'g'))].length;
+  if (literalForms.length !== emitted) {
+    fail(
+      `${file}: ${emitted} \`${intentFormAttribute}\` attributes, ${literalForms.length} of them on a \`<form>\` with a ` +
+        'literal intent name; the others cannot be verified',
+    );
+  }
+  for (const [, intent, body] of literalForms) {
+    verifiedForms += 1;
+    const label = `${file}: form \`${intent}\``;
+    if (!intentKinds.has(intent)) {
+      fail(`${label} names no protocol intent of ${intentKindsPath}`);
+      continue;
+    }
+
+    // Named controls of the form, with the JSON type the bootstrap gives each of them.
+    const controls = new Map();
+    const tags = [...body.matchAll(/<(input|select|textarea)\b([^<]*?)\/?>/g)].filter((tag) =>
+      /(?:^|\s)name=/.test(tag[2]),
+    );
+    // A component that renders one control for its `name` prop counts as that control.
+    for (const [, component, attributes] of body.matchAll(/<([A-Z]\w*)\b([^<]*?)\/>/g)) {
+      if (!/(?:^|\s)name=/.test(attributes)) continue;
+      const control = componentControl(component);
+      if (!control) {
+        fail(`${label}: <${component}> takes a \`name\`, and the control it renders for it cannot be resolved`);
+        continue;
+      }
+      const name = /(?:^|\s)(name="[^"]+")/.exec(attributes)?.[1] ?? 'name=';
+      tags.push([null, control.tag, control.attributes.replace(/(^|\s)name=name(?=\s|$)/, `$1${name}`)]);
+    }
+    const named = [...body.matchAll(/(?<![\w-])name=/g)].length;
+    if (tags.length !== named) {
+      fail(`${label}: ${named} \`name=\` attributes, ${tags.length} of them on a form control; the others cannot be verified`);
+    }
+    for (const [, tag, attributes] of tags) {
+      const name = /(?:^|\s)name="([^"]+)"/.exec(attributes)?.[1];
+      if (!name) {
+        fail(`${label}: a <${tag}> has a \`name\` that is not a string literal; the field it sends cannot be verified`);
+        continue;
+      }
+      const type = tag === 'input' ? (/(?:^|\s)type="([a-z]+)"/.exec(attributes)?.[1] ?? 'text') : tag;
+      const kind = type === 'checkbox' ? 'boolean' : type === 'number' ? 'number' : 'string';
+      if (controls.has(name) && controls.get(name) !== kind) {
+        fail(`${label}: field \`${name}\` is sent by controls of different types`);
+      }
+      controls.set(name, kind);
+      if (reservedPayloadKeys.has(name)) {
+        fail(`${label}: field \`${name}\` is removed from every payload by ${path.basename(adapterPath)}`);
+      }
+    }
+
+    // The arm Rust takes for this form: the first dispatcher arm whose guard holds for the
+    // payload the form sends, then — through that arm or through the fallback — the resolver.
+    let arm;
+    let undecided = false;
+    for (const candidate of dispatcherArms.get(intent) ?? []) {
+      const holds = candidate.guard === null ? true : guardHolds(candidate.guard, controls);
+      if (holds === undefined) {
+        fail(`${label}: the guard \`${candidate.guard}\` of its dispatcher arm cannot be evaluated for the fields the form sends`);
+        undecided = true;
+        break;
+      }
+      if (holds) {
+        arm = candidate;
+        break;
+      }
+    }
+    if (undecided) continue;
+    if (arm === undefined || delegatesToFormResolver(arm)) arm = formResolverArms.get(intent)?.[0];
+    if (arm === undefined) {
+      // Not resolved by the Page Builder: every host that serves the endpoint has to.
+      for (const host of hostEndpoints) {
+        if (!host.arms.has(intent)) {
+          fail(`${label} has no handler: neither dispatch_named_intent, \`${formResolverName}\` nor ${host.file} resolves it`);
+          continue;
+        }
+        for (const name of controls.keys()) {
+          if (!host.source.includes(`.get("${name}")`)) {
+            fail(`${label}: field \`${name}\` is never read by ${host.file}`);
+          }
+        }
+      }
+      continue;
+    }
+
+    const typeName = requestTypeOf(arm);
+    if (typeName === undefined) {
+      fail(`${label}: the request type its handler deserializes cannot be resolved`);
+      continue;
+    }
+    if (typeName === null) {
+      for (const name of controls.keys()) {
+        if (!arm.text.includes(`.get("${name}")`)) fail(`${label}: field \`${name}\` is never read by its handler`);
+      }
+      for (const key of requiredKeysOf(arm.text)) {
+        if (!controls.has(key)) {
+          fail(`${label}: its handler requires \`${key}\` and the form has no control named \`${key}\``);
+        }
+      }
+      continue;
+    }
+    const request = requestTypes.get(typeName);
+    if (!request) {
+      fail(`${label}: request type \`${typeName}\` was not found in ${adminEditorDir}`);
+      continue;
+    }
+    for (const [name, kind] of controls) {
+      const field = request.fields.get(name);
+      if (!field) {
+        fail(`${label}: field \`${name}\` is not a field of \`${typeName}\`; the server drops what the control sends`);
+        continue;
+      }
+      const expected = isBooleanType(field.type) ? 'boolean' : isNumberType(field.type) ? 'number' : 'string';
+      if (expected !== kind) {
+        fail(
+          `${label}: field \`${name}\` is sent as a JSON ${kind}, and \`${typeName}.${name}\` is \`${field.type}\`: ` +
+            'the request fails to deserialize',
+        );
+      }
+    }
+    for (const [name, field] of request.fields) {
+      if (!field.optional && !controls.has(name)) {
+        fail(`${label}: \`${typeName}.${name}\` is required and the form has no control named \`${name}\``);
+      }
+    }
+  }
+}
+if (verifiedForms === 0) fail(`${adminEditorDir}: no \`<form ${intentFormAttribute}>\` was found`);
+
+// 6d. Both sides are exercised: the rendered forms by the admin render tests, the bootstrap in
+//     a browser that loads the module the way `page_builder_browser_module` composes it.
+const hostSpec = read(hostSpecPath);
+for (const attribute of [...hostBoundAttributes].sort()) {
+  if (!emittedAttributes.has(attribute)) continue;
+  if (!adminRenderTests.includes(attribute)) {
+    fail(`${adminRenderTestsLabel}: no render test asserts \`${attribute}\``);
+  }
+  if (!hostSpec.includes(attribute)) {
+    fail(`${hostSpecPath}: no browser test exercises \`${attribute}\``);
+  }
+}
+for (const [what, needle] of [
+  [`the shipped ${adapterPath}`, adapterPath.split('/').slice(-4).join('/')],
+  [`the shipped ${hostBootstrapPath}`, hostBootstrapPath.split('/').slice(-4).join('/')],
+  [hostBootstrapConstant, hostBootstrapConstant],
+]) {
+  if (!hostSpec.includes(needle)) fail(`${hostSpecPath} must load ${what}`);
+}
+
 if (failures.length > 0) {
   console.error('Fly SSR control contract verification failed:');
   for (const message of failures) console.error(`- ${message}`);
@@ -395,5 +804,6 @@ if (failures.length > 0) {
 console.log(
   `Fly SSR control contract verified: ${boundAttributes.size} bound attributes, ` +
     `${handledActions.size} adapter actions, ${emittedActions.size} emitted actions ` +
-    `(${recordedUnhandledActions.size} recorded as unhandled).`,
+    `(${recordedUnhandledActions.size} recorded as unhandled); ${hostBoundAttributes.size} host-bound ` +
+    `attributes, ${verifiedForms} SSR forms.`,
 );
