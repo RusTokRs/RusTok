@@ -89,10 +89,6 @@ impl CategoryCommandService {
                 None,
             )
             .await?;
-            None,
-        )
-        .await
-        .map_err(BlogError::from)?;
         if canonical_terms.len() != blog_ids.len() {
             return Err(BlogError::invariant(
                 "Blog category Taxonomy ownership coverage is incomplete during move",

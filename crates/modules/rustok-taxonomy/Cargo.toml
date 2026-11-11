@@ -17,6 +17,7 @@ rustok-api.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
+rustok-blog.workspace = true
 rustok-content.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true

@@ -187,6 +187,35 @@ fn orphan_task_spawn(syntax: &str, first_line_len: usize) -> bool {
     false
 }
 
+fn unbounded_network_allocation(window: &[&str]) -> Option<String> {
+    let parse_len = re!(r"\blet\s+(?:mut\s+)?([a-zA-Z_]\w*)\s*=\s*[^;\n]*from_(?:be|le)_bytes\b");
+    let line = window.first()?;
+    let captures = parse_len.captures(line)?;
+    let var_name = captures[1].to_owned();
+
+    for following in window.iter().skip(1).take(8) {
+        if following.contains("MAX_")
+            || following.contains("ensure_")
+            || following.contains("validate_")
+            || following.contains(".min(")
+            || following.contains(".max(")
+            || following.contains(&format!("{var_name} >"))
+            || following.contains(&format!("{var_name} <"))
+            || following.contains(&format!("{var_name} =="))
+            || following.contains(&format!("contains(&{var_name})"))
+            || following.contains(&format!("contains(&&{var_name})"))
+        {
+            return None;
+        }
+        if re!(r"\b(?:vec!\s*\[|Vec\s*::\s*with_capacity\s*\()").is_match(following)
+            && following.contains(&var_name)
+        {
+            return Some(var_name);
+        }
+    }
+    None
+}
+
 fn reactive_boundaries(syntax: &str) -> Vec<usize> {
     let tokens = re!(
         r"(?P<reactive>\b(?:create_effect|create_memo|create_resource|create_local_resource|Effect::new|Memo::new|Resource::new|LocalResource::new)\s*\(|\bview!\s*[{(\[])|[(){}\[\]]"
@@ -419,7 +448,9 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
         {
             let marker = re!(r"\b(?:todo|unimplemented)\s*!\s*[(\[{]")
                 .find(code_part)
-                .or_else(|| re!(r"\b(?:FIXME|TODO)\b").find(&comment));
+                .or_else(|| {
+                    re!(r"(?i)\b(?:FIXME|TODO|XXX)\b|in production you'd|not production(?: ready)?|dummy implementation|stub for now").find(&comment)
+                });
             if let Some(marker) = marker {
                 scan.add(
                     line_number,
@@ -573,6 +604,7 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
                 test_context,
                 loop_depth: loop_depths.last().copied(),
                 static_depth,
+                async_depth,
                 depth,
                 statement_offset,
                 line_start,
@@ -609,6 +641,7 @@ struct RuleContext<'a> {
     test_context: bool,
     loop_depth: Option<usize>,
     static_depth: Option<usize>,
+    async_depth: Option<usize>,
     depth: usize,
     statement_offset: usize,
     line_start: usize,
@@ -628,6 +661,7 @@ fn check_rules(
         test_context,
         loop_depth,
         static_depth,
+        async_depth,
         depth,
         statement_offset,
         line_start,
@@ -798,6 +832,41 @@ fn check_rules(
             || text.contains("Lazy::new")
             || text.contains("LazyLock::new")
             || text.contains("lazy_static!");
+
+        if (async_depth.is_some() || loop_depth.is_some()) && !static_item {
+            let client_alloc = re!(
+                r"\b(?:reqwest\s*::\s*)?Client\s*::\s*new\s*\(\s*\)|\b(?:reqwest\s*::\s*)?ClientBuilder\s*::\s*new\s*\(\s*\)|\b(?:tokio\s*::\s*net\s*::\s*|std\s*::\s*net\s*::\s*)?UdpSocket\s*::\s*bind\s*\("
+            );
+            if client_alloc.is_match(text) {
+                scan.add(number, "P-CLIENT-PER-REQUEST", "Per-Request Client / Socket Allocation", Severity::High,
+                    "Instantiating an HTTP client or socket per async call or in a loop risks socket exhaustion and destroys connection pooling.",
+                    "Instantiate once in a long-lived struct, shared state, or static LazyLock and reuse it across requests.");
+            }
+        }
+
+        if syntax.contains("danger") || syntax.contains("assertion") {
+            let tls_bypass = re!(
+                r"\b(?:rustls\s*::\s*(?:\w+\s*::\s*)*danger\b|(?:HandshakeSignatureValid|ServerCertVerified)\s*::\s*assertion\s*\(\s*\)|danger_accept_invalid_certs\s*\(\s*true\s*\)|danger_accept_invalid_hostnames\s*\(\s*true\s*\))"
+            );
+            if let Some(matched) = tls_bypass.find(text) {
+                scan.add(number, "P-TLS-DANGER-BYPASS", "Disabled TLS Certificate Verification", Severity::Critical,
+                    format!("Disabled TLS certificate or signature verification ('{}'). This bypasses MITM protection.", matched.as_str()),
+                    "Verify certificates using trusted root authorities rather than asserting validity.");
+            }
+        }
+
+        if syntax.contains("from_be_bytes") || syntax.contains("from_le_bytes") {
+            let window: Vec<&str> = scan.lines[index..(index + 10).min(scan.lines.len())]
+                .iter()
+                .map(|l| l.syntax.as_str())
+                .collect();
+            if let Some(var) = unbounded_network_allocation(&window) {
+                scan.add(number, "P-UNBOUNDED-ALLOC-OOM", "Unbounded Network Buffer Allocation", Severity::Critical,
+                    format!("Vector allocated with length from '{var}' without an upper bound check. Risks Out-Of-Memory panic on malformed headers."),
+                    "Validate length <= MAX_PAYLOAD_BYTES (or ensure_frame_size) before allocating the buffer.");
+            }
+        }
+
         if re!(r"\.(?:expect|unwrap)\s*\(").is_match(text)
             && !static_item
             && !(text.contains("Regex::new") && (text.contains("static") || text.contains("const")))

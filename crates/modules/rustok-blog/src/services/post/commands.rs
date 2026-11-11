@@ -163,7 +163,7 @@ impl PostService {
                 .await?;
         }
         if let Patch::Set(category_id) = category_id.as_ref() {
-            CategoryService::ensure_exists_in_tx(&txn, tenant_id, *category_id).await?;
+            CategoryService::ensure_exists_in_tx(&*self.taxonomy_port, &txn, tenant_id, *category_id).await?;
         }
 
         let mut update = blog_post::Entity::update_many()

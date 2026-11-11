@@ -15,9 +15,9 @@ use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::Set,
-    ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait,
+    ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait,
     QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
-    sea_query::{Expr, ExprTrait, OnConflict, Query},
+    sea_query::{Expr, OnConflict},
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -438,7 +438,7 @@ fn to_tag_owner_response(
     TagResponse {
         id: term.id,
         tenant_id,
-        locale: term.locale.unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()),
+        locale: term.locale,
         effective_locale: term.effective_locale,
         name: term.name,
         slug: term.slug,
@@ -454,7 +454,7 @@ fn to_tag_mutation_response(
     TagResponse {
         id: term.id,
         tenant_id: term.tenant_id,
-        locale: term.locale.unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()),
+        locale: term.locale,
         effective_locale: term.effective_locale,
         name: term.name,
         slug: term.slug,

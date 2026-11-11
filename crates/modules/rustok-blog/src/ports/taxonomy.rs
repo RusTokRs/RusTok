@@ -70,8 +70,8 @@ pub struct BlogTaxonomyCategorySnapshot {
     pub description: Option<String>,
     pub position: i32,
     pub available_locales: Vec<String>,
-    pub requested_locale: Option<String>,
-    pub effective_locale: Option<String>,
+    pub requested_locale: String,
+    pub effective_locale: String,
 }
 
 /// Localized copy for an existing category term in taxonomy.
@@ -112,8 +112,8 @@ pub struct BlogTaxonomyTagSnapshot {
     pub slug: String,
     pub scope_type: String,
     pub scope_value: Option<String>,
-    pub locale: Option<String>,
-    pub effective_locale: Option<String>,
+    pub locale: String,
+    pub effective_locale: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -499,8 +499,8 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
             slug: input.slug.unwrap_or_default(),
             scope_type: "module".to_string(),
             scope_value: Some("blog".to_string()),
-            locale: Some(input.locale),
-            effective_locale: None,
+            locale: input.locale.clone(),
+            effective_locale: input.locale,
             created_at: chrono::Utc::now(),
         })
     }

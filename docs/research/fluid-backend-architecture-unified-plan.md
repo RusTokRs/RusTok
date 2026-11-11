@@ -61,7 +61,8 @@ remain stable. The profile must name its operations and outgoing dependencies. R
 capability coverage does not imply complete module extraction, equivalent transactions,
 autonomous storage or current UI/API parity. The
 [canonical FBA contract](../backend/module-backend-architecture.md#fba-contracts)
-defines these distinctions and permits contracts and implementation in one owner crate.
+defines these distinctions. Each native module keeps one owner identity, with
+published contracts in its nested `ports/` package and implementation in the root package.
 
 ## 1.3 What Is Prohibited
 
@@ -292,24 +293,23 @@ blockers in verification output.
 
 ## 2.3 Alignment with Target Crate Structure
 
-The previously proposed schema is close to the target model, but in RusTok it is applied with adjustments
-based on the current modular platform:
+The [canonical source layout](../backend/module-backend-implementation.md#remote-fba-module-layout)
+applies to both new and converted native owners. This view shows where each host
+fits and how existing deployment packages converge on the target:
 
 ```text
 crates/modules/rustok-<module>/
-  src/dto|domain|error      # domain types, DTO, errors; folder names may differ
-  src/services|ports        # service layer and/or explicit owner-module ports
-  src/entities|migrations   # SeaORM storage ownership; repository interfaces appear when remote/test seam is needed
-  src/graphql|controllers   # transport adapters, thin mapping on top of service/port
+  src/dto|domain|error      # private owner types; published DTOs and errors live in ports/
+  src/services|ports        # owner services and implementation-local requirements
+  src/entities|migrations   # owner storage and lifecycle
+  src/graphql|controllers   # thin owner HTTP and GraphQL adapters
+  src/bin/service.rs        # standalone composition, behind the service feature
+  ports/                    # <owner-package>-ports: published ports, DTOs, errors and events
+    src/grpc/               # optional gRPC client/server adapters for implemented RPCs
+    proto/                  # published wire schema for those operations
   admin|storefront          # optional module-owned UI packages with core/transport/ui split
   rustok-module.toml        # runtime metadata, dependencies, provider/consumer FBA sections
   contracts/                # optional machine-readable registry/evidence for provider/consumer tracks
-
-crates/modules/rustok-<module>-transport/ # optional adapter, existing Product/Media convention
-  proto/schema              # gRPC/protobuf contract only after ADR/DoR
-  server adapter            # calls the same service/port, does not contain domain rules
-  client adapter            # remote implementation of the same port
-  PortContext/error mapping # mapping neutral port primitives to transport metadata/status
 
 apps/server/
   composition/root wiring   # module registry, GraphQL/REST/controllers, health/metrics
@@ -326,9 +326,10 @@ mandatory template:
 2. **Repository interfaces are not mandatory from the first PR.** Currently many modules own SeaORM
    entities/migrations directly; the abstraction seam is added when a remote adapter,
    test double or foreign-table access prohibition is needed.
-3. **A remote transport package is optional.** Existing packages use `*-transport`; until DoR is closed, a gRPC
-   crate should not be created just for form's sake; first you need stable port, `PortContext`, typed errors, events/outbox,
-   contract tests and ADR.
+3. **gRPC is optional within `ports/`.** Publish the owner contract for a real cross-owner
+   boundary. Add gRPC for implemented request/response profiles, with stable types, context,
+   authorization and conformance evidence. Existing Product and Media `*-transport` packages
+   are migration states; preserve their wire contracts while moving the adapters.
 4. **Transport adapters already exist, but not all are remote.** GraphQL/REST/`#[server]` live as
    thin adapters on top of owner service/port; gRPC will be another adapter profile, not a new
    business logic implementation.
@@ -336,10 +337,8 @@ mandatory template:
    `page_builder -> pages` this is `page-builder-fba-registry.json` + `rustok-module.toml`; new
    provider/consumer tracks must repeat this pattern or extend it within the unified plan.
 
-The [canonical FBA layout](../backend/module-backend-implementation.md#remote-fba-module-layout)
-applies to both new and converted native owners. The nested ports package belongs
-to the same module identity. Runtime readiness requires independent compile and
-operation evidence. Add source for implemented responsibilities.
+The nested ports package belongs to the same module identity. Runtime readiness
+requires independent compile and operation evidence. Add source for implemented responsibilities.
 
 ### Converge existing owners on published ports
 

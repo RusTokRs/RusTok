@@ -283,11 +283,38 @@ flowchart TD
 
 ### Pattern 12: Zero Runtime Panics in Production (`P-ZERO-PANIC-PROD`)
 * **Category:** Preconditions, Bounds & Anti-Slop
-* **Problem:** Calling `.expect("static contract...")` or `.unwrap()` in production request handlers (e.g. parsing `OwnerSlug`, `ResourceKind`, `UUID` in translation targets or pricing calculation) leads to worker panic and service degradation when inputs deviate or schema constants evolve.
+* **Problem:** A panic on fallible runtime data can abort the current task or
+  process depending on build settings and panic boundaries. A source match does
+  not prove reachability: validate the caller's invariant and input provenance.
+  In [ArtifactRelease::fork](../../crates/modules/rustok-modules/src/artifact.rs),
+  the publicly constructible and deserializable parent descriptor is parsed with
+  `expect` although only the new descriptor is validated. In
+  [transition view conversion](../../crates/modules/rustok-modules/src/transition_service.rs),
+  public unsigned fields are converted to signed fields with `expect`; values
+  outside the signed range panic even though safe Rust or deserialization can
+  construct them. These are source-level API cases; external transport reachability
+  has not been established.
+  The vendored [DeltaOfDelta iterator](../../crates/utils/serde-columnar-vendored/src/iterable.rs)
+  unwraps the fallible decoder constructor; a local probe reproduced a panic from
+  public `new(&[])`.
+  The [decoder](../../crates/utils/serde-columnar-vendored/src/strategy/rle.rs)
+  also unwraps reads of potentially truncated bitstreams; a local probe reproduced
+  this with `[1, 0, 1, 128]`. Propagation through a specific Loro snapshot or
+  network request has not been reproduced.
 * **Pattern Solution:**
   1. Convert all runtime value parsing to return `Result<T, DomainError>` or `PortError::invalid_input`.
   2. For genuinely static constants, construct them at compile time via `const` or pre-validate them during module initialization.
-  3. Enforce `#![deny(clippy::unwrap_used, clippy::expect_used)]` across production service crates.
+  3. Use fallible conversions at public boundaries unless the source type itself
+     enforces the range; distinguish test fixtures and reviewed invariants.
+
+  ```rust
+  let parent_version = Version::parse(&self.descriptor.version)
+      .map_err(|error| ModuleArtifactError::InvalidVersion(error.to_string()))?;
+  ```
+
+  Detection: `cargo xtask doctor hygiene --all --ignore-rule P-UNFINISHED-CODE`
+  and inspect `P-ZERO-PANIC-PROD` with its callers. Doctor is lexical and does
+  not prove panic reachability.
 
 ---
 
@@ -519,6 +546,12 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-PAGE-AGGREGATE` | Calculation | An aggregate represents all matching records under the owner's filter and consistency contract | Manual |
 | `P-COMMAND-ADMISSION` | Concurrency | Same-key concurrent commands serialize admission before reading receipt state | Manual |
 | `P-REPLAY-PRECONDITION` | Idempotency | A replay preserves the original command identity and revision | Manual |
+| `P-ORPHAN-SPAWN` | Concurrency | Background tasks supervise JoinHandles or JoinSet | High: unassigned tokio::spawn statements |
+| `P-UNSAFE-VEC-SETLEN` | Memory safety | Bounds and initialization verified before set_len | Critical: direct set_len on vector |
+| `P-CLIENT-PER-REQUEST` | Resource management | HTTP clients and sockets reused across requests | High: Client::new() or UdpSocket::bind in async fn or loop |
+| `P-TLS-DANGER-BYPASS` | Security | Root CAs and signatures strictly verified | Critical: danger_accept_invalid_certs or dummy assertions |
+| `P-UNBOUNDED-ALLOC-OOM` | Preconditions & bounds | Network payload lengths validated against max limit | Critical: vector allocated from unvalidated byte buffer length |
+| `P-CANONICAL-DIGEST` | Cryptographic integrity | Variable-length elements prefixed with length in signatures/hashes | Manual |
 
 ---
 
@@ -921,3 +954,110 @@ out.truncate(written);
 Detection: `cargo xtask doctor hygiene` or
 `rg -n '\.set_len\(' crates/ apps/`.
 Doctor flags direct invocations of `.set_len(...)` in non-test source files.
+
+## P-CLIENT-PER-REQUEST — Reuse HTTP clients and sockets across requests
+
+- **Category:** Resource management and network efficiency.
+- **Logic dimensions:** Preconditions and bounds, order/concurrency, side-effect completeness.
+- **Observed behavior:** Instantiating `reqwest::Client::new()` or binding `UdpSocket::bind("0.0.0.0:0")` on every individual request in an `async fn` or within a loop creates a new connection pool, TLS context, and file descriptor per request. Under load, this rapidly exhausts available file descriptors (FD leak / `EMFILE`), causes socket port exhaustion (`TIME_WAIT`), and completely disables HTTP keep-alive connection reuse. Observed in admin REST adapters ([rest_adapter.rs](../../crates/modules/rustok-channel/admin/src/transport/rest_adapter.rs)) and AI-generated probe handlers.
+- **Remediation:** Instantiate network clients and sockets once as long-lived instances. Store the client in a service struct, dependency injection context, or module state, or initialize statically via `std::sync::LazyLock<reqwest::Client>`. Reuse the shared client across all request dispatches.
+
+```rust
+// Vulnerable: new client and connection pool created on every request
+pub async fn send_notification(url: &str, body: &Payload) -> Result<()> {
+    let client = reqwest::Client::new();
+    client.post(url).json(body).send().await?;
+    Ok(())
+}
+
+// Remediation: reuse long-lived client from service struct or LazyLock
+pub struct NotificationService {
+    client: reqwest::Client,
+}
+
+impl NotificationService {
+    pub fn new() -> Self {
+        Self { client: reqwest::Client::new() }
+    }
+
+    pub async fn send_notification(&self, url: &str, body: &Payload) -> Result<()> {
+        self.client.post(url).json(body).send().await?;
+        Ok(())
+    }
+}
+```
+
+Detection: `cargo xtask doctor hygiene --crate <crate>` or
+`rg -n '(Client::new|ClientBuilder::new|UdpSocket::bind)' crates/ apps/`.
+Doctor flags client instantiation and socket binding inside async functions and loop blocks.
+
+## P-TLS-DANGER-BYPASS — Enforce strict TLS certificate and signature verification
+
+- **Category:** Security and cryptographic verification.
+- **Logic dimensions:** Preconditions and bounds, branch completeness.
+- **Observed behavior:** To bypass TLS handshake errors or self-signed certificate warnings during rapid development, AI models frequently generate "solutions" that disable TLS verification completely — e.g. calling `.danger_accept_invalid_certs(true)`, `.danger_accept_invalid_hostnames(true)`, or implementing custom `ServerCertVerifier` / `HandshakeSignatureValid` traits that return `Ok(ServerCertVerified::assertion())`. This completely neutralizes Man-In-The-Middle (MITM) protection, allowing any attacker on the network to intercept or forge authenticated traffic.
+- **Remediation:** Never bypass certificate verification or signature checks in production builds. In development environments where custom root certificates are needed, add the certificate authority to the client's trusted root store via `.add_root_certificate(cert)` instead of disabling security checks globally.
+
+```rust
+// Critical vulnerability: all TLS signatures blindly asserted valid
+fn verify_tls13_signature(&self, ...) -> Result<HandshakeSignatureValid, rustls::Error> {
+    Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+}
+
+// Remediation: rely on standard verifier or explicitly configure trusted root store
+let cert = reqwest::Certificate::from_pem(&pem_bytes)?;
+let client = reqwest::Client::builder()
+    .add_root_certificate(cert)
+    .build()?;
+```
+
+Detection: `cargo xtask doctor hygiene` or
+`rg -n 'danger_accept_invalid|HandshakeSignatureValid::assertion|ServerCertVerified::assertion' crates/ apps/`.
+Doctor flags any occurrence of danger-mode certificate acceptance or assertion mocks with Critical severity.
+
+## P-UNBOUNDED-ALLOC-OOM — Validate length before allocating network buffers
+
+- **Category:** Memory bounds and DoS prevention.
+- **Logic dimensions:** Preconditions and bounds, calculation correctness.
+- **Observed behavior:** Network protocols and binary RPC decoders read a length prefix from incoming packet headers (e.g. `u32::from_be_bytes(len_buf) as usize`) and immediately allocate a buffer using `vec![0u8; len]` or `Vec::with_capacity(len)` without validating `len` against an upper limit. An untrusted remote peer can send a header claiming a 4 GB length, causing the node to immediately abort with an Out-Of-Memory (OOM) panic or crash under memory pressure.
+- **Remediation:** Enforce a hard protocol limit (e.g. `MAX_FRAME_SIZE` or `MAX_PAYLOAD_BYTES`) on the parsed length *before* allocating memory. Validate `len <= MAX_ALLOWED_LEN` and return a typed protocol error if the declared length exceeds the limit.
+
+```rust
+// Vulnerable: remote attacker triggers OOM by declaring 4GB length
+let len = u32::from_be_bytes(len_buf) as usize;
+let mut response_bytes = vec![0u8; len];
+
+// Remediation: validate against explicit upper bound before allocation
+let len = u32::from_be_bytes(len_buf) as usize;
+if len > MAX_PAYLOAD_BYTES {
+    return Err(ProtocolError::PayloadTooLarge { len, max: MAX_PAYLOAD_BYTES });
+}
+let mut response_bytes = vec![0u8; len];
+```
+
+Detection: `cargo xtask doctor hygiene` or
+`rg -n 'from_(be|le)_bytes' crates/ apps/`.
+Doctor flags buffer allocations (`vec![...; len]` or `Vec::with_capacity(len)`) following `from_be_bytes` / `from_le_bytes` without an intervening bound check or guard function.
+
+## P-CANONICAL-DIGEST — Delimit variable-length fields in cryptographic digests
+
+- **Category:** Cryptographic integrity and signature malleability.
+- **Logic dimensions:** Preconditions and bounds, calculation correctness.
+- **Observed behavior:** When computing cryptographic digests, HMACs, or digital signatures over structured data composed of multiple variable-length elements (such as domain strings, addresses, or payload slices), code simply appends raw bytes sequentially: `hasher.update(field_a); hasher.update(field_b);`. Because there are no length prefixes or field delimiters, different inputs can produce identical byte streams (e.g. `["192.168.1.1", ":8080"]` and `["192.168.1.1:", "8080"]` both produce `"192.168.1.1:8080"`). This creates a signature malleability vulnerability.
+- **Remediation:** Use canonical serialization for cryptographic commitments. Prefix every variable-length field with its byte length (e.g. encoded as a fixed-width `u32` or LEB128/varint) before writing to the hasher, or use a length-delimited structured encoding like canonical CBOR / protobuf:
+
+```rust
+// Vulnerable: ambiguous boundary permits collision/malleability
+for addr in &addrs {
+    hasher.update(addr.as_bytes());
+}
+
+// Remediation: prefix each element with its byte length
+for addr in &addrs {
+    let bytes = addr.as_bytes();
+    hasher.update(&(bytes.len() as u32).to_be_bytes());
+    hasher.update(bytes);
+}
+```
+
+Detection: Review signature generation and hash commitment implementations in security and identity boundaries.

@@ -16,7 +16,6 @@ mod rbac;
 pub(crate) mod scheduler;
 pub mod search_projection;
 pub(crate) mod tag;
-mod taxonomy_translation_owner;
 mod widget;
 
 pub use widget::BlogWidgetService;
@@ -38,7 +37,6 @@ pub(crate) use post::{is_post_visible_for_channel, load_post_subject_snapshot};
 pub use preview_token::{PreviewToken, PreviewTokenService};
 pub(crate) use rbac::can_read_non_public_posts;
 pub use tag::{TagService, remove_post_tag_links_in_tx, replace_post_tag_links_in_tx};
-pub use taxonomy_translation_owner::BlogTaxonomyTranslationOwner;
 
 #[cfg(test)]
 mod orchestration_tests;

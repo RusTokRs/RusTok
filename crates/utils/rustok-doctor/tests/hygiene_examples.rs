@@ -373,7 +373,11 @@ pub fn start_worker() -> JoinHandle<()> {
     assert_eq!(orphans.len(), 2);
     assert_eq!(orphans[0].line, 5);
     assert_eq!(orphans[1].line, 9);
-    assert!(orphans.iter().all(|f| f.severity == rustok_doctor::Severity::High));
+    assert!(
+        orphans
+            .iter()
+            .all(|f| f.severity == rustok_doctor::Severity::High)
+    );
 
     // Ensure let _ = tokio::spawn did not trigger duplicate P-ANTI-SWALLOW
     assert!(
@@ -399,7 +403,10 @@ fn identifies_unchecked_vec_set_len() {
 
     assert_eq!(set_len_findings.len(), 1);
     assert_eq!(set_len_findings[0].line, 3);
-    assert_eq!(set_len_findings[0].severity, rustok_doctor::Severity::Critical);
+    assert_eq!(
+        set_len_findings[0].severity,
+        rustok_doctor::Severity::Critical
+    );
 }
 
 #[test]
@@ -417,4 +424,144 @@ fn detects_real_cron_scheduler_orphan_spawn() {
     // Line 109 is orphaned, line 37 returns JoinHandle (not orphaned)
     assert_eq!(orphans.len(), 1);
     assert_eq!(orphans[0].line, 109);
+}
+
+#[test]
+fn identifies_client_per_request_allocation_in_async_or_loops() {
+    let source = r#"
+async fn send_probe() -> Result<()> {
+    // 1: Client/socket per async call (lines 4, 5)
+    let client = reqwest::Client::new();
+    let udp = tokio::net::UdpSocket::bind("0.0.0.0:0").await?;
+    Ok(())
+}
+
+fn process_items(items: Vec<String>) {
+    for _ in items {
+        // In loop allocation (line 12)
+        let c = reqwest::Client::new();
+    }
+}
+
+// Struct constructor (not in async, not in loop) - should NOT trigger
+pub struct Service {
+    client: reqwest::Client,
+}
+impl Service {
+    pub fn new() -> Self {
+        Self {
+            client: reqwest::Client::new(),
+        }
+    }
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/adapter.rs"), source);
+    let per_request: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-CLIENT-PER-REQUEST")
+        .collect();
+
+    assert_eq!(per_request.len(), 3);
+    assert_eq!(per_request[0].line, 4);
+    assert_eq!(per_request[1].line, 5);
+    assert_eq!(per_request[2].line, 12);
+}
+
+#[test]
+fn identifies_tls_danger_bypass() {
+    let source = r#"
+fn verify_sig() -> Result<HandshakeSignatureValid, rustls::Error> {
+    Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+}
+
+fn verify_cert() -> Result<ServerCertVerified, rustls::Error> {
+    Ok(ServerCertVerified::assertion())
+}
+
+fn build_insecure_client() {
+    let _ = reqwest::Client::builder().danger_accept_invalid_certs(true);
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/tls.rs"), source);
+    let bypasses: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-TLS-DANGER-BYPASS")
+        .collect();
+
+    assert_eq!(bypasses.len(), 3);
+    assert!(bypasses.iter().all(|f| f.severity == rustok_doctor::Severity::Critical));
+}
+
+#[test]
+fn identifies_unbounded_network_buffer_allocation_and_respects_guards() {
+    let source = r#"
+fn insecure_read(buf: [u8; 4]) {
+    let len = u32::from_be_bytes(buf) as usize;
+    let mut response_bytes = vec![0u8; len];
+}
+
+fn secured_read_ensure(buf: [u8; 4], max: usize) -> Result<(), ()> {
+    let len = u32::from_be_bytes(buf) as usize;
+    ensure_frame_size(len, max)?;
+    let mut response_bytes = vec![0u8; len];
+    Ok(())
+}
+
+fn secured_read_max(buf: [u8; 4]) -> Result<(), ()> {
+    let len = u32::from_be_bytes(buf) as usize;
+    if len > MAX_FRAME_BYTES {
+        return Err(());
+    }
+    let mut response_bytes = vec![0u8; len];
+    Ok(())
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/protocol.rs"), source);
+    let oom_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-UNBOUNDED-ALLOC-OOM")
+        .collect();
+
+    assert_eq!(oom_findings.len(), 1);
+    assert_eq!(oom_findings[0].line, 3);
+    assert_eq!(oom_findings[0].severity, rustok_doctor::Severity::Critical);
+}
+
+#[test]
+fn detects_real_channel_admin_client_per_request() {
+    let channel_file =
+        include_str!("../../../modules/rustok-channel/admin/src/transport/rest_adapter.rs");
+    let findings = rustok_doctor::scan_source(
+        Path::new("crates/modules/rustok-channel/admin/src/transport/rest_adapter.rs"),
+        channel_file,
+    );
+    let per_request: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-CLIENT-PER-REQUEST")
+        .collect();
+
+    // In get_json, post_json, put_json, delete_json
+    assert_eq!(per_request.len(), 4);
+    assert_eq!(per_request[0].line, 38);
+    assert_eq!(per_request[1].line, 71);
+    assert_eq!(per_request[2].line, 107);
+    assert_eq!(per_request[3].line, 141);
+}
+
+#[test]
+fn detects_non_production_comments_as_unfinished_code() {
+    let source = r#"
+fn quic_probe() {
+    // Note: In production you'd use QUIC datagrams so this isn't production code
+    run_raw_probe();
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/probe.rs"), source);
+    let unfinished: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-UNFINISHED-CODE")
+        .collect();
+
+    assert_eq!(unfinished.len(), 1);
+    assert_eq!(unfinished[0].line, 3);
 }

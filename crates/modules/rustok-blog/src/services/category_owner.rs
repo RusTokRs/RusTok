@@ -4,8 +4,8 @@ use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, TenantLocale};
 use rustok_core::SecurityContext;
 use rustok_outbox::TransactionalEventBus;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect,
 };
 use uuid::Uuid;
 
@@ -273,9 +273,30 @@ impl CategoryService {
     }
 }
 
+pub(super) async fn load_category_response_in_tx(
+    port: &dyn BlogTaxonomyPort,
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    category_id: Uuid,
+    locale: &str,
+) -> BlogResult<CategoryResponse> {
+    load_category_response_impl(port, txn, txn.into(), tenant_id, category_id, locale).await
+}
+
 pub(super) async fn load_category_response(
     port: &dyn BlogTaxonomyPort,
     db: &DatabaseConnection,
+    tenant_id: Uuid,
+    category_id: Uuid,
+    locale: &str,
+) -> BlogResult<CategoryResponse> {
+    load_category_response_impl(port, db, db.into(), tenant_id, category_id, locale).await
+}
+
+async fn load_category_response_impl<C: ConnectionTrait>(
+    port: &dyn BlogTaxonomyPort,
+    db: &C,
+    conn: crate::ports::taxonomy::BlogTaxonomyConnection<'_>,
     tenant_id: Uuid,
     category_id: Uuid,
     locale: &str,
@@ -289,7 +310,7 @@ pub(super) async fn load_category_response(
     let taxonomy_ids = [category_id];
     let canonical = port
         .load_scoped_categories(
-            db.into(),
+            conn,
             tenant_id,
             Some(&taxonomy_ids),
             &locale,

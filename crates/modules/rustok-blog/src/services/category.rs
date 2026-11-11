@@ -297,7 +297,8 @@ impl CategoryService {
         // breaks every revision-based consumer). Returning the current state is
         // the idempotent answer a PUT owes its caller.
         if copy_unchanged && settings == category.settings {
-            let response = super::category_owner::load_category_response(
+            let response = super::category_owner::load_category_response_in_tx(
+                &*self.taxonomy_port,
                 &txn,
                 tenant_id,
                 category_id,
@@ -352,9 +353,14 @@ impl CategoryService {
         // The canonical projection is part of command success. Read it through
         // this transaction so a broken projection also rolls back copy, revision,
         // settings, and the durable reindex event before returning an error.
-        let response =
-            super::category_owner::load_category_response(&txn, tenant_id, category_id, &locale)
-                .await?;
+        let response = super::category_owner::load_category_response_in_tx(
+            &*self.taxonomy_port,
+            &txn,
+            tenant_id,
+            category_id,
+            &locale,
+        )
+        .await?;
         txn.commit().await.map_err(BlogError::from)?;
         Ok(response)
     }

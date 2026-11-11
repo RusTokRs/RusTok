@@ -1,9 +1,9 @@
 use super::*;
 
 #[derive(FromQueryResult)]
-struct ProductCategoryHierarchyRow {
-    category_id: Uuid,
-    parent_id: Option<Uuid>,
+struct ProductCategoryPathRow {
+    id: Uuid,
+    path: String,
 }
 
 #[derive(FromQueryResult)]
@@ -428,10 +428,10 @@ async fn load_product_taxonomy_category_parent_map<C>(
 where
     C: ConnectionTrait,
 {
-    let rows = ProductCategoryHierarchyRow::find_by_statement(Statement::from_sql_and_values(
+    let rows = ProductCategoryPathRow::find_by_statement(Statement::from_sql_and_values(
         connection.get_database_backend(),
         r#"
-            SELECT c.id AS category_id, c.parent_id
+            SELECT c.id, c.path
             FROM catalog_categories c
             WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
             ORDER BY c.id ASC
@@ -445,7 +445,21 @@ where
         return Ok(HashMap::new());
     }
 
-    Ok(rows.into_iter().map(|row| (row.category_id, row.parent_id)).collect())
+    let path_to_id: HashMap<String, Uuid> = rows
+        .iter()
+        .map(|row| (row.path.clone(), row.id))
+        .collect();
+
+    let mut parent_map = HashMap::with_capacity(rows.len());
+    for row in &rows {
+        let parent_id = match row.path.rfind('/') {
+            Some(pos) => path_to_id.get(&row.path[..pos]).copied(),
+            None => None,
+        };
+        parent_map.insert(row.id, parent_id);
+    }
+
+    Ok(parent_map)
 }
 
 fn taxonomy_ancestor_chain(

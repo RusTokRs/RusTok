@@ -82,16 +82,6 @@ impl RusToKModule for BlogModule {
                 "blog reaction subject factory registration failed: {error}"
             ))
         })?;
-        let owners = extensions.get_or_insert_with(
-            rustok_taxonomy::TaxonomyModuleTermTranslationOwnerRegistry::default,
-        );
-        owners
-            .register(services::BlogTaxonomyTranslationOwner)
-            .map_err(|error| {
-                rustok_core::Error::Internal(format!(
-                    "blog Taxonomy translation owner registration failed: {error}"
-                ))
-            })?;
         // Search reads current Blog-owned visibility and localized content
         // through this factory. The selected runtime supplies the source.
         rustok_core::search_projection::register_search_projection_source(

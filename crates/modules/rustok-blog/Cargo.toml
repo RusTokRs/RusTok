@@ -31,7 +31,6 @@ rustok-profiles.workspace = true
 rustok-reactions = { workspace = true, default-features = false }
 rustok-runtime = { workspace = true, optional = true }
 rustok-seo-targets = { workspace = true, features = ["server"] }
-rustok-taxonomy.workspace = true
 rustok-telemetry.workspace = true
 rustok-web.workspace = true
 sea-orm.workspace = true
@@ -53,6 +52,7 @@ proptest.workspace = true
 rustok-auth.workspace = true
 rustok-comments = { workspace = true, features = ["server"] }
 rustok-migrations = { workspace = true, default-features = false }
+rustok-taxonomy.workspace = true
 rustok-test-utils.workspace = true
 tokio.workspace = true
 

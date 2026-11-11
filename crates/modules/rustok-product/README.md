@@ -53,7 +53,8 @@ the combined deployment capture.
 AI `product_copy` still uses local Product reads and writes. A database split requires migrating
 these callers and defining how transactions, owner events and dependent data are handled.
 Product does not currently publish a contracts-only build without ORM dependencies.
-Contracts and implementation may remain in this one owner crate. See the
+Its current public contracts still live in the runtime crate. The packaging migration
+moves them to `rustok-product-ports` within the same module. See the
 [coverage and verification work](docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
 
 

@@ -6,10 +6,11 @@
 
 ## FBA deployment scope
 
-Media remains one domain module. `rustok-media-transport` supplies client/server adapters
-for declared metadata/control and public-image descriptor operations. Keep that existing
-package separate under repository policy. Whole-module isolated deployment is a proposed
-target, with explicit coverage and operational gates in the owner plan.
+Media remains one domain module. Today `rustok-media-transport` supplies client/server
+adapters for declared metadata/control and public-image descriptor operations. Under the
+[canonical FBA layout](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout),
+Media moves its published contracts and adapters to the nested `rustok-media-ports` package.
+Whole-module isolated deployment is proposed, with coverage and operational gates in the owner plan.
 
 ## Known Limitations / Pending Implementation
 
