@@ -422,6 +422,12 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
         the SSR forms on `fly:select` only, so after a cancelled row drag the forms keep the
         earlier target while `selected_component_id` names the dragged component. Owner:
         `fly-browser`.
+      - The browser tests of the contract run in Chromium only
+        (`apps/next-admin/playwright.config.ts` has one project). The pointer drag sources are
+        a layer row, which is a `<button>`, and a palette item whose only content is its two
+        buttons; whether a drag that starts on a `<button>` works in Firefox and
+        WebKit was not tested. The drag control (`begin-block-drag`) and "Move selected" do
+        not depend on it. Owner: `fly-browser`, repository tooling.
       - A code review of this change found that `data-fly-component-id` on layer rows pulled
         the row of the selected component under the unscoped selection rule of
         `FlyCanvasPreview`. Fixed: the rule is scoped to `.fly-canvas--interactive`, part 7
