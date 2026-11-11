@@ -160,7 +160,7 @@ pub(crate) fn hsts_enabled() -> bool {
 fn parse_env_flag(value: &str) -> bool {
     matches!(
         value.trim().to_ascii_lowercase().as_str(),
-        "1" | "true" | "yes" | "on"
+        "1" | "true" | "yes" | "on" | "y" | "t"
     )
 }
 
@@ -558,7 +558,7 @@ mod tests {
 
     #[test]
     fn https_flag_accepts_explicit_boolean_forms() {
-        for value in ["true", "TRUE", "1", "yes", "on", " on "] {
+        for value in ["true", "TRUE", "1", "yes", "on", " on ", "y", "t"] {
             assert!(parse_env_flag(value), "expected {value:?} to enable HSTS");
         }
         for value in ["", "false", "0", "no", "off", "https"] {
