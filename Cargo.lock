@@ -18440,6 +18440,7 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-product",
  "rustok-seo-targets",
  "rustok-test-utils",
  "rustok-translation-targets",

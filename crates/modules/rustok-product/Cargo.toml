@@ -41,3 +41,4 @@ regex = "1.12"
 
 [dev-dependencies]
 rustok-test-utils.workspace = true
+rustok-taxonomy.workspace = true
