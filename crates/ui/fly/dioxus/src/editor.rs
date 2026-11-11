@@ -136,7 +136,9 @@ pub fn FlyPalette(
                                                 aria_label: "{drag_name}",
                                                 "data-fly-action": "begin-block-drag",
                                                 disabled: !can_drag,
-                                                onclick: move |_| on_begin_drag.call(drag_id.clone()),
+                                                onclick: move |_| {
+                                                    on_begin_drag.call(drag_id.clone())
+                                                },
                                                 "{drag_label}"
                                             }
                                         }
