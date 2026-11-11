@@ -62,33 +62,42 @@ fn check_production_secrets(jwt_secret: &str, database_uri: &str, production: bo
         return Ok(());
     }
 
-    if known_dev_jwt_fragment(jwt_secret).is_some() {
+    let trimmed_secret = jwt_secret.trim();
+    if known_dev_jwt_fragment(trimmed_secret).is_some() {
         return Err(crate::error::Error::Message(
             "FATAL: JWT secret contains a known development value. Set a strong, random secret in the production configuration."
                 .to_string(),
         ));
     }
 
-    if jwt_secret.is_empty() || jwt_secret.len() < 32 {
+    if trimmed_secret.is_empty() || trimmed_secret.len() < 32 {
         return Err(crate::error::Error::Message(
             "FATAL: JWT secret is too short for production use. Generate a cryptographically random secret of at least 32 bytes."
                 .to_string(),
         ));
     }
 
-    if sample_database_credentials_pattern(database_uri).is_some() {
+    let trimmed_uri = database_uri.trim();
+    if trimmed_uri.is_empty() {
+        return Err(crate::error::Error::Message(
+            "FATAL: database URI must not be empty in production.".to_string(),
+        ));
+    }
+
+    if sample_database_credentials_pattern(trimmed_uri).is_some() {
         return Err(crate::error::Error::Message(
             "FATAL: database URI matches known sample credentials. Set production database credentials before starting the release build."
                 .to_string(),
         ));
     }
 
-    if let Some((variable, password)) = configured_superadmin_password()
-        && known_sample_superadmin_password(&password).is_some()
-    {
-        return Err(crate::error::Error::Message(format!(
-            "FATAL: env var {variable} contains a known sample superadmin password. Set a unique secret before starting the release build."
-        )));
+    if let Some((variable, password)) = configured_superadmin_password() {
+        let trimmed_password = password.trim();
+        if known_sample_superadmin_password(trimmed_password).is_some() || trimmed_password.len() < 8 {
+            return Err(crate::error::Error::Message(format!(
+                "FATAL: env var {variable} contains a weak or known sample superadmin password. Set a unique secret of at least 8 characters before starting the release build."
+            )));
+        }
     }
 
     Ok(())
@@ -117,6 +126,8 @@ pub(crate) fn sample_database_credentials_pattern(uri: &str) -> Option<&'static 
         "://rustok:rustok@",
         "://admin:admin@",
         "://root:root@",
+        "://user:password@",
+        "user:password",
         "sqlite:",
         "localhost:5432/rustok_dev",
         "127.0.0.1:5432/rustok_dev",
@@ -152,6 +163,8 @@ pub(crate) fn known_sample_superadmin_password(password: &str) -> Option<&'stati
         "changeme",
         "password",
         "admin",
+        "root",
+        "12345678",
     ];
     let normalized = password.trim().to_ascii_lowercase();
     SAMPLE_PASSWORDS
@@ -270,6 +283,50 @@ mod tests {
         sample_database_credentials_pattern, should_initialize_default_superadmin_for_mode,
     };
 
+    static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct EnvGuard {
+        _guard: std::sync::MutexGuard<'static, ()>,
+        vars: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn new(keys: &[&'static str]) -> Self {
+            let guard = TEST_ENV_LOCK.lock().unwrap();
+            let mut vars = Vec::new();
+            for &k in keys {
+                vars.push((k, std::env::var(k).ok()));
+                unsafe {
+                    std::env::remove_var(k);
+                }
+            }
+            Self {
+                _guard: guard,
+                vars,
+            }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (k, v) in &self.vars {
+                unsafe {
+                    if let Some(val) = v {
+                        std::env::set_var(k, val);
+                    } else {
+                        std::env::remove_var(k);
+                    }
+                }
+            }
+        }
+    }
+
+    const SUPERADMIN_ENV_KEYS: &[&str] = &[
+        "SUPERADMIN_PASSWORD",
+        "SEED_ADMIN_PASSWORD",
+        "RUSTOK_DEV_SEED_PASSWORD",
+    ];
+
     #[test]
     fn registry_only_host_skips_default_superadmin_provisioning() {
         assert!(!should_initialize_default_superadmin_for_mode(
@@ -301,6 +358,7 @@ mod tests {
 
     #[test]
     fn production_secret_validation_rejects_empty_jwt_secret_without_exposing_it() {
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
         let error = check_production_secrets("", "postgres://app:strong@db/rustok", true)
             .expect_err("production must reject an empty JWT secret");
         let message = error.to_string();
@@ -308,7 +366,30 @@ mod tests {
     }
 
     #[test]
+    fn production_secret_validation_rejects_whitespace_jwt_secret() {
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
+        let error = check_production_secrets("   ", "postgres://app:strong@db/rustok", true)
+            .expect_err("production must reject whitespace JWT secret");
+        let message = error.to_string();
+        assert!(message.contains("JWT secret is too short"));
+    }
+
+    #[test]
+    fn production_secret_validation_rejects_empty_and_whitespace_database_uri() {
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
+        let secret = "aB3!zY7@qW8#eR2$".repeat(5);
+        let error_empty = check_production_secrets(&secret, "", true)
+            .expect_err("production must reject empty database URI");
+        assert!(error_empty.to_string().contains("database URI must not be empty"));
+
+        let error_ws = check_production_secrets(&secret, "   ", true)
+            .expect_err("production must reject whitespace database URI");
+        assert!(error_ws.to_string().contains("database URI must not be empty"));
+    }
+
+    #[test]
     fn production_secret_validation_redacts_development_jwt_fragment() {
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
         let secret = "prefix-dev-secret-suffix";
         let error = check_production_secrets(secret, "postgres://app:strong@db/rustok", true)
             .expect_err("known development JWT material must be rejected");
@@ -319,12 +400,41 @@ mod tests {
 
     #[test]
     fn production_secret_validation_redacts_database_sample_credentials() {
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
         let uri = "postgres://postgres:postgres@db/rustok";
         let error = check_production_secrets("aB3!zY7@qW8#eR2$".repeat(5).as_str(), uri, true)
             .expect_err("sample database credentials must be rejected");
         let message = error.to_string();
         assert!(message.contains("known sample credentials"));
         assert!(!message.contains("postgres:postgres"));
+    }
+
+    #[test]
+    fn production_secret_validation_rejects_user_password_database_uri() {
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
+        let uri = "postgres://user:password@prod-host:5432/rustok";
+        let error = check_production_secrets("aB3!zY7@qW8#eR2$".repeat(5).as_str(), uri, true)
+            .expect_err("user:password credentials must be rejected");
+        assert!(error.to_string().contains("known sample credentials"));
+    }
+
+    #[test]
+    fn production_secret_validation_rejects_weak_or_short_superadmin_password() {
+        let _env = EnvGuard::new(SUPERADMIN_ENV_KEYS);
+        let secret = "aB3!zY7@qW8#eR2$".repeat(5);
+        unsafe {
+            std::env::set_var("SUPERADMIN_PASSWORD", "short");
+        }
+        let error_short = check_production_secrets(&secret, "postgres://app:strong@db/rustok", true)
+            .expect_err("short superadmin password must fail");
+        assert!(error_short.to_string().contains("weak or known sample superadmin password"));
+
+        unsafe {
+            std::env::set_var("SUPERADMIN_PASSWORD", "admin12345");
+        }
+        let error_sample = check_production_secrets(&secret, "postgres://app:strong@db/rustok", true)
+            .expect_err("sample superadmin password must fail");
+        assert!(error_sample.to_string().contains("weak or known sample superadmin password"));
     }
 
     #[test]
