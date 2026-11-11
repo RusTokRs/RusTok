@@ -159,8 +159,16 @@ impl ProductTaxonomyPort for NoopProductTaxonomyPort {
         _locale: &str,
         tag_names: &[String],
     ) -> Result<Vec<Uuid>, CommerceError> {
-        // In standalone mode without taxonomy service, generate stable IDs for tags
-        Ok(tag_names.iter().map(|_| Uuid::new_v4()).collect())
+        // In standalone mode without taxonomy service, generate deterministic IDs for tags
+        Ok(tag_names
+            .iter()
+            .map(|name| {
+                Uuid::new_v5(
+                    &Uuid::NAMESPACE_OID,
+                    name.trim().to_ascii_lowercase().as_bytes(),
+                )
+            })
+            .collect())
     }
 
     async fn sync_category_translation_in_tx(
