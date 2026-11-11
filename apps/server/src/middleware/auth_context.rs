@@ -725,4 +725,84 @@ mod tests {
         headers.append(AUTHORIZATION, "Bearer token-2".parse().unwrap());
         assert_eq!(headers.get_all(AUTHORIZATION).iter().count(), 2);
     }
+
+    #[test]
+    fn forum_service_solution_and_replies_moderation_rules() {
+        assert!(
+            service_forum_boundary_violation(&Method::POST, "/api/products", &[]).is_none(),
+            "non-forum paths must not be flagged"
+        );
+
+        let topic_id = Uuid::new_v4();
+        let solution_path = format!("/api/forum/topics/{topic_id}/solution");
+        assert!(
+            service_forum_boundary_violation(
+                &Method::POST,
+                &solution_path,
+                &[Permission::FORUM_TOPICS_UPDATE]
+            )
+            .is_some()
+        );
+        assert!(
+            service_forum_boundary_violation(
+                &Method::POST,
+                &solution_path,
+                &[Permission::FORUM_TOPICS_MODERATE]
+            )
+            .is_none()
+        );
+        assert!(
+            service_forum_boundary_violation(
+                &Method::DELETE,
+                &solution_path,
+                &[Permission::FORUM_TOPICS_MODERATE]
+            )
+            .is_none()
+        );
+
+        let reply_id = Uuid::new_v4();
+        let reply_path = format!("/api/forum/replies/{reply_id}");
+        assert!(
+            service_forum_boundary_violation(
+                &Method::PUT,
+                &reply_path,
+                &[Permission::FORUM_REPLIES_UPDATE]
+            )
+            .is_some()
+        );
+        assert!(
+            service_forum_boundary_violation(
+                &Method::PUT,
+                &reply_path,
+                &[Permission::FORUM_REPLIES_MODERATE]
+            )
+            .is_none()
+        );
+        assert!(
+            service_forum_boundary_violation(
+                &Method::DELETE,
+                &reply_path,
+                &[Permission::FORUM_REPLIES_MODERATE]
+            )
+            .is_none()
+        );
+
+        let topic_path = format!("/api/forum/topics/{topic_id}");
+        assert!(
+            service_forum_boundary_violation(
+                &Method::DELETE,
+                &topic_path,
+                &[Permission::FORUM_TOPICS_MODERATE]
+            )
+            .is_none()
+        );
+        assert!(
+            service_forum_boundary_violation(
+                &Method::DELETE,
+                &topic_path,
+                &[Permission::FORUM_TOPICS_READ]
+            )
+            .is_some()
+        );
+    }
 }
