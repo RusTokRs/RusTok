@@ -16,7 +16,7 @@ use rustok_product::{
     ProductProjectionRequest, PublishedProductsRequest, StorefrontProductList,
     VariantProductProjectionRequest, dto::ProductResponse,
 };
-use rustok_product_transport::{
+use rustok_product_ports::grpc::{
     GrpcProductCatalogReadProvider, ProductCatalogGrpcOperation, ProductCatalogGrpcService,
     TrustedProductCatalogAuthority,
     proto::product_catalog_read_service_server::ProductCatalogReadServiceServer,

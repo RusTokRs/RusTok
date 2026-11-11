@@ -69,7 +69,7 @@ pub async fn configure_product_catalog_deployment(ctx: &ServerRuntimeContext) ->
         use std::sync::Arc;
 
         use rustok_product::{ProductCatalogCommandRuntime, ProductCatalogReadRuntime};
-        use rustok_product_transport::{
+        use rustok_product_ports::grpc::{
             GrpcProductCatalogReadConnectionConfig, ProductCatalogGrpcBearerToken,
         };
 

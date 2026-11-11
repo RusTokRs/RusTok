@@ -103,7 +103,7 @@ rig = { workspace = true, features = ["test-utils"] }
 rust_decimal.workspace = true
 rustok-taxonomy.workspace = true
 rustok-test-utils.workspace = true
-rustok-product-transport = { path = "../rustok-product-transport" }
+rustok-product-ports = { workspace = true, features = ["grpc-client", "grpc-server"] }
 tokio.workspace = true
 tokio-stream = { version = "0.1", features = ["net"] }
 

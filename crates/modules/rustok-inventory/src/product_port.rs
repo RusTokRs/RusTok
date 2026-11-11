@@ -46,7 +46,7 @@ impl InventoryProductVariantInfo {
 /// Hexagonal port decoupling Inventory from Product persistence.
 ///
 /// Implementations may execute in-process via `rustok_product`,
-/// over network transports via `rustok_product_transport` (gRPC),
+/// over network transports via `rustok_product_ports::grpc` (gRPC),
 /// or fall back to local database queries when running in single-database mode.
 #[async_trait]
 pub trait InventoryProductPort: Send + Sync {

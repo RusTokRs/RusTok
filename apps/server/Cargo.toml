@@ -79,7 +79,7 @@ pages-inline-edit-assets = ["pages-inline-edit", "rustok-pages/inline-edit-asset
 # resolvers additionally check is_enabled(tenant_id) at runtime.
 mod-cart      = ["dep:rustok-cart", "rustok-distribution/mod-cart"]
 mod-customer  = ["dep:rustok-customer", "rustok-distribution/mod-customer"]
-mod-product   = ["dep:rustok-product", "dep:rustok-product-transport", "mod-taxonomy", "rustok-distribution/mod-product"]
+mod-product   = ["dep:rustok-product", "dep:rustok-product-ports", "mod-taxonomy", "rustok-distribution/mod-product"]
 mod-product_relations = ["dep:rustok-product-relations", "mod-product", "rustok-distribution/mod-product_relations"]
 mod-brand = ["dep:rustok-brand", "mod-product", "rustok-distribution/mod-brand"]
 mod-product_bundles = ["dep:rustok-product-bundles", "mod-product", "rustok-distribution/mod-product_bundles"]
@@ -163,7 +163,7 @@ rustok-storefront = { path = "../storefront", default-features = false, features
 rustok-cart      = { workspace = true, optional = true }
 rustok-customer  = { workspace = true, optional = true }
 rustok-product   = { workspace = true, optional = true }
-rustok-product-transport = { path = "../../crates/modules/rustok-product-transport", optional = true }
+rustok-product-ports = { workspace = true, optional = true, features = ["grpc-client", "grpc-server"] }
 rustok-product-relations = { workspace = true, optional = true }
 rustok-brand = { workspace = true, optional = true }
 rustok-product-bundles = { workspace = true, optional = true }
