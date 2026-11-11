@@ -31,7 +31,7 @@ pub(crate) fn module_command(args: &[String]) -> Result<()> {
 pub(crate) fn print_module_usage() {
     println!("Usage:");
     println!("  cargo xtask module new <slug> [--title <title>] [--description <desc>] [--category <cat>] [--with-db] [--ui <dual|admin|storefront|none>]");
-    println!("  cargo xtask module lint <slug> [--embedded]");
+    println!("  cargo xtask module lint <slug> [--embedded | --fba]");
     println!("  cargo xtask module validate [slug]");
     println!("  cargo xtask module test <slug> [--dry-run]");
     println!(
@@ -66,10 +66,17 @@ pub(crate) fn print_module_usage() {
 /// Static architecture validation over a registered or explicitly embedded native module.
 /// Does not certify compilation, transport, or FBA/FFA readiness.
 pub(crate) fn module_lint_command(args: &[String]) -> Result<()> {
+    if let [slug, mode] = args {
+        if mode == "--fba" {
+            crate::fba_layout::lint(&crate::manifest_io::workspace_root(), slug, true)?;
+            println!("FBA transport layout passed for '{slug}'.");
+            return Ok(());
+        }
+    }
     let (slug, selector) = match args {
         [slug] => (slug, "--module"),
         [slug, mode] if mode == "--embedded" => (slug, "--embedded"),
-        _ => anyhow::bail!("Usage: cargo xtask module lint <slug> [--embedded]"),
+        _ => anyhow::bail!("Usage: cargo xtask module lint <slug> [--embedded | --fba]"),
     };
     if slug.starts_with('-') {
         anyhow::bail!("module lint requires a native module slug, not an option");
@@ -95,6 +102,9 @@ pub(crate) fn module_lint_command(args: &[String]) -> Result<()> {
         .with_context(|| format!("Cannot execute native source verifier {}", script.display()))?;
     if !status.success() {
         anyhow::bail!("Architecture lint failed for '{slug}' (status {status})");
+    }
+    if selector == "--module" {
+        crate::fba_layout::lint(&root, slug, false)?;
     }
     Ok(())
 }

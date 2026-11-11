@@ -329,7 +329,9 @@ fn command_authentication(
     let (token, actor_id) = match (token, actor_id) {
         (None, None) => return Ok(None),
         (Some(token), Some(actor_id)) => (token, actor_id),
-        _ => bail!("{COMMAND_BEARER_TOKEN_ENV} and {COMMAND_ACTOR_ID_ENV} must be configured together"),
+        _ => bail!(
+            "{COMMAND_BEARER_TOKEN_ENV} and {COMMAND_ACTOR_ID_ENV} must be configured together"
+        ),
     };
     if token == read_token.expose() {
         bail!("{COMMAND_BEARER_TOKEN_ENV} must differ from {BEARER_TOKEN_ENV}");
@@ -338,12 +340,10 @@ fn command_authentication(
         .ok()
         .filter(|id| !id.is_nil())
         .ok_or_else(|| anyhow!("{COMMAND_ACTOR_ID_ENV} must be a non-nil UUID"))?;
-    let authentication = ProductCatalogGrpcBearerAuthenticator::new(
-        token,
-        PortActor::service(actor_id.to_string()),
-    )
-    .map_err(|error| anyhow!("Product catalog command authentication is invalid: {error}"))?
-    .with_allowed_operations(ProductCatalogGrpcOperation::COMMAND);
+    let authentication =
+        ProductCatalogGrpcBearerAuthenticator::new(token, PortActor::service(actor_id.to_string()))
+            .map_err(|error| anyhow!("Product catalog command authentication is invalid: {error}"))?
+            .with_allowed_operations(ProductCatalogGrpcOperation::COMMAND);
     Ok(Some(authentication))
 }
 
@@ -487,8 +487,8 @@ async fn shutdown_signal() {
 #[cfg(test)]
 mod tests {
     use super::{
-        REQUIRED_SCHEMA_TABLES, RedactedSecret, ServiceTransport, validate_database_url,
-        validate_service_actor, validate_transport_security,
+        REQUIRED_SCHEMA_TABLES, RedactedSecret, ServiceTransport, command_authentication,
+        validate_database_url, validate_service_actor, validate_transport_security,
     };
     use std::{net::SocketAddr, path::PathBuf};
 
@@ -560,5 +560,39 @@ mod tests {
         );
         assert!(validate_service_actor(" caller".to_string()).is_err());
         assert!(validate_service_actor("caller service".to_string()).is_err());
+    }
+
+    #[test]
+    fn commands_require_a_distinct_secret_and_a_valid_service_actor() {
+        let read_token = RedactedSecret::new("read-secret".to_string());
+        let actor = "d8861f32-4895-4b34-89f9-d4ca86238491";
+        assert!(
+            command_authentication(None, None, &read_token)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            command_authentication(Some("write-secret"), Some(actor), &read_token)
+                .unwrap()
+                .is_some()
+        );
+        for (token, id, reason) in [
+            (Some("write-secret"), None, "configured together"),
+            (None, Some(actor), "configured together"),
+            (Some("read-secret"), Some(actor), "must differ"),
+            (Some("write-secret"), Some("rustok-server"), "non-nil UUID"),
+            (
+                Some("write-secret"),
+                Some("00000000-0000-0000-0000-000000000000"),
+                "non-nil UUID",
+            ),
+        ] {
+            assert!(
+                command_authentication(token, id, &read_token)
+                    .unwrap_err()
+                    .to_string()
+                    .contains(reason)
+            );
+        }
     }
 }

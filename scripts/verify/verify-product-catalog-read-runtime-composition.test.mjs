@@ -151,7 +151,7 @@ ${directMarketplace} ${directAi}`,
     options.omitPlan
       ? "Product plan"
       : `ProductCatalogReadRuntime AI, and the checkout consumer
-source cutover is complete. Concrete external transport execution remains open:
+source cutover is complete. sanitized packet for the configured separate-process profile still needs to be retained:
 verify-product-catalog-read-runtime-composition.mjs
 `,
   );

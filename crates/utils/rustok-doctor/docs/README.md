@@ -24,6 +24,16 @@ The hygiene catalog owns the meaning and confidence of rules. The scanner
 examines lexical source and reports candidates for owner review. It does not
 resolve Rust types or execute database and application behavior.
 
+The column-filtered update-trigger heuristic inspects migration SQL literals.
+It cannot establish which migrations are active, whether a BEFORE trigger
+changes a watched column, or whether a rollback definition is currently in use.
+Review the owner migration chain and database dialect before classifying a match.
+Discarding a success value after `?` does not by itself discard the error;
+the ignored-result heuristic excludes that syntactic form.
+Files named `test_support.rs` or ending in `_test_support.rs` follow the same
+test-file convention as files in `tests/`: production-only rules are skipped.
+The scanner does not resolve a file's module declarations or feature gates.
+
 Selection supports a crate, a path, all modules, the workspace, staged Git
 blobs, modified and untracked working-tree files, and files changed relative to
 a Git commit. Target selection and source-reading failures exit with code 2.

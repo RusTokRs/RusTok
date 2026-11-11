@@ -141,7 +141,7 @@ export function verifyInventoryQuantityWrites({ root = repository } = {}) {
     [
       "product_variant::Column::TenantId.eq(tenant_id)",
       "product::Column::TenantId.eq(tenant_id)",
-      "parent != Some(variant.product_id)",
+      "parent != Some(product_id)",
       "inventory_item_write_query",
       "level_query(item_id)",
       "find_default_location_in_tx",

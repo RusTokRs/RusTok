@@ -37,7 +37,7 @@ function fixture(options = {}) {
   write(
     root,
     "crates/modules/rustok-product-transport/README.md",
-    `RUSTOK_PRODUCT_CATALOG_PROVIDER=embedded RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK=true does not silently fall back to the embedded provider`,
+    `RUSTOK_PRODUCT_DEPLOYMENT=embedded RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK=true Invalid configuration or connection failure stops startup`,
   );
 
   write(
@@ -59,7 +59,7 @@ function fixture(options = {}) {
   write(
     root,
     "apps/server/src/services/product_catalog_deployment.rs",
-    `const PROVIDER_ENV: &str = "RUSTOK_PRODUCT_CATALOG_PROVIDER"; const GRPC_ENDPOINT_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT"; ${authentication} const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN"; "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS" "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK" unwrap_or("embedded") "grpc" => { GrpcProductCatalogReadConnectionConfig::new(remote.endpoint) .with_tls_domain(remote.tls_domain) .with_connect_timeout(Duration::from_millis(remote.connect_timeout_ms)) .allow_insecure_loopback(remote.allow_insecure_loopback) .connect() let provider = Arc::new(provider); ProductCatalogReadRuntime::external(provider.clone()) ${options.missingIdentity ? "" : ".with_variant_identity_read_port(provider)"} ctx.shared_insert(runtime); remote Product catalog provider initialization failed remote Product catalog variables require {PROVIDER_ENV}=grpc is required when {PROVIDER_ENV}=grpc must be either embedded or grpc ${fallback}`,
+    `const PROVIDER_ENV: &str = "RUSTOK_PRODUCT_CATALOG_PROVIDER"; const GRPC_ENDPOINT_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT"; ${authentication} const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN"; "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS" "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK" uses_grpc(deployment, DEPLOYMENT_ENV)?.unwrap_or(false) mode.eq_ignore_ascii_case("grpc") GrpcProductCatalogReadConnectionConfig::new(remote.endpoint) .with_tls_domain(remote.tls_domain) .with_connect_timeout(Duration::from_millis(remote.connect_timeout_ms)) .allow_insecure_loopback(remote.allow_insecure_loopback) .connect() let provider = Arc::new(provider); ProductCatalogReadRuntime::external(provider.clone()) ${options.missingIdentity ? "" : ".with_variant_identity_read_port(provider)"} ctx.shared_insert(runtime); remote Product catalog provider initialization failed remote Product catalog variables require a grpc provider is required for the selected grpc provider must be either embedded or grpc ${fallback}`,
   );
   const configure = "configure_product_catalog_deployment(&runtime_ctx).await?;";
   const appBootstrap =

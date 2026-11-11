@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 const ENDPOINT_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT";
 const BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN";
+const COMMAND_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN";
 const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN";
 const ALLOW_INSECURE_LOOPBACK_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK";
 const CONNECT_TIMEOUT_MS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS";
@@ -79,10 +80,11 @@ impl ProbeConfig {
 async fn main() -> Result<(), Box<dyn Error>> {
     let config = ProbeConfig::from_environment()?;
     let authentication = ProductCatalogGrpcBearerToken::new(config.bearer_token.as_str())?;
-    let provider = GrpcProductCatalogReadConnectionConfig::new(config.endpoint)
+    let connection = GrpcProductCatalogReadConnectionConfig::new(config.endpoint)
         .with_tls_domain(config.tls_domain)
         .with_connect_timeout(config.connect_timeout)
-        .allow_insecure_loopback(config.allow_insecure_loopback)
+        .allow_insecure_loopback(config.allow_insecure_loopback);
+    let provider = connection
         .connect()
         .await?
         .with_authentication(authentication);
@@ -211,20 +213,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     if config.enable_commands {
-        let command_provider = GrpcProductCatalogReadConnectionConfig::new(config.endpoint)
-            .with_tls_domain(config.tls_domain)
-            .with_connect_timeout(config.connect_timeout)
-            .allow_insecure_loopback(config.allow_insecure_loopback)
+        let command_token = required_secret_env(COMMAND_BEARER_TOKEN_ENV)?;
+        let command_authentication = ProductCatalogGrpcBearerToken::new(&command_token)?;
+        let command_provider = connection
             .connect_command()
             .await?
-            .with_authentication(authentication);
+            .with_authentication(command_authentication);
 
         let preview = command_provider
-            .preview_variant_axes(
-                context,
-                config.product_id,
-                SetVariantAxesInput::default(),
-            )
+            .preview_variant_axes(context, config.product_id, SetVariantAxesInput::default())
             .await
             .map_err(|error| port_error("preview_variant_axes", error))?;
         if preview.product_id != config.product_id {

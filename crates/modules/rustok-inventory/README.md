@@ -2,6 +2,14 @@
 
 ## Known Limitations / Pending Implementation
 
+- `InventoryProductPort` currently has a local database adapter. Quantity changes and
+  Product/variant deletion require tenant identity checks and row locks in the same
+  transaction as Inventory writes. Checkout reservation SQL also reads Product variants.
+  Starting Product as a separate process does not remove these shared-schema dependencies.
+  Zero-quantity reserve and release report zero availability for SKUs without Inventory
+  records. Verify Inventory backfill before moving catalog consumers off the shared schema.
+  See the [Product deployment plan](../rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
+
 - Native Product/Variant deletion now has a bounded, tenant-proved empty-bookkeeping guard in
   source: any reservation/shipment/return reference refuses, and stocked/reserved/incoming
   must each be zero at every original level. Missing identity never means absent stock.

@@ -100,6 +100,9 @@ impl IntoResponse for Error {
                 rustok_core::Error::NotFound(msg) => {
                     error_response(StatusCode::NOT_FOUND, "not_found", msg)
                 }
+                rustok_core::Error::Database(sea_orm::DbErr::RecordNotFound(msg)) => {
+                    error_response(StatusCode::NOT_FOUND, "not_found", msg)
+                }
                 rustok_core::Error::Forbidden(msg) => {
                     error_response(StatusCode::FORBIDDEN, "forbidden", msg)
                 }
@@ -290,6 +293,16 @@ mod tests {
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(body.code, "not_found");
         assert_eq!(body.message, "tenant 123 not found");
+    }
+
+    #[tokio::test]
+    async fn error_into_response_maps_core_database_record_not_found_to_404() {
+        let db_err = sea_orm::DbErr::RecordNotFound("core item not found".into());
+        let err = Error::Core(rustok_core::Error::Database(db_err));
+        let (status, body) = parse_error_response(err.into_response()).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.code, "not_found");
+        assert_eq!(body.message, "core item not found");
     }
 
     #[tokio::test]

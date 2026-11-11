@@ -92,8 +92,8 @@ requireAll(deployment, [
   'const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN";',
   '"RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS"',
   '"RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK"',
-  'unwrap_or("embedded")',
-  '"grpc" => {',
+  "uses_grpc(deployment, DEPLOYMENT_ENV)?.unwrap_or(false)",
+  'mode.eq_ignore_ascii_case("grpc")',
   "ProductCatalogGrpcBearerToken::new(remote.bearer_token.expose())",
   "GrpcProductCatalogReadConnectionConfig::new(remote.endpoint)",
   ".with_tls_domain(remote.tls_domain)",
@@ -107,8 +107,8 @@ requireAll(deployment, [
   "ctx.shared_insert(runtime);",
   "remote Product catalog authentication configuration failed",
   "remote Product catalog provider initialization failed",
-  "remote Product catalog variables require {PROVIDER_ENV}=grpc",
-  "is required when {PROVIDER_ENV}=grpc",
+  "remote Product catalog variables require a grpc provider",
+  "is required for the selected grpc provider",
   "must be either embedded or grpc",
   "grpc_requires_a_bearer_token",
   "bearer_token_is_not_silently_ignored_in_embedded_mode",
@@ -147,12 +147,12 @@ if (!/SharedAiProductCatalogReadPort\(\s*runtime\.read_port\(\),?\s*\)/.test(com
 }
 
 requireAll(readme, [
-  "RUSTOK_PRODUCT_CATALOG_PROVIDER=embedded",
+  "RUSTOK_PRODUCT_DEPLOYMENT=embedded",
   "RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc",
   "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT",
   "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",
   "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK=true",
-  "does not silently fall back to the embedded provider",
+  "Invalid configuration or connection failure stops startup",
 ], "Product transport deployment documentation");
 
 let registry;

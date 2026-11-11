@@ -232,8 +232,8 @@
         "confidence": "heuristic",
         "line": 4,
         "content": "let _ = signal.get();",
-        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
-        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+        "message": "Discarded signal read outside a recognized reactive scope. Verify the actual reactive consumer.",
+        "suggested_fix": "If tracking is required, read the signal in the owning reactive consumer."
       },
       {
         "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
@@ -242,8 +242,8 @@
         "confidence": "heuristic",
         "line": 19,
         "content": "let _ = signal.get();",
-        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
-        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+        "message": "Discarded signal read outside a recognized reactive scope. Verify the actual reactive consumer.",
+        "suggested_fix": "If tracking is required, read the signal in the owning reactive consumer."
       }
     ]
   },
@@ -258,8 +258,8 @@
         "confidence": "heuristic",
         "line": 4,
         "content": "let _ = signal.get();",
-        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
-        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+        "message": "Discarded signal read outside a recognized reactive scope. Verify the actual reactive consumer.",
+        "suggested_fix": "If tracking is required, read the signal in the owning reactive consumer."
       },
       {
         "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
@@ -268,8 +268,8 @@
         "confidence": "heuristic",
         "line": 18,
         "content": "let _ = signal.get();",
-        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
-        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+        "message": "Discarded signal read outside a recognized reactive scope. Verify the actual reactive consumer.",
+        "suggested_fix": "If tracking is required, read the signal in the owning reactive consumer."
       }
     ]
   },
@@ -284,8 +284,8 @@
         "confidence": "heuristic",
         "line": 4,
         "content": "let _ = signal.get();",
-        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
-        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+        "message": "Discarded signal read outside a recognized reactive scope. Verify the actual reactive consumer.",
+        "suggested_fix": "If tracking is required, read the signal in the owning reactive consumer."
       },
       {
         "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
@@ -294,8 +294,8 @@
         "confidence": "heuristic",
         "line": 18,
         "content": "let _ = signal.get();",
-        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
-        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+        "message": "Discarded signal read outside a recognized reactive scope. Verify the actual reactive consumer.",
+        "suggested_fix": "If tracking is required, read the signal in the owning reactive consumer."
       }
     ]
   },
@@ -310,8 +310,8 @@
         "confidence": "heuristic",
         "line": 4,
         "content": "let _ = signal.get();",
-        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
-        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+        "message": "Discarded signal read outside a recognized reactive scope. Verify the actual reactive consumer.",
+        "suggested_fix": "If tracking is required, read the signal in the owning reactive consumer."
       },
       {
         "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
@@ -320,8 +320,8 @@
         "confidence": "heuristic",
         "line": 18,
         "content": "let _ = signal.get();",
-        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
-        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+        "message": "Discarded signal read outside a recognized reactive scope. Verify the actual reactive consumer.",
+        "suggested_fix": "If tracking is required, read the signal in the owning reactive consumer."
       }
     ]
   },
@@ -336,8 +336,8 @@
         "confidence": "heuristic",
         "line": 4,
         "content": "let _ = signal.get();",
-        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
-        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+        "message": "Discarded signal read outside a recognized reactive scope. Verify the actual reactive consumer.",
+        "suggested_fix": "If tracking is required, read the signal in the owning reactive consumer."
       },
       {
         "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
@@ -346,8 +346,8 @@
         "confidence": "heuristic",
         "line": 18,
         "content": "let _ = signal.get();",
-        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
-        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+        "message": "Discarded signal read outside a recognized reactive scope. Verify the actual reactive consumer.",
+        "suggested_fix": "If tracking is required, read the signal in the owning reactive consumer."
       }
     ]
   },
@@ -362,8 +362,8 @@
         "confidence": "heuristic",
         "line": 4,
         "content": "let _ = signal.get();",
-        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
-        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+        "message": "Discarded signal read outside a recognized reactive scope. Verify the actual reactive consumer.",
+        "suggested_fix": "If tracking is required, read the signal in the owning reactive consumer."
       },
       {
         "pattern_id": "P-LEPTOS-DEAD-SIGNAL",
@@ -372,8 +372,8 @@
         "confidence": "heuristic",
         "line": 18,
         "content": "let _ = signal.get();",
-        "message": "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
-        "suggested_fix": "create_effect(move |_| { signal.get(); /* trigger reactive update */ });"
+        "message": "Discarded signal read outside a recognized reactive scope. Verify the actual reactive consumer.",
+        "suggested_fix": "If tracking is required, read the signal in the owning reactive consumer."
       }
     ]
   },

@@ -1164,6 +1164,12 @@ Leptos-сторфронт этого дефекта не имеет: его ад
 
 Правки `main` в `crates/ui/fly/leptos/src/editor.rs` и `crates/ui/fly/dioxus/src/editor.rs` публичный интерфейс `fly`, изменённый серией, не затрагивают (серия меняет только поведение: правка после неудачного сохранения не сбрасывает `save_failed`); вместе эти файлы не собирались. После слияния запускались `verify-adrs.mjs` и `verify-docs.mjs`; полный прогон `verify-*.mjs` и сборка Rust после слияния не повторялись.
 
+### После открытия PR (2026-11-11)
+
+CI на PR показал два регресса относительно `main`: `cargo test -p rustok-pages --lib` (workflow «Fly Page Builder») и `cargo check --locked -p rustok-pages --all-targets` (два workflow «Pages Rollback-Activated … PostgreSQL Evidence»). Журналы заданий из этой среды недоступны, причина найдена чтением кода: модуль `landing_markup_tests` в `src/seo_targets.rs` вызывал `landing_channel` и называл `SeoTargetLoadScope`, не импортируя ни то, ни другое, — тестовая цель библиотеки не собиралась. Импорты добавлены. Локально сборка не выполнялась; подтверждение — повторный прогон CI.
+
+`main` за это время ушёл вперёд (`2b00ce4`), снова конфликт в строке индекса `DECISIONS/README.md`; сохранены обе строки `main` от 2026-11-11 и строка серии. `verify-adrs` (181 решение) и `verify-docs` проходят.
+
 ### Не реализовано в этой серии
 
 - **§8.1** (перенос Leptos-слоя в `core/` + `ui/`), **§8.2** (переименование capability `Publish` → `Save`) — структурные изменения уровня major. Не начаты.

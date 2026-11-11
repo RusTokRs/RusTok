@@ -79,6 +79,10 @@ requireAll(source, [
   "ProductCatalogGrpcBearerInterceptor::from_bearer_token(",
   "PortActor::service(config.trusted_service_actor.clone())",
   "ProductCatalogReadServiceServer::with_interceptor(service, interceptor)",
+  "config.command_authentication.map",
+  "ProductCatalogGrpcBearerInterceptor::new(authentication)",
+  ".add_optional_service(command_service)",
+  ".with_allowed_operations(ProductCatalogGrpcOperation::COMMAND)",
   "Server::builder()",
   "ServerTlsConfig::new().identity(identity)",
   ".serve_with_shutdown(config.bind, shutdown_signal())",
@@ -159,12 +163,12 @@ forbidAll(source, [
 ], "Product service ownership and secret boundary");
 
 requireAll(readme, [
-  "standalone provider-side deployment unit",
+  "optionally expose `ProductCatalogCommandPort`",
   "CatalogService",
   "ProductCatalogGrpcService",
   "ProductCatalogGrpcBearerInterceptor",
   "OutboxTransport",
-  "read-only",
+  "command service is registered only when both command variables are set",
   "does not run migrations at startup",
   "## Schema preflight",
   "products",

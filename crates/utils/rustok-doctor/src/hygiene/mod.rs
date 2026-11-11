@@ -95,6 +95,20 @@ fn closing(open: u8) -> Option<u8> {
     }
 }
 
+fn discarded_result_propagates(statement: &str) -> bool {
+    let mut delimiters = Vec::new();
+    for (offset, byte) in statement.bytes().enumerate() {
+        if let Some(end) = closing(byte) {
+            delimiters.push(end);
+        } else if delimiters.last() == Some(&byte) {
+            delimiters.pop();
+        } else if byte == b';' && delimiters.is_empty() {
+            return statement[..offset].trim_end().ends_with('?');
+        }
+    }
+    false
+}
+
 fn reactive_boundaries(syntax: &str) -> Vec<usize> {
     let tokens = re!(
         r"(?P<reactive>\b(?:create_effect|create_memo|create_resource|create_local_resource|Effect::new|Memo::new|Resource::new|LocalResource::new)\s*\(|\bview!\s*[{(\[])|[(){}\[\]]"
@@ -233,13 +247,14 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
     }) || [
         "_test.rs",
         "_tests.rs",
+        "_test_support.rs",
         "mock.rs",
         "stub.rs",
         "_evidence.rs",
     ]
     .iter()
     .any(|suffix| name.ends_with(suffix))
-        || matches!(name.as_str(), "test.rs" | "tests.rs");
+        || matches!(name.as_str(), "test.rs" | "tests.rs" | "test_support.rs");
     let mut scan = Scan {
         file,
         lines: source::lines(content),
@@ -264,6 +279,17 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
     let reactive = reactive_boundaries(&syntax);
     let publications = transactional_publications(&syntax);
     let has_unprepared_sql = syntax.contains("execute_unprepared");
+    let trigger_candidates = if scan.migration {
+        let code = scan
+            .lines
+            .iter()
+            .map(|line| line.code.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        sql::column_update_triggers(&code, &syntax)
+    } else {
+        Vec::new()
+    };
     let mut offset = 0;
     let mut depth = 0usize;
     let mut test_scopes = Vec::new();
@@ -272,6 +298,7 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
     let mut pending_loop = false;
     let mut static_depth = None;
     let mut pending_static = false;
+    let mut static_delimiters = Vec::new();
     let mut async_depth = None;
     let mut pending_async = false;
     let mut guards: BTreeMap<String, (usize, usize)> = BTreeMap::new();
@@ -290,6 +317,20 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
             re!(r"#\s*\[\s*(?:cfg\s*\(\s*test\s*\)|(?:tokio::)?test(?:\s*\([^]]*\))?)\s*\]")
                 .is_match(code_part)
                 || re!(r"\bmod\s+tests?\b").is_match(code_part);
+        if !scan.test_file
+            && !scan.build_file
+            && test_scopes.is_empty()
+            && !pending_test
+            && !test_attribute
+            && trigger_candidates
+                .iter()
+                .any(|position| *position >= line_start && *position < offset)
+        {
+            scan.add(line_number, "P-TRIGGER-ROW-CHANGE", "Column-Filtered Update Trigger", Severity::High,
+                "Column-filtered AFTER UPDATE trigger may miss changes made by a BEFORE trigger. Check the active migration chain and database semantics.",
+                "If another trigger derives a watched column, observe row changes with the owner-approved trigger predicate.");
+        }
+
         if !scan.test_file
             && !scan.build_file
             && !scan.vendored
@@ -348,15 +389,33 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
             || code_part.contains("Lazy::new")
             || code_part.contains("LazyLock::new")
             || code_part.contains("lazy_static!");
-        if static_decl {
+        if static_decl || pending_static {
+            if !pending_static {
+                static_delimiters.clear();
+            }
+            let mut terminated = false;
+            for byte in code_part.bytes() {
+                match byte {
+                    b'(' | b'[' => static_delimiters.push(byte),
+                    b')' if static_delimiters.last() == Some(&b'(') => {
+                        static_delimiters.pop();
+                    }
+                    b']' if static_delimiters.last() == Some(&b'[') => {
+                        static_delimiters.pop();
+                    }
+                    b';' if static_delimiters.is_empty() => {
+                        terminated = true;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
             if opens > 0 {
                 static_depth = Some(depth);
+                pending_static = false;
             } else {
-                pending_static = true;
+                pending_static = !terminated;
             }
-        } else if pending_static && opens > 0 {
-            static_depth = Some(depth);
-            pending_static = false;
         }
         if let Some(captures) =
             re!(r"^\s*(?:pub(?:\s*\([^)]*\))?\s+)?async\s+fn\s+([a-zA-Z_]\w*)").captures(code_part)
@@ -553,7 +612,9 @@ fn check_rules(
                     }
                 }
             }
-            if let Some(capture) = re!(r"\blet\s+_\s*=\s*(?:\w+\.)?(?:transaction|txn|tx)\s*\.\s*(rollback|commit)\s*\(\s*\)\s*\.\s*await\b").captures(&statement) {
+            let propagates = discarded_result_propagates(&statement);
+            if !propagates {
+                if let Some(capture) = re!(r"\blet\s+_\s*=\s*(?:\w+\.)?(?:transaction|txn|tx)\s*\.\s*(rollback|commit)\s*\(\s*\)\s*\.\s*await\b").captures(&statement) {
                 let operation = &capture[1];
                 let fix = if operation == "commit" {
                     "Propagate the commit failure and preserve the operation's retry contract."
@@ -566,13 +627,14 @@ fn check_rules(
                 let boundaries_before = reactive.partition_point(|boundary| *boundary <= statement_offset);
                 if boundaries_before % 2 == 0 {
                     scan.add(number, "P-LEPTOS-DEAD-SIGNAL", "Dead Reactive Signal Read", Severity::High,
-                        "Calling signal.get() in let _ = outside of create_effect / view! drops reactivity. UI will not update.",
-                        "create_effect(move |_| { signal.get(); /* trigger reactive update */ });");
+                        "Discarded signal read outside a recognized reactive scope. Verify the actual reactive consumer.",
+                        "If tracking is required, read the signal in the owning reactive consumer.");
                 }
             } else if re!(r"\b(?:\w+\s*\(|await\b)").is_match(&statement) {
                 scan.add(number, "P-ANTI-SWALLOW", "Zero Error Swallowing", Severity::High,
                     "Discarded call result via 'let _ ='. Verify whether it can fail.",
                     "Propagate a required failure or record an explicitly best-effort failure.");
+            }
             }
         }
         if re!(r"\b(?:std::hint::)?black_box\s*\(").is_match(text) {

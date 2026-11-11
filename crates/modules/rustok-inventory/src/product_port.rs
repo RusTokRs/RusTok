@@ -8,15 +8,15 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
-//! Product-owned port boundary for Inventory consumption.
+//! Variant identity boundary for Inventory consumption.
 //!
-//! Provides transport-neutral and persistence-neutral contracts so that Inventory logic
-//! never queries Product-owned tables (`products`, `product_variants`) directly via SQL.
+//! The current adapter reads the co-located Product schema. Transactional write paths
+//! keep their own locking identity checks within the shared database transaction.
 
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect,
 };
 use uuid::Uuid;
@@ -125,7 +125,23 @@ pub async fn get_variant_info_from_conn<C: ConnectionTrait>(
     tenant_id: Uuid,
     variant_id: Uuid,
 ) -> Result<InventoryProductVariantInfo, PortError> {
-    let row = product_variant::Entity::find_by_id(variant_id)
+    find_variant_info_from_conn(conn, tenant_id, variant_id)
+        .await
+        .map_err(|_| crate::ports_impl::storage_unavailable())?
+        .ok_or_else(|| {
+            PortError::not_found(
+                "inventory.variant_not_found",
+                "inventory variant was not found",
+            )
+        })
+}
+
+pub(crate) async fn find_variant_info_from_conn<C: ConnectionTrait>(
+    conn: &C,
+    tenant_id: Uuid,
+    variant_id: Uuid,
+) -> Result<Option<InventoryProductVariantInfo>, DbErr> {
+    Ok(product_variant::Entity::find_by_id(variant_id)
         .filter(product_variant::Column::TenantId.eq(tenant_id))
         .select_only()
         .column(product_variant::Column::Id)
@@ -135,22 +151,14 @@ pub async fn get_variant_info_from_conn<C: ConnectionTrait>(
         .column(product_variant::Column::InventoryPolicy)
         .into_tuple::<(Uuid, Uuid, Uuid, Option<String>, String)>()
         .one(conn)
-        .await
-        .map_err(|err| PortError::unavailable("inventory.storage_unavailable", err.to_string()))?
-        .ok_or_else(|| {
-            PortError::not_found(
-                "inventory.variant_not_found",
-                "inventory variant was not found",
-            )
-        })?;
-
-    Ok(InventoryProductVariantInfo {
+        .await?
+        .map(|row| InventoryProductVariantInfo {
         variant_id: row.0,
         product_id: row.1,
         tenant_id: row.2,
         sku: row.3,
         inventory_policy: row.4,
-    })
+    }))
 }
 
 /// Helper function to load batch variant metadata from an active database connection or transaction.
@@ -174,7 +182,7 @@ pub async fn get_variants_info_from_conn<C: ConnectionTrait>(
         .into_tuple::<(Uuid, Uuid, Uuid, Option<String>, String)>()
         .all(conn)
         .await
-        .map_err(|err| PortError::unavailable("inventory.storage_unavailable", err.to_string()))?;
+        .map_err(|_| crate::ports_impl::storage_unavailable())?;
 
     Ok(rows
         .into_iter()
@@ -210,7 +218,7 @@ pub async fn list_tenant_variant_ids_from_conn<C: ConnectionTrait>(
         .into_tuple::<Uuid>()
         .all(conn)
         .await
-        .map_err(|err| PortError::unavailable("inventory.storage_unavailable", err.to_string()))?;
+        .map_err(|_| crate::ports_impl::storage_unavailable())?;
 
     Ok(ids)
 }

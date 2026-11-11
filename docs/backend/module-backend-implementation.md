@@ -33,9 +33,43 @@ future packaging work for Product, not an existing supported feature.
 
 For a remote profile, inventory required operations and outgoing capabilities, register
 the selected provider before consumer composition, and ensure mounted entrypoints use it.
-Keep existing owner service/transport packages separate; do not move their logic into
-consumer modules or duplicate the owner service in a network handler. Document unsupported
-capabilities and native transaction dependencies before claiming whole-module extraction.
+Keep network handlers thin and call the owner port. Document unsupported capabilities
+and native transaction dependencies before claiming whole-module extraction.
+
+### Remote FBA module layout
+
+The [canonical FBA layout ADR](../../DECISIONS/2026-11-11-canonical-fba-transport-layout.md)
+applies to a new owner and to an existing owner adding a remote profile.
+
+```text
+crates/modules/rustok-<owner>/
+  Cargo.toml
+  rustok-module.toml
+  src/                          # owner contracts, services and local execution
+  transport/
+    Cargo.toml                  # rustok-<owner>-transport
+    build.rs                    # protobuf generation
+    proto/                      # published owner RPC contracts
+    src/
+      lib.rs                    # client and server adapters
+      bin/service.rs            # standalone process composition
+```
+
+The transport package depends on the owner. Register its path explicitly in root
+`workspace.members` and keep the owner as the module in `modules.toml`. Set
+`package.autobins = false` and declare one `[[bin]]` with an explicit executable
+name, `path = "src/bin/service.rs"` and `required-features = ["service"]`.
+Declare `service` outside the default features. Put dependencies used only by
+process startup behind that feature. A conversion can preserve the executable's
+published name while moving the source and updating the Cargo package selector.
+
+The native scaffold starts with owner identity and documents this extension point.
+Once a real owner port has a remote caller, add the same `transport/` package to
+the generated or existing owner and run `cargo xtask module lint <slug> --fba`.
+That command requires the remote package. Standard module lint checks its shape
+when present. An embedded-only module has no transport package. Record real
+operations, provider bindings, failure behavior and verification evidence in the
+owner plan before promoting the remote profile.
 
 ## Scaffold profiles and generation contract
 

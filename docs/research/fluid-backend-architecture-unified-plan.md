@@ -340,11 +340,9 @@ mandatory template:
 Contracts and implementation may remain in the same owner crate. Neither a second
 domain module nor an owner-contracts package is required. A contracts-only Cargo build
 must be implemented and checked independently; Product currently has unconditional
-implementation dependencies. Existing separate transport/service packages stay separate.
-
-The concept matches by layers (`domain/service-port/implementation/storage/adapter/server
-wiring`), but the RusTok standard does not require creating all folders and `*-grpc` crate ahead of time. The structure
-evolves through readiness gates to avoid getting formal interfaces without evidence.
+implementation dependencies. The [remote FBA module layout](../backend/module-backend-implementation.md#remote-fba-module-layout)
+defines the same nested transport package for new and converted owners. Materialize
+each responsibility when it has an implemented owner contract and a real consumer.
 
 ---
 

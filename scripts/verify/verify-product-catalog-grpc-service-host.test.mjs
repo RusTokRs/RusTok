@@ -70,6 +70,7 @@ ${security}
 ${schemaPreflight}
 ${startupOrder}
 ${secretLeak}
+config.command_authentication.map ProductCatalogGrpcBearerInterceptor::new(authentication) .add_optional_service(command_service) .with_allowed_operations(ProductCatalogGrpcOperation::COMMAND)
 ServerTlsConfig::new().identity(identity) .serve_with_shutdown(config.bind, shutdown_signal())
 DATABASE_URL_ENV: &str = "RUSTOK_PRODUCT_CATALOG_DATABASE_URL"
 BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN"
@@ -88,7 +89,7 @@ secrets_are_redacted_from_debug_output database_must_be_postgresql_and_debug_tar
   write(
     root,
     "crates/modules/rustok-product-catalog-service/README.md",
-    `standalone provider-side deployment unit CatalogService ProductCatalogGrpcService ProductCatalogGrpcBearerInterceptor OutboxTransport read-only does not run migrations at startup ## Schema preflight products product_variants sys_events before tonic starts listening does not silently continue with partial readiness RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_CERT_PATH RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR cargo run -p rustok-product-catalog-service does not claim this command was executed boundary_ready`,
+    `optionally expose \`ProductCatalogCommandPort\` CatalogService ProductCatalogGrpcService ProductCatalogGrpcBearerInterceptor OutboxTransport command service is registered only when both command variables are set does not run migrations at startup ## Schema preflight products product_variants sys_events before tonic starts listening does not silently continue with partial readiness RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_CERT_PATH RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR cargo run -p rustok-product-catalog-service does not claim this command was executed boundary_ready`,
   );
 
   write(

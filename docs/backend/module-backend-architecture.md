@@ -163,8 +163,10 @@ and recovery contract.
   requirement. It requires optional implementation dependencies, independent public types
   and checks of the resolved feature graph. Cargo features are additive; they do not choose
   a runtime provider. Product does not currently publish such a build.
-- Keep the existing owner transport and standalone-service packages separate under
-  `AGENTS.md` section 5. Their package count does not establish remote completeness.
+- A native owner publishes its gRPC adapter and standalone binary in one nested
+  `transport/` package. New and converted owners use the same
+  [remote FBA module layout](./module-backend-implementation.md#remote-fba-module-layout).
+  Existing sibling packages are migration states.
 - Do not create empty contract, repository or transport layers for modules without a real
   boundary. Module-specific contracts do not move to `rustok-api` merely because another
   module consumes them.
@@ -224,8 +226,10 @@ levels and the current static-boundary policy.
 
 Current bounded profiles illustrate this distinction:
 
-- Product's `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` selects three base catalog projections,
-  the storefront variant projection used by Cart, and two SKU identity reads. Product commands remain embedded. See the
+- Product can select embedded or gRPC providers for catalog reads and commands independently.
+  The original `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` setting only changes reads. Both
+  transports delegate to the same Product core. Consumer coverage and the shared transaction
+  boundary still constrain database placement. See the
   [Product scope and gaps](../../crates/modules/rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
 - `RUSTOK_PROFILE_MEDIA_PROVIDER=grpc` selects the Profiles public-image descriptor
   provider. It does not move all Media operations or image bytes to gRPC. See the

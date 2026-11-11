@@ -93,7 +93,7 @@ forbidAll(client, [
 requireAll(server, [
   "pub struct ProductCatalogGrpcBearerAuthenticator",
   "pub struct ProductCatalogGrpcBearerInterceptor",
-  "ProductCatalogGrpcOperation::ALL",
+  "HashSet::from(ProductCatalogGrpcOperation::READ)",
   "self.token.matches_authorization(authorization.as_bytes())",
   "Uuid::parse_str(tenant_id)",
   "actor: self.actor.clone()",

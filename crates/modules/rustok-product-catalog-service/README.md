@@ -1,10 +1,11 @@
 # RusTok Product catalog service
 
-> **FBA microservice extraction** — this is a domain-owned standalone deployment unit, not a platform host application. It MUST NOT be relocated to `apps/` or collapsed into `rustok-product`. See `AGENTS.md` §5 and `docs/modules/registry.md`.
+> This is the current Product standalone deployment package. The conversion target places its binary in the [Product-owned transport package](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
 
 For full public interface and operational contract definitions, see [CRATE_API.md](CRATE_API.md).
 
-`rustok-product-catalog-service` is the standalone provider-side deployment unit for `ProductCatalogReadPort`.
+`rustok-product-catalog-service` exposes Product catalog read and SKU identity ports and can
+optionally expose `ProductCatalogCommandPort`.
 
 The binary composes the canonical Product owner service and the replaceable tonic adapter:
 
@@ -21,19 +22,21 @@ ProductCatalogGrpcService
 authenticated tonic gRPC
 ```
 
-It does not own Product DTOs, catalog policy, persistence queries, locale/channel rules, consumer fallback behavior, migrations, or an outbox relay. The exposed RPC surface includes the complete read-only query suite as well as transactional command execution for authorized callers. `CatalogService` receives an `OutboxTransport`-backed `TransactionalEventBus` so the owner constructor remains production-valid without introducing a no-op event transport.
+Product owns the DTOs, catalog policy and persistence. The standalone host composes
+`CatalogService` with an `OutboxTransport`-backed `TransactionalEventBus`. Platform migrations
+and outbox delivery are separate deployment responsibilities.
 
 ## Service Capabilities
 
-This host exposes both:
+This host exposes:
 - `ProductCatalogReadService`: `ReadProductProjection`, `ReadVariantProductProjection`, `ListPublishedProducts`, `ReadVariantIdentities`, `ListProductVariantIdentities`, `ReadStorefrontVariantProductProjection`, `ListFilteredPublishedProducts`, `LoadStorefrontCatalogFacets`, and `ReadStorefrontProductProjection`.
-- `ProductCatalogCommandService`: all 15 catalog lifecycle commands (`CreateProduct`, `UpdateProduct`, `DeleteProduct`, `PublishProduct`, `UnpublishProduct`, `ArchiveProduct`, `CreateVariant`, `UpdateVariant`, `DeleteVariant`, `SetVariantAxes`, `PreviewVariantAxes`, `AddProductImage`, `UpdateProductImage`, `DeleteProductImage`, `ReorderProductImages`).
+- `ProductCatalogCommandService` (opt-in): 15 catalog operations (`CreateProduct`, `UpdateProduct`, `DeleteProduct`, `PublishProduct`, `UnpublishProduct`, `ArchiveProduct`, `CreateVariant`, `UpdateVariant`, `DeleteVariant`, `SetVariantAxes`, `PreviewVariantAxes`, `AddProductImage`, `UpdateProductImage`, `DeleteProductImage`, `ReorderProductImages`).
 
-The standalone provider passed a local PostgreSQL smoke check for all read RPCs,
+The standalone provider passed a local PostgreSQL smoke check for the six original read RPCs,
 including the storefront SKU projection for a published product and a draft.
 The local Commerce HTTP checkout passed with embedded and separate gRPC Product.
-The combined capture, mounted AI request and broader recovery evidence remain
-open. See the [Product plan](../rustok-product/docs/implementation-plan.md#mounted-commerce-http-checkout-2026-11-07).
+The mounted AI attributes task passed locally with a separate provider and separate databases.
+See the [Product plan](../rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
 The configured owner database and any local command database must have an explicit
 authority/data-placement contract; this binary provides no replication mechanism.
 
@@ -42,10 +45,26 @@ authority/data-placement contract; this binary provides no replication mechanism
 | Variable | Purpose |
 | --- | --- |
 | `RUSTOK_PRODUCT_CATALOG_DATABASE_URL` | PostgreSQL URL. Falls back to `RUSTOK_DATABASE_URL`, then `DATABASE_URL`. |
-| `RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN` | Shared service credential also configured on the consumer server. Never place it in source control or endpoint URLs. |
-| `RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR` | Server-owned identity assigned to authenticated calls, for example `rustok-server`. Caller-provided `PortContext.actor`, claims, and roles remain untrusted. |
+| `RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN` | Credential for catalog and SKU identity reads. Never place it in source control or endpoint URLs. |
+| `RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR` | Provider-owned identity assigned to authenticated reads, for example `rustok-server`. |
+| `RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN` | Optional, distinct credential for commands. Share it only with a host authorized to write Product data. |
+| `RUSTOK_PRODUCT_CATALOG_COMMAND_ACTOR_ID` | Non-nil service actor UUID used for commands. Required together with the command credential. |
+
+The command service is registered only when both command variables are set. The consumer
+must authorize the user request before delegating a command. The provider trusts the
+authenticated host's tenant metadata and attributes the write to the configured service UUID.
+Caller-provided actor, claims and roles are replaced by provider-owned authority.
 
 The database schema must already be migrated by the platform migration workflow. This service does not run migrations at startup.
+
+## Known Limitations / Pending Implementation
+
+The standalone host does not wire the embedded Pricing, Shipping Profile or Media providers.
+For example, authoring variant prices requires the Pricing binding. Inventory lifecycle and
+reservation paths still depend on Product identity in the same database transaction. Before
+moving writes, define the owner database, co-location rules and outbox relay, and prove
+persisted write parity, retry behavior and recovery against PostgreSQL. The retained combined
+read capture is a separate gate.
 
 ## Schema preflight
 

@@ -61,11 +61,10 @@ cross-module port. SEO and AI-media continue to consume descriptors and typed
 degraded outcomes.
 
 **Sovereignty & Anti-Collapse Invariant:**
-The existing `rustok-media-transport` adapter remains separate from `rustok-media`.
-A future standalone Media host must also be a separate owner deployment package under
-repository policy. The previously suggested name `rustok-media-service` does not identify
-an existing package. The Product catalog host is a bounded read-service precedent, not
-evidence that whole-module Media or Product extraction is complete.
+The adapter remains a Cargo package outside the Media owner library. When Media
+adds a standalone host, move the adapter into the owner's nested package and place
+the executable there under the [canonical FBA layout](./2026-11-11-canonical-fba-transport-layout.md).
+The current Product catalog host provides evidence for bounded read operations.
 
 ### Search boundary
 

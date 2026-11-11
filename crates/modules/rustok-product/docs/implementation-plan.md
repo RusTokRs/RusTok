@@ -287,14 +287,19 @@ redacts its `Debug` representation, and compares the complete `Authorization`
 metadata value in constant-time. Authenticated clients attach both
 `authorization` and `x-rustok-tenant-id`; the server interceptor validates the
 tenant UUID, installs a server-configured trusted service actor, and authorizes
-only Product catalog read operations. Authentication failures use one generic
+only Product catalog read operations by default. The separate command service
+requires a distinct credential and a provider-configured non-nil service actor UUID.
+Authentication failures use one generic
 message and never echo the credential. TLS protects the channel while bearer
 authentication establishes caller identity; neither substitutes for the other.
 
 The production host now owns explicit Product catalog deployment selection.
-`RUSTOK_PRODUCT_CATALOG_PROVIDER` defaults to `embedded`; `grpc` requires both
+`RUSTOK_PRODUCT_DEPLOYMENT` defaults both capabilities to `embedded`.
+`RUSTOK_PRODUCT_CATALOG_PROVIDER` and `RUSTOK_PRODUCT_COMMAND_PROVIDER` override
+reads and commands respectively. Remote reads require both
 `RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT` and
-`RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN`.
+`RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN`. Remote commands share the endpoint but
+require their own `RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN`.
 `GrpcProductCatalogReadConnectionConfig` requires HTTPS without
 credentials/path/query/fragment, permits plaintext only for an explicitly
 enabled loopback host, bounds connect timeout, and applies WebPKI TLS roots. The
@@ -302,18 +307,19 @@ server validates authentication before connecting, connects before
 `bootstrap_app_runtime`, inserts `ProductCatalogReadRuntime::external(...)` into
 `ServerRuntimeContext`, and lets all existing composition surfaces reuse that
 same runtime. Both projection and SKU identity reads share that authenticated client.
+When selected, commands use a separately authenticated `ProductCatalogCommandRuntime`.
 Invalid remote configuration or connection failure aborts startup
 and never silently falls back to embedded execution. Invalid authentication
 configuration also aborts startup before the network connection is opened.
-Remote variables, including the bearer credential, are rejected in embedded
-mode.
+Remote variables are rejected when both providers are embedded.
 
 The standalone Product catalog service host is source-complete in
 `rustok-product-catalog-service`. It composes PostgreSQL, the canonical
 `CatalogService`, an `OutboxTransport`-backed `TransactionalEventBus`,
 `ProductCatalogGrpcService`, and `ProductCatalogGrpcBearerInterceptor` without
-reimplementing Product policy or persistence. The RPC surface is read-only and
-does not run migrations or an outbox relay. The host is TLS-by-default; plaintext
+reimplementing Product policy or persistence. The host can also expose the selected
+command port through a separate interceptor. The binary does not run migrations or
+an outbox relay. The host is TLS-by-default; plaintext
 requires both an explicit opt-in and a loopback bind. Database URLs and bearer
 credentials are debug-redacted, the trusted caller actor is configured
 server-side, SQL logging is disabled, and tonic shutdown is coordinated with
@@ -518,21 +524,26 @@ The July 29 attestation is retained for its original projection and consumer har
 
 | Boundary | Source truth and limitation |
 |---|---|
-| Provider selection | `apps/server/src/services/product_catalog_deployment.rs` installs only the external catalog-read runtime, before ordinary bootstrap. Invalid configuration/connection aborts; no selected-read failover is implemented. |
+| Provider selection | `apps/server/src/services/product_catalog_deployment.rs` installs the selected external read and/or command runtime before ordinary bootstrap. Invalid configuration or connection aborts startup. |
 | Wire operations | `ReadProductProjection`, `ReadVariantProductProjection` and `ListPublishedProducts` cover base catalog projections. `ReadStorefrontVariantProductProjection` applies Product visibility rules when Cart resolves a SKU. `ReadVariantIdentities` and `ListProductVariantIdentities` cover `ProductVariantIdentityReadPort`. |
-| Additional reads | The gRPC client inherits unavailable defaults for filtered lists, facets, storefront detail by handle or Product ID and other optional read methods. External runtime schema/HTTP/tag handles remain absent unless explicitly supplied. |
-| Mounted consumers | Pricing reads SKU identity from the selected Product provider. The local Commerce HTTP checkout passed against both selected profiles. Native storefront list/facets/detail require additional methods. Some native admin list/facets/schema paths construct local services. |
-| Commands | `commerce_provider_runtime.rs` separately creates the embedded Product command runtime when no command runtime is installed. The catalog-read selector does not select remote writes. |
+| Additional reads | Filtered lists, facets and storefront detail have RPCs. External runtime schema, HTTP and tag handles remain absent unless explicitly supplied. |
+| Mounted consumers | Pricing reads SKU identity from the selected Product provider. Local Commerce HTTP checkout passed in both profiles. Some storefront REST and Product admin paths still access local catalog services or entities. AI attributes supports remote Product while AI `product_copy` uses local Product storage. |
+| Commands | The opt-in gRPC service exposes 15 command-port operations including preview. The consumer must authorize delegation. Writes are attributed to a configured service UUID. The standalone owner lacks embedded Pricing, Shipping Profile and Media bindings. |
 | Transactions | Product, Pricing and Inventory lifecycle/bootstrap operations share a local SQL transaction. Their transaction-participant interfaces cannot cross RPC. |
 | Packaging | Public contracts and implementation are in the existing owner crate, with unconditional implementation dependencies. A contracts-only feature is unimplemented and is not a prerequisite for this bounded FBA profile. |
 
-The current selection is mixed placement of local commands and remote reads. If the
-provider uses the same Product database it is process extraction with coordinated schema,
-not an autonomous replica. If different data stores are configured, their synchronization
-and authority must be explicitly designed; selecting gRPC creates no replication stream.
-Whole-module extraction requires a separate complete inventory of commands, reads,
-outgoing capabilities, events/jobs, migrations/lifecycle and public UI/API entrypoints.
-Resolve transaction/co-deployment decisions before changing write placement.
+Product's next packaging change moves the gRPC adapter and service entry point
+into the [canonical nested transport package](../../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
+Update live workspace, launch and evidence inputs together. Retain historical
+evidence with its original source paths and commands.
+
+The bounded remote read profile is compatible with local commands. A shared database
+supports process extraction with coordinated schema. For independent storage, first
+route the remaining mounted consumers through Product ports. Decide whether to keep
+Product, Pricing and Inventory transaction participants co-deployed or replace their
+shared transaction with an explicit cross-owner workflow. Wire the outgoing providers
+and outbox relay, then verify persisted writes, duplicate requests, provider restart and
+lost responses against PostgreSQL. Selecting gRPC does not replicate Product data.
 
 ### Current revision and evidence limits
 

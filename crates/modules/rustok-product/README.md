@@ -10,43 +10,48 @@
 
 `rustok-product` is the default catalog submodule of the `Ecommerce` family.
 
-## Standalone catalog-read profile
+## Standalone catalog profile
 
 Product remains one domain module. Its public ports, DTOs and local implementation
 currently live in `rustok-product`. The existing infrastructure packages remain separate:
 
-- `rustok-product-catalog-service`: authenticated standalone provider for catalog projections and SKU identity.
+- `rustok-product-catalog-service`: standalone provider for catalog projections, SKU identity and opt-in catalog commands.
 - `rustok-product-transport`: tonic client/server framing and bearer authentication.
 
-Keep these existing transport/service packages separate under repository policy. Their
-existence supports a bounded remote capability; it does not make the whole Product module
-remotely interchangeable. See [FBA scope](../../../docs/backend/module-backend-architecture.md#fba-contracts).
+These packages are the current deployment inputs. Product's conversion target is
+the [nested FBA transport package](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
+The remote capability remains bounded to its supported operations.
 
 ## Known Limitations / Pending Implementation
 
-The current FBA remote profile covers catalog projections and SKU identity reads.
-`RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` installs `ProductCatalogReadRuntime::external(...)`
-with both ports supplied by the same authenticated client. Default command composition
-separately constructs the embedded `ProductCatalogCommandRuntime`.
+The host defaults to embedded Product for both reads and commands. Set
+`RUSTOK_PRODUCT_DEPLOYMENT=grpc` to select both remote providers, or use
+`RUSTOK_PRODUCT_CATALOG_PROVIDER` and `RUSTOK_PRODUCT_COMMAND_PROVIDER` to override
+either capability. The original read selector alone keeps commands embedded. Both remote
+providers use the same service endpoint and separate credentials. See the
+[deployment configuration](../rustok-product-transport/README.md#server-deployment).
 
 | Surface | Current selected remote profile |
 |---|---|
 | Product projection, variant-to-product projection, basic published list | Implemented by the three gRPC RPCs. |
 | Storefront SKU projection for Cart | A separate gRPC operation delegates lifecycle, channel and locale handling to Product. |
-| Filtered storefront list, facets and storefront detail by Product ID or handle | Extra read-port methods return typed unavailable. |
+| Filtered storefront list, facets and storefront detail by Product ID or handle | RPCs exist on the catalog read port. Some mounted REST, GraphQL and native paths still use local owner services. |
 | SKU identity lookup and enumeration | Both Product identity-port operations use the same remote Product owner. |
 | Schema, HTTP and tag read handles | Consumers requiring these capabilities still receive typed unavailable in the default external runtime. |
 | Native admin list/facets and schema operations | Some paths still construct embedded owner services. |
-| Product commands and Product/Pricing/Inventory transaction collaboration | Embedded under current default composition; no remote command provider is selected by this setting. |
+| Product commands | Fifteen RPCs delegate to the same owner service when explicitly enabled. Separate-process write parity and recovery are still open. |
+| Product/Pricing/Inventory transactions and external capabilities | Inventory still requires local Product identity in shared transactions. The standalone owner lacks the embedded Pricing, Shipping Profile and Media bindings. |
 
 The July 29 maintainer attestation records historical harness results without an exact
 source commit or retained raw logs. The conformance fixture now includes `ProductResponse.brands`.
 See the [current verification scope](docs/implementation-plan.md#current-revision-and-evidence-limits).
 
-The standalone PostgreSQL probe exercises all six RPCs. Commerce HTTP checkout passed locally
+The retained standalone PostgreSQL probe exercises the six original read RPCs. Commerce HTTP checkout passed locally
 in both profiles. The AI GraphQL attribute task passed locally with a separate Product service
 and separate PostgreSQL databases. The catalog-read track remains `boundary_ready` pending
 the combined deployment capture.
+AI `product_copy` still uses local Product reads and writes. A database split requires migrating
+these callers and defining how transactions, owner events and dependent data are handled.
 Product does not currently publish a contracts-only build without ORM dependencies.
 Contracts and implementation may remain in this one owner crate. See the
 [coverage and verification work](docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).

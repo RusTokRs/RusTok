@@ -1953,7 +1953,7 @@
       "loc": 207960,
       "completed": false,
       "completed_at": null,
-      "notes": "FS-01.01 through FS-01.05 completed (main.rs, export_api_contracts.rs, host.rs, host_authority.rs, server_bootstrap.rs, server_runtime_context.rs, app_runtime.rs, app_lifecycle.rs); next pending: FS-01.06",
+      "notes": "FS-01.01 through FS-01.09 completed (main.rs, export_api_contracts.rs, host.rs, host_authority.rs, server_bootstrap.rs, server_runtime_context.rs, app_runtime.rs, app_lifecycle.rs, routes.rs, error.rs, middleware/tenant.rs, middleware/channel.rs, middleware/locale.rs); next pending: FS-01.10",
       "last_audited": "2026-11-11"
     },
     "apps/storefront": {

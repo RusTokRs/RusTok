@@ -191,6 +191,14 @@ Establish native ownership before implementing a business capability.
 - Last verified at (UTC): not verified; record scoped execution evidence before promotion.
 - Owner: {slug} module owner.
 
+### Remote FBA layout
+
+When a real owner port gains a remote caller, use the
+[remote FBA module layout](../../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
+Place the adapter and feature-gated standalone binary in `transport/` within
+this owner directory. Apply the same layout when converting an existing owner.
+Run `cargo xtask module lint {slug} --fba` once the transport package exists.
+
 ## Release and Data Rollback Readiness
 
 - Runtime kind: Optional
@@ -550,6 +558,8 @@ mod tests {
                 .1;
             for required in [
                 "## FFA/FBA status",
+                "#remote-fba-module-layout",
+                "cargo xtask module lint example --fba",
                 "## Release and Data Rollback Readiness",
                 "Runtime kind: Optional",
                 "Rollback unit: Component",

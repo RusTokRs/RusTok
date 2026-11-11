@@ -620,8 +620,21 @@ async fn loopback_grpc_provider_executes_the_product_catalog_command_port_contra
         ProductCatalogCommandGrpcService::new(provider.clone()),
         ProductCatalogGrpcBearerInterceptor::new(authentication),
     );
+    let read_service = ProductCatalogReadServiceServer::with_interceptor(
+        ProductCatalogGrpcService::new(Arc::new(MockProductCatalogReadPort {
+            tenant_id,
+            product_id,
+            variant_id: Uuid::new_v4(),
+        })),
+        ProductCatalogGrpcBearerInterceptor::from_bearer_token(
+            "loopback-read-token",
+            PortActor::service("trusted-product-catalog-conformance"),
+        )
+        .expect("read credential should be valid"),
+    );
     let server = tokio::spawn(async move {
         Server::builder()
+            .add_service(read_service)
             .add_service(server_service)
             .serve_with_incoming_shutdown(incoming, async {
                 let _ = shutdown_rx.await;
@@ -630,13 +643,29 @@ async fn loopback_grpc_provider_executes_the_product_catalog_command_port_contra
             .expect("loopback Product command gRPC server should run");
     });
 
-    let remote = GrpcProductCatalogCommandProvider::connect(
-        Endpoint::from_shared(format!("http://{address}"))
-            .expect("loopback endpoint should parse")
-            .connect_timeout(Duration::from_secs(5)),
-    )
-    .await
-    .expect("loopback Product command gRPC client should connect");
+    let endpoint = Endpoint::from_shared(format!("http://{address}"))
+        .expect("loopback endpoint should parse")
+        .connect_timeout(Duration::from_secs(5));
+    let remote = GrpcProductCatalogCommandProvider::connect(endpoint.clone())
+        .await
+        .expect("loopback Product command gRPC client should connect");
+    let read = GrpcProductCatalogReadProvider::connect(endpoint.clone())
+        .await
+        .expect("loopback Product read gRPC client should connect")
+        .with_bearer_token("loopback-read-token")
+        .expect("read credential should be valid");
+    let projection = read
+        .read_product_projection(
+            read_context(tenant_id),
+            ProductProjectionRequest {
+                product_id,
+                locale: Some("en".to_string()),
+                fallback_locale: None,
+            },
+        )
+        .await
+        .expect("the read credential must authorize a read");
+    assert_eq!(projection.id, product_id);
 
     let write_context = PortContext::new(
         tenant_id.to_string(),
@@ -668,6 +697,17 @@ async fn loopback_grpc_provider_executes_the_product_catalog_command_port_contra
         .await
         .expect_err("command calls without bearer token must fail");
     assert_eq!(unauthenticated.kind, PortErrorKind::Forbidden);
+
+    let read_only = GrpcProductCatalogCommandProvider::connect(endpoint)
+        .await
+        .expect("loopback Product command gRPC client should connect")
+        .with_bearer_token("loopback-read-token")
+        .expect("read token format should be accepted");
+    let denied = read_only
+        .create_product(write_context.clone(), create_input.clone())
+        .await
+        .expect_err("the read credential must not authorize a command");
+    assert_eq!(denied.kind, PortErrorKind::Forbidden);
 
     let remote = remote
         .with_bearer_token("loopback-command-token")
