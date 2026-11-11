@@ -256,4 +256,3 @@ pub struct GroupsAdminBulkReviewApplicationsResult {
     pub succeeded: u32,
     pub failed: u32,
 }
-;
