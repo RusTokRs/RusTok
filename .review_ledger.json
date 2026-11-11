@@ -80,9 +80,9 @@
       "category": "libs",
       "files": 3,
       "loc": 1023,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-12T01:07:00Z",
+      "notes": "Verified CSP nonce generator, content-addressed strong ETags, BrowserAssetRegistry dual N/N+1 retention with strict 404 nosniff, and safe port-to-http error mapping with blank code fallback"
     },
     "crates/modules/alloy": {
       "name": "alloy",
