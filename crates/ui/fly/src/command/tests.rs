@@ -669,3 +669,52 @@ fn incremental_patch_validation_produces_identical_diagnostics_to_full_validatio
     assert_eq!(incremental_report.node_count, full_report.node_count);
     assert_eq!(incremental_report.diagnostics, full_report.diagnostics);
 }
+
+#[test]
+fn edit_after_failed_save_keeps_the_failure_signal() {
+    let mut editor = editor();
+    let patch = |margin: &str| EditorCommand::Patch {
+        component_id: "hero".to_string(),
+        patch: ComponentPatch::default().merge_style(json!({ "margin": margin })),
+    };
+    editor.apply(patch("8px")).expect("first edit");
+    editor.revision_mut().begin_save();
+    editor.revision_mut().fail_save();
+    assert!(editor.revision().save_failed);
+
+    // The rejected changes are still not on the server; another edit, an undo and a redo
+    // must not make the failure look resolved.
+    editor.apply(patch("16px")).expect("edit after failed save");
+    assert!(editor.revision().dirty);
+    assert!(editor.revision().save_failed);
+    editor.undo().expect("undo");
+    assert!(editor.revision().save_failed);
+    editor.redo().expect("redo");
+    assert!(editor.revision().save_failed);
+
+    // Only a new save attempt or a successful acknowledge clears it.
+    editor.revision_mut().begin_save();
+    assert!(!editor.revision().save_failed);
+    editor.revision_mut().fail_save();
+    let hash = editor.revision().project_hash;
+    editor
+        .revision_mut()
+        .acknowledge(hash, "rev-2")
+        .expect("acknowledge");
+    assert!(!editor.revision().save_failed);
+    assert!(!editor.revision().dirty);
+}
+
+#[test]
+fn edit_after_save_conflict_keeps_the_conflict_and_failure_signals() {
+    let mut editor = editor();
+    editor.revision_mut().mark_save_conflict();
+    editor
+        .apply(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default().merge_style(json!({ "margin": "4px" })),
+        })
+        .expect("edit after conflict");
+    assert!(editor.revision().save_conflict);
+    assert!(editor.revision().save_failed);
+}

@@ -20,4 +20,4 @@ Host wiring (already done in `apps/next-admin`):
 - `src/modules/index.ts`: `import '@rustok/pages-admin';` (registers nav)
 - `src/app/dashboard/pages/page.tsx`: renders `PagesPage` with the session
   token/tenant, Rust admin origin (`builderBaseUrl`), and Storefront origin (`storefrontBaseUrl`).
-- Provides deep links to visual editing (`builderUrlForPage`) and live storefront viewing / draft mode preview (`storefrontUrlForPage`).
+- Provides deep links to visual editing (`builderUrlForPage`) and, for published pages, to the live storefront page (`storefrontUrlForPage`). A page that is not published has no storefront link; its working copy is previewed in the builder.

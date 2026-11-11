@@ -5,7 +5,8 @@
 - **Module Authority**: `rustok-pages-admin` is the authoritative SSR-first Leptos admin UI package for CMS page authoring, static page management, template layout editing, and site symbol management.
 - **Symmetric FFA Boundary**: Framework-agnostic logic lives strictly in `src/core.rs` with zero UI framework imports, zero template bindings, and full pure Rust unit test coverage. Leptos UI components (`PagesAdmin`, `TemplatesAdmin`) act strictly as presentation and event-dispatch adapters.
 - **Visual Builder Integration**: Hosts the Fly browser intent bridge and `PageBuilderAdmin` canvas for pages formatted with `PAGE_BUILDER_DOCUMENT_FORMAT`.
-- **SSR Draft Session Store**: Manages server-side draft sessions (`SsrDraftSessionStore`, `DurableSsrDraftSessionStore`) with generation conflict tracking and revision-level invalidation. Sessions are bound to a `DraftSessionOwner` (`tenant_id` + `user_id` from the verified caller); read-only callers (no edit capability) never create or mutate a session, and records above `MAX_DRAFT_SESSION_RECORD_BYTES` or owners above `MAX_DRAFT_SESSIONS_PER_OWNER` live sessions are rejected/evicted (audit §2.5).
+- **SSR Draft Session Store**: Manages server-side draft sessions (`SsrDraftSessionStore`, `DurableSsrDraftSessionStore`) with generation conflict tracking and revision-level invalidation. Sessions are bound to a `DraftSessionOwner` (`tenant_id` + `user_id` from the verified caller); read-only callers (no edit capability) never create or mutate a session, and records above `MAX_DRAFT_SESSION_RECORD_BYTES` or owners above `MAX_DRAFT_SESSIONS_PER_OWNER` live sessions are rejected/evicted (audit §2.5). The default file tier stores drafts per tenant under `RUSTOK_DRAFT_SESSION_DIR` (see `rustok-page-builder-admin`).
+- **Save Failure Contract**: An intent whose edit was applied but whose save was rejected (by the Pages service, or because the autosave was blocked by validation diagnostics) is answered with HTTP 200, not an error: the edit stays in the draft session marked as unsaved, `PagesBrowserIntentResponse::save_failure` carries the problem (`status`, `code` — the consumer's stable code such as `REVISION_CONFLICT`, otherwise `SAVE_FAILED` — `error`, `intent: "save"`), and `reload` is `true` so the client re-renders from the server. The failed save is retried by the next intent that changes the document or by an explicit `save`; intents that leave the document untouched (`select`, `hover`) do not repeat it, so a persistent failure is reported once per change rather than on every click; their response state still says `dirty: true`, which is what keeps the failure message on screen in the browser adapter until a save succeeds. A dispatch executes at most one consumer request; an intent that produces more fails with `PagesBrowserIntentError::UnsupportedRequestBatch` before anything is executed.
 - **Deterministic Access Policy**: Effective-permission capability policy (`pages_editor_capability_policy`) enforcing strict fail-closed access (`pages:manage` grants everything, `pages:update` grants authoring, `pages:publish` grants publishing; snapshots without Pages grants stay read-only).
 
 ## Platform Capability Bindings
@@ -35,7 +36,7 @@
 - `pages_browser_draft_store`: Resolves the active SSR draft session store (custom or default durable store).
 - `set_pages_browser_draft_store`: Host boot hook for registering distributed or custom draft session stores.
 - `pages_browser_default_durable_store`: Default in-memory durable draft session store.
-- `PagesBrowserIntentResponse`: DTO encapsulating the dispatch result, persistence snapshot, reload flag, draft token, and runtime context.
+- `PagesBrowserIntentResponse`: DTO encapsulating the dispatch result, persistence snapshot, optional `save_failure` problem, reload flag, draft token, and runtime context.
 - `PagesBrowserIntentError`: Typed domain error for builder intent failures.
 - `PagesBrowserIntentProblem`: RFC-7807 problem detail projection with machine-readable codes.
 
@@ -72,6 +73,8 @@
 - **Zero UI Framework Leakage in Core**: `src/core.rs` contains zero imports from `leptos`, `dioxus`, or any UI rendering framework.
 - **Role Fail-Closed Security**: Unauthenticated, customer, or unrecognized roles receive strictly read-only capabilities (`CapabilityState::read_only()`). Only `super_admin` and `admin` receive publication capabilities.
 - **Draft Session Scoping**: SSR draft sessions are bound to a specific `page_id` and verified against the page's persisted revision. Revision mismatches automatically prune the stale session and reseed from persisted state. Sessions are also owner-bound (`DraftSessionOwner`): attributed records reject loads, commits, and removals from any other user or tenant with `OwnerMismatch`, and callers without the edit capability never create or mutate a session at all.
+- **No Stand-In Document**: The starter document is opened only for a page whose document the principal may read and which has none yet. When `PageDetail.document_readable` is `false`, the workspace shows "Document not available", the browser intent endpoint answers `DOCUMENT_UNAVAILABLE`, and `PagesPageBuilderProjectStore::load_project` and `save_project` fail with `Forbidden` before the document is loaded or a revision is compared (one gate, `ensure_document_readable`).
+- **Restore Needs The Save Grant**: The revision history offers "Restore" only when the permission snapshot of the signed-in principal grants `pages:update` (`pages_can_restore_body_revision`); a principal that reads the history with `pages:publish` alone is not offered it. An empty snapshot hides the action.
 - **Symbol Referential Integrity**: Reusable site symbols cannot be deleted without warning if referenced by any template or page.
 - **Unique Component Identity**: Every component instantiated from a starter preset generates fresh, non-colliding unique IDs.
 
@@ -84,6 +87,7 @@
 ### Errors / Failure Codes
 
 - `PagesBrowserIntentError::PageNotFound`: HTTP 404 — The targeted page does not exist.
+- `PagesBrowserIntentError::DocumentUnavailable`: HTTP 403 (`DOCUMENT_UNAVAILABLE`) — The page exists, but its authoring document is withheld from the principal (`documentReadable: false`); no controller is seeded.
 - `PagesBrowserIntentError::PageMismatch`: HTTP 400 — Intent page ID does not match active session snapshot.
 - `PagesBrowserIntentError::Draft(SsrDraftSessionError::GenerationConflict)`: HTTP 409 (`DRAFT_GENERATION_CONFLICT`) — Concurrent edit collision.
 - `PagesBrowserIntentError::Draft(SsrDraftSessionError::RevisionConflict)`: HTTP 409 (`REVISION_CONFLICT`) — Page persisted revision changed mid-flight.

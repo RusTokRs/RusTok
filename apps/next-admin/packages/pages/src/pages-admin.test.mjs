@@ -101,28 +101,22 @@ test('storefrontUrlForPage constructs canonical storefront link for published pa
   assert.equal(urlLeadingSlash, 'http://localhost:3000/en/pages/faq');
 });
 
-test('storefrontUrlForPage constructs draft preview link with secret for draft pages', () => {
-  const url = storefrontUrlForPage(
-    'http://localhost:3000',
-    'spring-sale',
-    'ru',
-    'draft',
-    'secret123'
-  );
-  assert.equal(
-    url,
-    'http://localhost:3000/api/draft?slug=spring-sale&locale=ru&secret=secret123'
-  );
+test('storefrontUrlForPage has no storefront URL for a page that is not published', () => {
+  // The storefront renders the published landing only; the working copy is
+  // previewed in the builder.
+  for (const status of ['draft', 'archived']) {
+    assert.equal(
+      storefrontUrlForPage('http://localhost:3000', 'promo', 'en', status),
+      null
+    );
+  }
 });
 
-test('storefrontUrlForPage falls back to canonical URL when draft has no secret', () => {
-  const url = storefrontUrlForPage(
-    'http://localhost:3000',
-    'promo',
-    'en',
-    'draft'
+test('storefrontUrlForPage defaults to the published English route', () => {
+  assert.equal(
+    storefrontUrlForPage('http://localhost:3000', 'promo'),
+    'http://localhost:3000/en/pages/promo'
   );
-  assert.equal(url, 'http://localhost:3000/en/pages/promo');
 });
 
 test('pagesNavItems specifies correct navigation structure and shortcuts', () => {

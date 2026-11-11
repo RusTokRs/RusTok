@@ -106,6 +106,11 @@ pub struct PageDetail {
     pub channel_slugs: Vec<String>,
     pub translation: Option<PageTranslation>,
     pub body: Option<PageBody>,
+    /// Whether the signed-in principal may read the authoring document of this page. With an
+    /// absent `body`, `true` means the page has no document yet and `false` means the document
+    /// is withheld: the editor must not present a starter document as if it were the page's.
+    #[serde(rename = "documentReadable")]
+    pub document_readable: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

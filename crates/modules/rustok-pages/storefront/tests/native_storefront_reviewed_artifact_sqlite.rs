@@ -51,7 +51,9 @@ type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 struct ReviewedArtifactFixture {
     page_id: Uuid,
     artifact_id: Uuid,
-    expected_artifact_url: String,
+    artifact_hash: String,
+    body_html: String,
+    css: String,
 }
 
 #[derive(Default)]
@@ -160,10 +162,23 @@ async fn native_storefront_returns_reviewed_artifact_for_visible_channel_and_ref
 
     let visible = call_storefront(&app, &tenant, &channel_context(&web), "en").await?;
     assert_eq!(visible.status, StatusCode::OK);
-    assert!(visible.body.contains("fly_artifact_payload"));
-    assert!(visible.body.contains(&fixture.expected_artifact_url));
+    let visible_response: serde_json::Value = serde_json::from_str(&visible.body)?;
+    let visible_page = &visible_response["selected_page"];
+    assert_eq!(visible_page["effectiveLocale"], json!("en"));
+    assert_eq!(
+        visible_page["landing"],
+        json!({
+            "locale": "en",
+            "html": fixture.body_html,
+            "css": fixture.css,
+            "artifactHash": fixture.artifact_hash,
+        })
+    );
+    assert!(fixture.body_html.contains("Reviewed native artifact"));
+    // The authoring document is not part of the public response.
+    assert!(visible_page.get("body").is_none());
+    assert!(!visible.body.contains("flyPageMeta"));
     assert!(visible.body.contains(&fixture.page_id.to_string()));
-    assert!(visible.body.contains("Reviewed native artifact"));
     let visible_cache = cache.snapshot();
     assert_eq!(visible_cache.generation_reads, 1);
     assert_eq!(visible_cache.get_keys.len(), 1);
@@ -177,8 +192,9 @@ async fn native_storefront_returns_reviewed_artifact_for_visible_channel_and_ref
 
     let hidden = call_storefront(&app, &tenant, &channel_context(&mobile), "en").await?;
     assert_eq!(hidden.status, StatusCode::OK);
-    assert!(!hidden.body.contains(&fixture.expected_artifact_url));
-    assert!(!hidden.body.contains("fly_artifact_payload"));
+    let hidden_response: serde_json::Value = serde_json::from_str(&hidden.body)?;
+    assert_eq!(hidden_response["selected_page"], serde_json::Value::Null);
+    assert!(!hidden.body.contains(&fixture.artifact_hash));
     let hidden_cache = cache.snapshot();
     assert_eq!(hidden_cache.generation_reads, 2);
     assert_eq!(hidden_cache.get_keys.len(), 2);
@@ -412,7 +428,9 @@ async fn create_reviewed_published_page(
     Ok(ReviewedArtifactFixture {
         page_id: draft.id,
         artifact_id: artifact.id,
-        expected_artifact_url: format!("/api/pages/{}/artifact?locale=en&channel=web", draft.id),
+        artifact_hash: artifact.artifact_hash,
+        body_html: artifact.body_html,
+        css: artifact.css,
     })
 }
 

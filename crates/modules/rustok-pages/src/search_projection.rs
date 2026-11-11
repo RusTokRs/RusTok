@@ -26,7 +26,8 @@ use rustok_core::search_projection::{
 use rustok_core::{Error, Result};
 
 use crate::entities::{
-    page, page_body, page_channel_visibility, page_static_landing_artifact, page_translation,
+    page, page_channel_visibility, page_published_landing_artifact, page_static_landing_artifact,
+    page_translation,
 };
 use crate::services::page::PublishedPageCursor;
 use crate::services::page::status_to_storage;
@@ -100,34 +101,10 @@ impl PageSearchProjectionSource {
                 .push(vis.channel_slug);
         }
 
-        // 3. Load static landing artifacts
-        let artifacts = page_static_landing_artifact::Entity::find()
-            .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
-            .filter(page_static_landing_artifact::Column::PageId.is_in(page_ids.clone()))
-            .all(&self.db)
-            .await
-            .map_err(Error::Database)?;
-
-        let mut artifacts_by_page_locale: HashMap<(Uuid, String), String> = HashMap::new();
-        for artifact in artifacts {
-            if !artifact.body_html.trim().is_empty() {
-                artifacts_by_page_locale
-                    .insert((artifact.page_id, artifact.locale), artifact.body_html);
-            }
-        }
-
-        // 4. Load page bodies (fallback if no static landing artifact)
-        let bodies = page_body::Entity::find()
-            .filter(page_body::Column::TenantId.eq(tenant_id))
-            .filter(page_body::Column::PageId.is_in(page_ids.clone()))
-            .all(&self.db)
-            .await
-            .map_err(Error::Database)?;
-
-        let mut bodies_by_page_locale: HashMap<(Uuid, String), (String, String)> = HashMap::new();
-        for body in bodies {
-            bodies_by_page_locale.insert((body.page_id, body.locale), (body.format, body.content));
-        }
+        // 3. Load the text of the published landing of every page locale
+        let landing_text_by_page = self
+            .load_published_landing_text(tenant_id, &page_ids)
+            .await?;
 
         let mut documents = Vec::new();
 
@@ -140,18 +117,22 @@ impl PageSearchProjectionSource {
                 continue;
             };
 
+            // A published page without a published landing has no storefront route, so a
+            // search hit for it would lead nowhere: it is not a public search document.
+            let Some(landing_text_by_locale) = landing_text_by_page.get(&page.id) else {
+                continue;
+            };
+
             let page_channels = channels_by_page.get(&page.id).cloned().unwrap_or_default();
 
             for translation in page_translations {
-                let locale = &translation.locale;
-                let artifact_html = artifacts_by_page_locale
-                    .get(&(page.id, locale.clone()))
-                    .map(String::as_str);
-                let body_content = bodies_by_page_locale
-                    .get(&(page.id, locale.clone()))
-                    .map(|(fmt, cnt)| (fmt.as_str(), cnt.as_str()));
-
-                let body = extract_page_plain_text(artifact_html, body_content);
+                // A locale without a landing of its own is served the landing of a fallback
+                // locale. That text is in another language and is indexed with its own
+                // locale, so this document carries the titles of the page only.
+                let body = landing_text_by_locale
+                    .get(&translation.locale)
+                    .cloned()
+                    .unwrap_or_default();
 
                 let keywords_text = [
                     Some(translation.title.as_str()),
@@ -203,6 +184,82 @@ impl PageSearchProjectionSource {
 
         Ok(documents)
     }
+
+    /// Visible text of the published landing of each page, by locale.
+    ///
+    /// The published landing of a page locale is the artifact its landing binding points at.
+    /// The artifact table is not asked directly: it also keeps the landings that a later
+    /// publish superseded. The page body is not read at all: it is the authoring document, not
+    /// published content. A page that is absent from the result has no published landing.
+    ///
+    /// A binding without its artifact is skipped and logged. The artifact owner fails the
+    /// public read of such a page, so it has no public content to index. Artifact hashes are
+    /// not verified here; the owner verifies them on every read that renders the landing.
+    async fn load_published_landing_text(
+        &self,
+        tenant_id: Uuid,
+        page_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, HashMap<String, String>>> {
+        let bindings = page_published_landing_artifact::Entity::find()
+            .filter(page_published_landing_artifact::Column::TenantId.eq(tenant_id))
+            .filter(page_published_landing_artifact::Column::PageId.is_in(page_ids.to_vec()))
+            .all(&self.db)
+            .await
+            .map_err(Error::Database)?;
+        if bindings.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let artifact_ids = bindings
+            .iter()
+            .map(|binding| binding.artifact_id)
+            .collect::<Vec<_>>();
+        let artifacts_by_id = page_static_landing_artifact::Entity::find()
+            .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
+            .filter(page_static_landing_artifact::Column::Id.is_in(artifact_ids))
+            .all(&self.db)
+            .await
+            .map_err(Error::Database)?
+            .into_iter()
+            .map(|artifact| (artifact.id, artifact))
+            .collect::<HashMap<_, _>>();
+
+        let mut text_by_page: HashMap<Uuid, HashMap<String, String>> = HashMap::new();
+        for binding in bindings {
+            let artifact = artifacts_by_id
+                .get(&binding.artifact_id)
+                .filter(|artifact| binding_matches_artifact(&binding, artifact));
+            let Some(artifact) = artifact else {
+                tracing::warn!(
+                    tenant_id = %tenant_id,
+                    page_id = %binding.page_id,
+                    locale = %binding.locale,
+                    artifact_id = %binding.artifact_id,
+                    "published landing binding references an invalid artifact; \
+                     the page locale is not indexed"
+                );
+                continue;
+            };
+            text_by_page
+                .entry(binding.page_id)
+                .or_default()
+                .insert(binding.locale, strip_html_tags(&artifact.body_html));
+        }
+        Ok(text_by_page)
+    }
+}
+
+/// The artifact a binding points at belongs to the same page locale as the binding. This is
+/// the condition under which the artifact owner serves it.
+///
+/// The schema already guarantees it (`m20260721_000004`: a composite foreign key on
+/// PostgreSQL, a trigger on SQLite), so with the migrations applied this never fails. It is
+/// kept as a second line: without it a mismatched row would be indexed in the wrong language.
+fn binding_matches_artifact(
+    binding: &page_published_landing_artifact::Model,
+    artifact: &page_static_landing_artifact::Model,
+) -> bool {
+    artifact.page_id == binding.page_id && artifact.locale == binding.locale
 }
 
 #[async_trait]
@@ -301,68 +358,6 @@ pub fn is_no_index(metadata: &Value) -> bool {
         .unwrap_or(false)
 }
 
-pub fn extract_page_plain_text(
-    artifact_html: Option<&str>,
-    body_content: Option<(&str, &str)>,
-) -> String {
-    if let Some(html) = artifact_html {
-        let stripped = strip_html_tags(html);
-        if !stripped.is_empty() {
-            return stripped;
-        }
-    }
-
-    let Some((format, content)) = body_content else {
-        return String::new();
-    };
-
-    if format == "fly_artifact_payload"
-        && let Ok(val) = serde_json::from_str::<Value>(content)
-        && let Some(html) = val.get("html").and_then(Value::as_str)
-    {
-        return strip_html_tags(html);
-    }
-
-    if (format == "page_builder" || format == "grapesjs")
-        && let Ok(val) = serde_json::from_str::<Value>(content)
-    {
-        let mut strings = Vec::new();
-        collect_text_from_json(&val, &mut strings, 0);
-        if !strings.is_empty() {
-            return strings.join(" ");
-        }
-    }
-
-    strip_html_tags(content)
-}
-
-fn collect_text_from_json(val: &Value, out: &mut Vec<String>, depth: usize) {
-    if depth > 32 || out.len() > 200 {
-        return;
-    }
-    match val {
-        Value::Object(map) => {
-            if let Some(content) = map.get("content").and_then(Value::as_str) {
-                let stripped = strip_html_tags(content);
-                if !stripped.is_empty() {
-                    out.push(stripped);
-                }
-            }
-            for (key, child) in map {
-                if key != "style" && key != "attributes" && key != "css" {
-                    collect_text_from_json(child, out, depth + 1);
-                }
-            }
-        }
-        Value::Array(arr) => {
-            for item in arr {
-                collect_text_from_json(item, out, depth + 1);
-            }
-        }
-        _ => {}
-    }
-}
-
 pub fn strip_html_tags(html: &str) -> String {
     let mut out = String::with_capacity(html.len() + 16);
     let mut in_tag = false;
@@ -405,28 +400,63 @@ mod tests {
     }
 
     #[test]
-    fn extract_page_plain_text_prefers_artifact_html() {
-        let html = "<h1>Landing Title</h1><p>Landing description.</p>";
-        let body = ("page_builder", "{\"content\":\"raw content\"}");
-        let text = extract_page_plain_text(Some(html), Some(body));
-        assert_eq!(text, "Landing Title Landing description.");
+    fn binding_matches_only_an_artifact_of_its_own_page_locale() {
+        let page_id = Uuid::new_v4();
+        let binding = landing_binding(page_id, "en");
+
+        assert!(binding_matches_artifact(
+            &binding,
+            &landing_artifact(page_id, "en")
+        ));
+        assert!(!binding_matches_artifact(
+            &binding,
+            &landing_artifact(page_id, "ru")
+        ));
+        assert!(!binding_matches_artifact(
+            &binding,
+            &landing_artifact(Uuid::new_v4(), "en")
+        ));
     }
 
-    #[test]
-    fn extract_page_plain_text_extracts_from_grapesjs_json() {
-        let json_body = r#"{
-            "pages": [{
-                "component": {
-                    "type": "wrapper",
-                    "components": [
-                        { "type": "header", "content": "<h1>Header Title</h1>" },
-                        { "type": "paragraph", "content": "<p>Some text content.</p>" }
-                    ]
-                }
-            }]
-        }"#;
-        let text = extract_page_plain_text(None, Some(("page_builder", json_body)));
-        assert_eq!(text, "Header Title Some text content.");
+    fn landing_binding(page_id: Uuid, locale: &str) -> page_published_landing_artifact::Model {
+        page_published_landing_artifact::Model {
+            page_body_id: Uuid::new_v4(),
+            tenant_id: Uuid::nil(),
+            page_id,
+            locale: locale.to_string(),
+            artifact_id: Uuid::new_v4(),
+            published_at: chrono::Utc::now().into(),
+        }
+    }
+
+    fn landing_artifact(page_id: Uuid, locale: &str) -> page_static_landing_artifact::Model {
+        page_static_landing_artifact::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::nil(),
+            page_id,
+            locale: locale.to_string(),
+            source_hash: String::new(),
+            build_hash: String::new(),
+            artifact_hash: String::new(),
+            materialization_hash: None,
+            materialization_identity: None,
+            runtime_snapshots: None,
+            renderer_id: String::new(),
+            renderer_release: String::new(),
+            identity: json!({}),
+            registry: json!({}),
+            page_index: 0,
+            fly_page_id: None,
+            slug: None,
+            head: json!({}),
+            document_html: String::new(),
+            body_html: String::new(),
+            css: String::new(),
+            content_hash: String::new(),
+            landing_sections: json!([]),
+            instance_key: String::new(),
+            created_at: chrono::Utc::now().into(),
+        }
     }
 
     #[test]

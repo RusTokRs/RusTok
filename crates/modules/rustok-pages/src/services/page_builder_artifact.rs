@@ -250,27 +250,17 @@ impl PageBuilderArtifactService {
         channel_slug: Option<&str>,
     ) -> PagesResult<Option<PublishedLandingArtifact>> {
         let txn = self.db.begin().await?;
-        let page_query =
-            || page::Entity::find_by_id(page_id).filter(page::Column::TenantId.eq(tenant_id));
-        let page = match txn.get_database_backend() {
-            DbBackend::Sqlite => page_query().one(&txn).await?,
-            DbBackend::Postgres | DbBackend::MySql => page_query().lock_shared().one(&txn).await?,
-            _ => unreachable!("unsupported SeaORM database backend"),
-        };
-
-        let is_published = page.is_some_and(|page| page.status == "published");
-        let is_visible = is_published
-            && page_is_visible_for_channel_in_tx(&txn, tenant_id, page_id, channel_slug).await?;
-        let result = if is_visible {
-            let candidates = build_locale_candidates(
-                [
-                    Some(locale),
-                    fallback_locale,
-                    Some(PLATFORM_FALLBACK_LOCALE),
-                ],
-                true,
-            );
-            let mut resolved = None;
+        let mut resolved = None;
+        if let Some(candidates) = public_landing_locale_candidates_in_tx(
+            &txn,
+            tenant_id,
+            page_id,
+            locale,
+            fallback_locale,
+            channel_slug,
+        )
+        .await?
+        {
             for candidate in candidates {
                 if let Some(artifact) =
                     load_bound_artifact_in_tx(&txn, tenant_id, page_id, &candidate).await?
@@ -279,14 +269,87 @@ impl PageBuilderArtifactService {
                     break;
                 }
             }
-            resolved
-        } else {
-            None
-        };
+        }
 
         txn.commit().await?;
-        Ok(result)
+        Ok(resolved)
     }
+
+    /// Whether a public storefront request has a published landing to render.
+    ///
+    /// The answer follows the same page status, channel visibility and locale candidates as
+    /// `load_public_bound_artifact_with_fallback`, but reads only the binding, not the artifact.
+    /// A storefront route uses it to answer "not found" for a page it has nothing to render for;
+    /// artifact integrity is still checked by the load that renders the page.
+    pub async fn has_public_bound_artifact_with_fallback(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        channel_slug: Option<&str>,
+    ) -> PagesResult<bool> {
+        let txn = self.db.begin().await?;
+        let mut bound = false;
+        if let Some(candidates) = public_landing_locale_candidates_in_tx(
+            &txn,
+            tenant_id,
+            page_id,
+            locale,
+            fallback_locale,
+            channel_slug,
+        )
+        .await?
+        {
+            for candidate in candidates {
+                if find_landing_binding_in_tx(&txn, tenant_id, page_id, &candidate)
+                    .await?
+                    .is_some()
+                {
+                    bound = true;
+                    break;
+                }
+            }
+        }
+
+        txn.commit().await?;
+        Ok(bound)
+    }
+}
+
+/// Locales to try for a public landing read, in order, or `None` when the page is not published
+/// or not visible on the request channel. The page row is read under a shared lock so that an
+/// unpublish cannot complete between this decision and the read that follows in the transaction.
+async fn public_landing_locale_candidates_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    locale: &str,
+    fallback_locale: Option<&str>,
+    channel_slug: Option<&str>,
+) -> PagesResult<Option<Vec<String>>> {
+    let page_query =
+        || page::Entity::find_by_id(page_id).filter(page::Column::TenantId.eq(tenant_id));
+    let page = match txn.get_database_backend() {
+        DbBackend::Sqlite => page_query().one(txn).await?,
+        DbBackend::Postgres | DbBackend::MySql => page_query().lock_shared().one(txn).await?,
+        _ => unreachable!("unsupported SeaORM database backend"),
+    };
+
+    let is_published = page.is_some_and(|page| page.status == "published");
+    if !is_published
+        || !page_is_visible_for_channel_in_tx(txn, tenant_id, page_id, channel_slug).await?
+    {
+        return Ok(None);
+    }
+    Ok(Some(build_locale_candidates(
+        [
+            Some(locale),
+            fallback_locale,
+            Some(PLATFORM_FALLBACK_LOCALE),
+        ],
+        true,
+    )))
 }
 
 fn artifact_model(
@@ -362,12 +425,13 @@ fn is_visible_for_channel(channel_slugs: &[String], channel_slug: Option<&str>) 
     channel_slugs.iter().any(|allowed| allowed == &channel_slug)
 }
 
-async fn load_bound_artifact_in_tx(
+/// The landing binding of the page's current Page Builder body in `locale`, if it is published.
+async fn find_landing_binding_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     page_id: Uuid,
     locale: &str,
-) -> PagesResult<Option<PublishedLandingArtifact>> {
+) -> PagesResult<Option<page_published_landing_artifact::Model>> {
     let Some(body) = page_body::Entity::find()
         .filter(page_body::Column::TenantId.eq(tenant_id))
         .filter(page_body::Column::PageId.eq(page_id))
@@ -378,13 +442,21 @@ async fn load_bound_artifact_in_tx(
     else {
         return Ok(None);
     };
-    let Some(binding) = page_published_landing_artifact::Entity::find_by_id(body.id)
+    Ok(page_published_landing_artifact::Entity::find_by_id(body.id)
         .filter(page_published_landing_artifact::Column::TenantId.eq(tenant_id))
         .filter(page_published_landing_artifact::Column::PageId.eq(page_id))
         .filter(page_published_landing_artifact::Column::Locale.eq(locale))
         .one(txn)
-        .await?
-    else {
+        .await?)
+}
+
+async fn load_bound_artifact_in_tx(
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    locale: &str,
+) -> PagesResult<Option<PublishedLandingArtifact>> {
+    let Some(binding) = find_landing_binding_in_tx(txn, tenant_id, page_id, locale).await? else {
         return Ok(None);
     };
     let record = page_static_landing_artifact::Entity::find_by_id(binding.artifact_id)
@@ -396,7 +468,7 @@ async fn load_bound_artifact_in_tx(
         .ok_or_else(|| {
             PagesError::artifact_integrity(format!(
                 "published landing binding for body `{}` references an invalid artifact",
-                body.id
+                binding.page_body_id
             ))
         })?;
     published_record(record).map(Some)

@@ -77,8 +77,9 @@ const FORBIDDEN_ATTRIBUTES: &[&str] = &["background", "ping", "srcdoc", "style",
 /// policy applies to image `src` values minus `data:` payloads (their base64 bodies
 /// collide with the candidate comma grammar). A blanket ban would refuse the same
 /// image that `src` accepts — the incoherence this policy already refused for CSS
-/// references. An operator who re-adds `"srcset"` to `forbidden_attributes` still
-/// gets the blanket ban: the configuration is honoured over the default.
+/// references. The validators still honour a `forbidden_attributes` list that names
+/// `"srcset"` (covered by tests), but no runtime path supplies one: see
+/// [`PageBuilderStaticPublishPolicy`].
 const URL_ATTRIBUTES: &[&str] = &[
     "action",
     "cite",
@@ -110,8 +111,8 @@ const ALLOWED_DATA_IMAGE_PREFIXES: &[&str] = &[
 /// resources, by [`strip_validated_css_urls`]. Everything listed below has no legitimate use in a
 /// declaration and stays banned outright.
 ///
-/// An operator who re-adds `"url("` to `forbidden_css_tokens` still gets the blanket ban: the
-/// configuration is honoured over the default.
+/// The validators still honour a `forbidden_css_tokens` list that names `"url("` (covered by
+/// tests), but no runtime path supplies one: see [`PageBuilderStaticPublishPolicy`].
 const FORBIDDEN_CSS_TOKENS: &[&str] = &[
     "-moz-binding",
     "@import",
@@ -121,6 +122,19 @@ const FORBIDDEN_CSS_TOKENS: &[&str] = &[
     "javascript:",
 ];
 
+/// The static publish policy: limits and allow/deny lists applied to a project before it
+/// becomes a public artifact.
+///
+/// This is a fixed, compile-time contract, **not** operator configuration. Publication always
+/// runs [`PageBuilderStaticPublishPolicy::default`] — [`validate_static_publish_document`]
+/// takes no policy argument, and [`PageBuilderStaticPublishPolicyEvidence::verify_integrity`]
+/// accepts only the hash of that default — so there is no setting, file or environment
+/// variable through which a deployment can loosen or tighten it. Changing the policy means
+/// changing the constants in this module, which changes the policy hash and therefore
+/// requires re-publication of existing artifacts.
+///
+/// The fields are public so the hash covers every rule and so the validators can be
+/// unit-tested against non-default values; those values never reach a publication.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PageBuilderStaticPublishPolicy {
     pub format: String,
@@ -261,6 +275,8 @@ impl PageBuilderStaticPublishPolicyError {
     }
 }
 
+/// Validates `document` against the one static publish policy,
+/// [`PageBuilderStaticPublishPolicy::default`], and returns evidence bound to its hash.
 pub fn validate_static_publish_document(
     document: &ProjectDocument,
 ) -> Result<PageBuilderStaticPublishPolicyEvidence, PageBuilderStaticPublishPolicyError> {
@@ -1229,8 +1245,8 @@ fn safe_css_value(value: &str, policy: &PageBuilderStaticPublishPolicy) -> bool 
         return false;
     }
 
-    // An operator who keeps `url(` in the configured list still gets the old blanket ban:
-    // explicit configuration outranks the default.
+    // A policy value that lists `url(` keeps the blanket ban; the default (the only policy
+    // a publication runs) does not list it.
     let bans_all_references = policy
         .forbidden_css_tokens
         .iter()

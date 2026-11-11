@@ -129,6 +129,9 @@ impl FlyEditor {
         let inverse = invert_command(&self.document, &command);
 
         // Fast path: incremental validation for non-structural patch commands when last_report is valid.
+        // When incremental validation declines, the already-applied working copy is handed to the
+        // full path below instead of being cloned and applied a second time.
+        let mut speculative = None;
         if let EditorCommand::Patch { component_id, .. } = &command
             && let Some(prev_report) = &self.last_report
             && prev_report.is_valid()
@@ -163,13 +166,20 @@ impl FlyEditor {
                 self.last_report = Some(inc_report.clone());
                 return Ok(inc_report);
             }
+            speculative = Some(after);
         }
 
         // One speculative copy to mutate. A command must not leave a partially applied document
         // behind when validation rejects it, so the working copy is unavoidable — but it is now
         // the only deep copy on this path.
-        let mut after = (*self.document).clone();
-        self.apply_to_document(&mut after, &command)?;
+        let mut after = match speculative {
+            Some(after) => after,
+            None => {
+                let mut after = (*self.document).clone();
+                self.apply_to_document(&mut after, &command)?;
+                after
+            }
+        };
         after.ensure_stable_ids(&mut self.id_generator);
         let report = extend_with_runtime_validation(
             &after,

@@ -257,6 +257,26 @@ Engineering audit remediation — see
 
 ### Fixed
 
+- **A save rejected after the edit was applied no longer leaves the canvas diverged from the
+  server.** A host may now answer an intent with a successful response that carries
+  `save_failure` (`status`, `code`, `error`, `intent`) next to `reload: true`: the edit is in the
+  server's draft session but was not saved. `fly-browser.js` reports it through the existing
+  problem channel (`fly:browser-problem`, `data-fly-browser-problem`, the `alert` status region)
+  and parks it in `sessionStorage` (`fly:ssr-save-failure:<page>`, 10 minutes, message capped at
+  1024 characters) so the adapter mounted after the reload reports it again. The failure stands
+  until a response reports a working copy that is no longer dirty (`dirty` of the response
+  state): a host does not have to repeat the save of an unchanged document, so a response
+  without `save_failure` and with `dirty: true` keeps the message, and the alert is not
+  announced again while it is on screen (`data-fly-save-failed="true"` on the root marks it).
+  If storage is unavailable only the message is lost
+  across the reload. Hosts that never send `save_failure` see no change. Browser coverage:
+  `apps/next-admin/tests/e2e/fly-browser-save-failure.spec.ts` (report after a real reload,
+  standing failure, return after another problem, ten-minute age limit).
+
+- **`RevisionState::mark_changed` keeps `save_failed`.** An edit made after a failed save no
+  longer resets the failure flag, in `fly` and in the `fly-ui` state machine alike; only a
+  started or acknowledged save clears it.
+
 - **Blurring an untouched inline-edit text no longer counts as an edit.** The real-DOM adapter
   commits on `focusout`, and it emitted a request for whatever the element contained at that
   moment — so entering a text and leaving it unchanged still produced a request the session

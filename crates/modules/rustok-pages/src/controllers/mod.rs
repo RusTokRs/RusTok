@@ -19,13 +19,16 @@ use sha2::{Digest, Sha256};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use crate::cache_invalidation::{PublishedLandingRepresentation, published_landing_cache_variant};
+use crate::services::page::is_page_visible_for_channel;
+use crate::services::rbac::can_read_non_public_pages;
 use crate::{
     CANNOT_DELETE_PUBLISHED_ERROR_CODE, CreatePageInput, PAGE_BODY_REVISION_NOT_FOUND,
     PAGE_DOCUMENT_REVISION_CONFLICT, PAGE_PUBLISH_SCHEDULE_NOT_FOUND, PageBodyRevisionResponse,
-    PageBuilderArtifactService, PageCacheScope, PagePublishScheduleResponse, PageResponse,
-    PageService, PagesCacheReadRuntime, PagesError, PatchPageMetadataInput,
-    PublishedLandingArtifact, RestorePageBodyRevisionInput, SavePageDocumentInput,
-    SchedulePagePublishInput, page_cache_key,
+    PageBuilderArtifactService, PageCacheGenerationSnapshot, PageCacheScope,
+    PagePublishScheduleResponse, PageResponse, PageService, PagesCacheReadRuntime, PagesError,
+    PatchPageMetadataInput, PublishedLandingArtifact, RestorePageBodyRevisionInput,
+    SavePageDocumentInput, SchedulePagePublishInput, page_cache_key,
 };
 
 const ARTIFACT_VARY: &str = "X-Tenant-ID, X-Tenant-Slug, X-Channel-Slug, X-Channel-ID";
@@ -121,6 +124,16 @@ pub async fn get_page(
     Query(params): Query<GetPageParams>,
 ) -> HttpResult<Json<PageResponse>> {
     ensure_pages_permission(&auth, Permission::PAGES_READ)?;
+    let page_not_found = || HttpError::not_found("page_not_found", "Page not found");
+
+    // A token without a page authoring permission reads as a visitor of the request channel,
+    // exactly like the GraphQL read: the channel module binding and the page channel list
+    // apply. A page author resolves the page on any channel.
+    let security = page_security(&auth);
+    let is_author = can_read_non_public_pages(&security);
+    if !is_author && !pages_module_enabled_for_channel(&runtime, &request_context).await? {
+        return Err(page_not_found());
+    }
 
     let slug = params.slug.unwrap_or_else(|| "home".to_string());
     let locale = params
@@ -131,18 +144,22 @@ pub async fn get_page(
     let page = service
         .get_by_slug_with_locale_fallback(
             tenant.id,
-            page_security(&auth),
+            security,
             &locale,
             &slug,
             Some(tenant.default_locale.as_str()),
         )
         .await
-        .map_err(map_pages_error)?;
+        .map_err(map_pages_error)?
+        .filter(|page| {
+            is_author
+                || is_page_visible_for_channel(
+                    &page.channel_slugs,
+                    request_context.channel_slug.as_deref(),
+                )
+        });
 
-    match page {
-        Some(page) => Ok(Json(page)),
-        None => Err(HttpError::not_found("page_not_found", "Page not found")),
-    }
+    page.map(Json).ok_or_else(page_not_found)
 }
 
 #[utoipa::path(
@@ -225,7 +242,6 @@ async fn load_cached_page_artifact(
     fallback_locale: &str,
     channel_slug: Option<&str>,
 ) -> HttpResult<CachedPublishedLandingArtifact> {
-    let cache_variant = artifact_cache_variant(locale, fallback_locale, channel_slug);
     let cache_key = if let Some(cache) = runtime.cache() {
         match cache.generation_snapshot(tenant_id).await {
             Ok(generations) => match page_cache_key(
@@ -233,7 +249,7 @@ async fn load_cached_page_artifact(
                 tenant_id,
                 page_id,
                 generations.artifact,
-                cache_variant.as_str(),
+                artifact_cache_variant(generations, locale, fallback_locale, channel_slug).as_str(),
             ) {
                 Ok(key) => Some(key),
                 Err(error) => {
@@ -312,17 +328,22 @@ async fn load_cached_page_artifact(
     Ok(artifact)
 }
 
+/// The document entry rotates with every page event, like every cached representation of a
+/// published landing: a `304` or a cached document must not outlive an unpublish or a channel
+/// change on the server, whatever freshness the response declares to downstream caches.
 fn artifact_cache_variant(
+    generations: PageCacheGenerationSnapshot,
     locale: &str,
     fallback_locale: &str,
     channel_slug: Option<&str>,
 ) -> String {
-    serde_json::to_string(&(
-        locale.trim(),
-        fallback_locale.trim(),
-        channel_slug.unwrap_or_default(),
-    ))
-    .expect("serializing a tuple of strings cannot fail")
+    published_landing_cache_variant(
+        PublishedLandingRepresentation::Document,
+        generations,
+        locale,
+        fallback_locale,
+        channel_slug,
+    )
 }
 
 #[utoipa::path(
@@ -432,7 +453,15 @@ pub async fn page_body_revision_history(
     Path(id): Path<Uuid>,
     axum::extract::Query(locale): axum::extract::Query<PageBodyHistoryQuery>,
 ) -> HttpResult<Json<Vec<PageBodyRevisionResponse>>> {
-    ensure_pages_permission(&auth, Permission::PAGES_UPDATE)?;
+    // The journal follows the document read rule: save or publish authority. The service
+    // applies it to the page author; this is the permission preflight only.
+    ensure_any_pages_permission(
+        &auth,
+        &[
+            Permission::PAGES_UPDATE,
+            Permission::new(Resource::Pages, Action::Publish),
+        ],
+    )?;
     PageService::new(runtime.db_clone(), runtime.event_bus())
         .body_revision_history(tenant.id, page_security(&auth), id, &locale.locale)
         .await
@@ -645,25 +674,33 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<axum::Router>
         .with_state(state))
 }
 
-async fn ensure_pages_module_enabled_for_channel(
+/// Whether the Pages module is bound to the request channel. A request without a resolved
+/// channel id is not restricted by a binding.
+async fn pages_module_enabled_for_channel(
     runtime: &PagesHttpRuntime,
     request_context: &RequestContext,
-) -> HttpResult<()> {
+) -> HttpResult<bool> {
     let Some(channel_id) = request_context.channel_id else {
-        return Ok(());
+        return Ok(true);
     };
-    let enabled = ChannelService::new(runtime.db_clone())
+    ChannelService::new(runtime.db_clone())
         .is_module_enabled(channel_id, "pages")
         .await
         .map_err(|error| {
             tracing::error!(
                 channel_id = %channel_id,
                 error = %error,
-                "failed to evaluate Pages module availability for artifact delivery"
+                "failed to evaluate Pages module availability for the request channel"
             );
             HttpError::internal("Unable to evaluate channel availability")
-        })?;
-    if enabled {
+        })
+}
+
+async fn ensure_pages_module_enabled_for_channel(
+    runtime: &PagesHttpRuntime,
+    request_context: &RequestContext,
+) -> HttpResult<()> {
+    if pages_module_enabled_for_channel(runtime, request_context).await? {
         Ok(())
     } else {
         Err(HttpError::not_found(
@@ -724,7 +761,11 @@ fn map_pages_error(error: PagesError) -> HttpError {
 }
 
 fn ensure_pages_permission(auth: &AuthContext, permission: Permission) -> HttpResult<()> {
-    if !has_any_effective_permission(&auth.permissions, &[permission]) {
+    ensure_any_pages_permission(auth, &[permission])
+}
+
+fn ensure_any_pages_permission(auth: &AuthContext, permissions: &[Permission]) -> HttpResult<()> {
+    if !has_any_effective_permission(&auth.permissions, permissions) {
         return Err(HttpError::forbidden(
             "pages_permission_denied",
             "Permission denied: pages:* required",
@@ -738,6 +779,7 @@ mod tests {
     use super::{
         ARTIFACT_VARY, artifact_cache_variant, artifact_content_security_policy, etag_matches,
     };
+    use crate::PageCacheGenerationSnapshot;
 
     #[test]
     fn artifact_csp_hashes_exact_css() {
@@ -760,10 +802,30 @@ mod tests {
         assert!(ARTIFACT_VARY.contains("X-Tenant-Slug"));
         assert!(ARTIFACT_VARY.contains("X-Channel-Slug"));
         assert!(ARTIFACT_VARY.contains("X-Channel-ID"));
-        let base = artifact_cache_variant("en", "en", Some("web"));
-        assert_ne!(base, artifact_cache_variant("fr", "en", Some("web")));
-        assert_ne!(base, artifact_cache_variant("en", "ru", Some("web")));
-        assert_ne!(base, artifact_cache_variant("en", "en", Some("mobile")));
+        let generations = PageCacheGenerationSnapshot::new(1, 2, 3);
+        let variant = |locale, fallback, channel| {
+            artifact_cache_variant(generations, locale, fallback, channel)
+        };
+        let base = variant("en", "en", Some("web"));
+        assert_ne!(base, variant("fr", "en", Some("web")));
+        assert_ne!(base, variant("en", "ru", Some("web")));
+        assert_ne!(base, variant("en", "en", Some("mobile")));
+        assert_ne!(base, variant("en", "en", None));
+    }
+
+    #[test]
+    fn artifact_cache_entry_rotates_with_every_page_event() {
+        let variant = |route, page| {
+            artifact_cache_variant(
+                PageCacheGenerationSnapshot::new(route, page, 3),
+                "en",
+                "en",
+                Some("web"),
+            )
+        };
+        // A page update rotates the route and page generations and replaces no artifact.
+        assert_ne!(variant(1, 2), variant(2, 2));
+        assert_ne!(variant(1, 2), variant(1, 3));
     }
 
     #[test]

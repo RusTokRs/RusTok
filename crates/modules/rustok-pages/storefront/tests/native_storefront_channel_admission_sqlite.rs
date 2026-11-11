@@ -21,7 +21,7 @@ use rustok_channel::{
 };
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
-use rustok_pages::dto::{CreatePageInput, PageBodyInput, PageTranslationInput};
+use rustok_pages::dto::{CreatePageInput, PageTranslationInput};
 use rustok_pages::services::PageService;
 use rustok_pages::{
     PAGES_STOREFRONT_CACHE_TTL_SECS, PageCacheError, PageCacheGenerationSnapshot,
@@ -184,7 +184,15 @@ async fn native_storefront_channel_admission_precedes_cache_lookup() -> TestResu
         .await?;
     let enabled = call_storefront(&app, &tenant, &channel_context).await?;
     assert_eq!(enabled.status, StatusCode::OK);
-    assert!(enabled.body.contains("channel-admission-source"));
+    // The page is admitted. It was published without a reviewed landing, so it has
+    // no content to render.
+    let enabled_response: serde_json::Value = serde_json::from_str(&enabled.body)?;
+    let enabled_page = &enabled_response["selected_page"];
+    assert_eq!(
+        enabled_page["translation"]["title"],
+        serde_json::json!("Channel admission")
+    );
+    assert_eq!(enabled_page["landing"], serde_json::Value::Null);
     let enabled_cache = cache.snapshot();
     assert_eq!(enabled_cache.generation_reads, 1);
     assert_eq!(enabled_cache.get_keys.len(), 1);
@@ -325,13 +333,9 @@ async fn create_published_page(
                     meta_description: Some("Native storefront admission packet".to_string()),
                 }],
                 template: Some("default".to_string()),
-                body: Some(PageBodyInput {
-                    locale: "en".to_string(),
-                    document: serde_json::json!({
-                        "pages": [],
-                        "test_content": "channel-admission-source",
-                    }),
-                }),
+                // A page without a Page Builder document is the only kind the non-builder
+                // publish accepts.
+                body: None,
                 channel_slugs: None,
                 publish: false,
             },

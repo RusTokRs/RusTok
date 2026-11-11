@@ -4,6 +4,9 @@ const ADAPTER_KEY = Symbol.for("fly.browser.adapter");
 const ROOT_SELECTOR = "[data-fly-browser-root]";
 const IFRAME_SELECTOR = "iframe[data-fly-iframe-canvas]";
 const DRAFT_PREFIX = "fly:ssr-draft:";
+const SAVE_FAILURE_PREFIX = "fly:ssr-save-failure:";
+const SAVE_FAILURE_MAX_AGE_MS = 10 * 60 * 1000;
+const SAVE_FAILURE_MAX_ERROR_LENGTH = 1024;
 const DEFAULT_MAX_MESSAGE_BYTES = 1024 * 1024;
 const DEFAULT_MAX_GEOMETRY_COMPONENTS = 4096;
 const DEFAULT_MAX_PENDING_INTENT_REQUESTS = 8;
@@ -12,6 +15,7 @@ const PENDING_INTENT_LIMIT_CODE = "PENDING_INTENT_LIMIT";
 const INTENT_REQUEST_TIMEOUT_CODE = "INTENT_REQUEST_TIMEOUT";
 const INTENT_REQUEST_ABORTED_CODE = "INTENT_REQUEST_ABORTED";
 const NETWORK_ERROR_CODE = "NETWORK_ERROR";
+const SAVE_FAILED_CODE = "SAVE_FAILED";
 const UNSAFE_NAVIGATION_CODE = "UNSAFE_NAVIGATION_TARGET";
 const UNSAFE_INTENT_ENDPOINT_CODE = "UNSAFE_INTENT_ENDPOINT";
 const EXPECTED_ORIGIN_REQUIRED_CODE = "EXPECTED_ORIGIN_REQUIRED";
@@ -231,12 +235,16 @@ function normalizedProblem(adapter, detail, fallbackCode) {
 
 function clearBrowserProblem(adapter) {
   delete adapter.root.dataset.flyBrowserProblem;
+  delete adapter.root.dataset.flySaveFailed;
   adapter.root.querySelector(PROBLEM_STATUS_SELECTOR)?.remove();
 }
 
 function reportBrowserProblem(adapter, detail, fallbackCode) {
   const problem = normalizedProblem(adapter, detail, fallbackCode);
   adapter.root.dataset.flyBrowserProblem = problem.code;
+  // Any newly reported problem replaces a displayed save failure; `reportSaveFailure` sets the
+  // marker again for its own report.
+  delete adapter.root.dataset.flySaveFailed;
   adapter.root.dispatchEvent(
     new CustomEvent("fly:browser-problem", {
       bubbles: true,
@@ -361,6 +369,110 @@ function writeDraftSession(pageId, token, generation) {
     );
   } catch (_) {
     // Private browsing/storage denial must not break server-side authoring.
+  }
+}
+
+function saveFailureStorageKey(pageId) {
+  return `${SAVE_FAILURE_PREFIX}${pageId || "unbound"}`;
+}
+
+// A response with `save_failure` is a *successful* intent whose edit reached the draft session
+// but not the server document. Such a response also asks for a reload, which would discard a
+// problem that only lives in the DOM, so the failure is parked in `sessionStorage` and reported
+// again by the adapter that mounts after the reload. It stays there until a response reports a
+// saved working copy (see `settleSaveFailure`) or it ages out, which also keeps it across a
+// remount of the adapter.
+function writeSaveFailure(pageId, failure) {
+  try {
+    globalThis.sessionStorage?.setItem(
+      saveFailureStorageKey(pageId),
+      JSON.stringify({
+        at: Date.now(),
+        status: Number.isSafeInteger(failure.status) ? failure.status : 0,
+        code: nonEmptyString(failure.code) || SAVE_FAILED_CODE,
+        error: (nonEmptyString(failure.error) || "").slice(
+          0,
+          SAVE_FAILURE_MAX_ERROR_LENGTH,
+        ),
+        intent: nonEmptyString(failure.intent) || "save",
+      }),
+    );
+  } catch (_) {
+    // Storage denial only loses the message across the reload; the server-rendered toolbar
+    // still shows the unsaved state.
+  }
+}
+
+function clearSaveFailure(pageId) {
+  try {
+    globalThis.sessionStorage?.removeItem(saveFailureStorageKey(pageId));
+  } catch (_) {
+    // See `writeSaveFailure`.
+  }
+}
+
+function readSaveFailure(pageId) {
+  try {
+    const raw = globalThis.sessionStorage?.getItem(
+      saveFailureStorageKey(pageId),
+    );
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const age = isObject(parsed) ? Date.now() - Number(parsed.at) : NaN;
+    if (!(age >= 0 && age <= SAVE_FAILURE_MAX_AGE_MS)) {
+      clearSaveFailure(pageId);
+      return null;
+    }
+    return parsed;
+  } catch (_) {
+    return null;
+  }
+}
+
+function reportSaveFailure(adapter, failure, request) {
+  reportBrowserProblem(
+    adapter,
+    {
+      status: Number.isSafeInteger(failure.status) ? failure.status : 0,
+      result: failure,
+      request,
+    },
+    SAVE_FAILED_CODE,
+  );
+  adapter.root.dataset.flySaveFailed = "true";
+}
+
+// Settles the problem region after a successful intent response.
+//
+// A successful response resolves the problem of an earlier request. A save failure is not a
+// problem of one request: it describes the working copy. A host does not have to repeat the
+// save of a document that has not changed since the save was rejected, so an intent that leaves
+// the document alone (a key stroke, a toolbar toggle) is answered without `save_failure` while
+// `dirty` is still `true`. Treating that answer as "resolved" would erase the explanation at
+// the first key press after the reload. The parked failure therefore stands until a response
+// reports a working copy that is no longer dirty.
+function settleSaveFailure(adapter, result, request) {
+  if (!isObject(result)) {
+    clearBrowserProblem(adapter);
+    return;
+  }
+  if (isObject(result.save_failure)) {
+    writeSaveFailure(adapter.pageId, result.save_failure);
+    reportSaveFailure(adapter, result.save_failure, request);
+    return;
+  }
+  const state = isObject(result.result) ? result.result : result;
+  const standing =
+    state.dirty === true ? readSaveFailure(adapter.pageId) : null;
+  if (!standing) {
+    clearSaveFailure(adapter.pageId);
+    clearBrowserProblem(adapter);
+    return;
+  }
+  // Still on screen from an earlier report: leave it alone, so that the alert is not announced
+  // again for every intent. It is reported again only when another problem has replaced it.
+  if (adapter.root.dataset.flySaveFailed !== "true") {
+    reportSaveFailure(adapter, standing, request);
   }
 }
 
@@ -566,6 +678,10 @@ export class FlyBrowserAdapter {
       );
     }
     this.lifecycleState = ADAPTER_LIFECYCLE.STARTED;
+    // A save that failed right before the reload that produced this page: say so, because the
+    // canvas now shows the server's state of the draft and nothing else explains why.
+    const pendingSaveFailure = readSaveFailure(this.pageId);
+    if (pendingSaveFailure) reportSaveFailure(this, pendingSaveFailure, null);
     if (this.rejectedIntentEndpoint) {
       // Surfaced rather than silently ignored: an operator who misconfigured the endpoint needs
       // to know that intents are disabled, and a cross-origin value is worth investigating.
@@ -620,7 +736,7 @@ export class FlyBrowserAdapter {
       (event) => {
         if (event.detail?.current === false) return;
         if (event.detail?.ok === true) {
-          clearBrowserProblem(this);
+          settleSaveFailure(this, event.detail.result, event.detail.request);
         } else {
           reportBrowserProblem(this, event.detail, null);
         }
@@ -1233,6 +1349,8 @@ export class FlyBrowserAdapter {
             this.draftSession.generation,
           );
         }
+        // A save failure of this response was reported and parked by the response listener
+        // (`settleSaveFailure`) before the reload below.
         if (result.reload === true) {
           globalThis.location.reload();
         } else if (typeof result.location === "string") {

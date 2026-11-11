@@ -112,6 +112,7 @@ mod tests {
             channel_slugs: vec!["web".to_string()],
             translation: None,
             body: None,
+            document_readable: true,
         }
     }
 

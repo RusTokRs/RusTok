@@ -496,7 +496,7 @@ pub fn PageBuilderAuthenticatedInlineStorefront(
 
     match rendered {
         Ok((page, diagnostic_count, repeated_nodes)) => {
-            let css = page.css;
+            let scoped_css = crate::scope_landing_css(&page.css, crate::LANDING_SCOPE_SELECTOR);
             let html = page.html;
             let page_id = page.page_id.unwrap_or_default();
             view! {
@@ -510,7 +510,7 @@ pub fn PageBuilderAuthenticatedInlineStorefront(
                     data-runtime-diagnostics=diagnostic_count
                     data-repeated-nodes=repeated_nodes
                 >
-                    <style data-fly-project-styles="true">{css}</style>
+                    <style data-fly-project-styles="true">{scoped_css}</style>
                     <div data-fly-page-body="true" inner_html=html></div>
                 </section>
             }

@@ -67,8 +67,8 @@ async fn storefront_page_route_native(
         use rustok_core::SecurityContext;
         use rustok_outbox::TransactionalEventBus;
         use rustok_pages::{
-            PAGE_ROUTE_NOT_FOUND, PAGE_ROUTE_RESOLUTION_CONFLICT, PageRouteDisposition,
-            PageRouteService, PageService, PagesCacheReadRuntime, PagesError,
+            PAGE_ROUTE_NOT_FOUND, PAGE_ROUTE_RESOLUTION_CONFLICT, PageBuilderArtifactService,
+            PageRouteDisposition, PageRouteService, PageService, PagesCacheReadRuntime, PagesError,
         };
         use rustok_tenant::TenantService;
 
@@ -190,6 +190,23 @@ async fn storefront_page_route_native(
                     public_channel_slug.as_deref(),
                 )
             {
+                return Ok(StorefrontPageRouteDecision::terminal(
+                    StorefrontPageRouteDisposition::NotFound,
+                ));
+            }
+            // A storefront route renders only the published landing. A published page without
+            // one in any candidate locale has nothing to render, so its route does not exist.
+            let has_landing = PageBuilderArtifactService::new(runtime_ctx.db_clone())
+                .has_public_bound_artifact_with_fallback(
+                    tenant_id,
+                    canonical.page_id,
+                    canonical.locale.as_str(),
+                    Some(fallback_locale.as_str()),
+                    public_channel_slug.as_deref(),
+                )
+                .await
+                .map_err(|error| ServerFnError::new(error.to_string()))?;
+            if !has_landing {
                 return Ok(StorefrontPageRouteDecision::terminal(
                     StorefrontPageRouteDisposition::NotFound,
                 ));

@@ -16,7 +16,7 @@ use rustok_pages::entities::{
     page, page_body, page_body_draft, page_body_revision, page_translation,
 };
 use rustok_pages::{
-    PageBodyInput, PageBodyRevisionSource, PageBodyState, PageService, PagesModule,
+    PageBodyInput, PageBodyRevisionSource, PageBodyState, PageService, PagesError, PagesModule,
     RestorePageBodyRevisionInput, SavePageDocumentInput,
 };
 use rustok_test_utils::mock_transactional_event_bus;
@@ -364,7 +364,7 @@ async fn history_retention_keeps_the_newest_window_per_locale() -> TestResult<()
 }
 
 #[tokio::test]
-async fn drafts_are_invisible_to_read_only_readers() -> TestResult<()> {
+async fn page_source_follows_save_and_publish_authority() -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let db = setup_db().await?;
     let actor_id = Uuid::new_v4();
@@ -375,7 +375,7 @@ async fn drafts_are_invisible_to_read_only_readers() -> TestResult<()> {
     service
         .save_document(
             tenant_id,
-            editor,
+            editor.clone(),
             page_id,
             SavePageDocumentInput {
                 expected_revision: body_token,
@@ -384,30 +384,109 @@ async fn drafts_are_invisible_to_read_only_readers() -> TestResult<()> {
         )
         .await?;
 
+    // The editor reads the working copy by id and the current body through the public slug.
+    let seen_by_editor = service
+        .get_with_locale_fallback(tenant_id, editor.clone(), page_id, "en", None)
+        .await?
+        .body
+        .expect("editor body");
+    assert!(matches!(seen_by_editor.state, PageBodyState::Draft));
+    let slug_body_for_editor = service
+        .get_by_slug_with_locale_fallback(tenant_id, editor, "en", "home", None)
+        .await?
+        .expect("published page resolves for the editor")
+        .body
+        .expect("editor slug body");
+    assert!(matches!(slug_body_for_editor.state, PageBodyState::Current));
+    assert_eq!(slug_body_for_editor.content, builder_content("v1"));
+
+    // The body is the authoring document. Read authority alone resolves the page but never
+    // returns its source: neither the current body nor the draft.
     let reader = SecurityContext::from_permissions(
         UserRole::Manager,
         Some(Uuid::new_v4()),
         [Permission::PAGES_READ],
     );
     let seen_by_reader = service
-        .get_with_locale_fallback(tenant_id, reader, page_id, "en", None)
-        .await?
-        .body
-        .expect("reader body");
-    assert!(matches!(seen_by_reader.state, PageBodyState::Current));
-    assert_eq!(seen_by_reader.content, builder_content("v1"));
+        .get_with_locale_fallback(tenant_id, reader.clone(), page_id, "en", None)
+        .await?;
+    assert_eq!(seen_by_reader.id, page_id);
+    assert!(seen_by_reader.translation.is_some());
+    assert!(seen_by_reader.body.is_none());
+    // The response says that the document is withheld, not that the page has none.
+    assert!(!seen_by_reader.document_readable);
+    assert!(matches!(
+        service
+            .body_revision_history(tenant_id, reader, page_id, "en")
+            .await,
+        Err(PagesError::Forbidden(_))
+    ));
 
-    let customer = SecurityContext::from_permissions(
+    // A publish folds the working copy into the current body, so publish authority reads the
+    // working copy too.
+    let publisher = SecurityContext::from_permissions(
+        UserRole::Manager,
+        Some(Uuid::new_v4()),
+        [
+            Permission::PAGES_READ,
+            Permission::new(rustok_api::Resource::Pages, rustok_api::Action::Publish),
+        ],
+    );
+    let seen_by_publisher = service
+        .get_with_locale_fallback(tenant_id, publisher.clone(), page_id, "en", None)
+        .await?;
+    assert!(seen_by_publisher.document_readable);
+    let seen_by_publisher = seen_by_publisher.body.expect("publisher body");
+    assert!(matches!(seen_by_publisher.state, PageBodyState::Draft));
+    // The revision journal describes the document and follows the same rule.
+    assert!(
+        !service
+            .body_revision_history(tenant_id, publisher, page_id, "en")
+            .await?
+            .is_empty()
+    );
+
+    // A non-staff principal holding `pages:update` may save, and therefore read, only the
+    // documents of its own pages. This page is not its own.
+    let own_pages_editor = SecurityContext::from_permissions(
         UserRole::Customer,
         Some(Uuid::new_v4()),
         [Permission::PAGES_READ, Permission::PAGES_UPDATE],
     );
-    let seen_by_customer = service
-        .get_with_locale_fallback(tenant_id, customer, page_id, "en", None)
+    let seen_by_own_pages_editor = service
+        .get_with_locale_fallback(tenant_id, own_pages_editor, page_id, "en", None)
+        .await?;
+    assert_eq!(seen_by_own_pages_editor.id, page_id);
+    assert!(seen_by_own_pages_editor.body.is_none());
+    assert!(!seen_by_own_pages_editor.document_readable);
+
+    let public_by_id = service
+        .get_with_locale_fallback(
+            tenant_id,
+            SecurityContext::public_read(),
+            page_id,
+            "en",
+            None,
+        )
+        .await?;
+    assert_eq!(public_by_id.id, page_id);
+    assert!(public_by_id.body.is_none());
+    assert!(!public_by_id.document_readable);
+
+    let public_by_slug = service
+        .get_by_slug_with_locale_fallback(
+            tenant_id,
+            SecurityContext::public_read(),
+            "en",
+            "home",
+            None,
+        )
         .await?
-        .body
-        .expect("customer body");
-    assert!(matches!(seen_by_customer.state, PageBodyState::Current));
+        .expect("published page resolves for public readers");
+    assert_eq!(public_by_slug.id, page_id);
+    assert_eq!(public_by_slug.effective_locale.as_deref(), Some("en"));
+    assert!(public_by_slug.translation.is_some());
+    assert!(public_by_slug.body.is_none());
     Ok(())
 }
 

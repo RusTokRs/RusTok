@@ -8,7 +8,7 @@ const STOREFRONT_PAGES_QUERY: &str = r#"query StorefrontPages($pageSlug: String!
   selectedPage: pageBySlug(slug: $pageSlug, locale: $locale) {
     effectiveLocale
     translation { locale title slug metaTitle metaDescription }
-    body { locale content format }
+    landing { locale html css artifactHash }
   }
   pages(filter: $filter) { total items { id title slug status template } }
 }"#;

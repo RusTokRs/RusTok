@@ -334,6 +334,28 @@ fn selection_remains_possible_without_edit_capability() {
 }
 
 #[test]
+fn edit_after_failed_save_keeps_the_failure_signal() {
+    let mut machine = FlyUiStateMachine::new(Presentation::Full);
+    machine.dispatch(UiIntent::SaveStarted).expect("started");
+    machine.dispatch(UiIntent::SaveFailed).expect("failed");
+    assert!(machine.state.dirty.save_failed);
+
+    // The rejected changes are still unsaved: a further edit must not clear the signal.
+    machine
+        .dispatch(UiIntent::execute(EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: Default::default(),
+        }))
+        .expect("edit after failed save");
+    assert!(machine.state.dirty.dirty);
+    assert!(machine.state.dirty.save_failed);
+
+    // The next save attempt does.
+    machine.dispatch(UiIntent::SaveStarted).expect("retry");
+    assert!(!machine.state.dirty.save_failed);
+}
+
+#[test]
 fn save_conflict_is_a_distinct_lost_update_state() {
     let mut machine = FlyUiStateMachine::new(Presentation::Full);
     machine.dispatch(UiIntent::SaveStarted).expect("started");

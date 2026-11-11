@@ -367,10 +367,11 @@ impl FlyUiStateMachine {
         Ok(())
     }
 
+    /// Mirrors `RevisionState::mark_changed`: an edit after a failed save keeps `save_failed`
+    /// set, because the changes are still unsaved. `SaveStarted` and `SaveSucceeded` clear it.
     fn mark_dirty(&mut self) {
         self.state.dirty.dirty = true;
         self.state.dirty.command_sequence = self.state.dirty.command_sequence.saturating_add(1);
-        self.state.dirty.save_failed = false;
     }
 }
 

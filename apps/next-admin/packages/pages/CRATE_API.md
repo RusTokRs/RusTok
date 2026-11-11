@@ -33,7 +33,7 @@ This package manages page lifecycle operations (listing, creating initial drafts
 - `unpublishPage(id, expectedVersion, opts)`: Unpublishes an active page.
 - `deletePage(id, opts)`: Deletes a page by UUID.
 - `builderUrlForPage(builderBaseUrl, pageId)`: Generates deep link to the Rust FFA visual page builder.
-- `storefrontUrlForPage(storefrontBaseUrl, slug, locale, status, previewSecret)`: Generates canonical storefront URLs for published pages or secure draft preview links with secret tokens.
+- `storefrontUrlForPage(storefrontBaseUrl, slug, locale, status)`: Canonical storefront URL of a published page; `null` for a page that is not published, because the storefront renders the published landing only.
 
 ## 3. Dependencies & Architecture Boundaries
 
@@ -55,7 +55,7 @@ This package manages page lifecycle operations (listing, creating initial drafts
 - **Verified Coverage**:
   - `pagesNavItems` routing and keyboard shortcuts (`p, l`).
   - `builderUrlForPage` deep-link generation and trailing slash handling.
-  - `storefrontUrlForPage` canonical routes, draft preview tokens, and leading slash normalization.
+  - `storefrontUrlForPage` canonical routes, `null` for unpublished pages, and leading slash normalization.
   - GraphQL schema query and mutation field validation.
   - `listPages` pagination clamping and tenant context propagation.
   - `createPage` title/locale validation and `publish: false` invariant enforcement.

@@ -21,6 +21,21 @@ use static_publish_resource_limits::{
 
 const STATIC_LANDING_ID_PREFIX: &str = "fly-static";
 
+/// Render policy of a public static landing artifact.
+///
+/// Single source for the publish compiler and for every preview that claims to show what
+/// will be published: a preview rendered with a looser policy shows resources the publish
+/// step then rejects, turning an authoring mistake into a late, confusing publish failure.
+///
+/// Public artifacts are served with an HTTPS-only resource CSP, so `http://` subresources
+/// are not rendered; everything else follows the Fly default.
+pub fn static_publish_render_policy() -> RenderPolicy {
+    RenderPolicy {
+        allow_http: false,
+        ..RenderPolicy::default()
+    }
+}
+
 /// Pure compiler from an editor project into a deterministic static landing artifact.
 ///
 /// The compiler owns validation and rendering policy only. Persistence, tenancy and publication
@@ -44,17 +59,13 @@ where
     R: LandingRenderer,
 {
     pub fn new(renderer: R) -> Self {
-        // Public artifacts are served with an HTTPS-only resource CSP. Reject insecure
-        // subresources before rendering instead of publishing markup the browser will block.
-        let render_policy = RenderPolicy {
-            allow_http: false,
-            ..RenderPolicy::default()
-        };
+        // Insecure subresources are rejected before rendering instead of publishing markup
+        // the browser will block; see `static_publish_render_policy`.
         Self {
             registries: RegistrySet::with_builtins(),
             limits: ValidationLimits::default(),
             readiness_policy: LandingReadinessPolicy::default(),
-            render_policy,
+            render_policy: static_publish_render_policy(),
             renderer,
         }
     }
@@ -429,6 +440,77 @@ mod tests {
         );
     }
 
+    #[test]
+    fn preview_policy_omits_exactly_the_http_resources_publish_rejects() {
+        // Audit §6.2: a preview rendered with the shared policy must not show an image that
+        // the publish compiler refuses, and must keep showing the HTTPS one it accepts.
+        let project_with_image = |src: &str| {
+            json!({
+                "pages": [{
+                    "id": "home",
+                    "flyPageMeta": {
+                        "title": "Home",
+                        "description": "A stable landing page",
+                        "slug": "home"
+                    },
+                    "component": {
+                        "id": "root",
+                        "type": "wrapper",
+                        "components": [{
+                            "id": "heading",
+                            "type": "heading",
+                            "tagName": "h1",
+                            "content": "Welcome"
+                        }, {
+                            "id": "hero",
+                            "type": "image",
+                            "attributes": { "src": src, "alt": "Product hero" }
+                        }]
+                    }
+                }]
+            })
+        };
+        let preview = |src: &str, policy: RenderPolicy| {
+            crate::render::PageBuilderRenderer
+                .render_runtime_document_html(
+                    project_with_image(src),
+                    fly::PageSelection::First,
+                    policy,
+                    json!({}),
+                )
+                .expect("preview")
+        };
+        let insecure = "http://cdn.example.com/hero.webp";
+        let secure = "https://cdn.example.com/hero.webp";
+
+        assert!(preview(insecure, RenderPolicy::default()).contains(insecure));
+        assert!(!preview(insecure, static_publish_render_policy()).contains(insecure));
+        assert!(
+            StaticLandingCompiler::default()
+                .compile_publish(&project_with_image(insecure))
+                .is_err()
+        );
+
+        assert!(preview(secure, static_publish_render_policy()).contains(secure));
+        StaticLandingCompiler::default()
+            .compile_publish(&project_with_image(secure))
+            .expect("HTTPS image publishes");
+    }
+
+    #[test]
+    fn default_compiler_uses_the_shared_publish_render_policy() {
+        let compiler = StaticLandingCompiler::default();
+        assert_eq!(compiler.render_policy, static_publish_render_policy());
+        assert!(!static_publish_render_policy().allow_http);
+        assert_eq!(
+            RenderPolicy {
+                allow_http: true,
+                ..static_publish_render_policy()
+            },
+            RenderPolicy::default()
+        );
+    }
+
     fn project_with_srcset(srcset: &str) -> Value {
         json!({
             "pages": [{
@@ -451,6 +533,7 @@ mod tests {
                         "type": "image",
                         "attributes": {
                             "src": "https://cdn.example.com/hero.webp",
+                            "alt": "Product hero",
                             "srcset": srcset,
                             "sizes": "(max-width: 800px) 100vw, 800px"
                         }

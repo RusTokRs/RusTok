@@ -359,7 +359,15 @@ pub struct PageResponse {
     pub published_at: Option<String>,
     pub translation: Option<PageTranslationResponse>,
     pub translations: Vec<PageTranslationResponse>,
+    /// Authoring document of the effective locale. Present only for a reader that may save or
+    /// publish this document (`pages:update` or `pages:publish` over this page); public readers
+    /// and customers get `None` and render the published landing artifact instead.
     pub body: Option<PageBodyResponse>,
+    /// Whether this reader may read the authoring document of this page. It tells the two
+    /// meanings of an absent `body` apart: `true` means the page has no document in the
+    /// effective locale, `false` means the document, if any, is withheld from this reader.
+    #[serde(default)]
+    pub document_readable: bool,
     pub channel_slugs: Vec<String>,
     pub metadata: Value,
 }

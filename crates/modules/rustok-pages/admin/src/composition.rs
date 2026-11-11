@@ -1,4 +1,4 @@
-use crate::access::pages_editor_capability_policy;
+use crate::access::{pages_can_restore_body_revision, pages_editor_capability_policy};
 use crate::browser_intent::pages_browser_draft_store;
 use crate::builder::{self, PagesBuilderFacade, PagesBuilderSaveSnapshot};
 use crate::contributions::{
@@ -565,11 +565,38 @@ fn PageWorkspace(
         .or_else(|| page.body.as_ref().map(|body| body.locale.clone()))
         .unwrap_or_else(|| default_locale.clone());
     let revision = builder::page_revision(&page);
-    let body_format = page
-        .body
-        .as_ref()
-        .map(|body| body.format.clone())
-        .unwrap_or_else(|| rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT.to_string());
+    // The principal may see the page record without its authoring document. The workspace
+    // then names that state instead of opening the starter document in its place.
+    let document_readable = page.document_readable;
+    let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+    let document_unavailable_title = t(
+        ui_locale.as_deref(),
+        "pages.document.unavailableTitle",
+        "Document not available",
+    );
+    let document_unavailable_message = t(
+        ui_locale.as_deref(),
+        "pages.document.unavailable",
+        core::DOCUMENT_UNAVAILABLE_MESSAGE,
+    );
+    let document_unavailable_value = t(
+        ui_locale.as_deref(),
+        "pages.document.unavailableValue",
+        "not available",
+    );
+    let body_format = if document_readable {
+        page.body
+            .as_ref()
+            .map(|body| body.format.clone())
+            .unwrap_or_else(|| rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT.to_string())
+    } else {
+        document_unavailable_value.clone()
+    };
+    let revision_label = if document_readable {
+        revision.clone()
+    } else {
+        document_unavailable_value
+    };
     let channels = if page.channel_slugs.is_empty() {
         "all".to_string()
     } else {
@@ -703,7 +730,7 @@ fn PageWorkspace(
                     <MetadataItem label="Template" value=page.template.clone() />
                     <MetadataItem label="Channels" value=channels />
                     <MetadataItem label="Body" value=body_format />
-                    <MetadataItem label="Revision" value=revision />
+                    <MetadataItem label="Revision" value=revision_label />
                 </dl>
                 {move || action_error.get().map(|message| view! {
                     <div class="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
@@ -713,7 +740,7 @@ fn PageWorkspace(
             </section>
 
 
-            {if is_published {
+            {if is_published && document_readable {
                 view! {
                     <div class="rounded-xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-950" role="status">
                         "Published page: editor saves go to the unpublished body draft. The live page keeps serving the current body until the next publish; unpublishing folds the draft into the current body."
@@ -722,27 +749,42 @@ fn PageWorkspace(
             } else {
                 view! { <div /> }.into_any()
             }}
-            <section class="rounded-2xl border border-border bg-card p-4 shadow-sm">
-                <PagesFlyBuilder
-                    page=page_for_builder
-                    baseline
-                    release_status
-                    provider_status
-                    token
-                    tenant
-                    default_locale
-                    draft_token
-                    refresh_generation
-                />
-            </section>
-            <BodyRevisionHistory
-                page_id=history_page_id
-                locale=history_locale
-                expected_revision=history_revision
-                token
-                tenant
-                refresh_generation
-            />
+            {if document_readable {
+                view! {
+                    <div class="space-y-4">
+                    <section class="rounded-2xl border border-border bg-card p-4 shadow-sm">
+                        <PagesFlyBuilder
+                            page=page_for_builder
+                            baseline
+                            release_status
+                            provider_status
+                            token
+                            tenant
+                            default_locale
+                            draft_token
+                            refresh_generation
+                        />
+                    </section>
+                    <BodyRevisionHistory
+                        page_id=history_page_id
+                        locale=history_locale
+                        expected_revision=history_revision
+                        token
+                        tenant
+                        refresh_generation
+                    />
+                    </div>
+                }.into_any()
+            } else {
+                view! {
+                    <section class="rounded-2xl border border-dashed border-border bg-card px-6 py-12 text-center shadow-sm" role="status">
+                        <h3 class="text-lg font-semibold text-card-foreground">{document_unavailable_title}</h3>
+                        <p class="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
+                            {document_unavailable_message}
+                        </p>
+                    </section>
+                }.into_any()
+            }}
             <PublishSchedulePanel
                 page_id=page.id.clone()
                 token
@@ -774,6 +816,14 @@ fn BodyRevisionHistory(
 ) -> impl IntoView {
     let busy = RwSignal::new(false);
     let error = RwSignal::new(None::<String>);
+    // The journal is readable with `pages:publish` too; restoring needs the
+    // save grant, so the action is offered only with it.
+    let current_user = use_current_user();
+    let can_restore = Signal::derive(move || {
+        current_user
+            .get()
+            .is_some_and(|user| pages_can_restore_body_revision(&user.permissions))
+    });
     let history_token = token;
     let history_tenant = tenant;
     let history_page_id = page_id.clone();
@@ -839,6 +889,7 @@ fn BodyRevisionHistory(
                 </div>
             }>
                 {move || {
+                    let can_restore = can_restore.get();
                     history.get().map(|result| match result {
                         Ok(revisions) if revisions.is_empty() => view! {
                             <p class="text-sm text-muted-foreground">
@@ -865,15 +916,17 @@ fn BodyRevisionHistory(
                                                         )}
                                                     </div>
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
-                                                    disabled=move || busy.get()
-                                                    title="Restore this body revision into the working copy"
-                                                    on:click=move |_| restore.run(revision_id.clone())
-                                                >
-                                                    "Restore"
-                                                </button>
+                                                {can_restore.then(|| view! {
+                                                    <button
+                                                        type="button"
+                                                        class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                                                        disabled=move || busy.get()
+                                                        title="Restore this body revision into the working copy"
+                                                        on:click=move |_| restore.run(revision_id.clone())
+                                                    >
+                                                        "Restore"
+                                                    </button>
+                                                })}
                                             </li>
                                         }
                                     })

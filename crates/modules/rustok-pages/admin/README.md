@@ -25,9 +25,32 @@
 - Uses the pages module GraphQL contract for list/create/edit/update/publish/delete flows.
 - Writes the visual builder payload into the sole `body.document` field; Pages
   selects the Page Builder format server-side.
+- Opens the editor and the revision history only for a page whose document the
+  principal may read (`documentReadable`). Otherwise the workspace shows
+  "Document not available", and builder requests for that page answer
+  `403 DOCUMENT_UNAVAILABLE`; the starter document is never shown in its place.
+  The notice is localized (`pages-document-*` in `locales/`); the text of the
+  `403` problem is the English `DOCUMENT_UNAVAILABLE_MESSAGE`, like other
+  problem texts of the endpoint.
+- Offers "Restore" in the revision history only to a principal whose permission
+  snapshot grants `pages:update` (`access::pages_can_restore_body_revision`).
+  The history itself is readable with `pages:publish` as well. The server
+  remains the authority and also applies the ownership scope of the grant.
 - Uses the shared `rustok-seo` GraphQL contract through `rustok-seo-panel` for explicit page SEO authoring.
 - Follows the generic host route contract `/modules/:module_slug`.
 
 ## Entry points
 
 - `PagesAdmin`
+
+## Known Limitations / Pending Implementation
+
+- **A failed draft save is not retried on its own.** When the save that follows an applied edit is
+  rejected, the browser intent still succeeds: the response carries `save_failure` and asks for a
+  reload, and the draft stays marked as unsaved. The builder saves again on an explicit save or on
+  the next edit that changes the document. An intent that does not change the document (selecting,
+  switching panels) does not retry, so after a transient outage the draft stays unsaved until one
+  of those happens.
+- **The save-failure message ages out.** It stays on screen, and across reloads, until a save
+  succeeds, but the browser keeps it for at most 10 minutes; after that only the toolbar's unsaved
+  state says that the draft is not stored.

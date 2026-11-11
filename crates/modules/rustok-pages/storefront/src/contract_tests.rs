@@ -1,14 +1,10 @@
 //! Contract tests verifying the architectural invariants and public API of `rustok-pages-storefront`.
 
-use crate::builder::{
-    PAGE_BUILDER_DOCUMENT_FORMAT, STATIC_LANDING_PAYLOAD_BODY_FORMAT,
-    STATIC_LANDING_URL_BODY_FORMAT, is_page_builder_body,
-};
 use crate::core::{
     count_label, open_link_label, page_link_href, selected_page_effective_locale,
     selected_page_slug, selected_page_title,
 };
-use crate::model::{PageBody, PageDetail, PageTranslation};
+use crate::model::{PageDetail, PageTranslation, PublishedLanding};
 use crate::transport::{StorefrontPageRouteDecision, StorefrontPageRouteDisposition};
 
 const CRATE_API_DOC: &str = include_str!("../CRATE_API.md");
@@ -35,38 +31,35 @@ fn crate_api_markdown_contains_all_mandatory_contract_sections() {
 }
 
 #[test]
-fn format_constants_adhere_to_platform_spec() {
-    assert_eq!(PAGE_BUILDER_DOCUMENT_FORMAT, "grapesjs");
-    assert_eq!(STATIC_LANDING_PAYLOAD_BODY_FORMAT, "fly_artifact_payload");
-    assert_eq!(STATIC_LANDING_URL_BODY_FORMAT, "fly_artifact_url");
-}
-
-#[test]
-fn page_builder_format_detection_contract() {
-    let supported_formats = [
-        PAGE_BUILDER_DOCUMENT_FORMAT,
-        STATIC_LANDING_PAYLOAD_BODY_FORMAT,
-        STATIC_LANDING_URL_BODY_FORMAT,
-    ];
-
-    for format in supported_formats {
-        let body = PageBody {
+fn page_detail_carries_the_published_landing_and_no_authoring_document() {
+    let page = PageDetail {
+        effective_locale: Some("en".to_string()),
+        translation: None,
+        landing: Some(PublishedLanding {
             locale: "en".to_string(),
-            content: "{}".to_string(),
-            format: format.to_string(),
-        };
-        assert!(
-            is_page_builder_body(&body),
-            "Format `{format}` must be recognized as page builder content"
-        );
-    }
-
-    let unsupported = PageBody {
-        locale: "en".to_string(),
-        content: "plain text".to_string(),
-        format: "text/plain".to_string(),
+            html: "<h1>Landing</h1>".to_string(),
+            css: "h1 { color: red; }".to_string(),
+            artifact_hash: "hash".to_string(),
+        }),
     };
-    assert!(!is_page_builder_body(&unsupported));
+    let encoded = serde_json::to_value(&page).expect("page detail must serialize");
+    let mut keys = encoded
+        .as_object()
+        .expect("page detail is an object")
+        .keys()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    keys.sort_unstable();
+    assert_eq!(keys, ["effectiveLocale", "landing", "translation"]);
+
+    let mut landing_keys = encoded["landing"]
+        .as_object()
+        .expect("landing is an object")
+        .keys()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    landing_keys.sort_unstable();
+    assert_eq!(landing_keys, ["artifactHash", "css", "html", "locale"]);
 }
 
 #[test]
@@ -80,7 +73,7 @@ fn core_view_model_helpers_operate_without_ui_runtime() {
             meta_title: None,
             meta_description: None,
         }),
-        body: None,
+        landing: None,
     };
 
     assert_eq!(

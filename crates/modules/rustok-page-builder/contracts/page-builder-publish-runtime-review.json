@@ -113,7 +113,9 @@
       "require_builder_sources",
       "parse_builder_project_values",
       "ensure_builder_publish_enabled_in_tx",
-      "ensure_candidates_allowed_in_tx",
+      "load_scenario_baseline_in_tx",
+      "reviewed_publish_fingerprint",
+      "ensure_candidates_allowed(",
       "compile_builder_sources_with_reviewed_runtime",
       "stage_compiled_in_tx",
       "bind_existing_body_in_tx",
@@ -122,6 +124,23 @@
       "DomainEvent::NodePublished",
       "insert_publish_operation_in_tx"
     ],
+    "precompiled_evaluation": {
+      "entrypoint": "try_precompile_reviewed_publish",
+      "phase": "before_transaction_without_locks",
+      "authoritative": false,
+      "order": [
+        "enforce_owned_scope",
+        "expand_builder_sources",
+        "parse_builder_project_values",
+        "reviewed_publish_fingerprint",
+        "ensure_candidates_allowed(",
+        "compile_builder_sources_with_reviewed_runtime"
+      ],
+      "fingerprint_inputs": ["expanded_builder_sources", "stored_scenario_baseline"],
+      "reuse": "precompiled.fingerprint == fingerprint",
+      "on_mismatch_or_failure": "gate_and_compile_under_transaction_locks",
+      "pool_reads_inside_transaction": false
+    },
     "materialization_match": ["runtime_scenario_id", "runtime_context_hash"],
     "error_codes": [
       "PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID",

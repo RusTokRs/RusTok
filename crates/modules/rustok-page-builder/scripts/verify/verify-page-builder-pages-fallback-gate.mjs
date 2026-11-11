@@ -44,7 +44,7 @@ const hostChecks = [
       "SecurityContext::public_read()",
       "load_public_bound_artifact_with_fallback",
       "list_public_visible_with_locale_fallback",
-      "published_artifact_page_body",
+      "fn published_landing(",
     ],
   },
   {

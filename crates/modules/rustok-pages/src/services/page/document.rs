@@ -17,7 +17,7 @@ use crate::dto::{
 };
 use crate::entities::{page, page_body_revision, page_translation};
 use crate::error::{PagesError, PagesResult};
-use crate::services::rbac::enforce_owned_scope;
+use crate::services::rbac::{can_read_page_source, enforce_owned_scope};
 
 use super::helpers::{body_revision_timestamp, normalize_locale, normalize_page_body_input};
 use super::{PAGE_KIND, PageService, PreparedPageBody, WorkingBody};
@@ -336,6 +336,10 @@ impl PageService {
     }
 
     /// Returns the newest body-revision journal metadata for one locale, newest first.
+    ///
+    /// The journal describes the document, so it is readable by whoever may read the document
+    /// ([`can_read_page_source`]): a principal that may save or publish it. Restoring a
+    /// revision is a save and keeps requiring `pages:update`.
     #[instrument(skip(self, security))]
     pub async fn body_revision_history(
         &self,
@@ -345,7 +349,9 @@ impl PageService {
         locale: &str,
     ) -> PagesResult<Vec<PageBodyRevisionResponse>> {
         let page = self.find_page(tenant_id, page_id).await?;
-        enforce_owned_scope(&security, Resource::Pages, Action::Update, page.author_id)?;
+        if !can_read_page_source(&security, page.author_id) {
+            return Err(PagesError::forbidden("Permission denied"));
+        }
         let locale = normalize_locale(locale)?;
         let revisions = page_body_revision::Entity::find()
             .filter(page_body_revision::Column::TenantId.eq(tenant_id))
