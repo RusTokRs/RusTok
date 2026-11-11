@@ -16911,6 +16911,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "tracing",
  "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",

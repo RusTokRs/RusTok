@@ -11,9 +11,14 @@ use sea_orm::DatabaseConnection;
 use std::time::Instant;
 use uuid::Uuid;
 
-use crate::PageService;
+use crate::cache_invalidation::{PublishedLandingRepresentation, published_landing_cache_variant};
 use crate::services::page::is_page_visible_for_channel;
+use crate::services::rbac::can_read_non_public_pages;
+use crate::{
+    PageBuilderArtifactService, PageCacheScope, PageService, PagesCacheReadRuntime, page_cache_key,
+};
 
+use super::runtime_data::PagesGraphqlRuntimeData;
 use super::types::*;
 
 const MODULE_SLUG: &str = "pages";
@@ -56,6 +61,9 @@ impl PagesQuery {
         {
             Ok(page) => page,
             Err(crate::PagesError::PageNotFound(_)) => return Ok(None),
+            // To a visitor an unpublished page does not exist; a permission error would
+            // confirm that the id is taken.
+            Err(crate::PagesError::Forbidden(_)) if is_public_request(ctx) => return Ok(None),
             Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
 
@@ -195,7 +203,8 @@ impl PagesQuery {
 
     /// Append-only body-revision journal metadata for one page locale, newest first.
     ///
-    /// Editor state: the service rejects readers without page update authority.
+    /// Editor state: the service rejects readers that may not read the document of the page
+    /// (neither save nor publish authority over it).
     async fn page_body_revisions(
         &self,
         ctx: &Context<'_>,
@@ -274,6 +283,158 @@ impl PagesQuery {
     }
 }
 
+/// Resolves `GqlPage.landing`: the published landing a visitor of the request channel gets.
+///
+/// Page status, channel visibility, the locale binding and artifact integrity are decided by
+/// the artifact owner in one transaction; nothing is derived from the page body.
+pub(super) async fn published_landing(
+    ctx: &Context<'_>,
+    page: &GqlPage,
+) -> Result<Option<GqlPublishedLanding>> {
+    let Some(locale) = page
+        .effective_locale
+        .as_deref()
+        .or(page.requested_locale.as_deref())
+    else {
+        return Ok(None);
+    };
+    let db = ctx.data::<DatabaseConnection>()?;
+    let tenant = ctx.data::<TenantContext>()?;
+    load_published_landing(
+        db,
+        ctx.data_opt::<PagesGraphqlRuntimeData>()
+            .and_then(PagesGraphqlRuntimeData::cache),
+        tenant.id,
+        page.id,
+        locale,
+        tenant.default_locale.as_str(),
+        public_channel_slug(ctx).as_deref(),
+    )
+    .await
+}
+
+/// Reads the published landing through the generation-aware Pages cache.
+///
+/// The landing is the same for every reader of one tenant, page, locale and channel, so the
+/// entry carries no principal. Its key rotates with every page event (update, publish,
+/// unpublish, delete), not only with the events that replace the artifact; see
+/// [`published_landing_cache_variant`].
+///
+/// Only a resolved landing is stored. "No landing" is cheap to recompute and must never
+/// outlive a publish. Every cache failure degrades to the owner read.
+async fn load_published_landing(
+    db: &DatabaseConnection,
+    cache: Option<&PagesCacheReadRuntime>,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    locale: &str,
+    fallback_locale: &str,
+    channel_slug: Option<&str>,
+) -> Result<Option<GqlPublishedLanding>> {
+    let cache_key = match cache {
+        Some(cache) => published_landing_cache_key(
+            cache,
+            tenant_id,
+            page_id,
+            locale,
+            fallback_locale,
+            channel_slug,
+        )
+        .await
+        .map(|key| (cache, key)),
+        None => None,
+    };
+
+    if let Some((cache, key)) = cache_key.as_ref() {
+        match cache.get_json::<GqlPublishedLanding>(key).await {
+            Ok(Some(landing)) => {
+                tracing::debug!(%tenant_id, %page_id, "Pages landing cache hit");
+                return Ok(Some(landing));
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    %tenant_id,
+                    %page_id,
+                    "Pages landing cache read failed; loading the published artifact"
+                );
+            }
+        }
+    }
+
+    let landing = PageBuilderArtifactService::new(db.clone())
+        .load_public_bound_artifact_with_fallback(
+            tenant_id,
+            page_id,
+            locale,
+            Some(fallback_locale),
+            channel_slug,
+        )
+        .await
+        .map_err(|err| async_graphql::Error::new(err.to_string()))?
+        .map(GqlPublishedLanding::from);
+
+    if let (Some((cache, key)), Some(landing)) = (cache_key, landing.as_ref())
+        && let Err(error) = cache.put_json(key, landing).await
+    {
+        tracing::warn!(
+            %error,
+            %tenant_id,
+            %page_id,
+            "Pages landing cache fill failed"
+        );
+    }
+    Ok(landing)
+}
+
+async fn published_landing_cache_key(
+    cache: &PagesCacheReadRuntime,
+    tenant_id: Uuid,
+    page_id: Uuid,
+    locale: &str,
+    fallback_locale: &str,
+    channel_slug: Option<&str>,
+) -> Option<String> {
+    let generations = match cache.generation_snapshot(tenant_id).await {
+        Ok(generations) => generations,
+        Err(error) => {
+            tracing::warn!(
+                %error,
+                %tenant_id,
+                %page_id,
+                "Pages landing generation read failed; bypassing cache"
+            );
+            return None;
+        }
+    };
+    let variant = published_landing_cache_variant(
+        PublishedLandingRepresentation::Landing,
+        generations,
+        locale,
+        fallback_locale,
+        channel_slug,
+    );
+    match page_cache_key(
+        PageCacheScope::Artifact,
+        tenant_id,
+        page_id,
+        generations.artifact,
+        variant.as_str(),
+    ) {
+        Ok(key) => Some(key),
+        Err(error) => {
+            tracing::warn!(
+                %error,
+                %tenant_id,
+                %page_id,
+                "Pages landing cache key rejected"
+            );
+            None
+        }
+    }
+}
+
 fn query_tenant_id(
     tenant: &TenantContext,
     authenticated_tenant: Option<Uuid>,
@@ -291,14 +452,23 @@ fn query_tenant_id(
 
 fn request_security_context(ctx: &Context<'_>) -> SecurityContext {
     ctx.data_opt::<AuthContext>()
-        .map(|a| {
-            rustok_core::SecurityContext::from_permission_snapshot(Some(a.user_id), &a.permissions)
+        .map(|auth| {
+            rustok_core::security_context_from_access_token(
+                auth.user_id,
+                &auth.grant_type,
+                &auth.permissions,
+            )
         })
         .unwrap_or_else(SecurityContext::public_read)
 }
 
+/// A request is a visitor request unless its principal authors pages.
+///
+/// Signing in does not make a reader an author: a customer token carries `pages:read` and
+/// `pages:list`, exactly what an anonymous reader holds. Such a request gets the published
+/// pages of its channel and nothing else, like an anonymous one.
 fn is_public_request(ctx: &Context<'_>) -> bool {
-    ctx.data_opt::<AuthContext>().is_none()
+    !can_read_non_public_pages(&request_security_context(ctx))
 }
 
 fn public_channel_slug(ctx: &Context<'_>) -> Option<String> {
@@ -323,9 +493,9 @@ fn request_channel_resolution_source(request_context: &RequestContext) -> &str {
 fn is_page_visible_for_request(
     channel_slugs: &[String],
     public_channel_slug: Option<&str>,
-    is_authenticated: bool,
+    is_author: bool,
 ) -> bool {
-    is_authenticated || is_page_visible_for_channel(channel_slugs, public_channel_slug)
+    is_author || is_page_visible_for_channel(channel_slugs, public_channel_slug)
 }
 
 async fn list_public_visible_pages(
@@ -371,7 +541,7 @@ async fn require_public_pages_channel_enabled(ctx: &Context<'_>) -> Result<()> {
     ensure_public_pages_channel_enabled(
         db,
         ctx.data_opt::<RequestContext>(),
-        ctx.data_opt::<AuthContext>().is_some(),
+        !is_public_request(ctx),
     )
     .await
 }
@@ -379,9 +549,9 @@ async fn require_public_pages_channel_enabled(ctx: &Context<'_>) -> Result<()> {
 async fn ensure_public_pages_channel_enabled(
     db: &DatabaseConnection,
     request_context: Option<&RequestContext>,
-    is_authenticated: bool,
+    is_author: bool,
 ) -> Result<()> {
-    if is_authenticated {
+    if is_author {
         return Ok(());
     }
 
@@ -526,7 +696,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authenticated_request_bypasses_channel_module_gate() {
+    async fn page_author_bypasses_channel_module_gate() {
         let db = setup_channel_db().await;
         let tenant_id = Uuid::new_v4();
         seed_tenant(&db, tenant_id, "tenant-web").await;
@@ -559,10 +729,7 @@ mod tests {
         )
         .await;
 
-        assert!(
-            result.is_ok(),
-            "authenticated/admin flows must not be blocked"
-        );
+        assert!(result.is_ok(), "page authoring flows must not be blocked");
     }
 
     #[tokio::test]
@@ -616,7 +783,7 @@ mod tests {
     }
 
     #[test]
-    fn authenticated_request_bypasses_page_channel_allowlist() {
+    fn page_author_bypasses_page_channel_allowlist() {
         let channel_slugs = vec!["web".to_string()];
 
         assert!(is_page_visible_for_request(&channel_slugs, None, true));

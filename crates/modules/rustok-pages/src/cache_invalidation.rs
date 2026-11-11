@@ -456,6 +456,53 @@ pub fn storefront_pages_cache_key(
     ))
 }
 
+/// Representation of a published landing kept in the artifact cache scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum PublishedLandingRepresentation {
+    /// Body markup and stylesheet for a host document (GraphQL `landing`).
+    Landing,
+    /// Complete standalone document (REST artifact endpoint).
+    Document,
+}
+
+impl PublishedLandingRepresentation {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Landing => "landing",
+            Self::Document => "document",
+        }
+    }
+}
+
+/// Key variant of one cached representation of a published landing.
+///
+/// Every reader that caches a landing resolved by
+/// `PageBuilderArtifactService::load_public_bound_artifact_with_fallback` uses this variant
+/// with [`page_cache_key`] in the artifact scope. A cache hit skips the owner's page-status
+/// and channel-visibility decision, so the variant carries the route and page generations
+/// next to the artifact generation of the key: a page update, which replaces no artifact,
+/// still evicts the entry. The channel slug is normalized the way the owner compares it.
+pub(crate) fn published_landing_cache_variant(
+    representation: PublishedLandingRepresentation,
+    generations: PageCacheGenerationSnapshot,
+    locale: &str,
+    fallback_locale: &str,
+    channel_slug: Option<&str>,
+) -> String {
+    let channel_slug = channel_slug
+        .map(|slug| slug.trim().to_ascii_lowercase())
+        .unwrap_or_default();
+    serde_json::to_string(&(
+        representation.as_str(),
+        generations.route,
+        generations.page,
+        locale.trim(),
+        fallback_locale.trim(),
+        channel_slug,
+    ))
+    .expect("serializing a tuple of strings and integers cannot fail")
+}
+
 fn cache_variant_hash(variant: &str) -> Result<String, PageCacheError> {
     let variant = variant.trim();
     if variant.is_empty() {
@@ -642,6 +689,60 @@ mod tests {
             );
         }
         assert!(!base.contains("about"));
+    }
+
+    #[test]
+    fn published_landing_variant_separates_every_read_dimension() {
+        let generations = PageCacheGenerationSnapshot::new(1, 2, 3);
+        let variant = |representation, generations, locale, fallback, channel| {
+            published_landing_cache_variant(representation, generations, locale, fallback, channel)
+        };
+        let landing = PublishedLandingRepresentation::Landing;
+        let base = variant(landing, generations, "en", "en", Some("web"));
+
+        // The two representations of one artifact never share an entry.
+        assert_ne!(
+            base,
+            variant(
+                PublishedLandingRepresentation::Document,
+                generations,
+                "en",
+                "en",
+                Some("web")
+            )
+        );
+        assert_ne!(base, variant(landing, generations, "fr", "en", Some("web")));
+        assert_ne!(base, variant(landing, generations, "en", "ru", Some("web")));
+        assert_ne!(
+            base,
+            variant(landing, generations, "en", "en", Some("mobile"))
+        );
+        assert_ne!(base, variant(landing, generations, "en", "en", None));
+
+        // The channel is compared the way the artifact owner compares it.
+        assert_eq!(
+            base,
+            variant(landing, generations, "en", "en", Some(" Web "))
+        );
+
+        // A page update rotates the route and page generations and replaces no artifact; the
+        // artifact generation is part of the key, not of the variant.
+        for changed in [
+            PageCacheGenerationSnapshot::new(2, 2, 3),
+            PageCacheGenerationSnapshot::new(1, 3, 3),
+        ] {
+            assert_ne!(base, variant(landing, changed, "en", "en", Some("web")));
+        }
+        assert_eq!(
+            base,
+            variant(
+                landing,
+                PageCacheGenerationSnapshot::new(1, 2, 4),
+                "en",
+                "en",
+                Some("web")
+            )
+        );
     }
 
     #[tokio::test]

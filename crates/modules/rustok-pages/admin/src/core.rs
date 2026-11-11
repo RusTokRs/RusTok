@@ -99,6 +99,13 @@ pub struct EditFormSeed {
     pub project_data_text: String,
 }
 
+/// Message for a page whose authoring document is withheld from the signed-in principal.
+pub const DOCUMENT_UNAVAILABLE_MESSAGE: &str = "The document of this page is not available to you: reading it requires the right to save or publish this page";
+
+/// Seed of the editor for a page whose document the principal may read
+/// (`PageDetail::document_readable`). A page without a document gets the starter document;
+/// callers must not ask for a seed when the document is withheld, because the starter
+/// document would then stand in for a document the principal is not shown.
 pub fn edit_form_seed_from_page(page: &PageDetail, _default_locale: &str) -> EditFormSeed {
     let title = page
         .translation

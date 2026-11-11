@@ -5,12 +5,14 @@
 //! ## Responsibilities & Guarantees
 //!
 //! - **Strict FFA Isolation**: View-models and pure Rust presentation logic in `core` remain decoupled from Leptos signals.
-//! - **Scoped CSS Containment**: Wraps all user-generated project CSS in native `@scope` rules with `contain: style layout;`
-//!   and remaps root selectors (`body`, `html`) to `:scope`.
+//! - **Scoped CSS Containment**: Every surface wraps project CSS in a native `@scope` rule rooted at the
+//!   landing body element it renders (`LANDING_SCOPE_SELECTOR`) and remaps root selectors
+//!   (`body`, `html`, `:root`) to `:scope`.
 //! - **Direct SSR & Fast Re-hydration**: Renders pre-compiled landing artifacts directly without iframe overhead.
 //! - **Event & Navigation Bridge**: Bridges `fly:action` custom events to platform commerce actions.
 
 pub mod core;
+mod css_scope;
 mod i18n;
 mod localized_route;
 mod ui;
@@ -18,6 +20,7 @@ mod ui;
 #[cfg(test)]
 mod contract_tests;
 
+pub use css_scope::{LANDING_SCOPE_SELECTOR, scope_landing_css};
 pub use localized_route::{
     LocalizedPageBuilderStorefront, StorefrontLocalizedRouteOutput,
     render_storefront_localized_request, render_storefront_localized_slug,
@@ -169,7 +172,7 @@ pub fn PageBuilderStorefront(
 
     match rendered {
         Ok((page, diagnostic_count, repeated_nodes)) => {
-            let scoped_css = scope_landing_css(&page.css, ".rustok-page-builder-storefront");
+            let scoped_css = scope_landing_css(&page.css, LANDING_SCOPE_SELECTOR);
             let html = page.html;
             let page_id = page.page_id.unwrap_or_default();
             let has_actions = html.contains("data-fly-action");
@@ -278,186 +281,6 @@ pub const FLY_STOREFRONT_BRIDGE_JS: &str = r##"
 })();
 "##;
 
-/// Scopes landing CSS using modern CSS `@scope (<scope_selector>)` and normalizes
-/// root-level selectors (`body`, `html`, `:root`) to `:scope`, ensuring styles from user-generated
-/// or GrapesJS landings cannot leak into the host application's shell, header, or footer.
-pub fn scope_landing_css(raw_css: &str, scope_selector: &str) -> String {
-    let trimmed = raw_css.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    if trimmed.starts_with("@scope") {
-        return trimmed.to_string();
-    }
-
-    let remapped = normalize_landing_root_selectors(trimmed);
-    format!(
-        "@scope ({scope_selector}) {{\n  :scope {{\n    isolation: isolate;\n  }}\n{remapped}\n}}"
-    )
-}
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-enum CssBlockKind {
-    GroupRule,
-    Declaration,
-}
-
-fn normalize_landing_root_selectors(css: &str) -> String {
-    let mut result = String::with_capacity(css.len());
-    let mut block_stack: Vec<CssBlockKind> = Vec::new();
-    let mut in_quote: Option<char> = None;
-    let mut in_comment = false;
-    let mut prelude = String::new();
-
-    let chars: Vec<char> = css.chars().collect();
-    let mut i = 0;
-    while i < chars.len() {
-        let ch = chars[i];
-
-        if in_comment {
-            result.push(ch);
-            if ch == '*' && i + 1 < chars.len() && chars[i + 1] == '/' {
-                result.push('/');
-                i += 2;
-                in_comment = false;
-                continue;
-            }
-            i += 1;
-            continue;
-        }
-
-        if let Some(quote) = in_quote {
-            result.push(ch);
-            if ch == quote && (i == 0 || chars[i - 1] != '\\') {
-                in_quote = None;
-            }
-            i += 1;
-            continue;
-        }
-
-        if ch == '/' && i + 1 < chars.len() && chars[i + 1] == '*' {
-            in_comment = true;
-            result.push_str("/*");
-            i += 2;
-            continue;
-        }
-
-        if ch == '"' || ch == '\'' {
-            in_quote = Some(ch);
-            result.push(ch);
-            i += 1;
-            continue;
-        }
-
-        if ch == '{' {
-            let is_group = is_css_group_rule(prelude.trim());
-            if is_group {
-                block_stack.push(CssBlockKind::GroupRule);
-            } else {
-                block_stack.push(CssBlockKind::Declaration);
-            }
-            prelude.clear();
-            result.push(ch);
-            i += 1;
-            continue;
-        } else if ch == '}' {
-            block_stack.pop();
-            prelude.clear();
-            result.push(ch);
-            i += 1;
-            continue;
-        } else if ch == ';' {
-            prelude.clear();
-            result.push(ch);
-            i += 1;
-            continue;
-        }
-
-        let in_declaration = block_stack
-            .last()
-            .map(|kind| *kind == CssBlockKind::Declaration)
-            .unwrap_or(false);
-
-        if !in_declaration {
-            if (chars[i..].starts_with(&['b', 'o', 'd', 'y'])
-                || chars[i..].starts_with(&['h', 't', 'm', 'l']))
-                && is_identifier_boundary(&chars, i, 4)
-            {
-                result.push_str(":scope");
-                prelude.push_str(":scope");
-                i += 4;
-                continue;
-            } else if chars[i..].starts_with(&[':', 'r', 'o', 'o', 't'])
-                && is_root_boundary(&chars, i, 5)
-            {
-                result.push_str(":scope");
-                prelude.push_str(":scope");
-                i += 5;
-                continue;
-            }
-        }
-
-        prelude.push(ch);
-        result.push(ch);
-        i += 1;
-    }
-
-    result
-}
-
-fn is_css_group_rule(prelude: &str) -> bool {
-    prelude.starts_with("@media")
-        || prelude.starts_with("@supports")
-        || prelude.starts_with("@container")
-        || prelude.starts_with("@document")
-        || (prelude.starts_with("@layer") && !prelude.contains(';'))
-}
-
-fn is_root_boundary(chars: &[char], start: usize, len: usize) -> bool {
-    if start > 0 {
-        let prev = chars[start - 1];
-        if prev.is_alphanumeric() || prev == '-' || prev == '_' || prev == ':' {
-            return false;
-        }
-    }
-    let end = start + len;
-    if end < chars.len() {
-        let next = chars[end];
-        if next.is_alphanumeric() || next == '-' || next == '_' {
-            return false;
-        }
-    }
-    true
-}
-
-fn is_identifier_boundary(chars: &[char], start: usize, len: usize) -> bool {
-    let prev_is_ident = if start > 0 {
-        let prev = chars[start - 1];
-        prev.is_alphanumeric()
-            || prev == '-'
-            || prev == '_'
-            || prev == '.'
-            || prev == '#'
-            || prev == ':'
-    } else {
-        false
-    };
-    if prev_is_ident {
-        return false;
-    }
-
-    let end = start + len;
-    if end < chars.len() {
-        let next = chars[end];
-        let next_is_ident = next.is_alphanumeric() || next == '-' || next == '_';
-        if next_is_ident {
-            return false;
-        }
-    }
-
-    true
-}
-
 /// Renders a pre-compiled, verified static landing artifact (SSR HTML and scoped CSS)
 /// into a read-only storefront surface without an iframe.
 ///
@@ -474,7 +297,7 @@ pub fn StaticLandingStorefront(
     let class = class.unwrap_or_else(|| "rustok-page-builder-storefront".to_string());
     let page_id = page_id.unwrap_or_default();
     let has_actions = html.contains("data-fly-action");
-    let scoped_css = scope_landing_css(&css, ".rustok-page-builder-storefront");
+    let scoped_css = scope_landing_css(&css, LANDING_SCOPE_SELECTOR);
     view! {
         <section
             class=class
@@ -507,80 +330,6 @@ mod tests {
                 page_id="p1".to_string()
             />
         };
-    }
-
-    #[test]
-    fn scope_landing_css_wraps_and_remaps_root_selectors() {
-        let raw = "body { margin: 0; background: #fff; }\nhtml, body { height: 100%; }\n.hero { color: red; }\ntbody { display: table-row-group; }\n.some-body { color: blue; }";
-        let scoped = scope_landing_css(raw, ".rustok-page-builder-storefront");
-
-        assert!(scoped.starts_with("@scope (.rustok-page-builder-storefront) {"));
-        assert!(scoped.contains(":scope {\n    isolation: isolate;"));
-        assert!(scoped.contains(":scope { margin: 0; background: #fff; }"));
-        assert!(scoped.contains(":scope, :scope { height: 100%; }"));
-        assert!(scoped.contains(".hero { color: red; }"));
-        // Ensure tbody and .some-body are NOT accidentally remapped
-        assert!(scoped.contains("tbody { display: table-row-group; }"));
-        assert!(scoped.contains(".some-body { color: blue; }"));
-    }
-
-    #[test]
-    fn scope_landing_css_preserves_comments_with_braces_and_preserves_id_body() {
-        let raw = "/* { comment with braces } */\n#body { font-size: 14px; }\n/* body in comment */\nbody { padding: 8px; }";
-        let scoped = scope_landing_css(raw, ".rustok-page-builder-storefront");
-
-        assert!(scoped.contains("/* { comment with braces } */"));
-        assert!(scoped.contains("#body { font-size: 14px; }"));
-        assert!(scoped.contains("/* body in comment */"));
-        assert!(scoped.contains(":scope { padding: 8px; }"));
-    }
-
-    #[test]
-    fn scope_landing_css_handles_empty_and_preserves_already_scoped() {
-        assert_eq!(scope_landing_css("", ".scope"), "");
-        assert_eq!(scope_landing_css("   ", ".scope"), "");
-
-        let already_scoped = "@scope (.test) { :scope { color: green; } }";
-        assert_eq!(scope_landing_css(already_scoped, ".other"), already_scoped);
-    }
-
-    #[test]
-    fn scope_landing_css_handles_cyrillic_and_nested_media_queries_and_root() {
-        let raw = r#"
-/* Привет, мир! Комментарий на кириллице */
-:root {
-  --primary-color: #007bff;
-}
-body {
-  font-family: 'Roboto', sans-serif;
-  --custom-ident: body;
-}
-@media (max-width: 768px) {
-  body {
-    padding: 10px;
-  }
-}
-@supports (display: flex) {
-  @media (min-width: 1200px) {
-    html, body {
-      display: flex;
-    }
-  }
-}
-"#;
-        let scoped = scope_landing_css(raw, ".rustok-page-builder-storefront");
-
-        assert!(scoped.contains("/* Привет, мир! Комментарий на кириллице */"));
-        assert!(scoped.contains(":scope {\n  --primary-color: #007bff;\n}"));
-        assert!(scoped.contains(
-            ":scope {\n  font-family: 'Roboto', sans-serif;\n  --custom-ident: body;\n}"
-        ));
-        assert!(
-            scoped.contains("@media (max-width: 768px) {\n  :scope {\n    padding: 10px;\n  }\n}")
-        );
-        assert!(scoped.contains(
-            "@media (min-width: 1200px) {\n    :scope, :scope {\n      display: flex;\n    }\n  }"
-        ));
     }
 
     #[test]

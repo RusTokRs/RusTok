@@ -1,3 +1,4 @@
+use crate::browser_problem::{BROWSER_REVISION_CONFLICT_CODE, PagesBrowserIntentProblem};
 use crate::builder::{self, PagesBuilderFacade, PagesBuilderSaveSnapshot};
 use crate::core;
 use crate::transport;
@@ -80,6 +81,15 @@ impl PersistedRevisionCache {
         }
         entries.insert(key, (revision, now + PERSISTED_REVISION_TTL));
     }
+
+    /// Forgets the revision cached for `key`, so the next intent re-fetches
+    /// the page instead of trusting a revision a failed save just disproved.
+    fn invalidate(&self, key: u64) {
+        self.entries
+            .lock()
+            .expect("persisted revision cache lock poisoned")
+            .remove(&key);
+    }
 }
 
 fn persisted_revision_cache() -> &'static PersistedRevisionCache {
@@ -102,6 +112,14 @@ pub struct PagesBrowserIntentResponse {
     pub result: BrowserIntentDispatchResult,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persistence: Option<PageBuilderCapabilityResponse>,
+    /// Set when the intent was applied to the draft session but persisting
+    /// it failed (audit §6.4). The response is still a success: `result`
+    /// carries the draft state (dirty, base revision unchanged) and `reload`
+    /// is `true`, so the client re-renders from the server instead of
+    /// keeping an optimistic canvas the server never accepted. The problem
+    /// uses the same shape as the HTTP error body of this endpoint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub save_failure: Option<PagesBrowserIntentProblem>,
     pub reload: bool,
     pub draft_token: String,
     pub draft_generation: u64,
@@ -206,6 +224,11 @@ pub async fn dispatch_pages_browser_intent_with_store(
                 )
                 .await?
                 .ok_or(PagesBrowserIntentError::PageNotFound)?;
+                // Never seed a controller with the starter document for a page whose
+                // document is withheld from this principal.
+                if !page.document_readable {
+                    return Err(PagesBrowserIntentError::DocumentUnavailable);
+                }
                 let persisted_revision = builder::page_revision(&page);
                 persisted_revision_cache().put(revision_key, persisted_revision.clone(), now);
                 let generated_context = generated_runtime_context(&page, &snapshot.default_locale);
@@ -252,6 +275,7 @@ pub async fn dispatch_pages_browser_intent_with_store(
         envelope.intent.as_str(),
         "set_runtime_context" | "set_runtime_locale"
     );
+    let failed_save_before = failed_save_hash(&controller);
     let mut result = match envelope.intent.as_str() {
         "set_runtime_context" => {
             runtime_context = runtime_context_from_payload(&envelope.payload)?;
@@ -264,8 +288,18 @@ pub async fn dispatch_pages_browser_intent_with_store(
         _ => dispatch_browser_intent(&mut controller, envelope.clone())?,
     };
     let mut requests = request_effects(&result);
+    let mut save_failure = None;
 
-    if !context_update && result.dirty && requests.is_empty() {
+    // A dirty working copy is autosaved after every intent — `select` and
+    // `hover` included. Once a save has failed, an intent that leaves the
+    // document untouched has nothing new to save: repeating the save would
+    // fail the same way and answer every click and hover with a
+    // `save_failure` and a reload. The save is retried by the next intent
+    // that changes the document, or by an explicit `save`.
+    let unchanged_since_failed_save =
+        failed_save_before.is_some() && failed_save_before == failed_save_hash(&controller);
+
+    if !context_update && result.dirty && requests.is_empty() && !unchanged_since_failed_save {
         let save = BrowserIntentEnvelope {
             protocol: FLY_BROWSER_PROTOCOL.to_string(),
             instance_id: envelope.instance_id.clone(),
@@ -284,30 +318,65 @@ pub async fn dispatch_pages_browser_intent_with_store(
         // unsaved indicator — instead of receiving a late Forbidden from
         // the facade after the intent already mutated the session.
         if validate_browser_capability_access(&save, capabilities).is_ok() {
-            let save_result = dispatch_browser_intent(&mut controller, save)?;
-            requests = request_effects(&save_result);
-            result.effects.extend(save_result.effects);
+            match dispatch_browser_intent(&mut controller, save) {
+                Ok(save_result) => {
+                    requests = request_effects(&save_result);
+                    result.effects.extend(save_result.effects);
+                }
+                // The autosave could not even be requested — typically the
+                // edit introduced a blocking validation diagnostic. That is
+                // a failed save of an intent that did apply, not a failed
+                // intent: handled like a save the consumer rejected below.
+                Err(error) => {
+                    controller.mark_save_failed()?;
+                    save_failure = Some(PagesBrowserIntentProblem::from_blocked_save(&error));
+                }
+            }
         }
     }
 
     let mut persistence = None;
-    if let Some(request) = requests.into_iter().next() {
+    if let Some(request) = single_request(requests)? {
+        let is_save = matches!(request, PageBuilderCapabilityRequest::Publish(_));
         let facade_snapshot = snapshot.clone();
         let facade = PagesBuilderFacade::new(move || facade_snapshot.clone(), |_page, _project| {});
-        let response = facade.execute(request).await?;
-        if let PageBuilderCapabilityResponse::Publish(PublishPageBuilderResult {
-            revision_id,
-            ..
-        }) = &response
-        {
-            controller.acknowledge_save(revision_id.clone())?;
-            // The publish advanced the persisted revision; record it so the
-            // following intents keep hitting the fetch-free fast path
-            // instead of re-fetching the page they just wrote.
-            persisted_revision_cache().put(revision_key, revision_id.clone(), Instant::now());
-            result = controller_snapshot(&controller)?;
+        match facade.execute(request).await {
+            Ok(response) => {
+                if let PageBuilderCapabilityResponse::Publish(PublishPageBuilderResult {
+                    revision_id,
+                    ..
+                }) = &response
+                {
+                    controller.acknowledge_save(revision_id.clone())?;
+                    // The publish advanced the persisted revision; record it so the
+                    // following intents keep hitting the fetch-free fast path
+                    // instead of re-fetching the page they just wrote.
+                    persisted_revision_cache().put(
+                        revision_key,
+                        revision_id.clone(),
+                        Instant::now(),
+                    );
+                    result = controller_snapshot(&controller)?;
+                }
+                persistence = Some(response);
+            }
+            // A rejected save is not a failed dispatch (audit §6.4): the
+            // intent already changed the working copy, and the browser has
+            // applied it optimistically. Returning an HTTP error here would
+            // drop the change from the draft session while the canvas keeps
+            // showing it. Instead the change stays in the draft, marked as
+            // unsaved, and the client is told to re-render from the server.
+            Err(error) if is_save => {
+                record_save_failure(&mut controller, &error)?;
+                // Whatever revision was cached is no longer trustworthy —
+                // for a conflict it is known to be stale. The next intent
+                // re-fetches the page and re-seeds the session if needed.
+                persisted_revision_cache().invalidate(revision_key);
+                result = controller_snapshot(&controller)?;
+                save_failure = Some(PagesBrowserIntentProblem::from_save_failure(&error));
+            }
+            Err(error) => return Err(error.into()),
         }
-        persistence = Some(response);
     }
 
     let (draft_token, draft_generation) = if capabilities.edit {
@@ -330,9 +399,13 @@ pub async fn dispatch_pages_browser_intent_with_store(
     };
 
     Ok(PagesBrowserIntentResponse {
-        reload: context_update || envelope.is_mutating() || persistence.is_some(),
+        reload: context_update
+            || envelope.is_mutating()
+            || persistence.is_some()
+            || save_failure.is_some(),
         result,
         persistence,
+        save_failure,
         draft_token,
         draft_generation,
         runtime_context,
@@ -495,6 +568,46 @@ fn controller_snapshot(
     })
 }
 
+/// Hash of the working copy when its last save failed and nothing has been
+/// saved since; `None` while the working copy is clean or not yet rejected.
+fn failed_save_hash(controller: &AdminCanvasController) -> Option<fly::ProjectHash> {
+    let revision = controller.editor().revision();
+    revision.save_failed.then_some(revision.project_hash)
+}
+
+/// The one consumer request a dispatch may produce (audit §6.3).
+///
+/// Every intent yields at most one request today, and the response has room
+/// for one `persistence` outcome. A second request is a contract change that
+/// must be handled deliberately; failing the dispatch — before anything is
+/// executed — beats silently dropping every request after the first.
+fn single_request(
+    mut requests: Vec<PageBuilderCapabilityRequest>,
+) -> Result<Option<PageBuilderCapabilityRequest>, PagesBrowserIntentError> {
+    if requests.len() > 1 {
+        return Err(PagesBrowserIntentError::UnsupportedRequestBatch {
+            count: requests.len(),
+        });
+    }
+    Ok(requests.pop())
+}
+
+/// Marks the working copy as "changes not on the server" after a rejected
+/// save: a lost update is recorded as a conflict (retrying against the same
+/// revision would conflict again), anything else as a failed save.
+fn record_save_failure(
+    controller: &mut AdminCanvasController,
+    error: &PageBuilderAdminFacadeError,
+) -> Result<(), PagesBrowserIntentError> {
+    if error.stable_code.as_deref() == Some(BROWSER_REVISION_CONFLICT_CODE) {
+        let expected = controller.revision_id().to_string();
+        controller.mark_save_conflict(expected, "a newer revision".to_string())?;
+    } else {
+        controller.mark_save_failed()?;
+    }
+    Ok(())
+}
+
 fn request_effects(result: &BrowserIntentDispatchResult) -> Vec<PageBuilderCapabilityRequest> {
     result
         .effects
@@ -510,10 +623,16 @@ fn request_effects(result: &BrowserIntentDispatchResult) -> Vec<PageBuilderCapab
 pub enum PagesBrowserIntentError {
     #[error("Pages document was not found")]
     PageNotFound,
+    #[error("{}", crate::core::DOCUMENT_UNAVAILABLE_MESSAGE)]
+    DocumentUnavailable,
     #[error("Page Builder browser request targets `{actual}`, but endpoint owns `{expected}`")]
     PageMismatch { expected: String, actual: String },
     #[error("invalid runtime preview context: {0}")]
     RuntimeContext(String),
+    #[error(
+        "Page Builder browser intent produced {count} consumer requests, but one dispatch executes at most one"
+    )]
+    UnsupportedRequestBatch { count: usize },
     #[error(transparent)]
     Dispatch(#[from] BrowserIntentDispatchError),
     #[error(transparent)]
@@ -561,6 +680,176 @@ mod tests {
             ],
         };
         assert_eq!(request_effects(&result), vec![request]);
+    }
+
+    fn save_request(revision_id: &str) -> PageBuilderCapabilityRequest {
+        PageBuilderCapabilityRequest::Publish(rustok_page_builder::dto::PublishPageBuilderInput {
+            page_id: "home".to_string(),
+            revision_id: revision_id.to_string(),
+            project_data: json!({ "pages": [] }),
+        })
+    }
+
+    #[test]
+    fn single_request_passes_zero_or_one_and_rejects_a_batch() {
+        assert_eq!(single_request(Vec::new()).expect("no request"), None);
+        assert_eq!(
+            single_request(vec![save_request("rev-1")]).expect("one request"),
+            Some(save_request("rev-1"))
+        );
+        // A second request must never be dropped silently (audit §6.3).
+        assert!(matches!(
+            single_request(vec![save_request("rev-1"), save_request("rev-2")]),
+            Err(PagesBrowserIntentError::UnsupportedRequestBatch { count: 2 })
+        ));
+    }
+
+    fn dirty_controller() -> AdminCanvasController {
+        let mut controller = AdminCanvasController::new(
+            "home",
+            "rev-1",
+            json!({
+                "pages": [{
+                    "id": "home",
+                    "component": {
+                        "id": "root",
+                        "type": "wrapper",
+                        "components": [{ "id": "hero", "type": "section" }]
+                    }
+                }]
+            }),
+        )
+        .expect("controller");
+        controller
+            .dispatch(UiIntent::execute(fly::EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: fly::ComponentPatch::default().merge_style(json!({ "margin": "8px" })),
+            }))
+            .expect("edit");
+        controller
+    }
+
+    #[test]
+    fn failed_save_keeps_the_edit_and_marks_the_draft_unsaved() {
+        let mut controller = dirty_controller();
+        let edited_hash = controller.editor().revision().project_hash;
+        record_save_failure(
+            &mut controller,
+            &PageBuilderAdminFacadeError::new("Pages rejected the document"),
+        )
+        .expect("record failure");
+
+        // The edit is still in the working copy, on the same base revision,
+        // and both the editor and the UI state say it is not saved.
+        let revision = controller.editor().revision();
+        assert_eq!(revision.project_hash, edited_hash);
+        assert!(revision.dirty);
+        assert!(revision.save_failed);
+        assert!(!revision.save_conflict);
+        assert!(!revision.save_in_progress);
+        assert!(controller.ui().state.dirty.save_failed);
+        assert_eq!(controller.revision_id(), "rev-1");
+
+        let snapshot = controller_snapshot(&controller).expect("snapshot");
+        assert!(snapshot.dirty);
+        assert_eq!(snapshot.revision_id, "rev-1");
+    }
+
+    #[test]
+    fn failed_save_hash_tracks_the_document_the_save_failed_for() {
+        let mut controller = dirty_controller();
+        // Dirty but never rejected: the autosave has not been tried yet.
+        assert_eq!(failed_save_hash(&controller), None);
+
+        record_save_failure(
+            &mut controller,
+            &PageBuilderAdminFacadeError::new("Pages rejected the document"),
+        )
+        .expect("record failure");
+        let failed = failed_save_hash(&controller);
+        assert!(failed.is_some());
+
+        // An intent that does not touch the document leaves nothing new to save.
+        controller
+            .dispatch(UiIntent::Select(Some("hero".to_string())))
+            .expect("select");
+        assert_eq!(failed_save_hash(&controller), failed);
+
+        // A further edit is new work: the hash moves, so the autosave runs again.
+        controller
+            .dispatch(UiIntent::execute(fly::EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: fly::ComponentPatch::default().merge_style(json!({ "margin": "16px" })),
+            }))
+            .expect("second edit");
+        let after_edit = failed_save_hash(&controller);
+        assert!(after_edit.is_some());
+        assert_ne!(after_edit, failed);
+    }
+
+    #[test]
+    fn revision_conflict_on_save_is_recorded_as_a_lost_update() {
+        let mut controller = dirty_controller();
+        record_save_failure(
+            &mut controller,
+            &PageBuilderAdminFacadeError::with_stable_code(
+                "REVISION_CONFLICT: expected `rev-1`, current `rev-2`",
+                BROWSER_REVISION_CONFLICT_CODE,
+            ),
+        )
+        .expect("record conflict");
+        let revision = controller.editor().revision();
+        assert!(revision.dirty);
+        assert!(revision.save_failed);
+        assert!(revision.save_conflict);
+        assert!(controller.ui().state.dirty.save_conflict);
+    }
+
+    #[test]
+    fn save_failure_is_serialized_only_when_present() {
+        let response = |save_failure: Option<PagesBrowserIntentProblem>| {
+            let controller = dirty_controller();
+            serde_json::to_value(PagesBrowserIntentResponse {
+                result: controller_snapshot(&controller).expect("snapshot"),
+                persistence: None,
+                reload: save_failure.is_some(),
+                save_failure,
+                draft_token: "token".to_string(),
+                draft_generation: 2,
+                runtime_context: json!({}),
+            })
+            .expect("serialize")
+        };
+        assert!(response(None).get("save_failure").is_none());
+
+        let failed = response(Some(PagesBrowserIntentProblem::from_save_failure(
+            &PageBuilderAdminFacadeError::new("Pages rejected the document"),
+        )));
+        assert_eq!(failed["reload"], true);
+        assert_eq!(failed["result"]["dirty"], true);
+        assert_eq!(failed["result"]["revision_id"], "rev-1");
+        assert_eq!(
+            failed["save_failure"],
+            json!({
+                "status": 422,
+                "error": "Pages rejected the document",
+                "code": "SAVE_FAILED",
+                "intent": "save"
+            })
+        );
+    }
+
+    #[test]
+    fn persisted_revision_cache_invalidates_one_key() {
+        let cache = PersistedRevisionCache::default();
+        let now = Instant::now();
+        cache.put(1, "rev-1".to_string(), now);
+        cache.put(2, "rev-2".to_string(), now);
+        cache.invalidate(1);
+        assert_eq!(cache.get(1, now), None);
+        assert_eq!(cache.get(2, now).as_deref(), Some("rev-2"));
+        // Invalidating an absent key is a no-op.
+        cache.invalidate(1);
     }
 
     #[test]

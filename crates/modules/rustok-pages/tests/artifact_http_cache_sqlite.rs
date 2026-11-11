@@ -68,11 +68,15 @@ impl RecordingCachePort {
     }
 
     fn set_artifact_generation(&self, generation: u64) {
+        self.set_generation(PageCacheScope::Artifact, generation);
+    }
+
+    fn set_generation(&self, scope: PageCacheScope, generation: u64) {
         self.state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .generations
-            .record(PageCacheScope::Artifact, generation);
+            .record(scope, generation);
     }
 
     fn snapshot(&self) -> CacheSnapshot {
@@ -229,6 +233,70 @@ async fn artifact_http_misses_refills_hits_and_returns_conditional_304_across_ge
     assert_eq!(fourth_cache.get_keys.len(), 4);
     assert_eq!(fourth_cache.put_keys.len(), 2);
     assert_eq!(fourth_cache.get_keys[3], new_generation_key);
+    Ok(())
+}
+
+/// A page update (for example a channel-visibility change) rotates the route and page
+/// generations and replaces no artifact. A cache hit skips the owner's status and visibility
+/// decision, so the cached document and its conditional `304` must not outlive that event.
+#[tokio::test]
+async fn artifact_http_entry_does_not_outlive_a_page_update() -> TestResult<()> {
+    let db = setup_db().await?;
+    let fixture = insert_published_artifact(&db).await?;
+    let cache = Arc::new(RecordingCachePort::new(PageCacheGenerationSnapshot::new(
+        3, 5, 7,
+    )));
+    let cache_port: Arc<dyn PagesCacheReadPort> = cache.clone();
+    let host = HostRuntimeContext::new(db.clone())
+        .with_shared_value(mock_transactional_event_bus())
+        .with_shared_value(PagesCacheReadRuntime::new(cache_port));
+    let app = controllers::axum_router(&host)?;
+
+    let filled = app
+        .clone()
+        .oneshot(artifact_request(&fixture, None))
+        .await?;
+    assert_eq!(filled.status(), StatusCode::OK);
+    let etag = filled
+        .headers()
+        .get(header::ETAG)
+        .ok_or_else(|| std::io::Error::other("artifact response is missing ETag"))?
+        .to_str()?
+        .to_string();
+
+    // The owner no longer serves the page; the entry of the current generations still does.
+    delete_binding(&db, fixture.body_id).await?;
+    let hit = app
+        .clone()
+        .oneshot(artifact_request(&fixture, Some(&etag)))
+        .await?;
+    assert_eq!(hit.status(), StatusCode::NOT_MODIFIED);
+
+    for scope in [PageCacheScope::Page, PageCacheScope::Route] {
+        let before = cache.snapshot();
+        let next = match scope {
+            PageCacheScope::Route => before.generations.route + 1,
+            _ => before.generations.page + 1,
+        };
+        cache.set_generation(scope, next);
+
+        let after_update = app
+            .clone()
+            .oneshot(artifact_request(&fixture, Some(&etag)))
+            .await?;
+        assert_eq!(after_update.status(), StatusCode::NOT_FOUND);
+
+        let after = cache.snapshot();
+        assert_eq!(after.generations.artifact, 7);
+        assert_eq!(after.get_keys.len(), before.get_keys.len() + 1);
+        assert!(
+            !before
+                .get_keys
+                .contains(&after.get_keys[after.get_keys.len() - 1])
+        );
+        // "No artifact" is never stored.
+        assert_eq!(after.put_keys.len(), 1);
+    }
     Ok(())
 }
 

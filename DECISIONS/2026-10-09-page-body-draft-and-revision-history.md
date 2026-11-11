@@ -78,8 +78,13 @@ Transitions:
 - A draft row while the page is not published.
 - More than one draft per (page, locale); enforced by `UNIQUE (page_id, locale)`.
 - A public or read-only read observing a draft. Drafts are exposed only to authorities
-  with effective `pages:update` scope, and only through the editor-facing read surface
-  (`body.state = "draft"`). Public storefront reads always resolve current bodies.
+  that may save or publish the document (effective `pages:update` or `pages:publish` scope),
+  and only through the editor-facing read surface (`body.state = "draft"`). Public storefront
+  reads never resolve a body at all; they render the published landing.
+  (Amended 2026-11-10 by
+  [Published pages are transported as their landing](./2026-11-10-published-page-landing-transport.md):
+  the original rule named `pages:update` only, which let a publisher fold in a draft it could
+  not read.)
 - A journal row without an accepted body mutation, or a body mutation without its journal
   row: both are written in the same transaction, and a rejected mutation (CAS conflict,
   validation failure) appends nothing.
@@ -157,7 +162,9 @@ Transitions:
 - **Locale**: the working copy, CAS token, journal and retention window are all per
   (page, locale); promotion and duplication iterate locales.
 - **Principal/auth**: save and restore require `pages:update` within the actor's scope
-  (`enforce_owned_scope`); duplication requires `pages:create`; promotion follows the
+  (`enforce_owned_scope`); the journal is readable by whoever may read the document, that
+  is with `pages:update` or `pages:publish` over the page (amended 2026-11-10, same decision
+  as above: the original rule named `pages:update` only); duplication requires `pages:create`; promotion follows the
   existing `pages:publish` / lifecycle authorization. The acting user is recorded on the
   journal row (`created_by`).
 - **Channel**: unchanged; channel visibility gates public serving, not editing, and is

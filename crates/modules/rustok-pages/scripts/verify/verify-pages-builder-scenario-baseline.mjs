@@ -68,7 +68,8 @@ const required = [
   [service, 'PAGE_BUILDER_SCENARIO_BASELINE_CONFLICT_ERROR_CODE', 'stable baseline conflict code is missing'],
   [service, 'save_if_current', 'baseline compare-and-swap save is missing'],
   [service, 'delete_if_current', 'baseline compare-and-swap delete is missing'],
-  [reviewedPublish, 'ensure_candidates_allowed_in_tx', 'reviewed publish does not evaluate promoted scenario candidates'],
+  [reviewedPublish, 'load_scenario_baseline_in_tx', 'reviewed publish does not read the promoted baseline under the publish transaction'],
+  [reviewedPublish, 'ensure_candidates_allowed(', 'reviewed publish does not evaluate promoted scenario candidates'],
   [reviewedPublish, 'compile_builder_sources_with_reviewed_runtime', 'reviewed publish does not compile the exact reviewed runtime'],
   [reviewedPublish, 'bind_existing_body_in_tx', 'reviewed publish does not bind the compiled artifact atomically'],
   [reviewedPublish, 'insert_publish_operation_in_tx', 'reviewed publish does not persist the durable receipt'],
@@ -102,17 +103,20 @@ const failures = required
   .filter(([source, marker]) => !source.includes(marker))
   .map(([, , message]) => message);
 
-const candidateGate = reviewedPublish.indexOf('ensure_candidates_allowed_in_tx');
+const baselineRead = reviewedPublish.indexOf('load_scenario_baseline_in_tx');
+const candidateGate = reviewedPublish.indexOf('ensure_candidates_allowed(');
 const reviewedCompile = reviewedPublish.indexOf('compile_builder_sources_with_reviewed_runtime');
 const artifactBind = reviewedPublish.indexOf('bind_existing_body_in_tx');
 const transition = reviewedPublish.indexOf('PageTransition::Publish');
 const receipt = reviewedPublish.indexOf('insert_publish_operation_in_tx');
 if (
+  baselineRead < 0 ||
   candidateGate < 0 ||
   reviewedCompile < 0 ||
   artifactBind < 0 ||
   transition < 0 ||
   receipt < 0 ||
+  baselineRead > candidateGate ||
   candidateGate > reviewedCompile ||
   reviewedCompile > artifactBind ||
   artifactBind > transition ||

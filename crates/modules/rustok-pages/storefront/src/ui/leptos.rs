@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use leptos_ui_routing::read_route_query_value;
 use rustok_ui_core::UiRouteContext;
 
-use crate::builder::{PageBuilderPageBody, is_page_builder_body};
+use crate::builder::PublishedLandingBody;
 use crate::core;
 use crate::i18n::t;
 use crate::model::{PageDetail, PageListItem, StorefrontPagesData};
@@ -132,27 +132,26 @@ fn SelectedPageCard(page: Option<PageDetail>) -> impl IntoView {
         &page,
         t(locale.as_deref(), "pages.selected.defaultLocale", "default"),
     );
-    let summary = core::summarize_page_content(
-        &page,
-        |content, format| summarize_content(locale.as_deref(), content, format),
-        t(
-            locale.as_deref(),
-            "pages.body.empty",
-            "No published page body is available yet.",
-        ),
-    );
-    let builder_body = page.body.clone().filter(is_page_builder_body);
-    let body_view = match builder_body {
-        Some(body) => view! {
+    // Only the published landing is rendered. A page without one shows the empty state: there
+    // is no other content source to fall back to.
+    let body_view = match core::selected_page_landing(&page) {
+        Some(landing) => view! {
             <div class="mt-5 overflow-hidden rounded-2xl border border-border bg-background">
-                <PageBuilderPageBody body />
+                <PublishedLandingBody landing=landing />
             </div>
         }
         .into_any(),
-        None => view! {
-            <p class="mt-3 whitespace-pre-line text-sm leading-7 text-muted-foreground">{summary}</p>
+        None => {
+            let empty = t(
+                locale.as_deref(),
+                "pages.body.empty",
+                "This page has no published content yet.",
+            );
+            view! {
+                <p class="mt-3 whitespace-pre-line text-sm leading-7 text-muted-foreground">{empty}</p>
+            }
+            .into_any()
         }
-        .into_any(),
     };
 
     view! {
@@ -256,23 +255,9 @@ fn PublishedPagesList(items: Vec<PageListItem>, total: u64) -> impl IntoView {
     .into_any()
 }
 
-fn summarize_content(locale: Option<&str>, content: &str, format: &str) -> String {
-    core::raw_body_format_summary(
-        format,
-        content.chars().count(),
-        &t(
-            locale,
-            "pages.body.rawFormat",
-            "Stored in `{format}` format. Raw body length: {count} characters.",
-        ),
-    )
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{PageDetail, summarize_content};
     use crate::core;
-    use crate::model::PageBody;
 
     #[test]
     fn label_value_pair_formats_label_and_value() {
@@ -287,56 +272,5 @@ mod tests {
     #[test]
     fn count_label_replaces_placeholder() {
         assert_eq!(core::count_label("{count} total", 5), "5 total");
-    }
-
-    #[test]
-    fn page_body_is_the_only_content_summary_source() {
-        let summary = core::summarize_page_content(
-            &PageDetail {
-                effective_locale: Some("en".to_string()),
-                translation: None,
-                body: Some(PageBody {
-                    locale: "en".to_string(),
-                    content: "Hello".to_string(),
-                    format: "grapesjs".to_string(),
-                }),
-            },
-            |content, format| summarize_content(Some("en"), content, format),
-            "empty".to_string(),
-        );
-
-        assert_eq!(
-            summary,
-            "Stored in `grapesjs` format. Raw body length: 5 characters."
-        );
-    }
-
-    #[test]
-    fn raw_body_format_summary_uses_template_placeholders() {
-        let summary = core::raw_body_format_summary(
-            "grapesjs",
-            42,
-            "Stored in `{format}` format. Raw body length: {count} characters.",
-        );
-
-        assert_eq!(
-            summary,
-            "Stored in `grapesjs` format. Raw body length: 42 characters."
-        );
-    }
-
-    #[test]
-    fn missing_body_uses_current_empty_state() {
-        let summary = core::summarize_page_content(
-            &PageDetail {
-                effective_locale: Some("en".to_string()),
-                translation: None,
-                body: None,
-            },
-            |content, format| summarize_content(Some("en"), content, format),
-            "empty".to_string(),
-        );
-
-        assert_eq!(summary, "empty");
     }
 }

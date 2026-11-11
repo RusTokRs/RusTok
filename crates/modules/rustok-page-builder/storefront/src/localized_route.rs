@@ -84,7 +84,7 @@ pub fn LocalizedPageBuilderStorefront(
             let canonical_redirect = output.route.canonical_redirect_needed();
             let matched_locale = output.route.matched_locale.unwrap_or_default();
             let canonical_slug = output.route.canonical_slug;
-            let css = page.css;
+            let scoped_css = crate::scope_landing_css(&page.css, crate::LANDING_SCOPE_SELECTOR);
             let html = page.html;
             view! {
                 <section
@@ -98,7 +98,7 @@ pub fn LocalizedPageBuilderStorefront(
                     data-runtime-diagnostics=diagnostic_count
                     data-repeated-nodes=repeated_nodes
                 >
-                    <style data-fly-project-styles="true">{css}</style>
+                    <style data-fly-project-styles="true">{scoped_css}</style>
                     <div data-fly-page-body="true" inner_html=html></div>
                 </section>
             }

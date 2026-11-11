@@ -280,6 +280,35 @@ requireOrderedMarkers(
   contract.pages_consumer.new_operation_order,
   "Pages new publish operation",
 );
+
+// The scenario gate and the compilation may be computed before the
+// transaction. That result is advisory: the transaction reuses it only for an
+// equal fingerprint and never reads through the pool while it is open.
+const precompiled = contract.pages_consumer.precompiled_evaluation;
+if (
+  precompiled.authoritative !== false ||
+  precompiled.pool_reads_inside_transaction !== false
+) {
+  fail("precompiled evaluation must stay advisory and outside the transaction");
+}
+const publishTransaction = sliceBetween(
+  pages,
+  "self.find_page_for_update(&txn",
+  "async fn precompile_reviewed_publish",
+  "Pages publish transaction",
+);
+requireMarker(publishTransaction, precompiled.reuse, "Pages precompiled result reuse");
+forbidMarker(publishTransaction, "self.db", "Pages publish transaction");
+requireOrderedMarkers(
+  sliceBetween(
+    pages,
+    `async fn ${precompiled.entrypoint}`,
+    "fn uses_default_template",
+    "Pages precompiled evaluation",
+  ),
+  precompiled.order,
+  "Pages precompiled evaluation",
+);
 forbidMarker(
   pages,
   "pub async fn publish_reviewed_if_current",

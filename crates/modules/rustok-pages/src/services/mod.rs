@@ -3,7 +3,7 @@ pub mod page;
 pub mod page_builder_artifact;
 pub mod page_starter;
 pub mod page_template;
-mod rbac;
+pub(crate) mod rbac;
 pub mod scenario_baseline;
 pub mod site_symbol;
 

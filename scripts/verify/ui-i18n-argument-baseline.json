@@ -17,7 +17,6 @@
     "rustok-customer/admin customer.list.subtitle",
     "rustok-media/admin media.asset.bytes",
     "rustok-media/admin media.pagination.page",
-    "rustok-pages/storefront pages.body.rawFormat",
     "rustok-pages/storefront pages.list.total",
     "rustok-product/storefront product.list.priceFrom",
     "rustok-product/storefront product.list.total",

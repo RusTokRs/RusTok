@@ -53,6 +53,8 @@ pub mod module;
 pub mod openapi;
 pub mod provider_health_binding;
 pub mod search_projection;
+#[cfg(test)]
+mod seo_target_tests;
 mod seo_targets;
 pub mod services;
 mod translation_evidence;

@@ -16,13 +16,13 @@ use crate::model::{
 pub type ApiError = GraphqlHttpError;
 
 const PAGES_QUERY: &str = "query PagesAdmin($filter: ListGqlPagesFilter) { pages(filter: $filter) { total items { id status template title slug updatedAt } } }";
-const PAGE_QUERY: &str = "query PageAdmin($id: UUID!, $locale: String) { page(id: $id, locale: $locale) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt state } } }";
+const PAGE_QUERY: &str = "query PageAdmin($id: UUID!, $locale: String) { page(id: $id, locale: $locale) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt state } documentReadable } }";
 const PAGE_BUILDER_SCENARIO_BASELINE_QUERY: &str = "query PageBuilderScenarioBaseline($pageId: UUID!) { pageBuilderScenarioBaseline(pageId: $pageId) { baseline } }";
 const PAGE_BODY_REVISIONS_QUERY: &str = "query PageBodyRevisions($id: UUID!, $locale: String!) { pageBodyRevisions(id: $id, locale: $locale) { id locale source bodyRevision createdAt createdBy } }";
 const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id version status updatedAt translation { locale title slug } } }";
-const PATCH_PAGE_METADATA_MUTATION: &str = "mutation PatchPageMetadata($id: UUID!, $input: PatchGqlPageMetadataInput!) { patchPageMetadata(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt state } } }";
-const SAVE_PAGE_DOCUMENT_MUTATION: &str = "mutation SavePageDocument($id: UUID!, $input: SaveGqlPageDocumentInput!) { savePageDocument(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt state } } }";
-const RESTORE_PAGE_BODY_REVISION_MUTATION: &str = "mutation RestorePageBodyRevision($id: UUID!, $input: RestoreGqlPageBodyRevisionInput!) { restorePageBodyRevision(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt state } } }";
+const PATCH_PAGE_METADATA_MUTATION: &str = "mutation PatchPageMetadata($id: UUID!, $input: PatchGqlPageMetadataInput!) { patchPageMetadata(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt state } documentReadable } }";
+const SAVE_PAGE_DOCUMENT_MUTATION: &str = "mutation SavePageDocument($id: UUID!, $input: SaveGqlPageDocumentInput!) { savePageDocument(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt state } documentReadable } }";
+const RESTORE_PAGE_BODY_REVISION_MUTATION: &str = "mutation RestorePageBodyRevision($id: UUID!, $input: RestoreGqlPageBodyRevisionInput!) { restorePageBodyRevision(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt state } documentReadable } }";
 const DUPLICATE_PAGE_MUTATION: &str = "mutation DuplicatePage($id: UUID!) { duplicatePage(id: $id) { id version status updatedAt translation { locale title slug } } }";
 const PAGE_PUBLISH_SCHEDULE_QUERY: &str = "query PagePublishSchedule($id: UUID!) { pagePublishSchedule(id: $id) { id pageId publishAt state attempts lastErrorCode lastErrorMessage publishOperationId createdBy createdAt updatedAt } }";
 const SCHEDULE_PAGE_PUBLISH_MUTATION: &str = "mutation SchedulePagePublish($id: UUID!, $input: PublishGqlPageInput!, $publishAt: String!) { schedulePagePublish(id: $id, input: $input, publishAt: $publishAt) { id pageId publishAt state attempts lastErrorCode lastErrorMessage publishOperationId createdBy createdAt updatedAt } }";
@@ -762,6 +762,13 @@ async fn fetch_page_body_revisions(
     tenant_slug: Option<String>,
     page: &PageDetail,
 ) -> Result<BTreeMap<String, String>, ApiError> {
+    // A principal that is not shown the document has no revision tokens to review; say so
+    // instead of reporting a page without bodies.
+    if !page.document_readable {
+        return Err(GraphqlHttpError::Graphql(
+            crate::core::DOCUMENT_UNAVAILABLE_MESSAGE.to_string(),
+        ));
+    }
     let mut revisions = BTreeMap::new();
     if let Some(body) = page.body.as_ref() {
         revisions.insert(body.locale.clone(), body.updated_at.clone());

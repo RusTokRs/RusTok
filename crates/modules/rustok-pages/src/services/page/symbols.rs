@@ -505,8 +505,10 @@ fn parse_project_value(content: &str) -> PagesResult<Value> {
 
 impl super::PageService {
     /// Page ids whose current/draft bodies depend on `symbol_id`, directly or
-    /// through a nested symbol definition. Results are tenant/locale scoped
-    /// and require an editor-capable Pages reader (not a public page request).
+    /// through a nested symbol definition. Results are tenant/locale scoped.
+    /// They name unpublished pages too, so the reader must hold a page
+    /// authoring permission (create, update, delete or publish) besides
+    /// `pages:read`: the rule under which unpublished page records are read.
     pub async fn site_symbol_usage(
         &self,
         tenant_id: Uuid,

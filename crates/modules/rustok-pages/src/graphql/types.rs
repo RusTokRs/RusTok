@@ -1,8 +1,10 @@
-use async_graphql::{InputObject, SimpleObject};
+use async_graphql::{ComplexObject, Context, InputObject, Result, SimpleObject};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, SimpleObject)]
+#[graphql(complex)]
 pub struct GqlPage {
     pub id: Uuid,
     pub version: i32,
@@ -16,9 +18,58 @@ pub struct GqlPage {
     pub published_at: Option<String>,
     pub translation: Option<GqlPageTranslation>,
     pub translations: Vec<GqlPageTranslation>,
+    /// Authoring document of the effective locale, for a caller that may save or publish it
+    /// (`pages:update` or `pages:publish` over this page). `null` for everyone else, including
+    /// public readers and customers: the document is not sanitized for rendering; use `landing`.
     pub body: Option<GqlPageBody>,
+    /// Whether the caller may read the authoring document of this page. With `body: null`,
+    /// `true` means the page has no document in the effective locale and `false` means the
+    /// document is withheld from this caller.
+    pub document_readable: bool,
     pub channel_slugs: Vec<String>,
     pub metadata: String,
+}
+
+#[ComplexObject]
+impl GqlPage {
+    /// Published landing of this page for the effective locale: the sanitized markup and
+    /// stylesheet stored by the reviewed publish. This is what a storefront renders.
+    ///
+    /// `null` when the page is not published, is not visible on the request channel, or has
+    /// no published landing for the effective locale, the tenant default locale or the
+    /// platform fallback locale.
+    async fn landing(&self, ctx: &Context<'_>) -> Result<Option<GqlPublishedLanding>> {
+        super::query::published_landing(ctx, self).await
+    }
+}
+
+/// Published static landing artifact of one page locale.
+///
+/// The serde form is the value of the generation-aware landing cache; an entry of another
+/// shape is a decode error, which the reader treats as a miss.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, SimpleObject)]
+#[serde(deny_unknown_fields)]
+pub struct GqlPublishedLanding {
+    /// Locale the landing was published for; it can differ from the requested locale when a
+    /// fallback locale was used.
+    pub locale: String,
+    /// Sanitized body markup.
+    pub html: String,
+    /// Stylesheet of the landing, not yet scoped to a host element.
+    pub css: String,
+    /// Identity of the artifact; changes whenever the markup or the stylesheet changes.
+    pub artifact_hash: String,
+}
+
+impl From<crate::PublishedLandingArtifact> for GqlPublishedLanding {
+    fn from(artifact: crate::PublishedLandingArtifact) -> Self {
+        Self {
+            locale: artifact.locale,
+            html: artifact.body_html,
+            css: artifact.css,
+            artifact_hash: artifact.artifact_hash,
+        }
+    }
 }
 
 #[derive(Clone, Debug, SimpleObject)]
@@ -205,6 +256,7 @@ impl From<crate::PageResponse> for GqlPage {
             translation: r.translation.map(Into::into),
             translations: r.translations.into_iter().map(Into::into).collect(),
             body: r.body.map(Into::into),
+            document_readable: r.document_readable,
             channel_slugs: r.channel_slugs,
             metadata: r.metadata.to_string(),
         }

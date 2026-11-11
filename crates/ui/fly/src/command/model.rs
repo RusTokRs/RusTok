@@ -351,11 +351,15 @@ impl RevisionState {
         }
     }
 
+    /// Records a document mutation.
+    ///
+    /// `save_failed` is deliberately left untouched: after a rejected save the changes are
+    /// still not on the server, and a further edit does not change that. Only the next save
+    /// attempt ([`Self::begin_save`]) or a successful [`Self::acknowledge`] clears the signal.
     pub(super) fn mark_changed(&mut self, document: &ProjectDocument) {
         self.dirty = true;
         self.command_sequence = self.command_sequence.saturating_add(1);
         self.project_hash = document.hash();
-        self.save_failed = false;
     }
 
     pub fn begin_save(&mut self) {

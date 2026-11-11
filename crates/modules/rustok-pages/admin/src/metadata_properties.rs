@@ -385,6 +385,7 @@ mod tests {
             updated_at: "2026-07-23T00:00:00Z".to_string(),
             available_locales: vec!["en".to_string()],
             channel_slugs: vec!["web".to_string()],
+            document_readable: true,
             translation: Some(PageTranslation {
                 locale: "en".to_string(),
                 title: Some(title.to_string()),

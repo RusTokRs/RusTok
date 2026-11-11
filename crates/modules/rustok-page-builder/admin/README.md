@@ -61,4 +61,40 @@ cargo check -p rustok-page-builder-admin --no-default-features --features ssr
 Rust unit and browser interaction tests must also be run in a checkout with the repository Rust
 and WASM toolchains installed.
 
+## Known Limitations / Pending Implementation
+
+SSR draft session storage (`src/draft_session.rs`):
+
+- **Nothing schedules `prune`.** An expired session is dropped when it is read (the file store
+  deletes the file under the token lock, the key-value backend deletes the key only while it still
+  holds the generation that was read), and the per-owner cap is enforced when a session is
+  created. Everything else waits for a host to call `SsrDraftSessionStore::prune`, and no host
+  does yet: a session nobody reads again stays in storage, and the global cap (`maximum_entries`)
+  of the file and key-value backends is not enforced.
+- **Drafts of the pre-partition file layout are not migrated.** Files written directly into the
+  storage root by earlier builds are no longer read; `prune` deletes them once they are older than
+  one TTL.
+- **A record that does not parse fails its session for up to one TTL.** The file store cannot tell
+  a damaged record from the live session of a build with another record shape (records carry no
+  format version), so it reports `Serialization` for that token until the file has not been
+  written for a whole TTL; from then on the session counts as expired and `prune` deletes the
+  file. An editor that holds such a token gets an error for every action until then or until it
+  opens the page in a new tab. The key-value backend reports `Serialization` the same way and
+  never deletes such a record itself: it is gone when the TTL the driver stored it with runs out.
+- **Ownership and mode checks are Unix-only.** On other platforms the storage root is not checked
+  for a foreign owner and files get no private mode; access control is whatever the operator set on
+  the parent directory.
+- **The file lock is advisory and breaks stale locks by age.** A crashed holder blocks its token for
+  up to 30 seconds, and two waiters breaking the same stale lock can briefly both hold it (see
+  `with_token_lock`). A stale lock that cannot be deleted fails the operation with an I/O error.
+- **`DurableSsrDraftSessionStore` extends a session's lifetime on commit only.** Loading a draft
+  through the durable store does not slide its expiry; a draft that is only viewed expires one TTL
+  after its last edit.
+- **An unusable storage root is reported with its path.** The error raised when the file store
+  cannot be created names the configured directory, and the host returns that text to the editor
+  that hit it.
+- **A lookup that misses scans every tenant partition** of the file store before answering.
+- **The per-owner cap groups sessions by `tenant_id:user_id`.** Two owners whose identifiers
+  concatenate to the same string share one cap.
+
 For the formal Rust API contract and guarantees, see [`CRATE_API.md`](CRATE_API.md).

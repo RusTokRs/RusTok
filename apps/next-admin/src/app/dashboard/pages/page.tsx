@@ -19,8 +19,6 @@ export default async function Page() {
     process.env.NEXT_PUBLIC_STOREFRONT_URL ??
     process.env.STOREFRONT_URL ??
     null;
-  const previewSecret =
-    process.env.REVALIDATE_SECRET ?? process.env.PREVIEW_SECRET ?? null;
 
   return (
     <PageContainer
@@ -35,7 +33,6 @@ export default async function Page() {
           tenantId={tenantId}
           builderBaseUrl={builderBaseUrl}
           storefrontBaseUrl={storefrontBaseUrl}
-          previewSecret={previewSecret}
         />
       </Suspense>
     </PageContainer>

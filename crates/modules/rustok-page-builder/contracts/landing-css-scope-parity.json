@@ -1,0 +1,201 @@
+{
+  "schema": "rustok.page_builder.landing_css_scope_parity",
+  "description": "Shared vectors for the two storefront implementations of landing CSS confinement: scope_landing_css (crates/modules/rustok-page-builder/storefront/src/css_scope.rs) and scopeLandingCss (apps/next-frontend/packages/rustok-pages/src/components/css-scope.ts). For every case and any scope selector S other than .elsewhere, both must return exactly: \"@scope (S) {\\n  :scope {\\n    isolation: isolate;\\n  }\\n\" + inner + \"\\n}\".",
+  "cases": [
+    {
+      "name": "root selectors become :scope; names that only contain them stay",
+      "css": "body { margin: 0; } html, body { height: 100%; } tbody { top: 0; } .some-body { color: blue; } #body { left: 0; } :root { --ident: body; }",
+      "inner": ":scope { margin: 0; } :scope, :scope { height: 100%; } tbody { top: 0; } .some-body { color: blue; } #body { left: 0; } :scope { --ident: body; }"
+    },
+    {
+      "name": "root selectors are remapped only in selector position",
+      "css": "@keyframes body { from { opacity: 0; } } a[rel=html] { color: red; } div:not(body) > html { color: blue; }",
+      "inner": "@keyframes body { from { opacity: 0; } } a[rel=html] { color: red; } div:not(:scope) > :scope { color: blue; }"
+    },
+    {
+      "name": "surrounding CSS whitespace is trimmed",
+      "css": "\n\t body { margin: 0; } \r\n",
+      "inner": ":scope { margin: 0; }"
+    },
+    {
+      "name": "a no-break space is part of a name, not whitespace to trim",
+      "css": "\u00a0body { margin: 0; }",
+      "inner": "\u00a0body { margin: 0; }"
+    },
+    {
+      "name": "a leading stray } is dropped",
+      "css": "} header { display: none; }",
+      "inner": " header { display: none; }"
+    },
+    {
+      "name": "a stray } after a rule is dropped",
+      "css": ".a { color: red; } } header { display: none; }",
+      "inner": ".a { color: red; }  header { display: none; }"
+    },
+    {
+      "name": "an unclosed block is closed",
+      "css": ".a { color: red;",
+      "inner": ".a { color: red;\n}"
+    },
+    {
+      "name": "unclosed nested blocks and parentheses are closed innermost first",
+      "css": "@media (min-width: 1px) { .a { width: calc((1px + 2px)",
+      "inner": "@media (min-width: 1px) { .a { width: calc((1px + 2px)\n)}}"
+    },
+    {
+      "name": "an unterminated string is terminated before the block is closed",
+      "css": ".a { content: \"open",
+      "inner": ".a { content: \"open\"\n}"
+    },
+    {
+      "name": "an unterminated comment is terminated",
+      "css": ".a { color: red; } /* open",
+      "inner": ".a { color: red; } /* open*/"
+    },
+    {
+      "name": "an unterminated url() token is terminated before the block is closed",
+      "css": ".a { background: url(open",
+      "inner": ".a { background: url(open)\n}"
+    },
+    {
+      "name": "a trailing backslash is kept; the wrapper closes on the next line",
+      "css": ".a { color: red; } \\",
+      "inner": ".a { color: red; } \\"
+    },
+    {
+      "name": "a } inside a string is not structure",
+      "css": ".a::before { content: \"}\"; } header { display: none; }",
+      "inner": ".a::before { content: \"}\"; } header { display: none; }"
+    },
+    {
+      "name": "an escaped backslash does not escape the closing quote",
+      "css": ".a::before { content: \"\\\\\"; } body { margin: 0; }",
+      "inner": ".a::before { content: \"\\\\\"; } :scope { margin: 0; }"
+    },
+    {
+      "name": "backslash CR LF inside a string is one escaped newline",
+      "css": ".a{content:\"x\\\r\n\"}} header{display:none}",
+      "inner": ".a{content:\"x\\\r\n\"} header{display:none}"
+    },
+    {
+      "name": "#url( is a hash token followed by parentheses",
+      "css": ".a{b:#url( x \"){\"\n)}} header{display:none}",
+      "inner": ".a{b:#url( x \"){\"\n)} header{display:none}"
+    },
+    {
+      "name": "@url( is an at-keyword followed by parentheses",
+      "css": ".a{b:@url( x \"){\"\n)}} header{display:none}",
+      "inner": ".a{b:@url( x \"){\"\n)} header{display:none}"
+    },
+    {
+      "name": "a longer name ending in url is a function",
+      "css": ".a{b:\u00e9url( x \"){\"\n)}} header{display:none}",
+      "inner": ".a{b:\u00e9url( x \"){\"\n)} header{display:none}"
+    },
+    {
+      "name": "url spelled with an escape is a url() token",
+      "css": ".a{b:u\\72l( { );}} header{display:none}",
+      "inner": ".a{b:u\\72l( { );} header{display:none}"
+    },
+    {
+      "name": "a no-break space does not separate url( from a quote",
+      "css": ".a{b:url(\u00a0\"x) }} header{display:none}",
+      "inner": ".a{b:url(\u00a0\"x) } header{display:none}"
+    },
+    {
+      "name": "a dimension whose unit is url is not a url() token",
+      "css": ".a { width: calc(3url(1px)); } .b { color: blue; }",
+      "inner": ".a { width: calc(3url(1px)); } .b { color: blue; }"
+    },
+    {
+      "name": "a function whose name ends in url keeps its block structure",
+      "css": ".a { b: myurl(x { y }); } .b { color: blue; }",
+      "inner": ".a { b: myurl(x { y }); } .b { color: blue; }"
+    },
+    {
+      "name": "url( followed by a quoted string is a function",
+      "css": ".a { background: URL( \"x)y.png\" ); } .b { color: blue; }",
+      "inner": ".a { background: URL( \"x)y.png\" ); } .b { color: blue; }"
+    },
+    {
+      "name": "an unquoted url() token and signed numbers are copied verbatim",
+      "css": ".a { background: url(  x.png  ); margin: -1.5e3px +.5em 1e+3px; } .b { color: blue; }",
+      "inner": ".a { background: url(  x.png  ); margin: -1.5e3px +.5em 1e+3px; } .b { color: blue; }"
+    },
+    {
+      "name": "the end tag of the style element is escaped, in any letter case",
+      "css": ".a::after { content: \"</style>\"; } /* </STYLE> */",
+      "inner": ".a::after { content: \"<\\/style>\"; } /* <\\/STYLE> */"
+    },
+    {
+      "name": "a block scoped to another selector is wrapped like any other rule",
+      "css": "@scope (.elsewhere) { :scope { color: green; } } header { display: none; }",
+      "inner": "@scope (.elsewhere) { :scope { color: green; } } header { display: none; }"
+    },
+    {
+      "name": "several stray } in a row are all dropped",
+      "css": "}}}} header { display: none; }",
+      "inner": " header { display: none; }"
+    },
+    {
+      "name": "a stray } after a nested @scope block is dropped",
+      "css": "@scope (header) { :scope { display: none; } } } header { display: none; }",
+      "inner": "@scope (header) { :scope { display: none; } }  header { display: none; }"
+    },
+    {
+      "name": "a stray } between group rules is dropped and the group left open is closed",
+      "css": "@media screen { } } header { display: none; } @media screen {",
+      "inner": "@media screen { }  header { display: none; } @media screen {\n}"
+    },
+    {
+      "name": "a { inside an unquoted url() token is not structure",
+      "css": ".a { background: url(x{y.png); } } header { display: none; }",
+      "inner": ".a { background: url(x{y.png); }  header { display: none; }"
+    },
+    {
+      "name": "a } inside an unquoted url() token is not structure",
+      "css": ".a { background: url(x}y.png); } .b { color: blue; }",
+      "inner": ".a { background: url(x}y.png); } .b { color: blue; }"
+    },
+    {
+      "name": "an escaped } in a selector is not structure",
+      "css": ".a\\} { color: red; } .b { color: blue; }",
+      "inner": ".a\\} { color: red; } .b { color: blue; }"
+    },
+    {
+      "name": "a } inside a comment is not structure",
+      "css": "/* } */ .a { color: red; }",
+      "inner": "/* } */ .a { color: red; }"
+    },
+    {
+      "name": "an escaped quote does not end a string",
+      "css": ".a::before { content: '\\'}'; } .b { color: blue; }",
+      "inner": ".a::before { content: '\\'}'; } .b { color: blue; }"
+    },
+    {
+      "name": "a newline ends an unterminated string; the } after it is structure",
+      "css": ".a { content: \"open\n} } header { display: none; }",
+      "inner": ".a { content: \"open\n}  header { display: none; }"
+    },
+    {
+      "name": "a } inside an open parenthesis is an ordinary token",
+      "css": ".a { width: calc(1px } .b { color: blue; }",
+      "inner": ".a { width: calc(1px } .b { color: blue; }\n)}"
+    },
+    {
+      "name": "an end tag of the style element outside a string is escaped",
+      "css": ".a { color: red; } </style><style>header { display: none; }",
+      "inner": ".a { color: red; } <\\/style><style>header { display: none; }"
+    },
+    {
+      "name": "an end tag of the style element with a space before > is escaped",
+      "css": ".a { color: red; } </STYLE ><img id=\"leak\" src=\"x\">",
+      "inner": ".a { color: red; } <\\/STYLE ><img id=\"leak\" src=\"x\">"
+    },
+    {
+      "name": "a statement at-rule is copied as written",
+      "css": "@import url(x.css); header { display: none; }",
+      "inner": "@import url(x.css); header { display: none; }"
+    }
+  ]
+}

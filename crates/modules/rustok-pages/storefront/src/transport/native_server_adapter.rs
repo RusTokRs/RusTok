@@ -4,14 +4,12 @@ use super::ApiError;
 use crate::model::StorefrontPagesData;
 
 #[cfg(feature = "ssr")]
-use crate::model::{PageBody, PageDetail, PageList, PageListItem, PageTranslation};
+use crate::model::{PageDetail, PageList, PageListItem, PageTranslation, PublishedLanding};
 
 #[cfg(feature = "ssr")]
 const MODULE_SLUG: &str = "pages";
 #[cfg(feature = "ssr")]
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
-#[cfg(feature = "ssr")]
-use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
 
 pub async fn fetch_storefront_pages_server(
     tenant_slug: Option<String>,
@@ -179,28 +177,25 @@ async fn storefront_pages_native(
             });
         let selected_page = match selected_page {
             Some(page) => {
-                let page_id = page.id;
-                let body = match page.body {
-                    Some(body) if body.format == PAGE_BUILDER_DOCUMENT_FORMAT => {
-                        let published = PageBuilderArtifactService::new(runtime_ctx.db_clone())
-                            .load_public_bound_artifact_with_fallback(
-                                tenant_id,
-                                page_id,
-                                &body.locale,
-                                Some(fallback_locale.as_str()),
-                                public_channel_slug.as_deref(),
-                            )
-                            .await
-                            .map_err(ServerFnError::new)?;
-                        published_artifact_page_body(
-                            page_id,
-                            published,
-                            public_channel_slug.as_deref(),
-                        )
-                    }
-                    Some(_) => None,
-                    None => None,
-                };
+                // The landing is resolved for the locale the page itself resolved to, by the
+                // artifact owner: page status, channel visibility, the locale binding and
+                // artifact integrity are decided there. Nothing is derived from the page body,
+                // which a public read does not return.
+                let landing_locale = page
+                    .effective_locale
+                    .as_deref()
+                    .unwrap_or(requested_locale.as_str());
+                let landing = PageBuilderArtifactService::new(runtime_ctx.db_clone())
+                    .load_public_bound_artifact_with_fallback(
+                        tenant_id,
+                        page.id,
+                        landing_locale,
+                        Some(fallback_locale.as_str()),
+                        public_channel_slug.as_deref(),
+                    )
+                    .await
+                    .map_err(ServerFnError::new)?
+                    .map(published_landing);
 
                 Some(PageDetail {
                     effective_locale: page.effective_locale,
@@ -211,7 +206,7 @@ async fn storefront_pages_native(
                         meta_title: translation.meta_title,
                         meta_description: translation.meta_description,
                     }),
-                    body,
+                    landing,
                 })
             }
             None => None,
@@ -283,76 +278,17 @@ fn storefront_cache_variant(
     .expect("serializing a tuple of strings cannot fail")
 }
 
+/// Projects the published landing artifact for the storefront: the stored body markup and
+/// stylesheet, as they are. The artifact owner has already verified both against the artifact
+/// hash, so nothing is re-derived from the full document here.
 #[cfg(feature = "ssr")]
-fn published_artifact_page_body(
-    page_id: impl std::fmt::Display,
-    published: Option<rustok_pages::PublishedLandingArtifact>,
-    channel_slug: Option<&str>,
-) -> Option<PageBody> {
-    published.map(|artifact| {
-        let url = artifact_url(page_id, &artifact.locale, channel_slug);
-        let html = resolve_artifact_body_html(&artifact.body_html, &artifact.document_html);
-        let payload = crate::builder::StaticLandingBodyPayload {
-            html,
-            css: artifact.css,
-            artifact_url: Some(url),
-        };
-        PageBody {
-            locale: artifact.locale,
-            content: serde_json::to_string(&payload).unwrap_or_default(),
-            format: crate::builder::STATIC_LANDING_PAYLOAD_BODY_FORMAT.to_string(),
-        }
-    })
-}
-
-#[cfg(feature = "ssr")]
-fn resolve_artifact_body_html(body_html: &str, document_html: &str) -> String {
-    let body_html = body_html.trim();
-    if !body_html.is_empty() {
-        return body_html.to_string();
+fn published_landing(artifact: rustok_pages::PublishedLandingArtifact) -> PublishedLanding {
+    PublishedLanding {
+        locale: artifact.locale,
+        html: artifact.body_html,
+        css: artifact.css,
+        artifact_hash: artifact.artifact_hash,
     }
-    if let Some(start) = document_html.find("<body")
-        && let Some(open_tag_end) = document_html[start..].find('>')
-    {
-        let content_start = start + open_tag_end + 1;
-        if let Some(end) = document_html[content_start..].rfind("</body>") {
-            return document_html[content_start..content_start + end]
-                .trim()
-                .to_string();
-        }
-    }
-    document_html.to_string()
-}
-
-#[cfg(feature = "ssr")]
-fn artifact_url(
-    page_id: impl std::fmt::Display,
-    locale: &str,
-    channel_slug: Option<&str>,
-) -> String {
-    let mut query = format!("locale={}", form_urlencode_component(locale));
-    if let Some(channel_slug) = channel_slug {
-        query.push_str("&channel=");
-        query.push_str(&form_urlencode_component(channel_slug));
-    }
-    format!("/api/pages/{page_id}/artifact?{query}")
-}
-
-#[cfg(feature = "ssr")]
-fn form_urlencode_component(value: &str) -> String {
-    use std::fmt::Write as _;
-
-    let mut encoded = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                encoded.push(byte as char);
-            }
-            b' ' => encoded.push('+'),
-            _ => write!(encoded, "%{byte:02X}").expect("writing to a String cannot fail"),
-        }
-    }
-    encoded
 }
 
 #[cfg(feature = "ssr")]
@@ -399,47 +335,44 @@ fn map_page_list_item(page: rustok_pages::PageListItem) -> PageListItem {
 
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
-    use super::{
-        artifact_url, normalize_tenant_fallback_locale, published_artifact_page_body,
-        storefront_cache_variant,
-    };
-
-    const PAGE_ID: &str = "00000000-0000-0000-0000-000000000000";
+    use super::{normalize_tenant_fallback_locale, published_landing, storefront_cache_variant};
 
     #[test]
-    fn missing_published_artifact_fails_closed() {
-        assert!(published_artifact_page_body(PAGE_ID, None, Some("web")).is_none());
-    }
-
-    #[test]
-    fn published_artifact_page_body_embeds_html_css_and_url() {
+    fn published_landing_is_the_stored_body_markup_and_stylesheet() {
         let artifact = rustok_pages::PublishedLandingArtifact {
             page_id: uuid::Uuid::nil(),
             locale: "en".to_string(),
             build_hash: "build".to_string(),
             artifact_hash: "artifact".to_string(),
             materialization_hash: None,
-            document_html: "<html><body><h1>Hello</h1></body></html>".to_string(),
+            document_html: "<html><body><h1>Document</h1></body></html>".to_string(),
             body_html: "<h1>Hello</h1>".to_string(),
             css: "h1 { color: red; }".to_string(),
             content_hash: "hash".to_string(),
         };
-        let body =
-            published_artifact_page_body(PAGE_ID, Some(artifact), Some("web")).expect("page body");
-        assert_eq!(
-            body.format,
-            crate::builder::STATIC_LANDING_PAYLOAD_BODY_FORMAT
-        );
-        let payload =
-            crate::builder::decode_static_landing_payload(&body).expect("decoded payload");
-        assert_eq!(payload.html, "<h1>Hello</h1>");
-        assert_eq!(payload.css, "h1 { color: red; }");
-        assert_eq!(
-            payload.artifact_url,
-            Some(format!(
-                "/api/pages/{PAGE_ID}/artifact?locale=en&channel=web"
-            ))
-        );
+        let landing = published_landing(artifact);
+        assert_eq!(landing.locale, "en");
+        assert_eq!(landing.html, "<h1>Hello</h1>");
+        assert_eq!(landing.css, "h1 { color: red; }");
+        assert_eq!(landing.artifact_hash, "artifact");
+    }
+
+    /// An empty stored body is an empty landing. The body markup is never re-derived from the
+    /// full document: that would render text the artifact owner did not store as the body.
+    #[test]
+    fn empty_body_markup_is_not_replaced_by_the_document() {
+        let artifact = rustok_pages::PublishedLandingArtifact {
+            page_id: uuid::Uuid::nil(),
+            locale: "en".to_string(),
+            build_hash: "build".to_string(),
+            artifact_hash: "artifact".to_string(),
+            materialization_hash: None,
+            document_html: "<html><body><h1>Document</h1></body></html>".to_string(),
+            body_html: String::new(),
+            css: String::new(),
+            content_hash: "hash".to_string(),
+        };
+        assert_eq!(published_landing(artifact).html, "");
     }
 
     #[test]
@@ -469,32 +402,6 @@ mod tests {
         assert_ne!(
             base,
             storefront_cache_variant("about", "en", "en", Some("mobile"))
-        );
-    }
-
-    #[test]
-    fn artifact_url_carries_locale_and_resolved_channel() {
-        assert_eq!(
-            artifact_url(PAGE_ID, "pt-BR", Some("web store")),
-            format!("/api/pages/{PAGE_ID}/artifact?locale=pt-BR&channel=web+store")
-        );
-    }
-
-    #[test]
-    fn artifact_url_omits_channel_for_unrestricted_requests() {
-        assert_eq!(
-            artifact_url(PAGE_ID, "en", None),
-            format!("/api/pages/{PAGE_ID}/artifact?locale=en")
-        );
-    }
-
-    #[test]
-    fn artifact_url_percent_encodes_reserved_and_unicode_bytes() {
-        assert_eq!(
-            artifact_url(PAGE_ID, "pt BR/ç", Some("web/store?x=1")),
-            format!(
-                "/api/pages/{PAGE_ID}/artifact?locale=pt+BR%2F%C3%A7&channel=web%2Fstore%3Fx%3D1"
-            )
         );
     }
 }
