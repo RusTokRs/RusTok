@@ -281,7 +281,13 @@ pub fn port_error_to_http_error(error: PortError) -> HttpError {
         | PortErrorKind::Forbidden => error.message,
     };
 
-    HttpError::new(status, error.code, message).with_retryable(error.retryable)
+    let code = if error.code.trim().is_empty() {
+        "port_error".to_string()
+    } else {
+        error.code
+    };
+
+    HttpError::new(status, code, message).with_retryable(error.retryable)
 }
 
 pub fn json_response<T>(value: T) -> axum::response::Response
@@ -345,6 +351,12 @@ mod tests {
             unavailable.message,
             "The requested service is temporarily unavailable"
         );
+
+        let blank_code = port_error_to_http_error(PortError::validation(
+            "   ",
+            "validation failed",
+        ));
+        assert_eq!(blank_code.code, "port_error");
     }
 
     #[test]
