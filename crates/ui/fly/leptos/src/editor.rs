@@ -1776,18 +1776,28 @@ pub fn FlyEditorWorkspace(
                     component,
                 })
             });
-            if let Some(Err(error)) = &apply_result {
-                report_workspace_error(on_error, "Insert block failed", error);
-            }
-            if let Some(on_change) = on_change {
-                palette_editor.with(|editor| on_change.run(editor.document().clone()));
+            match apply_result {
+                Some(Ok(_)) => {
+                    if let Some(on_change) = on_change {
+                        palette_editor.with(|editor| on_change.run(editor.document().clone()));
+                    }
+                    palette_ui.update(|machine| {
+                        if let Err(error) = machine.dispatch(UiIntent::ReplaceDiagnostics(Vec::new())) {
+                            report_ui_error(on_error, "Clear diagnostics failed", &error);
+                        }
+                    });
+                }
+                Some(Err(error)) => {
+                    report_workspace_error(on_error, "Insert block failed", &error);
+                }
+                None => {
+                    report_workspace_error_raw(
+                        on_error,
+                        "Insert block failed: editor signal unavailable",
+                    );
+                }
             }
         }
-        palette_ui.update(|machine| {
-            if let Err(error) = machine.dispatch(UiIntent::ReplaceDiagnostics(Vec::new())) {
-                report_ui_error(on_error, "Clear diagnostics failed", &error);
-            }
-        });
     });
 
     let activate_instance = intent_instance.clone();
@@ -1848,20 +1858,30 @@ pub fn FlyEditorWorkspace(
                 },
             })
         });
-        if let Some(Err(error)) = &apply_result {
-            report_workspace_error(on_error, "Add page failed", error);
-        }
-        active_page.set(page_index);
-        add_ui.update(|machine| {
-            if let Err(error) = machine.dispatch(UiIntent::ActivatePage {
-                page_id: Some(page_id),
-                page_index,
-            }) {
-                report_ui_error(on_error, "Activate page failed", &error);
+        match apply_result {
+            Some(Ok(_)) => {
+                active_page.set(page_index);
+                add_ui.update(|machine| {
+                    if let Err(error) = machine.dispatch(UiIntent::ActivatePage {
+                        page_id: Some(page_id),
+                        page_index,
+                    }) {
+                        report_ui_error(on_error, "Activate page failed", &error);
+                    }
+                });
+                if let Some(on_change) = on_change {
+                    add_editor.with(|editor| on_change.run(editor.document().clone()));
+                }
             }
-        });
-        if let Some(on_change) = on_change {
-            add_editor.with(|editor| on_change.run(editor.document().clone()));
+            Some(Err(error)) => {
+                report_workspace_error(on_error, "Add page failed", &error);
+            }
+            None => {
+                report_workspace_error_raw(
+                    on_error,
+                    "Add page failed: editor signal unavailable",
+                );
+            }
         }
     });
 
@@ -1891,23 +1911,33 @@ pub fn FlyEditorWorkspace(
                 },
             })
         });
-        if let Some(Err(error)) = &apply_result {
-            report_workspace_error(on_error, "Remove page failed", error);
-        }
-        let remaining = remove_editor.with(|editor| editor.document().project.pages.len());
-        let current = active_page.get_untracked();
-        let clamped = if remaining == 0 {
-            0
-        } else if page_index < current {
-            current.saturating_sub(1)
-        } else if current >= remaining {
-            remaining - 1
-        } else {
-            current
-        };
-        active_page.set(clamped);
-        if let Some(on_change) = on_change {
-            remove_editor.with(|editor| on_change.run(editor.document().clone()));
+        match apply_result {
+            Some(Ok(_)) => {
+                let remaining = remove_editor.with(|editor| editor.document().project.pages.len());
+                let current = active_page.get_untracked();
+                let clamped = if remaining == 0 {
+                    0
+                } else if page_index < current {
+                    current.saturating_sub(1)
+                } else if current >= remaining {
+                    remaining - 1
+                } else {
+                    current
+                };
+                active_page.set(clamped);
+                if let Some(on_change) = on_change {
+                    remove_editor.with(|editor| on_change.run(editor.document().clone()));
+                }
+            }
+            Some(Err(error)) => {
+                report_workspace_error(on_error, "Remove page failed", &error);
+            }
+            None => {
+                report_workspace_error_raw(
+                    on_error,
+                    "Remove page failed: editor signal unavailable",
+                );
+            }
         }
     });
 
@@ -1951,11 +1981,21 @@ pub fn FlyEditorWorkspace(
                 },
             })
         });
-        if let Some(Err(error)) = &apply_result {
-            report_workspace_error(on_error, "Save page properties failed", error);
-        }
-        if let Some(on_change) = on_change {
-            properties_editor.with(|editor| on_change.run(editor.document().clone()));
+        match apply_result {
+            Some(Ok(_)) => {
+                if let Some(on_change) = on_change {
+                    properties_editor.with(|editor| on_change.run(editor.document().clone()));
+                }
+            }
+            Some(Err(error)) => {
+                report_workspace_error(on_error, "Save page properties failed", &error);
+            }
+            None => {
+                report_workspace_error_raw(
+                    on_error,
+                    "Save page properties failed: editor signal unavailable",
+                );
+            }
         }
     });
 
@@ -2014,11 +2054,21 @@ pub fn FlyEditorWorkspace(
                 patch,
             })
         });
-        if let Some(Err(error)) = &apply_result {
-            report_workspace_error(on_error, "Save component property failed", error);
-        }
-        if let Some(on_change) = on_change {
-            patch_editor.with(|editor| on_change.run(editor.document().clone()));
+        match apply_result {
+            Some(Ok(_)) => {
+                if let Some(on_change) = on_change {
+                    patch_editor.with(|editor| on_change.run(editor.document().clone()));
+                }
+            }
+            Some(Err(error)) => {
+                report_workspace_error(on_error, "Save component property failed", &error);
+            }
+            None => {
+                report_workspace_error_raw(
+                    on_error,
+                    "Save component property failed: editor signal unavailable",
+                );
+            }
         }
     });
 
@@ -2100,15 +2150,24 @@ pub fn FlyEditorWorkspace(
                     },
                 })
             });
-            if let Some(Err(error)) = &apply_result {
-                report_workspace_error(on_error, "Save scoped style failed", error);
-                return;
-            }
-            if let (Some(on_change), Some(document)) = (
-                on_change,
-                apply_editor.try_with(|editor| editor.document().clone()),
-            ) {
-                on_change.run(document);
+            match apply_result {
+                Some(Ok(_)) => {
+                    if let (Some(on_change), Some(document)) = (
+                        on_change,
+                        apply_editor.try_with(|editor| editor.document().clone()),
+                    ) {
+                        on_change.run(document);
+                    }
+                }
+                Some(Err(error)) => {
+                    report_workspace_error(on_error, "Save scoped style failed", &error);
+                }
+                None => {
+                    report_workspace_error_raw(
+                        on_error,
+                        "Save scoped style failed: editor signal unavailable",
+                    );
+                }
             }
         }
     });
@@ -2131,11 +2190,21 @@ pub fn FlyEditorWorkspace(
                 command: AssetCommand::Upsert { asset },
             })
         });
-        if let Some(Err(error)) = &apply_result {
-            report_workspace_error(on_error, "Save asset failed", error);
-        }
-        if let Some(on_change) = on_change {
-            asset_editor.with(|editor| on_change.run(editor.document().clone()));
+        match apply_result {
+            Some(Ok(_)) => {
+                if let Some(on_change) = on_change {
+                    asset_editor.with(|editor| on_change.run(editor.document().clone()));
+                }
+            }
+            Some(Err(error)) => {
+                report_workspace_error(on_error, "Save asset failed", &error);
+            }
+            None => {
+                report_workspace_error_raw(
+                    on_error,
+                    "Save asset failed: editor signal unavailable",
+                );
+            }
         }
     });
     let on_remove_asset = Callback::new(move |asset_id: String| {
@@ -2151,11 +2220,21 @@ pub fn FlyEditorWorkspace(
                 command: AssetCommand::Remove { asset_id },
             })
         });
-        if let Some(Err(error)) = &apply_result {
-            report_workspace_error(on_error, "Remove asset failed", error);
-        }
-        if let Some(on_change) = on_change {
-            asset_editor.with(|editor| on_change.run(editor.document().clone()));
+        match apply_result {
+            Some(Ok(_)) => {
+                if let Some(on_change) = on_change {
+                    asset_editor.with(|editor| on_change.run(editor.document().clone()));
+                }
+            }
+            Some(Err(error)) => {
+                report_workspace_error(on_error, "Remove asset failed", &error);
+            }
+            None => {
+                report_workspace_error_raw(
+                    on_error,
+                    "Remove asset failed: editor signal unavailable",
+                );
+            }
         }
     });
     let on_apply_asset = Callback::new(move |(component_id, asset_id): (String, String)| {
@@ -2188,11 +2267,21 @@ pub fn FlyEditorWorkspace(
                     },
                 })
             });
-            if let Some(Err(error)) = &apply_result {
-                report_workspace_error(on_error, "Apply asset failed", error);
-            }
-            if let Some(on_change) = on_change {
-                asset_editor.with(|editor| on_change.run(editor.document().clone()));
+            match apply_result {
+                Some(Ok(_)) => {
+                    if let Some(on_change) = on_change {
+                        asset_editor.with(|editor| on_change.run(editor.document().clone()));
+                    }
+                }
+                Some(Err(error)) => {
+                    report_workspace_error(on_error, "Apply asset failed", &error);
+                }
+                None => {
+                    report_workspace_error_raw(
+                        on_error,
+                        "Apply asset failed: editor signal unavailable",
+                    );
+                }
             }
         }
     });
@@ -2228,17 +2317,27 @@ pub fn FlyEditorWorkspace(
                 },
             })
         });
-        if let Some(Err(error)) = &apply_result {
-            report_workspace_error(on_error, "Move page failed", error);
-        }
-        let new_active = if delta < 0 {
-            current.saturating_sub(1)
-        } else {
-            current + 1
-        };
-        active_page.set(new_active);
-        if let Some(on_change) = on_change {
-            move_editor.with(|editor| on_change.run(editor.document().clone()));
+        match apply_result {
+            Some(Ok(_)) => {
+                let new_active = if delta < 0 {
+                    current.saturating_sub(1)
+                } else {
+                    current + 1
+                };
+                active_page.set(new_active);
+                if let Some(on_change) = on_change {
+                    move_editor.with(|editor| on_change.run(editor.document().clone()));
+                }
+            }
+            Some(Err(error)) => {
+                report_workspace_error(on_error, "Move page failed", &error);
+            }
+            None => {
+                report_workspace_error_raw(
+                    on_error,
+                    "Move page failed: editor signal unavailable",
+                );
+            }
         }
     });
 
@@ -2258,11 +2357,21 @@ pub fn FlyEditorWorkspace(
                 command: ThemeCommand::Upsert { token },
             })
         });
-        if let Some(Err(error)) = &apply_result {
-            report_workspace_error(on_error, "Save design token failed", error);
-        }
-        if let Some(on_change) = on_change {
-            theme_editor.with(|editor| on_change.run(editor.document().clone()));
+        match apply_result {
+            Some(Ok(_)) => {
+                if let Some(on_change) = on_change {
+                    theme_editor.with(|editor| on_change.run(editor.document().clone()));
+                }
+            }
+            Some(Err(error)) => {
+                report_workspace_error(on_error, "Save design token failed", &error);
+            }
+            None => {
+                report_workspace_error_raw(
+                    on_error,
+                    "Save design token failed: editor signal unavailable",
+                );
+            }
         }
     });
     let theme_remove_editor = editor;
@@ -2280,11 +2389,21 @@ pub fn FlyEditorWorkspace(
                 command: ThemeCommand::Remove { name },
             })
         });
-        if let Some(Err(error)) = &apply_result {
-            report_workspace_error(on_error, "Remove design token failed", error);
-        }
-        if let Some(on_change) = on_change {
-            theme_remove_editor.with(|editor| on_change.run(editor.document().clone()));
+        match apply_result {
+            Some(Ok(_)) => {
+                if let Some(on_change) = on_change {
+                    theme_remove_editor.with(|editor| on_change.run(editor.document().clone()));
+                }
+            }
+            Some(Err(error)) => {
+                report_workspace_error(on_error, "Remove design token failed", &error);
+            }
+            None => {
+                report_workspace_error_raw(
+                    on_error,
+                    "Remove design token failed: editor signal unavailable",
+                );
+            }
         }
     });
 
@@ -2300,8 +2419,17 @@ pub fn FlyEditorWorkspace(
         }
         let apply_result = layers_editor
             .try_update(|editor| editor.apply(fly::EditorCommand::Select { component_id }));
-        if let Some(Err(error)) = &apply_result {
-            report_workspace_error(on_error, "Select component failed", error);
+        match apply_result {
+            Some(Ok(_)) => {}
+            Some(Err(error)) => {
+                report_workspace_error(on_error, "Select component failed", &error);
+            }
+            None => {
+                report_workspace_error_raw(
+                    on_error,
+                    "Select component failed: editor signal unavailable",
+                );
+            }
         }
     });
 
@@ -2367,13 +2495,22 @@ pub fn FlyEditorWorkspace(
                         if let Some(on_intent) = on_intent {
                             on_intent.run(BrowserIntentEnvelope::undo(&shortcut_instance));
                         } else {
-                            shortcut_editor.update(|e| {
-                                if let Err(error) = e.undo() {
+                            let undo_result = shortcut_editor.try_update(|e| e.undo().map(|_| ()));
+                            match undo_result {
+                                Some(Ok(())) => {
+                                    if let Some(on_change) = on_change {
+                                        shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                                    }
+                                }
+                                Some(Err(error)) => {
                                     report_workspace_error(on_error, "Undo failed", &error);
                                 }
-                            });
-                            if let Some(on_change) = on_change {
-                                shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                                None => {
+                                    report_workspace_error_raw(
+                                        on_error,
+                                        "Undo failed: editor signal unavailable",
+                                    );
+                                }
                             }
                         }
                     }
@@ -2381,13 +2518,22 @@ pub fn FlyEditorWorkspace(
                         if let Some(on_intent) = on_intent {
                             on_intent.run(BrowserIntentEnvelope::redo(&shortcut_instance));
                         } else {
-                            shortcut_editor.update(|e| {
-                                if let Err(error) = e.redo() {
+                            let redo_result = shortcut_editor.try_update(|e| e.redo().map(|_| ()));
+                            match redo_result {
+                                Some(Ok(())) => {
+                                    if let Some(on_change) = on_change {
+                                        shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                                    }
+                                }
+                                Some(Err(error)) => {
                                     report_workspace_error(on_error, "Redo failed", &error);
                                 }
-                            });
-                            if let Some(on_change) = on_change {
-                                shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                                None => {
+                                    report_workspace_error_raw(
+                                        on_error,
+                                        "Redo failed: editor signal unavailable",
+                                    );
+                                }
                             }
                         }
                     }
@@ -2403,15 +2549,25 @@ pub fn FlyEditorWorkspace(
                                 let apply_result = shortcut_editor.try_update(|e| {
                                     e.apply(fly::EditorCommand::Remove { component_id })
                                 });
-                                if let Some(Err(error)) = &apply_result {
-                                    report_workspace_error(
-                                        on_error,
-                                        "Delete component failed",
-                                        error,
-                                    );
-                                }
-                                if let Some(on_change) = on_change {
-                                    shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                                match apply_result {
+                                    Some(Ok(_)) => {
+                                        if let Some(on_change) = on_change {
+                                            shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                                        }
+                                    }
+                                    Some(Err(error)) => {
+                                        report_workspace_error(
+                                            on_error,
+                                            "Delete component failed",
+                                            &error,
+                                        );
+                                    }
+                                    None => {
+                                        report_workspace_error_raw(
+                                            on_error,
+                                            "Delete component failed: editor signal unavailable",
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -2438,15 +2594,25 @@ pub fn FlyEditorWorkspace(
                                     fragment.insert(e, location.parent_component_id, location.index + 1)?;
                                     Ok(())
                                 });
-                                if let Some(Err(error)) = &apply_result {
-                                    report_workspace_error(
-                                        on_error,
-                                        "Duplicate component failed",
-                                        error,
-                                    );
-                                }
-                                if let Some(on_change) = on_change {
-                                    shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                                match apply_result {
+                                    Some(Ok(_)) => {
+                                        if let Some(on_change) = on_change {
+                                            shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                                        }
+                                    }
+                                    Some(Err(error)) => {
+                                        report_workspace_error(
+                                            on_error,
+                                            "Duplicate component failed",
+                                            &error,
+                                        );
+                                    }
+                                    None => {
+                                        report_workspace_error_raw(
+                                            on_error,
+                                            "Duplicate component failed: editor signal unavailable",
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -2481,13 +2647,22 @@ pub fn FlyEditorWorkspace(
                             on_intent.run(BrowserIntentEnvelope::undo(&undo_instance));
                             return;
                         }
-                        undo_editor.update(|editor| {
-                            if let Err(error) = editor.undo() {
+                        let undo_result = undo_editor.try_update(|editor| editor.undo().map(|_| ()));
+                        match undo_result {
+                            Some(Ok(())) => {
+                                if let Some(on_change) = on_change {
+                                    undo_editor.with(|editor| on_change.run(editor.document().clone()));
+                                }
+                            }
+                            Some(Err(error)) => {
                                 report_workspace_error(on_error, "Undo failed", &error);
                             }
-                        });
-                        if let Some(on_change) = on_change {
-                            undo_editor.with(|editor| on_change.run(editor.document().clone()));
+                            None => {
+                                report_workspace_error_raw(
+                                    on_error,
+                                    "Undo failed: editor signal unavailable",
+                                );
+                            }
                         }
                     }
                 >
@@ -2504,13 +2679,22 @@ pub fn FlyEditorWorkspace(
                             on_intent.run(BrowserIntentEnvelope::redo(&redo_instance));
                             return;
                         }
-                        redo_editor.update(|editor| {
-                            if let Err(error) = editor.redo() {
+                        let redo_result = redo_editor.try_update(|editor| editor.redo().map(|_| ()));
+                        match redo_result {
+                            Some(Ok(())) => {
+                                if let Some(on_change) = on_change {
+                                    redo_editor.with(|editor| on_change.run(editor.document().clone()));
+                                }
+                            }
+                            Some(Err(error)) => {
                                 report_workspace_error(on_error, "Redo failed", &error);
                             }
-                        });
-                        if let Some(on_change) = on_change {
-                            redo_editor.with(|editor| on_change.run(editor.document().clone()));
+                            None => {
+                                report_workspace_error_raw(
+                                    on_error,
+                                    "Redo failed: editor signal unavailable",
+                                );
+                            }
                         }
                     }
                 >
