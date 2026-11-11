@@ -3,11 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useLocale, useTranslations } from '@rustok/next-fluent/client';
 import { toast } from 'sonner';
-import {
-  Plus,
-  Search,
-  Folder
-} from 'lucide-react';
+import { Plus, Search, Folder } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/shared/ui/shadcn/input';
@@ -116,15 +112,53 @@ export default function CategoriesPage({
   };
 
   const columns: ColumnDef<StockFeatures, BlogCategory, any>[] = [
-    { id: 'name', accessorKey: 'name', header: t('categories.name'), enableSorting: false,
-      cell: ({ row }) => <div><strong>{row.original.name}</strong><p>{row.original.description}</p></div> },
-    { id: 'slug', accessorKey: 'slug', header: t('categories.slug'), enableSorting: false },
-    { id: 'position', accessorKey: 'position', header: t('categories.position'), enableSorting: false },
-    { id: 'actions', header: t('table.actions'), enableSorting: false,
-      cell: ({ row }) => <div className='flex gap-2'>
-        <Button variant='outline' size='sm' onClick={() => handleEdit(row.original)}>{t('table.edit')}</Button>
-        <Button variant='destructive' size='sm' onClick={() => setDeletingCategory(row.original)}>{t('table.delete')}</Button>
-      </div> },
+    {
+      id: 'name',
+      accessorKey: 'name',
+      header: t('categories.name'),
+      enableSorting: false,
+      cell: ({ row }) => (
+        <div>
+          <strong>{row.original.name}</strong>
+          <p>{row.original.description}</p>
+        </div>
+      )
+    },
+    {
+      id: 'slug',
+      accessorKey: 'slug',
+      header: t('categories.slug'),
+      enableSorting: false
+    },
+    {
+      id: 'position',
+      accessorKey: 'position',
+      header: t('categories.position'),
+      enableSorting: false
+    },
+    {
+      id: 'actions',
+      header: t('table.actions'),
+      enableSorting: false,
+      cell: ({ row }) => (
+        <div className='flex gap-2'>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => handleEdit(row.original)}
+          >
+            {t('table.edit')}
+          </Button>
+          <Button
+            variant='destructive'
+            size='sm'
+            onClick={() => setDeletingCategory(row.original)}
+          >
+            {t('table.delete')}
+          </Button>
+        </div>
+      )
+    }
   ];
 
   return (
@@ -141,7 +175,9 @@ export default function CategoriesPage({
           />
         </div>
         <Button onClick={handleCreate}>
-          <Plus className='mr-2 h-4 w-4' />{t('categories.create')}</Button>
+          <Plus className='mr-2 h-4 w-4' />
+          {t('categories.create')}
+        </Button>
       </div>
 
       <Card>
@@ -151,7 +187,9 @@ export default function CategoriesPage({
         </CardHeader>
         <CardContent className='p-0'>
           {loading ? (
-            <div className='text-muted-foreground flex h-48 items-center justify-center text-sm'>{t('categories.loading')}</div>
+            <div className='text-muted-foreground flex h-48 items-center justify-center text-sm'>
+              {t('categories.loading')}
+            </div>
           ) : filteredCategories.length === 0 ? (
             <div className='flex h-48 flex-col items-center justify-center gap-2 text-center'>
               <Folder className='text-muted-foreground h-8 w-8' />
@@ -162,11 +200,17 @@ export default function CategoriesPage({
               </p>
               {!searchQuery && (
                 <Button variant='outline' size='sm' onClick={handleCreate}>
-                  <Plus className='mr-2 h-4 w-4' />{t('categories.add')}</Button>
+                  <Plus className='mr-2 h-4 w-4' />
+                  {t('categories.add')}
+                </Button>
               )}
             </div>
           ) : (
-            <DataTableShell data={filteredCategories} columns={columns} clientPagination />
+            <DataTableShell
+              data={filteredCategories}
+              columns={columns}
+              clientPagination
+            />
           )}
         </CardContent>
       </Card>
@@ -189,7 +233,9 @@ export default function CategoriesPage({
           <AlertDialogHeader>
             <AlertDialogTitle>{t('categories.deleteTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t('categories.deleteConfirm', { name: deletingCategory?.name ?? '' })}
+              {t('categories.deleteConfirm', {
+                name: deletingCategory?.name ?? ''
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -197,7 +243,9 @@ export default function CategoriesPage({
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               className='bg-destructive text-destructive-foreground hover:bg-destructive/90'
-            >{t('table.delete')}</AlertDialogAction>
+            >
+              {t('table.delete')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

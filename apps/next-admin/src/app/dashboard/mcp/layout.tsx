@@ -1,11 +1,7 @@
 import { ModuleGuard } from '@/app/providers/module-guard';
 import { ModuleUnavailable } from '@/shared/ui/module-unavailable';
 
-export default function McpLayout({
-  children
-}: {
-  children: React.ReactNode;
-}) {
+export default function McpLayout({ children }: { children: React.ReactNode }) {
   return (
     <ModuleGuard
       slug='mcp'

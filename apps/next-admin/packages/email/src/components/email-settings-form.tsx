@@ -39,7 +39,11 @@ export function EmailSettingsForm({
   const handleSave = () => {
     startTransition(async () => {
       try {
-        const updated = await updateEmailSettings(settings, schemaVersion, opts);
+        const updated = await updateEmailSettings(
+          settings,
+          schemaVersion,
+          opts
+        );
         setSettings(updated.settings);
         setSchemaVersion(updated.schemaVersion);
         toast.success(t('savedToast'));

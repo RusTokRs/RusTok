@@ -441,7 +441,10 @@ export function extractSurfacePresetsJson(
   return '[]';
 }
 
-export function parseJsonArrayForEditor(label: string, value: string): unknown[] {
+export function parseJsonArrayForEditor(
+  label: string,
+  value: string
+): unknown[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);

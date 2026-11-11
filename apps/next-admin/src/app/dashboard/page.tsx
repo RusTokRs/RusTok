@@ -17,11 +17,7 @@ import {
 import { PageContainer } from '@/widgets/app-shell';
 import { StatCard } from '@/widgets/stats-card';
 import { getAdminComponentsForSlot, type AdminRenderContext } from '@/modules';
-import {
-  IconArrowUpRight,
-  IconPackage,
-  IconUsers
-} from '@tabler/icons-react';
+import { IconArrowUpRight, IconPackage, IconUsers } from '@tabler/icons-react';
 
 type DashboardStats = {
   totalUsers: number;

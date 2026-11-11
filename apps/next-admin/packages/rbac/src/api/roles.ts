@@ -232,10 +232,10 @@ export async function updateRole(
   }
   const payload: UpdateRoleInput = {
     slug: cleanSlug,
-    name: input.name !== undefined ? (input.name?.trim() || null) : undefined,
+    name: input.name !== undefined ? input.name?.trim() || null : undefined,
     description:
       input.description !== undefined
-        ? (input.description?.trim() || null)
+        ? input.description?.trim() || null
         : undefined,
     permissions:
       cleanSlug === 'super_admin' ? undefined : (input.permissions ?? undefined)

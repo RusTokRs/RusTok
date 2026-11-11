@@ -713,7 +713,10 @@ function browserCatalogWriteJournal(
       if (storage.getItem(key) !== baseline)
         throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);
     } catch (error) {
-      if (error instanceof Error && error.message === PRODUCT_RECOVERY_UNAVAILABLE) {
+      if (
+        error instanceof Error &&
+        error.message === PRODUCT_RECOVERY_UNAVAILABLE
+      ) {
         throw error;
       }
       throw new Error(PRODUCT_RECOVERY_UNAVAILABLE);

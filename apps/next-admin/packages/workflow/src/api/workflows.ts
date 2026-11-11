@@ -273,7 +273,12 @@ export async function listWorkflowExecutions(
   const data = await graphqlRequest<
     { workflowId: string },
     { workflowExecutions: WorkflowExecution[] }
-  >(WORKFLOW_EXECUTIONS_QUERY, { workflowId: cleanId }, opts.token, opts.tenantSlug);
+  >(
+    WORKFLOW_EXECUTIONS_QUERY,
+    { workflowId: cleanId },
+    opts.token,
+    opts.tenantSlug
+  );
   return data.workflowExecutions;
 }
 
@@ -308,7 +313,12 @@ export async function updateWorkflow(
   await graphqlRequest<
     { id: string; input: UpdateWorkflowInput },
     { updateWorkflow: boolean }
-  >(UPDATE_WORKFLOW_MUTATION, { id: cleanId, input }, opts.token, opts.tenantSlug);
+  >(
+    UPDATE_WORKFLOW_MUTATION,
+    { id: cleanId, input },
+    opts.token,
+    opts.tenantSlug
+  );
 }
 
 export async function deleteWorkflow(
@@ -393,7 +403,12 @@ export async function addWorkflowStep(
   const data = await graphqlRequest<
     { workflowId: string; input: CreateStepInput },
     { addWorkflowStep: string }
-  >(ADD_STEP_MUTATION, { workflowId: cleanId, input }, opts.token, opts.tenantSlug);
+  >(
+    ADD_STEP_MUTATION,
+    { workflowId: cleanId, input },
+    opts.token,
+    opts.tenantSlug
+  );
   return data.addWorkflowStep;
 }
 
@@ -543,7 +558,12 @@ export async function listWorkflowVersions(
   const data = await graphqlRequest<
     { workflowId: string },
     { workflowVersions: WorkflowVersionSummary[] }
-  >(WORKFLOW_VERSIONS_QUERY, { workflowId: cleanId }, opts.token, opts.tenantSlug);
+  >(
+    WORKFLOW_VERSIONS_QUERY,
+    { workflowId: cleanId },
+    opts.token,
+    opts.tenantSlug
+  );
   return data.workflowVersions;
 }
 
@@ -554,7 +574,9 @@ export async function restoreWorkflowVersion(
 ): Promise<void> {
   const cleanId = workflowId?.trim();
   if (!cleanId || version <= 0) {
-    throw new Error('Valid workflow ID and positive version number are required');
+    throw new Error(
+      'Valid workflow ID and positive version number are required'
+    );
   }
   await graphqlRequest<
     { workflowId: string; version: number },

@@ -46,4 +46,3 @@
 - **Host Interface:** Depends on React 19, `next/navigation`, `react-hook-form`, `zod`, `sonner`, `@rustok/richtext`, and `@/shared/ui/shadcn` design system components from `apps/next-admin`.
 - **Backend API:** Communicates exclusively with `apps/server` via GraphQL endpoint (`/api/graphql`).
 - **No Direct Table Access:** Never queries forum database tables or repositories directly.
-

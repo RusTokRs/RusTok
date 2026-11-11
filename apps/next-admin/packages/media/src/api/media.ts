@@ -35,7 +35,8 @@ export function formatBytes(bytes: number): string {
   if (bytes < 0) return '0 B';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
@@ -94,12 +95,7 @@ export async function mediaUsage(opts: GqlOpts = {}): Promise<MediaUsage> {
   const data = await graphqlRequest<
     { tenantId: string },
     { mediaUsage: MediaUsage }
-  >(
-    MEDIA_USAGE_QUERY,
-    { tenantId },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(MEDIA_USAGE_QUERY, { tenantId }, opts.token, opts.tenantSlug);
   return data.mediaUsage;
 }
 
@@ -111,11 +107,6 @@ export async function deleteMedia(
   const data = await graphqlRequest<
     { tenantId: string; id: string },
     { deleteMedia: boolean }
-  >(
-    DELETE_MEDIA_MUTATION,
-    { tenantId, id },
-    opts.token,
-    opts.tenantSlug
-  );
+  >(DELETE_MEDIA_MUTATION, { tenantId, id }, opts.token, opts.tenantSlug);
   return data.deleteMedia;
 }

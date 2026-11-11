@@ -14,4 +14,3 @@ Next.js admin UI package for community forum management, category hierarchies, t
   - **Topic Split**: Split an existing thread into multiple topic branches (`ForumTopicSplit`).
   - **Slug Rename**: Safely rename topic routing slugs with redirect preservation (`ForumTopicSlugRename`).
 - **Fluid Frontend Architecture (FFA)**: Domain validation and command builders isolated in `src/core/` with zero UI framework dependencies.
-

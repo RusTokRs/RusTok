@@ -8,4 +8,3 @@ export const pricingNavItems: NavItem[] = [
     icon: 'product'
   }
 ];
-

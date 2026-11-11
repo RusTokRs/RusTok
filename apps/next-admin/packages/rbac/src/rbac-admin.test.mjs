@@ -55,10 +55,9 @@ const cleanNavSource = stripTypeScriptTypes(
     .replaceAll('export ', '')
 );
 const navModule = {};
-compileFunction(
-  `${cleanNavSource}\nnavModule.rbacNavItems = rbacNavItems;`,
-  ['navModule']
-)(navModule);
+compileFunction(`${cleanNavSource}\nnavModule.rbacNavItems = rbacNavItems;`, [
+  'navModule'
+])(navModule);
 const { rbacNavItems } = navModule;
 
 test('rbacNavItems specifies correct dashboard route, shortcut, and admin access requirement', () => {
@@ -121,11 +120,13 @@ test('createRole validates input bounds and rejects reserved system role slugs',
 
   // Rejects empty or whitespace name
   await assert.rejects(
-    async () => api.createRole({ name: '', slug: 'moderator', permissions: [] }),
+    async () =>
+      api.createRole({ name: '', slug: 'moderator', permissions: [] }),
     /Role name is required/
   );
   await assert.rejects(
-    async () => api.createRole({ name: '   ', slug: 'moderator', permissions: [] }),
+    async () =>
+      api.createRole({ name: '   ', slug: 'moderator', permissions: [] }),
     /Role name is required/
   );
 
@@ -138,7 +139,8 @@ test('createRole validates input bounds and rejects reserved system role slugs',
   // Rejects reserved built-in slugs
   for (const reserved of ['super_admin', 'admin', 'manager', 'customer']) {
     await assert.rejects(
-      async () => api.createRole({ name: 'My Role', slug: reserved, permissions: [] }),
+      async () =>
+        api.createRole({ name: 'My Role', slug: reserved, permissions: [] }),
       new RegExp(`'${reserved}' is a reserved platform built-in role slug`)
     );
   }
@@ -206,10 +208,7 @@ test('deleteRole protects super_admin identity from deletion', async () => {
     };
   });
 
-  await assert.rejects(
-    async () => api.deleteRole(''),
-    /Role slug is required/
-  );
+  await assert.rejects(async () => api.deleteRole(''), /Role slug is required/);
 
   await assert.rejects(
     async () => api.deleteRole('super_admin'),
@@ -245,7 +244,8 @@ test('assignUserRole validates user UUID format and role slug', async () => {
   );
 
   await assert.rejects(
-    async () => api.assignUserRole({ userId: 'not-a-valid-uuid', roleSlug: 'manager' }),
+    async () =>
+      api.assignUserRole({ userId: 'not-a-valid-uuid', roleSlug: 'manager' }),
     /User ID must be a valid UUID/
   );
 

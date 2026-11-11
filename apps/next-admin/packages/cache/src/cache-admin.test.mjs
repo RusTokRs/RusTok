@@ -50,10 +50,9 @@ const cleanNavSource = stripTypeScriptTypes(
     .replaceAll('export ', '')
 );
 const navModule = {};
-compileFunction(
-  `${cleanNavSource}\nnavModule.cacheNavItems = cacheNavItems;`,
-  ['navModule']
-)(navModule);
+compileFunction(`${cleanNavSource}\nnavModule.cacheNavItems = cacheNavItems;`, [
+  'navModule'
+])(navModule);
 const { cacheNavItems } = navModule;
 
 test('cacheNavItems specifies admin access and correct dashboard route', () => {
@@ -88,13 +87,19 @@ test('GraphQL queries and mutations expose required schema fields', () => {
   assert.match(api.CACHE_HEALTH_QUERY, /backend/);
 
   // Platform settings query fields
-  assert.match(api.PLATFORM_SETTINGS_QUERY, /platformSettings\(category: \$category\)/);
+  assert.match(
+    api.PLATFORM_SETTINGS_QUERY,
+    /platformSettings\(category: \$category\)/
+  );
   assert.match(api.PLATFORM_SETTINGS_QUERY, /category/);
   assert.match(api.PLATFORM_SETTINGS_QUERY, /settings/);
   assert.match(api.PLATFORM_SETTINGS_QUERY, /schemaVersion/);
 
   // Mutation fields
-  assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /updatePlatformSettings\(input: \$input\)/);
+  assert.match(
+    api.UPDATE_PLATFORM_SETTINGS_MUTATION,
+    /updatePlatformSettings\(input: \$input\)/
+  );
   assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /success/);
   assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /category/);
   assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /settings/);
@@ -166,7 +171,10 @@ test('getCacheSettings falls back to DEFAULT_CACHE_SETTINGS on invalid JSON', as
   }));
 
   const res = await api.getCacheSettings();
-  assert.deepEqual(res, { settings: api.DEFAULT_CACHE_SETTINGS, schemaVersion: 4 });
+  assert.deepEqual(res, {
+    settings: api.DEFAULT_CACHE_SETTINGS,
+    schemaVersion: 4
+  });
 });
 
 test('updateCacheSettings serializes payload and returns merged settings', async () => {
@@ -211,10 +219,11 @@ test('updateCacheSettings serializes payload and returns merged settings', async
   assert.match(calledQuery, /updatePlatformSettings/);
   assert.equal(calledVars.input.category, 'cache');
   assert.equal(calledVars.input.expectedSchemaVersion, 8);
-  assert.deepEqual(
-    JSON.parse(calledVars.input.settings),
-    { mode: 'hybrid', redis_host: 'redis.internal', redis_db: 2 }
-  );
+  assert.deepEqual(JSON.parse(calledVars.input.settings), {
+    mode: 'hybrid',
+    redis_host: 'redis.internal',
+    redis_db: 2
+  });
   assert.equal(calledToken, 'secret-token');
   assert.equal(calledTenant, 'tenant-beta');
 });
@@ -230,11 +239,16 @@ test('updateCacheSettings returns defaults if backend returns unparseable respon
   }));
 
   const res = await api.updateCacheSettings({ mode: 'redis' }, 5);
-  assert.deepEqual(res, { settings: api.DEFAULT_CACHE_SETTINGS, schemaVersion: 6 });
+  assert.deepEqual(res, {
+    settings: api.DEFAULT_CACHE_SETTINGS,
+    schemaVersion: 6
+  });
 });
 
 test('updateCacheSettings propagates a stale-revision conflict without replacing the snapshot', async () => {
-  const conflict = new Error('CONFLICT: Settings were changed concurrently; re-read the category and retry');
+  const conflict = new Error(
+    'CONFLICT: Settings were changed concurrently; re-read the category and retry'
+  );
   const api = createApiModule(async (_query, variables) => {
     assert.equal(variables.input.expectedSchemaVersion, 7);
     throw conflict;
@@ -253,4 +267,3 @@ test('cache settings reads reject a missing revision instead of inventing a CAS 
 
   await assert.rejects(api.getCacheSettings(), TypeError);
 });
-

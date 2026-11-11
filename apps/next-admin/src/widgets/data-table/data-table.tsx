@@ -35,7 +35,7 @@ export function DataTable<TData extends RowData = any>({
   return (
     <div className='flex flex-1 flex-col space-y-4'>
       {children}
-      <div className='relative flex flex-1 min-h-[400px]'>
+      <div className='relative flex min-h-[400px] flex-1'>
         <div className='absolute inset-0 flex overflow-hidden rounded-lg border'>
           <ScrollArea className='h-full w-full'>
             <Table>
