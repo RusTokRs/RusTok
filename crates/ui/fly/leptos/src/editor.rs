@@ -659,11 +659,7 @@ fn report_workspace_error_raw(on_error: Option<Callback<String>>, message: &str)
     }
 }
 
-fn report_ui_error(
-    on_error: Option<Callback<String>>,
-    context: &str,
-    error: &fly_ui::UiError,
-) {
+fn report_ui_error(on_error: Option<Callback<String>>, context: &str, error: &fly_ui::UiError) {
     if let Some(on_error) = on_error {
         on_error.run(format!("{context}: {error}"));
     }
@@ -1865,7 +1861,9 @@ pub fn FlyEditorWorkspace(
                         palette_editor.with(|editor| on_change.run(editor.document().clone()));
                     }
                     palette_ui.update(|machine| {
-                        if let Err(error) = machine.dispatch(UiIntent::ReplaceDiagnostics(Vec::new())) {
+                        if let Err(error) =
+                            machine.dispatch(UiIntent::ReplaceDiagnostics(Vec::new()))
+                        {
                             report_ui_error(on_error, "Clear diagnostics failed", &error);
                         }
                     });
@@ -1960,10 +1958,7 @@ pub fn FlyEditorWorkspace(
                 report_workspace_error(on_error, "Add page failed", &error);
             }
             None => {
-                report_workspace_error_raw(
-                    on_error,
-                    "Add page failed: editor signal unavailable",
-                );
+                report_workspace_error_raw(on_error, "Add page failed: editor signal unavailable");
             }
         }
     });
@@ -2416,10 +2411,7 @@ pub fn FlyEditorWorkspace(
                 report_workspace_error(on_error, "Move page failed", &error);
             }
             None => {
-                report_workspace_error_raw(
-                    on_error,
-                    "Move page failed: editor signal unavailable",
-                );
+                report_workspace_error_raw(on_error, "Move page failed: editor signal unavailable");
             }
         }
     });
@@ -2582,7 +2574,8 @@ pub fn FlyEditorWorkspace(
                             match undo_result {
                                 Some(Ok(())) => {
                                     if let Some(on_change) = on_change {
-                                        shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                                        shortcut_editor
+                                            .with(|e| on_change.run(e.document().clone()));
                                     }
                                 }
                                 Some(Err(error)) => {
@@ -2605,7 +2598,8 @@ pub fn FlyEditorWorkspace(
                             match redo_result {
                                 Some(Ok(())) => {
                                     if let Some(on_change) = on_change {
-                                        shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                                        shortcut_editor
+                                            .with(|e| on_change.run(e.document().clone()));
                                     }
                                 }
                                 Some(Err(error)) => {
@@ -2635,7 +2629,8 @@ pub fn FlyEditorWorkspace(
                                 match apply_result {
                                     Some(Ok(_)) => {
                                         if let Some(on_change) = on_change {
-                                            shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                                            shortcut_editor
+                                                .with(|e| on_change.run(e.document().clone()));
                                         }
                                     }
                                     Some(Err(error)) => {
@@ -2666,21 +2661,33 @@ pub fn FlyEditorWorkspace(
                                 on_intent.run(BrowserIntentEnvelope::duplicate(&shortcut_instance));
                             } else {
                                 let apply_result = shortcut_editor.try_update(|e| {
-                                    let location = e.document().component_location(&component_id)
-                                        .ok_or_else(|| fly::FlyError::ComponentNotFound(component_id.clone()))?;
+                                    let location = e
+                                        .document()
+                                        .component_location(&component_id)
+                                        .ok_or_else(|| {
+                                        fly::FlyError::ComponentNotFound(component_id.clone())
+                                    })?;
                                     if location.depth == 0 {
                                         return Err(fly::FlyError::InvalidProjectBundle(
                                             "the page root cannot be duplicated".to_string(),
                                         ));
                                     }
-                                    let fragment = fly::ProjectFragment::from_component(e.document(), &component_id)?;
-                                    fragment.insert(e, location.parent_component_id, location.index + 1)?;
+                                    let fragment = fly::ProjectFragment::from_component(
+                                        e.document(),
+                                        &component_id,
+                                    )?;
+                                    fragment.insert(
+                                        e,
+                                        location.parent_component_id,
+                                        location.index + 1,
+                                    )?;
                                     Ok(())
                                 });
                                 match apply_result {
                                     Some(Ok(_)) => {
                                         if let Some(on_change) = on_change {
-                                            shortcut_editor.with(|e| on_change.run(e.document().clone()));
+                                            shortcut_editor
+                                                .with(|e| on_change.run(e.document().clone()));
                                         }
                                     }
                                     Some(Err(error)) => {
@@ -3011,7 +3018,10 @@ mod tests {
 
         let insert = opening_tag(&html, "data-fly-action=\"insert-block\"");
         assert!(insert.starts_with("<button"), "{insert}");
-        assert!(insert.contains("aria-label=\"Add: Topic list\""), "{insert}");
+        assert!(
+            insert.contains("aria-label=\"Add: Topic list\""),
+            "{insert}"
+        );
         assert!(!insert.contains("disabled"), "{insert}");
 
         let drag = opening_tag(&html, "data-fly-action=\"begin-block-drag\"");
@@ -3136,14 +3146,20 @@ mod tests {
 
         let row = opening_tag(&html, "data-fly-component-id=\"hero-title\"");
         assert!(row.starts_with("<button"), "{row}");
-        assert!(row.contains("data-fly-action=\"select-component\""), "{row}");
+        assert!(
+            row.contains("data-fly-action=\"select-component\""),
+            "{row}"
+        );
         assert!(row.contains("aria-current=\"true\""), "{row}");
         assert!(!row.contains("disabled"), "{row}");
         // One select control per selectable row and none on the rest: the adapter would
         // otherwise select, or offer to move, a component the editor refuses to select.
         assert_eq!(html.matches("<button").count(), rows.len());
         assert_eq!(html.matches("data-fly-component-id=").count(), selectable);
-        assert_eq!(html.matches("data-fly-action=\"select-component\"").count(), selectable);
+        assert_eq!(
+            html.matches("data-fly-action=\"select-component\"").count(),
+            selectable
+        );
     }
 
     #[test]

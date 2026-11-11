@@ -48,7 +48,9 @@ pub fn effective_permissions_grant(effective: &[String], required: &str) -> bool
         granted
             .split_once(':')
             .is_some_and(|(granted_resource, granted_action)| {
-                granted_resource.trim().eq_ignore_ascii_case(resource.trim())
+                granted_resource
+                    .trim()
+                    .eq_ignore_ascii_case(resource.trim())
                     && matches!(granted_action.trim(), "manage" | "*")
             })
     })
@@ -150,8 +152,7 @@ mod tests {
 
     #[test]
     fn update_grant_authors_but_cannot_publish() {
-        let permissions =
-            pages_editor_permissions_from_effective(&["pages:update".to_string()]);
+        let permissions = pages_editor_permissions_from_effective(&["pages:update".to_string()]);
         assert!(permissions.edit);
         assert!(permissions.properties);
         assert!(permissions.assets);
@@ -160,8 +161,7 @@ mod tests {
 
     #[test]
     fn publish_grant_without_update_only_publishes() {
-        let permissions =
-            pages_editor_permissions_from_effective(&["pages:publish".to_string()]);
+        let permissions = pages_editor_permissions_from_effective(&["pages:publish".to_string()]);
         assert!(!permissions.edit);
         assert!(!permissions.properties);
         assert!(!permissions.assets);
@@ -190,8 +190,14 @@ mod tests {
             "forum_topics:manage".to_string(),
             "pages:update".to_string(),
         ];
-        assert!(effective_permissions_grant(&effective, "forum_topics:moderate"));
-        assert!(!effective_permissions_grant(&effective, "blog_posts:update"));
+        assert!(effective_permissions_grant(
+            &effective,
+            "forum_topics:moderate"
+        ));
+        assert!(!effective_permissions_grant(
+            &effective,
+            "blog_posts:update"
+        ));
         assert!(!effective_permissions_grant(&effective, "pages:publish"));
         assert!(effective_permissions_grant(
             &["  pages:manage  ".to_string()],
@@ -219,8 +225,7 @@ mod tests {
 
     #[test]
     fn healthy_pages_registry_preserves_effective_permissions() {
-        let policy =
-            pages_editor_capability_policy_from_effective(&["pages:update".to_string()]);
+        let policy = pages_editor_capability_policy_from_effective(&["pages:update".to_string()]);
         let evaluation = policy.evaluate_detailed();
         assert_eq!(evaluation.provider_state, EditorProviderState::Healthy);
         assert!(evaluation.effective.edit);

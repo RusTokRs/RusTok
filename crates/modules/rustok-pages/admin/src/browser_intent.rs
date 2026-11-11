@@ -903,10 +903,12 @@ mod tests {
         let default_durable = pages_browser_default_durable_store();
         assert_eq!(default_durable.memory().len().unwrap(), 0);
         let store = pages_browser_draft_store();
-        assert!(store
-            .load("non-existent-token", "home", None)
-            .unwrap()
-            .is_none());
+        assert!(
+            store
+                .load("non-existent-token", "home", None)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -966,15 +968,14 @@ mod tests {
 
     #[test]
     fn persisted_revision_key_separates_auth_contexts() {
-        let snapshot = |token: Option<&str>, tenant: Option<&str>, page: &str| {
-            PagesBuilderSaveSnapshot {
+        let snapshot =
+            |token: Option<&str>, tenant: Option<&str>, page: &str| PagesBuilderSaveSnapshot {
                 token: token.map(ToString::to_string),
                 tenant_slug: tenant.map(ToString::to_string),
                 page_id: page.to_string(),
                 default_locale: "en".to_string(),
                 owner: None,
-            }
-        };
+            };
         let base = snapshot(Some("token-a"), Some("tenant-1"), "home");
         assert_eq!(
             persisted_revision_key(&base),

@@ -1734,10 +1734,7 @@ impl DraftSessionKvDriver for MemoryKvDriver {
             .read()
             .map_err(|_| SsrDraftSessionError::Poisoned)?;
         let now = current_unix_secs();
-        if let Some((bytes, _, _)) = entries
-            .get(key)
-            .filter(|(_, _, expires)| *expires > now)
-        {
+        if let Some((bytes, _, _)) = entries.get(key).filter(|(_, _, expires)| *expires > now) {
             return Ok(Some(bytes.clone()));
         }
         Ok(None)
@@ -2712,7 +2709,10 @@ mod tests {
         let store = FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100)
             .expect("store");
         assert_eq!(store.load("../traversal", "home", None).unwrap(), None);
-        assert_eq!(store.load("token with spaces!", "home", None).unwrap(), None);
+        assert_eq!(
+            store.load("token with spaces!", "home", None).unwrap(),
+            None
+        );
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
@@ -2816,7 +2816,9 @@ mod tests {
         assert_eq!(updated.generation, 2);
 
         // Remove cleans up both
-        restarted_durable.remove(&committed.token, None).expect("remove");
+        restarted_durable
+            .remove(&committed.token, None)
+            .expect("remove");
         assert!(
             restarted_durable
                 .load(&committed.token, "landing", None)
@@ -2892,10 +2894,12 @@ mod tests {
         pod1_store
             .remove(&committed.token, None)
             .expect("cluster remove");
-        assert!(pod2_store
-            .load(&committed.token, "home", None)
-            .unwrap()
-            .is_none());
+        assert!(
+            pod2_store
+                .load(&committed.token, "home", None)
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(shared_driver.len(), 0);
     }
 
@@ -2968,10 +2972,12 @@ mod tests {
             store.load(&created.token, "home", Some(&mallory)),
             Err(SsrDraftSessionError::OwnerMismatch)
         ));
-        assert!(store
-            .load(&created.token, "home", Some(&alice))
-            .expect("owner load")
-            .is_some());
+        assert!(
+            store
+                .load(&created.token, "home", Some(&alice))
+                .expect("owner load")
+                .is_some()
+        );
     }
 
     #[test]
@@ -3037,10 +3043,11 @@ mod tests {
             pod2.remove(&created.token, Some(&bob)),
             Err(SsrDraftSessionError::OwnerMismatch)
         ));
-        assert!(pod2
-            .load(&created.token, "home", Some(&alice))
-            .expect("owner load")
-            .is_some());
+        assert!(
+            pod2.load(&created.token, "home", Some(&alice))
+                .expect("owner load")
+                .is_some()
+        );
     }
 
     #[test]
@@ -3115,25 +3122,33 @@ mod tests {
         driver.set("k", b"v1", 1, 3600).expect("set");
 
         // Matching CAS token wins and bumps the stored token.
-        assert!(driver
-            .compare_and_set("k", Some(1), b"v2", 2, 3600)
-            .expect("cas"));
+        assert!(
+            driver
+                .compare_and_set("k", Some(1), b"v2", 2, 3600)
+                .expect("cas")
+        );
         assert_eq!(driver.get("k").unwrap().as_deref(), Some(b"v2".as_slice()));
 
         // A stale CAS token loses without overwriting.
-        assert!(!driver
-            .compare_and_set("k", Some(1), b"stale", 3, 3600)
-            .expect("cas"));
+        assert!(
+            !driver
+                .compare_and_set("k", Some(1), b"stale", 3, 3600)
+                .expect("cas")
+        );
         assert_eq!(driver.get("k").unwrap().as_deref(), Some(b"v2".as_slice()));
 
         // expected None requires the key to be absent (SETNX semantics).
-        assert!(!driver
-            .compare_and_set("k", None, b"create", 1, 3600)
-            .expect("cas"));
+        assert!(
+            !driver
+                .compare_and_set("k", None, b"create", 1, 3600)
+                .expect("cas")
+        );
         driver.delete("k").expect("delete");
-        assert!(driver
-            .compare_and_set("k", None, b"created", 1, 3600)
-            .expect("cas"));
+        assert!(
+            driver
+                .compare_and_set("k", None, b"created", 1, 3600)
+                .expect("cas")
+        );
         assert_eq!(
             driver.get("k").unwrap().as_deref(),
             Some(b"created".as_slice())
@@ -3155,10 +3170,11 @@ mod tests {
         let created = pod1
             .commit(None, None, controller("home"), None)
             .expect("create");
-        assert!(pod2
-            .load(&created.token, "home", None)
-            .expect("load")
-            .is_some());
+        assert!(
+            pod2.load(&created.token, "home", None)
+                .expect("load")
+                .is_some()
+        );
 
         let first = pod1
             .commit(
@@ -3511,7 +3527,8 @@ mod tests {
                         serde_json::from_slice(value).expect("loser record parses");
                     record.runtime_context = json!({ "pod": "pod-1" });
                     let winner_bytes = serde_json::to_vec(&record).expect("winner serializes");
-                    self.inner.set(key, &winner_bytes, record.generation, ttl_secs)?;
+                    self.inner
+                        .set(key, &winner_bytes, record.generation, ttl_secs)?;
                 }
                 self.inner
                     .compare_and_set(key, expected_cas, value, cas, ttl_secs)
@@ -3587,21 +3604,29 @@ mod tests {
         };
 
         // Create: expected None against an absent key wins.
-        assert!(backend
-            .compare_and_save_record(None, &base(1))
-            .expect("create cas"));
+        assert!(
+            backend
+                .compare_and_save_record(None, &base(1))
+                .expect("create cas")
+        );
         // Create against an existing key loses.
-        assert!(!backend
-            .compare_and_save_record(None, &base(1))
-            .expect("create cas loses"));
+        assert!(
+            !backend
+                .compare_and_save_record(None, &base(1))
+                .expect("create cas loses")
+        );
         // Update with the matching expected generation wins.
-        assert!(backend
-            .compare_and_save_record(Some(&base(1)), &base(2))
-            .expect("update cas"));
+        assert!(
+            backend
+                .compare_and_save_record(Some(&base(1)), &base(2))
+                .expect("update cas")
+        );
         // Update with a stale expected generation loses.
-        assert!(!backend
-            .compare_and_save_record(Some(&base(1)), &base(3))
-            .expect("stale cas loses"));
+        assert!(
+            !backend
+                .compare_and_save_record(Some(&base(1)), &base(3))
+                .expect("stale cas loses")
+        );
         // The stored record is the winner's.
         let stored = backend
             .load_record("tokCAS01", None)
@@ -3616,38 +3641,47 @@ mod tests {
             std::env::temp_dir().join(format!("rustok_draft_test_{}", Uuid::new_v4().simple()));
         let backend = FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100)
             .expect("store");
-        let base = |generation: u64, owner: Option<DraftSessionOwner>| {
-            PersistentDraftSessionRecord {
+        let base =
+            |generation: u64, owner: Option<DraftSessionOwner>| PersistentDraftSessionRecord {
                 token: "tokCAS01".to_string(),
                 generation,
                 controller: controller("home"),
                 runtime_context: json!({ "generation": generation }),
                 owner,
                 expires_at_unix_secs: current_unix_secs() + 3600,
-            }
-        };
+            };
 
         // Create: expected None against an absent record wins.
-        assert!(backend
-            .compare_and_save_record(None, &base(1, None))
-            .expect("create cas"));
+        assert!(
+            backend
+                .compare_and_save_record(None, &base(1, None))
+                .expect("create cas")
+        );
         // Create against an existing record loses.
-        assert!(!backend
-            .compare_and_save_record(None, &base(1, None))
-            .expect("create cas loses"));
+        assert!(
+            !backend
+                .compare_and_save_record(None, &base(1, None))
+                .expect("create cas loses")
+        );
         // Update with the matching expected record wins.
-        assert!(backend
-            .compare_and_save_record(Some(&base(1, None)), &base(2, None))
-            .expect("update cas"));
+        assert!(
+            backend
+                .compare_and_save_record(Some(&base(1, None)), &base(2, None))
+                .expect("update cas")
+        );
         // A stale expected generation loses.
-        assert!(!backend
-            .compare_and_save_record(Some(&base(1, None)), &base(3, None))
-            .expect("stale cas loses"));
+        assert!(
+            !backend
+                .compare_and_save_record(Some(&base(1, None)), &base(3, None))
+                .expect("stale cas loses")
+        );
         // A different expected owner loses even with a fresh generation.
         let alice = owner("acme", "user-alice");
-        assert!(!backend
-            .compare_and_save_record(Some(&base(2, Some(alice.clone()))), &base(3, None))
-            .expect("owner cas loses"));
+        assert!(
+            !backend
+                .compare_and_save_record(Some(&base(2, Some(alice.clone()))), &base(3, None))
+                .expect("owner cas loses")
+        );
         // The stored record is the winner's.
         let stored = backend
             .load_record("tokCAS01", None)

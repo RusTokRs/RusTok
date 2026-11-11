@@ -385,7 +385,10 @@ mod tests {
         assert_eq!(viewport.width, preset.width);
         assert_eq!(viewport.height, preset.height);
         assert_eq!(viewport, preset.apply(ViewportState::default()));
-        assert_eq!(active_viewport_preset_id(viewport).as_deref(), Some("tablet"));
+        assert_eq!(
+            active_viewport_preset_id(viewport).as_deref(),
+            Some("tablet")
+        );
     }
 
     #[test]

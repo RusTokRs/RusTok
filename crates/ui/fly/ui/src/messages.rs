@@ -208,8 +208,7 @@ mod tests {
 
     #[test]
     fn message_sets_written_before_the_palette_controls_still_deserialize() {
-        let mut json = serde_json::to_value(EditorMessages::english())
-            .expect("serialize messages");
+        let mut json = serde_json::to_value(EditorMessages::english()).expect("serialize messages");
         let fields = json.as_object_mut().expect("message object");
         fields.remove("insert_block");
         fields.remove("drag_block");

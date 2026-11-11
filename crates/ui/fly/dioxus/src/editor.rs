@@ -394,7 +394,9 @@ pub fn FlyEditorWorkspace(
                 return;
             }
             if let Some(handler) = on_intent {
-                handler.call(BrowserIntentEnvelope::begin_palette_drag(&instance, &block_id));
+                handler.call(BrowserIntentEnvelope::begin_palette_drag(
+                    &instance, &block_id,
+                ));
             }
         }
     });

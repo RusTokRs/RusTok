@@ -185,10 +185,16 @@ fn palette_renders_the_ssr_controls_the_browser_adapter_binds() {
         "a palette item must state both capabilities: {item}"
     );
     let insert = opening_tag(&html, "data-fly-action=\"insert-block\"", "<button");
-    assert!(!is_disabled(insert), "an allowed insert must be enabled: {insert}");
+    assert!(
+        !is_disabled(insert),
+        "an allowed insert must be enabled: {insert}"
+    );
     // The admin mounts the workspace in intent mode, which is what offers the drag control.
     let drag = opening_tag(&html, "data-fly-action=\"begin-block-drag\"", "<button");
-    assert!(!is_disabled(drag), "an allowed drag must be enabled: {drag}");
+    assert!(
+        !is_disabled(drag),
+        "an allowed drag must be enabled: {drag}"
+    );
 }
 
 #[test]
@@ -202,7 +208,10 @@ fn palette_controls_follow_the_capabilities_of_a_read_only_caller() {
         "a read-only palette item must state both denials: {item}"
     );
     let insert = opening_tag(&html, "data-fly-action=\"insert-block\"", "<button");
-    assert!(is_disabled(insert), "a denied insert must be disabled: {insert}");
+    assert!(
+        is_disabled(insert),
+        "a denied insert must be disabled: {insert}"
+    );
     let drag = opening_tag(&html, "data-fly-action=\"begin-block-drag\"", "<button");
     assert!(is_disabled(drag), "a denied drag must be disabled: {drag}");
 }
@@ -216,7 +225,10 @@ fn layer_rows_render_the_ssr_select_control() {
         row.contains("data-fly-action=\"select-component\""),
         "a layer row must carry the select action next to its component id: {row}"
     );
-    assert!(!is_disabled(row), "a selectable layer row must be enabled: {row}");
+    assert!(
+        !is_disabled(row),
+        "a selectable layer row must be enabled: {row}"
+    );
 }
 
 // The classic SSR inspector. Its controls are bound by the host bootstrap

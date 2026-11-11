@@ -2074,7 +2074,9 @@ mod tests {
             rendered.html
         );
         assert!(
-            rendered.html.contains("sizes=\"(max-width: 800px) 100vw, 800px\""),
+            rendered
+                .html
+                .contains("sizes=\"(max-width: 800px) 100vw, 800px\""),
             "html: {}",
             rendered.html
         );
@@ -2105,7 +2107,11 @@ mod tests {
             .expect("document");
             let rendered = render_page(&document, &PageSelection::First, &RenderPolicy::default())
                 .expect("rendered");
-            assert!(!rendered.html.contains("srcset="), "html: {}", rendered.html);
+            assert!(
+                !rendered.html.contains("srcset="),
+                "html: {}",
+                rendered.html
+            );
         }
     }
 }
