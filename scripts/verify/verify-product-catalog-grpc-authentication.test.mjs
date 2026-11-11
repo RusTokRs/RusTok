@@ -51,7 +51,7 @@ function fixture(options = {}) {
   write(
     root,
     "crates/modules/rustok-product-transport/src/server.rs",
-    `pub struct ProductCatalogGrpcBearerAuthenticator pub struct ProductCatalogGrpcBearerInterceptor ProductCatalogGrpcOperation::ALL self.token.matches_authorization(authorization.as_bytes()) Uuid::parse_str(tenant_id) actor: self.actor.clone() allowed_operations: self.allowed_operations.clone() Status::unauthenticated("Product catalog service authentication failed") request.extensions_mut().insert(authority) bearer_interceptor_authenticates_tenant_and_service_actor bearer_interceptor_rejects_missing_or_wrong_token bearer_interceptor_rejects_invalid_tenant_metadata`,
+    `pub struct ProductCatalogGrpcBearerAuthenticator pub struct ProductCatalogGrpcBearerInterceptor HashSet::from(ProductCatalogGrpcOperation::READ) self.token.matches_authorization(authorization.as_bytes()) Uuid::parse_str(tenant_id) actor: self.actor.clone() allowed_operations: self.allowed_operations.clone() Status::unauthenticated("Product catalog service authentication failed") request.extensions_mut().insert(authority) bearer_interceptor_authenticates_tenant_and_service_actor bearer_interceptor_rejects_missing_or_wrong_token bearer_interceptor_rejects_invalid_tenant_metadata`,
   );
   const tokenRequirement = options.missingDeploymentToken
     ? ""

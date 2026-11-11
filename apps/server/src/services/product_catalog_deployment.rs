@@ -12,6 +12,7 @@ const PROVIDER_ENV: &str = "RUSTOK_PRODUCT_CATALOG_PROVIDER";
 const COMMAND_PROVIDER_ENV: &str = "RUSTOK_PRODUCT_COMMAND_PROVIDER";
 const GRPC_ENDPOINT_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT";
 const GRPC_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN";
+const COMMAND_GRPC_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN";
 const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN";
 const CONNECT_TIMEOUT_MS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS";
 const ALLOW_INSECURE_LOOPBACK_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK";
@@ -60,7 +61,7 @@ struct ProductCatalogGrpcDeployment {
 /// Selects and connects the deployment-owned Product catalog provider before host composition.
 ///
 /// The default is the embedded owner service. When `grpc` is selected, invalid configuration,
-/// authentication, or connection failure aborts startup; the server never silently falls back to
+/// credential format, or connection failure aborts startup; the server never silently falls back to
 /// embedded execution.
 pub async fn configure_product_catalog_deployment(ctx: &ServerRuntimeContext) -> Result<()> {
     #[cfg(feature = "mod-product")]
@@ -82,10 +83,10 @@ pub async fn configure_product_catalog_deployment(ctx: &ServerRuntimeContext) ->
         if let ProductCatalogDeployment::Grpc(remote) = config.read {
             let authentication = ProductCatalogGrpcBearerToken::new(remote.bearer_token.expose())
                 .map_err(|error| {
-                    Error::Message(format!(
-                        "remote Product catalog authentication configuration failed: {error}"
-                    ))
-                })?;
+                Error::Message(format!(
+                    "remote Product catalog authentication configuration failed: {error}"
+                ))
+            })?;
             let provider = GrpcProductCatalogReadConnectionConfig::new(remote.endpoint)
                 .with_tls_domain(remote.tls_domain)
                 .with_connect_timeout(Duration::from_millis(remote.connect_timeout_ms))
@@ -115,10 +116,10 @@ pub async fn configure_product_catalog_deployment(ctx: &ServerRuntimeContext) ->
         if let ProductCatalogDeployment::Grpc(remote) = config.command {
             let authentication = ProductCatalogGrpcBearerToken::new(remote.bearer_token.expose())
                 .map_err(|error| {
-                    Error::Message(format!(
-                        "remote Product catalog command authentication configuration failed: {error}"
-                    ))
-                })?;
+                Error::Message(format!(
+                    "remote Product catalog command authentication configuration failed: {error}"
+                ))
+            })?;
             let provider = GrpcProductCatalogReadConnectionConfig::new(remote.endpoint)
                 .with_tls_domain(remote.tls_domain)
                 .with_connect_timeout(Duration::from_millis(remote.connect_timeout_ms))
@@ -160,70 +161,11 @@ fn deployment_from_environment() -> std::result::Result<ProductDeploymentConfig,
         optional_env(COMMAND_PROVIDER_ENV).as_deref(),
         optional_env(GRPC_ENDPOINT_ENV).as_deref(),
         optional_secret_env(GRPC_BEARER_TOKEN_ENV).as_deref(),
+        optional_secret_env(COMMAND_GRPC_BEARER_TOKEN_ENV).as_deref(),
         optional_env(TLS_DOMAIN_ENV).as_deref(),
         optional_env(CONNECT_TIMEOUT_MS_ENV).as_deref(),
         optional_env(ALLOW_INSECURE_LOOPBACK_ENV).as_deref(),
     )
-}
-
-fn parse_deployment(
-    provider: Option<&str>,
-    endpoint: Option<&str>,
-    bearer_token: Option<&str>,
-    tls_domain: Option<&str>,
-    connect_timeout_ms: Option<&str>,
-    allow_insecure_loopback: Option<&str>,
-) -> std::result::Result<ProductCatalogDeployment, String> {
-    let provider = provider
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("embedded")
-        .to_ascii_lowercase();
-    let endpoint = normalize_optional(endpoint);
-    let bearer_token = bearer_token
-        .filter(|value| !value.is_empty())
-        .map(|value| ProductCatalogBearerSecret::new(value.to_string()));
-    let tls_domain = normalize_optional(tls_domain);
-    let timeout = parse_timeout(connect_timeout_ms)?;
-    let allow_insecure_loopback_is_configured = allow_insecure_loopback
-        .map(str::trim)
-        .is_some_and(|value| !value.is_empty());
-    let allow_insecure_loopback =
-        parse_bool(allow_insecure_loopback, ALLOW_INSECURE_LOOPBACK_ENV, false)?;
-
-    match provider.as_str() {
-        "embedded" => {
-            if endpoint.is_some()
-                || bearer_token.is_some()
-                || tls_domain.is_some()
-                || connect_timeout_ms.is_some()
-                || allow_insecure_loopback_is_configured
-            {
-                return Err(format!(
-                    "remote Product catalog variables require {PROVIDER_ENV}=grpc"
-                ));
-            }
-            Ok(ProductCatalogDeployment::Embedded)
-        }
-        "grpc" => {
-            let endpoint = endpoint.ok_or_else(|| {
-                format!("{GRPC_ENDPOINT_ENV} is required when {PROVIDER_ENV}=grpc")
-            })?;
-            let bearer_token = bearer_token.ok_or_else(|| {
-                format!("{GRPC_BEARER_TOKEN_ENV} is required when {PROVIDER_ENV}=grpc")
-            })?;
-            Ok(ProductCatalogDeployment::Grpc(
-                ProductCatalogGrpcDeployment {
-                    endpoint,
-                    bearer_token,
-                    tls_domain,
-                    connect_timeout_ms: timeout,
-                    allow_insecure_loopback,
-                },
-            ))
-        }
-        _ => Err(format!("{PROVIDER_ENV} must be either embedded or grpc")),
-    }
 }
 
 fn parse_product_deployment_config(
@@ -232,6 +174,7 @@ fn parse_product_deployment_config(
     command_provider: Option<&str>,
     endpoint: Option<&str>,
     bearer_token: Option<&str>,
+    command_bearer_token: Option<&str>,
     tls_domain: Option<&str>,
     connect_timeout_ms: Option<&str>,
     allow_insecure_loopback: Option<&str>,
@@ -240,23 +183,75 @@ fn parse_product_deployment_config(
     let read_remote = uses_grpc(read_provider, PROVIDER_ENV)?.unwrap_or(default_remote);
     let command_remote =
         uses_grpc(command_provider, COMMAND_PROVIDER_ENV)?.unwrap_or(default_remote);
+    let endpoint = normalize_optional(endpoint);
+    let bearer_token = bearer_token.filter(|value| !value.is_empty());
+    let command_bearer_token = command_bearer_token.filter(|value| !value.is_empty());
+    let tls_domain = normalize_optional(tls_domain);
+    let timeout = parse_timeout(connect_timeout_ms)?;
+    let allow_insecure_loopback_is_configured = allow_insecure_loopback
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    let allow_insecure_loopback =
+        parse_bool(allow_insecure_loopback, ALLOW_INSECURE_LOOPBACK_ENV, false)?;
 
-    let deployment = parse_deployment(
-        Some(if read_remote || command_remote { "grpc" } else { "embedded" }),
-        endpoint,
-        bearer_token,
-        tls_domain,
-        connect_timeout_ms,
-        allow_insecure_loopback,
-    )?;
+    if command_bearer_token.is_some() && !command_remote {
+        return Err(format!(
+            "{COMMAND_GRPC_BEARER_TOKEN_ENV} requires a grpc command provider"
+        ));
+    }
+    if !read_remote && !command_remote {
+        if endpoint.is_some()
+            || bearer_token.is_some()
+            || tls_domain.is_some()
+            || connect_timeout_ms.is_some()
+            || allow_insecure_loopback_is_configured
+        {
+            return Err("remote Product catalog variables require a grpc provider".to_string());
+        }
+        return Ok(ProductDeploymentConfig {
+            read: ProductCatalogDeployment::Embedded,
+            command: ProductCatalogDeployment::Embedded,
+        });
+    }
+    let endpoint = endpoint.ok_or_else(|| {
+        format!("{GRPC_ENDPOINT_ENV} is required for a grpc Product catalog provider")
+    })?;
+    if bearer_token.is_some() && bearer_token == command_bearer_token {
+        return Err(format!(
+            "{COMMAND_GRPC_BEARER_TOKEN_ENV} must differ from {GRPC_BEARER_TOKEN_ENV}"
+        ));
+    }
+    let configure = |remote: bool,
+                     token: Option<&str>,
+                     token_env: &str|
+     -> std::result::Result<ProductCatalogDeployment, String> {
+        if !remote {
+            return Ok(ProductCatalogDeployment::Embedded);
+        }
+        let token = token
+            .ok_or_else(|| format!("{token_env} is required for the selected grpc provider"))?;
+        Ok(ProductCatalogDeployment::Grpc(
+            ProductCatalogGrpcDeployment {
+                endpoint: endpoint.clone(),
+                bearer_token: ProductCatalogBearerSecret::new(token),
+                tls_domain: tls_domain.clone(),
+                connect_timeout_ms: timeout,
+                allow_insecure_loopback,
+            },
+        ))
+    };
     Ok(ProductDeploymentConfig {
-        read: if read_remote { deployment.clone() } else { ProductCatalogDeployment::Embedded },
-        command: if command_remote { deployment } else { ProductCatalogDeployment::Embedded },
+        read: configure(read_remote, bearer_token, GRPC_BEARER_TOKEN_ENV)?,
+        command: configure(
+            command_remote,
+            command_bearer_token,
+            COMMAND_GRPC_BEARER_TOKEN_ENV,
+        )?,
     })
 }
 
 fn uses_grpc(value: Option<&str>, variable: &str) -> std::result::Result<Option<bool>, String> {
-    match normalize_optional(value).as_deref() {
+    match value.map(str::trim).filter(|value| !value.is_empty()) {
         None => Ok(None),
         Some(mode) if mode.eq_ignore_ascii_case("embedded") => Ok(Some(false)),
         Some(mode) if mode.eq_ignore_ascii_case("grpc") => Ok(Some(true)),
@@ -305,9 +300,31 @@ fn optional_secret_env(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProductCatalogBearerSecret, ProductCatalogDeployment, ProductCatalogGrpcDeployment,
-        parse_deployment, parse_product_deployment_config,
+        COMMAND_GRPC_BEARER_TOKEN_ENV, ProductCatalogBearerSecret, ProductCatalogDeployment,
+        ProductCatalogGrpcDeployment, parse_product_deployment_config,
     };
+
+    fn parse_deployment(
+        provider: Option<&str>,
+        endpoint: Option<&str>,
+        bearer_token: Option<&str>,
+        tls_domain: Option<&str>,
+        timeout: Option<&str>,
+        loopback: Option<&str>,
+    ) -> Result<ProductCatalogDeployment, String> {
+        parse_product_deployment_config(
+            None,
+            provider,
+            None,
+            endpoint,
+            bearer_token,
+            None,
+            tls_domain,
+            timeout,
+            loopback,
+        )
+        .map(|config| config.read)
+    }
 
     #[test]
     fn embedded_is_the_default() {
@@ -387,7 +404,7 @@ mod tests {
             None,
         )
         .expect_err("remote Product variables in embedded mode must be rejected");
-        assert!(error.contains("require RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc"));
+        assert!(error.contains("require a grpc provider"));
     }
 
     #[test]
@@ -401,14 +418,14 @@ mod tests {
             None,
         )
         .expect_err("remote Product credential in embedded mode must be rejected");
-        assert!(error.contains("require RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc"));
+        assert!(error.contains("require a grpc provider"));
     }
 
     #[test]
     fn explicit_loopback_flag_is_not_silently_ignored_in_embedded_mode() {
         let error = parse_deployment(Some("embedded"), None, None, None, None, Some("false"))
             .expect_err("explicit remote loopback configuration must require grpc mode");
-        assert!(error.contains("require RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc"));
+        assert!(error.contains("require a grpc provider"));
     }
 
     #[test]
@@ -433,22 +450,33 @@ mod tests {
             None,
             Some("https://product-catalog.internal:7443"),
             Some("catalog-secret"),
+            Some("command-secret"),
             Some("product-catalog.internal"),
             Some("3000"),
             Some("false"),
         )
         .expect("unified deployment should configure both");
 
-        let expected = ProductCatalogDeployment::Grpc(ProductCatalogGrpcDeployment {
+        let expected = ProductCatalogGrpcDeployment {
             endpoint: "https://product-catalog.internal:7443".to_string(),
             bearer_token: ProductCatalogBearerSecret::new("catalog-secret"),
             tls_domain: Some("product-catalog.internal".to_string()),
             connect_timeout_ms: 3000,
             allow_insecure_loopback: false,
-        });
+        };
 
-        assert_eq!(config.read, expected);
-        assert_eq!(config.command, expected);
+        assert_eq!(
+            config.read,
+            ProductCatalogDeployment::Grpc(expected.clone())
+        );
+        assert_eq!(
+            config.command,
+            ProductCatalogDeployment::Grpc(ProductCatalogGrpcDeployment {
+                bearer_token: ProductCatalogBearerSecret::new("command-secret"),
+                ..expected
+            })
+        );
+        assert!(!format!("{config:?}").contains("command-secret"));
     }
 
     #[test]
@@ -458,7 +486,8 @@ mod tests {
             None,
             Some("grpc"),
             Some("https://product-catalog.internal:7443"),
-            Some("catalog-secret"),
+            None,
+            Some("command-secret"),
             None,
             None,
             None,
@@ -472,11 +501,12 @@ mod tests {
     #[test]
     fn independent_read_provider_flag_configures_only_read() {
         let config = parse_product_deployment_config(
-            None,
             Some("grpc"),
+            None,
             Some("embedded"),
             Some("https://product-catalog.internal:7443"),
             Some("catalog-secret"),
+            None,
             None,
             None,
             None,
@@ -496,6 +526,7 @@ mod tests {
             Some("http://127.0.0.1:7443"),
             Some("catalog-secret"),
             None,
+            None,
             Some("2500"),
             Some("true"),
         )
@@ -506,36 +537,25 @@ mod tests {
     }
 
     #[test]
-    fn unified_deployment_flag_configures_both_read_and_command_minimal() {
-        let config = parse_product_deployment_config(
-            Some("grpc"),
-            None,
-            None,
-            Some("https://product-catalog.internal:7443"),
-            Some("catalog-secret"),
-            None,
-            None,
-            None,
-        )
-        .unwrap();
-        assert!(matches!(config.read, ProductCatalogDeployment::Grpc(_)));
-        assert!(matches!(config.command, ProductCatalogDeployment::Grpc(_)));
-    }
-
-    #[test]
-    fn command_provider_flag_configures_command_independently() {
-        let config = parse_product_deployment_config(
-            None,
-            None,
-            Some("grpc"),
-            Some("https://product-catalog.internal:7443"),
-            Some("catalog-secret"),
-            None,
-            None,
-            None,
-        )
-        .unwrap();
-        assert_eq!(config.read, ProductCatalogDeployment::Embedded);
-        assert!(matches!(config.command, ProductCatalogDeployment::Grpc(_)));
+    fn grpc_commands_require_a_distinct_bearer_token() {
+        for (token, expected_error) in [
+            (None, "is required"),
+            (Some("catalog-secret"), "must differ"),
+        ] {
+            let error = parse_product_deployment_config(
+                Some("grpc"),
+                None,
+                None,
+                Some("https://product-catalog.internal:7443"),
+                Some("catalog-secret"),
+                token,
+                None,
+                None,
+                None,
+            )
+            .unwrap_err();
+            assert!(error.contains(COMMAND_GRPC_BEARER_TOKEN_ENV));
+            assert!(error.contains(expected_error));
+        }
     }
 }

@@ -464,6 +464,12 @@ function childEnvironment(base, additions) {
   delete environment.RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_CERT_PATH;
   delete environment.RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_KEY_PATH;
   delete environment.RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN;
+  // The locked packet covers only the six original catalog reads.
+  delete environment.RUSTOK_PRODUCT_DEPLOYMENT;
+  delete environment.RUSTOK_PRODUCT_COMMAND_PROVIDER;
+  delete environment.RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN;
+  delete environment.RUSTOK_PRODUCT_CATALOG_COMMAND_ACTOR_ID;
+  delete environment.RUSTOK_PRODUCT_CATALOG_EVIDENCE_ENABLE_COMMANDS;
   return environment;
 }
 

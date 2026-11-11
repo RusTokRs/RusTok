@@ -903,19 +903,22 @@ pub(super) async fn load_tenant_variant<C>(
 where
     C: ConnectionTrait,
 {
-    crate::product_port::get_variant_info_from_conn(conn, tenant_id, variant_id)
+    crate::product_port::find_variant_info_from_conn(conn, tenant_id, variant_id)
         .await
-        .inspect_err(|error| {
-            if error.kind == PortErrorKind::NotFound {
-                let facts = InventoryOwnerErrorFacts::uuid("variant_not_found", variant_id);
-                log_inventory_port_failure(
-                    context,
-                    owner_operation,
-                    "inventory.variant_not_found",
-                    &facts,
-                    false,
-                );
-            }
+        .map_err(|error| storage_unavailable_with_context(context, owner_operation, error))?
+        .ok_or_else(|| {
+            let facts = InventoryOwnerErrorFacts::uuid("variant_not_found", variant_id);
+            log_inventory_port_failure(
+                context,
+                owner_operation,
+                "inventory.variant_not_found",
+                &facts,
+                false,
+            );
+            PortError::not_found(
+                "inventory.variant_not_found",
+                "inventory variant was not found",
+            )
         })
 }
 
@@ -1380,6 +1383,10 @@ pub(super) fn storage_unavailable_with_context(
         &facts,
         true,
     );
+    storage_unavailable()
+}
+
+pub(super) fn storage_unavailable() -> PortError {
     PortError::unavailable(
         "inventory.database_unavailable",
         "inventory storage is temporarily unavailable",
@@ -1465,6 +1472,24 @@ fn inventory_error_to_port_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn missing_product_schema_returns_the_public_inventory_storage_error() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let tenant_id = Uuid::new_v4();
+        let context = PortContext::new(
+            tenant_id.to_string(),
+            rustok_api::PortActor::system(),
+            "en",
+            "test",
+        );
+        let error = load_tenant_variant(&context, "test", &db, tenant_id, Uuid::new_v4())
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind, PortErrorKind::Unavailable);
+        assert_eq!(error.code, "inventory.database_unavailable");
+        assert_eq!(error.message, "inventory storage is temporarily unavailable");
+    }
 
     #[test]
     fn reservation_external_id_is_trimmed_and_bounded() {

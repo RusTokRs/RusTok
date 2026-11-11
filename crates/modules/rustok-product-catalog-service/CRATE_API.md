@@ -14,7 +14,8 @@ it does not establish secure-memory storage or zeroization.
 
 The host composes PostgreSQL, Product's `CatalogService`, an Outbox-backed
 `TransactionalEventBus` and `ProductCatalogGrpcService` with bearer authentication.
-The host exposes the selected catalog projection and SKU identity read ports.
+The host exposes the selected catalog projection and SKU identity read ports, and a separate
+command service when command authentication is configured.
 Platform telemetry uses service name `rustok-product-catalog-service`. Ctrl-C and
 Unix SIGTERM request graceful tonic and telemetry shutdown.
 
@@ -43,13 +44,14 @@ The operations include `ProductCatalogReadService` (`ReadProductProjection`, `Re
   schema/dependency/business-path verification.
 - The host does not run migrations. Deployment must provide a migrated owner schema.
 - TLS is required unless explicitly permitted plaintext is bound to loopback.
-- Caller claims are admitted through the interceptor; the trusted actor is configured
-  server-side. Initialization failure aborts startup.
+- Reads and commands have distinct credentials. The interceptor uses provider-configured
+  authority in place of the caller's actor and claims. Initialization failure aborts startup.
 
 ### Events / Outbox Side Effects
 
-Outbox supplies the production event-bus constructor. The exposed operations are read-only
-and perform no domain or outbox writes.
+Outbox supplies the production event-bus constructor. Reads and the command preview have
+no write side effects. Mutating commands can persist Product and outbox changes through
+the canonical owner. This binary does not run the outbox relay.
 
 ### Errors / Failure Codes
 
@@ -58,10 +60,11 @@ calls return owner `PortError` values through structured gRPC status details.
 
 ## Deployment limits and evidence
 
-The catalog selector in the consumer does not select remote Product commands. Native
+The read selector in the consumer does not select remote Product commands. Native
 Product/Pricing/Inventory atomic participants remain a separate local contract. Sharing
 owner storage and independent storage/replication are different deployment choices.
 
-Local provider startup and all six authenticated RPCs were exercised against PostgreSQL.
+Local provider startup and the six original authenticated read RPCs were exercised against PostgreSQL.
 The [Product plan](../rustok-product/docs/implementation-plan.md#mounted-commerce-http-checkout-2026-11-07)
-records the local Commerce HTTP checkout and the remaining combined capture and mounted AI evidence.
+records local Commerce HTTP checkout, the mounted AI attributes task and the remaining
+combined capture and write verification.

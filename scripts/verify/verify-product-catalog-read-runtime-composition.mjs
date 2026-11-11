@@ -124,7 +124,7 @@ requireAll(registry, [
 requireAll(plan, [
   "ProductCatalogReadRuntime",
   "AI,",
-  "Concrete external transport execution remains open",
+  "sanitized packet for the configured separate-process profile still needs to be retained",
   "verify-product-catalog-read-runtime-composition.mjs",
 ], "Product implementation plan");
 // the plan is a wrapped markdown document; the sentence is matched across a line break.

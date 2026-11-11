@@ -2,8 +2,8 @@
 
 > **FBA microservice extraction** — typed gRPC transport adapter for `rustok-product-catalog-service`. Part of the Product domain FBA extraction; MUST NOT be collapsed into `rustok-product`. See `AGENTS.md` §5 and `docs/modules/registry.md`.
 
-Typed tonic gRPC framing for the Product-owned `ProductCatalogReadPort` and
-`ProductVariantIdentityReadPort`.
+Typed tonic gRPC framing for the Product-owned `ProductCatalogReadPort`,
+`ProductVariantIdentityReadPort` and `ProductCatalogCommandPort`.
 
 ## Public surface
 
@@ -13,16 +13,17 @@ Typed tonic gRPC framing for the Product-owned `ProductCatalogReadPort` and
 - `ProductCatalogGrpcBearerInterceptor` authenticates bearer and tenant metadata before installing trusted authority.
 - `ProductCatalogGrpcService<P>` exposes an owner-port provider over gRPC.
 - `TrustedProductCatalogAuthority` carries interceptor-authenticated tenant and principal authority.
-- `ProductCatalogGrpcOperation` declares an authorization grant for each of the five read operations.
-- Generated `ProductCatalogReadService` protobuf types define RPC framing only.
+- `ProductCatalogGrpcOperation` declares distinct read and command grants. The bearer authenticator grants only reads by default.
+- Generated read and command protobuf services define RPC framing only.
 
 ## Known Limitations / Pending Implementation
 
 The remote provider implements the three base catalog projection methods, the storefront
-variant projection used by Cart, and both SKU identity methods. Optional catalog methods
-outside this profile retain unavailable defaults.
-Commands, schema, storefront HTTP and tag capabilities are outside this transport profile.
-The package depends on the full Product owner crate.
+variant projection used by Cart, both SKU identity methods, filtered storefront lists,
+facets and storefront Product detail.
+Fifteen operations are available on the separate opt-in command service. Schema, storefront
+HTTP and tag capabilities still need their own bindings. The package depends on the full
+Product owner crate.
 
 Upgrade the provider to a version with the SKU identity and storefront variant RPCs
 before selecting it for Cart and Pricing. A provider without these methods returns a nonretryable
@@ -43,19 +44,23 @@ Production connections require an absolute HTTPS service endpoint without creden
 
 The RusToK server selects the Product catalog provider once at startup:
 
-- `RUSTOK_PRODUCT_CATALOG_PROVIDER=embedded` is the default;
+- `RUSTOK_PRODUCT_DEPLOYMENT=embedded` is the default for both reads and commands. `grpc` selects both remote providers;
+- `RUSTOK_PRODUCT_CATALOG_PROVIDER` and `RUSTOK_PRODUCT_COMMAND_PROVIDER` override the deployment default independently;
 - `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` requires both `RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT` and `RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN`;
+- Remote commands use the same endpoint and require a distinct `RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN`. The [standalone service](../rustok-product-catalog-service/README.md#required-configuration) also needs a command actor UUID;
 - `RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN` optionally overrides TLS SNI/domain validation;
 - `RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS` defaults to `5000`;
 - `RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK=true` permits only loopback HTTP for local execution.
 
-All remote variables, including the bearer token, are rejected in embedded mode. Invalid authentication configuration, remote connection failure, or invalid transport configuration stops startup; the host does not silently fall back to the embedded provider.
+Remote connection variables are rejected when both providers are embedded. A command token
+requires a remote command provider. Invalid configuration or connection failure stops startup.
+Bearer authorization is checked on each RPC.
 
 The standalone Product catalog service host in `crates/modules/rustok-product-catalog-service` must use `ProductCatalogGrpcBearerInterceptor` (or an equivalent stronger authenticator that installs `TrustedProductCatalogAuthority`) and configure its trusted service actor server-side. The caller-supplied actor in `PortContext` is never authoritative.
 
 ## Evidence
 
-The loopback harness covers the five declared operations, bearer authentication, typed not-found details, deadline-required semantics, and trusted actor replacement:
+The loopback harness covers selected reads and commands, bearer authentication, typed not-found details, deadline-required semantics, and trusted actor replacement:
 
 ```bash
 cargo test -p rustok-product-transport --test port_conformance
@@ -70,7 +75,7 @@ node scripts/verify/verify-product-catalog-grpc-authentication.mjs
 node scripts/verify/verify-product-catalog-grpc-authentication.test.mjs
 ```
 
-`examples/product_catalog_runtime_probe.rs` is the allowlisted authenticated client used by the separate-process runtime capture. It reads operator-provided tenant, product, and variant fixture identifiers from environment variables, invokes all six RPCs, checks returned projections and SKU identities, and emits one bounded success marker without printing identifiers or credentials. When `RUSTOK_PRODUCT_CATALOG_EVIDENCE_ENABLE_COMMANDS=true`, it additionally executes an authenticated command probe (`preview_variant_axes`) over gRPC to verify `ProductCatalogCommandPort`.
+`examples/product_catalog_runtime_probe.rs` is the allowlisted authenticated client used by the separate-process runtime capture. It reads operator-provided tenant, product, and variant fixture identifiers from environment variables, invokes the six original read RPCs, checks returned projections and SKU identities, and emits one bounded success marker without printing identifiers or credentials. Outside the locked read capture, `RUSTOK_PRODUCT_CATALOG_EVIDENCE_ENABLE_COMMANDS=true` also runs `preview_variant_axes` with the distinct command credential. The preview does not verify persisted writes.
 
 The source contract and mutation guard are checked with:
 

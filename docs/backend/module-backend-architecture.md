@@ -224,8 +224,10 @@ levels and the current static-boundary policy.
 
 Current bounded profiles illustrate this distinction:
 
-- Product's `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` selects three base catalog projections,
-  the storefront variant projection used by Cart, and two SKU identity reads. Product commands remain embedded. See the
+- Product can select embedded or gRPC providers for catalog reads and commands independently.
+  The original `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` setting only changes reads. Both
+  transports delegate to the same Product core. Consumer coverage and the shared transaction
+  boundary still constrain database placement. See the
   [Product scope and gaps](../../crates/modules/rustok-product/docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
 - `RUSTOK_PROFILE_MEDIA_PROVIDER=grpc` selects the Profiles public-image descriptor
   provider. It does not move all Media operations or image bytes to gRPC. See the

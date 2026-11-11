@@ -78,7 +78,7 @@ function fixture(options = {}) {
     "crates/modules/rustok-product/docs/implementation-plan.md",
     options.omitPlan
       ? "Product plan"
-      : "mounted Commerce GraphQL checkout resolver-scoped task-local checkout consumer source cutover is complete verify-product-graphql-checkout-catalog-runtime.mjs Concrete external transport execution remains open",
+      : "mounted Commerce GraphQL checkout resolver-scoped task-local checkout consumer source cutover is complete verify-product-graphql-checkout-catalog-runtime.mjs sanitized packet for the configured separate-process profile still needs to be retained",
   );
   return root;
 }

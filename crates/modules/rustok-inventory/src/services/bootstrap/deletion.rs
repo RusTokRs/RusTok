@@ -2,6 +2,7 @@
 
 use std::collections::BTreeSet;
 
+use rustok_commerce_foundation::entities::product_variant;
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseTransaction, DbBackend, DbErr, EntityTrait,
     FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Select, Statement,
@@ -190,11 +191,19 @@ impl DeletionPlan {
     ) -> Result<Self, CatalogDeletionError> {
         // Structural tenant identity proof in the existing transaction-sharing native
         // collaboration; no Product eligibility/publication policy is inferred here.
-        let infos = crate::product_port::get_variants_info_from_conn(txn, tenant_id, variant_ids)
-            .await
-            .map_err(|_| CatalogDeletionBlocker::IdentityUnavailable)?;
-        let mut variants = infos.into_iter().map(|info| info.variant_id).collect::<Vec<_>>();
-        variants.sort_unstable();
+        let variants = current_read(
+            txn,
+            product_variant::Entity::find()
+                .select_only()
+                .column(product_variant::Column::Id)
+                .filter(product_variant::Column::TenantId.eq(tenant_id))
+                .filter(product_variant::Column::Id.is_in(variant_ids.iter().copied()))
+                .order_by_asc(product_variant::Column::Id)
+                .limit((MAX_CATALOG_DELETE_VARIANTS + 1) as u64),
+        )
+        .into_tuple::<Uuid>()
+        .all(txn)
+        .await?;
         if variants.as_slice() != variant_ids {
             return Err(CatalogDeletionBlocker::IdentityUnavailable.into());
         }

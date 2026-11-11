@@ -150,7 +150,7 @@ for (const marker of [
   "resolver-scoped task-local",
   "checkout consumer source cutover is complete",
   "verify-product-graphql-checkout-catalog-runtime.mjs",
-  "Concrete external transport execution remains open",
+  "sanitized packet for the configured separate-process profile still needs to be retained",
 ]) {
   requireText(plan, marker, "Product implementation plan");
 }
