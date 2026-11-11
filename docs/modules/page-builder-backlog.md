@@ -306,16 +306,19 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
       State after the repair, measured on 176 scripts (all of
       `crates/modules/rustok-{pages,page-builder}/scripts/verify`, the `page-builder|pages|fly`
       scripts of `scripts/verify`, and their `scripts/evidence/*.test.mjs`): 137 pass, 39 fail;
-      at `c6629e7` 73 passed, at `0be5f1fd` 121. No script that passed at either commit fails
-      now. All `node` verifier steps of `fly-page-builder.yml`,
+      at `c6629e7` 73 passed, at `0be5f1fd` 121. After the three entries below were closed the
+      same set plus `verify-fly-ssr-control-contract.mjs` (177 scripts) gives 144 pass, 33 fail.
+      No script that passed at either commit fails now. All `node` verifier steps of `fly-page-builder.yml`,
       `pages-cache-consumer-exact-main-evidence.yml`, `pages-page-builder-parity.yml` and
       `pages-consumer-properties-source-evidence.yml` exit 0 locally; in
       `pages-page-builder-provider-health.yml` one fails (next entry). Not run: the Rust steps
       of these workflows (no toolchain in the repair environment). Open:
-      - The 39 failing scripts failed before 2026-11-04 as well and no workflow runs them,
-        apart from the one in the next entry. Each needs the same reading as the repaired
-        ones: is the pinned source gone, or only its wording. Owner: `rustok-pages`,
-        `rustok-page-builder`, repository tooling.
+      - The 33 failing scripts failed before 2026-11-04 as well and no workflow runs them.
+        29 pin Pages storefront, artifact, inline-edit and rollout sources; 4 pin Forum
+        Page Builder evidence sources (one of them stops on an undefined `packetPath`, one on a
+        deleted `topic_widget_preview.rs`). Each needs the same reading as the repaired ones:
+        is the pinned source gone, or only its wording. Owner: `rustok-pages`, `rustok-forum`,
+        repository tooling.
       - Six workflows still name deleted documents in their `paths:` filters
         (`fly-page-builder.yml`, `pages-page-builder-parity.yml`,
         `pages-page-builder-provider-health.yml`,
@@ -327,46 +330,78 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
         artifact endpoint before its cache entry followed every page event. Re-issue it with
         the second harness test (`artifact_http_entry_does_not_outlive_a_page_update`).
         Owner: `rustok-pages`.
-    - The classic SSR browser adapter has no producer for its palette and layer contract.
-      `crates/ui/fly/browser/assets/fly-browser.js` binds palette blocks through
-      `[data-fly-block-id]` with `data-fly-action="insert-block"` / `"begin-block-drag"`, and
-      layer rows through `data-fly-action="select-component"`. No Rust source emits
-      `data-fly-block-id` or these action values since `2661a270ed` (2026-10-14) removed
-      `crates/modules/rustok-page-builder/admin/src/editor/palette_layers.rs`: the Leptos
-      `FlyPalette` (`crates/ui/fly/leptos/src/editor.rs`) renders `data-fly-block` with an
-      `on:click` handler, which exists only after hydration. The server side of the intent
-      (`browser_intent.rs`, `palette_access.rs`, `SsrDropSource::Block`) is intact, and
-      `apps/next-admin/tests/e2e/fly-browser-runtime.spec.ts` exercises the adapter against
-      hand-written markup, so nothing fails when the real palette stops matching.
-      Consumers that already fail on it: `scripts/evidence/admit-forum-page-builder-wave.test.mjs`
-      (step of `pages-page-builder-provider-health.yml`),
-      `scripts/verify/verify-forum-page-builder-browser-evidence-harness.mjs`, the Forum
-      contract `forum-page-builder-browser-execution-contract.json` (lists the deleted file) and
-      the Forum Playwright spec, which clicks `[data-fly-action='insert-block']`. Also
-      `toolbar.rs` emits `data-fly-action="set-viewport"`, which the adapter ignores (it
-      handles the three values above and `intent:*`). Not reproduced in a browser: the admin
-      cannot be built in the repair environment. Decide whether the SSR adapter is a supported
-      editing path; if it is, the palette and the layer tree emit its attributes and a test
-      renders the real components. Owner: `fly-leptos`, `fly-browser`, Page Builder admin.
-    - The readiness of `page_builder` is stated three ways. `docs/modules/registry.md` has
-      `admin + storefront | in_progress | boundary_ready | core_transport_ui` since
-      `74e4a62324` (2026-10-15). `crates/modules/rustok-page-builder/docs/implementation-plan.md`,
-      which the registry names as the source of truth, says both "FFA: `core_transport_ui` for
-      the browser-host slice" and "FFA status: `not_started`", "Structural shape:
-      `no_ui_boundary`", and lists the deleted `admin/src/editor/palette_layers.rs` and two
-      deleted dated documents as evidence. The contracts
-      `pages-page-builder-terminal-readiness-admission-source.json` and
-      `pages-page-builder-terminal-evidence-inventory-source.json` require the registry row
-      `no module-owned UI | not_started | boundary_ready | no_ui_boundary` and state that
-      readiness rows do not change before owner and platform approval. Both terminal verifiers
-      and `admit-pages-page-builder-terminal-readiness.test.mjs` fail on this row only. Owner
-      decision; not changed here. Owner: `rustok-page-builder`, platform.
-    - `verify-page-builder-static-sanitization-registry-admission.mjs` requires
-      `/provider/static_sanitization_contract/executed_evidence` of
-      `page-builder-fba-registry.json` to be `pending` before admission; the registry says
-      `verified`, and the verifier failed the same way at `0be5f1fd`. Either the admission ran
-      and the verifier describes the state before it, or the value was set without it. Owner:
-      `rustok-page-builder`.
+    - The classic SSR control contract: closed on 2026-11-11, with the open parts listed here.
+      Decision: `DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`.
+      `2661a270ed` (2026-10-14) replaced the admin panels with the `fly-leptos` workspace,
+      whose palette emitted `data-fly-block` with an `on:click` handler, while
+      `fly-browser.js` binds `[data-fly-block-id]`, `data-fly-action="insert-block"`,
+      `"begin-block-drag"` and `"select-component"`. In the default `ssr + browser-js` runtime
+      the palette and the layer tree did nothing, and the adapter tests passed against
+      hand-written markup. Now `FlyPalette` and `FlyLayerTree` emit the attributes the adapter
+      binds, in `fly-leptos` and `fly-dioxus`; the drag control renders only in intent mode;
+      the adapter does not offer a drag on `data-fly-can-drag="false"`. The viewport switch
+      (`data-fly-action="set-viewport"`)
+      had no adapter case and no server intent; it is route view state now (`?fly_viewport=`,
+      resolved by `route_viewport` before render), which also makes it work for a read-only
+      caller. `scripts/verify/verify-fly-ssr-control-contract.mjs` derives the contract from
+      the adapter and compares it with the views in both directions; it runs through
+      `verify-fly-ssr-first.mjs`. Browser side:
+      `apps/next-admin/tests/e2e/fly-browser-ssr-controls.spec.ts` (10 tests against the
+      shipped adapter). Server side: render tests in `crates/ui/fly/leptos/src/editor.rs` and
+      `crates/modules/rustok-page-builder/admin/src/ssr_control_contract_tests.rs`. The Forum
+      harness and contract follow the new sources. Open:
+      - The Rust of this change was not compiled or run: the repair environment has no
+        toolchain. First CI run decides. Owner: `fly-leptos`, Page Builder admin.
+      - `fly-page-builder.yml` runs `cargo check -p fly-leptos --all-targets` and never
+        `cargo test -p fly-leptos`, so the `fly-leptos` render tests are compiled and not
+        executed in CI. `scripts/fly-check.sh` runs them now. The workflow needs the same step.
+        Owner: repository tooling.
+      - `FlyEditorWorkspace` still emits intents only from Leptos handlers for page tabs, page
+        and component properties, style rules, assets and theme tokens. In the default runtime
+        those controls render and do nothing; the SSR panels (`ssr_*.rs`) cover part of the
+        same functions through `data-fly-intent-form`. Decide per control: give it the SSR
+        attribute, or do not render it without hydration. Owner: `fly-leptos`, Page Builder
+        admin.
+      - The host bootstrap (`PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS` in
+        `crates/modules/rustok-page-builder/src/browser_host.rs`) is a second consumer:
+        `form[data-fly-intent-form]`, `[data-fly-component-picker]`,
+        `[data-fly-selected-component-input]`. The contract check does not read it yet.
+        Owner: Page Builder, repository tooling.
+      - Hydrated `wasm-client` builds mount the adapter too (`wasm-client` enables
+        `browser-js`, `post_intents` defaults to `true`). A toolbar button then has both
+        `data-fly-action="intent:…"` and a live `on:click`. Whether both fire, and which one
+        must own the control, is not established: the profile cannot be built here. Owner:
+        Page Builder admin.
+      - `fly-dioxus` renders the same palette and layer markup now and the contract check
+        compares the twins, but the crate has no render test of its own and no host mounts
+        it with `fly-browser.js`. Owner: `fly-dioxus`.
+      - Viewport preset labels (`Desktop 1440`, `Custom 1280 × 720`) are English literals of
+        `fly-ui`. Owner: `fly-ui`.
+    - The readiness of `page_builder`: aligned on 2026-11-11 by owner instruction. It was
+      stated three ways: the registry had `admin + storefront | in_progress | boundary_ready |
+      core_transport_ui` since `74e4a62324` (2026-10-15), the local plan said
+      `not_started` / `no_ui_boundary`, and two terminal contracts required the registry row of
+      the plan. The module has `admin/src/{core,transport,ui}` and
+      `storefront/src/{core.rs,ui.rs}` and a `dual_surface` manifest, so by the definitions in
+      `docs/modules/registry.md` the registry was right. The local plan, both terminal
+      contracts and the admission verifier now state `in_progress` / `boundary_ready` /
+      `core_transport_ui`; the plan no longer lists deleted files as evidence. Both terminal
+      verifiers now also require the local plan to state the same three values as the
+      registry row, and the two evidence runners compare the row by cells. No terminal status
+      (`parity_verified`, `transport_verified`) was claimed. Open:
+      - `verify-ffa-ui-migration-contract.mjs` no longer fails on the padded header of the
+        FFA/FBA board (compared by cells now). It still fails for billing, calendar, calls,
+        deal, finance, messenger, party and tasks: their local plans have no status block at
+        all, so the registry rows have no source to be checked against. `messenger` is listed
+        as `none` / `no_ui_boundary` while the crate has `admin/` and `storefront/`; that row
+        needs the same reading `page_builder` got. Owner: those modules, platform.
+    - `page-builder-fba-registry.json`,
+      `/provider/static_sanitization_contract/executed_evidence`: resolved on 2026-11-11.
+      `verified` is correct: `b5d5a6ebc8` (#3515, 2026-08-13) admitted it against execution
+      run 31678544586 and admission run 31687278648. The admission verifier described the
+      state before admission only. It now accepts the contract before-value or the admitted
+      value and prints the state it found; the execution verifier prints it too instead of a
+      fixed `current=pending`.
     - `scripts/verify/verify-fly-grapesjs-roundtrip.mjs` (step of `browser-e2e.yml`) resolves
       `grapesjs` and `grapesjs-preset-webpage` from `apps/next-admin`; `2661a270ed` removed both
       from its `package.json`, and the step fails (latest `main` run). They are back as exact-version

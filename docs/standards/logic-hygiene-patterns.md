@@ -804,3 +804,65 @@ Detection: `for f in $(git ls-files '*.mjs'); do node --check "$f" || echo "$f";
 lists scripts that do not parse. Running every verifier at the commit and at its
 parent separates new failures from old ones. For each path string in a verifier or
 contract, `test -e` finds references to deleted files.
+
+## P-TWO-SIDED-MARKUP — A markup contract is derived from both of its sides
+
+- **Category:** Verification integrity, cross-language contracts.
+- **Logic dimensions:** Branch completeness, preconditions and bounds.
+- **Observed defect:** In the default server-rendered Page Builder the editor controls
+  work only when a Rust view emits a `data-fly-*` attribute and `fly-browser.js` binds
+  the same one. A migration replaced the views that emitted `data-fly-block-id` and
+  three action values with views that emitted `data-fly-block` and a Leptos click
+  handler, which does not exist without hydration. The adapter bound nothing, the
+  palette and the layer tree rendered and did nothing, and every build was green: the
+  adapter tests ran against markup written in the test, and the view tests asserted
+  the attributes the views happened to emit. A second control had the opposite defect:
+  the view emitted an action the adapter had no case for. A list of the contract kept
+  in a check would have been a third copy with the same fate.
+- **Canonical solution:** Name both sides of the contract and derive it from them.
+  The check reads what the consumer binds and what the producers emit, compares the
+  two sets in both directions, and keeps no list of its own; a known gap is an entry
+  that names the backlog record, and the entry is rejected once the gap is closed.
+  Each part needs a test on each side that uses the real artifact: the producer test
+  renders the real view, the consumer test loads the shipped script. A control whose
+  transport the host did not provide is not rendered. State that the server renders
+  from and that is not a command (a previewed viewport) travels in the route under a
+  key that the view and the server resolver share as one constant.
+
+```js
+// Both directions, from the sources, with no list in the check.
+for (const action of adapterActions) if (!emitted.has(action)) fail(`unbound: ${action}`);
+for (const action of emitted) if (!handles(action)) fail(`unhandled: ${action}`);
+```
+
+Detection: `rg -o 'data-[a-z-]+' <script>` against `rg -o 'data-[a-z-]+' <views>`;
+the difference in either direction is a candidate. For each test of the script,
+check whether its markup comes from a view or was typed into the test.
+
+## P-ADMITTED-STATE — A gate before a transition accepts the state after it
+
+- **Category:** Verification integrity, state transitions.
+- **Logic dimensions:** State transitions, branch completeness.
+- **Observed defect:** A verifier required a registry node to be `pending` so that an
+  admission could run. The admission ran and set the node to `verified`; the verifier
+  then failed forever, and nothing separated that from a real drift. In the same
+  family, one module's readiness was written in a registry, in the local plan the
+  registry names as its source, and in two contracts; one commit changed the registry
+  only, and the contracts went on requiring the old row "until approval". Two
+  evidence runners compared the row as a string against a table that a formatter had
+  padded, so they refused to run for a reason unrelated to the state.
+- **Canonical solution:** A check on a value that a transition changes accepts exactly
+  the value before and the value after, names which one it found, and rejects any
+  third value. The transition itself still refuses to run twice. A fact stated in more
+  than one place has one source; every other statement is checked against it by a
+  check that runs with the others, and a change to the source updates them in the same
+  commit. Compare a table row by its cells.
+
+```js
+const allowed = [admission.before_value, admission.admitted_value];
+if (!allowed.includes(current)) fail(`drift: ${current} is neither ${allowed.join(" nor ")}`);
+```
+
+Detection: `rg -n '!== "pending"|=== "pending"' scripts/verify` lists checks that
+know one side of a transition. For a status that appears in a registry, search the
+same identifier in `contracts/` and in the owner plan and compare the values.
