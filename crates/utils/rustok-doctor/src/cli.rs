@@ -7,6 +7,8 @@ use crate::{Confidence, Finding, Severity, discovery, report, scan_source};
 
 #[derive(Default)]
 struct Options {
+    hotspots: bool,
+    top: Option<usize>,
     crate_names: Option<String>,
     path: Option<PathBuf>,
     all: bool,
@@ -30,6 +32,9 @@ struct Options {
 
 fn usage() {
     println!(
+        "Usage: cargo xtask doctor hotspots [--crate NAME | --path PATH | --all-modules | --all | --staged | --changed | --diff REF] [--top N] [--json]"
+    );
+    println!(
         "Usage: cargo xtask doctor hygiene [--crate NAME | --path PATH | --all-modules | --all | --staged | --changed | --diff REF]"
     );
     println!("  [--severity P0|P1|P2] [--strict | --fail-on P0|P1|P2] [--ignore-rule IDS]");
@@ -48,6 +53,7 @@ fn parse(args: &[String]) -> Result<Option<Options>, String> {
         };
         match argument.as_str() {
             "hygiene" => {}
+            "hotspots" if !options.hotspots => options.hotspots = true,
             "--help" | "-h" => {
                 usage();
                 return Ok(None);
@@ -84,6 +90,13 @@ fn parse(args: &[String]) -> Result<Option<Options>, String> {
                         .map_err(|_| "threads must be a positive integer".to_owned())?,
                 )
             }
+            "--top" => {
+                options.top = Some(
+                    value()?
+                        .parse()
+                        .map_err(|_| "top must be a positive integer".to_owned())?,
+                )
+            }
             _ => return Err(format!("unknown argument: {argument}")),
         }
     }
@@ -97,6 +110,24 @@ fn parse(args: &[String]) -> Result<Option<Options>, String> {
     }
     if options.threads == Some(0) {
         return Err("threads must be a positive integer".to_owned());
+    }
+    if options.top == Some(0) || (options.top.is_some() && !options.hotspots) {
+        return Err("--top requires hotspots and a positive integer".to_owned());
+    }
+    if options.hotspots
+        && (options.strict
+            || options.severity.is_some()
+            || options.fail_on.is_some()
+            || options.summary_only
+            || options.suggest_fixes
+            || options.csv.is_some()
+            || options.markdown.is_some()
+            || options.patch.is_some()
+            || options.annotations
+            || !options.ignored.is_empty()
+            || options.threads.is_some())
+    {
+        return Err("hotspots accepts selection, --top and --json options".to_owned());
     }
     if options.json && options.annotations {
         return Err("--json and --github-annotations cannot be combined".to_owned());
@@ -277,6 +308,15 @@ fn validate_outputs(
 fn execute(options: Options) -> Result<i32, String> {
     let root = root()?;
     let (targets, description) = targets(&root, &options)?;
+    if options.hotspots {
+        return crate::hotspots::run(
+            &root,
+            &targets,
+            &description,
+            options.top.unwrap_or(20),
+            options.json,
+        );
+    }
     validate_outputs(&root, &targets, &options)?;
     let count = targets.len();
     let threads = options

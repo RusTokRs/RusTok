@@ -400,3 +400,53 @@ fn strict_mode_rejects_multiline_include() {
     assert_eq!(report["findings"][0]["pattern_id"], "P-ZERO-INCLUDE");
     assert_eq!(report["findings"][0]["line"], 1);
 }
+
+#[test]
+fn hotspots_rank_selected_files_and_exclude_generated_and_vendored() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    fs::create_dir_all(root.join("src")).unwrap();
+    fs::create_dir_all(root.join("tests")).unwrap();
+    fs::create_dir_all(root.join("vendor")).unwrap();
+    fs::write(root.join("src/long.rs"), "a\nb\nc\n").unwrap();
+    fs::write(root.join("src/short.rs"), "a\n").unwrap();
+    fs::write(root.join("tests/test.rs"), "a\nb\n").unwrap();
+    fs::write(root.join("src/generated.rs"), "// @generated\na\nb\nc\nd\n").unwrap();
+    fs::write(root.join("vendor/copied.rs"), "a\nb\nc\nd\n").unwrap();
+    let output = doctor(root, &["hotspots", "--path", ".", "--top", "2", "--json"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["selected_files"], 5);
+    assert_eq!(report["ranked_files"], 3);
+    assert_eq!(report["excluded_generated"], 1);
+    assert_eq!(report["excluded_vendor"], 1);
+    assert_eq!(report["files"][0]["file"], "src/long.rs");
+    assert_eq!(report["files"][0]["lines"], 3);
+    assert_eq!(report["files"][1]["kind"], "test");
+    assert_eq!(
+        doctor(root, &["hotspots", "--top", "0"]).status.code(),
+        Some(2)
+    );
+}
+
+#[test]
+fn hotspots_measure_staged_contents() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path();
+    git(root, &["init", "-q", "--template="]);
+    fs::write(root.join("source.rs"), b"a\nb\nc\n").unwrap();
+    git(root, &["add", "--", "source.rs"]);
+    fs::write(root.join("source.rs"), b"a\n").unwrap();
+    let output = doctor(root, &["hotspots", "--staged", "--json"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["files"][0]["lines"], 3);
+}

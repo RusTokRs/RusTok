@@ -64,7 +64,7 @@ Or open the living checklist: **[`docs/standards/continuous-review-ledger.md`](.
 
 ### Step 3: Deep Engineering & Logic Audit (Pillar 0 + 7 Pillars)
 
-Do **NOT** stop at trivial mechanical linting (like unwrap or regexes). Perform a genuine senior-level engineering review based on [docs/standards/patterns-vs-antipatterns.md](standards/patterns-vs-antipatterns.md):
+Do **NOT** stop at trivial mechanical linting (like unwrap or regexes). Perform a genuine senior-level engineering review based on [docs/standards/logic-hygiene-patterns.md](standards/logic-hygiene-patterns.md):
 
 #### 0. Behavioral & Logical Correctness — PRIMARY (AGENTS.md §2.1, §4)
 Code is defined by what it **does**, not just how cleanly it compiles. For every crate (foundation library, utility, worker, or domain module), systematically verify the **6 Universal Logic Dimensions**:

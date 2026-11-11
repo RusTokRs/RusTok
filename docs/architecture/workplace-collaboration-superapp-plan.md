@@ -37,7 +37,7 @@ RusToK expands beyond high-integrity Commerce, ERP, and Accounting into an **All
 
 | Sovereign Module | Crate Path | Core Responsibility | Persistence & Technology Stack | Non-Duplication Boundary |
 | :--- | :--- | :--- | :--- | :--- |
-| **`messenger`** | `crates/modules/rustok-messenger` | Team chats, DMs, threads, channel hierarchies, read receipts, typing indicators and reactions. | **First profile:** separate Connection Gateway, embedded PostgreSQL write owner and canonical [outbox/Iggy delivery](../../crates/modules/rustok-iggy).<br>**Scale gate:** multiple gateways and routing leases. | Owns conversations, membership, message state and synchronization. Contextual rooms link to business entities through owner contracts. |
+| **`messenger`** | `crates/modules/rustok-messenger` | Team chats, DMs, threads, channel hierarchies, read receipts, typing indicators and reactions. | **Baseline:** PostgreSQL write owner, embedded realtime and local outbox.<br>**Qualified profiles:** standalone gateway with cross-process relay, then multiple gateways with routing leases. | Owns conversations, membership, message state and synchronization. Contextual rooms link to business entities through owner contracts. |
 | **`docs`** | `crates/modules/rustok-docs` | Block-based collaborative documents, workspaces, page trees, templates, Notion-like databases. | **CRDT:** Loro (Rust) delta logs + periodic page snapshots in PostgreSQL (`docs_pages`, `docs_blocks`, `docs_snapshots`). | Replaces static wiki tools. Cooperates with [`flex`](../../crates/modules/flex) for typed database properties and [`rustok-grid`](../../crates/ui/rustok-grid) for view rendering. |
 | **`calls`** | `crates/modules/rustok-calls` | Audio/video rooms, participant tokens, screen sharing orchestration, recording egress hooks, meeting transcript ingestion. | **SFU:** LiveKit Server.<br>**State:** PostgreSQL (`calls_rooms`, `calls_sessions`, `calls_recordings`, `calls_transcripts`). | Media streaming is delegated to LiveKit SFU; `rustok-calls` manages room lifecycle, access tokens, RBAC authorization, and transcript persistence. |
 | **`calendar`** | `crates/modules/rustok-calendar` | Personal & resource calendars, scheduling slots, meeting invitations, CalDAV / external calendar bi-directional synchronization. | **State:** PostgreSQL (`calendar_events`, `calendar_attendees`, `calendar_booking_slots`).<br>**Sync:** RFC 5545 iCalendar parsers. | Owns time allocations and booking links. Automatically creates calls via `rustok-calls` and notifies participants via `rustok-messenger`. |
@@ -49,7 +49,7 @@ RusToK expands beyond high-integrity Commerce, ERP, and Accounting into an **All
 
 ### 3.1 Write authority and delivery
 
-The [Messenger ADR proposal](../../DECISIONS/2026-11-11-messenger-write-and-sync.md) defines the first profile under review. A separate Connection Gateway holds WebSocket sessions from the first private release. The embedded Messenger owner authorizes operations and commits writes and ordered change references in PostgreSQL. The canonical outbox/Iggy profile carries committed wakeups across the process boundary. Clients recover through the owner sync API. The [owner plan](../../crates/modules/rustok-messenger/docs/implementation-plan.md) tracks the initial gateway release and the later multi-node routing gate.
+The [Messenger ADR proposal](../../DECISIONS/2026-11-11-messenger-write-and-sync.md) puts durable writes and reconnect before realtime qualification. The embedded owner authorizes operations and commits writes and ordered change references in PostgreSQL. The baseline links the Gateway crate into `apps/server` with local outbox wakeups. A standalone deployment runs the same Gateway implementation when independent socket lifetime or measured contention requires it and qualifies the process-wide Iggy relay with affected consumers. The [owner plan](../../crates/modules/rustok-messenger/docs/implementation-plan.md) defines the deployment criteria and the multi-node routing gate.
 
 The following subsections describe product capabilities and candidates for later design. Their release depends on the owner plan and the corresponding security and operational gates.
 
@@ -58,7 +58,7 @@ To guarantee mathematical rigor without developing proprietary cryptography from
 
 | Candidate Library | Origin & Cryptographic Audit | Strengths & Protocols | Bloat & Protocol Risk | Role in RusToK SuperApp |
 | :--- | :--- | :--- | :--- | :--- |
-| **`vodozemac`** | **Matrix.org Foundation (Pure Rust)**<br>Audited by *Least Authority* (2022). | • Pure Rust replacement for legacy C `libolm`.<br>• **Olm:** Double Ratchet (Signal protocol) + X3DH key agreement.<br>• **Megolm:** High-throughput group ratcheting (symmetric ratchet with pairwise key distribution).<br>• **SAS:** Interactive Short Authentication String device verification (emoji/decimal QR).<br>• Zero external runtime dependencies; compiles cleanly to native Linux/macOS/Windows, Android/iOS FFI, and WASM. | Low-level cryptographic engine only (requires an application-level state machine for network queues). | **Core Cryptographic Engine (Winner for Phase 1):** Selected for all internal 1-on-1 chats and executive group rooms. |
+| **`vodozemac`** | **Matrix.org Foundation (Pure Rust)**<br>Audited by *Least Authority* (2022). | • Pure Rust replacement for legacy C `libolm`.<br>• **Olm:** Double Ratchet (Signal protocol) + X3DH key agreement.<br>• **Megolm:** High-throughput group ratcheting (symmetric ratchet with pairwise key distribution).<br>• **SAS:** Interactive Short Authentication String device verification (emoji/decimal QR).<br>• Zero external runtime dependencies; compiles cleanly to native Linux/macOS/Windows, Android/iOS FFI, and WASM. | Low-level cryptographic engine only (requires an application-level state machine for network queues). | Candidate for the separately qualified E2EE profile. |
 | **`ruma`** | **Ruma Project / Matrix.org (Pure Rust)** | • Complete, strictly typed implementation of 100% of the Matrix protocol specification.<br>• `ruma-events`: Serde types for all Matrix events (`m.room.encrypted`, `m.room.message`, `m.room_key`).<br>• `ruma-client-api` & `ruma-federation-api`: Typed endpoint contracts for Client-Server and Server-Server federation.<br>• `ruma-state-res`: Canonical Matrix State Resolution v2 algorithm. | Matrix protocol uses verbose JSON structures with heavy DAG transaction history (`auth_events`, `prev_events`), causing high bandwidth and latency overhead if used as the internal messaging fabric. | **External Federation & Bridge Gateway (Winner for Gateway):** Selected as the foundation for the optional `rustok-matrix-gateway` module to federate with external Matrix homeservers and bridge third-party clients (Element X, FluffyChat, Mautrix bridges). |
 | **`matrix-sdk-crypto`** | **Matrix.org Foundation (Rust)** | • High-level cryptographic state machine handling key stores, one-time prekeys (OTKs), session backup, and verification workflows. | Hardwired to Matrix client-server JSON protocol types (`ruma_events`). Pulling it in would drag in heavy Matrix JSON schemas and protocol baggage into our native streaming core. | **Architectural Reference Only:** We adopt the state-machine pattern for session tracking and key stores, but bind it directly to `vodozemac` and RusToK Protobuf/Postcard transport without Matrix protocol bloat. |
 | **`conduit` / `conduwuit`** | **Independent / Rust Community** | • Ultra-lean, high-performance Matrix homeserver written in Rust using `ruma` and RocksDB/Sled.<br>• Proves that Matrix federation on Rust uses 10x–20x less RAM and CPU than Python Synapse. | Full standalone homeserver daemon, not an embedded library for micro-modular composition. | **Benchmarking & Reference Implementation:** Architecture reference for how `ruma` endpoints map efficiently onto async Rust runtimes (Tokio/Axum). |
@@ -79,12 +79,12 @@ To guarantee mathematical rigor without developing proprietary cryptography from
    │ 3. Send Ciphertext Blob                    │
    ├──────────────────► [rustok-messenger] ────►│ 4. Decrypt & Advance Ratchet
    │                     (Zero-Knowledge Relay:  │    (Forward Secrecy &
-   │                      Blind storage & Iggy)  │     Post-Compromise Security)
+   │                      Ciphertext storage)   │     Post-Compromise Security)
 ```
 
 #### 1. Zero-Knowledge Blind Relay (`rustok-messenger` Role)
 The RusToK messaging backend acts strictly as an untrusted, zero-knowledge blind broker:
-* **Payload Blindness:** The server stores and streams only opaque binary ciphertext blobs (`CiphertextType::OlmPreKey`, `CiphertextType::OlmMessage`, `CiphertextType::MegolmMessage`).
+* **Payload Blindness:** The server stores opaque ciphertext bodies and returns them through the authorized read path. Realtime wakeups carry change references.
 * **Zero Key Access:** Master keys, identity private keys, and session ratchet states exist exclusively within client secure storage (iOS Keychain, Android Keystore, desktop SQLCipher). The server never touches or holds private keys.
 * **Key Directory:** The server maintains only public cryptographic materials:
   - Long-term public Identity Keys (`Ed25519` for signing, `Curve25519` for key exchange);
@@ -95,7 +95,7 @@ The RusToK messaging backend acts strictly as an untrusted, zero-knowledge blind
 For boardroom negotiations and closed B2B executive groups (3–100 participants):
 1. **Outbound Megolm Session:** The sender's client initializes an outbound Megolm ratchet session using `vodozemac::megolm::GroupSession`.
 2. **Pairwise Key Distribution:** The sender securely exports the room session key (`vodozemac::megolm::ExportedSessionKey`) and transmits it to every authorized room participant individually via their pairwise 1-on-1 Olm sessions.
-3. **Single-Payload Group Broadcast:** Every subsequent message in the executive room is encrypted once with the Megolm session key and broadcasted over [`rustok-iggy`](../../crates/modules/rustok-iggy) partitions to all room members simultaneously.
+3. **Single-Payload Group Delivery.** The client encrypts the message once with the Megolm session key. The owner commits the ciphertext and authorized recipients fetch it through the sync API.
 4. **Immediate Ratchet Revocation on Member Departure (Forward Secrecy):** When a participant is removed or leaves the executive room:
    - The room owner client **immediately discards the current Megolm Outbound Session**;
    - A fresh session is generated and distributed exclusively to the remaining active participants;
@@ -118,7 +118,7 @@ Confidential PDFs, spreadsheets, voice messages, and video attachments are encry
 
 ### 3.4 Matrix Federation, External Clients, and Bridge Gateway (`rustok-matrix-gateway` via `ruma`)
 
-While `rustok-messenger` relies on high-speed native streaming for internal operations, enterprise environments frequently require interoperability with external Matrix federations and legacy communication tools. Rather than compromising core performance, RusToK provides an optional gateway module:
+For future interoperability with Matrix and external messaging clients, RusToK can qualify an optional bridge profile. Inbound events enter the same authorization and write path as other Messenger commands.
 
 ```
 [External Element / Element X]     [Partner Company Matrix Synapse]     [Telegram / WhatsApp / Slack]
@@ -133,12 +133,11 @@ While `rustok-messenger` relies on high-speed native streaming for internal oper
                          • Matrix State Resolution (ruma-state-res)
                                         │
                                         ▼
-                         [rustok-messenger Core Fabric]
-                         • Sub-millisecond Iggy streaming partitions
-                         • Snowflake sequence cursor ledgers
+                         [rustok-messenger owner]
+                         • Authorized commands and committed change references
 ```
 
-1. **Decoupled Architecture:** The highload internal messenger core remains 100% free of Matrix protocol overhead. The `rustok-matrix-gateway` exists as a separate sovereign module that consumes and publishes to [`rustok-iggy`](../../crates/modules/rustok-iggy).
+1. **Decoupled Architecture.** The proposed `rustok-matrix-gateway` translates protocol events and calls the owner command boundary. It consumes committed references for outbound federation through the configured platform delivery profile.
 2. **Third-Party Matrix Clients:** Employees can optionally use open-source Matrix clients (Element X, Cinny, FluffyChat) to connect to RusToK workspaces via endpoints powered by `ruma-client-api`.
 3. **B2B Inter-Company Federation:** Organizations running RusToK can securely communicate with partner enterprises running self-hosted Synapse or Conduit servers via standard Matrix Server-Server federation (`ruma-federation-api`).
 4. **Unified Bridges (Mautrix Ecosystem):** Enables seamless integration of popular Mautrix bridges (Telegram, WhatsApp, Slack, MS Teams, Discord), routing inbound external messages directly into RusToK team channels.

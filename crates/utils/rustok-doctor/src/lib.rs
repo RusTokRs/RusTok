@@ -2,6 +2,7 @@
 
 mod cli;
 mod discovery;
+mod hotspots;
 mod hygiene;
 mod report;
 mod source;

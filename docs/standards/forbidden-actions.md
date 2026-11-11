@@ -603,7 +603,7 @@ Before each commit, ensure **none** of the prohibitions in this document are vio
 
 ## Related Documents
 
-- [Patterns vs Antipatterns](./patterns-vs-antipatterns.md) — summary table of correct and incorrect approaches
+- [Logic hygiene patterns](./logic-hygiene-patterns.md) — documented cases and review guidance
 - [Code Standards](./coding.md) — detailed guide
 - [Known Pitfalls](../ai/KNOWN_PITFALLS.md) — traps for AI agents
 - [Security Standards](./security.md) — OWASP coverage

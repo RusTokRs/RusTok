@@ -137,7 +137,7 @@ pub fn rbac_module_availability_handle(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_core::Permission;
+    use rustok_api::Permission;
 
     #[test]
     fn failed_availability_snapshot_keeps_module_permissions_dormant() {
@@ -145,7 +145,7 @@ mod tests {
             ("posts:manage".to_string(), "blog".to_string()),
             ("ai:providers:manage".to_string(), "ai".to_string()),
         ])));
-        let snapshot = fail_closed_availability(&ownership);
+        let snapshot = fail_closed_availability(&ownership.0);
         assert!(!snapshot.is_active(&Permission::POSTS_MANAGE));
         assert!(!snapshot.is_active(&Permission::AI_PROVIDERS_MANAGE));
         assert!(snapshot.is_active(&Permission::USERS_MANAGE));

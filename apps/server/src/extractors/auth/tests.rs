@@ -200,6 +200,8 @@ async fn oauth_service_token_intersects_app_permissions_with_scopes() {
         app.client_id,
         UserRole::Customer,
         &["forum:*".to_string()],
+        "",
+        None,
     )
     .await
     .expect("resolve service token permissions");
@@ -236,6 +238,8 @@ async fn oauth_service_token_authentication_does_not_depend_on_translation_stora
         app.client_id,
         UserRole::Customer,
         &["forum:*".to_string()],
+        "",
+        None,
     )
     .await
     .expect("OAuth authentication must not depend on presentation translations");
@@ -268,6 +272,8 @@ async fn oauth_service_token_with_empty_scopes_has_no_effective_permissions() {
         app.client_id,
         UserRole::Customer,
         &[],
+        "",
+        None,
     )
     .await
     .expect("resolve service token permissions");

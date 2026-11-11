@@ -491,7 +491,7 @@ mod tests {
     }
 
     #[test]
-    fn unified_deployment_flag_configures_both_read_and_command() {
+    fn unified_deployment_flag_configures_both_read_and_command_minimal() {
         let config = parse_product_deployment_config(
             Some("grpc"),
             None,

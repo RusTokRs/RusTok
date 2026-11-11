@@ -44,7 +44,7 @@ When triggered, the agent:
 For each cross-cutting phase, execute the strict closed-loop protocol:
 
 1. **CodeGraph Discovery Pass (`codegraph_explore`):** Query the cross-module symbols, traits, and facades that define the capability. Inspect how callers across `apps/server`, `crates/modules/*`, `crates/libs/*`, and `crates/ui/*` consume the capability.
-2. **Invariant & Anti-Pattern Map:** Verify code against [docs/standards/patterns-vs-antipatterns.md](./patterns-vs-antipatterns.md), [docs/standards/forbidden-actions.md](./forbidden-actions.md), and [docs/ai/KNOWN_PITFALLS.md](../ai/KNOWN_PITFALLS.md).
+2. **Invariant & Anti-Pattern Map:** Verify code against [docs/standards/logic-hygiene-patterns.md](./logic-hygiene-patterns.md), [docs/standards/forbidden-actions.md](./forbidden-actions.md), and [docs/ai/KNOWN_PITFALLS.md](../ai/KNOWN_PITFALLS.md).
 3. **Blast Radius Isolation:** Group all violations by root cause. If an invariant is broken across multiple modules, treat them as part of the unified cross-cutting remediation unit.
 4. **Atomic Remediation:** Fix the underlying contract, types, and implementations simultaneously. Preserve compile-time correctness and module sovereign boundaries.
 5. **Immediate Adjacent Re-Audit:** Verify upstream callers (controllers/handlers/resolvers) and downstream persistence/events.
@@ -126,7 +126,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 
 ### CC-04: Caching, Invalidation & Tenant Cache Isolation
 
-- **Canonical Documents:** [crates/modules/rustok-cache/README.md](../../crates/modules/rustok-cache/README.md), [docs/standards/patterns-vs-antipatterns.md](./patterns-vs-antipatterns.md) §6.
+- **Canonical Documents:** [crates/modules/rustok-cache/README.md](../../crates/modules/rustok-cache/README.md), [tenant module documentation](../../crates/modules/rustok-tenant/docs/README.md).
 - **Primary Owner Crates:** `rustok-cache`, `rustok-tenant`, `apps/server/src/services/settings_service.rs`.
 - **CodeGraph Target:** `CacheService get_cached set_cached invalidate CacheKey TieredCache`
 
@@ -169,7 +169,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 
 ### CC-07: Multi-Tenancy & Effective Context Isolation
 
-- **Canonical Documents:** [crates/modules/rustok-tenant/docs/README.md](../../crates/modules/rustok-tenant/docs/README.md), [docs/standards/patterns-vs-antipatterns.md](./patterns-vs-antipatterns.md) §3.1, §6.
+- **Canonical Documents:** [crates/modules/rustok-tenant/docs/README.md](../../crates/modules/rustok-tenant/docs/README.md).
 - **Primary Owner Crates:** `rustok-tenant`, `rustok-channel`, `apps/server/src/middleware/tenant.rs`.
 - **CodeGraph Target:** `TenantContext resolve_tenant Column::TenantId ensure_tenant_access`
 
@@ -309,7 +309,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 
 ### CC-17: Ingress Sanitization, Input Validation & SSRF/XSS Defense
 
-- **Canonical Documents:** [docs/guides/input-validation.md](../guides/input-validation.md), [docs/standards/security.md](./security.md), [docs/standards/patterns-vs-antipatterns.md](./patterns-vs-antipatterns.md) §7.5, §11.
+- **Canonical Documents:** [docs/guides/input-validation.md](../guides/input-validation.md), [docs/standards/security.md](./security.md).
 - **Primary Owner Crates:** `rustok-web`, `packages/richtext`, all DTO modules.
 - **CodeGraph Target:** `validator::Validate sanitize_html UrlAllowlist SecurityHeaders`
 

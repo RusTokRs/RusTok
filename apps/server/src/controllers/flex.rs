@@ -471,7 +471,8 @@ mod tests {
     use super::*;
     use crate::context::TenantContext;
     use crate::extractors::auth::CurrentUser;
-    use crate::models::{flex_entries, flex_schemas, tenant_modules, tenants, users};
+    use crate::models::_entities::tenant_modules;
+    use crate::models::{flex_entries, flex_schemas, tenants, users};
     use rustok_api::Permission;
     use rustok_core::{
         UserRole, UserStatus,

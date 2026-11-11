@@ -110,6 +110,7 @@ impl HostAuthorityPolicy {
     }
 
     pub fn authenticate(&self, token: &str) -> Option<HostAuthorityContext> {
+        let token = token.trim();
         if !(MIN_TOKEN_BYTES..=MAX_TOKEN_BYTES).contains(&token.len()) {
             return None;
         }
@@ -172,6 +173,12 @@ fn resolve_with_policy(
     let token = token.map_err(|_| {
         Error::Unauthorized("Host-global authority credential is invalid".to_string())
     })?;
+    let token = token.trim();
+    if token.is_empty() {
+        return Err(Error::Unauthorized(
+            "Host-global authority credential is invalid".to_string(),
+        ));
+    }
     policy.authenticate(token).map(Some).ok_or_else(|| {
         Error::Unauthorized("Host-global authority credential is invalid".to_string())
     })
@@ -379,6 +386,51 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("Multiple host authority credential headers")
+        );
+        assert!(!headers.contains_key(HOST_AUTHORITY_TOKEN_HEADER));
+    }
+
+    #[test]
+    fn token_with_surrounding_whitespace_is_trimmed_and_authenticated() {
+        let actor_id = Uuid::new_v4();
+        let token = "operator-token-with-at-least-32-bytes-of-entropy";
+        let policy = HostAuthorityPolicy::parse(&policy_json(actor_id, "manage", token))
+            .expect("valid host policy");
+
+        let padded_token = format!("   {token}   ");
+        let authority = policy
+            .authenticate(&padded_token)
+            .expect("padded token should authenticate after trimming");
+        assert_eq!(authority.actor_id(), actor_id);
+        assert_eq!(authority.authority(), HostAuthority::Manage);
+    }
+
+    #[test]
+    fn whitespace_padded_token_below_min_length_is_rejected() {
+        let actor_id = Uuid::new_v4();
+        let short_token = "short";
+        let policy = HostAuthorityPolicy::parse(&policy_json(actor_id, "read", short_token))
+            .expect("valid host policy");
+
+        // 30 spaces + 5 chars = 35 chars, but only 5 non-whitespace bytes
+        let padded_short = format!("{}short", " ".repeat(30));
+        assert!(policy.authenticate(&padded_short).is_none());
+    }
+
+    #[test]
+    fn empty_or_whitespace_header_is_rejected_as_unauthorized() {
+        let policy = HostAuthorityPolicy::parse("[]").expect("empty policy");
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HOST_AUTHORITY_TOKEN_HEADER,
+            "    ".parse().expect("valid header"),
+        );
+
+        let err = take_with_policy(&mut headers, &policy)
+            .expect_err("whitespace token must be unauthorized");
+        assert!(
+            err.to_string()
+                .contains("Host-global authority credential is invalid")
         );
         assert!(!headers.contains_key(HOST_AUTHORITY_TOKEN_HEADER));
     }

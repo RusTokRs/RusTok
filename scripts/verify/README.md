@@ -110,14 +110,18 @@ npm run test:verify:ecommerce:fba-registries
 ### `rustok-doctor`
 
 The `rustok-doctor` crate provides offline hygiene scans through
-`cargo xtask doctor hygiene` and the existing `npm run verify:hygiene` entry
-points. It supports periodic codebase sweeps and scoped change checks.
+`cargo xtask doctor hygiene` and `npm run verify:hygiene`. Use
+`cargo xtask doctor hotspots --all --top 20` to rank large Rust files.
+The [Doctor contract](../../crates/utils/rustok-doctor/docs/README.md) describes
+target selection and reports.
 
 Run `npm run test:verify:hygiene` to exercise the scanner and its CLI against
 isolated fixtures. See the [hygiene patterns guide](../../docs/standards/logic-hygiene-patterns.md#4-periodic-domain-hygiene--code-cleanup-utility)
 for scan targets, exit codes, and patch verification commands. Reports separate
 potential impact from confidence. Only high-confidence findings can fail
 `--strict` or `--fail-on`. Heuristic matches remain available for review.
+
+### `verify-remediation-gate.py`
 
 The remediation gate applies Rust and JavaScript/TypeScript diff rules to source
 files of the corresponding language. Documentation and Python fixtures can
@@ -949,5 +953,5 @@ fi
 - [Platform Verification Plan](../../docs/verification/PLATFORM_VERIFICATION_PLAN.md) — master plan for periodic runs
 - [Quality and Operations Verification Plan](../../docs/verification/platform-quality-operations-verification-plan.md) — detailed test block, observability, CI/CD, security and quality checks
 - [Forbidden Actions](../../docs/standards/forbidden-actions.md) — prohibitions with examples
-- [Patterns vs Antipatterns](../../docs/standards/patterns-vs-antipatterns.md) — comparison
+- [Logic hygiene patterns](../../docs/standards/logic-hygiene-patterns.md) — documented cases and review guidance
 - [Known Pitfalls](../../docs/ai/KNOWN_PITFALLS.md) — common AI agent mistakes
