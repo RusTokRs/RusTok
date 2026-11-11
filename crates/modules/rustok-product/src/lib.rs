@@ -14,6 +14,7 @@
 //! custom attribute schemas, faceted search projections, and media attachments.
 
 pub use async_trait::async_trait;
+pub use rustok_product_ports::*;
 pub use rustok_events::{
     PRODUCT_INDEX_LOCALE_REFRESH_REQUESTED_EVENT_TYPE,
     PRODUCT_INDEX_VARIANT_REFRESH_REQUESTED_EVENT_TYPE,

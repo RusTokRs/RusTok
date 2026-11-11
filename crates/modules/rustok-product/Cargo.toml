@@ -6,12 +6,25 @@ license.workspace = true
 description = "Product domain module extracted from rustok-commerce"
 repository.workspace = true
 readme = "README.md"
+autobins = false
+
+[[bin]]
+name = "rustok-product-catalog-service"
+path = "src/bin/service.rs"
+required-features = ["service"]
+
+[features]
+default = []
+service = ["dep:rustok-telemetry", "dep:tonic", "rustok-product-ports/grpc-server"]
 
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
+rustok-product-ports = { path = "ports" }
+rustok-telemetry = { workspace = true, optional = true }
+tonic = { workspace = true, optional = true, features = ["tls-ring"] }
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true

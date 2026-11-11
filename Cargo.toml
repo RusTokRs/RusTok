@@ -37,6 +37,7 @@ members = [
     "crates/modules/rustok-fulfillment/admin",
     "crates/modules/rustok-fulfillment/storefront",
     "crates/modules/rustok-inventory/admin",
+    "crates/modules/rustok-product/ports",
     "crates/modules/rustok-product/admin",
     "crates/modules/rustok-product/storefront",
     "crates/modules/rustok-customer/admin",
@@ -351,6 +352,7 @@ rustok-cart = { path = "crates/modules/rustok-cart" }
 rustok-cart-storefront = { path = "crates/modules/rustok-cart/storefront", default-features = false }
 rustok-customer = { path = "crates/modules/rustok-customer" }
 rustok-product = { path = "crates/modules/rustok-product" }
+rustok-product-ports = { path = "crates/modules/rustok-product/ports" }
 rustok-product-relations = { path = "crates/modules/rustok-product-relations" }
 rustok-product-relations-admin = { path = "crates/modules/rustok-product-relations/admin" }
 rustok-brand = { path = "crates/modules/rustok-brand" }
