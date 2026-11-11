@@ -4,8 +4,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-01 — Entrypoint & Composition Root (`apps/server`)  
-**Next pending component:** [`apps/server` (Track FS-01.05 — services/app_runtime.rs & services/app_lifecycle.rs)](../../apps/server)  
-**Current main SHA:** `8f2188d969`  
+**Next pending component:** [`apps/server` (Track FS-01.06 — routes.rs & error.rs)](../../apps/server)  
+**Current main SHA:** `0f6f9435da`  
 **Active branch:** `main`
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **285 components** (~2.5M LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -32,7 +32,7 @@ The single canonical trigger to continue this audit sequence is:
 
 ### Phase Backlog — Architectural Sequence (285 Components Total — 0% COMPLETE)
 
-- [ ] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (4/33 tracks completed)
+- [ ] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (5/33 tracks completed)
 - [ ] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (0/10 completed)
 - [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (0/24 completed)
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (0/37 completed)
@@ -47,7 +47,7 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-01 — Entrypoint & Composition Root (`apps/server`)
-*Host binary, Axum HTTP/gRPC server composition, runtime context, middleware pipeline, global error handling, and background service lifecycle.* (4/33 tracks completed)
+*Host binary, Axum HTTP/gRPC server composition, runtime context, middleware pipeline, global error handling, and background service lifecycle.* (5/33 tracks completed)
 
 - [ ] **[`apps/server`](../../apps/server)** (485 files, 190,468 LOC) — decomposed into 33 focused audit tracks:
 
@@ -56,7 +56,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **FS-01.02 — `apps/server/src/host.rs` & `apps/server/src/host_authority.rs`** — host wiring, socket binding, TLS/HTTPS, shutdown signals. *(Done: fail-closed validation of server binding in `resolve_server_endpoint` trimming inputs and rejecting empty/whitespace; HTTPS/HSTS enforcement in production; strict production validation in `validate_auth_deployment` enforcing valid issuer without whitespace, minimum length > 8, access/refresh expirations > 0, and minimum password length >= 8; strict production validation in `validate_database_deployment` rejecting empty URI and dev credential placeholders; idle_timeout clamped to minimum 1000ms; host authority token whitespace trimming and fail-closed empty/whitespace denial; RAII test environment isolation; 4 unit tests in `host.rs` + 9 unit tests in `host_authority.rs` all passing; verified with `cargo test -p rustok-server --lib host` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
 - [x] **FS-01.03 — `apps/server/src/services/server_bootstrap.rs`** — bootstrap sequence, database pool initialization, migration execution, state validation. *(Done: fail-closed validation of trimmed production secrets; rejection of empty/whitespace-only JWT secrets and database URIs; parity with host.rs on user:password database credentials pattern; strict superadmin password validation enforcing minimum length of 8 characters and expanded known weak/sample passwords list; thread-safe RAII EnvGuard for concurrent test isolation; 11 unit tests all passing; verified with `cargo test -p rustok-server --lib server_bootstrap` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
 - [x] **FS-01.04 — `apps/server/src/services/server_runtime_context.rs`** — shared server context, state injection, thread safety. *(Done: anti-loss value restoration in `take` upon downcast failure; `shared_remove` unconditional type clearing; `shared_get_or_insert` atomic singleton resolution; `require_auth_config` fail-closed configuration guard; `FromRef` implementations for `Arc<RustokSettings>`; 9 unit tests all passing; verified with `cargo test -p rustok-server --lib server_runtime_context` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
-- [ ] **FS-01.05 — `apps/server/src/services/app_runtime.rs` & `apps/server/src/services/app_lifecycle.rs`** — runtime background worker lifecycle, cancellation, drain on shutdown.
+- [x] **FS-01.05 — `apps/server/src/services/app_runtime.rs` & `apps/server/src/services/app_lifecycle.rs`** — runtime background worker lifecycle, cancellation, drain on shutdown. *(Done: guaranteed supervisor abort on shutdown using `shared_get` + `abort()` + `shared_remove` for Channel, RBAC, Watchdog, and EventForwarder listeners even when live clones exist; graceful shutdown timeout handling; 15 unit tests all passing; verified with `cargo test -p rustok-server --lib app_lifecycle` and `cargo clippy --no-deps -p rustok-server --lib -- -D warnings`).*
 - [ ] **FS-01.06 — `apps/server/src/routes.rs` & `apps/server/src/error.rs`** — global routing table, 404 fallback, top-level Axum error mapping.
 
 #### 2. Middleware & Context Guards
