@@ -22,6 +22,8 @@ mod ssr_accessibility_evidence_tests;
 #[cfg(test)]
 mod ssr_actions_forms_browser_tests;
 #[cfg(test)]
+mod ssr_control_contract_tests;
+#[cfg(test)]
 mod ssr_assets_browser_tests;
 
 pub mod asset_provider;

@@ -975,6 +975,10 @@ export class FlyBrowserAdapter {
 
   bindSsrControls(signal) {
     for (const element of this.root.querySelectorAll("[data-fly-block-id]")) {
+      // The server renders `data-fly-can-drag="false"` when the drag-and-drop capability is
+      // denied. The endpoint refuses the drop either way; this only keeps the palette from
+      // offering a gesture that can end in nothing but a refusal.
+      if (element.dataset.flyCanDrag === "false") continue;
       element.setAttribute("draggable", "true");
       element.addEventListener(
         "dragstart",
@@ -1085,6 +1089,27 @@ export class FlyBrowserAdapter {
       },
       { signal },
     );
+    // A control whose value is the payload (`<select>`) acts on `change`, not on `click`.
+    this.root.addEventListener(
+      "change",
+      (event) => {
+        const actionElement =
+          event.target instanceof Element
+            ? event.target.closest("[data-fly-action]")
+            : null;
+        if (!(actionElement instanceof HTMLSelectElement)) return;
+        const action = actionElement.dataset.flyAction;
+        switch (action) {
+          case "set-viewport":
+            this.navigateRouteQuery(
+              actionElement.dataset.flyRouteQuery,
+              actionElement.value,
+            );
+            break;
+        }
+      },
+      { signal },
+    );
     this.iframe.addEventListener(
       "load",
       () => {
@@ -1096,6 +1121,25 @@ export class FlyBrowserAdapter {
       },
       { signal },
     );
+  }
+
+  // View state the server renders from the request — the previewed viewport — travels in the
+  // route, next to the draft token. It needs no draft session, so it also works for a read-only
+  // caller, and it survives the reload that follows every mutating intent. The server ignores
+  // a value it does not know, so a stale or hand-edited route renders the default.
+  navigateRouteQuery(key, value) {
+    if (typeof key !== "string" || !key) return false;
+    if (typeof value !== "string" || !value) return false;
+    let url;
+    try {
+      url = new URL(globalThis.location.href);
+    } catch (_) {
+      return false;
+    }
+    if (url.searchParams.get(key) === value) return false;
+    url.searchParams.set(key, value);
+    globalThis.location.assign(url.toString());
+    return true;
   }
 
   updateDropCandidate(point) {

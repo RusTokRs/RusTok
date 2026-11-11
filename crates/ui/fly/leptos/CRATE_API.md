@@ -19,6 +19,7 @@ SSR-first Leptos 0.8 adapter foundation, editor component shells, and browser ru
 ## 2. Invariants & Business Rules
 - **Safe Code Boundary**: The crate denies unsafe code (`#![deny(unsafe_code)]`).
 - **SSR-First Parity**: Layout shells and workspace components render static HTML and ARIA landmarks identically in SSR and client hydration.
+- **SSR Control Contract (producer side)**: `FlyPalette` renders each block as an item with `data-fly-block-id`, `data-fly-can-insert` and `data-fly-can-drag`, an insert control with `data-fly-action="insert-block"`, and — only when the host passes `on_begin_drag`, which `FlyEditorWorkspace` does in intent mode — a drag control with `data-fly-action="begin-block-drag"`. `FlyLayerTree` renders `data-fly-component-id` and `data-fly-action="select-component"` on selectable rows only. `fly-browser.js` binds exactly these on a server-rendered page; `scripts/verify/verify-fly-ssr-control-contract.mjs` fails when the two sides differ.
 - **WASM Client Feature Gating**: Browser-specific DOM manipulation and listener subscriptions require explicit `wasm-client` feature opt-in.
 - **Root Entrypoint**: Canonical entrypoint at `src/root.rs` cleanly separating host SSR shells from optional WASM browser interactions.
 

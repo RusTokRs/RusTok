@@ -9,6 +9,10 @@ SSR-first browser adapter assets and protocol contracts for Fly editors.
 - Define the typed browser intent protocol.
 - Classify revision-protected mutating intents.
 - Provide the JavaScript adapter bundle and safe default limits.
+- Bind the server-rendered editor controls (`bindSsrControls`): palette insert and drag, layer
+  selection, toolbar intents, and route view state such as the previewed viewport. The
+  attributes are a two-sided contract with the views that render them; see
+  [the decision](../../../../DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md).
 
 ## Interactions
 

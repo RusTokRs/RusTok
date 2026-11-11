@@ -1,3 +1,6 @@
+// The SSR-first runtime is only as real as its controls: importing the control-contract gate
+// here makes every run of this gate also prove that the adapter and the Rust views agree.
+import './verify-fly-ssr-control-contract.mjs';
 import { readFile } from 'node:fs/promises';
 
 const paths = {

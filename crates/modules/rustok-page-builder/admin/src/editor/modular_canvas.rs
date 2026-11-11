@@ -7,7 +7,7 @@ use crate::editor::{
     RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, ServerPreviewPanel, SsrActionsFormsPanel,
     SsrAssetPanel, SsrInspectorPanel, SsrInternalPageLinkPanel, SsrLocaleCoveragePanel,
     SsrLocalePanel, SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel,
-    TraitPanel,
+    TraitPanel, route_viewport,
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
@@ -113,6 +113,15 @@ pub fn AdminCanvas(
             .map(|status| status.limit_capabilities(capabilities))
             .unwrap_or(capabilities);
         runtime.dispatch(UiIntent::SetEditableCapabilities(capabilities));
+    }
+
+    // The previewed viewport is view state carried by the route (see `VIEWPORT_ROUTE_QUERY_KEY`).
+    // It is applied before any child renders: the toolbar and the canvas frame both read it.
+    let current_viewport = runtime
+        .controller
+        .with_untracked(|controller| controller.ui().state.viewport);
+    if let Some(viewport) = route_viewport(&route_context.query, current_viewport) {
+        runtime.dispatch(UiIntent::SetViewport(viewport));
     }
 
     let scenario_baseline = RwSignal::new(runtime_scenario_baseline);

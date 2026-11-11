@@ -257,6 +257,38 @@ Engineering audit remediation — see
 
 ### Fixed
 
+- **The palette, the layer tree and the viewport switch work on a server-rendered page.**
+  In the default `ssr + browser-js` runtime a control works only when a view renders the
+  `data-fly-*` attribute that `fly-browser.js` binds. `FlyPalette` rendered `data-fly-block` with
+  a Leptos click handler, while the adapter binds `[data-fly-block-id]` and
+  `data-fly-action="insert-block"` / `"begin-block-drag"` / `"select-component"`: without
+  hydration nothing could be inserted, dragged or selected, and no test failed.
+  - `fly-leptos` and `fly-dioxus`: `FlyPalette` renders each block as
+    `<div class="fly-palette__item" role="listitem" data-fly-block-id data-fly-category
+    data-fly-contribution-ids data-fly-can-insert data-fly-can-drag>` with an insert button
+    (`fly-palette__block`, `data-fly-action="insert-block"`) and an optional drag button
+    (`fly-palette__drag`, `data-fly-action="begin-block-drag"`). The palette root is
+    `role="group"`; each category holds a `role="list"`. **Markup change:** the item is no
+    longer the button, and `data-fly-block` is gone. `FlyLayerTree` renders
+    `data-fly-component-id` and `data-fly-action="select-component"` on selectable rows only.
+  - `FlyPalette` takes an optional `on_begin_drag`. The drag control renders only when it is
+    passed; `FlyEditorWorkspace` passes it in intent mode and emits
+    `BrowserIntentEnvelope::begin_palette_drag` (new typed constructor in `fly-browser`).
+    The insert control follows `CapabilityState::edit`, the drag control
+    `CapabilityState::drag_drop`.
+  - `fly-ui`: `EditorMessages` gains `insert_block` ("Add") and `drag_block` ("Drag"), the
+    accessible-name prefixes of the two controls. Both have serde defaults, so stored message
+    sets keep deserializing. A host that builds the struct field by field must add them.
+  - `fly-browser.js`: no drag is offered from an item with `data-fly-can-drag="false"`. A
+    `<select data-fly-action data-fly-route-query="<key>">` is route view state: on `change`
+    the adapter sets `<key>` in the URL, keeps the other parameters and navigates, without
+    posting an intent. The Page Builder admin uses it for the previewed viewport
+    (`?fly_viewport=<preset id>`), which the server resolves before it renders the canvas
+    frame.
+  - `scripts/verify/verify-fly-ssr-control-contract.mjs` derives the contract from the
+    adapter and the views and fails on a difference in either direction. Decision:
+    `DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`.
+
 - **A save rejected after the edit was applied no longer leaves the canvas diverged from the
   server.** A host may now answer an intent with a successful response that carries
   `save_failure` (`status`, `code`, `error`, `intent`) next to `reload: true`: the edit is in the

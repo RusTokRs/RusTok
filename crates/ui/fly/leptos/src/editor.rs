@@ -86,15 +86,36 @@ pub fn FlyContributionSummary(
 /// (or [`FlyEditorWorkspace`]) turns that into an `EditorCommand::Insert`
 /// against its own document. When `capabilities` denies editing, blocks render
 /// disabled so capability gating lives in this one surface instead of every host.
+///
+/// The markup is also the producer side of the `fly-browser` SSR control contract
+/// (`DECISIONS/2026-07-16-fly-ssr-first-browser-runtime.md`): a server-rendered page has no
+/// Leptos event handlers, so `fly-browser.js` binds these attributes instead —
+/// `data-fly-block-id` on the item (drag source and block identity),
+/// `data-fly-action="insert-block"` on the insert control and
+/// `data-fly-action="begin-block-drag"` on the drag control. `data-fly-can-drag="false"` tells
+/// the adapter not to offer a drag the server would refuse; `data-fly-can-insert` states the
+/// insert capability for browser evidence runners, which cannot see a Rust capability state.
+/// Renaming or dropping any of them silently disables the palette in the default
+/// `ssr + browser-js` runtime.
+///
+/// The drag control arms a block drag without a pointer gesture, so a keyboard author can
+/// place a block at a chosen target. It renders only when the host passes `on_begin_drag`,
+/// which [`FlyEditorWorkspace`] does in intent mode: a surface with no drag transport must not
+/// show a control that does nothing.
 #[component]
 pub fn FlyPalette(
     blocks: Vec<PaletteBlockItem>,
     on_insert: Callback<String>,
+    #[prop(optional_no_strip)] on_begin_drag: Option<Callback<String>>,
     #[prop(optional_no_strip)] capabilities: Option<CapabilityState>,
     #[prop(optional)] messages: Option<EditorMessages>,
 ) -> impl IntoView {
-    let palette_label = messages.unwrap_or_default().palette;
+    let messages = messages.unwrap_or_default();
+    let palette_label = messages.palette;
+    let insert_label = messages.insert_block;
+    let drag_label = messages.drag_block;
     let can_insert = capabilities.map(|state| state.edit).unwrap_or(true);
+    let can_drag = capabilities.map(|state| state.drag_drop).unwrap_or(true);
     let mut groups = std::collections::BTreeMap::<String, Vec<PaletteBlockItem>>::new();
     for block in blocks {
         groups
@@ -118,21 +139,51 @@ pub fn FlyPalette(
                                         let block_id = block.id.clone();
                                         let contribution_ids =
                                             block.contribution_ids.join(",");
+                                        let insert_name =
+                                            format!("{insert_label}: {}", block.label);
+                                        let drag_control = on_begin_drag.map(|on_begin_drag| {
+                                            let drag_id = block.id.clone();
+                                            let drag_name =
+                                                format!("{drag_label}: {}", block.label);
+                                            view! {
+                                                <button
+                                                    type="button"
+                                                    class="fly-palette__drag"
+                                                    aria-label=drag_name
+                                                    data-fly-action="begin-block-drag"
+                                                    disabled=!can_drag
+                                                    on:click=move |_| {
+                                                        on_begin_drag.run(drag_id.clone())
+                                                    }
+                                                >
+                                                    {drag_label.clone()}
+                                                </button>
+                                            }
+                                        });
                                         view! {
-                                            <button
-                                                type="button"
-                                                class="fly-palette__block"
+                                            <div
+                                                class="fly-palette__item"
                                                 role="listitem"
-                                                data-fly-block=block.id.clone()
+                                                data-fly-block-id=block.id.clone()
                                                 data-fly-category=block.category.clone()
                                                 data-fly-contribution-ids=contribution_ids
-                                                disabled=!can_insert
-                                                on:click=move |_| {
-                                                    on_insert.run(block_id.clone())
-                                                }
+                                                data-fly-can-insert=can_insert.to_string()
+                                                data-fly-can-drag=can_drag.to_string()
                                             >
-                                                {block.label.clone()}
-                                            </button>
+                                                <button
+                                                    type="button"
+                                                    class="fly-palette__block"
+                                                    aria-label=insert_name
+                                                    data-fly-action="insert-block"
+                                                    disabled=!can_insert
+                                                    on:click=move |_| {
+                                                        on_insert.run(block_id.clone())
+                                                    }
+                                                >
+                                                    {block.label.clone()}
+                                                </button>
+                                                {drag_control}
+                                            </div>
                                         }
                                     })
                                     .collect_view()}
@@ -161,6 +212,12 @@ pub(crate) fn layer_indent_class(depth: usize) -> &'static str {
 
 /// Layer tree for a document. Rows are buttons so selection works with keyboard and
 /// assistive technology, not only pointer hit-testing.
+///
+/// A selectable row carries `data-fly-component-id` and `data-fly-action="select-component"`:
+/// the producer side of the `fly-browser` SSR control contract, through which
+/// `fly-browser.js` selects the component (and offers the row as a move source) on a
+/// server-rendered page that has no Leptos event handlers. Rows that cannot be selected —
+/// opaque components and components without an id — carry neither attribute.
 #[component]
 pub fn FlyLayerTree(
     document: ProjectDocument,
@@ -183,13 +240,17 @@ pub fn FlyLayerTree(
                     let item_id = item.id.clone();
                     let label = item.label.clone();
                     let class = format!("fly-layers__row {}", layer_indent_class(item.depth));
+                    let selectable = !item.opaque && !item_id.is_empty();
+                    let browser_component_id = selectable.then(|| item_id.clone());
                     view! {
                         <li>
                             <button
                                 type="button"
                                 class=class
                                 aria-current=is_selected.then_some("true")
-                                disabled=item.opaque || item_id.is_empty()
+                                data-fly-component-id=browser_component_id
+                                data-fly-action=selectable.then_some("select-component")
+                                disabled=!selectable
                                 on:click=move |_| {
                                     if !item_id.is_empty() {
                                         on_select.run(Some(item_id.clone()));
@@ -1747,6 +1808,22 @@ pub fn FlyEditorWorkspace(
     let editor = RwSignal::new(FlyEditor::new(document, registries));
     let ui = RwSignal::new(FlyUiStateMachine::new(Presentation::Full));
 
+    // Intent mode only: the drag is completed by a `drop` intent, which needs the host's
+    // intent transport and canvas geometry. A local-document workspace has neither.
+    let drag_access = palette_access.clone();
+    let drag_instance = intent_instance.clone();
+    let on_begin_drag = on_intent.map(|on_intent| {
+        Callback::new(move |block_id: String| {
+            if !drag_access.allows(&block_id) {
+                return;
+            }
+            on_intent.run(BrowserIntentEnvelope::begin_palette_drag(
+                &drag_instance,
+                &block_id,
+            ));
+        })
+    });
+
     let palette_editor = editor;
     let palette_ui = ui;
     let insert_instance = intent_instance.clone();
@@ -2757,6 +2834,7 @@ pub fn FlyEditorWorkspace(
                 <FlyPalette
                     blocks=blocks
                     on_insert=on_insert
+                    on_begin_drag=on_begin_drag
                     capabilities=capabilities
                     messages=theme_messages.clone()
                 />
@@ -2879,6 +2957,227 @@ mod tests {
         assert_eq!(layer_indent_class(3), "pl-[50px]");
         assert_eq!(layer_indent_class(8), "pl-[120px]");
         assert_eq!(layer_indent_class(usize::MAX), "pl-[120px]");
+    }
+
+    fn palette_block(id: &str, label: &str, category: &str) -> PaletteBlockItem {
+        PaletteBlockItem {
+            id: id.to_string(),
+            label: label.to_string(),
+            category: category.to_string(),
+            contribution_ids: Vec::new(),
+        }
+    }
+
+    fn position(html: &str, marker: &str) -> usize {
+        html.find(marker)
+            .unwrap_or_else(|| panic!("`{marker}` is not rendered in: {html}"))
+    }
+
+    /// Text of the first element that carries `marker`, from its opening `<` to the first
+    /// `>` after the marker. Enough to assert which attributes sit on one element without
+    /// depending on attribute order.
+    fn opening_tag<'a>(html: &'a str, marker: &str) -> &'a str {
+        let at = position(html, marker);
+        let start = html[..at].rfind('<').expect("opening tag start");
+        let end = at + html[at..].find('>').expect("opening tag end");
+        &html[start..=end]
+    }
+
+    // The three palette tests and the layer test pin the producer side of the `fly-browser`
+    // SSR control contract. `fly-browser.js` (`bindSsrControls`) reads exactly these
+    // attributes; a server-rendered page has no other way to insert, drag or select.
+    #[test]
+    fn palette_renders_the_ssr_insert_and_drag_controls_the_browser_adapter_binds() {
+        let html = view! {
+            <FlyPalette
+                blocks=vec![palette_block("forum.topic_list", "Topic list", "forum")]
+                on_insert=Callback::new(|_: String| ())
+                on_begin_drag=Some(Callback::new(|_: String| ()))
+                capabilities=Some(CapabilityState::full())
+            />
+        }
+        .to_html();
+
+        let item = opening_tag(&html, "data-fly-block-id=\"forum.topic_list\"");
+        assert!(item.contains("data-fly-can-insert=\"true\""), "{item}");
+        assert!(item.contains("data-fly-can-drag=\"true\""), "{item}");
+        assert!(item.contains("data-fly-category=\"forum\""), "{item}");
+
+        let insert = opening_tag(&html, "data-fly-action=\"insert-block\"");
+        assert!(insert.starts_with("<button"), "{insert}");
+        assert!(insert.contains("aria-label=\"Add: Topic list\""), "{insert}");
+        assert!(!insert.contains("disabled"), "{insert}");
+
+        let drag = opening_tag(&html, "data-fly-action=\"begin-block-drag\"");
+        assert!(drag.starts_with("<button"), "{drag}");
+        assert!(drag.contains("aria-label=\"Drag: Topic list\""), "{drag}");
+        assert!(!drag.contains("disabled"), "{drag}");
+
+        // Both controls live inside the item: the adapter resolves the block through
+        // `closest("[data-fly-block-id]")`.
+        let item_at = position(&html, "data-fly-block-id=");
+        let insert_at = position(&html, "data-fly-action=\"insert-block\"");
+        let drag_at = position(&html, "data-fly-action=\"begin-block-drag\"");
+        let item_end = item_at + position(&html[item_at..], "</details>");
+        assert!(item_at < insert_at && insert_at < drag_at && drag_at < item_end);
+    }
+
+    #[test]
+    fn palette_disables_each_ssr_control_by_its_own_capability() {
+        let read_only = CapabilityState {
+            edit: false,
+            drag_drop: false,
+            ..CapabilityState::full()
+        };
+        let html = view! {
+            <FlyPalette
+                blocks=vec![palette_block("text", "Text", "basic")]
+                on_insert=Callback::new(|_: String| ())
+                on_begin_drag=Some(Callback::new(|_: String| ()))
+                capabilities=Some(read_only)
+            />
+        }
+        .to_html();
+        let item = opening_tag(&html, "data-fly-block-id=\"text\"");
+        assert!(item.contains("data-fly-can-insert=\"false\""), "{item}");
+        assert!(item.contains("data-fly-can-drag=\"false\""), "{item}");
+        let insert = opening_tag(&html, "data-fly-action=\"insert-block\"");
+        assert!(insert.contains("disabled"), "{insert}");
+        let drag = opening_tag(&html, "data-fly-action=\"begin-block-drag\"");
+        assert!(drag.contains("disabled"), "{drag}");
+
+        let insert_only = CapabilityState {
+            drag_drop: false,
+            ..CapabilityState::full()
+        };
+        let html = view! {
+            <FlyPalette
+                blocks=vec![palette_block("text", "Text", "basic")]
+                on_insert=Callback::new(|_: String| ())
+                on_begin_drag=Some(Callback::new(|_: String| ()))
+                capabilities=Some(insert_only)
+            />
+        }
+        .to_html();
+        let item = opening_tag(&html, "data-fly-block-id=\"text\"");
+        assert!(item.contains("data-fly-can-insert=\"true\""), "{item}");
+        assert!(item.contains("data-fly-can-drag=\"false\""), "{item}");
+        let insert = opening_tag(&html, "data-fly-action=\"insert-block\"");
+        assert!(!insert.contains("disabled"), "{insert}");
+        let drag = opening_tag(&html, "data-fly-action=\"begin-block-drag\"");
+        assert!(drag.contains("disabled"), "{drag}");
+    }
+
+    #[test]
+    fn palette_without_a_drag_transport_renders_no_drag_control() {
+        let html = view! {
+            <FlyPalette
+                blocks=vec![palette_block("text", "Text", "basic")]
+                on_insert=Callback::new(|_: String| ())
+                on_begin_drag=None
+                capabilities=None
+            />
+        }
+        .to_html();
+        assert!(html.contains("data-fly-block-id=\"text\""));
+        assert!(html.contains("data-fly-action=\"insert-block\""));
+        assert!(!html.contains("begin-block-drag"));
+    }
+
+    #[test]
+    fn layer_tree_renders_the_ssr_select_control_only_on_selectable_rows() {
+        // The second child is not a component object, so the model preserves it as an
+        // opaque node: a row the editor lists but cannot select.
+        let document: ProjectDocument = serde_json::from_value(serde_json::json!({
+            "project": {
+                "pages": [{
+                    "id": "home",
+                    "name": "Home",
+                    "component": {
+                        "type": "wrapper",
+                        "id": "root",
+                        "components": [
+                            { "id": "hero-title", "tagName": "h1", "content": "Welcome" },
+                            "preserved opaque payload"
+                        ]
+                    }
+                }]
+            }
+        }))
+        .expect("document");
+        let rows = editor_layer_items(&document);
+        let selectable = rows
+            .iter()
+            .filter(|row| !row.opaque && !row.id.is_empty())
+            .count();
+        assert!(
+            rows.iter().any(|row| row.id == "hero-title"),
+            "fixture must contain a selectable row: {rows:?}"
+        );
+        assert!(
+            rows.iter().any(|row| row.opaque),
+            "fixture must contain an unselectable row: {rows:?}"
+        );
+
+        let html = view! {
+            <FlyLayerTree
+                document=document
+                selected=Some("hero-title".to_string())
+                on_select=Callback::new(|_: Option<String>| ())
+            />
+        }
+        .to_html();
+
+        let row = opening_tag(&html, "data-fly-component-id=\"hero-title\"");
+        assert!(row.starts_with("<button"), "{row}");
+        assert!(row.contains("data-fly-action=\"select-component\""), "{row}");
+        assert!(row.contains("aria-current=\"true\""), "{row}");
+        assert!(!row.contains("disabled"), "{row}");
+        // One select control per selectable row and none on the rest: the adapter would
+        // otherwise select, or offer to move, a component the editor refuses to select.
+        assert_eq!(html.matches("<button").count(), rows.len());
+        assert_eq!(html.matches("data-fly-component-id=").count(), selectable);
+        assert_eq!(html.matches("data-fly-action=\"select-component\"").count(), selectable);
+    }
+
+    #[test]
+    fn workspace_offers_the_drag_control_only_in_intent_mode() {
+        let document = || -> ProjectDocument {
+            serde_json::from_value(serde_json::json!({
+                "project": {
+                    "pages": [{
+                        "id": "page-1",
+                        "name": "Page One",
+                        "component": { "type": "wrapper", "id": "root", "components": [] }
+                    }]
+                }
+            }))
+            .expect("document")
+        };
+
+        let local = view! {
+            <FlyEditorWorkspace
+                document=document()
+                instance_id="test-workspace".to_string()
+                initial_page=0
+            />
+        }
+        .to_html();
+        assert!(local.contains("data-fly-action=\"insert-block\""));
+        assert!(!local.contains("begin-block-drag"));
+
+        let intent = view! {
+            <FlyEditorWorkspace
+                document=document()
+                instance_id="test-workspace".to_string()
+                on_intent=Callback::new(|_: BrowserIntentEnvelope| ())
+                initial_page=0
+            />
+        }
+        .to_html();
+        assert!(intent.contains("data-fly-action=\"insert-block\""));
+        assert!(intent.contains("data-fly-action=\"begin-block-drag\""));
+        assert!(intent.contains("data-fly-action=\"select-component\""));
     }
 
     #[test]

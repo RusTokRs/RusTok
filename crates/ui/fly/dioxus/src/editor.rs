@@ -63,17 +63,29 @@ pub fn FlyContributionSummary(
 }
 
 /// Palette of insertable blocks, grouped by category in collapsible sections
-/// (`landing` and `commerce` start open). Selecting one notifies the host through
-/// `on_insert` with the registry block id.
+/// (`landing` and `commerce` start open). Activating the insert control notifies the host
+/// through `on_insert` with the registry block id.
+///
+/// The markup is the one `fly-leptos` renders, so the `fly-browser` SSR control contract,
+/// shared styles and browser evidence runners see one palette whichever adapter produced it:
+/// an item with `data-fly-block-id`, `data-fly-can-insert` and `data-fly-can-drag`, an insert
+/// control with `data-fly-action="insert-block"`, and a drag control with
+/// `data-fly-action="begin-block-drag"`. The drag control renders only when the host passes
+/// `on_begin_drag`: a surface with no drag transport must not show a control that does nothing.
 #[component]
 pub fn FlyPalette(
     blocks: Vec<PaletteBlockItem>,
     on_insert: EventHandler<String>,
+    on_begin_drag: Option<EventHandler<String>>,
     capabilities: Option<CapabilityState>,
     messages: Option<EditorMessages>,
 ) -> Element {
-    let palette_label = messages.unwrap_or_default().palette;
+    let messages = messages.unwrap_or_default();
+    let palette_label = messages.palette;
+    let insert_label = messages.insert_block;
+    let drag_label = messages.drag_block;
     let can_insert = capabilities.map(|s| s.edit).unwrap_or(true);
+    let can_drag = capabilities.map(|s| s.drag_drop).unwrap_or(true);
     let mut groups = std::collections::BTreeMap::<String, Vec<PaletteBlockItem>>::new();
     for block in blocks {
         groups
@@ -83,29 +95,51 @@ pub fn FlyPalette(
     }
 
     rsx! {
-        div { class: "fly-palette", role: "list", aria_label: "{palette_label}",
+        div { class: "fly-palette", role: "group", aria_label: "{palette_label}",
             for (category, items) in groups.into_iter() {
                 details {
                     key: "{category}",
                     class: "fly-palette__category",
                     open: category == "landing" || category == "commerce",
                     summary { class: "fly-palette__category-title", "{category}" }
-                    div { class: "fly-palette__grid",
+                    div { class: "fly-palette__grid", role: "list",
                         for item in items.into_iter() {
                             {
-                                let id = item.id.clone();
+                                let insert_id = item.id.clone();
+                                let drag_id = item.id.clone();
                                 let contribution_ids = item.contribution_ids.join(",");
+                                let insert_name = format!("{insert_label}: {}", item.label);
+                                let drag_name = format!("{drag_label}: {}", item.label);
                                 rsx! {
-                                    button {
+                                    div {
                                         key: "{item.id}",
-                                        r#type: "button",
-                                        class: "fly-palette__block",
-                                        disabled: !can_insert,
-                                        "data-fly-block": "{item.id}",
+                                        class: "fly-palette__item",
+                                        role: "listitem",
+                                        "data-fly-block-id": "{item.id}",
                                         "data-fly-category": "{item.category}",
                                         "data-fly-contribution-ids": "{contribution_ids}",
-                                        onclick: move |_| on_insert.call(id.clone()),
-                                        "{item.label}"
+                                        "data-fly-can-insert": "{can_insert}",
+                                        "data-fly-can-drag": "{can_drag}",
+                                        button {
+                                            r#type: "button",
+                                            class: "fly-palette__block",
+                                            aria_label: "{insert_name}",
+                                            "data-fly-action": "insert-block",
+                                            disabled: !can_insert,
+                                            onclick: move |_| on_insert.call(insert_id.clone()),
+                                            "{item.label}"
+                                        }
+                                        if let Some(on_begin_drag) = on_begin_drag {
+                                            button {
+                                                r#type: "button",
+                                                class: "fly-palette__drag",
+                                                aria_label: "{drag_name}",
+                                                "data-fly-action": "begin-block-drag",
+                                                disabled: !can_drag,
+                                                onclick: move |_| on_begin_drag.call(drag_id.clone()),
+                                                "{drag_label}"
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -118,6 +152,9 @@ pub fn FlyPalette(
 }
 
 /// Document layer tree hierarchy. Selecting an item invokes `on_select`.
+///
+/// A selectable row carries `data-fly-component-id` and `data-fly-action="select-component"`,
+/// the same markup `fly-leptos` renders; rows that cannot be selected carry neither.
 #[component]
 pub fn FlyLayerTree(
     layers: Vec<fly_ui::EditorLayerItem>,
@@ -132,6 +169,9 @@ pub fn FlyLayerTree(
             for item in layers.into_iter() {
                 {
                     let item_id = item.id.clone();
+                    let selectable = !item.opaque && !item.id.is_empty();
+                    let browser_component_id = selectable.then(|| item.id.clone());
+                    let browser_action = selectable.then_some("select-component");
                     let is_selected = selected.as_deref() == Some(&item_id);
                     let class_name = if is_selected {
                         "fly-layers__row fly-layers__row--selected"
@@ -145,7 +185,9 @@ pub fn FlyLayerTree(
                                 r#type: "button",
                                 class: "{class_name}",
                                 style: format!("padding-left:{}rem", 0.5 + item.depth as f32 * 1.25),
-                                disabled: item.opaque || item.id.is_empty(),
+                                "data-fly-component-id": browser_component_id,
+                                "data-fly-action": browser_action,
+                                disabled: !selectable,
                                 onclick: move |_| on_select.call(item_id.clone()),
                                 "{item.label}"
                             }
@@ -340,6 +382,22 @@ pub fn FlyEditorWorkspace(
 
     let mut editor = use_signal(|| FlyEditor::new(document, registries));
 
+    // Intent mode only: the drag is completed by a `drop` intent, which needs the host's
+    // intent transport and canvas geometry. A local-document workspace has neither.
+    let begin_palette_drag = use_callback({
+        let instance = intent_instance.clone();
+        let access = palette_access.clone();
+        move |block_id: String| {
+            if !access.allows(&block_id) {
+                return;
+            }
+            if let Some(handler) = on_intent {
+                handler.call(BrowserIntentEnvelope::begin_palette_drag(&instance, &block_id));
+            }
+        }
+    });
+    let on_begin_drag = intent_mode.then_some(begin_palette_drag);
+
     let page_selection = match initial_page {
         Some(index) => PageSelection::Index(index),
         None => PageSelection::First,
@@ -475,6 +533,7 @@ pub fn FlyEditorWorkspace(
                             }
                         }
                     },
+                    on_begin_drag,
                     capabilities,
                     messages: Some(messages.clone()),
                 }

@@ -14,6 +14,14 @@ function requireAbsent(text, needle, message) {
   if (text.includes(needle)) throw new Error(message);
 }
 
+// The Playwright config, global setup and runner are formatted by the application's Prettier
+// (`singleQuote: true`), so a marker must not depend on which quote a string literal uses.
+const tsQuotes = (text) => text.replaceAll("'", '"');
+const requireTs = (text, needle, message) =>
+  requireContains(tsQuotes(text), tsQuotes(needle), message);
+const absentTs = (text, needle, message) =>
+  requireAbsent(tsQuotes(text), tsQuotes(needle), message);
+
 const contractPath =
   "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-browser-execution-contract.json";
 const configPath = "apps/next-admin/playwright.forum-page-builder.config.ts";
@@ -32,7 +40,19 @@ const propertyPanel = read(
 const previewPanel = read(
   "crates/modules/rustok-page-builder/admin/src/editor/contribution_preview.rs",
 );
-const palette = read("crates/modules/rustok-page-builder/admin/src/editor/palette_layers.rs");
+// The palette and the layer tree are rendered by the shared `fly-leptos` workspace, which the
+// Page Builder admin mounts through `adapter_workspace.rs`; `fly-browser.js` binds the
+// attributes on a server-rendered page. Test code is cut off: an attribute that only a test
+// string mentions is not rendered.
+const workspaceSource = read("crates/ui/fly/leptos/src/editor.rs");
+const workspaceTests = /^#\[cfg\(test\)\]\s*\nmod tests\b/m.exec(workspaceSource);
+const palette = workspaceTests
+  ? workspaceSource.slice(0, workspaceTests.index)
+  : workspaceSource;
+const workspaceMount = read(
+  "crates/modules/rustok-page-builder/admin/src/editor/adapter_workspace.rs",
+);
+const browserAdapter = read("crates/ui/fly/browser/assets/fly-browser.js");
 const composition = read("apps/admin/src/app/page_builder_contributions.rs");
 
 if (contract.status !== "source_ready_maintainer_execution_pending") {
@@ -108,7 +128,7 @@ for (const marker of [
   'video: "off"',
   'name: "forum-page-builder-chromium"',
 ]) {
-  requireContains(config, marker, `Playwright config missing ${marker}`);
+  requireTs(config, marker, `Playwright config missing ${marker}`);
 }
 
 for (const marker of [
@@ -117,10 +137,10 @@ for (const marker of [
   'path.resolve(repoRoot, "target")',
   "rmSync(resolveOutput(contract), { force: true })",
 ]) {
-  requireContains(setup, marker, `browser global setup missing stale-output guard: ${marker}`);
+  requireTs(setup, marker, `browser global setup missing stale-output guard: ${marker}`);
 }
 for (const forbidden of ["readFileSync(resolveOutput", "writeFileSync", "renameSync"])
-  requireAbsent(setup, forbidden, `global setup must only clear the evidence output: ${forbidden}`);
+  absentTs(setup, forbidden, `global setup must only clear the evidence output: ${forbidden}`);
 
 for (const marker of [
   "forum.topic_list",
@@ -144,7 +164,7 @@ for (const marker of [
   "runtime_authorization_evidence_pending: true",
   "observed_page_builder_wave_pending: true",
 ]) {
-  requireContains(runner, marker, `browser harness missing required marker: ${marker}`);
+  requireTs(runner, marker, `browser harness missing required marker: ${marker}`);
 }
 
 for (const forbidden of [
@@ -156,7 +176,7 @@ for (const forbidden of [
   "screenshot(",
   "tracing.start",
 ]) {
-  requireAbsent(
+  absentTs(
     runner,
     forbidden,
     `browser harness must not retain sensitive browser material through ${forbidden}`,
@@ -187,12 +207,39 @@ for (const marker of [
 ]) {
   requireContains(previewPanel, marker, `preview panel missing browser boundary ${marker}`);
 }
-for (const marker of [
-  "data-fly-block-id=browser_block_id",
-  'data-fly-action="insert-block"',
-  'data-fly-action="select-component"',
+// The selectors the runner drives, on all three sides: rendered by the workspace, mounted by
+// the admin, bound by the adapter. `verify-fly-ssr-control-contract.mjs` checks the contract
+// in general; this pins the part the Forum evidence depends on.
+for (const [pattern, label] of [
+  [/(?<![[\w-])data-fly-block-id=/, "data-fly-block-id"],
+  [/(?<![[\w-])data-fly-can-insert=/, "data-fly-can-insert"],
+  [/(?<![[\w-])data-fly-action="insert-block"/, 'data-fly-action="insert-block"'],
+  [/(?<![[\w-])data-fly-component-id=/, "data-fly-component-id"],
+  [/(?<![[\w-])data-fly-action=[^\n]*"select-component"/, 'data-fly-action="select-component"'],
 ]) {
-  requireContains(palette, marker, `palette/layer boundary missing ${marker}`);
+  if (!pattern.test(palette)) {
+    throw new Error(`palette/layer boundary does not render ${label}`);
+  }
+}
+requireContains(
+  workspaceMount,
+  "<FlyEditorWorkspace",
+  "Page Builder admin must mount the shared workspace that renders the palette and layers",
+);
+for (const marker of [
+  'querySelectorAll("[data-fly-block-id]")',
+  'case "insert-block":',
+  'case "select-component":',
+]) {
+  requireContains(browserAdapter, marker, `browser adapter no longer binds ${marker}`);
+}
+for (const marker of [
+  "[data-fly-block-id='forum.topic_list']",
+  "toHaveAttribute('data-fly-can-insert', 'true')",
+  "[data-fly-action='insert-block']",
+  "[data-fly-action='select-component']",
+]) {
+  requireTs(runner, marker, `browser runner no longer drives ${marker}`);
 }
 for (const marker of [
   "with_preview_port(Arc::new(ForumPageBuilderPreviewPort))",
