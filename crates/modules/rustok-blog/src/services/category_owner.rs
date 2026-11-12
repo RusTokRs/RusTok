@@ -21,7 +21,7 @@ use crate::dto::{
 use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
 use crate::ports::taxonomy::{
-    AsBlogTaxonomyConnection, BlogCategoryDeleteCleanupPort, BlogTaxonomyPort, NoopBlogTaxonomyPort,
+    BlogCategoryDeleteCleanupPort, BlogTaxonomyPort, NoopBlogTaxonomyPort,
 };
 
 /// Public Blog Category owner facade.
@@ -260,11 +260,8 @@ impl CategoryService {
             .skip(offset)
             .take(per_page as usize)
             .map(|(category, canonical)| {
-                let (locale, effective_locale) = projection_locales(
-                    category.id,
-                    canonical.requested_locale,
-                    canonical.effective_locale,
-                )?;
+                let (locale, effective_locale) =
+                    (canonical.requested_locale, canonical.effective_locale);
                 Ok(CategoryListItem {
                     id: category.id,
                     locale,
@@ -343,11 +340,8 @@ async fn load_category_response_impl<C: ConnectionTrait>(
     }
     let parent_id = canonical.parent_id;
     validate_persisted_category_settings(&category.settings)?;
-    let (locale, effective_locale) = projection_locales(
-        category_id,
-        canonical.requested_locale,
-        canonical.effective_locale,
-    )?;
+    let (locale, effective_locale) =
+        (canonical.requested_locale, canonical.effective_locale);
 
     Ok(CategoryResponse {
         id: category.id,

@@ -435,12 +435,13 @@ fn normalize_locale(locale: &str) -> BlogResult<String> {
 /// it cannot be presented as a localized tag, so it is rejected as a broken projection
 /// instead of being given an assumed locale.
 fn tag_effective_locale(term: &BlogTaxonomyTagSnapshot) -> BlogResult<String> {
-    term.effective_locale.clone().ok_or_else(|| {
-        BlogError::invariant(format!(
+    if term.effective_locale.trim().is_empty() {
+        return Err(BlogError::invariant(format!(
             "Taxonomy tag {} was returned without an effective locale",
             term.id
-        ))
-    })
+        )));
+    }
+    Ok(term.effective_locale.clone())
 }
 
 fn to_tag_owner_response(
@@ -453,7 +454,7 @@ fn to_tag_owner_response(
         id: term.id,
         tenant_id,
         locale: term.locale,
-        effective_locale: term.effective_locale,
+        effective_locale,
         name: term.name,
         slug: term.slug,
         use_count,
@@ -470,7 +471,7 @@ fn to_tag_mutation_response(
         id: term.id,
         tenant_id: term.tenant_id,
         locale: term.locale,
-        effective_locale: term.effective_locale,
+        effective_locale,
         name: term.name,
         slug: term.slug,
         use_count,
