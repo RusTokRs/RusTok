@@ -196,9 +196,15 @@ fn required_tenant_id(options: &serde_json::Map<String, serde_json::Value>) -> C
     let raw = option(options, "tenant_id").ok_or_else(|| CliCoreError::InvalidInput {
         message: "--tenant-id is required for oauth create-app".to_string(),
     })?;
-    Uuid::parse_str(raw).map_err(|_| CliCoreError::InvalidInput {
+    let tenant_id = Uuid::parse_str(raw).map_err(|_| CliCoreError::InvalidInput {
         message: "--tenant-id must be a UUID".to_string(),
-    })
+    })?;
+    if tenant_id.is_nil() {
+        return Err(CliCoreError::InvalidInput {
+            message: "--tenant-id must not be nil".to_string(),
+        });
+    }
+    Ok(tenant_id)
 }
 
 fn options(args: &serde_json::Value) -> CliCoreResult<&serde_json::Map<String, serde_json::Value>> {
@@ -217,9 +223,14 @@ fn option<'a>(
 }
 
 fn validate_identity(value: &str, flag: &str) -> CliCoreResult<()> {
-    if value.trim().is_empty() {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
         Err(CliCoreError::InvalidInput {
             message: format!("{flag} must not be empty"),
+        })
+    } else if trimmed.chars().count() > 255 {
+        Err(CliCoreError::InvalidInput {
+            message: format!("{flag} must be at most 255 characters"),
         })
     } else {
         Ok(())
@@ -234,7 +245,7 @@ fn command_failed(error: impl std::fmt::Display) -> CliCoreError {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEVELOPMENT_APP_LOCALE, create_development_app, required_tenant_id};
+    use super::{DEVELOPMENT_APP_LOCALE, create_development_app, required_tenant_id, validate_identity};
     use rustok_cli_core::CliCoreError;
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
     use uuid::Uuid;
@@ -247,6 +258,29 @@ mod tests {
             Err(CliCoreError::InvalidInput { message })
                 if message == "--tenant-id is required for oauth create-app"
         ));
+    }
+
+    #[test]
+    fn oauth_create_app_rejects_nil_tenant_id() {
+        let mut options = serde_json::Map::new();
+        options.insert(
+            "tenant_id".to_string(),
+            serde_json::json!(Uuid::nil().to_string()),
+        );
+        assert!(matches!(
+            required_tenant_id(&options),
+            Err(CliCoreError::InvalidInput { message })
+                if message == "--tenant-id must not be nil"
+        ));
+    }
+
+    #[test]
+    fn validate_identity_bounds() {
+        assert!(validate_identity("", "--name").is_err());
+        assert!(validate_identity("   ", "--name").is_err());
+        assert!(validate_identity("valid-name", "--name").is_ok());
+        let oversized = "a".repeat(256);
+        assert!(validate_identity(&oversized, "--name").is_err());
     }
 
     #[test]
