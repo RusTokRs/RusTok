@@ -192,7 +192,8 @@ migration, concurrent CAS, and change-cursor recovery evidence.
 
 ### Public locale, route and cache authority
 
-- Public detail/list use requested locale → tenant default → platform fallback.
+- Native and unauthenticated GraphQL public detail and list reads use the same
+  tenant fallback chain: requested locale → tenant default → platform fallback.
 - Published slug aliases, delete tombstones and explicit historical import remain source-ready.
 - Localized canonical routes and host canonical/redirect/gone decisions remain Pages-owned.
 - Navigation and SEO owner payloads remain bound into the exact private revalidation ETag.

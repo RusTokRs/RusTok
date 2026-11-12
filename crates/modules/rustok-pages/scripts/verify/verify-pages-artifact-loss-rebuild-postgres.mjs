@@ -148,7 +148,7 @@ for (const marker of [
   "let mut expected_rebuilt = canonical_artifact.clone();",
   "expected_rebuilt.id = rebuilt_record.id;",
   "expected_rebuilt.instance_key = rebuilt_record.instance_key.clone();",
-  "expected_rebuilt.created_at = rebuilt_record.created_at.clone();",
+  "expected_rebuilt.created_at = rebuilt_record.created_at;",
   "assert_eq!(rebuilt_record, expected_rebuilt);",
   "assert_eq!(receipt.source_artifact_id, source.artifact_id);",
   "assert!(replay.replayed);",
@@ -274,7 +274,8 @@ if (countText(rebuildTable, "ForeignKey::create()") !== 2) {
 for (const marker of [
   "PageArtifactRebuildOperations::SourceArtifactId",
   '.to(Pages::Table, Pages::Id)',
-  '.to(PagePublishRebuildSources::Table, PagePublishRebuildSources::Id)',
+  "PagePublishRebuildSources::Table,",
+  "PagePublishRebuildSources::Id,",
 ]) need(rebuildTable, marker, "rebuild receipt migration");
 forbid(
   rebuildTable,
