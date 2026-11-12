@@ -180,7 +180,7 @@
       ],
       "ai_export": "forbidden",
       "evidence_paths": [
-        "crates/modules/rustok-blog/docs/implementation-plan-current.md",
+        "crates/modules/rustok-blog/docs/implementation-plan.md",
         "docs/architecture/taxonomy-flex-category-platform-plan.md",
         "crates/modules/rustok-taxonomy/src/translation_target.rs"
       ],
@@ -892,8 +892,8 @@
       ],
       "ai_export": "restricted",
       "evidence_paths": [
-        "crates/modules/rustok-pricing/src/translation_target.rs",
-        "crates/modules/rustok-pricing/src/translation_changes.rs",
+        "crates/modules/rustok-pricing/src/integrations/translation_target.rs",
+        "crates/modules/rustok-pricing/src/integrations/translation_changes.rs",
         "apps/server/src/services/module_event_dispatcher.rs",
         "apps/server/tests/pricing_price_list_translation_target_postgres.rs",
         ".github/workflows/pricing-price-list-translation-target-postgres.yml"
@@ -1091,7 +1091,6 @@
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/alloy/README.md",
-        "crates/modules/alloy/docs/translation-plan.md",
         "crates/modules/alloy/src/model/script.rs",
         "crates/modules/alloy/src/authoring.rs",
         "crates/modules/alloy/src/migration.rs"
@@ -1112,7 +1111,6 @@
       ],
       "ai_export": "forbidden",
       "evidence_paths": [
-        "crates/modules/alloy/docs/translation-plan.md",
         "crates/modules/alloy/src/model/presentation.rs",
         "crates/modules/alloy/src/storage/presentation.rs",
         "crates/modules/alloy/src/storage/presentation_translation.rs",
@@ -1144,7 +1142,6 @@
       "ai_export": "forbidden",
       "evidence_paths": [
         "crates/modules/rustok-rbac/README.md",
-        "crates/modules/rustok-rbac/docs/translation-plan.md",
         "crates/modules/rustok-rbac/src/catalog.rs",
         "crates/modules/rustok-rbac/src/role_mutation.rs",
         "crates/modules/rustok-rbac/src/artifact_permission_catalog.rs",
