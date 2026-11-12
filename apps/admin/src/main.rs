@@ -193,28 +193,41 @@ async fn main() {
     /// Parses `?draft=…&runtime_context=…&runtime_scenario=…` without a serde extractor, because a
     /// malformed runtime context is a 400 with a message rather than a rejection the browser cannot
     /// read.
-    fn preview_query(query: Option<&str>) -> PreviewQuery {
+    ///
+    /// A context that cannot be parsed is refused rather than replaced: the preview would otherwise
+    /// render under a context the caller did not ask for, which is a preview of a different page
+    /// than the editor is showing.
+    fn preview_query(query: Option<&str>) -> Result<PreviewQuery, (StatusCode, Json<Value>)> {
         let mut draft = None;
         let mut runtime_scenario = None;
         let mut runtime_context = Value::Object(serde_json::Map::new());
-        let pairs: Vec<(String, String)> =
-            serde_urlencoded::from_str(query.unwrap_or_default()).unwrap_or_default();
+        let pairs: Vec<(String, String)> = serde_urlencoded::from_str(query.unwrap_or_default())
+            .map_err(|error| {
+                auth_error(
+                    StatusCode::BAD_REQUEST,
+                    format!("The preview address could not be read: {error}"),
+                )
+            })?;
         for (key, value) in pairs {
             match key.as_str() {
                 "draft" if !value.is_empty() => draft = Some(value),
                 "runtime_scenario" if !value.is_empty() => runtime_scenario = Some(value),
                 "runtime_context" if !value.is_empty() => {
-                    runtime_context = serde_json::from_str(&value)
-                        .unwrap_or(Value::Object(serde_json::Map::new()));
+                    runtime_context = serde_json::from_str(&value).map_err(|error| {
+                        auth_error(
+                            StatusCode::BAD_REQUEST,
+                            format!("The preview runtime context is not valid JSON: {error}"),
+                        )
+                    })?;
                 }
                 _ => {}
             }
         }
-        PreviewQuery {
+        Ok(PreviewQuery {
             draft,
             runtime_context,
             runtime_scenario,
-        }
+        })
     }
 
     fn page_builder_preview_error(
@@ -275,7 +288,7 @@ async fn main() {
         let session = auth.session.as_ref().ok_or_else(|| {
             auth_error(StatusCode::UNAUTHORIZED, "Page Builder access token is missing")
         })?;
-        let query = preview_query(query.as_deref());
+        let query = preview_query(query.as_deref())?;
         // The principal is the one this request's single verified exchange produced. The intent
         // endpoint re-reads the profile because it creates or commits a draft session; a read
         // does not need a second round trip to know who is asking, and the draft session the
