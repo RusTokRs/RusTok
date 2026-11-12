@@ -1190,6 +1190,14 @@ fn PagesFlyBuilder(
                         tenant_slug: facade_tenant.get_untracked(),
                         page_id: page_id.clone(),
                         default_locale: snapshot_default_locale.clone(),
+                        // The facade save path is a legacy unattributed write, not a draft
+                        // owner: the owner of a draft session is the verified caller of the
+                        // intent endpoint (`dispatch_named_intent`), which is the only path
+                        // that creates or commits a session. Threading this snapshot's owner
+                        // into the facade would add a second, unverified attribution without
+                        // changing which sessions can be read or committed. The route draft
+                        // above is loaded with the owner built from the current user and the
+                        // tenant, so a session belonging to another caller is not restored.
                         owner: None,
                     },
                     move |_page, _project_data| {
