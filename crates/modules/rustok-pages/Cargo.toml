@@ -17,7 +17,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = []
 inline-edit-assets = []
 # Host scheduler integration: publishes the scheduled-publish queue through
-# `rustok-runtime`'s `ModuleWorkRegistrations`. Enabled by `apps/server`.
+# `rustok-runtime`'s `ModuleWorkRegistrations`. The module never names its host,
+# so the composition root is the only place that knows which binary enables it.
 runtime = ["rustok-api/runtime", "dep:rustok-runtime"]
 
 [dependencies]
