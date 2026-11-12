@@ -378,6 +378,24 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
         receipts, `Automatic inference remains open by design`, immutable redirects for
         published slug renames, old claims not reusable, delete tombstones). No behaviour
         changed in either case: the source was already correct, the pins were not.
+      - ~~Nine more failing verifiers, all with a source that moved or was rewritten.~~ Done
+        2026-11-12, one marker at a time, none deleted:
+        `verify-pages-immutable-artifact-integrity-audit-postgres`,
+        `verify-pages-immutable-artifact-integrity-audit-transport` and
+        `verify-pages-explicit-artifact-repair-transport` (the re-exports now carry the utoipa
+        `__path_` items, and rustfmt split the page-query closure across two lines),
+        `verify-pages-inline-edit-release-composition`,
+        `verify-pages-inline-edit-asset-delivery` and
+        `verify-pages-inline-edit-artifact-http-evidence-harness` (the asset response and the
+        client builder moved to `rustok_web::embedded_asset_response` and
+        `apps/storefront/scripts/build-wasm-client.mjs`),
+        `verify-pages-authenticated-inline-consumer` (the module impl moved to `module.rs`, and
+        the pinned `ensure_document_is_mutable` helper has never existed — the path reads the
+        working copy, draft body first, under `page_document_revision` rather than gating a
+        mutability flag) and the two native-storefront verifiers (the harness now asserts
+        against the landing JSON and re-publishes through `support::publish_landing`; the
+        adapter resolves the channel id before it gates). Sweep after both rounds: 139 pass,
+        18 fail, against 126 pass and 31 fail at `f571186`.
       - ~~`DECISIONS/README.md` did not list the 2026-11-11 Blog taxonomy ADR, so
         `verify-adrs.mjs` and `verify-docs.mjs` failed.~~ Done 2026-11-12: the registry row is
         present in the required descending order, and the ADR gained the sections the governance
