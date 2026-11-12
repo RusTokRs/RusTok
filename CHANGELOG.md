@@ -195,6 +195,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (migration `m20261008_000031`). The field had no writer and always returned 0.
 
 ### Fixed
+- Page Builder draft sessions are pruned by the standalone admin
+  (`apps/admin/src/app/draft_retention.rs`, every `DRAFT_SESSION_PRUNE_INTERVAL`), so the TTL and
+  the global session cap of the persistent backends actually apply to a session no browser reads
+  again. The loop prunes the store the intent endpoint resolves, including one installed through
+  `set_pages_browser_draft_store`, and a failed pass is logged and retried rather than stopping.
+- Persisted draft session records carry a format version
+  (`PersistentDraftSessionRecord::format`, `DRAFT_SESSION_RECORD_FORMAT = 1`). Without one the
+  stores could not tell a damaged record from the live session of another build: both failed to
+  parse, stayed in storage, and failed their token for up to one TTL. A record of a newer format
+  now parses and is answered with `SsrDraftSessionError::UnsupportedFormat` (HTTP 503) and is never
+  aged out or deleted by an older build; records written before the field existed are format `0`
+  and are upgraded by the next commit.
 - Pages scheduled publishing never fired in a deployed host: `PagePublishScheduler` had no
   caller and `rustok-pages` published no module work, so a scheduled publication stayed
   `scheduled` until an operator ran a sweep by hand. The module now publishes

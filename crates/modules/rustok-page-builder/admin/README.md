@@ -111,13 +111,19 @@ SSR draft session storage (`src/draft_session.rs`):
 - **Drafts of the pre-partition file layout are not migrated.** Files written directly into the
   storage root by earlier builds are no longer read; `prune` deletes them once they are older than
   one TTL.
-- **A record that does not parse fails its session for up to one TTL.** The file store cannot tell
-  a damaged record from the live session of a build with another record shape (records carry no
-  format version), so it reports `Serialization` for that token until the file has not been
-  written for a whole TTL; from then on the session counts as expired and `prune` deletes the
-  file. An editor that holds such a token gets an error for every action until then or until it
-  opens the page in a new tab. The key-value backend reports `Serialization` the same way and
-  never deletes such a record itself: it is gone when the TTL the driver stored it with runs out.
+- **A damaged record fails its session for up to one TTL.** Records carry a format version
+  (`PersistentDraftSessionRecord::format`, now `1`) and both stores read them through
+  `PersistentDraftSessionRecord::decode`, so the two causes are distinguishable:
+  - A record of a **newer** format than this build understands parses, and is answered with
+    `UnsupportedFormat` — a deployment that has to be finished (or rolled back), not damage. The
+    record is not aged out and not deleted: it belongs to a build that is still writing the store.
+  - A record that does not parse at all is damage: the file store reports `Serialization` for that
+    token until the file has not been written for a whole TTL, then treats it as expired and
+    deletes it; the key-value backend reports `Serialization` and leaves the record to the TTL the
+    driver stored it with.
+  Records written before the field existed have format `0` and are read as-is; the next commit
+  rewrites them with the current format. An editor that holds the token of a damaged session
+  still gets an error for every action until the TTL passes or it opens the page in a new tab.
 - **Ownership and mode checks are Unix-only.** On other platforms the storage root is not checked
   for a foreign owner and files get no private mode; access control is whatever the operator set on
   the parent directory.

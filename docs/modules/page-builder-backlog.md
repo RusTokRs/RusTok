@@ -226,10 +226,12 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
       applies and untouched sessions are collected. A host that embeds the editor without that
       binary still owns the call; the owner README says so. Remaining owner: Page Builder admin
       (`crates/modules/rustok-page-builder/admin/README.md`) for the embedded-host contract.
-    - Give the persisted draft session record a format version. Without one the file store
-      cannot tell a damaged record from the live session of another build, so a record that
-      does not parse fails its token until it has not been written for one TTL. Owner: Page
-      Builder admin.
+    - ~~Give the persisted draft session record a format version.~~ Done 2026-11-12:
+      `PersistentDraftSessionRecord::format` (`DRAFT_SESSION_RECORD_FORMAT = 1`) with
+      `PersistentDraftSessionRecord::decode`, so a record of a newer build parses and is answered
+      with `SsrDraftSessionError::UnsupportedFormat` (HTTP 503) instead of being reported as
+      damage and aged out; records without the field are format `0` and are rewritten with the
+      current format by the next commit. Owner: Page Builder admin.
     - `enforce_owner_cap` and `prune` of the file store parse every record of a partition in
       full to learn its owner and expiry. Keep that metadata outside the record body if draft
       storage grows. Owner: Page Builder admin.
