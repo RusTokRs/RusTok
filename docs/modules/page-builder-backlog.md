@@ -341,10 +341,18 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
         `pages-rollback-activated-repair-rollback-continuity-postgres-evidence.yml`,
         `pages-consumer-properties-source-evidence.yml`). The entries are inert. Owner:
         repository tooling.
-      - `pages-artifact-http-cache-source.json` (dated 2026-08-04) still describes the
-        artifact endpoint before its cache entry followed every page event. Re-issue it with
-        the second harness test (`artifact_http_entry_does_not_outlive_a_page_update`).
-        Owner: `rustok-pages`.
+      - ~~`pages-artifact-http-cache-source.json` (dated 2026-08-04) still describes the
+        artifact endpoint before its cache entry followed every page event.~~ Done 2026-11-12:
+        the packet is re-issued (`generated_at` 2026-11-12) with the second harness test in
+        `harness.tests` (`artifact_http_entry_does_not_outlive_a_page_update`) and its five
+        claims (`page_update_rotates_a_generation_the_entry_binds`,
+        `page_and_route_generation_changes_age_the_entry_out`,
+        `cache_hit_entry_does_not_survive_a_page_update`,
+        `stale_entry_answers_404_instead_of_the_cached_document`,
+        `missing_artifact_is_never_cached`);
+        `verify-pages-artifact-http-cache.mjs` now pins that second test body as well, so the
+        packet cannot drift from the harness again. The SQLite harness itself still has not
+        run. Owner: `rustok-pages`.
     - The classic SSR control contract: closed on 2026-11-11, with the open parts listed here.
       Decision: `DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`.
       `2661a270ed` (2026-10-14) replaced the admin panels with the `fly-leptos` workspace,

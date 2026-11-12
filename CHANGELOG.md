@@ -195,6 +195,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (migration `m20261008_000031`). The field had no writer and always returned 0.
 
 ### Fixed
+- The Pages artifact HTTP cache entry now follows page and route events. The key already
+  carried the page and route generations, but nothing pinned that, and the evidence packet of
+  the endpoint predated the change: `pages-artifact-http-cache-source.json` is re-issued with
+  the second harness test (`artifact_http_entry_does_not_outlive_a_page_update`) and its
+  verifier pins that test, so a cached document and its conditional `304` cannot outlive a page
+  update, and a missing artifact is never cached.
 - Page Builder draft sessions are pruned by the standalone admin
   (`apps/admin/src/app/draft_retention.rs`, every `DRAFT_SESSION_PRUNE_INTERVAL`), so the TTL and
   the global session cap of the persistent backends actually apply to a session no browser reads
