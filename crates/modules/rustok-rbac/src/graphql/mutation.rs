@@ -856,6 +856,12 @@ impl RbacMutation {
 
         require_direct_control_plane_user(auth, *principal_context, tenant.id)?;
 
+        if input.user_id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "user_id must not be nil",
+            ));
+        }
+
         if !has_effective_permission(&auth.permissions, &Permission::USERS_MANAGE) {
             return Err(<FieldError as GraphQLError>::permission_denied(
                 "users:manage required to assign roles",

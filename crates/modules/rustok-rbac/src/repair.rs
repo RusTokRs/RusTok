@@ -102,6 +102,11 @@ where
     C: ConnectionTrait,
 {
     ensure_supported_backend(db.get_database_backend())?;
+    if let Some(tenant_id) = options.tenant_id {
+        if tenant_id.is_nil() {
+            return Err(RbacSystemRoleRepairError::TenantNotFound(tenant_id));
+        }
+    }
     let tenant_ids = load_tenant_ids(db, options.tenant_id).await?;
     if let Some(tenant_id) = options.tenant_id
         && tenant_ids.is_empty()
@@ -603,6 +608,15 @@ mod tests {
             slugs,
             ["super_admin", "admin", "manager", "customer"].map(str::to_string)
         );
+    }
+
+    #[test]
+    fn repair_options_with_nil_tenant_id_fails_early() {
+        let options = super::RbacSystemRoleRepairOptions {
+            tenant_id: Some(uuid::Uuid::nil()),
+            apply: false,
+        };
+        assert!(options.tenant_id.unwrap().is_nil());
     }
 
     #[test]
