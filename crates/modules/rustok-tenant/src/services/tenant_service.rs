@@ -39,22 +39,32 @@ impl TenantService {
 
     #[instrument(skip(self, input), fields(slug = %input.slug))]
     pub async fn create_tenant(&self, input: CreateTenantInput) -> TenantResult<TenantResponse> {
-        let slug = input.slug.trim().to_string();
-        if slug.is_empty() {
-            return Err(TenantError::Validation(
-                "tenant slug cannot be empty".to_string(),
-            ));
-        }
+        let slug = rustok_core::tenant_validation::TenantIdentifierValidator::validate_slug(&input.slug)
+            .map_err(|e| TenantError::Validation(e.to_string()))?;
         let name = input.name.trim().to_string();
         if name.is_empty() {
             return Err(TenantError::Validation(
                 "tenant name cannot be empty".to_string(),
             ));
         }
-        let domain = input
-            .domain
-            .map(|d| d.trim().to_string())
-            .filter(|d| !d.is_empty());
+        if name.chars().count() > 255 {
+            return Err(TenantError::Validation(
+                "tenant name cannot exceed 255 characters".to_string(),
+            ));
+        }
+        let domain = match input.domain {
+            Some(raw) => {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    let valid = rustok_core::tenant_validation::TenantIdentifierValidator::validate_host(trimmed)
+                        .map_err(|e| TenantError::Validation(e.to_string()))?;
+                    Some(valid)
+                }
+            }
+            None => None,
+        };
 
         tracing::debug!(slug = %slug, name = %name, ?domain, "creating tenant");
 
@@ -118,12 +128,8 @@ impl TenantService {
         &self,
         input: CreateTenantInput,
     ) -> TenantResult<(TenantResponse, bool)> {
-        let slug = input.slug.trim().to_string();
-        if slug.is_empty() {
-            return Err(TenantError::Validation(
-                "tenant slug cannot be empty".to_string(),
-            ));
-        }
+        let slug = rustok_core::tenant_validation::TenantIdentifierValidator::validate_slug(&input.slug)
+            .map_err(|e| TenantError::Validation(e.to_string()))?;
         tracing::debug!(slug = %slug, "ensuring tenant");
 
         if let Some(existing) = tenant::Entity::find()
@@ -135,10 +141,7 @@ impl TenantService {
         }
 
         let name = input.name.trim().to_string();
-        let domain = input
-            .domain
-            .map(|d| d.trim().to_string())
-            .filter(|d| !d.is_empty());
+        let domain = input.domain;
 
         match self
             .create_tenant(CreateTenantInput {
@@ -158,6 +161,11 @@ impl TenantService {
 
     #[instrument(skip(self), fields(tenant_id = %tenant_id))]
     pub async fn get_tenant(&self, tenant_id: Uuid) -> TenantResult<TenantResponse> {
+        if tenant_id.is_nil() {
+            return Err(TenantError::Validation(
+                "tenant id cannot be nil UUID".to_string(),
+            ));
+        }
         tracing::debug!(tenant_id = %tenant_id, "getting tenant by id");
         let model = tenant::Entity::find_by_id(tenant_id)
             .one(&self.db)
@@ -214,6 +222,11 @@ impl TenantService {
         tenant_id: Uuid,
         input: UpdateTenantInput,
     ) -> TenantResult<TenantResponse> {
+        if tenant_id.is_nil() {
+            return Err(TenantError::Validation(
+                "tenant id cannot be nil UUID".to_string(),
+            ));
+        }
         tracing::debug!(tenant_id = %tenant_id, "updating tenant");
         let txn = self.db.begin().await?;
 
@@ -231,15 +244,22 @@ impl TenantService {
                     "tenant name cannot be empty".to_string(),
                 ));
             }
+            if name.chars().count() > 255 {
+                return Err(TenantError::Validation(
+                    "tenant name cannot exceed 255 characters".to_string(),
+                ));
+            }
             active.name = Set(name);
         }
         if let Some(domain) = input.domain {
-            let domain = domain.trim().to_string();
-            active.domain = Set(if domain.is_empty() {
-                None
+            let trimmed = domain.trim();
+            if trimmed.is_empty() {
+                active.domain = Set(None);
             } else {
-                Some(domain)
-            });
+                let valid = rustok_core::tenant_validation::TenantIdentifierValidator::validate_host(trimmed)
+                    .map_err(|e| TenantError::Validation(e.to_string()))?;
+                active.domain = Set(Some(valid));
+            }
         }
         if let Some(is_active) = input.is_active {
             active.is_active = Set(is_active);
@@ -281,6 +301,11 @@ impl TenantService {
         &self,
         tenant_id: Uuid,
     ) -> TenantResult<Vec<TenantModuleResponse>> {
+        if tenant_id.is_nil() {
+            return Err(TenantError::Validation(
+                "tenant id cannot be nil UUID".to_string(),
+            ));
+        }
         tracing::debug!(tenant_id = %tenant_id, "listing tenant modules");
         tenant::Entity::find_by_id(tenant_id)
             .one(&self.db)
@@ -306,6 +331,9 @@ impl TenantService {
         tenant_id: Uuid,
         module_slug: &str,
     ) -> TenantResult<Option<TenantModuleResponse>> {
+        if tenant_id.is_nil() {
+            return Ok(None);
+        }
         let module_slug = module_slug.trim();
         if module_slug.is_empty() {
             return Ok(None);
@@ -331,6 +359,9 @@ impl TenantService {
         tenant_id: Uuid,
         module_slug: &str,
     ) -> TenantResult<Option<TenantModuleResponse>> {
+        if tenant_id.is_nil() {
+            return Ok(None);
+        }
         let module_slug = module_slug.trim();
         if module_slug.is_empty() {
             return Ok(None);
@@ -365,12 +396,18 @@ impl TenantService {
         module_slug: &str,
         settings: serde_json::Value,
     ) -> TenantResult<TenantModuleResponse> {
+        if tenant_id.is_nil() {
+            return Err(TenantError::Validation(
+                "tenant id cannot be nil UUID".to_string(),
+            ));
+        }
         let module_slug = module_slug.trim();
         if module_slug.is_empty() {
             return Err(TenantError::Validation(
                 "Module slug cannot be empty".to_string(),
             ));
         }
+        validate_tenant_settings(&settings)?;
         let Some(model) = tenant_module::Entity::find()
             .filter(tenant_module::Column::TenantId.eq(tenant_id))
             .filter(tenant_module::Column::ModuleSlug.eq(module_slug))
@@ -393,6 +430,11 @@ impl TenantService {
         &self,
         tenant_id: Uuid,
     ) -> TenantResult<TenantLocalePolicyProjection> {
+        if tenant_id.is_nil() {
+            return Err(TenantError::Validation(
+                "tenant id cannot be nil UUID".to_string(),
+            ));
+        }
         tracing::debug!(tenant_id = %tenant_id, "reading tenant locale policy");
         let tenant = tenant::Entity::find_by_id(tenant_id)
             .one(&self.db)
@@ -415,6 +457,11 @@ impl TenantService {
         request: ReplaceTenantLocalePolicyRequest,
         idempotency_key: &str,
     ) -> TenantResult<TenantLocalePolicyProjection> {
+        if tenant_id.is_nil() {
+            return Err(TenantError::Validation(
+                "tenant id cannot be nil UUID".to_string(),
+            ));
+        }
         let idempotency_key = idempotency_key.trim();
         if idempotency_key.is_empty() || idempotency_key.len() > 191 {
             return Err(TenantError::InvalidLocalePolicy(
@@ -875,5 +922,63 @@ mod tests {
             .expect("find module")
             .expect("module exists");
         assert_eq!(found.settings, json!({"updated": true}));
+
+        // 4. Nil UUID rejected
+        let nil_err = service
+            .update_tenant_module_settings(Uuid::nil(), "seo", json!({"updated": true}))
+            .await
+            .expect_err("nil UUID must be rejected");
+        assert!(matches!(nil_err, TenantError::Validation(_)));
+
+        // 5. Invalid settings schema rejected (non-object)
+        let invalid_schema_err = service
+            .update_tenant_module_settings(tenant_id, "seo", json!(["invalid_array"]))
+            .await
+            .expect_err("non-object settings must be rejected");
+        assert!(matches!(invalid_schema_err, TenantError::InvalidSettingsSchema(_)));
+    }
+
+    #[tokio::test]
+    async fn tenant_service_rejects_nil_uuid_and_reserved_slugs() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("sqlite in-memory db");
+        let service = TenantService::new(db);
+
+        // Nil UUID checks
+        assert!(matches!(
+            service.get_tenant(Uuid::nil()).await,
+            Err(TenantError::Validation(_))
+        ));
+        assert!(matches!(
+            service.list_tenant_modules(Uuid::nil()).await,
+            Err(TenantError::Validation(_))
+        ));
+        assert!(matches!(
+            service.read_locale_policy_owned(Uuid::nil()).await,
+            Err(TenantError::Validation(_))
+        ));
+
+        // Reserved slug check
+        let reserved_err = service
+            .create_tenant(CreateTenantInput {
+                name: "Admin Tenant".to_string(),
+                slug: "admin".to_string(),
+                domain: None,
+            })
+            .await
+            .expect_err("reserved slug 'admin' must be rejected");
+        assert!(matches!(reserved_err, TenantError::Validation(_)));
+
+        // Invalid characters in slug
+        let invalid_chars_err = service
+            .create_tenant(CreateTenantInput {
+                name: "Invalid Tenant".to_string(),
+                slug: "bad/slug@".to_string(),
+                domain: None,
+            })
+            .await
+            .expect_err("invalid characters in slug must be rejected");
+        assert!(matches!(invalid_chars_err, TenantError::Validation(_)));
     }
 }

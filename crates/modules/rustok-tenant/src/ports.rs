@@ -184,6 +184,8 @@ impl TenantLocalePolicyPort for crate::TenantService {
         let idempotency_key = context
             .idempotency_key
             .as_deref()
+            .map(str::trim)
+            .filter(|k| !k.is_empty())
             .ok_or_else(|| {
                 PortError::validation(
                     "tenant.locale_policy_idempotency_required",
@@ -225,12 +227,19 @@ fn parse_context_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
             "tenant port context requires a non-empty tenant_id",
         ));
     }
-    Uuid::parse_str(trimmed).map_err(|_| {
+    let parsed = Uuid::parse_str(trimmed).map_err(|_| {
         PortError::validation(
             "tenant.context_tenant_id_invalid",
             "tenant port context requires a valid UUID tenant_id",
         )
-    })
+    })?;
+    if parsed.is_nil() {
+        return Err(PortError::validation(
+            "tenant.context_tenant_id_nil",
+            "tenant port context requires a non-nil tenant_id",
+        ));
+    }
+    Ok(parsed)
 }
 
 fn validate_tenant_read_request(request: &TenantReadRequest) -> Result<(), PortError> {
@@ -295,5 +304,65 @@ fn map_tenant_error(error: crate::TenantError) -> PortError {
             other.to_string(),
             true,
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_context_tenant_id_rejects_empty_invalid_and_nil() {
+        let empty_ctx = PortContext::new("   ", PortActor::system(), "en", "c1");
+        assert_eq!(
+            parse_context_tenant_id(&empty_ctx).unwrap_err().code,
+            "tenant.context_tenant_id_empty"
+        );
+
+        let invalid_ctx = PortContext::new("not-a-uuid", PortActor::system(), "en", "c1");
+        assert_eq!(
+            parse_context_tenant_id(&invalid_ctx).unwrap_err().code,
+            "tenant.context_tenant_id_invalid"
+        );
+
+        let nil_ctx = PortContext::new(Uuid::nil().to_string(), PortActor::system(), "en", "c1");
+        assert_eq!(
+            parse_context_tenant_id(&nil_ctx).unwrap_err().code,
+            "tenant.context_tenant_id_nil"
+        );
+
+        let valid_id = Uuid::new_v4();
+        let valid_ctx = PortContext::new(valid_id.to_string(), PortActor::system(), "en", "c1");
+        assert_eq!(parse_context_tenant_id(&valid_ctx).unwrap(), valid_id);
+    }
+
+    #[test]
+    fn validate_tenant_read_request_rejects_nil_id_and_empty_selectors() {
+        let nil_req = TenantReadRequest {
+            selector: TenantReadSelector::Id(Uuid::nil()),
+            include_inactive: false,
+        };
+        assert_eq!(
+            validate_tenant_read_request(&nil_req).unwrap_err().code,
+            "tenant.id_nil"
+        );
+
+        let empty_slug_req = TenantReadRequest {
+            selector: TenantReadSelector::Slug("  ".to_string()),
+            include_inactive: false,
+        };
+        assert_eq!(
+            validate_tenant_read_request(&empty_slug_req).unwrap_err().code,
+            "tenant.slug_empty"
+        );
+
+        let empty_domain_req = TenantReadRequest {
+            selector: TenantReadSelector::Domain("  ".to_string()),
+            include_inactive: false,
+        };
+        assert_eq!(
+            validate_tenant_read_request(&empty_domain_req).unwrap_err().code,
+            "tenant.domain_empty"
+        );
     }
 }

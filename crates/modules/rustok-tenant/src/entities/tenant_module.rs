@@ -42,6 +42,9 @@ impl Entity {
         tenant_id: Uuid,
         module_slug: &str,
     ) -> Result<bool, DbErr> {
+        if tenant_id.is_nil() {
+            return Ok(false);
+        }
         let module_slug = module_slug.trim();
         if module_slug.is_empty() {
             return Ok(false);
