@@ -13,8 +13,8 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 use uuid::Uuid;
 
+use crate::BlogError;
 use crate::services::{can_read_non_public_posts, is_post_visible_for_channel};
-use crate::{BlogError, CategoryService, PostService, TagService};
 
 use super::runtime_data::BlogGraphqlRuntimeData;
 use super::types::*;
@@ -73,7 +73,8 @@ impl BlogQuery {
         let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         let post = match service
             .get_post_with_locale_fallback_on_channel(
                 tenant_id,
@@ -130,7 +131,8 @@ impl BlogQuery {
         let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         let post = match service
             .get_post_by_slug_with_locale_fallback(
                 tenant_id,
@@ -207,7 +209,8 @@ impl BlogQuery {
         let locale = resolve_graphql_locale(ctx, filter.locale.as_deref());
         let effective_limit = filter.per_page.unwrap_or(20).clamp(1, 100);
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         let list_started_at = Instant::now();
         let result = service
             .list_posts_with_locale_fallback_on_channel(
@@ -307,7 +310,8 @@ impl BlogQuery {
             after,
         };
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         let page = service
             .list_public_visible_keyset(
                 tenant_id,
@@ -363,7 +367,8 @@ impl BlogQuery {
         let tenant_id = query_tenant_id(ctx, tenant, tenant_id)?;
         let locale = resolve_graphql_locale(ctx, locale.as_deref());
 
-        let service = CategoryService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).category_service(db.clone(), event_bus.clone());
         let category = service
             .get(tenant_id, request_security_context(ctx), id, &locale)
             .await;
@@ -394,7 +399,8 @@ impl BlogQuery {
         let page = filter.page.unwrap_or(1).max(1);
         let per_page = filter.per_page.unwrap_or(100).clamp(1, 100);
 
-        let service = CategoryService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).category_service(db.clone(), event_bus.clone());
         let (items, total) = service
             .list(
                 tenant_id,
@@ -431,7 +437,7 @@ impl BlogQuery {
         let page = filter.page.unwrap_or(1).max(1);
         let per_page = filter.per_page.unwrap_or(50).clamp(1, 100);
 
-        let service = TagService::new(db.clone());
+        let service = BlogGraphqlRuntimeData::attached(ctx).tag_service(db.clone());
         let (items, total) = service
             .list_tags(
                 tenant_id,

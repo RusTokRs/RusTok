@@ -203,14 +203,14 @@ pub(super) async fn refresh_tag_usage_in_tx(
 
     for tag_id in unique_ids {
         let term = terms.get(&tag_id);
-        if let Some(term) = term {
-            if term.scope_type == "module" && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
-            {
-                return Err(BlogError::invariant(format!(
-                    "Blog post tag {} references a Taxonomy term outside the Blog/module scope",
-                    term.id
-                )));
-            }
+        if let Some(term) = term
+            && term.scope_type == "module"
+            && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
+        {
+            return Err(BlogError::invariant(format!(
+                "Blog post tag {} references a Taxonomy term outside the Blog/module scope",
+                term.id
+            )));
         }
 
         let use_count = blog_post_tag::Entity::find()

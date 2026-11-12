@@ -141,6 +141,18 @@ The current boundary is:
   `blog_category_translations` and `blog_translation_changes` once same-ID
   Taxonomy ownership is proven.
 
+Open: `BlogTaxonomyPort` has no Taxonomy-backed implementation yet. ADR
+`DECISIONS/2026-11-11-blog-taxonomy-sovereignty-and-port-decoupling.md` step 3
+plans `TaxonomyBlogTaxonomyPortAdapter` in `rustok-taxonomy`; until a host
+publishes it, HTTP controllers and GraphQL resolvers run on
+`NoopBlogTaxonomyPort`, which stores nothing in Taxonomy and returns generated
+identifiers. Both transports read the port from the host runtime
+(`BlogHttpRuntime`, `BlogGraphqlRuntimeData::attached`), so the adapter needs
+no further Blog wiring. It owns two rules that Blog no longer holds: the scope
+of Blog terms is `module` / `blog`, and the canonical key of a Blog Category
+term is `blog-category-{category_id}` (pinned by
+`tests/category_taxonomy_dual_write.rs`).
+
 Do not reintroduce a second `blog/category` Translation provider or direct
 localized Blog Category storage. Translation-control-plane work for Category
 copy must use the canonical Taxonomy owner contract.

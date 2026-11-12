@@ -24,8 +24,6 @@ use crate::ports::taxonomy::{
     AsBlogTaxonomyConnection, BlogCategoryDeleteCleanupPort, BlogTaxonomyPort, NoopBlogTaxonomyPort,
 };
 
-const BLOG_TAXONOMY_SCOPE: &str = "blog";
-
 /// Public Blog Category owner facade.
 ///
 /// Blog keeps membership, settings, timestamps and command authorization. Canonical
