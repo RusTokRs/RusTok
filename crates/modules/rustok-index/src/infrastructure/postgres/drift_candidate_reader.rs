@@ -658,11 +658,13 @@ fn decode_wire<T: DeserializeOwned>(
 }
 
 fn retryable_failure(code: &'static str) -> IndexDriftCandidateFailure {
-    IndexDriftCandidateFailure::retryable(code).expect("static candidate failure code is valid: invariant validated at startup")
+    IndexDriftCandidateFailure::retryable(code)
+        .expect("static candidate failure code is valid: invariant validated at startup")
 }
 
 fn permanent_failure(code: &'static str) -> IndexDriftCandidateFailure {
-    IndexDriftCandidateFailure::permanent(code).expect("static candidate failure code is valid: invariant validated at startup")
+    IndexDriftCandidateFailure::permanent(code)
+        .expect("static candidate failure code is valid: invariant validated at startup")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

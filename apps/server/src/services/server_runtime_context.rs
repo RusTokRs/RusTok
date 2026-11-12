@@ -258,9 +258,9 @@ impl ServerAuthRuntime {
     }
 
     pub fn require_auth_config(&self) -> Result<&AuthConfig, crate::error::Error> {
-        self.auth_config
-            .as_ref()
-            .ok_or_else(|| crate::error::Error::Message("Auth runtime configuration is missing".to_string()))
+        self.auth_config.as_ref().ok_or_else(|| {
+            crate::error::Error::Message("Auth runtime configuration is missing".to_string())
+        })
     }
 }
 
@@ -376,7 +376,8 @@ mod tests {
         use crate::common::settings::RustokSettings;
         use sea_orm::DatabaseConnection;
 
-        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let ctx =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
         let unauth = ServerAuthRuntime::without_auth(ctx.clone());
         assert!(unauth.require_auth_config().is_err());
 
@@ -392,12 +393,16 @@ mod tests {
         use sea_orm::DatabaseConnection;
         use std::sync::Arc;
 
-        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let ctx =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
         let auth_rt = ServerAuthRuntime::without_auth(ctx.clone());
 
         let settings_from_ctx: Arc<RustokSettings> = FromRef::from_ref(&ctx);
         let settings_from_auth: Arc<RustokSettings> = FromRef::from_ref(&auth_rt);
-        assert_eq!(settings_from_ctx.runtime.host_mode, settings_from_auth.runtime.host_mode);
+        assert_eq!(
+            settings_from_ctx.runtime.host_mode,
+            settings_from_auth.runtime.host_mode
+        );
     }
 
     #[test]

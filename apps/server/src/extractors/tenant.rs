@@ -27,9 +27,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::TenantContextExtension;
     use axum::extract::FromRequestParts;
     use axum::http::Request;
-    use crate::context::TenantContextExtension;
     use uuid::Uuid;
 
     #[tokio::test]

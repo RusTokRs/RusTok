@@ -94,7 +94,9 @@ impl CategoryService {
         let id = Uuid::new_v4();
         let txn = self.db.begin().await.map_err(BlogError::from)?;
 
-        self.taxonomy_port.lock_category_hierarchy_writer_in_tx(&txn, tenant_id).await?;
+        self.taxonomy_port
+            .lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
+            .await?;
         ensure_category_tree_capacity_in_tx(&txn, tenant_id).await?;
         if let Some(parent_id) = parent_id {
             Self::ensure_exists_in_tx(&*self.taxonomy_port, &txn, tenant_id, parent_id).await?;
@@ -544,13 +546,8 @@ async fn canonicalize_siblings_for_insert_in_tx(
     let mut ordered_sibling_ids = siblings.into_iter().map(|(_, id)| id).collect::<Vec<_>>();
     ordered_sibling_ids.insert(insertion_index, category_id);
 
-    port.reorder_category_siblings_in_tx(
-        txn,
-        tenant_id,
-        parent_id,
-        &ordered_sibling_ids,
-    )
-    .await
+    port.reorder_category_siblings_in_tx(txn, tenant_id, parent_id, &ordered_sibling_ids)
+        .await
 }
 
 fn normalize_category_settings(settings: serde_json::Value) -> BlogResult<serde_json::Value> {

@@ -54,61 +54,47 @@ const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
 fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
     OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.owner_contract_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.owner_contract_invalid", error.to_string())
     })
 }
 
 fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
     ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.owner_contract_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.owner_contract_invalid", error.to_string())
     })
 }
 
 fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
     ResourceId::new(value).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.resource_id_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.resource_id_invalid", error.to_string())
     })
 }
 
 fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
     FieldKey::new(key).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.field_key_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.field_key_invalid", error.to_string())
     })
 }
 
-
-
-static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
-    TranslationTargetProviderDescriptor {
-            owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
-                .expect("static owner slug must be valid: descriptor invariant validated at startup"),
-            resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
-                .expect("static resource kind must be valid: descriptor invariant validated at startup"),
-            display_name: "Media asset metadata".to_string(),
-            capabilities: BTreeSet::from([
-                TranslationTargetCapability::ListResources,
-                TranslationTargetCapability::ReadExactResource,
-                TranslationTargetCapability::AggregateProgress,
-                TranslationTargetCapability::ValidatePatch,
-                TranslationTargetCapability::ApplyPatch,
-                TranslationTargetCapability::ChangeCursor,
-            ]),
-            read_permission_floor: BTreeSet::from(["media:read".to_string()]),
-            apply_permission_floor: BTreeSet::from(["media:update".to_string()]),
-        }
-});
+static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> =
+    LazyLock::new(|| TranslationTargetProviderDescriptor {
+        owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
+            .expect("static owner slug must be valid: descriptor invariant validated at startup"),
+        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
+            "static resource kind must be valid: descriptor invariant validated at startup",
+        ),
+        display_name: "Media asset metadata".to_string(),
+        capabilities: BTreeSet::from([
+            TranslationTargetCapability::ListResources,
+            TranslationTargetCapability::ReadExactResource,
+            TranslationTargetCapability::AggregateProgress,
+            TranslationTargetCapability::ValidatePatch,
+            TranslationTargetCapability::ApplyPatch,
+            TranslationTargetCapability::ChangeCursor,
+        ]),
+        read_permission_floor: BTreeSet::from(["media:read".to_string()]),
+        apply_permission_floor: BTreeSet::from(["media:update".to_string()]),
+    });
 
 #[derive(Clone)]
 /// Owner adapter that exposes Media localized metadata through the neutral
@@ -123,7 +109,7 @@ impl MediaTranslationTargetProvider {
         Self { service }
     }
 
-        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+    fn descriptor_value() -> TranslationTargetProviderDescriptor {
         DESCRIPTOR.clone()
     }
 

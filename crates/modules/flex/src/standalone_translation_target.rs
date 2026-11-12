@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, collections::BTreeSet, sync::{Arc, LazyLock}};
+use std::{
+    collections::BTreeMap,
+    collections::BTreeSet,
+    sync::{Arc, LazyLock},
+};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -32,7 +36,6 @@ const TRANSLATION_OWNER_SLUG: &str = "flex";
 const TRANSLATION_RESOURCE_KIND: &str = "standalone_localized_value";
 const PATCH_FINGERPRINT_NAMESPACE: &str = "rustok-flex/standalone-neutral-patch/v1";
 
-
 static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
     TranslationTargetProviderDescriptor {
             // INVARIANT: TRANSLATION_OWNER_SLUG ("flex") is a compile-time static ASCII identifier under 191 bytes.
@@ -63,7 +66,7 @@ impl FlexStandaloneTranslationTargetProvider {
         Self { owner }
     }
 
-        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+    fn descriptor_value() -> TranslationTargetProviderDescriptor {
         DESCRIPTOR.clone()
     }
 

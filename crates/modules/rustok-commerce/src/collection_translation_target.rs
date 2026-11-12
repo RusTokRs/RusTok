@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, LazyLock},
+};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -80,12 +83,10 @@ fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
     })
 }
 
-
 #[derive(Clone)]
 pub struct CommerceCollectionTranslationTargetProvider {
     service: Arc<CollectionTranslationService>,
 }
-
 
 static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
     let owner_slug = static_owner_slug()

@@ -7,7 +7,10 @@ const POSTGRES_BUMP_FUNCTION: &str = "rustok_bump_flex_field_definition_cache_ge
 
 async fn execute_statement<C: ConnectionTrait>(connection: &C, sql: String) -> Result<(), DbErr> {
     connection
-        .execute_raw(Statement::from_string(connection.get_database_backend(), sql))
+        .execute_raw(Statement::from_string(
+            connection.get_database_backend(),
+            sql,
+        ))
         .await
         .map(|_| ())
 }

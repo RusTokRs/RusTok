@@ -116,8 +116,8 @@ impl TagService {
         enforce_scope(&security, Resource::Tags, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let term = self.find_visible_term(tenant_id, tag_id, &locale).await?;
-        let require_usage_projection = term.scope_type == "module"
-            && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE);
+        let require_usage_projection =
+            term.scope_type == "module" && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE);
         let use_count = self
             .load_tag_usage_count(tenant_id, tag_id, require_usage_projection)
             .await?;
@@ -172,7 +172,8 @@ impl TagService {
         // Checked inside the transaction: a snapshot that cannot be presented rolls the
         // update back instead of failing after the commit.
         let effective_locale = tag_effective_locale(&term)?;
-        relations::refresh_tag_usage_in_tx(Some(&*self.taxonomy_port), &txn, tenant_id, &[tag_id]).await?;
+        relations::refresh_tag_usage_in_tx(Some(&*self.taxonomy_port), &txn, tenant_id, &[tag_id])
+            .await?;
         relations::publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
 
@@ -258,13 +259,7 @@ impl TagService {
         let term_ids = usage_rows.iter().map(|row| row.tag_id).collect::<Vec<_>>();
         let terms_by_id = self
             .taxonomy_port
-            .load_tags_by_ids(
-                (&txn).into(),
-                tenant_id,
-                &term_ids,
-                &locale,
-                None,
-            )
+            .load_tags_by_ids((&txn).into(), tenant_id, &term_ids, &locale, None)
             .await?;
 
         let mut items = Vec::with_capacity(usage_rows.len());
@@ -277,8 +272,7 @@ impl TagService {
                 );
                 continue;
             };
-            if term.scope_type == "module"
-                && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
+            if term.scope_type == "module" && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
             {
                 tracing::warn!(
                     tenant_id = %tenant_id,
@@ -309,9 +303,7 @@ impl TagService {
         locale: &str,
     ) -> BlogResult<()> {
         let term = self.find_visible_term(tenant_id, tag_id, locale).await?;
-        if term.scope_type != "module"
-            || term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
-        {
+        if term.scope_type != "module" || term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE) {
             return Err(BlogError::forbidden(
                 "Shared Taxonomy tags must be managed by the Taxonomy owner",
             ));
@@ -460,7 +452,9 @@ fn to_tag_owner_response(
     TagResponse {
         id: term.id,
         tenant_id,
-        locale: term.locale.unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()),
+        locale: term
+            .locale
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()),
         effective_locale,
         name: term.name,
         slug: term.slug,
@@ -477,7 +471,9 @@ fn to_tag_mutation_response(
     TagResponse {
         id: term.id,
         tenant_id: term.tenant_id,
-        locale: term.locale.unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()),
+        locale: term
+            .locale
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()),
         effective_locale,
         name: term.name,
         slug: term.slug,

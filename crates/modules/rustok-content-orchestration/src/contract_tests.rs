@@ -64,15 +64,28 @@ mod full_contract_tests {
         assert!(debug_str.contains("OwnerCanonicalRouteResolver"));
 
         // Nil tenant must be rejected
-        let res = resolver.resolve_route(Uuid::nil(), "en", "/modules/blog?slug=test").await;
+        let res = resolver
+            .resolve_route(Uuid::nil(), "en", "/modules/blog?slug=test")
+            .await;
         assert!(res.is_err());
-        assert!(res.unwrap_err().to_string().contains("tenant_id must not be nil"));
+        assert!(
+            res.unwrap_err()
+                .to_string()
+                .contains("tenant_id must not be nil")
+        );
 
         // Empty locale must be rejected
         let tenant_id = Uuid::new_v4();
-        let res_locale = resolver.resolve_route(tenant_id, "  ", "/modules/blog?slug=test").await;
+        let res_locale = resolver
+            .resolve_route(tenant_id, "  ", "/modules/blog?slug=test")
+            .await;
         assert!(res_locale.is_err());
-        assert!(res_locale.unwrap_err().to_string().contains("locale must not be empty"));
+        assert!(
+            res_locale
+                .unwrap_err()
+                .to_string()
+                .contains("locale must not be empty")
+        );
     }
 
     #[tokio::test]
@@ -89,7 +102,10 @@ mod full_contract_tests {
     #[test]
     fn helper_slug_normalization() {
         assert_eq!(normalize_slug("Hello World"), "hello-world");
-        assert_eq!(normalize_slug("Special !@# Characters---Here"), "special-characters-here");
+        assert_eq!(
+            normalize_slug("Special !@# Characters---Here"),
+            "special-characters-here"
+        );
         assert_eq!(normalize_slug("---already-dashed---"), "already-dashed");
         assert_eq!(normalize_slug(""), "");
     }
@@ -126,11 +142,19 @@ mod full_contract_tests {
 
         // Source including target rejected
         let target_err = unique_source_ids(target_id, &[source_1, target_id]).unwrap_err();
-        assert!(target_err.to_string().contains("cannot include the target topic"));
+        assert!(
+            target_err
+                .to_string()
+                .contains("cannot include the target topic")
+        );
 
         // Empty sources rejected
         let empty_err = unique_source_ids(target_id, &[]).unwrap_err();
-        assert!(empty_err.to_string().contains("requires at least one source topic"));
+        assert!(
+            empty_err
+                .to_string()
+                .contains("requires at least one source topic")
+        );
     }
 
     #[test]

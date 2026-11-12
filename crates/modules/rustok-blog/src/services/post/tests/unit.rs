@@ -53,12 +53,14 @@ fn admin_post_cursor_rejects_a_different_sort_and_garbage() {
         AdminPostCursor::decode(&token, PostSortField::UpdatedAt, PostSortOrder::Desc).is_err()
     );
     assert!(AdminPostCursor::decode(&token, PostSortField::CreatedAt, PostSortOrder::Asc).is_err());
-    assert!(AdminPostCursor::decode(
-        "not-a-cursor",
-        PostSortField::CreatedAt,
-        PostSortOrder::Desc
-    )
-    .is_err());
+    assert!(
+        AdminPostCursor::decode(
+            "not-a-cursor",
+            PostSortField::CreatedAt,
+            PostSortOrder::Desc
+        )
+        .is_err()
+    );
 }
 
 #[test]

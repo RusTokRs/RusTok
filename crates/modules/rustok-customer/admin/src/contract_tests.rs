@@ -169,7 +169,10 @@ fn test_error_message_formatting() {
     };
 
     assert_eq!(
-        customer_admin_submit_error_message(CustomerAdminSubmitCommandError::EmailRequired, &labels),
+        customer_admin_submit_error_message(
+            CustomerAdminSubmitCommandError::EmailRequired,
+            &labels
+        ),
         "Email is required"
     );
     assert_eq!(

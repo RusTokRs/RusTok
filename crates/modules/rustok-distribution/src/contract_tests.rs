@@ -64,8 +64,7 @@ fn test_composition_module_traits() {
         kind: CompositionModuleKind::Optional,
         dependencies: vec![],
     };
-    let opt_json =
-        serde_json::to_string(&optional_module).expect("optional module must serialize");
+    let opt_json = serde_json::to_string(&optional_module).expect("optional module must serialize");
     assert!(opt_json.contains("\"kind\":\"optional\""));
 }
 
@@ -129,8 +128,7 @@ fn test_generated_static_distribution_manifest_serialization() {
             source_reference: "tag/v0.1.0".to_string(),
             source_digest: "sha256:src".to_string(),
             dependency_lock_digest: "sha256:lock".to_string(),
-            executor_mode:
-                rustok_modules::ModuleStaticDistributionExecutorMode::StaticNative,
+            executor_mode: rustok_modules::ModuleStaticDistributionExecutorMode::StaticNative,
             materialization_path: ".rustok/static-sources/000".to_string(),
         }],
         output_digest: "sha256:out".to_string(),

@@ -61,8 +61,7 @@ fn transport_error_display_and_traits() {
         CommentsAdminTransportError::ServerFn("other error".to_string())
     );
 
-    let from_server_fn: CommentsAdminTransportError =
-        ServerFnError::new("internal error").into();
+    let from_server_fn: CommentsAdminTransportError = ServerFnError::new("internal error").into();
     assert_eq!(
         from_server_fn,
         CommentsAdminTransportError::ServerFn(
@@ -163,7 +162,8 @@ fn command_validation_boundary_cases() {
         CommentsAdminValidationError::NilThreadId
     );
 
-    let cmd_thread_empty = SetThreadStatusCommand::new("   ".to_string(), CommentThreadStatus::Open);
+    let cmd_thread_empty =
+        SetThreadStatusCommand::new("   ".to_string(), CommentThreadStatus::Open);
     assert_eq!(
         cmd_thread_empty.validate().unwrap_err(),
         CommentsAdminValidationError::EmptyThreadId

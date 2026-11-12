@@ -395,8 +395,10 @@ fn resource_request(
 ) -> ReadTranslationResourceRequest {
     ReadTranslationResourceRequest {
         identity,
-        source_locale: TenantLocale::new("en").expect("static source locale should be valid: invariant validated at startup"),
-        target_locale: TenantLocale::new("fr").expect("static target locale should be valid: invariant validated at startup"),
+        source_locale: TenantLocale::new("en")
+            .expect("static source locale should be valid: invariant validated at startup"),
+        target_locale: TenantLocale::new("fr")
+            .expect("static target locale should be valid: invariant validated at startup"),
     }
 }
 
@@ -433,7 +435,8 @@ fn field_patch(
         .find(|field| field.descriptor.key.as_str() == key)
         .expect("requested Taxonomy field should be exposed");
     TranslationFieldPatch {
-        key: FieldKey::new(key).expect("static field key should be valid: invariant validated at startup"),
+        key: FieldKey::new(key)
+            .expect("static field key should be valid: invariant validated at startup"),
         value: value.to_string(),
         expected_source_hash: field.source_hash.clone(),
     }

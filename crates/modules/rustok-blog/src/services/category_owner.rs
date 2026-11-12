@@ -92,7 +92,14 @@ impl CategoryService {
             return Err(BlogError::validation("Category ID must not be nil"));
         }
         enforce_scope(&security, Resource::BlogCategories, Action::Read)?;
-        load_category_response(&*self.taxonomy_port, &self.db, tenant_id, category_id, locale).await
+        load_category_response(
+            &*self.taxonomy_port,
+            &self.db,
+            tenant_id,
+            category_id,
+            locale,
+        )
+        .await
     }
 
     pub async fn update(

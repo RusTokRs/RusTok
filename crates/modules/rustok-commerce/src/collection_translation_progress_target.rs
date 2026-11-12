@@ -55,7 +55,6 @@ fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
     })
 }
 
-
 #[derive(Clone)]
 pub struct CommerceCollectionTranslationTargetProvider {
     inner: collection_translation_target::CommerceCollectionTranslationTargetProvider,

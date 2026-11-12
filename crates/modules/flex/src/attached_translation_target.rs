@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, collections::BTreeSet, sync::{Arc, LazyLock}};
+use std::{
+    collections::BTreeMap,
+    collections::BTreeSet,
+    sync::{Arc, LazyLock},
+};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -82,7 +86,7 @@ impl FlexAttachedTranslationTargetProvider {
         &self.entity_type
     }
 
-        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+    fn descriptor_value() -> TranslationTargetProviderDescriptor {
         DESCRIPTOR.clone()
     }
 

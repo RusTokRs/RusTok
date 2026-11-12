@@ -54,7 +54,10 @@ impl ReservationEventPlan {
                 "Inventory reservation notifications require the current human actor's non-nil UUID; do not reconstruct an actor from saved metadata".to_owned(),
             )
         })?;
-        if variant.tenant_id != tenant_id || variant.variant_id.is_nil() || variant.product_id.is_nil() {
+        if variant.tenant_id != tenant_id
+            || variant.variant_id.is_nil()
+            || variant.product_id.is_nil()
+        {
             return Err(scope_unverified());
         }
         Ok(Self {

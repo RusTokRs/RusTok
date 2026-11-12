@@ -199,7 +199,9 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
             HttpError::not_found(code, "The requested forum resource was not found")
         }
         ForumError::Forbidden(_) => HttpError::forbidden(code, "Permission denied"),
-        ForumError::RateLimited { retry_after_seconds } => HttpError::new(
+        ForumError::RateLimited {
+            retry_after_seconds,
+        } => HttpError::new(
             StatusCode::TOO_MANY_REQUESTS,
             code,
             "Forum posting rate limit reached; retry later",

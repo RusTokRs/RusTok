@@ -178,11 +178,7 @@ impl ProductInventoryPort for InventoryProductInventoryPortAdapter {
         quantity: i32,
     ) -> Result<(), CommerceError> {
         BootstrapService::update_initial_quantity_in_tx(
-            txn,
-            tenant_id,
-            actor_id,
-            variant_id,
-            quantity,
+            txn, tenant_id, actor_id, variant_id, quantity,
         )
         .await
         .map_err(map_quantity_write_error)
@@ -202,8 +198,6 @@ impl ProductInventoryPort for InventoryProductInventoryPortAdapter {
 }
 
 /// Creates an in-process adapter implementing `ProductInventoryPort`.
-pub fn in_process_product_inventory_port(
-    db: DatabaseConnection,
-) -> Arc<dyn ProductInventoryPort> {
+pub fn in_process_product_inventory_port(db: DatabaseConnection) -> Arc<dyn ProductInventoryPort> {
     Arc::new(InventoryProductInventoryPortAdapter::new(db))
 }

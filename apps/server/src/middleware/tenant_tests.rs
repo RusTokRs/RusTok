@@ -160,10 +160,8 @@ fn normalize_identifier_value_and_key_builder_host_lowercasing() {
     let key_lower = builder.kind_key(TenantIdentifierKind::Host, "shop.rustok.test", 42);
     assert_eq!(key_upper, key_lower, "host-based keys must normalize case");
 
-    let neg_upper =
-        builder.kind_negative_key(TenantIdentifierKind::Host, "SHOP.RusToK.Test", 42);
-    let neg_lower =
-        builder.kind_negative_key(TenantIdentifierKind::Host, "shop.rustok.test", 42);
+    let neg_upper = builder.kind_negative_key(TenantIdentifierKind::Host, "SHOP.RusToK.Test", 42);
+    let neg_lower = builder.kind_negative_key(TenantIdentifierKind::Host, "shop.rustok.test", 42);
     assert_eq!(
         neg_upper, neg_lower,
         "host-based negative keys must normalize case"
@@ -249,8 +247,7 @@ fn tenant_read_request_selector_and_inactive_inclusion() {
     );
     assert!(req_slug.include_inactive);
 
-    let req_host =
-        tenant_read_request(&ResolvedTenantIdentifier::Host("demo.domain.test".into()));
+    let req_host = tenant_read_request(&ResolvedTenantIdentifier::Host("demo.domain.test".into()));
     assert_eq!(
         req_host.selector,
         TenantReadSelector::Domain("demo.domain.test".into())

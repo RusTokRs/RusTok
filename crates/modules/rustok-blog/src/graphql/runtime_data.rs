@@ -7,7 +7,9 @@ use sea_orm::DatabaseConnection;
 
 use crate::ports::taxonomy::{BlogCategoryDeleteCleanupPort, BlogTaxonomyPort};
 use crate::services::CategoryCommandService;
-use crate::{CategoryService, CommentService, PostService, PublicCommentsSnapshotStore, TagService};
+use crate::{
+    CategoryService, CommentService, PostService, PublicCommentsSnapshotStore, TagService,
+};
 
 /// Manifest-attached Blog GraphQL runtime capabilities.
 ///

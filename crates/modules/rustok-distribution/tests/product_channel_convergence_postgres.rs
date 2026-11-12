@@ -171,7 +171,8 @@ async fn run_scenarios(database: &TestDatabase) -> TestResult<()> {
     let runtime = build_product_runtime(database).await?;
     let initial_generation = current_channel_generation(&database.writer).await?;
     assert!(initial_generation > 0);
-    let malformed_baseline = relation_evidence_counts(&database.writer, MALFORMED_PRODUCT_ID).await?;
+    let malformed_baseline =
+        relation_evidence_counts(&database.writer, MALFORMED_PRODUCT_ID).await?;
     assert_eq!(malformed_baseline.1, 0);
 
     // Host A claims through the same Product-owned store used by the registered ModuleWork source,

@@ -292,7 +292,8 @@ fn assert_upsert(
 }
 
 fn permanent(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::permanent(code).expect("static snapshot test failure code is valid: invariant validated at startup")
+    IndexSourceFailure::permanent(code)
+        .expect("static snapshot test failure code is valid: invariant validated at startup")
 }
 
 fn database_url() -> Option<String> {

@@ -190,11 +190,13 @@ fn persisted_locale(locale: Option<&crate::LocaleKey>) -> String {
 }
 
 fn retryable_failure(code: &str) -> IndexDriftCandidateConfirmationFailure {
-    IndexDriftCandidateConfirmationFailure::retryable(code)
-        .expect("static candidate confirmation failure code is valid: invariant validated at startup")
+    IndexDriftCandidateConfirmationFailure::retryable(code).expect(
+        "static candidate confirmation failure code is valid: invariant validated at startup",
+    )
 }
 
 fn permanent_failure(code: &str) -> IndexDriftCandidateConfirmationFailure {
-    IndexDriftCandidateConfirmationFailure::permanent(code)
-        .expect("static candidate confirmation failure code is valid: invariant validated at startup")
+    IndexDriftCandidateConfirmationFailure::permanent(code).expect(
+        "static candidate confirmation failure code is valid: invariant validated at startup",
+    )
 }

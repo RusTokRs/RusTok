@@ -40,11 +40,7 @@ fn contract_envelope_rejects_nil_causation_id() {
         role: "admin".to_string(),
         generation: 1,
     };
-    let err = crate::ContractEventEnvelope::new_caused_by(
-        tenant_id,
-        None,
-        uuid::Uuid::nil(),
-        event,
-    );
+    let err =
+        crate::ContractEventEnvelope::new_caused_by(tenant_id, None, uuid::Uuid::nil(), event);
     assert!(err.is_err());
 }

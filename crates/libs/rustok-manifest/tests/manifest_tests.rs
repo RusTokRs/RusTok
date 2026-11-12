@@ -227,5 +227,7 @@ fn test_empty_module_name_or_version_rejected() {
     "#;
     let manifest2 = parse_module_package_manifest(toml_str2).unwrap();
     let err2 = validate_module_package_manifest(&manifest2).unwrap_err();
-    assert!(matches!(err2, ManifestError::Validation(msg) if msg.contains("empty or missing version")));
+    assert!(
+        matches!(err2, ManifestError::Validation(msg) if msg.contains("empty or missing version"))
+    );
 }
