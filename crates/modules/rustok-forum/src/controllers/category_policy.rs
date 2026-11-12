@@ -8,7 +8,7 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
-    CategoryService, CategoryTopicPolicyResponse, ForumError, UpdateCategoryTopicPolicyInput,
+    CategoryTopicPolicyResponse, ForumError, UpdateCategoryTopicPolicyInput,
 };
 
 #[utoipa::path(

@@ -13,7 +13,7 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::{
-    CategoryListItem, CategoryResponse, CategoryService, CreateCategoryInput,
+    CategoryListItem, CategoryResponse, CreateCategoryInput,
     ForumCategoryAudienceReadService, ForumCategoryReadOperation, ForumCategoryReadTransport,
     UpdateCategoryInput, category_read_audience_port_context,
 };

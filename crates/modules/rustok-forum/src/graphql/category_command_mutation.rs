@@ -4,7 +4,7 @@ use rustok_api::graphql::{extract_graphql_context, require_module_enabled};
 use uuid::Uuid;
 
 use crate::{
-    CategoryPlacementResponse, CategoryService, MoveCategoryInput, MoveCategoryResponse,
+    CategoryPlacementResponse, MoveCategoryInput, MoveCategoryResponse,
     ReorderCategorySiblingsInput, ReorderCategorySiblingsResponse,
 };
 

@@ -8,7 +8,7 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
-    CategoryService, ForumError, MoveCategoryInput, MoveCategoryResponse,
+    ForumError, MoveCategoryInput, MoveCategoryResponse,
     ReorderCategorySiblingsInput, ReorderCategorySiblingsResponse,
 };
 

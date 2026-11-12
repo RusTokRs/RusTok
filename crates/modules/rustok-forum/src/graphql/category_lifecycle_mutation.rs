@@ -1,10 +1,9 @@
 use async_graphql::{Context, Object, Result, SimpleObject};
 use rustok_api::Permission;
 use rustok_api::{TenantContext, graphql::require_module_enabled};
-use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{CategoryService, CategorySubtreeLifecycleResponse};
+use crate::CategorySubtreeLifecycleResponse;
 
 const MODULE_SLUG: &str = "forum";
 
