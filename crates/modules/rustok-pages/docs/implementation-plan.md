@@ -352,6 +352,29 @@ It reloads the selected page through the existing Pages admin transport, hides m
 
 Tokens, sessions, grants, proofs, arbitrary origins and signing material are absent from the href and DOM. Backend admission remains authoritative.
 
+### Production gate delivery and relay restart: source-ready
+
+`apps/server/tests/pages_production_gate_postgres_restart.rs` owns the production gate PostgreSQL publish/rollback restart harness.
+It drives the real outbox module and Pages migrations in an isolated schema per run, commits a
+publish receipt and a rollback receipt with their events, and delivers both through the
+production tenant-generation delivery gate and the production server Pages cache port rather
+than a test double.
+
+The harness pins the delivery order the gate owns: rotation precedes outbox acknowledgement,
+route, page and artifact generations rotate exactly once, new keys miss and then refill, and
+old-generation values stay physically present. The rollback delivery fails on purpose as a
+post-invalidation downstream failure, so the row stays pending with an incremented retry count
+and no `dispatched_at`; a second relay instance with a distinct worker identity then reclaims
+the same pending event under the same event and correlation identity. There the
+process-bounded dedupe prevents a second rotation when a new relay instance retries, and the
+successful retry marks the row dispatched and clears its error and claim. The ordinary Pages
+listener treats the same event as a rotation no-op.
+
+The historical owner packet and the historical pre-handler-failure restart packet stay
+separate and are not replaced by this harness. Nothing above was executed: no Cargo build, no
+PostgreSQL run, no relay restart observation and no storefront request, so the packet remains
+source-ready with runtime evidence pending.
+
 ### Release composition: source-ready
 
 The single source owner is:

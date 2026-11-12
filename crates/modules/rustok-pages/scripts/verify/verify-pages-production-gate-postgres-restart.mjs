@@ -213,7 +213,7 @@ ordered(relayProcess, [
 
 for (const marker of [
   "PageCacheInvalidationEventHandler::new",
-  "handler.handle(envelope).await?",
+  "input.handler.handle(input.envelope).await?",
   "publish_and_rollback_receipts_correlate_with_durable_outbox_and_cache_rotation_on_postgres"
 ]) need(historicalOwner, marker, "historical owner PostgreSQL harness");
 forbid(historicalOwner, "TenantGenerationDeliveryGate::new", "historical owner PostgreSQL harness");
