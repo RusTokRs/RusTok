@@ -34,6 +34,7 @@ impl GroupsQuery {
         per_page: Option<i32>,
         search: Option<String>,
         include_non_public: Option<bool>,
+        category_id: Option<Uuid>,
     ) -> Result<GroupConnectionGql> {
         let include_non_public = include_non_public.unwrap_or(false);
         let auth = ctx.data_opt::<AuthContext>();
@@ -49,6 +50,7 @@ impl GroupsQuery {
                 per_page: per_page.unwrap_or(24).clamp(1, 100) as u64,
                 search: normalize_optional_text(search),
                 include_non_public,
+                category_id,
             },
         )
         .await
@@ -262,6 +264,15 @@ pub enum GroupRoleGql {
     Member,
 }
 
+#[derive(SimpleObject, Clone)]
+pub struct GroupCategoryGql {
+    pub id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub icon_key: Option<String>,
+    pub color: Option<String>,
+}
+
 #[derive(SimpleObject)]
 pub struct GroupSummaryGql {
     pub id: Uuid,
@@ -273,6 +284,8 @@ pub struct GroupSummaryGql {
     pub status: GroupStatusGql,
     pub title: String,
     pub summary: Option<String>,
+    pub category_id: Option<Uuid>,
+    pub category: Option<GroupCategoryGql>,
     pub avatar_media_id: Option<Uuid>,
     pub cover_media_id: Option<Uuid>,
     pub member_count: u64,
@@ -349,6 +362,14 @@ impl From<GroupSummary> for GroupSummaryGql {
             status: value.status.into(),
             title: value.title,
             summary: value.summary,
+            category_id: value.category_id,
+            category: value.category.map(|c| GroupCategoryGql {
+                id: c.id,
+                name: c.name,
+                slug: c.slug,
+                icon_key: c.icon_key,
+                color: c.color,
+            }),
             avatar_media_id: value.avatar_media_id,
             cover_media_id: value.cover_media_id,
             member_count: value.member_count,
@@ -473,7 +494,13 @@ fn service(ctx: &Context<'_>) -> Result<GroupsService> {
     let runtime = ctx.data::<HostRuntimeContext>().map_err(|_| {
         <FieldError as GraphQLError>::internal_error("Groups runtime is not registered")
     })?;
-    Ok(GroupsService::new(runtime.db_clone()))
+    let mut service = GroupsService::new(runtime.db_clone());
+    if let Some(port) =
+        runtime.shared_get::<std::sync::Arc<dyn crate::ports::GroupTaxonomyPort>>()
+    {
+        service = service.with_taxonomy_port(port);
+    }
+    Ok(service)
 }
 
 fn require_authenticated<'a>(ctx: &'a Context<'a>) -> Result<&'a AuthContext> {

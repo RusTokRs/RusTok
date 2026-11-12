@@ -443,6 +443,7 @@ rustok-newsletter = { path = "crates/modules/rustok-newsletter", default-feature
 rustok-iggy = { path = "crates/modules/rustok-iggy" }
 rustok-iggy-connector = { path = "crates/modules/rustok-iggy-connector" }
 rustok-forum = { path = "crates/modules/rustok-forum" }
+rustok-groups = { path = "crates/modules/rustok-groups" }
 rustok-tenant = { path = "crates/modules/rustok-tenant" }
 rustok-rbac = { path = "crates/modules/rustok-rbac" }
 rustok-mcp = { path = "crates/modules/rustok-mcp" }

@@ -15,6 +15,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 rustok-api.workspace = true
 rustok-blog.workspace = true
+rustok-groups.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true

@@ -153,6 +153,13 @@ pub type SharedGroupLocalizationReadPort = Arc<dyn GroupLocalizationReadPort>;
 pub type SharedGroupCommandPort = Arc<dyn GroupCommandPort>;
 pub type SharedGroupLocalizationCommandPort = Arc<dyn GroupLocalizationCommandPort>;
 
+pub mod taxonomy;
+pub use taxonomy::{
+    GroupTaxonomyCategorySnapshot, GroupTaxonomyConnection, GroupTaxonomyPort,
+    NoopGroupTaxonomyPort,
+};
+pub type SharedGroupTaxonomyPort = Arc<dyn GroupTaxonomyPort>;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GroupCapabilityDescriptor {
     pub owner_module: &'static str,

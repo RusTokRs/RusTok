@@ -13,6 +13,7 @@ pub mod migrations;
 mod module_term_lookup;
 pub mod module_term_mutation;
 mod normalization;
+pub mod groups_taxonomy_port;
 pub mod product_taxonomy_port;
 mod owner_category_hierarchy_mutation;
 mod owner_category_read;
@@ -67,6 +68,9 @@ pub use owner_category_route_sync::{
 };
 pub use owner_category_sync::{
     SyncModuleCategoryInput, SyncModuleCategoryResult, sync_module_category_in_tx,
+};
+pub use groups_taxonomy_port::{
+    TaxonomyGroupTaxonomyPortAdapter, in_process_group_taxonomy_port,
 };
 pub use product_taxonomy_port::{
     TaxonomyProductTaxonomyPortAdapter, in_process_product_taxonomy_port,

@@ -13,6 +13,8 @@ use sea_orm::{
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use std::sync::Arc;
+
 use crate::domain::{
     GroupAction, GroupFeatureStatus, GroupJoinPolicy, GroupMembershipStatus, GroupRole,
     GroupStatus, GroupVisibility, normalize_group_handle,
@@ -20,6 +22,7 @@ use crate::domain::{
 use crate::dto::*;
 use crate::entities::{feature_binding, group, membership, translation};
 use crate::error::{GroupsError, GroupsResult};
+use crate::ports::taxonomy::{GroupTaxonomyPort, NoopGroupTaxonomyPort};
 use crate::ports::{
     GroupAccessReadPort, GroupCommandPort, GroupMembershipReadPort, GroupSummaryReadPort,
 };
@@ -27,11 +30,20 @@ use crate::ports::{
 #[derive(Clone)]
 pub struct GroupsService {
     db: DatabaseConnection,
+    taxonomy_port: Arc<dyn GroupTaxonomyPort>,
 }
 
 impl GroupsService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            taxonomy_port: Arc::new(NoopGroupTaxonomyPort),
+        }
+    }
+
+    pub fn with_taxonomy_port(mut self, port: Arc<dyn GroupTaxonomyPort>) -> Self {
+        self.taxonomy_port = port;
+        self
     }
 
     pub async fn lock_membership_enforcement_target_by_id(
@@ -179,6 +191,13 @@ impl GroupsService {
         }
         let body = normalize_optional_text(input.body);
         let metadata = normalize_language_agnostic_metadata(input.metadata)?;
+        if let Some(category_id) = input.category_id {
+            if category_id.is_nil() {
+                return Err(GroupsError::Validation(
+                    "category_id cannot be a nil UUID".to_string(),
+                ));
+            }
+        }
 
         let transaction = self.db.begin().await?;
         let command = crate::commands::Command::admit(
@@ -201,6 +220,18 @@ impl GroupsService {
             .await?;
         if duplicate.is_some() {
             return Err(GroupsError::HandleConflict);
+        }
+
+        if let Some(category_id) = input.category_id {
+            let valid = self
+                .taxonomy_port
+                .validate_category_exists((&transaction).into(), tenant_id, category_id)
+                .await?;
+            if !valid {
+                return Err(GroupsError::Validation(format!(
+                    "Group category {category_id} does not exist"
+                )));
+            }
         }
 
         let now = Utc::now().fixed_offset();
@@ -267,6 +298,29 @@ impl GroupsService {
         .insert(&transaction)
         .await?;
 
+        let category = if let Some(cat_id) = input.category_id {
+            self.taxonomy_port
+                .load_categories(
+                    (&transaction).into(),
+                    tenant_id,
+                    &[cat_id],
+                    &locale,
+                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
+                )
+                .await
+                .ok()
+                .and_then(|mut m| m.remove(&cat_id))
+                .map(|snap| GroupCategorySummary {
+                    id: snap.id,
+                    name: snap.name,
+                    slug: snap.slug,
+                    icon_key: snap.icon_key,
+                    color: snap.color,
+                })
+        } else {
+            None
+        };
+
         let result = GroupDetails {
             summary: GroupSummary {
                 id: group_id,
@@ -278,6 +332,8 @@ impl GroupsService {
                 status: GroupStatus::Active,
                 title: title.to_string(),
                 summary,
+                category_id: input.category_id,
+                category,
                 avatar_media_id: input.avatar_media_id,
                 cover_media_id: input.cover_media_id,
                 member_count: 1,
@@ -383,6 +439,9 @@ impl GroupsService {
                 GroupVisibility::Closed.as_str(),
             ]));
         }
+        if let Some(category_id) = request.category_id {
+            query = query.filter(group::Column::CategoryId.eq(category_id));
+        }
 
         let paginator = query
             .order_by_desc(group::Column::UpdatedAt)
@@ -396,15 +455,49 @@ impl GroupsService {
                 models.iter().map(|model| model.id).collect::<Vec<_>>(),
             )
             .await?;
+        let category_ids = models
+            .iter()
+            .filter_map(|model| model.category_id)
+            .collect::<Vec<_>>();
+        let mut categories = if category_ids.is_empty() {
+            HashMap::new()
+        } else {
+            self.taxonomy_port
+                .load_categories(
+                    (&self.db).into(),
+                    tenant_id,
+                    &category_ids,
+                    &effective_locale,
+                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
+                )
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(id, snap)| {
+                    (
+                        id,
+                        GroupCategorySummary {
+                            id: snap.id,
+                            name: snap.name,
+                            slug: snap.slug,
+                            icon_key: snap.icon_key,
+                            color: snap.color,
+                        },
+                    )
+                })
+                .collect::<HashMap<_, _>>()
+        };
         let items = models
             .into_iter()
             .map(|model| {
+                let category = model.category_id.and_then(|id| categories.remove(&id));
                 self.map_summary(
                     context,
                     model,
                     &translations,
                     &context.locale,
                     &effective_locale,
+                    category,
                 )
             })
             .collect::<GroupsResult<Vec<_>>>()?;
@@ -447,12 +540,35 @@ impl GroupsService {
         let body = include_private_content
             .then(|| selected.body.clone())
             .flatten();
+        let category = if let Some(cat_id) = model.category_id {
+            self.taxonomy_port
+                .load_categories(
+                    (&self.db).into(),
+                    tenant_id,
+                    &[cat_id],
+                    effective_locale,
+                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
+                )
+                .await
+                .ok()
+                .and_then(|mut m| m.remove(&cat_id))
+                .map(|snap| GroupCategorySummary {
+                    id: snap.id,
+                    name: snap.name,
+                    slug: snap.slug,
+                    icon_key: snap.icon_key,
+                    color: snap.color,
+                })
+        } else {
+            None
+        };
         let summary = self.map_summary(
             context,
             model,
             &translations,
             requested_locale,
             effective_locale,
+            category,
         )?;
         let viewer_membership = match optional_actor_user_id(context) {
             Some(user_id) => self
@@ -491,6 +607,7 @@ impl GroupsService {
         translations: &HashMap<Uuid, Vec<translation::Model>>,
         requested_locale: &str,
         effective_locale: &str,
+        category: Option<GroupCategorySummary>,
     ) -> GroupsResult<GroupSummary> {
         let selected = select_translation(translations, model.id, effective_locale)?;
         let mut available_locales = translations
@@ -512,6 +629,8 @@ impl GroupsService {
             status: GroupStatus::from_str(&model.status).map_err(GroupsError::Invariant)?,
             title: selected.title.clone(),
             summary: selected.summary.clone(),
+            category_id: model.category_id,
+            category,
             avatar_media_id: model.avatar_media_id,
             cover_media_id: model.cover_media_id,
             member_count: u64::try_from(model.member_count).map_err(|_| {

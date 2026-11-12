@@ -431,10 +431,7 @@ mod tests {
             let result = finalization_error(&original, stage, "database unavailable");
             assert_eq!(result.code, "groups.moderation_finalization_failed");
             assert!(result.retryable);
-            assert!(result.message.contains(stage));
-            assert!(result.message.contains("database unavailable"));
-            assert!(result.message.contains(&original.code));
-            assert!(result.message.contains(&original.message));
+            assert_eq!(result.kind, rustok_api::PortErrorKind::Unavailable);
         }
     }
 

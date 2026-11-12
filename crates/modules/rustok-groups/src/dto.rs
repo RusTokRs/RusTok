@@ -11,6 +11,15 @@ use crate::domain::{
     GroupRole, GroupStatus, GroupVisibility, normalize_feature_key, normalize_group_handle,
 };
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupCategorySummary {
+    pub id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub icon_key: Option<String>,
+    pub color: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GroupSummary {
     pub id: Uuid,
@@ -22,6 +31,8 @@ pub struct GroupSummary {
     pub status: GroupStatus,
     pub title: String,
     pub summary: Option<String>,
+    pub category_id: Option<Uuid>,
+    pub category: Option<GroupCategorySummary>,
     pub avatar_media_id: Option<Uuid>,
     pub cover_media_id: Option<Uuid>,
     pub member_count: u64,
@@ -158,6 +169,7 @@ pub struct ListGroupsRequest {
     pub per_page: u64,
     pub search: Option<String>,
     pub include_non_public: bool,
+    pub category_id: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

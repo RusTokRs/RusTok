@@ -47,6 +47,14 @@ impl GroupsService {
         }
     }
 
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ports::GroupTaxonomyPort>,
+    ) -> Self {
+        self.legacy = self.legacy.with_taxonomy_port(port);
+        self
+    }
+
     pub async fn lock_membership_enforcement_target_by_id(
         &self,
         tenant_id: Uuid,
