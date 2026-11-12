@@ -104,6 +104,15 @@ impl ChannelResolver {
     pub async fn resolve(&self, facts: &RequestFacts) -> ChannelResult<ResolutionDecision> {
         let mut trace = Vec::new();
 
+        if facts.tenant_id.is_nil() {
+            trace.push(ResolutionTraceStep {
+                stage: ResolutionStage::Default,
+                outcome: ResolutionOutcome::Rejected,
+                detail: "RequestFacts has a nil tenant_id".to_string(),
+            });
+            return Ok(ResolutionDecision::unresolved(trace));
+        }
+
         if let Some(channel_id) = facts.header_channel_id {
             if channel_id.is_nil() {
                 trace.push(ResolutionTraceStep {
@@ -343,10 +352,34 @@ impl ChannelResolver {
                 continue;
             }
 
-            let detail = self
-                .service
-                .get_channel_detail(rule.action_channel_id)
-                .await?;
+            let detail = match self.service.get_channel_detail(rule.action_channel_id).await {
+                Ok(detail) => detail,
+                Err(crate::ChannelError::NotFound(_)) => {
+                    trace.push(ResolutionTraceStep {
+                        stage: ResolutionStage::Policy,
+                        outcome: ResolutionOutcome::Rejected,
+                        detail: format!(
+                            "Policy rule '{}' in set '{}' resolved to non-existent channel '{}'",
+                            rule.id, rule.policy_set_slug, rule.action_channel_id
+                        ),
+                    });
+                    continue;
+                }
+                Err(err) => return Err(err),
+            };
+
+            if detail.channel.tenant_id != facts.tenant_id {
+                trace.push(ResolutionTraceStep {
+                    stage: ResolutionStage::Policy,
+                    outcome: ResolutionOutcome::Rejected,
+                    detail: format!(
+                        "Policy rule '{}' in set '{}' resolved to channel '{}' in different tenant",
+                        rule.id, rule.policy_set_slug, detail.channel.slug
+                    ),
+                });
+                continue;
+            }
+
             if !detail.channel.is_active {
                 trace.push(ResolutionTraceStep {
                     stage: ResolutionStage::Policy,

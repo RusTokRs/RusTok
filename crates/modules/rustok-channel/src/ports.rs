@@ -214,14 +214,23 @@ impl ChannelReadPort for crate::ChannelService {
 }
 
 fn parse_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    context.tenant_id.parse::<Uuid>().map_err(|_| {
+    let id = context.tenant_id.parse::<Uuid>().map_err(|_| {
         PortError::new(
             PortErrorKind::Validation,
             "channel.tenant_id_invalid",
             "channel read port requires a UUID tenant_id in context",
             false,
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(PortError::new(
+            PortErrorKind::Validation,
+            "channel.tenant_id_nil",
+            "channel read port requires a non-nil UUID tenant_id in context",
+            false,
+        ));
+    }
+    Ok(id)
 }
 
 fn validate_channel_read_request(request: &ChannelReadRequest) -> Result<(), PortError> {

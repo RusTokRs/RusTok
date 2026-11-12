@@ -476,4 +476,24 @@ async fn channel_service_read_port_reads_channel_by_all_selectors() {
         .await
         .unwrap_err();
     assert_eq!(zero_page_err.kind, PortErrorKind::Validation);
+
+    // Nil tenant ID in context returns Validation error
+    let nil_context = PortContext::new(
+        Uuid::nil().to_string(),
+        PortActor::system(),
+        "en",
+        "nil-tenant-test",
+    );
+    let nil_tenant_err = port
+        .read_channel(
+            nil_context,
+            ChannelReadRequest {
+                selector: ChannelReadSelector::Default,
+                include_inactive: false,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(nil_tenant_err.kind, PortErrorKind::Validation);
+    assert_eq!(nil_tenant_err.code, "channel.tenant_id_nil");
 }

@@ -313,9 +313,9 @@
       "category": "modules",
       "files": 52,
       "loc": 12916,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-12T18:55:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: cross-tenant isolation enforcement in policy resolution, non-nil UUID guards in ResolutionAction and OAuthAppEquals predicates, non-nil tenant ID validation in ChannelReadPort parse_tenant_id, slug/name bounds (<= 255 chars) in create_channel and create_resolution_policy_set, nil UUID guards across service operations, atomic transactional reordering; verified with cargo check -p rustok-channel."
     },
     "crates/modules/rustok-channel/admin": {
       "name": "admin",
@@ -323,9 +323,9 @@
       "category": "modules",
       "files": 15,
       "loc": 5527,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-12T18:55:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation with pure-logic core.rs, strict non-nil tenant scope matching and non-nil user_id validation in ensure_manage_permission across all 16 native server functions, non-nil UUID validation in parse_uuid, dual SETTINGS_MANAGE/MODULES_MANAGE permission checks; verified with cargo check -p rustok-channel-admin and cargo check -p rustok-channel-admin --features ssr."
     },
     "crates/modules/rustok-comments": {
       "name": "rustok-comments",

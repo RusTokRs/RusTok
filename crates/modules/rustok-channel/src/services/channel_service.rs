@@ -62,10 +62,20 @@ impl ChannelService {
                 "channel slug must not be empty".to_string(),
             ));
         }
+        if slug.len() > 255 {
+            return Err(ChannelError::Validation(
+                "channel slug must not exceed 255 characters".to_string(),
+            ));
+        }
         let name = input.name.trim().to_string();
         if name.is_empty() {
             return Err(ChannelError::Validation(
                 "channel name must not be empty".to_string(),
+            ));
+        }
+        if name.len() > 255 {
+            return Err(ChannelError::Validation(
+                "channel name must not exceed 255 characters".to_string(),
             ));
         }
 
@@ -102,6 +112,9 @@ impl ChannelService {
 
     #[instrument(skip(self), fields(channel_id = %channel_id))]
     pub async fn get_channel(&self, channel_id: Uuid) -> ChannelResult<ChannelResponse> {
+        if channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
         let model = channel::Entity::find_by_id(channel_id)
             .one(&self.db)
             .await?
@@ -114,6 +127,9 @@ impl ChannelService {
         &self,
         channel_id: Uuid,
     ) -> ChannelResult<ChannelDetailResponse> {
+        if channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
         let model = channel::Entity::find_by_id(channel_id)
             .one(&self.db)
             .await?
@@ -126,6 +142,9 @@ impl ChannelService {
         tenant_id: Uuid,
         slug: &str,
     ) -> ChannelResult<Option<ChannelResponse>> {
+        if tenant_id.is_nil() {
+            return Ok(None);
+        }
         let slug = slug.trim().to_ascii_lowercase();
         if slug.is_empty() {
             return Ok(None);
@@ -143,6 +162,9 @@ impl ChannelService {
         tenant_id: Uuid,
         slug: &str,
     ) -> ChannelResult<Option<ChannelDetailResponse>> {
+        if tenant_id.is_nil() {
+            return Ok(None);
+        }
         let slug = slug.trim().to_ascii_lowercase();
         if slug.is_empty() {
             return Ok(None);
@@ -164,6 +186,9 @@ impl ChannelService {
         tenant_id: Uuid,
         target_value: &str,
     ) -> ChannelResult<Option<ChannelDetailResponse>> {
+        if tenant_id.is_nil() {
+            return Ok(None);
+        }
         let normalized = match ChannelTargetType::WebDomain.normalize_value(target_value) {
             Some(value) => value,
             None => return Ok(None),
@@ -197,6 +222,9 @@ impl ChannelService {
         &self,
         tenant_id: Uuid,
     ) -> ChannelResult<Option<ChannelDetailResponse>> {
+        if tenant_id.is_nil() {
+            return Ok(None);
+        }
         let model = channel::Entity::find()
             .filter(channel::Column::TenantId.eq(tenant_id))
             .filter(channel::Column::IsActive.eq(true))
@@ -216,6 +244,11 @@ impl ChannelService {
         page: u64,
         per_page: u64,
     ) -> ChannelResult<(Vec<ChannelResponse>, u64)> {
+        if tenant_id.is_nil() {
+            return Err(ChannelError::Validation(
+                "channel tenant_id must not be nil".to_string(),
+            ));
+        }
         if page == 0 || per_page == 0 {
             return Err(ChannelError::Validation(
                 "channel pagination requires non-zero page and per_page".to_string(),
@@ -239,6 +272,11 @@ impl ChannelService {
         per_page: u64,
         include_inactive: bool,
     ) -> ChannelResult<(Vec<ChannelDetailResponse>, u64)> {
+        if tenant_id.is_nil() {
+            return Err(ChannelError::Validation(
+                "channel tenant_id must not be nil".to_string(),
+            ));
+        }
         if page == 0 || per_page == 0 {
             return Err(ChannelError::Validation(
                 "channel pagination requires non-zero page and per_page".to_string(),
@@ -268,6 +306,11 @@ impl ChannelService {
         &self,
         tenant_id: Uuid,
     ) -> ChannelResult<Vec<ChannelDetailResponse>> {
+        if tenant_id.is_nil() {
+            return Err(ChannelError::Validation(
+                "channel tenant_id must not be nil".to_string(),
+            ));
+        }
         let models = channel::Entity::find()
             .filter(channel::Column::TenantId.eq(tenant_id))
             .order_by_desc(channel::Column::IsDefault)
@@ -284,6 +327,9 @@ impl ChannelService {
 
     #[instrument(skip(self), fields(channel_id = %channel_id))]
     pub async fn set_default_channel(&self, channel_id: Uuid) -> ChannelResult<ChannelResponse> {
+        if channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
         let channel = channel::Entity::find_by_id(channel_id)
             .one(&self.db)
             .await?
@@ -302,6 +348,9 @@ impl ChannelService {
         channel_id: Uuid,
         module_slug: &str,
     ) -> ChannelResult<bool> {
+        if channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
         let channel = self.ensure_channel_exists(channel_id).await?;
         if !channel.is_active {
             return Ok(false);
@@ -328,6 +377,11 @@ impl ChannelService {
         tenant_id: Uuid,
         channel_slugs: &[String],
     ) -> ChannelResult<()> {
+        if tenant_id.is_nil() {
+            return Err(ChannelError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
         let requested = channel_slugs
             .iter()
             .map(|slug| slug.trim().to_ascii_lowercase())
@@ -363,6 +417,9 @@ impl ChannelService {
         channel_id: Uuid,
         module_slug: &str,
     ) -> ChannelResult<bool> {
+        if tenant_id.is_nil() || channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
         let channel = channel::Entity::find_by_id(channel_id)
             .filter(channel::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -387,6 +444,9 @@ impl ChannelService {
         channel_id: Uuid,
         input: CreateChannelTargetInput,
     ) -> ChannelResult<ChannelTargetResponse> {
+        if channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
         let Some(target_type) = ChannelTargetType::parse(&input.target_type) else {
             return Err(ChannelError::InvalidTargetType(input.target_type));
         };
@@ -463,6 +523,12 @@ impl ChannelService {
         target_id: Uuid,
         input: UpdateChannelTargetInput,
     ) -> ChannelResult<ChannelTargetResponse> {
+        if channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
+        if target_id.is_nil() {
+            return Err(ChannelError::NotFound(target_id));
+        }
         let Some(target_type) = ChannelTargetType::parse(&input.target_type) else {
             return Err(ChannelError::InvalidTargetType(input.target_type));
         };
@@ -540,6 +606,12 @@ impl ChannelService {
         channel_id: Uuid,
         target_id: Uuid,
     ) -> ChannelResult<ChannelTargetResponse> {
+        if channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
+        if target_id.is_nil() {
+            return Err(ChannelError::NotFound(target_id));
+        }
         let target = channel_target::Entity::find_by_id(target_id)
             .one(&self.db)
             .await?
@@ -560,12 +632,20 @@ impl ChannelService {
         channel_id: Uuid,
         input: BindChannelModuleInput,
     ) -> ChannelResult<ChannelModuleBindingResponse> {
+        if channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
         self.ensure_channel_exists(channel_id).await?;
 
         let module_slug = input.module_slug.trim().to_ascii_lowercase();
         if module_slug.is_empty() {
             return Err(ChannelError::Validation(
                 "module_slug must not be empty".to_string(),
+            ));
+        }
+        if module_slug.len() > 255 {
+            return Err(ChannelError::Validation(
+                "module_slug must not exceed 255 characters".to_string(),
             ));
         }
 
@@ -608,6 +688,12 @@ impl ChannelService {
         channel_id: Uuid,
         binding_id: Uuid,
     ) -> ChannelResult<ChannelModuleBindingResponse> {
+        if channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
+        if binding_id.is_nil() {
+            return Err(ChannelError::NotFound(binding_id));
+        }
         let binding = channel_module_binding::Entity::find_by_id(binding_id)
             .one(&self.db)
             .await?
@@ -628,6 +714,9 @@ impl ChannelService {
         channel_id: Uuid,
         input: BindChannelOauthAppInput,
     ) -> ChannelResult<ChannelOauthAppResponse> {
+        if channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
         self.ensure_channel_exists(channel_id).await?;
 
         if input.oauth_app_id.is_nil() {
@@ -671,6 +760,12 @@ impl ChannelService {
         channel_id: Uuid,
         binding_id: Uuid,
     ) -> ChannelResult<ChannelOauthAppResponse> {
+        if channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
+        if binding_id.is_nil() {
+            return Err(ChannelError::NotFound(binding_id));
+        }
         let binding = channel_oauth_app::Entity::find_by_id(binding_id)
             .one(&self.db)
             .await?
@@ -701,10 +796,20 @@ impl ChannelService {
                 "policy set slug must not be empty".to_string(),
             ));
         }
+        if slug.len() > 255 {
+            return Err(ChannelError::Validation(
+                "policy set slug must not exceed 255 characters".to_string(),
+            ));
+        }
         let name = input.name.trim().to_string();
         if name.is_empty() {
             return Err(ChannelError::Validation(
                 "policy set name must not be empty".to_string(),
+            ));
+        }
+        if name.len() > 255 {
+            return Err(ChannelError::Validation(
+                "policy set name must not exceed 255 characters".to_string(),
             ));
         }
 
@@ -746,6 +851,9 @@ impl ChannelService {
         policy_set_id: Uuid,
         input: CreateChannelResolutionRuleInput,
     ) -> ChannelResult<ChannelResolutionRuleResponse> {
+        if policy_set_id.is_nil() {
+            return Err(ChannelError::NotFound(policy_set_id));
+        }
         let policy_set = channel_resolution_policy_set::Entity::find_by_id(policy_set_id)
             .one(&self.db)
             .await?
@@ -788,6 +896,12 @@ impl ChannelService {
         rule_id: Uuid,
         input: UpdateChannelResolutionRuleInput,
     ) -> ChannelResult<ChannelResolutionRuleResponse> {
+        if policy_set_id.is_nil() {
+            return Err(ChannelError::NotFound(policy_set_id));
+        }
+        if rule_id.is_nil() {
+            return Err(ChannelError::NotFound(rule_id));
+        }
         let has_definition_patch = input.action_channel_id.is_some()
             || input.host_equals.is_some()
             || input.host_suffix.is_some()
@@ -860,6 +974,11 @@ impl ChannelService {
                     });
 
             if let Some(channel_id) = input.action_channel_id {
+                if channel_id.is_nil() {
+                    return Err(ChannelError::InvalidPolicyDefinition(
+                        "action_channel_id must not be nil".to_string(),
+                    ));
+                }
                 let action_channel = channel::Entity::find_by_id(channel_id)
                     .one(&self.db)
                     .await?
@@ -882,12 +1001,18 @@ impl ChannelService {
             if let Some(oauth_app_value) = input.oauth_app_id {
                 oauth_app_id = normalize_optional_patch_text(oauth_app_value)
                     .map(|value| {
-                        Uuid::parse_str(value.as_str()).map_err(|e| {
+                        let parsed = Uuid::parse_str(value.as_str()).map_err(|e| {
                             ChannelError::InvalidPolicyDefinition(format!(
                                 "oauth_app_id must be a valid UUID: {}",
                                 e
                             ))
-                        })
+                        })?;
+                        if parsed.is_nil() {
+                            return Err(ChannelError::InvalidPolicyDefinition(
+                                "oauth_app_id must not be a nil UUID".to_string(),
+                            ));
+                        }
+                        Ok(parsed)
                     })
                     .transpose()?;
             }
@@ -943,10 +1068,20 @@ impl ChannelService {
         policy_set_id: Uuid,
         input: ReorderChannelResolutionRulesInput,
     ) -> ChannelResult<Vec<ChannelResolutionRuleResponse>> {
+        if policy_set_id.is_nil() {
+            return Err(ChannelError::NotFound(policy_set_id));
+        }
         if input.rule_ids.is_empty() {
             return Err(ChannelError::InvalidPolicyOperation(
                 "rule_ids must not be empty".to_string(),
             ));
+        }
+        for rule_id in &input.rule_ids {
+            if rule_id.is_nil() {
+                return Err(ChannelError::InvalidPolicyOperation(
+                    "rule_ids must not contain nil UUIDs".to_string(),
+                ));
+            }
         }
 
         let rules = channel_resolution_policy_rule::Entity::find()
@@ -1028,6 +1163,9 @@ impl ChannelService {
         &self,
         policy_set_id: Uuid,
     ) -> ChannelResult<ChannelResolutionPolicySetResponse> {
+        if policy_set_id.is_nil() {
+            return Err(ChannelError::NotFound(policy_set_id));
+        }
         let policy_set = channel_resolution_policy_set::Entity::find_by_id(policy_set_id)
             .one(&self.db)
             .await?
@@ -1041,6 +1179,9 @@ impl ChannelService {
         &self,
         policy_set_id: Uuid,
     ) -> ChannelResult<ChannelResolutionPolicySetResponse> {
+        if policy_set_id.is_nil() {
+            return Err(ChannelError::NotFound(policy_set_id));
+        }
         let model = channel_resolution_policy_set::Entity::find_by_id(policy_set_id)
             .one(&self.db)
             .await?
@@ -1052,6 +1193,11 @@ impl ChannelService {
         &self,
         tenant_id: Uuid,
     ) -> ChannelResult<Vec<ChannelResolutionPolicySetDetailResponse>> {
+        if tenant_id.is_nil() {
+            return Err(ChannelError::Validation(
+                "policy set tenant_id must not be nil".to_string(),
+            ));
+        }
         let policy_sets = channel_resolution_policy_set::Entity::find()
             .filter(channel_resolution_policy_set::Column::TenantId.eq(tenant_id))
             .order_by_desc(channel_resolution_policy_set::Column::IsActive)
@@ -1086,6 +1232,12 @@ impl ChannelService {
         policy_set_id: Uuid,
         rule_id: Uuid,
     ) -> ChannelResult<ChannelResolutionRuleResponse> {
+        if policy_set_id.is_nil() {
+            return Err(ChannelError::NotFound(policy_set_id));
+        }
+        if rule_id.is_nil() {
+            return Err(ChannelError::NotFound(rule_id));
+        }
         let rule = channel_resolution_policy_rule::Entity::find_by_id(rule_id)
             .one(&self.db)
             .await?
@@ -1104,6 +1256,9 @@ impl ChannelService {
         &self,
         tenant_id: Uuid,
     ) -> ChannelResult<Vec<StoredChannelResolutionRule>> {
+        if tenant_id.is_nil() {
+            return Ok(Vec::new());
+        }
         let rows = channel_resolution_policy_rule::Entity::find()
             .filter(channel_resolution_policy_rule::Column::IsActive.eq(true))
             .find_also_related(channel_resolution_policy_set::Entity)
@@ -1139,6 +1294,9 @@ impl ChannelService {
     }
 
     async fn ensure_channel_exists(&self, channel_id: Uuid) -> ChannelResult<channel::Model> {
+        if channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
         channel::Entity::find_by_id(channel_id)
             .one(&self.db)
             .await?

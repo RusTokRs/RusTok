@@ -17445,6 +17445,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustok-product-transport"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "chrono",
+ "prost",
+ "protoc-bin-vendored",
+ "rustok-api",
+ "rustok-product",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "subtle",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "rustok-profiles"
 version = "0.1.0"
 dependencies = [

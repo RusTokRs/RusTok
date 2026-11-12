@@ -48,6 +48,15 @@ impl ChannelResolutionRuleDefinition {
             ));
         }
 
+        match self.action {
+            ResolutionAction::ResolveToChannel { channel_id } if channel_id.is_nil() => {
+                return Err(ChannelError::InvalidPolicyDefinition(
+                    "resolve_to_channel action requires a non-nil channel_id".to_string(),
+                ));
+            }
+            _ => {}
+        }
+
         Ok(Self {
             predicates: self
                 .predicates
@@ -82,7 +91,14 @@ impl ResolutionPredicate {
                 &value,
                 "host_suffix",
             )?)),
-            Self::OAuthAppEquals(app_id) => Ok(Self::OAuthAppEquals(app_id)),
+            Self::OAuthAppEquals(app_id) => {
+                if app_id.is_nil() {
+                    return Err(ChannelError::InvalidPolicyDefinition(
+                        "oauth_app_equals requires a non-nil app_id".to_string(),
+                    ));
+                }
+                Ok(Self::OAuthAppEquals(app_id))
+            }
             Self::SurfaceIs(surface) => Ok(Self::SurfaceIs(surface)),
             Self::LocaleEquals(locale) => Ok(Self::LocaleEquals(normalize_locale(&locale)?)),
         }
@@ -203,5 +219,33 @@ mod tests {
             host: Some("badexample.test".to_string()),
             ..RequestFacts::default()
         }));
+    }
+
+    #[test]
+    fn rejects_nil_channel_id_in_action() {
+        let error = ChannelResolutionRuleDefinition {
+            predicates: vec![ResolutionPredicate::SurfaceIs(TargetSurface::Http)],
+            action: ResolutionAction::ResolveToChannel {
+                channel_id: Uuid::nil(),
+            },
+        }
+        .validated()
+        .unwrap_err();
+
+        assert!(error.to_string().contains("non-nil channel_id"));
+    }
+
+    #[test]
+    fn rejects_nil_oauth_app_id_in_predicate() {
+        let error = ChannelResolutionRuleDefinition {
+            predicates: vec![ResolutionPredicate::OAuthAppEquals(Uuid::nil())],
+            action: ResolutionAction::ResolveToChannel {
+                channel_id: Uuid::new_v4(),
+            },
+        }
+        .validated()
+        .unwrap_err();
+
+        assert!(error.to_string().contains("non-nil app_id"));
     }
 }

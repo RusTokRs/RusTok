@@ -22,7 +22,10 @@ fn ensure_manage_permission(
     use rustok_api::Permission;
     use rustok_api::has_any_effective_permission;
 
-    if auth.tenant_id != resolved_tenant_id {
+    if auth.tenant_id.is_nil()
+        || resolved_tenant_id.is_nil()
+        || auth.tenant_id != resolved_tenant_id
+    {
         tracing::warn!(
             auth_tenant_id = %auth.tenant_id,
             resolved_tenant_id = %resolved_tenant_id,
@@ -31,6 +34,12 @@ fn ensure_manage_permission(
             "channel admin permissions cannot cross the resolved tenant boundary"
         );
         return Err(ServerFnError::new("Channel admin access is denied"));
+    }
+
+    if auth.user_id.is_nil() {
+        return Err(ServerFnError::new(
+            "Channel admin access is denied: user identity missing",
+        ));
     }
 
     if !has_any_effective_permission(
@@ -47,8 +56,12 @@ fn ensure_manage_permission(
 
 #[cfg(feature = "ssr")]
 fn parse_uuid(value: &str, field_name: &str) -> Result<uuid::Uuid, ServerFnError> {
-    uuid::Uuid::parse_str(value.trim())
-        .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))
+    let id = uuid::Uuid::parse_str(value.trim())
+        .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))?;
+    if id.is_nil() {
+        return Err(ServerFnError::new(format!("{field_name} must not be nil")));
+    }
+    Ok(id)
 }
 
 #[cfg(feature = "ssr")]
