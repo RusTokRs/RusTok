@@ -33,6 +33,8 @@ pub mod topics;
 pub mod users;
 pub mod widgets;
 
+use std::sync::Arc;
+
 use crate::ports::taxonomy::{ForumTaxonomyPort, NoopForumTaxonomyPort};
 
 #[derive(Clone)]
@@ -148,11 +150,16 @@ impl ForumHttpRuntime {
             _ => ForumSettingsProviders::default(),
         };
 
+        let taxonomy_port = runtime
+            .shared_get::<Arc<dyn ForumTaxonomyPort>>()
+            .unwrap_or_else(|| Arc::new(NoopForumTaxonomyPort));
+
         Ok(Self {
             db: runtime.db_clone(),
             event_bus,
             audience_facts: runtime.shared_get::<SharedForumAudienceFactsPort>(),
             settings_providers,
+            taxonomy_port,
         })
     }
 }

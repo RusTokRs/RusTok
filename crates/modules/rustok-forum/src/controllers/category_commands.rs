@@ -62,7 +62,8 @@ pub async fn move_category(
         ));
     }
     ensure_manage_permission(&auth)?;
-    let response = CategoryService::new(runtime.db_clone())
+    let response = runtime
+        .category_service()
         .move_category(tenant.id, category_id, forum_security(&auth), input)
         .await
         .map_err(category_command_error)?;
@@ -115,7 +116,8 @@ pub async fn reorder_category_siblings(
         ));
     }
     ensure_manage_permission(&auth)?;
-    let response = CategoryService::new(runtime.db_clone())
+    let response = runtime
+        .category_service()
         .reorder_siblings(tenant.id, forum_security(&auth), input)
         .await
         .map_err(category_command_error)?;

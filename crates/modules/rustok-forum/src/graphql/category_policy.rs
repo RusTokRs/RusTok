@@ -28,7 +28,8 @@ impl ForumCategoryTopicPolicyQuery {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
-        let policy = CategoryService::new(db.clone())
+        let policy = super::forum_graphql_runtime(ctx)
+            .category_service(db.clone())
             .topic_policy(
                 tenant_id,
                 category_id,
@@ -63,7 +64,8 @@ impl ForumCategoryTopicPolicyMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
-        let policy = CategoryService::new(db.clone())
+        let policy = super::forum_graphql_runtime(ctx)
+            .category_service(db.clone())
             .set_topic_policy(
                 tenant_id,
                 category_id,

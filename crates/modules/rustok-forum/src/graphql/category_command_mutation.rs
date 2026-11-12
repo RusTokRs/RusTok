@@ -35,7 +35,8 @@ impl ForumCategoryCommandMutation {
         let position = u32::try_from(input.position).map_err(|_| {
             async_graphql::Error::new("position must be a non-negative integer within u32 range")
         })?;
-        let response = CategoryService::new(db.clone())
+        let response = super::forum_graphql_runtime(ctx)
+            .category_service(db.clone())
             .move_category(
                 tenant_id,
                 category_id,
@@ -66,7 +67,8 @@ impl ForumCategoryCommandMutation {
             "Permission denied: forum_categories:manage required",
         )?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        let response = CategoryService::new(db.clone())
+        let response = super::forum_graphql_runtime(ctx)
+            .category_service(db.clone())
             .reorder_siblings(
                 tenant_id,
                 rustok_core::SecurityContext::from_permission_snapshot(

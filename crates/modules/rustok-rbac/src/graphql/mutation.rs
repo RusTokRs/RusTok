@@ -387,6 +387,15 @@ impl RbacMutation {
         if input
             .name
             .as_ref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "Role name cannot be empty",
+            ));
+        }
+        if input
+            .name
+            .as_ref()
             .is_some_and(|value| value.trim().chars().count() > 255)
         {
             return Err(<FieldError as GraphQLError>::bad_user_input(

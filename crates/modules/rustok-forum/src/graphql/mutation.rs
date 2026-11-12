@@ -1137,7 +1137,7 @@ impl ForumContentMutation {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        let service = CategoryService::new(db.clone());
+        let service = super::forum_graphql_runtime(ctx).category_service(db.clone());
         let category = service
             .create(
                 tenant_id,
@@ -1179,7 +1179,8 @@ impl ForumContentMutation {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        let category = CategoryService::new(db.clone())
+        let category = super::forum_graphql_runtime(ctx)
+            .category_service(db.clone())
             .update(
                 tenant_id,
                 id,
@@ -1219,7 +1220,8 @@ impl ForumContentMutation {
 
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = resolve_tenant_scope(tenant, tenant_id)?;
-        CategoryService::new(db.clone())
+        super::forum_graphql_runtime(ctx)
+            .category_service(db.clone())
             .delete(
                 tenant_id,
                 id,

@@ -381,30 +381,6 @@ impl From<sea_orm::DbErr> for ForumError {
     }
 }
 
-impl From<rustok_taxonomy::TaxonomyError> for ForumError {
-    fn from(value: rustok_taxonomy::TaxonomyError) -> Self {
-        match value {
-            rustok_taxonomy::TaxonomyError::Database(err) => Self::from(err),
-            rustok_taxonomy::TaxonomyError::Internal(message) => Self::Internal(
-                rustok_core::Error::External(format!("Taxonomy dependency failed: {message}")),
-            ),
-            rustok_taxonomy::TaxonomyError::Forbidden(message) => Self::Forbidden(message),
-            rustok_taxonomy::TaxonomyError::Validation(message)
-            | rustok_taxonomy::TaxonomyError::DuplicateCanonicalKey(message)
-            | rustok_taxonomy::TaxonomyError::DuplicateSlug(message)
-            | rustok_taxonomy::TaxonomyError::DuplicateAlias(message)
-            | rustok_taxonomy::TaxonomyError::Conflict(message) => Self::Validation(message),
-            rustok_taxonomy::TaxonomyError::TermNotFound(term_id) => {
-                Self::Validation(format!("Taxonomy term not found: {term_id}"))
-            }
-            rustok_taxonomy::TaxonomyError::TranslationRevisionExhausted { term_id, locale } => {
-                Self::Validation(format!(
-                    "Taxonomy translation revision is exhausted for term {term_id} and locale {locale}"
-                ))
-            }
-        }
-    }
-}
 
 impl From<ForumError> for rustok_core::Error {
     fn from(error: ForumError) -> Self {

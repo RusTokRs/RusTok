@@ -77,6 +77,10 @@ pub async fn fetch_bootstrap_native() -> Result<RbacAdminBootstrap, ServerFnErro
             ServerFnError::new("RBAC admin access is denied")
         })?;
 
+        if auth.user_id.is_nil() {
+            return Err(ServerFnError::new("RBAC admin access is denied"));
+        }
+
         if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
             return Err(ServerFnError::new(
                 "settings:read required to load RBAC administration bootstrap",

@@ -47,7 +47,8 @@ pub async fn archive_category_subtree(
         ));
     }
     ensure_manage_permission(&auth)?;
-    let response = CategoryService::new(runtime.db_clone())
+    let response = runtime
+        .category_service()
         .archive_subtree(tenant.id, category_id, forum_security(&auth))
         .await
         .map_err(category_lifecycle_error)?;
@@ -92,7 +93,8 @@ pub async fn restore_category_subtree(
         ));
     }
     ensure_manage_permission(&auth)?;
-    let response = CategoryService::new(runtime.db_clone())
+    let response = runtime
+        .category_service()
         .restore_subtree(tenant.id, category_id, forum_security(&auth))
         .await
         .map_err(category_lifecycle_error)?;

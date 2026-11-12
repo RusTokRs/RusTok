@@ -48,7 +48,8 @@ pub async fn get_category_topic_policy(
         ));
     }
     ensure_read_permission(&auth)?;
-    let response = CategoryService::new(runtime.db_clone())
+    let response = runtime
+        .category_service()
         .topic_policy(tenant.id, category_id, forum_security(&auth))
         .await
         .map_err(category_policy_error)?;
@@ -96,7 +97,8 @@ pub async fn update_category_topic_policy(
         ));
     }
     ensure_manage_permission(&auth)?;
-    let response = CategoryService::new(runtime.db_clone())
+    let response = runtime
+        .category_service()
         .set_topic_policy(tenant.id, category_id, forum_security(&auth), input)
         .await
         .map_err(category_policy_error)?;

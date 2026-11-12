@@ -224,8 +224,7 @@ impl CategoryVisibilitySnapshot {
                 tenant_id,
                 &category_ids,
             )
-            .await
-            .unwrap_or_else(|_| category_ids.iter().map(|id| (*id, None)).collect());
+            .await?;
         let mut overrides = HashMap::new();
         for policy in forum_category_policy::Entity::find()
             .filter(forum_category_policy::Column::TenantId.eq(tenant_id))

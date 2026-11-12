@@ -159,16 +159,12 @@ impl ProductTaxonomyPort for NoopProductTaxonomyPort {
         _locale: &str,
         tag_names: &[String],
     ) -> Result<Vec<Uuid>, CommerceError> {
-        // In standalone mode without taxonomy service, generate deterministic IDs for tags
-        Ok(tag_names
-            .iter()
-            .map(|name| {
-                Uuid::new_v5(
-                    &Uuid::NAMESPACE_OID,
-                    name.trim().to_ascii_lowercase().as_bytes(),
-                )
-            })
-            .collect())
+        if tag_names.is_empty() {
+            return Ok(Vec::new());
+        }
+        Err(CommerceError::Validation(
+            "Product tag operations require an active Taxonomy capability".to_string(),
+        ))
     }
 
     async fn sync_category_translation_in_tx(
@@ -177,7 +173,9 @@ impl ProductTaxonomyPort for NoopProductTaxonomyPort {
         _tenant_id: Uuid,
         _input: ProductTaxonomyCategoryTranslationInput,
     ) -> Result<(), CommerceError> {
-        Ok(())
+        Err(CommerceError::Validation(
+            "Category taxonomy synchronization requires an active Taxonomy capability".to_string(),
+        ))
     }
 
     async fn load_scoped_categories(

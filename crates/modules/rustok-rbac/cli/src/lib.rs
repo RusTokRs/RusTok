@@ -79,6 +79,13 @@ impl RbacCommandProvider {
                 })
             })
             .transpose()?;
+        if let Some(tid) = tenant_id {
+            if tid.is_nil() {
+                return Err(CliCoreError::InvalidInput {
+                    message: "--tenant-id must not be nil".to_string(),
+                });
+            }
+        }
         let apply = option_bool(options, "apply")?;
         let all_tenants = option_bool(options, "all_tenants")?;
         if tenant_id.is_some() && all_tenants {
@@ -342,6 +349,25 @@ mod tests {
         assert!(matches!(
             result,
             Err(CliCoreError::InvalidInput { ref message }) if message.contains("must be a UUID")
+        ));
+    }
+
+    #[tokio::test]
+    async fn repair_system_roles_rejects_nil_tenant_id() {
+        let runtime = RuntimeComposition::without_database(serde_json::json!({}));
+        let provider = command_provider(&runtime);
+        let request = command_request(
+            "repair-system-roles",
+            serde_json::json!({
+                "options": {
+                    "tenant_id": Uuid::nil().to_string()
+                }
+            }),
+        );
+        let result = provider.execute(request).await;
+        assert!(matches!(
+            result,
+            Err(CliCoreError::InvalidInput { ref message }) if message.contains("must not be nil")
         ));
     }
 }

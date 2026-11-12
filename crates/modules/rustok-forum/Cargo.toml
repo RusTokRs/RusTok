@@ -44,7 +44,6 @@ rustok-reactions = { workspace = true, default-features = false }
 rustok-seo-targets = { workspace = true, features = ["server"] }
 rustok-translation-targets.workspace = true
 rustok-media.workspace = true
-rustok-taxonomy.workspace = true
 rustok-web.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
@@ -53,6 +52,7 @@ url = "2.5"
 [dev-dependencies]
 rustok-notifications = { workspace = true, features = ["server"] }
 rustok-storage.workspace = true
+rustok-taxonomy.workspace = true
 rustok-tenant.workspace = true
 tokio.workspace = true
 toml.workspace = true

@@ -1,10 +1,35 @@
 use std::collections::HashMap;
 
-use rustok_taxonomy::{TaxonomyScopeType, TaxonomyTermKind, entities::taxonomy_term};
 use sea_orm::{ColumnTrait, DatabaseBackend, EntityTrait, QueryFilter};
 use sea_orm_migration::prelude::*;
 
 use crate::entities::forum_category;
+
+mod migration_taxonomy_term {
+    use sea_orm::entity::prelude::*;
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "taxonomy_terms")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub kind: String,
+        pub scope_type: String,
+        pub scope_value: String,
+        pub canonical_key: String,
+        pub revision: i64,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+use migration_taxonomy_term as taxonomy_term;
 
 mod forum_category_taxonomy_binding {
     use sea_orm::entity::prelude::*;
@@ -160,8 +185,8 @@ async fn ensure_complete_taxonomy_ownership(manager: &SchemaManager<'_>) -> Resu
             ))
         })?;
         if term.tenant_id != category.tenant_id
-            || term.kind != TaxonomyTermKind::Category
-            || term.scope_type != TaxonomyScopeType::Module
+            || term.kind != "category"
+            || term.scope_type != "module"
             || term.scope_value != FORUM_SCOPE_VALUE
         {
             return Err(DbErr::Migration(format!(

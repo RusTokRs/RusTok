@@ -1,13 +1,3 @@
-use rustok_taxonomy::{
-    TaxonomyScopeType, TaxonomyTermKind,
-    entities::{
-        taxonomy_category_hierarchy, taxonomy_category_presentation, taxonomy_term,
-        taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation,
-        translation_change,
-    },
-    normalize_taxonomy_category_color, normalize_taxonomy_category_icon_key, normalize_term_locale,
-    normalize_term_route_key,
-};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseBackend, EntityTrait, QueryFilter,
     QueryOrder, TransactionTrait,
@@ -16,6 +6,259 @@ use sea_orm_migration::prelude::*;
 use uuid::Uuid;
 
 use crate::entities::forum_category_translation;
+
+mod migration_taxonomy_term {
+    use sea_orm::entity::prelude::*;
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "taxonomy_terms")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub kind: String,
+        pub scope_type: String,
+        pub scope_value: String,
+        pub canonical_key: String,
+        pub revision: i64,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+use migration_taxonomy_term as taxonomy_term;
+
+mod migration_taxonomy_term_translation {
+    use sea_orm::entity::prelude::*;
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "taxonomy_term_translations")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub term_id: Uuid,
+        pub tenant_id: Uuid,
+        pub locale: String,
+        pub name: String,
+        pub slug: String,
+        pub description: Option<String>,
+        pub revision: i64,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+use migration_taxonomy_term_translation as taxonomy_term_translation;
+
+mod migration_taxonomy_term_alias {
+    use sea_orm::entity::prelude::*;
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "taxonomy_term_aliases")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub term_id: Uuid,
+        pub tenant_id: Uuid,
+        pub locale: String,
+        pub name: String,
+        pub slug: String,
+        pub created_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+use migration_taxonomy_term_alias as taxonomy_term_alias;
+
+mod migration_taxonomy_term_route_key {
+    use sea_orm::entity::prelude::*;
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "taxonomy_term_route_keys")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub tenant_id: Uuid,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub kind: String,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub scope_type: String,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub scope_value: String,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub locale: String,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub route_key: String,
+        pub term_id: Uuid,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+use migration_taxonomy_term_route_key as taxonomy_term_route_key;
+
+mod migration_translation_change {
+    use sea_orm::entity::prelude::*;
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "taxonomy_translation_changes")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub tenant_id: Uuid,
+        pub term_id: Uuid,
+        pub locale: String,
+        pub resource_revision: i64,
+        pub target_revision: i64,
+        pub operation: String,
+        pub lifecycle: String,
+        pub created_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+use migration_translation_change as translation_change;
+
+mod migration_taxonomy_category_presentation {
+    use sea_orm::entity::prelude::*;
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "taxonomy_category_presentations")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub tenant_id: Uuid,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub term_id: Uuid,
+        pub icon_key: Option<String>,
+        pub color: Option<String>,
+        pub image_media_id: Option<Uuid>,
+        pub cover_media_id: Option<Uuid>,
+        pub revision: i64,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+use migration_taxonomy_category_presentation as taxonomy_category_presentation;
+
+mod migration_taxonomy_category_hierarchy {
+    use sea_orm::entity::prelude::*;
+    use uuid::Uuid;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "taxonomy_category_hierarchy")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub tenant_id: Uuid,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub term_id: Uuid,
+        pub parent_term_id: Option<Uuid>,
+        pub position: i32,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+use migration_taxonomy_category_hierarchy as taxonomy_category_hierarchy;
+
+const TAXONOMY_CATEGORY_ICON_KEY_MAX_BYTES: usize = 64;
+
+fn normalize_taxonomy_category_icon_key(value: &str) -> Result<Option<String>, String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return Ok(None);
+    }
+    if normalized.len() > TAXONOMY_CATEGORY_ICON_KEY_MAX_BYTES {
+        return Err(format!(
+            "Category icon key cannot exceed {TAXONOMY_CATEGORY_ICON_KEY_MAX_BYTES} bytes"
+        ));
+    }
+    let mut previous_was_separator = true;
+    for c in normalized.chars() {
+        if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            previous_was_separator = false;
+        } else if c == '-' && !previous_was_separator {
+            previous_was_separator = true;
+        } else {
+            return Err("Category icon key must be a kebab-case design token".to_string());
+        }
+    }
+    if previous_was_separator {
+        return Err("Category icon key must be a kebab-case design token".to_string());
+    }
+    Ok(Some(normalized))
+}
+
+fn normalize_taxonomy_category_color(value: &str) -> Result<Option<String>, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let digits = trimmed.strip_prefix('#').ok_or_else(|| {
+        "Category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA".to_string()
+    })?;
+    if !matches!(digits.len(), 3 | 4 | 6 | 8) || !digits.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("Category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA".to_string());
+    }
+    let lowercase = digits.to_ascii_lowercase();
+    let expanded = if matches!(lowercase.len(), 3 | 4) {
+        lowercase.chars().flat_map(|c| [c, c]).collect::<String>()
+    } else {
+        lowercase
+    };
+    Ok(Some(format!("#{expanded}")))
+}
+
+fn normalize_term_locale(value: &str) -> Option<String> {
+    rustok_content::normalize_locale_code(value)
+}
+
+fn normalize_term_route_key(value: &str) -> Option<String> {
+    let mut normalized = String::with_capacity(value.len());
+    let mut previous_dash = false;
+    for ch in value.trim().chars().flat_map(char::to_lowercase) {
+        if ch.is_ascii_alphanumeric() {
+            normalized.push(ch);
+            previous_dash = false;
+        } else if !previous_dash {
+            normalized.push('-');
+            previous_dash = true;
+        }
+    }
+    let normalized = normalized.trim_matches('-').to_string();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
 
 mod migration_forum_category {
     use sea_orm::entity::prelude::*;
@@ -134,8 +377,8 @@ async fn ensure_taxonomy_term(
         .await?
     {
         if existing.tenant_id != category.tenant_id
-            || existing.kind != TaxonomyTermKind::Category
-            || existing.scope_type != TaxonomyScopeType::Module
+            || existing.kind != "category"
+            || existing.scope_type != "module"
             || existing.scope_value != FORUM_SCOPE_VALUE
             || existing.canonical_key != canonical_key
         {
@@ -149,8 +392,8 @@ async fn ensure_taxonomy_term(
 
     if let Some(existing) = taxonomy_term::Entity::find()
         .filter(taxonomy_term::Column::TenantId.eq(category.tenant_id))
-        .filter(taxonomy_term::Column::Kind.eq(TaxonomyTermKind::Category))
-        .filter(taxonomy_term::Column::ScopeType.eq(TaxonomyScopeType::Module))
+        .filter(taxonomy_term::Column::Kind.eq("category"))
+        .filter(taxonomy_term::Column::ScopeType.eq("module"))
         .filter(taxonomy_term::Column::ScopeValue.eq(FORUM_SCOPE_VALUE))
         .filter(taxonomy_term::Column::CanonicalKey.eq(&canonical_key))
         .one(txn)
@@ -165,8 +408,8 @@ async fn ensure_taxonomy_term(
     taxonomy_term::ActiveModel {
         id: Set(category.id),
         tenant_id: Set(category.tenant_id),
-        kind: Set(TaxonomyTermKind::Category),
-        scope_type: Set(TaxonomyScopeType::Module),
+        kind: Set("category".to_owned()),
+        scope_type: Set("module".to_owned()),
         scope_value: Set(FORUM_SCOPE_VALUE.to_owned()),
         canonical_key: Set(canonical_key),
         revision: Set(1),
@@ -309,8 +552,8 @@ async fn ensure_route_owner(
 ) -> Result<(), DbErr> {
     let existing = taxonomy_term_route_key::Entity::find()
         .filter(taxonomy_term_route_key::Column::TenantId.eq(tenant_id))
-        .filter(taxonomy_term_route_key::Column::Kind.eq(TaxonomyTermKind::Category))
-        .filter(taxonomy_term_route_key::Column::ScopeType.eq(TaxonomyScopeType::Module))
+        .filter(taxonomy_term_route_key::Column::Kind.eq("category"))
+        .filter(taxonomy_term_route_key::Column::ScopeType.eq("module"))
         .filter(taxonomy_term_route_key::Column::ScopeValue.eq(FORUM_SCOPE_VALUE))
         .filter(taxonomy_term_route_key::Column::Locale.eq(locale))
         .filter(taxonomy_term_route_key::Column::RouteKey.eq(route_key))
@@ -328,8 +571,8 @@ async fn ensure_route_owner(
 
     taxonomy_term_route_key::ActiveModel {
         tenant_id: Set(tenant_id),
-        kind: Set(TaxonomyTermKind::Category),
-        scope_type: Set(TaxonomyScopeType::Module),
+        kind: Set("category".to_owned()),
+        scope_type: Set("module".to_owned()),
         scope_value: Set(FORUM_SCOPE_VALUE.to_owned()),
         locale: Set(locale.to_owned()),
         route_key: Set(route_key.to_owned()),

@@ -33,7 +33,7 @@ pub fn require_direct_control_plane_user(
         return Err(RbacControlPlaneAdmissionError::DirectSessionRequired);
     }
 
-    if principal.tenant_id != tenant_id {
+    if principal.tenant_id.is_nil() || tenant_id.is_nil() || principal.tenant_id != tenant_id {
         return Err(RbacControlPlaneAdmissionError::TenantMismatch);
     }
 
@@ -82,6 +82,36 @@ mod tests {
 
         assert_eq!(
             require_direct_control_plane_user(principal, Uuid::new_v4()),
+            Err(RbacControlPlaneAdmissionError::TenantMismatch)
+        );
+    }
+
+    #[test]
+    fn nil_tenant_id_is_denied() {
+        let nil_tenant = Uuid::nil();
+        let valid_tenant = Uuid::new_v4();
+
+        assert_eq!(
+            require_direct_control_plane_user(
+                principal(nil_tenant, AuthPrincipalKind::DirectUser),
+                nil_tenant,
+            ),
+            Err(RbacControlPlaneAdmissionError::TenantMismatch)
+        );
+
+        assert_eq!(
+            require_direct_control_plane_user(
+                principal(valid_tenant, AuthPrincipalKind::DirectUser),
+                nil_tenant,
+            ),
+            Err(RbacControlPlaneAdmissionError::TenantMismatch)
+        );
+
+        assert_eq!(
+            require_direct_control_plane_user(
+                principal(nil_tenant, AuthPrincipalKind::DirectUser),
+                valid_tenant,
+            ),
             Err(RbacControlPlaneAdmissionError::TenantMismatch)
         );
     }

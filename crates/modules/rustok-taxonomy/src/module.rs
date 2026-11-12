@@ -82,16 +82,6 @@ impl RusToKModule for TaxonomyModule {
                 "taxonomy SEO target registration failed: {error}"
             ))
         })?;
-        let owners = extensions.get_or_insert_with(
-            crate::translation_target::TaxonomyModuleTermTranslationOwnerRegistry::default,
-        );
-        owners
-            .register(crate::blog_taxonomy_port::BlogTaxonomyTranslationOwner)
-            .map_err(|error| {
-                rustok_core::Error::Validation(format!(
-                    "blog Taxonomy translation owner registration failed: {error}"
-                ))
-            })?;
         Ok(())
     }
 }

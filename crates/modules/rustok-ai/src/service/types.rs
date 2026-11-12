@@ -49,6 +49,10 @@ pub struct SharedAiOrderStatusPort(pub Arc<dyn rustok_order::CheckoutCompletionP
 #[derive(Clone)]
 pub struct SharedAiProductCatalogReadPort(pub Arc<dyn rustok_product::ProductCatalogReadPort>);
 
+/// Host-composed owner port for product catalog commands (e.g. AI product copy).
+#[derive(Clone)]
+pub struct SharedAiProductCatalogCommandPort(pub Arc<dyn rustok_product::ProductCatalogCommandPort>);
+
 /// Host-composed retrieval provider used only when a task profile enables RAG.
 #[derive(Clone)]
 pub struct SharedAiRagRetrievalPort(pub Arc<dyn crate::RagRetrievalPort>);
@@ -65,6 +69,7 @@ pub struct AiHostRuntime {
     provider_targets: crate::AiProviderTargetCatalog,
     order_status_port: Option<Arc<dyn rustok_order::CheckoutCompletionPort>>,
     product_catalog_read_port: Option<Arc<dyn rustok_product::ProductCatalogReadPort>>,
+    product_catalog_command_port: Option<Arc<dyn rustok_product::ProductCatalogCommandPort>>,
     rag_retrieval_port: Option<Arc<dyn crate::RagRetrievalPort>>,
     #[cfg(test)]
     test_inference_engine: Option<Arc<dyn crate::engine::InferenceEngine>>,

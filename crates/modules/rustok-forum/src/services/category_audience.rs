@@ -253,8 +253,7 @@ where
             tenant_id,
             &category_ids,
         )
-        .await
-        .unwrap_or_else(|_| category_ids.iter().map(|id| (*id, None)).collect());
+        .await?;
     if !parents.contains_key(&category_id) {
         return Err(ForumError::CategoryNotFound(category_id));
     }

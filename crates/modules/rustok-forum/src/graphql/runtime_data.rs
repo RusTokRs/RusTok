@@ -13,6 +13,7 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 
 use crate::moderation_report::SharedForumModerationReportPort;
+use crate::ports::taxonomy::ForumTaxonomyPort;
 use crate::services::moderation_report::ForumModerationReportService;
 use crate::{
     ForumCategoryAudienceReadService, ForumReadModelService, ForumReplyAudienceReadService,
@@ -34,6 +35,7 @@ pub struct ForumGraphqlRuntimeData {
     settings_providers: ForumSettingsProviders,
     attachment_hold_media: Option<Arc<dyn MediaAssetReadPort>>,
     notification_reconciliation: Option<Arc<dyn NotificationInboxReconciliationInspectPort>>,
+    taxonomy_port: Option<Arc<dyn ForumTaxonomyPort>>,
 }
 
 pub fn attach_schema_data(
@@ -54,6 +56,7 @@ pub fn attach_schema_data(
     let notification_reconciliation = inputs
         .shared_get::<Arc<dyn NotificationInboxReconciliationInspectPortFactory>>()
         .and_then(|factory| factory.build(inputs.host()).ok());
+    let taxonomy_port = inputs.shared_get::<Arc<dyn ForumTaxonomyPort>>();
 
     Ok(ForumGraphqlRuntimeData {
         audience_facts: inputs.shared_get::<SharedForumAudienceFactsPort>(),
@@ -61,6 +64,7 @@ pub fn attach_schema_data(
         settings_providers,
         attachment_hold_media,
         notification_reconciliation,
+        taxonomy_port,
     })
 }
 
@@ -87,7 +91,19 @@ impl ForumGraphqlRuntimeData {
     }
 
     pub(crate) fn read_model_service(&self, db: DatabaseConnection) -> ForumReadModelService {
-        ForumReadModelService::new(db).with_settings_providers(self.settings_providers.clone())
+        let mut service = ForumReadModelService::new(db).with_settings_providers(self.settings_providers.clone());
+        if let Some(taxonomy) = self.taxonomy_port.clone() {
+            service = service.with_taxonomy_port(taxonomy);
+        }
+        service
+    }
+
+    pub(crate) fn category_service(&self, db: DatabaseConnection) -> crate::CategoryService {
+        let mut service = crate::CategoryService::new(db);
+        if let Some(taxonomy) = self.taxonomy_port.clone() {
+            service = service.with_taxonomy_port(taxonomy);
+        }
+        service
     }
 
     pub(crate) fn category_audience_read_service(
@@ -106,10 +122,13 @@ impl ForumGraphqlRuntimeData {
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,
     ) -> TopicService {
-        let service = match self.audience_facts.clone() {
+        let mut service = match self.audience_facts.clone() {
             Some(facts) => TopicService::with_audience_facts(db, event_bus, facts),
             None => TopicService::new(db, event_bus),
         };
+        if let Some(taxonomy) = self.taxonomy_port.clone() {
+            service = service.with_taxonomy_port(taxonomy);
+        }
         service.with_settings_providers(self.settings_providers.clone())
     }
 

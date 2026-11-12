@@ -28,7 +28,8 @@ impl ForumCategoryLifecycleMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
-        let response = CategoryService::new(db.clone())
+        let response = super::forum_graphql_runtime(ctx)
+            .category_service(db.clone())
             .archive_subtree(
                 tenant_id,
                 category_id,
@@ -56,7 +57,8 @@ impl ForumCategoryLifecycleMutation {
         )?;
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = super::resolve_tenant_scope(tenant, tenant_id)?;
-        let response = CategoryService::new(db.clone())
+        let response = super::forum_graphql_runtime(ctx)
+            .category_service(db.clone())
             .restore_subtree(
                 tenant_id,
                 category_id,

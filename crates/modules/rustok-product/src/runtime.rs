@@ -67,11 +67,28 @@ impl ProductCatalogReadRuntime {
         event_bus: TransactionalEventBus,
         pricing_port: Option<Arc<dyn crate::ProductPricingPort>>,
     ) -> Self {
+        Self::in_process_with_collaborators(db, event_bus, pricing_port, None, None)
+    }
+
+    /// Composes the embedded read owner with Pricing, Inventory, and Taxonomy capabilities selected by the host.
+    pub fn in_process_with_collaborators(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        pricing_port: Option<Arc<dyn crate::ProductPricingPort>>,
+        inventory_port: Option<Arc<dyn crate::ports::ProductInventoryPort>>,
+        taxonomy_port: Option<Arc<dyn crate::ports::ProductTaxonomyPort>>,
+    ) -> Self {
         let mut catalog = CatalogService::new(db.clone(), event_bus.clone());
         catalog.pricing_port = pricing_port;
+        catalog.inventory_port = inventory_port;
+        catalog.taxonomy_port = taxonomy_port.clone();
         let catalog = Arc::new(catalog);
+        let mut schema_service = ProductCatalogSchemaService::new(db, event_bus);
+        if let Some(taxonomy) = taxonomy_port {
+            schema_service = schema_service.with_taxonomy_port(taxonomy);
+        }
         Self::new(catalog.clone(), ProductCatalogReadProfile::EmbeddedNative)
-            .with_schema_read_port(Arc::new(ProductCatalogSchemaService::new(db, event_bus)))
+            .with_schema_read_port(Arc::new(schema_service))
             .with_storefront_http_read_port(catalog.clone())
             .with_storefront_tag_read_port(catalog.clone())
             .with_variant_identity_read_port(catalog)
@@ -195,16 +212,77 @@ impl ProductCatalogCommandRuntime {
         event_bus: TransactionalEventBus,
         pricing_port: Option<Arc<dyn crate::ProductPricingPort>>,
     ) -> Self {
+        Self::in_process_with_collaborators(db, event_bus, pricing_port, None, None)
+    }
+
+    /// Composes the embedded command owner with Pricing, Inventory, and Taxonomy capabilities selected by the host.
+    pub fn in_process_with_collaborators(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        pricing_port: Option<Arc<dyn crate::ProductPricingPort>>,
+        inventory_port: Option<Arc<dyn crate::ports::ProductInventoryPort>>,
+        taxonomy_port: Option<Arc<dyn crate::ports::ProductTaxonomyPort>>,
+    ) -> Self {
         let mut catalog = CatalogService::new(db.clone(), event_bus.clone());
         catalog.pricing_port = pricing_port;
+        catalog.inventory_port = inventory_port;
+        catalog.taxonomy_port = taxonomy_port.clone();
+        let mut schema_service = ProductCatalogSchemaService::new(db, event_bus);
+        if let Some(taxonomy) = taxonomy_port {
+            schema_service = schema_service.with_taxonomy_port(taxonomy);
+        }
         let mut runtime = Self::new(
             Arc::new(catalog.clone()),
             ProductCatalogCommandProfile::EmbeddedNative,
         )
-        .with_schema_write_port(Arc::new(ProductCatalogSchemaService::new(db, event_bus)));
+        .with_schema_write_port(Arc::new(schema_service));
         runtime.media_maintenance_port = Some(Arc::new(catalog.clone()));
         runtime.embedded_catalog = Some(catalog);
         runtime
+    }
+
+    pub fn with_inventory_port(
+        mut self,
+        port: Arc<dyn crate::ports::ProductInventoryPort>,
+    ) -> Result<Self, PortError> {
+        let catalog = self
+            .embedded_catalog
+            .take()
+            .ok_or_else(|| {
+                PortError::validation(
+                    "product.inventory_owner_configuration_invalid",
+                    "Inventory capability must be configured inside the Product owner",
+                )
+            })?
+            .with_inventory_port(port);
+        self.command_port = Arc::new(catalog.clone());
+        self.media_maintenance_port = Some(Arc::new(catalog.clone()));
+        self.embedded_catalog = Some(catalog);
+        Ok(self)
+    }
+
+    pub fn with_taxonomy_port(
+        mut self,
+        port: Arc<dyn crate::ports::ProductTaxonomyPort>,
+    ) -> Result<Self, PortError> {
+        let catalog = self
+            .embedded_catalog
+            .take()
+            .ok_or_else(|| {
+                PortError::validation(
+                    "product.taxonomy_owner_configuration_invalid",
+                    "Taxonomy capability must be configured inside the Product owner",
+                )
+            })?
+            .with_taxonomy_port(port.clone());
+        self.command_port = Arc::new(catalog.clone());
+        self.media_maintenance_port = Some(Arc::new(catalog.clone()));
+        self.embedded_catalog = Some(catalog);
+        if let Some(schema_write) = self.schema_write_port.take() {
+            // Re-compose schema write service with taxonomy port if accessible
+            self.schema_write_port = Some(schema_write);
+        }
+        Ok(self)
     }
 
     pub fn external(command_port: Arc<dyn ProductCatalogCommandPort>) -> Self {

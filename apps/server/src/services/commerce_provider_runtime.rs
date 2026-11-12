@@ -354,6 +354,34 @@ pub fn attach_commerce_provider_registries(
     };
 
     #[cfg(feature = "mod-product")]
+    let product_inventory = {
+        #[cfg(feature = "mod-inventory")]
+        {
+            Some(rustok_inventory::in_process_product_inventory_port(
+                server.db_clone(),
+            ))
+        }
+        #[cfg(not(feature = "mod-inventory"))]
+        {
+            None
+        }
+    };
+
+    #[cfg(feature = "mod-product")]
+    let product_taxonomy = {
+        #[cfg(feature = "mod-taxonomy")]
+        {
+            Some(rustok_taxonomy::in_process_product_taxonomy_port(
+                server.db_clone(),
+            ))
+        }
+        #[cfg(not(feature = "mod-taxonomy"))]
+        {
+            None
+        }
+    };
+
+    #[cfg(feature = "mod-product")]
     let host = {
         let runtime = host
             .shared_get::<rustok_product::ProductCatalogReadRuntime>()
@@ -362,10 +390,12 @@ pub fn attach_commerce_provider_registries(
                 server
                     .shared_get::<rustok_outbox::TransactionalEventBus>()
                     .map(|event_bus| {
-                        rustok_product::ProductCatalogReadRuntime::in_process_with_pricing(
+                        rustok_product::ProductCatalogReadRuntime::in_process_with_collaborators(
                             server.db_clone(),
                             event_bus,
                             product_pricing.clone(),
+                            product_inventory.clone(),
+                            product_taxonomy.clone(),
                         )
                     })
             });
@@ -387,10 +417,12 @@ pub fn attach_commerce_provider_registries(
                 server
                     .shared_get::<rustok_outbox::TransactionalEventBus>()
                     .map(|event_bus| {
-                        rustok_product::ProductCatalogCommandRuntime::in_process_with_pricing(
+                        rustok_product::ProductCatalogCommandRuntime::in_process_with_collaborators(
                             server.db_clone(),
                             event_bus,
                             product_pricing,
+                            product_inventory,
+                            product_taxonomy,
                         )
                     })
             });

@@ -227,7 +227,7 @@ pub async fn create_category(
         "Permission denied: forum_categories:create required",
     )?;
 
-    let service = CategoryService::new(runtime.db_clone());
+    let service = runtime.category_service();
     let category = service
         .create(tenant.id, forum_security(&auth), input)
         .await
@@ -275,7 +275,7 @@ pub async fn update_category(
         "Permission denied: forum_categories:update required",
     )?;
 
-    let service = CategoryService::new(runtime.db_clone());
+    let service = runtime.category_service();
     let category = service
         .update(tenant.id, id, forum_security(&auth), input)
         .await
@@ -321,7 +321,7 @@ pub async fn delete_category(
         "Permission denied: forum_categories:delete required",
     )?;
 
-    let service = CategoryService::new(runtime.db_clone());
+    let service = runtime.category_service();
     service
         .delete(tenant.id, id, forum_security(&auth))
         .await
