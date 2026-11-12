@@ -14,6 +14,7 @@
 //! required.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
 use uuid::Uuid;
@@ -23,6 +24,7 @@ use rustok_core::search_projection::SearchProjectionSource;
 use super::hardening::{admin, create_draft_post, post_service, setup_hardening_schema};
 use crate::BlogSearchProjectionSource;
 use crate::entities::blog_post;
+use crate::ports::taxonomy::NoopBlogTaxonomyPort;
 
 /// Publishes a draft and returns its id.
 async fn publish(
@@ -79,7 +81,11 @@ async fn walk(source: &BlogSearchProjectionSource, tenant_id: Uuid, page_size: u
 async fn pinning_a_post_between_pages_does_not_skip_it() {
     let (db, event_bus) = setup_hardening_schema().await;
     let tenant_id = Uuid::new_v4();
-    let source = BlogSearchProjectionSource::new(db.clone(), None);
+    let source = BlogSearchProjectionSource::new(
+        db.clone(),
+        None,
+        Arc::new(NoopBlogTaxonomyPort),
+    );
 
     let first = publish(&db, &event_bus, tenant_id, "first").await;
     let second = publish(&db, &event_bus, tenant_id, "second").await;
@@ -136,7 +142,11 @@ async fn pinning_a_post_between_pages_does_not_skip_it() {
 async fn a_published_post_without_a_publication_timestamp_is_not_projectable() {
     let (db, event_bus) = setup_hardening_schema().await;
     let tenant_id = Uuid::new_v4();
-    let source = BlogSearchProjectionSource::new(db.clone(), None);
+    let source = BlogSearchProjectionSource::new(
+        db.clone(),
+        None,
+        Arc::new(NoopBlogTaxonomyPort),
+    );
 
     let healthy = publish(&db, &event_bus, tenant_id, "healthy").await;
     let damaged = publish(&db, &event_bus, tenant_id, "damaged").await;

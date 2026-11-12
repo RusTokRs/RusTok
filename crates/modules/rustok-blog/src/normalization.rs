@@ -31,7 +31,7 @@ mod tests {
         assert_eq!(normalize_term_route_key("   "), None);
         assert_eq!(
             normalize_term_route_key("Новости дня!"),
-            Some("novosti-dnya".to_string())
+            Some("novosti-dnia".to_string())
         );
     }
 }

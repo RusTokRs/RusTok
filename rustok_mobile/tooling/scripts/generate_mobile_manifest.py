@@ -40,20 +40,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         default=(
-            "rustok_mobile/apps/rustok_admin_mobile/lib/registry/mobile_manifest.g.dart"
+            "rustok_mobile/apps/rustok_frontend_mobile/lib/registry/storefront_mobile_manifest.g.dart"
         ),
         help="Output dart file path",
     )
     parser.add_argument(
         "--snapshot-output",
-        default=("rustok_mobile/tooling/snapshots/mobile_manifest.snapshot.json"),
+        default=("rustok_mobile/tooling/snapshots/storefront_mobile_manifest.snapshot.json"),
         help="Output JSON snapshot path for registry contract checks",
     )
     parser.add_argument(
         "--surface",
         choices=("admin", "storefront"),
-        default="admin",
-        help="Manifest surface to generate. Defaults to admin for backward compatibility.",
+        default="storefront",
+        help="Manifest surface to generate. Defaults to storefront.",
     )
     return parser.parse_args()
 

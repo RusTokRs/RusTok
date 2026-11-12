@@ -49,7 +49,9 @@ class GraphQlContract:
     runtime_error_marker: str | None = None
 
 
-SEARCH_STOREFRONT_API = "crates/modules/rustok-search/storefront/src/api.rs"
+SEARCH_STOREFRONT_API = (
+    "crates/modules/rustok-search/storefront/src/transport/graphql_adapter.rs"
+)
 COMMERCE_QUERY = "crates/modules/rustok-commerce/src/graphql/query.rs"
 COMMERCE_MUTATION = "crates/modules/rustok-commerce/src/graphql/mutations/cart.rs"
 COMMERCE_TYPES = "crates/modules/rustok-commerce/src/graphql/types.rs"

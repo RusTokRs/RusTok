@@ -51,26 +51,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--manifest",
         default=(
-            "rustok_mobile/apps/rustok_admin_mobile/lib/registry/mobile_manifest.g.dart"
+            "rustok_mobile/apps/rustok_frontend_mobile/lib/registry/storefront_mobile_manifest.g.dart"
         ),
         help="Path to generated Dart manifest",
     )
     parser.add_argument(
         "--snapshot",
-        default=("rustok_mobile/tooling/snapshots/mobile_manifest.snapshot.json"),
+        default=("rustok_mobile/tooling/snapshots/storefront_mobile_manifest.snapshot.json"),
         help="Path to generated registry snapshot JSON",
     )
     parser.add_argument(
         "--surface",
         choices=("admin", "storefront"),
-        default="admin",
-        help="Manifest surface to verify. Defaults to admin.",
+        default="storefront",
+        help="Manifest surface to verify. Defaults to storefront.",
     )
     return parser.parse_args()
 
 
 def _validate_snapshot_schema(
-    entries: object, *, expected_surface_kind: str = "admin_mobile"
+    entries: object, *, expected_surface_kind: str = "storefront_mobile"
 ) -> str | None:
     if not isinstance(entries, list):
         return "snapshot root must be an array"

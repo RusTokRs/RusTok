@@ -14,6 +14,24 @@ const generatedMobileManifest = <MobileModuleEntry>[
     ],
   ),
   MobileModuleEntry(
+    moduleKey: 'rustok_calendar',
+    surfaceKind: MobileSurfaceKind.storefront,
+    routeSegment: 'calendar',
+    localeNamespace: 'calendar',
+    nav: MobileNavMeta(title: 'Calendar & Appointment Scheduling', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
+  ),
+  MobileModuleEntry(
+    moduleKey: 'rustok_calls',
+    surfaceKind: MobileSurfaceKind.storefront,
+    routeSegment: 'calls',
+    localeNamespace: 'calls',
+    nav: MobileNavMeta(title: 'WebRTC Calls & Conferencing', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
+  ),
+  MobileModuleEntry(
     moduleKey: 'rustok_cart',
     surfaceKind: MobileSurfaceKind.storefront,
     routeSegment: 'cart',
@@ -50,11 +68,56 @@ const generatedMobileManifest = <MobileModuleEntry>[
     ],
   ),
   MobileModuleEntry(
+    moduleKey: 'rustok_groups',
+    surfaceKind: MobileSurfaceKind.storefront,
+    routeSegment: 'groups',
+    localeNamespace: 'groups',
+    nav: MobileNavMeta(title: 'Groups', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
+  ),
+  MobileModuleEntry(
+    moduleKey: 'rustok_messenger',
+    surfaceKind: MobileSurfaceKind.storefront,
+    routeSegment: 'messages',
+    localeNamespace: 'messenger',
+    nav: MobileNavMeta(title: 'Messenger', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
+  ),
+  MobileModuleEntry(
+    moduleKey: 'rustok_navigation',
+    surfaceKind: MobileSurfaceKind.storefront,
+    routeSegment: 'navigation',
+    localeNamespace: 'navigation',
+    nav: MobileNavMeta(title: 'Navigation', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
+  ),
+  MobileModuleEntry(
+    moduleKey: 'rustok_notifications',
+    surfaceKind: MobileSurfaceKind.storefront,
+    routeSegment: 'notifications',
+    localeNamespace: 'notifications',
+    nav: MobileNavMeta(title: 'Notifications', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
+  ),
+  MobileModuleEntry(
     moduleKey: 'rustok_order',
     surfaceKind: MobileSurfaceKind.storefront,
     routeSegment: 'orders',
     localeNamespace: 'order',
     nav: MobileNavMeta(title: 'Orders', icon: 'receipt_long'),
+    childPages: <MobileChildPage>[
+    ],
+  ),
+  MobileModuleEntry(
+    moduleKey: 'rustok_page_builder',
+    surfaceKind: MobileSurfaceKind.storefront,
+    routeSegment: 'page_builder',
+    localeNamespace: 'page_builder',
+    nav: MobileNavMeta(title: 'Page Builder', icon: 'module'),
     childPages: <MobileChildPage>[
     ],
   ),
@@ -95,6 +158,15 @@ const generatedMobileManifest = <MobileModuleEntry>[
     ],
   ),
   MobileModuleEntry(
+    moduleKey: 'rustok_profiles',
+    surfaceKind: MobileSurfaceKind.storefront,
+    routeSegment: 'profiles',
+    localeNamespace: 'profiles',
+    nav: MobileNavMeta(title: 'Profiles', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
+  ),
+  MobileModuleEntry(
     moduleKey: 'rustok_region',
     surfaceKind: MobileSurfaceKind.storefront,
     routeSegment: 'regions',
@@ -109,6 +181,24 @@ const generatedMobileManifest = <MobileModuleEntry>[
     routeSegment: 'search',
     localeNamespace: 'search',
     nav: MobileNavMeta(title: 'Search', icon: 'search'),
+    childPages: <MobileChildPage>[
+    ],
+  ),
+  MobileModuleEntry(
+    moduleKey: 'rustok_security',
+    surfaceKind: MobileSurfaceKind.storefront,
+    routeSegment: 'security',
+    localeNamespace: 'security',
+    nav: MobileNavMeta(title: 'Security', icon: 'module'),
+    childPages: <MobileChildPage>[
+    ],
+  ),
+  MobileModuleEntry(
+    moduleKey: 'rustok_seo',
+    surfaceKind: MobileSurfaceKind.storefront,
+    routeSegment: 'seo',
+    localeNamespace: 'seo',
+    nav: MobileNavMeta(title: 'SEO', icon: 'travel_explore'),
     childPages: <MobileChildPage>[
     ],
   ),

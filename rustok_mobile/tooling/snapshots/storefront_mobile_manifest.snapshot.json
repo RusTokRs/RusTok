@@ -9,6 +9,24 @@
     "child_pages": []
   },
   {
+    "module_slug": "calendar",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "calendar",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "calendar",
+    "child_pages": []
+  },
+  {
+    "module_slug": "calls",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "calls",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "calls",
+    "child_pages": []
+  },
+  {
     "module_slug": "cart",
     "surface_kind": "storefront_mobile",
     "route_segment": "cart",
@@ -45,12 +63,57 @@
     "child_pages": []
   },
   {
+    "module_slug": "groups",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "groups",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "groups",
+    "child_pages": []
+  },
+  {
+    "module_slug": "messenger",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "messages",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "messenger",
+    "child_pages": []
+  },
+  {
+    "module_slug": "navigation",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "navigation",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "navigation",
+    "child_pages": []
+  },
+  {
+    "module_slug": "notifications",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "notifications",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "notifications",
+    "child_pages": []
+  },
+  {
     "module_slug": "order",
     "surface_kind": "storefront_mobile",
     "route_segment": "orders",
     "nav_icon": "receipt_long",
     "permissions": [],
     "locale_namespace": "order",
+    "child_pages": []
+  },
+  {
+    "module_slug": "page_builder",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "page_builder",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "page_builder",
     "child_pages": []
   },
   {
@@ -90,6 +153,15 @@
     "child_pages": []
   },
   {
+    "module_slug": "profiles",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "profiles",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "profiles",
+    "child_pages": []
+  },
+  {
     "module_slug": "region",
     "surface_kind": "storefront_mobile",
     "route_segment": "regions",
@@ -105,6 +177,24 @@
     "nav_icon": "search",
     "permissions": [],
     "locale_namespace": "search",
+    "child_pages": []
+  },
+  {
+    "module_slug": "security",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "security",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "security",
+    "child_pages": []
+  },
+  {
+    "module_slug": "seo",
+    "surface_kind": "storefront_mobile",
+    "route_segment": "seo",
+    "nav_icon": "travel_explore",
+    "permissions": [],
+    "locale_namespace": "seo",
     "child_pages": []
   }
 ]
