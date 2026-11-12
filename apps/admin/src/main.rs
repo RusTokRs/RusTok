@@ -256,7 +256,36 @@ fn main() {
 
     console_error_panic_hook::set_once();
     let _ = console_log::init_with_level(log::Level::Debug);
-    mount_to_body(|| view! { <App /> });
+    mount_to_body(|| {
+        // The server host hands the response nonce to module surfaces from the request. In the
+        // browser there is no request: the host that served this document put the nonce on the
+        // script that booted the application, and the same contract is filled from there.
+        if let Some(nonce) = document_csp_nonce() {
+            provide_context(nonce);
+        }
+        view! { <App /> }
+    });
+}
+
+/// The nonce of the document the application runs in, read from a script the host trusted.
+///
+/// A browser empties the `nonce` content attribute of an element once it is connected under a
+/// policy delivered in a header, and keeps the value on the `nonce` property. The attribute
+/// stays present, so the selector finds the element and the property gives the value. A document
+/// served without a nonce (a development server) has no such script and provides nothing.
+#[cfg(any(feature = "csr", feature = "hydrate"))]
+fn document_csp_nonce() -> Option<rustok_ui_core::UiCspNonce> {
+    use wasm_bindgen::JsValue;
+    use web_sys::js_sys::Reflect;
+
+    let script = web_sys::window()?
+        .document()?
+        .query_selector("script[nonce]")
+        .ok()??;
+    let nonce = Reflect::get(&script, &JsValue::from_str("nonce"))
+        .ok()?
+        .as_string()?;
+    rustok_ui_core::UiCspNonce::new(&nonce)
 }
 
 #[cfg(not(any(feature = "ssr", feature = "csr", feature = "hydrate")))]

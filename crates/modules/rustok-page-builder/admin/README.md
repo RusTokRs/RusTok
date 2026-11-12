@@ -43,9 +43,11 @@ The same feature decides whether the server-rendered editor emits the `fly-brows
 A consumer sets `default-features = false`, so a consumer feature that enables `ssr` must also
 enable `browser-js`; without it the editor renders `<span data-fly-browser-adapter="disabled">`
 and no control works. Under a host Content Security Policy with a nonce, the host provides
-`rustok_ui_core::UiCspNonce` as render context. The editor writes it on the adapter `<script>`
-and on the `<style>` and `<script>` of the canvas `srcdoc` document, which inherits the host
-policy.
+`rustok_ui_core::UiCspNonce` as render context: a server host from the request, a browser host
+from the `nonce` property of a script of its own document. The editor writes it on the adapter
+`<script>`, on the `<style>` and `<script>` of the canvas `srcdoc` document, and on the
+stylesheet of the server preview document (`fly::document_html_with_style_nonce`). Both
+documents inherit the host policy.
 
 The current canvas supports rendering, geometry, hover, selection, overlays and persistence. It
 also provides the block palette, drag-and-drop insertion, resize handles, keyboard editing,
@@ -70,6 +72,18 @@ Rust unit and browser interaction tests must also be run in a checkout with the 
 and WASM toolchains installed.
 
 ## Known Limitations / Pending Implementation
+
+Server preview (`src/editor/server_preview.rs`):
+
+- **The preview cannot be requested in the default runtime.** "Refresh preview" acts through
+  hydration. No intent or SSR form requests a preview, and the draft session holds none.
+- **The preview is shown under the policy of the admin.** A `srcdoc` document inherits the
+  policy of the page that embeds it, so a `style` attribute, a provider frame of an embed block
+  and a font or media file from another origin are refused there although the published page
+  shows them. The canvas document has the same limits.
+- **Only the Fly document envelope receives the nonce.** A consumer whose preview port returns
+  other markup gets it embedded as it arrived, and its inline styles are dropped under a nonce
+  policy.
 
 Pages of a document in the default runtime (`src/editor/ssr_inspector.rs`):
 

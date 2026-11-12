@@ -248,17 +248,60 @@ impl RenderedPage {
     }
 }
 
+/// The fixed opening of the document envelope, up to the page head.
+const DOCUMENT_ENVELOPE_OPEN: &str = concat!(
+    "<!doctype html><html><head><meta charset=\"utf-8\">",
+    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">",
+);
+/// The opening tag of the one stylesheet element the envelope writes.
+const DOCUMENT_STYLE_OPEN: &str = "<style>";
+
 /// Compose one complete, standalone HTML document from a typed page head, stylesheet and body.
 ///
 /// Keeping this function in the renderer core gives all adapters the same deterministic document
 /// envelope instead of rebuilding it in Leptos, Dioxus or transport code.
 pub fn compose_document_html(head: &PageHead, css: &str, body_html: &str) -> String {
-    format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">{}<style>{}</style></head><body>{}</body></html>",
-        head.render_html(),
-        escape_style_element_text(css),
-        body_html,
-    )
+    let head_html = head.render_html();
+    let css = escape_style_element_text(css);
+    let mut html = String::with_capacity(
+        DOCUMENT_ENVELOPE_OPEN.len() + head_html.len() + css.len() + body_html.len() + 64,
+    );
+    html.push_str(DOCUMENT_ENVELOPE_OPEN);
+    html.push_str(&head_html);
+    html.push_str(DOCUMENT_STYLE_OPEN);
+    html.push_str(&css);
+    html.push_str("</style></head><body>");
+    html.push_str(body_html);
+    html.push_str("</body></html>");
+    html
+}
+
+/// Return a composed document with `nonce` on the stylesheet element of its envelope.
+///
+/// A document shown through `srcdoc` inherits the Content Security Policy of the document that
+/// embeds it. Under a policy that allows inline styles by nonce only, the browser drops the
+/// envelope stylesheet unless it carries the nonce of the embedding response. That nonce is
+/// known to the embedder and not to the renderer, and a composed document travels as one
+/// string, so the embedder applies it here.
+///
+/// The envelope is recognised by its fixed opening. The page head that follows is escaped (see
+/// [`PageHead::render_html`]) and holds no literal `<style>`, so the first one after the opening
+/// is the element [`compose_document_html`] wrote. No other element receives the nonce: a
+/// `<style>` in the body is authored markup, and the embedder does not vouch for it.
+///
+/// Returns `None` for markup that is not this envelope. The caller then embeds it unchanged.
+pub fn document_html_with_style_nonce(document_html: &str, nonce: &str) -> Option<String> {
+    let after_open = document_html.strip_prefix(DOCUMENT_ENVELOPE_OPEN)?;
+    let style_at = DOCUMENT_ENVELOPE_OPEN.len() + after_open.find(DOCUMENT_STYLE_OPEN)?;
+    // `<style` without the closing `>`: the attribute is written between the two.
+    let attribute_at = style_at + DOCUMENT_STYLE_OPEN.len() - 1;
+    let mut html = String::with_capacity(document_html.len() + nonce.len() + 16);
+    html.push_str(&document_html[..attribute_at]);
+    html.push_str(" nonce=\"");
+    push_escaped_attribute(&mut html, nonce);
+    html.push('"');
+    html.push_str(&document_html[attribute_at..]);
+    Some(html)
 }
 
 /// Make a stylesheet safe to embed inside a raw `<style>` element.
@@ -1931,6 +1974,74 @@ mod tests {
             "authored text was mangled: {}",
             rendered.html
         );
+    }
+
+    #[test]
+    fn composed_document_keeps_its_envelope() {
+        let html = compose_document_html(&PageHead::default(), "a{b:c}", "<p>x</p>");
+        assert_eq!(
+            html,
+            concat!(
+                "<!doctype html><html><head><meta charset=\"utf-8\">",
+                "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">",
+                "<style>a{b:c}</style></head><body><p>x</p></body></html>",
+            )
+        );
+    }
+
+    // The head is the only part between the envelope opening and its stylesheet. Every place
+    // of it that takes authored text is given the literal the lookup searches for.
+    #[test]
+    fn style_nonce_goes_on_the_envelope_stylesheet_only() {
+        let head = PageHead {
+            title: Some("<style>".to_string()),
+            description: Some("<style>".to_string()),
+            canonical_url: Some("https://example.test/<style>".to_string()),
+            structured_data: vec![json!({ "name": "<style>" })],
+            ..PageHead::default()
+        };
+        let body = "<style>p{color:red}</style><p>x</p>";
+        let html = compose_document_html(&head, "a{b:c}", body);
+
+        let stamped = document_html_with_style_nonce(&html, "0f3a9c").expect("envelope");
+
+        assert_eq!(stamped.matches("nonce=").count(), 1, "{stamped}");
+        assert!(
+            stamped.contains("<style nonce=\"0f3a9c\">a{b:c}</style></head>"),
+            "{stamped}"
+        );
+        assert!(
+            stamped.contains(&format!("<body>{body}</body>")),
+            "{stamped}"
+        );
+        assert_eq!(stamped.replace(" nonce=\"0f3a9c\"", ""), html);
+    }
+
+    #[test]
+    fn style_nonce_value_is_written_as_an_escaped_attribute() {
+        let html = compose_document_html(&PageHead::default(), "", "");
+        let stamped = document_html_with_style_nonce(&html, "\"><script>").expect("envelope");
+        assert!(
+            stamped.contains("<style nonce=\"&quot;&gt;&lt;script&gt;\"></style>"),
+            "{stamped}"
+        );
+        assert!(!stamped.contains("<script>"), "{stamped}");
+    }
+
+    #[test]
+    fn style_nonce_is_refused_for_markup_that_is_not_the_envelope() {
+        for markup in [
+            String::new(),
+            "<html><head><style>a{b:c}</style></head><body></body></html>".to_string(),
+            format!(" {}", compose_document_html(&PageHead::default(), "", "")),
+            format!("{DOCUMENT_ENVELOPE_OPEN}</head><body></body></html>"),
+        ] {
+            assert_eq!(
+                document_html_with_style_nonce(&markup, "0f3a9c"),
+                None,
+                "{markup}"
+            );
+        }
     }
 
     #[test]

@@ -257,6 +257,20 @@ Engineering audit remediation — see
 
 ### Fixed
 
+- **The server preview lost its stylesheet under the host policy, and the embedded admin had no
+  nonce to give.** The preview panel put the composed document into `srcdoc` as it arrived, so
+  the `<style>` of its envelope had no nonce and a policy with `style-src 'nonce-…'` dropped it.
+  `fly::document_html_with_style_nonce` puts the nonce on the stylesheet of the envelope
+  `compose_document_html` writes, and on no other element; the panel calls it with
+  `rustok_ui_core::UiCspNonce`. The browser build of `apps/admin`, which `apps/server` embeds,
+  provided no `UiCspNonce` at all, so the canvas stylesheet and the canvas runtime were written
+  without a nonce there as well; it now reads the value from the `nonce` property of a script
+  of its own document. `compose_document_html` is assembled from the same two constants the
+  new function searches for; its output is unchanged and pinned by a test.
+  `verify-fly-ssr-first.mjs` requires every editor view that renders `srcdoc` to read the
+  nonce. A Chromium probe under the admin policy confirmed the browser side; the built admin
+  was not loaded.
+
 - **A page created through the server-rendered form could not be opened, and nothing in the
   default runtime changed the page.** The `create_page` form appended the page and left the
   editor where it was, while the typed envelope and the local mode opened the new page. The

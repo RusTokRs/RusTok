@@ -22,6 +22,8 @@ const paths = {
   adminEditorMod: 'crates/modules/rustok-page-builder/admin/src/editor/mod.rs',
   adminCanvasDocument: 'crates/modules/rustok-page-builder/admin/src/editor/canvas_document.rs',
   adminIsolatedCanvas: 'crates/modules/rustok-page-builder/admin/src/editor/isolated_canvas.rs',
+  adminServerPreview: 'crates/modules/rustok-page-builder/admin/src/editor/server_preview.rs',
+  flyRender: 'crates/ui/fly/src/render.rs',
   browserIntent: 'crates/modules/rustok-page-builder/admin/src/browser_intent.rs',
   capabilityAccess: 'crates/modules/rustok-page-builder/admin/src/capability_access.rs',
   draftSession: 'crates/modules/rustok-page-builder/admin/src/draft_session.rs',
@@ -374,11 +376,18 @@ if (ssrConsumers === 0) {
 // The standalone admin answers with `script-src ... 'nonce-<n>'` and `style-src ... 'nonce-<n>'`.
 // An inline element without that nonce is dropped by the browser, and a `srcdoc` iframe inherits
 // the policy. The host therefore hands the nonce to module surfaces as `UiCspNonce`, and the
-// editor writes it on the three inline elements it renders.
+// editor writes it on the inline elements it renders and on the documents it embeds.
 requireMarkers('appsAdminMain', [
   'rustok_ui_core::UiCspNonce::new(nonce.as_str())',
   'provide_context(ui_nonce)',
 ], 'admin host nonce hand-off');
+// The browser build of the same host has no request. It reads the nonce from the script the
+// serving host trusted, and provides the same context before the application renders.
+requireMarkers('appsAdminMain', [
+  'fn document_csp_nonce() -> Option<rustok_ui_core::UiCspNonce>',
+  'query_selector("script[nonce]")',
+  'if let Some(nonce) = document_csp_nonce() {',
+], 'admin browser host nonce hand-off');
 requireMarkers('adminCanvas', [
   'use_context::<UiCspNonce>()',
   'script_nonce=browser_script_nonce',
@@ -397,6 +406,39 @@ for (const forbidden of ['<style>{}{}</style>', '<script>{script}</script>']) {
     forbidden,
     `Page Builder canvas document must not render ${forbidden} without the host nonce`,
   );
+}
+
+// The server preview is a second `srcdoc` document. It arrives composed, so the nonce is put on
+// the stylesheet of its envelope by the function that owns the envelope.
+requireMarkers('adminServerPreview', [
+  'use_context::<UiCspNonce>()',
+  'srcdoc=embedded_preview_document(html, csp_nonce.as_ref())',
+  'fly::document_html_with_style_nonce(',
+], 'Page Builder server preview nonce');
+requireMarkers('flyRender', [
+  'pub fn document_html_with_style_nonce(',
+  'html.push_str(DOCUMENT_STYLE_OPEN);',
+  'after_open.find(DOCUMENT_STYLE_OPEN)',
+], 'Fly document envelope nonce');
+
+// Derived, not listed: a view of the editor that renders `srcdoc` embeds a document under the
+// host policy, so it reads the nonce the host provided. A third embedded document cannot be
+// added without it.
+const editorDir = 'crates/modules/rustok-page-builder/admin/src/editor';
+const editorSources = execFileSync('git', ['ls-files', '--', `${editorDir}/*.rs`], {
+  encoding: 'utf8',
+}).split('\n').filter(Boolean);
+let embeddingViews = 0;
+for (const file of editorSources) {
+  const text = await readFile(file, 'utf8');
+  if (!/\bsrcdoc=/.test(text)) continue;
+  embeddingViews += 1;
+  if (!text.includes('use_context::<UiCspNonce>()')) {
+    failures.push(`${file} renders srcdoc without reading the host nonce (UiCspNonce)`);
+  }
+}
+if (embeddingViews === 0) {
+  failures.push(`no view in ${editorDir} renders srcdoc; the embedded document check matched nothing`);
 }
 
 if (failures.length > 0) {

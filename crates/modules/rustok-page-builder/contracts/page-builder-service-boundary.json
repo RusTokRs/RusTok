@@ -184,7 +184,8 @@
           "request_server_preview()",
           "server_preview_html.get()",
           "data-page-builder-server-preview-frame",
-          "srcdoc=html"
+          "srcdoc=embedded_preview_document(html, csp_nonce.as_ref())",
+          "fly::document_html_with_style_nonce("
         ],
         "host_marker": "<ServerPreviewPanel\n                runtime=server_preview_runtime\n                provider_status=server_preview_provider_status\n            />"
       }

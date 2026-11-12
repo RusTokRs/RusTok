@@ -106,12 +106,23 @@ a read-only caller has no draft session, by design.
      A consumer feature that enables `rustok-page-builder-admin/ssr` enables
      `rustok-page-builder-admin/browser-js` in the same list. Without it the editor compiles with
      `<span data-fly-browser-adapter="disabled">` in place of the adapter.
-   - *Policy.* The standalone admin answers with `script-src … 'nonce-<n>'` and
-     `style-src … 'nonce-<n>'`. The host provides the nonce of the response as
-     `rustok_ui_core::UiCspNonce`. The editor writes it on the three inline elements it renders:
-     the adapter `<script>`, and the `<style>` and `<script>` of the canvas `srcdoc` document,
-     which inherits the policy of the document that embeds it. A surface that receives no nonce
-     renders the elements without the attribute.
+   - *Policy.* The standalone admin and the embedded admin answer with
+     `script-src … 'nonce-<n>'` and `style-src … 'nonce-<n>'`. The host provides the nonce of the
+     document as `rustok_ui_core::UiCspNonce`. A host that renders on the server takes it from
+     the request. A host that renders in the browser has no request: it reads the `nonce`
+     property of a script of its own document, which the serving host trusted
+     (`document_csp_nonce` in `apps/admin/src/main.rs`). A surface that receives no nonce renders
+     its elements without the attribute.
+   - *Elements.* The editor writes the nonce on the adapter `<script>` and on the inline
+     elements of the two documents it embeds through `srcdoc`, which inherit the policy of the
+     document that embeds them. The canvas document is composed by the editor, which writes the
+     nonce on its `<style>` and `<script>`. The server preview arrives composed, as one string,
+     from a pipeline that does not know the nonce of the page that asked for it.
+     `fly::document_html_with_style_nonce` puts the nonce on the stylesheet of the envelope that
+     `fly::compose_document_html` writes. The function belongs to `fly` because `fly` owns the
+     envelope: it recognises the fixed opening, and the escaped page head that follows holds no
+     literal `<style>`. It stamps no other element, and it returns nothing for markup that is not
+     the envelope, which the panel then embeds as it arrived.
 9. **The page the editor is on is editing state, kept in the draft session.** It is not route
    view state in the sense of item 3. Commands are resolved against it: a block is inserted
    into the root of that page, and an insertion next to a component of another page, or a drop
@@ -163,9 +174,12 @@ a read-only caller has no draft session, by design.
 - The adapter changes its selection in `select()` only. A change dispatches `fly:select` once;
   the reset on canvas teardown is not a selection and dispatches nothing.
 - A host feature that enables the editor's `ssr` feature enables its `browser-js` feature.
-- Under a host policy that names a nonce, every inline `<script>` and `<style>` of the editor
-  carries the nonce of that response. The value is checked against the CSP `base64-value`
-  alphabet before it is written into markup.
+- Under a host policy that names a nonce, every inline `<script>` and `<style>` of the editor,
+  and the stylesheet of every Fly document it embeds, carries the nonce of that document. The
+  value is checked against the CSP `base64-value` alphabet before it is written into markup.
+- A view of the editor that renders `srcdoc` reads the nonce the host provided.
+- The nonce is written on elements the editor or the `fly` envelope produced. It is not written
+  on an element of authored markup.
 
 ### Allowed states
 
@@ -243,6 +257,16 @@ Not applicable. The contract emits no domain event and owns no projection.
   a visible control that does nothing in the default runtime.
 - **Keep a hand-written list of contract attributes in the verifier.** Rejected. The list becomes
   a third copy that drifts; this is the failure the decision removes.
+- **Send the nonce with the preview request and let the server compose the document with it.**
+  Rejected. It puts a property of the embedding page into the capability request, its telemetry
+  and every implementation of the preview port, and a preview answered before the page reloaded
+  would carry a nonce the new document does not accept.
+- **Return the preview as typed parts (head, stylesheet, body) and compose it in the editor.**
+  Not taken. It changes the `PreviewPageBuilderResult` wire contract for every consumer in
+  order to move one attribute; the envelope has one writer either way.
+- **Have `apps/server` provide the nonce to the embedded admin.** Not possible as stated: it
+  serves a built `index.html` and renders no component. It already writes the nonce on the
+  trusted tags of that file, and the browser host reads it from there.
 - **Carry the open page in the route, like the viewport.** Not taken now. It would serve a
   read-only caller and make the page shareable through the URL. The renderer alone could apply
   it, but the endpoint resolves commands against the open page, so every envelope would have to
@@ -265,13 +289,22 @@ Not applicable. The contract emits no domain event and owns no projection.
   is on after each shape.
 - Unit tests of `route_viewport` in `toolbar.rs`.
 - Host delivery: `scripts/verify/verify-fly-ssr-first.mjs` reads every tracked `Cargo.toml` for
-  the feature pair and the sources for the nonce hand-off; the `canvas_document.rs` test
-  `canvas_document_carries_the_host_nonce_on_its_inline_elements`; the `UiCspNonce` tests in
-  `crates/ui/rustok-ui-core/src/ui.rs`. No test loads the editor in a browser under the host
-  policy (see the backlog).
+  the feature pair and the sources for the nonce hand-off of both hosts, and requires every view
+  of the editor that renders `srcdoc` to read `UiCspNonce`; the `canvas_document.rs` test
+  `canvas_document_carries_the_host_nonce_on_its_inline_elements`; the `server_preview.rs` tests
+  (`mod tests`), which render the panel with and without the context; the envelope tests in
+  `crates/ui/fly/src/render.rs` (`style_nonce_*`, `composed_document_keeps_its_envelope`); the
+  `UiCspNonce` tests in `crates/ui/rustok-ui-core/src/ui.rs`. `document_csp_nonce` is compiled
+  by the step "Build embedded admin assets" of the workflow "Rust-hosted Browser Smoke" and has
+  no test. No test loads the editor in a browser under the host policy (see the backlog).
 
 ## Consequences
 
+- The preview document holds the page's nonce on its stylesheet. The frame is sandboxed without
+  `allow-scripts`, so the value cannot authorise a script there.
+- The editor is not delivered by the standalone SSR admin, and the server preview cannot be
+  requested in the default runtime. Both are recorded as open in the backlog; this decision
+  does not settle them.
 - The canvas document holds the page's script nonce. The document is sandboxed without
   `allow-same-origin` and shows authored content. The nonce is valid for one response, and
   authored markup is rendered by the Fly renderer, which emits no `<script>`. A change that lets

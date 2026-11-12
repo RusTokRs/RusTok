@@ -640,20 +640,65 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
     - [x] `apps/admin` and `rustok-pages-admin` enabled `rustok-page-builder-admin/ssr` without
           `browser-js`; the admin binary rendered no adapter. Both now enable the pair.
     - [x] The adapter script and the canvas `srcdoc` document carried no CSP nonce. The host
-          provides `UiCspNonce`; the editor writes it on its three inline elements.
+          provides `UiCspNonce`; the editor writes it on its inline elements and on the
+          documents it embeds.
+    - [x] `ServerPreviewPanel` put the preview document into `srcdoc` as it arrived; the
+          stylesheet of the document had no nonce and was dropped under the host policy. The
+          preview arrives as one composed string from the server pipeline, which does not know
+          the nonce of the page that asked for it. `fly::document_html_with_style_nonce` puts
+          the nonce on the stylesheet of the envelope `compose_document_html` writes and on
+          nothing else; the panel calls it with the nonce the host provided.
+    - [x] The browser build of `apps/admin` (features `csr` and `hydrate`, the build
+          `apps/server` embeds) provided no `UiCspNonce`. `apps/server` renders nothing: it
+          serves `index.html` and writes its nonce on the `<script` and `<style` tags of that
+          file, so the value never reached a render context and the canvas stylesheet, the
+          canvas runtime and the preview stylesheet were written without it. The browser host
+          now reads the nonce from the `nonce` property of a script of its own document
+          (`document_csp_nonce` in `apps/admin/src/main.rs`) and provides the same context.
+          A probe page under the policy of `apps/admin/src/app/security.rs` showed, in
+          Chromium 153, that `script[nonce]` finds the script, that the property holds the
+          value while the attribute reads empty, and that a `sandbox=""` `srcdoc` frame with
+          the Fly envelope applies its stylesheet with the nonce and drops it without. The
+          probe did not use the built admin.
+    - [ ] **The standalone SSR admin does not render the editor.** Read from source, not
+          executed. `PagesAdmin` (`crates/modules/rustok-pages/admin/src/composition.rs`) loads
+          the page list and the open page through `LocalResource`. With `leptos/ssr` a
+          `LocalResource` never resolves (`leptos_server/src/local_resource.rs`: "in SSR mode,
+          this will simply always be pending"), so the response holds the `Suspense` fallback
+          in place of `PageWorkspace` and `PagesFlyBuilder`. The shell of that host renders no
+          script (`apps/admin/src/app/shell.rs`; `verify-fly-ssr-first.mjs` requires the
+          comment that says so), although `build-standalone-admin-ssr.sh` builds a hydration
+          bundle, so nothing resolves the resource in the browser either. The `ssr + browser-js`
+          editor is therefore rendered by the render tests of the crate and by the Playwright
+          fixtures, and by no host. Needs a decision: the Pages workspace loads on the server
+          (a `Resource` under a route mode that needs no script), or the standalone host ships
+          its hydration bundle. `LocalResource` is used in 68 files of `apps/admin` and the
+          module admin packages, so the decision is not local to Pages.
+          Owner: `rustok-pages-admin`, `apps/admin`.
     - [ ] Load the editor in a browser under the policy of `apps/admin/src/app/security.rs`.
           The two Playwright suites serve their pages without a policy, and `apps/admin` does
           not build in this workspace. A probe page with that policy showed, in Chromium, that
           an inline `<script>` or `<style>` without the nonce is dropped, that a sandboxed
           `srcdoc` iframe inherits the policy, and that both run with the nonce. The probe
-          did not use the rendered editor. Owner: Page Builder admin, repository tooling.
-    - [ ] `apps/server` serves the embedded admin with its own nonce
-          (`middleware/security_headers.rs`) and provides no `UiCspNonce` to the render
-          context. The editor there renders its inline elements without a nonce.
-          Owner: `apps/server`.
-    - [ ] `ServerPreviewPanel` puts published HTML into `srcdoc`; its `<style>` has no nonce
-          and is dropped under the host policy, so the preview is unstyled.
-          Owner: Page Builder admin, `rustok-page-builder` (publish renderer).
+          did not use the rendered editor. The workflow "Rust-hosted Browser Smoke" builds the
+          embedded admin and runs Chromium against `apps/server` under the enforced policy,
+          and its spec (`apps/next-admin/tests/rust-hosts/embedded-hosts.spec.ts`) stops at the
+          admin mount. A test there that opens a page in the editor would cover the canvas and
+          the preview under the policy. Owner: Page Builder admin, repository tooling.
+    - [ ] **The server preview cannot be requested in the default runtime.** "Refresh preview"
+          acts through `on:click`. No intent or SSR form requests a preview, and the draft
+          session holds none, so a server-rendered editor shows the empty state of the panel.
+          Owner: Page Builder admin, `rustok-pages-admin`.
+    - [ ] **The preview is shown under the policy of the admin, not of the storefront.** A
+          `srcdoc` document inherits the policy of its embedder. Under
+          `style-src-attr 'none'` a `style` attribute is dropped (the probe above recorded the
+          refusal); the embed block writes `style="aspect-ratio:…"`. By the directives of the
+          policy, and not probed: the provider `<iframe>` of an embed block is refused
+          (`default-src 'self'` covers frames), and so is a font or a media file from another
+          origin. The canvas document has the same limits. A preview that is faithful to the
+          published page is a document with its own response and its own policy, as
+          `/richtext/frame` is. Needs a decision. Owner: Page Builder admin, `apps/admin`,
+          `apps/server`.
     - [ ] `fly-leptos` `FlyCanvasPreview` renders an inline `<style>` and a `style` attribute,
           and `fly-dioxus` renders `style` attributes. The admin editor uses neither; a host
           that composes them under a nonce policy loses those styles. Owner: `fly-leptos`,
