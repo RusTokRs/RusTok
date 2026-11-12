@@ -11,7 +11,9 @@ use fly_browser::{BrowserIntentEnvelope, BrowserIntentError};
 use fly_ui::{
     EditorShortcut, KeyStroke, StyleEntry, UiIntent, resolve_editor_shortcut, style_patch,
 };
-use rustok_page_builder::dto::PageBuilderCapabilityRequest;
+use rustok_page_builder::dto::{
+    PageBuilderCapabilityRequest, PageBuilderPreviewRuntime, PreviewPageBuilderInput,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -192,6 +194,7 @@ fn dispatch_named_intent(
             }))?
         }
         "save" => controller.dispatch(UiIntent::RequestSave)?,
+        "render_server_preview" => preview_request(controller, payload),
         "create_page" if is_ssr_page_form(payload) => {
             let effects = dispatch_ssr_form(controller, intent, payload)?;
             open_created_page(controller, effects)?
@@ -584,6 +587,42 @@ fn result(
     })
 }
 
+/// Builds the preview request for the page the editor is on.
+///
+/// This is the SSR path of the preview panel: a server-rendered editor has no handler to call, so
+/// the form posts this intent and the host resolves it here. The request carries a one-page
+/// document — the preview shows the page being edited, not the whole project — and the runtime
+/// context the form supplied, because an SSR render has no in-memory signal to read it from.
+///
+/// A preview is not a publish: it produces a `Preview` request, which the consumer executes
+/// without persisting anything or advancing a revision.
+fn preview_request(controller: &AdminCanvasController, payload: &Value) -> Vec<AdminCanvasEffect> {
+    let active_page_index = controller.active_page_index();
+    let mut document = controller.editor().document().clone();
+    document.project.pages = document
+        .project
+        .pages
+        .get(active_page_index)
+        .cloned()
+        .into_iter()
+        .collect();
+    let project_data = GrapesJsCodec::encode_value(&document)?;
+    let runtime = PageBuilderPreviewRuntime::new(
+        optional_object(payload, "runtime_context"),
+        optional_trimmed_string(payload, "runtime_scenario_id"),
+    );
+    // The command sequence identifies the render a preview answers, so a response for a draft the
+    // editor has since moved on from is recognizable rather than silently applied.
+    let command_sequence = controller.editor().revision().command_sequence;
+    vec![AdminCanvasEffect::Request {
+        request: PageBuilderCapabilityRequest::Preview(
+            PreviewPageBuilderInput::new(controller.page_id(), project_data).with_runtime(runtime),
+        ),
+        expected_hash: None,
+        command_sequence,
+    }]
+}
+
 fn effect(effect: AdminCanvasEffect) -> BrowserIntentEffect {
     match effect {
         AdminCanvasEffect::Request {
@@ -616,6 +655,28 @@ fn required_string<'a>(
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| BrowserIntentDispatchError::MissingField(field.to_string()))
+}
+
+/// An optional runtime-context object, empty when the payload carries none.
+///
+/// A preview of the empty context is still a useful preview, so a missing or non-object value falls
+/// back to `{}` rather than failing the whole render.
+fn optional_object(payload: &Value, field: &str) -> Value {
+    payload
+        .get(field)
+        .filter(|value| value.is_object())
+        .cloned()
+        .unwrap_or_else(|| Value::Object(serde_json::Map::new()))
+}
+
+/// An optional trimmed string field, treated as absent when it is empty.
+fn optional_trimmed_string(payload: &Value, field: &str) -> Option<String> {
+    payload
+        .get(field)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
 }
 
 fn integer_field(payload: &Value, field: &str) -> Result<u64, BrowserIntentDispatchError> {
@@ -727,6 +788,71 @@ mod tests {
             project_hash: None,
             draft_token: None,
             draft_generation: None,
+        }
+    }
+
+    #[test]
+    fn render_server_preview_yields_a_preview_request_for_the_active_page() {
+        let mut controller = controller();
+        let result = dispatch_browser_intent(
+            &mut controller,
+            intent(
+                "render_server_preview",
+                json!({
+                    "runtime_context": { "locale": "fr-FR" },
+                    "runtime_scenario_id": "growth"
+                }),
+            ),
+        )
+        .expect("preview");
+
+        let requests = result
+            .effects
+            .iter()
+            .filter_map(|effect| match effect {
+                BrowserIntentEffect::Request { request, .. } => Some(request),
+                BrowserIntentEffect::Announce { .. } => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(requests.len(), 1, "a preview is exactly one request");
+        let PageBuilderCapabilityRequest::Preview(preview) = requests[0] else {
+            panic!("a preview intent must not produce a publish request");
+        };
+        assert_eq!(preview.page_id, "home");
+        assert_eq!(
+            preview.runtime.context,
+            json!({ "locale": "fr-FR" }),
+            "the form carries the runtime context an SSR render has no signal for"
+        );
+        assert_eq!(preview.runtime.scenario_id.as_deref(), Some("growth"));
+        // The preview shows the page being edited, not the whole project.
+        let pages = preview.project_data["pages"]
+            .as_array()
+            .expect("one-page document");
+        assert_eq!(pages.len(), 1);
+        // Previewing is an authoring read: it neither dirties the draft nor advances a revision.
+        assert!(!result.dirty);
+    }
+
+    #[test]
+    fn render_server_preview_tolerates_an_absent_or_malformed_runtime_context() {
+        for payload in [json!({}), json!({ "runtime_context": "not-an-object" })] {
+            let mut controller = controller();
+            let result = dispatch_browser_intent(&mut controller, intent("render_server_preview", payload))
+                .expect("preview");
+            let request = result
+                .effects
+                .iter()
+                .find_map(|effect| match effect {
+                    BrowserIntentEffect::Request { request, .. } => Some(request),
+                    BrowserIntentEffect::Announce { .. } => None,
+                })
+                .expect("request");
+            let PageBuilderCapabilityRequest::Preview(preview) = request else {
+                panic!("expected a preview request");
+            };
+            assert_eq!(preview.runtime.context, json!({}));
+            assert_eq!(preview.runtime.scenario_id, None);
         }
     }
 

@@ -761,7 +761,12 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           value while the attribute reads empty, and that a `sandbox=""` `srcdoc` frame with
           the Fly envelope applies its stylesheet with the nonce and drops it without. The
           probe did not use the built admin.
-    - [ ] **The standalone SSR admin does not render the editor.** Read from source, not
+    - [ ] **The standalone SSR admin does not render the editor.** Decided, not yet landed; the
+          decision is `DECISIONS/2026-11-12-page-builder-server-preview-delivery.md`:
+          a host that renders the editor on the server resolves the page before it renders
+          (`Resource` under a route mode that needs no script), or it ships its hydration bundle,
+          and a host that does neither renders the reason it cannot instead of an editor whose
+          controls cannot act. Read from source, not
           executed. `PagesAdmin` (`crates/modules/rustok-pages/admin/src/composition.rs`) loads
           the page list and the open page through `LocalResource`. With `leptos/ssr` a
           `LocalResource` never resolves (`leptos_server/src/local_resource.rs`: "in SSR mode,
@@ -787,17 +792,30 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           admin mount. A test there that opens a page in the editor would cover the canvas and
           the preview under the policy. That job does not reach its spec today: it builds
           `apps/server` with default features, and the server exits at startup because
-          `modules.toml` lists 14 modules (`billing`, `calendar`, `calls`, `deal`, `finance`,
-          `marketplace` and its six parts, `party`, `tasks`) whose `mod-*` features are not in
-          the default list of `apps/server/Cargo.toml` (read from CI on `c8141c9b` and
-          `a4d65ffe`; both files are unchanged from `main`). The distribution decision comes
-          first. Owner: Page Builder admin, repository tooling; the startup failure: platform,
-          `apps/server`.
-    - [ ] **The server preview cannot be requested in the default runtime.** "Refresh preview"
-          acts through `on:click`. No intent or SSR form requests a preview, and the draft
-          session holds none, so a server-rendered editor shows the empty state of the panel.
-          Owner: Page Builder admin, `rustok-pages-admin`.
-    - [ ] **The preview is shown under the policy of the admin, not of the storefront.** A
+          `modules.toml` listed modules whose `mod-*` features were not in the default list of
+          `apps/server/Cargo.toml` (read from CI on `c8141c9b` and `a4d65ffe`). Resolved
+          2026-11-12: `scripts/ci/modules-manifest-features.mjs` derives the required features
+          from the manifest — keyed on the package's own `[crate] entry_type`, which is what the
+          registry contract reads — and both the smoke job and CI fail before a build whose
+          default features disagree with it. See
+          `DECISIONS/2026-11-12-module-composition-is-the-manifest.md`. Owner: Page Builder
+          admin, repository tooling.
+    - [x] **The server preview cannot be requested in the default runtime.** "Refresh preview"
+          acted through `on:click`, no intent or SSR form requested a preview, and the draft
+          session held none, so a server-rendered editor showed the empty state forever.
+          Resolved 2026-11-12: `render_server_preview` is a protocol intent the endpoint's
+          capability policy admits with the edit capability; `dispatch_named_intent` builds the
+          one-page `Preview` request from the draft and the runtime context the form posts; the
+          panel renders the form instead of relying on the handler; and the host bootstrap fills
+          the panel's frame from the answer. The consumer no longer reports a preview answer as
+          a reason to reload — a reload would have discarded the document it carries. Owner:
+          Page Builder admin, `rustok-pages-admin`.
+    - [ ] **The preview is shown under the policy of the admin, not of the storefront.** Decided
+          2026-11-12 (`DECISIONS/2026-11-12-page-builder-server-preview-delivery.md`):
+          the faithful shape is the preview delivered as its own response with the artifact
+          policy, and `srcdoc` is the interim shape a host without that route uses, labelled as
+          such. The admin policy is not widened for it; what remains is the route and the panel's
+          `src`/`srcdoc` switch. A
           `srcdoc` document inherits the policy of its embedder. Under
           `style-src-attr 'none'` a `style` attribute is dropped (the probe above recorded the
           refusal); the embed block writes `style="aspect-ratio:…"`. By the directives of the

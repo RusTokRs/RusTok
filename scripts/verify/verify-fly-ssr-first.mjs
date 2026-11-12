@@ -431,9 +431,33 @@ for (const forbidden of ['<style>{}{}</style>', '<script>{script}</script>']) {
 // the stylesheet of its envelope by the function that owns the envelope.
 requireMarkers('adminServerPreview', [
   'use_context::<UiCspNonce>()',
-  'srcdoc=embedded_preview_document(html, csp_nonce.as_ref())',
+  'srcdoc=preview_srcdoc',
   'fly::document_html_with_style_nonce(',
 ], 'Page Builder server preview nonce');
+
+// The attribute is what the browser executes, so the marker above is only half the guarantee: the
+// value it names has to be the one the envelope function produced. Derive the binding and require
+// the document that reaches `srcdoc` to pass through `embedded_preview_document` with the nonce the
+// host provided — an attribute bound to the rendered document directly is the regression this
+// catches, and it is invisible to a marker on the attribute alone.
+const previewSrcdocBindings = [];
+for (const match of source.adminServerPreview.matchAll(/let (\w+) = ([\s\S]*?);\n/g)) {
+  // The `;` has to end the statement, not a nested expression, so the body is read to the next
+  // statement boundary: a binding that happens to sit after the call is not the call's result.
+  const body = match[2];
+  if (!/embedded_preview_document\s*\(/.test(body)) continue;
+  if (!/csp_nonce/.test(body)) continue;
+  previewSrcdocBindings.push(match[1]);
+}
+const previewSrcdocAttribute = /srcdoc=(\w+)/.exec(source.adminServerPreview)?.[1];
+if (!previewSrcdocAttribute) {
+  failures.push('Page Builder server preview does not bind its frame\'s `srcdoc` to a value');
+} else if (previewSrcdocBindings.includes(previewSrcdocAttribute) === false) {
+  failures.push(
+    'Page Builder server preview binds `srcdoc` to a document that never passed through ' +
+      '`embedded_preview_document` with the host nonce',
+  );
+}
 requireMarkers('flyRender', [
   'pub fn document_html_with_style_nonce(',
   'html.push_str(DOCUMENT_STYLE_OPEN);',

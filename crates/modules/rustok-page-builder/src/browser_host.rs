@@ -134,12 +134,32 @@ const __flyBindSsrAdapter = (adapter) => {
     if (!payload.component_id && adapter.selectedId) payload.component_id = adapter.selectedId;
     void adapter.emitIntent(intent, payload);
   }, __flyLifecycleOptions);
+  // A preview answer carries the document the server rendered. The panel's frame shows it as its
+  // own document: `srcdoc` is a separate browsing context, but it is not a separate policy — it
+  // inherits this document's, which is why the panel labels the result. A host that serves the
+  // preview as its own response points the frame at it instead, and this binding does nothing.
+  const __flyApplyPreview = (adapter, detail) => {
+    if (detail.current === false) return;
+    const persistence = detail.result?.persistence;
+    if (!__flyObject(persistence) || persistence.capability !== "preview") return;
+    const html = persistence.result?.html;
+    if (typeof html !== "string" || !html) return;
+    const frame = adapter.root.querySelector("[data-page-builder-server-preview-frame]");
+    if (!(frame instanceof HTMLIFrameElement)) return;
+    frame.srcdoc = html;
+    frame.hidden = false;
+  };
   adapter.root.addEventListener("fly:browser-intent-response", (event) => {
     const detail = event.detail;
     if (!detail?.ok || !__flyObject(detail.result)) return;
     const token = detail.result.draft_token;
     if (typeof token === "string" && token) __flyWriteDraftRoute(token);
   }, __flyLifecycleOptions);
+  adapter.root.addEventListener(
+    "fly:browser-intent-response",
+    (event) => __flyApplyPreview(adapter, event.detail ?? {}),
+    __flyLifecycleOptions,
+  );
   __flySsrControlState.adapters.add(adapter);
   return adapter;
 };
