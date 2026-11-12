@@ -368,6 +368,23 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
         `find_by_id` fenced by tenant and page, under the same shared-lock rule as before.
         `verify-pages-immutable-artifact-integrity-audit.mjs` passes unchanged. The SQLite and
         Postgres harnesses were not run (no toolchain here). Owner: `rustok-pages`.
+      - ~~Three Pages routing verifiers pinned wording that no longer describes the source.~~
+        Done 2026-11-12. `verify-pages-published-slug-route-alias.mjs` asserted batching by
+        counting `.all(txn)` across a whole function, which also counts the two queries the
+        function needs before its loop, and it expected the Forum helper `matches_module_path`;
+        it now slices the brace-balanced loop body, so only a query inside the loop fails, and
+        pins the Pages owner's own route parse (`parse_page_route`). The local plan gained the
+        section the other two verifiers read (`historical route import owner`, provenance
+        receipts, `Automatic inference remains open by design`, immutable redirects for
+        published slug renames, old claims not reusable, delete tombstones). No behaviour
+        changed in either case: the source was already correct, the pins were not.
+      - ~~`DECISIONS/README.md` did not list the 2026-11-11 Blog taxonomy ADR, so
+        `verify-adrs.mjs` and `verify-docs.mjs` failed.~~ Done 2026-11-12: the registry row is
+        present in the required descending order, and the ADR gained the sections the governance
+        check requires. Its migration section now states what the tree holds — the two ports and
+        the noop defaults exist, no Taxonomy-backed adapter does, and `rustok-blog` still depends
+        on `rustok-taxonomy` for the translation-owner registration point — so the ADR no longer
+        reads as if the Cargo decoupling were complete.
     - The classic SSR control contract: closed on 2026-11-11, with the open parts listed here.
       Decision: `DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`.
       `2661a270ed` (2026-10-14) replaced the admin panels with the `fly-leptos` workspace,
