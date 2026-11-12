@@ -1,8 +1,8 @@
 # Forum and Taxonomy storage sovereignty and Forum port decoupling
 
 - Date: 2026-11-12
-- Decision status: Proposed
-- Implementation status: In progress
+- Decision status: Accepted
+- Implementation status: Complete
 - Owners: rustok-forum, rustok-taxonomy
 - Extends: [2026-09-18-canonical-native-module-reference-contract.md](./2026-09-18-canonical-native-module-reference-contract.md), [2026-11-11-inventory-taxonomy-sovereignty-and-product-decoupling.md](./2026-11-11-inventory-taxonomy-sovereignty-and-product-decoupling.md), [2026-11-11-blog-taxonomy-sovereignty-and-port-decoupling.md](./2026-11-11-blog-taxonomy-sovereignty-and-port-decoupling.md)
 - Supersedes: None
@@ -60,10 +60,11 @@ Apply the Ports & Adapters (Hexagonal / FBA) architecture pattern to decouple `r
   - Tag queries return fallback values without failing SQL queries.
   - No foreign table errors when `taxonomy_terms` is absent.
 
-### 3. Concrete Provider Adapter in `rustok-taxonomy`
-- Implement `TaxonomyForumTaxonomyPortAdapter` in `crates/modules/rustok-taxonomy/src/forum_taxonomy_port.rs`.
-- `rustok-taxonomy` depends on `rustok-forum` (strictly acyclic: `taxonomy -> forum`).
-- Remove `rustok-taxonomy` from `crates/modules/rustok-forum/Cargo.toml`.
+### 3. Acyclic Architecture & Host Wiring
+- `ForumTaxonomyPort` and `NoopForumTaxonomyPort` are defined within `rustok-forum::ports::taxonomy`.
+- Because `rustok-profiles` depends on `rustok-taxonomy`, and `rustok-forum` depends on `rustok-profiles`, `rustok-taxonomy` MUST NOT declare a compile-time Cargo dependency on `rustok-forum` to avoid cyclic path dependencies (`forum -> profiles -> taxonomy -> forum`).
+- The host runtime context (`ForumHttpRuntime` and `ForumGraphqlRuntimeData`) dynamically injects `Arc<dyn ForumTaxonomyPort>` via host capabilities, defaulting gracefully to `NoopForumTaxonomyPort` when absent.
+- Remove `rustok-taxonomy` from `crates/modules/rustok-forum/Cargo.toml` `[dependencies]`.
 
 ### 4. Migration Independence
 - Inline migration-specific entities and local helper functions in `m20260823_...` and `m20260824_...` so migration files do not import living `rustok_taxonomy` entities.

@@ -536,11 +536,33 @@ impl DirectTaskHandler for ProductCopyHandler {
         let input: AiProductCopyTaskInput =
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
         let started = std::time::Instant::now();
-        let catalog = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-        let product = catalog
-            .get_product(operator.tenant_id, input.product_id)
-            .await
-            .map_err(|err| AiError::Runtime(err.to_string()))?;
+        let port_context = direct_operator_port_context(
+            operator,
+            &request.resolved_locale,
+            PRODUCT_COPY_TASK_SLUG,
+            Duration::from_secs(30),
+        );
+        let product = if let Some(read_port) = runtime.product_catalog_read_port() {
+            read_port
+                .read_product_projection(
+                    port_context.clone(),
+                    rustok_product::ProductProjectionRequest {
+                        product_id: input.product_id,
+                        include_variants: true,
+                        include_archived: false,
+                        channel_slug: None,
+                        include_translations: true,
+                    },
+                )
+                .await
+                .map_err(|err| AiError::Runtime(err.to_string()))?
+        } else {
+            let catalog = CatalogService::new(runtime.db_clone(), runtime.event_bus());
+            catalog
+                .get_product(operator.tenant_id, input.product_id)
+                .await
+                .map_err(|err| AiError::Runtime(err.to_string()))?
+        };
         // The copy is generated over multiple model round-trips; sending the revision that was read
         // keeps a concurrent operator edit from being overwritten by the machine translation.
         let expected_revision = product.revision;
@@ -614,28 +636,41 @@ impl DirectTaskHandler for ProductCopyHandler {
             meta_description: meta_description.clone(),
         });
 
-        let updated = catalog
-            .update_product(
-                operator.tenant_id,
-                operator.user_id,
-                product.id,
-                UpdateProductInput {
-                    attribute_values: Default::default(),
-                    translations: Some(translations),
-                    seller_id: Patch::Keep,
-                    vendor: Patch::Keep,
-                    product_type: Patch::Keep,
-                    shipping_profile_slug: Patch::Keep,
-                    primary_category_id: Patch::Keep,
-                    brands: None,
-                    tags: None,
-                    metadata: None,
-                    status: None,
-                    expected_revision: Some(expected_revision),
-                },
-            )
-            .await
-            .map_err(|err| AiError::Runtime(err.to_string()))?;
+        let update_input = UpdateProductInput {
+            attribute_values: Default::default(),
+            translations: Some(translations),
+            seller_id: Patch::Keep,
+            vendor: Patch::Keep,
+            product_type: Patch::Keep,
+            shipping_profile_slug: Patch::Keep,
+            primary_category_id: Patch::Keep,
+            brands: None,
+            tags: None,
+            metadata: None,
+            status: None,
+            expected_revision: Some(expected_revision),
+        };
+
+        let updated = if let Some(command_port) = runtime.product_catalog_command_port() {
+            let command_ctx = port_context
+                .clone()
+                .with_idempotency_key(format!("ai-product-copy:{}", request.run_id));
+            command_port
+                .update_product(command_ctx, product.id, update_input)
+                .await
+                .map_err(|err| AiError::Runtime(err.to_string()))?
+        } else {
+            let catalog = CatalogService::new(runtime.db_clone(), runtime.event_bus());
+            catalog
+                .update_product(
+                    operator.tenant_id,
+                    operator.user_id,
+                    product.id,
+                    update_input,
+                )
+                .await
+                .map_err(|err| AiError::Runtime(err.to_string()))?
+        };
 
         let target_translation = updated
             .translations

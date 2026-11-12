@@ -10,16 +10,14 @@ fn product_declares_owner_local_dto_and_entity_sources() {
     assert!(!entities.contains("pub use rustok_commerce_foundation::entities::{"));
 
     for source in [
-        "dto/product.rs",
-        "dto/variant.rs",
-        "entities/product.rs",
-        "entities/product_translation.rs",
-        "entities/product_variant.rs",
-        "entities/variant_translation.rs",
+        "ports/src/dto/product.rs",
+        "ports/src/dto/variant.rs",
+        "src/entities/product.rs",
+        "src/entities/product_translation.rs",
+        "src/entities/product_variant.rs",
+        "src/entities/variant_translation.rs",
     ] {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src")
-            .join(source);
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(source);
         assert!(path.is_file(), "Product owner source is missing: {source}");
     }
 

@@ -1,8 +1,8 @@
 # Blog and Taxonomy storage sovereignty and Blog port decoupling
 
 - Date: 2026-11-11
-- Decision status: Proposed
-- Implementation status: In progress
+- Decision status: Accepted
+- Implementation status: Complete
 - Owners: rustok-blog, rustok-taxonomy
 - Extends: [2026-09-18-canonical-native-module-reference-contract.md](./2026-09-18-canonical-native-module-reference-contract.md), [2026-11-11-inventory-taxonomy-sovereignty-and-product-decoupling.md](./2026-11-11-inventory-taxonomy-sovereignty-and-product-decoupling.md)
 - Supersedes: None
@@ -62,10 +62,11 @@ Apply the Ports & Adapters (Hexagonal / FBA) architecture pattern to decouple `r
   - Tag queries return fallback values without failing SQL queries.
   - No foreign table errors when `taxonomy_terms` is absent.
 
-### 3. Concrete Provider Adapter in `rustok-taxonomy`
-- Implement `TaxonomyBlogTaxonomyPortAdapter` in `crates/modules/rustok-taxonomy/src/blog_taxonomy_port.rs`.
-- `rustok-taxonomy` depends on `rustok-blog` (strictly acyclic: `taxonomy -> blog`).
-- Remove `rustok-taxonomy` from `crates/modules/rustok-blog/Cargo.toml`.
+### 3. Acyclic Architecture & Host Wiring
+- `BlogTaxonomyPort` and `NoopBlogTaxonomyPort` are defined within `rustok-blog::ports::taxonomy`.
+- Because `rustok-profiles` depends on `rustok-taxonomy`, and `rustok-blog` depends on `rustok-profiles`, `rustok-taxonomy` MUST NOT declare a compile-time Cargo dependency on `rustok-blog` to avoid cyclic path dependencies (`blog -> profiles -> taxonomy -> blog`).
+- The host runtime context dynamically injects `Arc<dyn BlogTaxonomyPort>` via host capabilities, defaulting gracefully to `NoopBlogTaxonomyPort` when absent.
+- Remove `rustok-taxonomy` from `crates/modules/rustok-blog/Cargo.toml` `[dependencies]`.
 
 ### 4. Route Slug Normalization Independence
 - Replace `rustok_taxonomy::normalize_term_route_key` calls in `rustok-blog` with local slugification using `slug::slugify`.

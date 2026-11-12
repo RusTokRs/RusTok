@@ -241,31 +241,44 @@ pub trait ProductCatalogCommandPort: Send + Sync {
 }
 
 pub fn product_catalog_command_error_is_terminal(error: &PortError) -> bool {
-    matches!(
-        error.kind,
-        rustok_api::PortErrorKind::Validation
-            | rustok_api::PortErrorKind::Conflict
-            | rustok_api::PortErrorKind::NotFound
-            | rustok_api::PortErrorKind::InvariantViolation
-    ) || matches!(
-        error.code.as_str(),
-        "product.validation"
-            | "product.variant_axis_policy_conflict"
-            | "product.schema_validation"
-            | "product.conflict"
-            | "product.dependency_not_found"
-            | "product.duplicate_handle"
-            | "product.duplicate_sku"
-            | "product.revision_conflict"
-            | "product.variant_axes_preview_required"
-            | "product.variant_axes_stale"
-            | "product.variant_axes_conflict"
-            | "product.variant_axes_limit_exceeded"
-            | "product.no_variants"
-            | "product.lifecycle_conflict"
-            | "product.cannot_delete_only_variant"
-            | "product.product_not_found"
-            | "product.variant_not_found"
-            | "product.image_not_found"
-    )
+    !error.retryable
+        && matches!(
+            error.kind,
+            rustok_api::PortErrorKind::Validation
+                | rustok_api::PortErrorKind::Conflict
+                | rustok_api::PortErrorKind::NotFound
+        )
+        && matches!(
+            error.code.as_str(),
+            "product.inventory_deletion_invalid"
+                | "product.inventory_deletion_limit"
+                | "product.inventory_deletion_history_present"
+                | "product.inventory_deletion_stock_present"
+                | "product.inventory_deletion_changed"
+                | "product.inventory_quantity_invalid"
+                | "product.inventory_quantity_limit"
+                | "product.inventory_quantity_location_unavailable"
+                | "product.inventory_quantity_unrepresentable"
+                | "product.inventory_quantity_insufficient"
+                | "product.inventory_quantity_changed"
+                | "product.inventory_quantity_history_present"
+                | "product.validation"
+                | "product.variant_axis_policy_conflict"
+                | "product.schema_validation"
+                | "product.conflict"
+                | "product.dependency_not_found"
+                | "product.duplicate_handle"
+                | "product.duplicate_sku"
+                | "product.revision_conflict"
+                | "product.variant_axes_preview_required"
+                | "product.variant_axes_stale"
+                | "product.variant_axes_conflict"
+                | "product.variant_axes_limit_exceeded"
+                | "product.no_variants"
+                | "product.lifecycle_conflict"
+                | "product.cannot_delete_only_variant"
+                | "product.product_not_found"
+                | "product.variant_not_found"
+                | "product.image_not_found"
+        )
 }
