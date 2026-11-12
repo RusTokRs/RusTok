@@ -33,12 +33,15 @@ pub mod topics;
 pub mod users;
 pub mod widgets;
 
+use crate::ports::taxonomy::{ForumTaxonomyPort, NoopForumTaxonomyPort};
+
 #[derive(Clone)]
 pub struct ForumHttpRuntime {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     audience_facts: Option<SharedForumAudienceFactsPort>,
     settings_providers: ForumSettingsProviders,
+    taxonomy_port: Arc<dyn ForumTaxonomyPort>,
 }
 
 impl ForumHttpRuntime {
@@ -50,9 +53,20 @@ impl ForumHttpRuntime {
         self.event_bus.clone()
     }
 
+    pub(crate) fn category_service(&self) -> crate::CategoryService {
+        crate::CategoryService::new(self.db_clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
+    }
+
+    pub(crate) fn category_route_service(&self) -> crate::ForumCategoryRouteService {
+        crate::ForumCategoryRouteService::new(self.db_clone())
+            .with_port(self.taxonomy_port.clone())
+    }
+
     fn read_model_service(&self) -> crate::ForumReadModelService {
         crate::ForumReadModelService::new(self.db_clone())
             .with_settings_providers(self.settings_providers.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
     }
 
     fn quote_command_service(&self) -> crate::ForumQuoteCommandService {
@@ -67,7 +81,9 @@ impl ForumHttpRuntime {
             }
             None => crate::TopicService::new(self.db_clone(), self.event_bus()),
         };
-        service.with_settings_providers(self.settings_providers.clone())
+        service
+            .with_settings_providers(self.settings_providers.clone())
+            .with_taxonomy_port(self.taxonomy_port.clone())
     }
 
     fn reply_service(&self) -> crate::ReplyService {

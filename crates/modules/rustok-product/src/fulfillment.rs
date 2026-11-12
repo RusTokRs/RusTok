@@ -25,6 +25,24 @@ impl ProductFulfillmentRequirement {
     }
 }
 
+impl From<ProductFulfillmentRequirement> for rustok_product_ports::dto::ProductFulfillmentRequirement {
+    fn from(req: ProductFulfillmentRequirement) -> Self {
+        match req {
+            ProductFulfillmentRequirement::Digital => rustok_product_ports::dto::ProductFulfillmentRequirement::Digital,
+            ProductFulfillmentRequirement::Physical => rustok_product_ports::dto::ProductFulfillmentRequirement::Physical,
+        }
+    }
+}
+
+impl From<rustok_product_ports::dto::ProductFulfillmentRequirement> for ProductFulfillmentRequirement {
+    fn from(req: rustok_product_ports::dto::ProductFulfillmentRequirement) -> Self {
+        match req {
+            rustok_product_ports::dto::ProductFulfillmentRequirement::Digital => ProductFulfillmentRequirement::Digital,
+            rustok_product_ports::dto::ProductFulfillmentRequirement::Physical => ProductFulfillmentRequirement::Physical,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::ProductFulfillmentRequirement;

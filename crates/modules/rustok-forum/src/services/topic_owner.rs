@@ -65,6 +65,14 @@ impl TopicService {
         self
     }
 
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ports::taxonomy::ForumTaxonomyPort>,
+    ) -> Self {
+        self.inner = self.inner.with_taxonomy_port(port);
+        self
+    }
+
     pub async fn get_with_locale_fallback(
         &self,
         tenant_id: Uuid,

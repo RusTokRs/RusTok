@@ -409,6 +409,8 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
     let mut static_delimiters = Vec::new();
     let mut async_depth = None;
     let mut pending_async = false;
+    let mut in_fn_params = false;
+    let mut fn_param_parens = 0usize;
     let mut guards: BTreeMap<String, (usize, usize)> = BTreeMap::new();
     let mut sql_bindings = BTreeMap::new();
 
@@ -425,6 +427,30 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
             re!(r"#\s*\[\s*(?:cfg\s*\(\s*test\s*\)|(?:tokio::)?test(?:\s*\([^]]*\))?)\s*\]")
                 .is_match(code_part)
                 || re!(r"\bmod\s+tests?\b").is_match(code_part);
+        if !scan.test_file
+            && !scan.build_file
+            && !scan.migration
+            && test_scopes.is_empty()
+            && !pending_test
+            && !test_attribute
+        {
+            if re!(r"^#\s*\[\s*allow\s*\(\s*dead_code\s*\)\s*\]").is_match(code_part) {
+                let next_code = scan.lines.iter().skip(index + 1).take(3)
+                    .map(|l| l.syntax.trim())
+                    .find(|s| !s.is_empty())
+                    .unwrap_or("");
+                if re!(r"\b(?:pub(?:\s*\([^)]*\))?\s+)?(?:async\s+)?fn\s+").is_match(next_code) {
+                    scan.add(
+                        line_number,
+                        "P-STALE-ALLOW-LINT",
+                        "Suppressed Dead Code Without Expectation",
+                        Severity::Medium,
+                        "Function suppressed using bare '#[allow(dead_code)]'. Dead functions mask incomplete features or abandoned stubs.",
+                        "Either add tests/callers, delete unused code, or migrate to '#[expect(dead_code, reason = \"...\")]' if temporarily required.",
+                    );
+                }
+            }
+        }
         if !scan.test_file
             && !scan.build_file
             && test_scopes.is_empty()
@@ -527,6 +553,49 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
                 pending_static = !terminated;
             }
         }
+
+        if let Some(captures) =
+            re!(r"\b(?:pub(?:\s*\([^)]*\))?\s+)?(?:async\s+)?fn\s+([a-zA-Z_]\w*)").captures(code_part)
+        {
+            let fn_name = &captures[1];
+            if fn_name != "from" && !fn_name.starts_with("from_") {
+                if let Some(paren_pos) = code_part.find('(') {
+                    let after_paren = &code_part[paren_pos..];
+                    let open_p = after_paren.bytes().filter(|b| *b == b'(').count();
+                    let close_p = after_paren.bytes().filter(|b| *b == b')').count();
+                    if open_p > close_p {
+                        in_fn_params = true;
+                        fn_param_parens = open_p - close_p;
+                    }
+                    if !test_context && !scan.test_file && !scan.build_file {
+                        let ptr_arg = re!(r":\s*(?:Option\s*<\s*)?&(?:String|Vec\s*<|PathBuf)\b|&\[\s*&String\s*\]");
+                        if ptr_arg.is_match(after_paren) {
+                            scan.add(line_number, "P-PTR-ARG", "Overly Restrictive Pointer Argument", Severity::High,
+                                "Function takes an immutable reference to an owned container ('&String', '&Vec', or '&PathBuf') instead of a borrowed slice ('&str', '&[T]', or '&Path').",
+                                "Change parameter to a borrowed slice ('&str', '&[T]', or '&Path') to accept both borrowed and owned callers without unnecessary allocations.");
+                        }
+                    }
+                }
+            }
+        } else if in_fn_params {
+            let open_p = code_part.bytes().filter(|b| *b == b'(').count();
+            let close_p = code_part.bytes().filter(|b| *b == b')').count();
+            if !test_context && !scan.test_file && !scan.build_file {
+                let ptr_arg = re!(r":\s*(?:Option\s*<\s*)?&(?:String|Vec\s*<|PathBuf)\b|&\[\s*&String\s*\]");
+                if ptr_arg.is_match(code_part) {
+                    scan.add(line_number, "P-PTR-ARG", "Overly Restrictive Pointer Argument", Severity::High,
+                        "Function takes an immutable reference to an owned container ('&String', '&Vec', or '&PathBuf') instead of a borrowed slice ('&str', '&[T]', or '&Path').",
+                        "Change parameter to a borrowed slice ('&str', '&[T]', or '&Path') to accept both borrowed and owned callers without unnecessary allocations.");
+                }
+            }
+            if fn_param_parens + open_p <= close_p {
+                in_fn_params = false;
+                fn_param_parens = 0;
+            } else {
+                fn_param_parens = (fn_param_parens + open_p) - close_p;
+            }
+        }
+
         if let Some(captures) =
             re!(r"^\s*(?:pub(?:\s*\([^)]*\))?\s+)?async\s+fn\s+([a-zA-Z_]\w*)").captures(code_part)
         {
@@ -564,6 +633,17 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
                     Severity::Critical,
                     "Blocking sleep appears in an async function. Verify which thread executes it.",
                     "Use tokio::time::sleep(duration).await on executor workers.",
+                );
+            }
+            let blocking_fs = re!(r"\bstd::fs::(?:read|read_to_string|write|remove_file|remove_dir|remove_dir_all|create_dir|create_dir_all|copy|rename|File::open|File::create)\s*\(");
+            if blocking_fs.is_match(code_part) {
+                scan.add(
+                    line_number,
+                    "P-BLOCKING-IO-IN-ASYNC",
+                    "Blocking I/O in Async Code",
+                    Severity::High,
+                    "Synchronous std::fs I/O appears in an async function. This blocks the Tokio executor worker thread.",
+                    "Use tokio::fs or execute blocking filesystem operations inside tokio::task::spawn_blocking.",
                 );
             }
             if let Some(captures) = re!(r"\blet\s+(?:mut\s+)?([a-zA-Z_]\w*)\s*=\s*([^;\n]+?\.(?:lock|read|write)\s*\([^;\n]*\))").captures(code_part) {

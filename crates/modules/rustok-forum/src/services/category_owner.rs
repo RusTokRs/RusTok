@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use sea_orm::{DatabaseConnection, DatabaseTransaction};
 use uuid::Uuid;
 
@@ -12,6 +14,7 @@ use crate::dto::{
     bounded_forum_read_limit,
 };
 use crate::error::{ForumError, ForumResult};
+use crate::ports::taxonomy::{ForumTaxonomyPort, NoopForumTaxonomyPort};
 
 use super::category_visibility::ForumCategoryVisibilityPolicyService;
 use super::rbac::enforce_scope;
@@ -35,20 +38,38 @@ pub struct CategoryService {
     policy: category_policy::CategoryTopicPolicyService,
     tree_read: CategoryTaxonomyTreeReadService,
     visibility: ForumCategoryVisibilityPolicyService,
+    taxonomy_port: Arc<dyn ForumTaxonomyPort>,
 }
 
 impl CategoryService {
     pub fn new(db: DatabaseConnection) -> Self {
+        let taxonomy_port: Arc<dyn ForumTaxonomyPort> = Arc::new(NoopForumTaxonomyPort);
         Self {
             db: db.clone(),
-            inner: category::CategoryProjectionOwnerService::new(db.clone()),
-            read: category::taxonomy_read::CategoryTaxonomyReadService::new(db.clone()),
-            commands: category_command::CategoryCommandProjectionOwnerService::new(db.clone()),
-            lifecycle: category_lifecycle::CategoryLifecycleProjectionOwnerService::new(db.clone()),
+            inner: category::CategoryProjectionOwnerService::new(db.clone())
+                .with_port(taxonomy_port.clone()),
+            read: category::taxonomy_read::CategoryTaxonomyReadService::new(db.clone())
+                .with_port(taxonomy_port.clone()),
+            commands: category_command::CategoryCommandProjectionOwnerService::new(db.clone())
+                .with_port(taxonomy_port.clone()),
+            lifecycle: category_lifecycle::CategoryLifecycleProjectionOwnerService::new(db.clone())
+                .with_port(taxonomy_port.clone()),
             policy: category_policy::CategoryTopicPolicyService::new(db.clone()),
-            tree_read: CategoryTaxonomyTreeReadService::new(db.clone()),
+            tree_read: CategoryTaxonomyTreeReadService::new(db.clone())
+                .with_port(taxonomy_port.clone()),
             visibility: ForumCategoryVisibilityPolicyService::new(db),
+            taxonomy_port,
         }
+    }
+
+    pub fn with_taxonomy_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
+        self.inner = self.inner.with_port(port.clone());
+        self.read = self.read.with_port(port.clone());
+        self.commands = self.commands.with_port(port.clone());
+        self.lifecycle = self.lifecycle.with_port(port.clone());
+        self.tree_read = self.tree_read.with_port(port.clone());
+        self.taxonomy_port = port;
+        self
     }
 
     pub async fn create(
@@ -327,14 +348,7 @@ impl CategoryService {
         )
         .await
     }
-}
 
-use rustok_taxonomy::{TaxonomyError, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-
-use crate::entities::forum_category;
-
-impl CategoryService {
     pub const MAX_FORUM_CATEGORY_LOCALE_ENUMERATION_IDS: usize = 512;
 
     pub async fn available_locales_for_categories(
@@ -378,6 +392,9 @@ impl CategoryService {
             }
         }
 
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+        use crate::entities::forum_category;
+
         let existing = forum_category::Entity::find()
             .filter(forum_category::Column::TenantId.eq(tenant_id))
             .filter(forum_category::Column::Id.is_in(category_ids.to_vec()))
@@ -393,22 +410,16 @@ impl CategoryService {
             }
         }
 
-        let projections = TaxonomyOwnerCategoryReader::new(self.db.clone())
+        let projections = self
+            .taxonomy_port
             .load_scoped_categories(
+                (&self.db).into(),
                 tenant_id,
-                TaxonomyScopeType::Module,
-                Some("forum"),
                 Some(category_ids),
                 rustok_api::PLATFORM_FALLBACK_LOCALE,
                 None,
             )
-            .await
-            .map_err(|error| match error {
-                TaxonomyError::Database(error) => ForumError::Database(error),
-                other => ForumError::Validation(format!(
-                    "Forum Taxonomy category locale enumeration failed: {other}"
-                )),
-            })?;
+            .await?;
         let locales_by_id = projections
             .into_iter()
             .map(|projection| (projection.id, projection.available_locales))

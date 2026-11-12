@@ -207,7 +207,7 @@ impl CatalogService {
                 });
                 StorefrontProductListItem {
                     id: product.id,
-                    status: product.status,
+                    status: product.status.into(),
                     title: translation
                         .map(|value| value.title.clone())
                         .unwrap_or_else(|| "Untitled product".to_string()),
@@ -333,7 +333,7 @@ impl CatalogService {
                     .unwrap_or_else(|| "default".to_string());
                 crate::LegacyStorefrontProductListItem {
                     id: product.id,
-                    status: product.status,
+                    status: product.status.into(),
                     title: translation
                         .map(|value| value.title.clone())
                         .unwrap_or_else(|| "Untitled product".to_string()),

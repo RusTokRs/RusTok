@@ -278,6 +278,8 @@ use serde_json::Value;
 use tracing::instrument;
 use uuid::Uuid;
 
+use std::sync::Arc;
+
 use rustok_api::{Action, PLATFORM_FALLBACK_LOCALE, Resource, RichTextDocument};
 use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
@@ -286,7 +288,6 @@ use rustok_core::SecurityContext;
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition};
 use rustok_events::DomainEvent;
 use rustok_outbox::TransactionalEventBus;
-use rustok_taxonomy::{TaxonomyService, TaxonomyTermKind};
 
 use crate::dto::{
     ListTopicsFilter, TopicListCursor, TopicListItem, TopicPage, TopicResponse, UpdateTopicInput,
@@ -296,6 +297,7 @@ use crate::entities::{
     forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
+use crate::ports::taxonomy::{ForumTaxonomyPort, NoopForumTaxonomyPort};
 use crate::richtext::{
     normalize_discussion, project_discussion, project_stored_discussion, serialize_discussion,
 };
@@ -317,6 +319,7 @@ pub struct TopicService {
     db: DatabaseConnection,
     event_bus: TransactionalEventBus,
     settings: ForumSettingsProviders,
+    taxonomy_port: Arc<dyn ForumTaxonomyPort>,
 }
 
 impl TopicService {
@@ -325,11 +328,17 @@ impl TopicService {
             db,
             event_bus,
             settings: ForumSettingsProviders::default(),
+            taxonomy_port: Arc::new(NoopForumTaxonomyPort),
         }
     }
 
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
         self.settings = settings;
+        self
+    }
+
+    pub fn with_taxonomy_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
+        self.taxonomy_port = port;
         self
     }
 
@@ -720,8 +729,9 @@ impl TopicService {
             return Ok(Vec::new());
         }
 
-        let resolved_names = TaxonomyService::new(self.db.clone())
-            .resolve_term_names(tenant_id, &term_ids, locale, fallback_locale)
+        let resolved_names = self
+            .taxonomy_port
+            .resolve_term_names((&self.db).into(), tenant_id, &term_ids, locale, fallback_locale)
             .await?;
         let mut tags = term_ids
             .into_iter()
@@ -764,8 +774,9 @@ impl TopicService {
             all_term_ids.insert(row.term_id);
         }
         let all_term_ids: Vec<Uuid> = all_term_ids.into_iter().collect();
-        let resolved_names = TaxonomyService::new(self.db.clone())
-            .resolve_term_names(tenant_id, &all_term_ids, locale, fallback_locale)
+        let resolved_names = self
+            .taxonomy_port
+            .resolve_term_names((&self.db).into(), tenant_id, &all_term_ids, locale, fallback_locale)
             .await?;
         let mut result: HashMap<Uuid, Vec<String>> = HashMap::new();
         for topic_id in topic_ids {
@@ -944,13 +955,11 @@ impl TopicService {
             return Ok(());
         }
 
-        let taxonomy_service = TaxonomyService::new(self.db.clone());
-        let term_ids = taxonomy_service
-            .ensure_terms_for_module_in_tx(
+        let term_ids = self
+            .taxonomy_port
+            .ensure_tags_in_tx(
                 txn,
                 tenant_id,
-                TaxonomyTermKind::Tag,
-                "forum",
                 locale,
                 tags,
             )

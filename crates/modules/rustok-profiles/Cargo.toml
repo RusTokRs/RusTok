@@ -15,6 +15,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 default = ["server"]
 server = [
+  "ports",
   "dep:chrono",
   "dep:rustok-api",
   "dep:rustok-core",
@@ -28,6 +29,7 @@ server = [
   "dep:sea-orm-migration",
   "dep:tracing",
 ]
+ports = []
 
 [dependencies]
 async-graphql = { workspace = true, features = ["dataloader"] }

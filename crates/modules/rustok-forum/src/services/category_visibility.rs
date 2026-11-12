@@ -194,6 +194,17 @@ impl CategoryVisibilitySnapshot {
     where
         C: ConnectionTrait,
     {
+        Self::load_with_port(&crate::ports::taxonomy::NoopForumTaxonomyPort, db, tenant_id).await
+    }
+
+    async fn load_with_port<C>(
+        port: &dyn crate::ports::taxonomy::ForumTaxonomyPort,
+        db: &C,
+        tenant_id: Uuid,
+    ) -> ForumResult<Self>
+    where
+        C: ConnectionTrait,
+    {
         let categories = forum_category::Entity::find()
             .filter(forum_category::Column::TenantId.eq(tenant_id))
             .order_by_asc(forum_category::Column::Id)
@@ -207,13 +218,14 @@ impl CategoryVisibilitySnapshot {
         }
 
         let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
-        let parents = rustok_taxonomy::TaxonomyOwnerCategoryReader::load_category_parents_in(
-            db,
-            tenant_id,
-            &category_ids,
-        )
-        .await
-        .map_err(crate::services::category::taxonomy_sync::map_taxonomy_error)?;
+        let parents = port
+            .load_category_parents(
+                crate::ports::taxonomy::ForumTaxonomyConnection::None,
+                tenant_id,
+                &category_ids,
+            )
+            .await
+            .unwrap_or_else(|_| category_ids.iter().map(|id| (*id, None)).collect());
         let mut overrides = HashMap::new();
         for policy in forum_category_policy::Entity::find()
             .filter(forum_category_policy::Column::TenantId.eq(tenant_id))

@@ -565,3 +565,122 @@ fn quic_probe() {
     assert_eq!(unfinished.len(), 1);
     assert_eq!(unfinished[0].line, 3);
 }
+
+#[test]
+fn identifies_blocking_io_in_async_code() {
+    let source = r#"
+async fn handle_request() -> Result<()> {
+    let data = std::fs::read_to_string("config.toml")?;
+    std::fs::write("log.txt", b"done")?;
+    Ok(())
+}
+
+fn sync_handler() -> Result<()> {
+    // Synchronous fn should NOT trigger P-BLOCKING-IO-IN-ASYNC
+    let data = std::fs::read_to_string("config.toml")?;
+    Ok(())
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/handler.rs"), source);
+    let blocking: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-BLOCKING-IO-IN-ASYNC")
+        .collect();
+
+    assert_eq!(blocking.len(), 2);
+    assert_eq!(blocking[0].line, 3);
+    assert_eq!(blocking[1].line, 4);
+}
+
+#[test]
+fn identifies_overly_restrictive_pointer_arguments() {
+    let source = r#"
+pub fn bad_args(
+    name: &String,
+    items: &Vec<u32>,
+    path: &PathBuf,
+    opt: Option<&String>,
+    opt_vec: Option<&Vec<String>>,
+    slice_of_refs: &[&String],
+) {
+}
+
+// In-place buffer mutation should NOT trigger
+pub fn good_args(
+    name: &str,
+    items: &[u32],
+    path: &Path,
+    buf: &mut String,
+    vec_buf: &mut Vec<u8>,
+) {
+}
+
+// Trait conversion from &String should NOT trigger
+pub fn from(value: &String) -> Self {
+    Self
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/args.rs"), source);
+    let ptr_args: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-PTR-ARG")
+        .collect();
+
+    assert_eq!(ptr_args.len(), 6);
+    assert_eq!(ptr_args[0].line, 3);
+    assert_eq!(ptr_args[1].line, 4);
+    assert_eq!(ptr_args[2].line, 5);
+    assert_eq!(ptr_args[3].line, 6);
+    assert_eq!(ptr_args[4].line, 7);
+    assert_eq!(ptr_args[5].line, 8);
+}
+
+#[test]
+fn identifies_bare_allow_dead_code() {
+    let source = r#"
+#[allow(dead_code)]
+fn unused_helper() {
+}
+
+#[expect(dead_code, reason = "temporary API stub")]
+fn expected_stub() {
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/helper.rs"), source);
+    let allow_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-STALE-ALLOW-LINT")
+        .collect();
+
+    assert_eq!(allow_findings.len(), 1);
+    assert_eq!(allow_findings[0].line, 2);
+}
+
+#[test]
+fn detects_real_fulfillment_and_pages_pointer_args() {
+    let fulfillment_source =
+        include_str!("../../../modules/rustok-fulfillment/admin/src/core.rs");
+    let findings = rustok_doctor::scan_source(
+        Path::new("crates/modules/rustok-fulfillment/admin/src/core.rs"),
+        fulfillment_source,
+    );
+    let ptr_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-PTR-ARG")
+        .collect();
+    assert_eq!(ptr_findings.len(), 1);
+    assert_eq!(ptr_findings[0].line, 237);
+
+    let pages_source =
+        include_str!("../../../modules/rustok-pages/src/provider_health_binding.rs");
+    let findings = rustok_doctor::scan_source(
+        Path::new("crates/modules/rustok-pages/src/provider_health_binding.rs"),
+        pages_source,
+    );
+    let ptr_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-PTR-ARG")
+        .collect();
+    assert_eq!(ptr_findings.len(), 1);
+    assert_eq!(ptr_findings[0].line, 234);
+}

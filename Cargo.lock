@@ -13886,7 +13886,7 @@ dependencies = [
  "rustok-order",
  "rustok-outbox",
  "rustok-product",
- "rustok-product-transport",
+ "rustok-product-ports",
  "rustok-runtime",
  "rustok-secrets",
  "rustok-storage",
@@ -14914,8 +14914,8 @@ dependencies = [
  "rustok-pricing",
  "rustok-product",
  "rustok-product-bundles",
+ "rustok-product-ports",
  "rustok-product-relations",
- "rustok-product-transport",
  "rustok-region",
  "rustok-taxonomy",
  "rustok-telemetry",
@@ -17243,8 +17243,10 @@ dependencies = [
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-product-ports",
  "rustok-seo-targets",
  "rustok-taxonomy",
+ "rustok-telemetry",
  "rustok-test-utils",
  "rustok-translation-targets",
  "sea-orm",
@@ -17254,6 +17256,7 @@ dependencies = [
  "sha2 0.11.1",
  "thiserror 2.0.21",
  "tokio",
+ "tonic",
  "tracing",
  "unicode-normalization",
  "url",
@@ -17339,21 +17342,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustok-product-catalog-service"
+name = "rustok-product-ports"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "async-trait",
+ "bytes",
+ "chrono",
+ "prost",
+ "protoc-bin-vendored",
+ "rust_decimal",
  "rustok-api",
- "rustok-outbox",
- "rustok-product",
- "rustok-product-transport",
- "rustok-telemetry",
- "sea-orm",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "subtle",
+ "thiserror 2.0.21",
  "tokio",
+ "tokio-stream",
  "tonic",
- "tracing",
+ "tonic-prost",
+ "tonic-prost-build",
  "url",
+ "utoipa",
  "uuid",
+ "validator",
 ]
 
 [[package]]
@@ -17430,31 +17442,6 @@ dependencies = [
  "tracing",
  "uuid",
  "web-sys",
-]
-
-[[package]]
-name = "rustok-product-transport"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "chrono",
- "prost",
- "protoc-bin-vendored",
- "rustok-api",
- "rustok-product",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "subtle",
- "thiserror 2.0.21",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-prost",
- "tonic-prost-build",
- "url",
- "uuid",
 ]
 
 [[package]]
@@ -18143,8 +18130,8 @@ dependencies = [
  "rustok-pricing",
  "rustok-product",
  "rustok-product-bundles",
+ "rustok-product-ports",
  "rustok-product-relations",
- "rustok-product-transport",
  "rustok-profiles",
  "rustok-rbac",
  "rustok-reactions",

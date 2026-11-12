@@ -14,7 +14,13 @@ pub(super) async fn ensure_category_tree_target_is_active_in_tx(
         .iter()
         .map(|category| category.id)
         .collect::<Vec<_>>();
-    let parent_by_id = load_category_parents_in_tx(txn, tenant_id, &category_ids).await?;
+    let parent_by_id = load_category_parents_in_tx(
+        &crate::ports::taxonomy::NoopForumTaxonomyPort,
+        txn,
+        tenant_id,
+        &category_ids,
+    )
+    .await?;
     validate_parent_map(&parent_by_id)?;
 
     let lifecycle_rows = forum_category_lifecycle::Entity::find()
@@ -46,6 +52,7 @@ pub(super) async fn ensure_category_restore_target_is_active_in_tx(
 }
 
 async fn load_category_parents_in_tx(
+    port: &dyn crate::ports::taxonomy::ForumTaxonomyPort,
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     category_ids: &[Uuid],
@@ -53,22 +60,15 @@ async fn load_category_parents_in_tx(
     if category_ids.is_empty() {
         return Ok(HashMap::new());
     }
-    let projections =
-        rustok_taxonomy::TaxonomyOwnerCategoryReader::load_scoped_categories_in_strict(
-            txn,
+    let projections = port
+        .load_scoped_categories(
+            txn.into(),
             tenant_id,
-            rustok_taxonomy::TaxonomyScopeType::Module,
-            Some("forum"),
             Some(category_ids),
             rustok_api::PLATFORM_FALLBACK_LOCALE,
             Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
         )
-        .await
-        .map_err(|error| {
-            ForumError::Validation(format!(
-                "Forum Category Taxonomy hierarchy read failed: {error}"
-            ))
-        })?;
+        .await?;
     if projections.len() != category_ids.len() {
         return Err(ForumError::Validation(
             "Forum Category Taxonomy hierarchy coverage is incomplete".to_string(),
@@ -199,11 +199,23 @@ use crate::services::rbac::enforce_scope;
 /// Transactional category lifecycle owner with inherited projection invalidation.
 pub(super) struct CategoryLifecycleProjectionOwnerService {
     db: DatabaseConnection,
+    port: std::sync::Arc<dyn crate::ports::taxonomy::ForumTaxonomyPort>,
 }
 
 impl CategoryLifecycleProjectionOwnerService {
     pub(super) fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            port: std::sync::Arc::new(crate::ports::taxonomy::NoopForumTaxonomyPort),
+        }
+    }
+
+    pub(super) fn with_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ports::taxonomy::ForumTaxonomyPort>,
+    ) -> Self {
+        self.port = port;
+        self
     }
 
     pub(super) async fn archive_subtree(
@@ -246,9 +258,9 @@ impl CategoryLifecycleProjectionOwnerService {
     ) -> ForumResult<CategorySubtreeLifecycleResponse> {
         enforce_scope(&security, Resource::ForumCategories, required_action)?;
         let txn = self.db.begin().await?;
-        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
-            .await
-            .map_err(super::category::taxonomy_sync::map_taxonomy_error)?;
+        self.port
+            .lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
+            .await?;
 
         let categories =
             super::category::CategoryService::load_categories_in_tx(&txn, tenant_id).await?;
@@ -262,7 +274,8 @@ impl CategoryLifecycleProjectionOwnerService {
         }
 
         let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
-        let parent_by_id = load_category_parents_in_tx(&txn, tenant_id, &category_ids).await?;
+        let parent_by_id =
+            load_category_parents_in_tx(&*self.port, &txn, tenant_id, &category_ids).await?;
         validate_parent_map(&parent_by_id)?;
 
         let lifecycle_rows = forum_category_lifecycle::Entity::find()

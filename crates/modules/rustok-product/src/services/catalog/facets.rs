@@ -35,33 +35,7 @@ pub const MAX_CATALOG_FACETS: usize = MAX_ATTRIBUTE_FILTERS;
 /// Maximum number of bucket values one enumerable facet returns.
 pub const MAX_CATALOG_FACET_VALUES: usize = 20;
 
-/// One bucket of an enumerable facet.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct StorefrontCatalogFacetValue {
-    /// `code=<value>` value for this bucket: an option id for dictionary types, `true`/`false`
-    /// for booleans.
-    pub value: String,
-    pub label: String,
-    pub count: u64,
-}
-
-/// One storefront facet: an attribute with its bucket counts under the current filter set.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct StorefrontCatalogFacet {
-    pub code: String,
-    pub label: String,
-    /// Stored attribute value type, e.g. `select`.
-    pub value_type: String,
-    pub is_localized: bool,
-    /// False when the value domain is unbounded (text, numeric, date): `values` stays empty.
-    pub is_enumerable: bool,
-    /// True when the bucket list was cut at [`MAX_CATALOG_FACET_VALUES`].
-    pub is_truncated: bool,
-    pub values: Vec<StorefrontCatalogFacetValue>,
-    /// Products matching every filter except this attribute's own filter that carry a value for
-    /// this attribute.
-    pub total_products: u64,
-}
+pub use rustok_product_ports::{StorefrontCatalogFacet, StorefrontCatalogFacetValue};
 
 #[derive(Debug, FromQueryResult)]
 struct FacetDefinitionRow {

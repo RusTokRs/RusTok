@@ -6,8 +6,6 @@ use uuid::Uuid;
 use crate::error::{BlogError, BlogResult};
 use crate::ports::taxonomy::BlogTaxonomyPort;
 
-const BLOG_TAXONOMY_SCOPE: &str = "blog";
-
 #[derive(Clone, Debug)]
 pub(crate) struct BlogCategoryProjectionInfo {
     pub name: String,

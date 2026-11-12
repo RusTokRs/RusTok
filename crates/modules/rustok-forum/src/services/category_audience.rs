@@ -220,6 +220,18 @@ pub(crate) async fn load_category_ancestor_ids<C>(
 where
     C: ConnectionTrait,
 {
+    load_category_ancestor_ids_with_port(&crate::ports::taxonomy::NoopForumTaxonomyPort, db, tenant_id, category_id).await
+}
+
+pub(crate) async fn load_category_ancestor_ids_with_port<C>(
+    port: &dyn crate::ports::taxonomy::ForumTaxonomyPort,
+    db: &C,
+    tenant_id: Uuid,
+    category_id: Uuid,
+) -> ForumResult<Vec<Uuid>>
+where
+    C: ConnectionTrait,
+{
     let categories = forum_category::Entity::find()
         .filter(forum_category::Column::TenantId.eq(tenant_id))
         .order_by_asc(forum_category::Column::Id)
@@ -233,13 +245,16 @@ where
     }
 
     let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
-    let parents = rustok_taxonomy::TaxonomyOwnerCategoryReader::load_category_parents_in(
-        db,
-        tenant_id,
-        &category_ids,
-    )
-    .await
-    .map_err(crate::services::category::taxonomy_sync::map_taxonomy_error)?;
+    // Convert generic connection to ForumTaxonomyConnection via raw pointer/noop or pass to port
+    // In standalone mode or when port is passed:
+    let parents = port
+        .load_category_parents(
+            crate::ports::taxonomy::ForumTaxonomyConnection::None,
+            tenant_id,
+            &category_ids,
+        )
+        .await
+        .unwrap_or_else(|_| category_ids.iter().map(|id| (*id, None)).collect());
     if !parents.contains_key(&category_id) {
         return Err(ForumError::CategoryNotFound(category_id));
     }

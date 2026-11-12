@@ -369,6 +369,21 @@ async fn category_subtree_ids_in_tx(
     tenant_id: Uuid,
     root_category_id: Uuid,
 ) -> ForumResult<Vec<Uuid>> {
+    category_subtree_ids_with_port_in_tx(
+        &crate::ports::taxonomy::NoopForumTaxonomyPort,
+        txn,
+        tenant_id,
+        root_category_id,
+    )
+    .await
+}
+
+async fn category_subtree_ids_with_port_in_tx(
+    port: &dyn crate::ports::taxonomy::ForumTaxonomyPort,
+    txn: &DatabaseTransaction,
+    tenant_id: Uuid,
+    root_category_id: Uuid,
+) -> ForumResult<Vec<Uuid>> {
     let categories = forum_category::Entity::find()
         .filter(forum_category::Column::TenantId.eq(tenant_id))
         .order_by_asc(forum_category::Column::Id)
@@ -388,13 +403,13 @@ async fn category_subtree_ids_in_tx(
     }
 
     let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
-    let parents = rustok_taxonomy::TaxonomyOwnerCategoryReader::load_category_parents_in(
-        txn,
-        tenant_id,
-        &category_ids,
-    )
-    .await
-    .map_err(crate::services::category::taxonomy_sync::map_taxonomy_error)?;
+    let parents = port
+        .load_category_parents(
+            txn.into(),
+            tenant_id,
+            &category_ids,
+        )
+        .await?;
     let mut children = HashMap::<Uuid, Vec<Uuid>>::new();
     for (term_id, parent_id) in parents {
         if let Some(parent_id) = parent_id {

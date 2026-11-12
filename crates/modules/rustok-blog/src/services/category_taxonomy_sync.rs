@@ -16,8 +16,6 @@ use crate::ports::taxonomy::{
     BlogTaxonomyCategoryLocaleCopy, BlogTaxonomyPort, BlogTaxonomySyncCategoryInput,
 };
 
-pub(crate) const BLOG_TAXONOMY_SCOPE: &str = "blog";
-
 pub(crate) async fn load_category_locale_copy_in_tx(
     port: &dyn BlogTaxonomyPort,
     txn: &DatabaseTransaction,
@@ -55,8 +53,4 @@ pub(crate) async fn sync_category_copy_in_tx(
         },
     )
     .await
-}
-
-pub(crate) fn canonical_key_for_blog_category(category_id: Uuid) -> String {
-    format!("blog-category-{category_id}")
 }

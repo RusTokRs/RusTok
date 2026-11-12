@@ -6,8 +6,7 @@ use rustok_profiles::ProfileSummaryReader;
 use sea_orm::DatabaseConnection;
 
 use crate::ports::taxonomy::{BlogCategoryDeleteCleanupPort, BlogTaxonomyPort};
-use crate::services::CategoryCommandService;
-use crate::{CategoryService, CommentService, PostService, PublicCommentsSnapshotStore, TagService};
+use crate::{CategoryService, CommentService, PublicCommentsSnapshotStore};
 
 /// Manifest-attached Blog GraphQL runtime capabilities.
 ///
@@ -55,38 +54,6 @@ impl BlogGraphqlRuntimeData {
         if let Some(cleanup) = self.category_delete_cleanup.clone() {
             service = service.with_category_delete_cleanup(cleanup);
         }
-        if let Some(taxonomy) = self.taxonomy_port.clone() {
-            service = service.with_taxonomy_port(taxonomy);
-        }
-        service
-    }
-
-    pub(crate) fn post_service(
-        &self,
-        db: DatabaseConnection,
-        event_bus: rustok_outbox::TransactionalEventBus,
-    ) -> PostService {
-        let mut service = PostService::new(db, event_bus);
-        if let Some(taxonomy) = self.taxonomy_port.clone() {
-            service = service.with_taxonomy_port(taxonomy);
-        }
-        service
-    }
-
-    pub(crate) fn tag_service(&self, db: DatabaseConnection) -> TagService {
-        let mut service = TagService::new(db);
-        if let Some(taxonomy) = self.taxonomy_port.clone() {
-            service = service.with_taxonomy_port(taxonomy);
-        }
-        service
-    }
-
-    pub(crate) fn category_command_service(
-        &self,
-        db: DatabaseConnection,
-        event_bus: rustok_outbox::TransactionalEventBus,
-    ) -> CategoryCommandService {
-        let mut service = CategoryCommandService::new(db, event_bus);
         if let Some(taxonomy) = self.taxonomy_port.clone() {
             service = service.with_taxonomy_port(taxonomy);
         }

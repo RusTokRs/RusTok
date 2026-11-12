@@ -1,10 +1,8 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_content::normalize_locale_code;
-use rustok_taxonomy::{
-    TaxonomyError, TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
-};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect};
 use uuid::Uuid;
 
@@ -14,6 +12,7 @@ use crate::dto::{
 };
 use crate::entities::{forum_category, forum_category_lifecycle};
 use crate::error::{ForumError, ForumResult};
+use crate::ports::taxonomy::{ForumTaxonomyCategorySnapshot, ForumTaxonomyPort, NoopForumTaxonomyPort};
 use crate::services::category_policy::CategoryTopicPolicyService;
 use crate::services::subscription::SubscriptionService;
 
@@ -34,11 +33,20 @@ struct BoundTaxonomyCategory {
 /// Forum retains lifecycle, policy, counters and viewer-specific state.
 pub(super) struct CategoryTaxonomyTreeReadService {
     db: DatabaseConnection,
+    port: Arc<dyn ForumTaxonomyPort>,
 }
 
 impl CategoryTaxonomyTreeReadService {
     pub(super) fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            port: Arc::new(NoopForumTaxonomyPort),
+        }
+    }
+
+    pub(super) fn with_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
+        self.port = port;
+        self
     }
 
     pub(super) async fn read_with_hidden_categories(
@@ -218,17 +226,16 @@ impl CategoryTaxonomyTreeReadService {
     ) -> ForumResult<HashMap<Uuid, BoundTaxonomyCategory>> {
         let unique_forum_ids = forum_category_ids.iter().copied().collect::<HashSet<_>>();
         let unique_forum_vec = unique_forum_ids.iter().copied().collect::<Vec<_>>();
-        let projected = TaxonomyOwnerCategoryReader::new(self.db.clone())
+        let projected = self
+            .port
             .load_scoped_categories(
+                (&self.db).into(),
                 tenant_id,
-                TaxonomyScopeType::Module,
-                Some("forum"),
                 Some(&unique_forum_vec),
                 locale,
                 fallback_locale,
             )
-            .await
-            .map_err(map_taxonomy_read_error)?;
+            .await?;
         if projected.len() != unique_forum_ids.len() {
             return Err(ForumError::Validation(
                 "Forum category tree cutover: Taxonomy Category projection is missing".to_string(),
@@ -245,7 +252,7 @@ impl CategoryTaxonomyTreeReadService {
 }
 
 fn bind_owner_projection(
-    category: &TaxonomyOwnerCategory,
+    category: &ForumTaxonomyCategorySnapshot,
     parent_id: Option<Uuid>,
 ) -> BoundTaxonomyCategory {
     BoundTaxonomyCategory {
@@ -343,13 +350,4 @@ fn retain_visible_nodes(nodes: &mut Vec<CategoryTreeNode>, hidden: &HashSet<Uuid
 fn normalize_locale(locale: &str) -> ForumResult<String> {
     normalize_locale_code(locale)
         .ok_or_else(|| ForumError::Validation("Invalid locale".to_string()))
-}
-
-fn map_taxonomy_read_error(error: TaxonomyError) -> ForumError {
-    match error {
-        TaxonomyError::Database(error) => ForumError::Database(error),
-        other => ForumError::Validation(format!(
-            "Forum Taxonomy category tree projection failed: {other}"
-        )),
-    }
 }

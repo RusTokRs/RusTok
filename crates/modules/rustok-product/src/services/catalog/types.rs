@@ -377,75 +377,10 @@ impl AdminProductListQuery {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StorefrontProductList {
-    pub items: Vec<StorefrontProductListItem>,
-    pub total: u64,
-    pub page: u64,
-    pub per_page: u64,
-    pub has_next: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StorefrontProductListItem {
-    pub id: Uuid,
-    pub status: entities::product::ProductStatus,
-    pub title: String,
-    pub handle: String,
-    pub seller_id: Option<String>,
-    pub vendor: Option<String>,
-    pub product_type: Option<String>,
-    pub tags: Vec<String>,
-    /// Lowest-position product image, resolved with the requested locale and
-    /// fallback locale. `None` when the product has no image yet.
-    pub primary_image: Option<StorefrontProductListImage>,
-    /// Cheapest base (non price-list, non tier) variant price for the requested
-    /// or derived currency. `None` when the product has no base price yet.
-    pub price_from: Option<StorefrontProductListPrice>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub published_at: Option<chrono::DateTime<chrono::Utc>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StorefrontProductListImage {
-    pub media_id: Uuid,
-    pub url: String,
-    pub alt_text: Option<String>,
-    pub position: i32,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct StorefrontProductListPrice {
-    pub currency_code: String,
-    pub amount: Decimal,
-    pub compare_at_amount: Option<Decimal>,
-    pub on_sale: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AdminProductList {
-    pub items: Vec<AdminProductListItem>,
-    pub total: u64,
-    pub page: u64,
-    pub per_page: u64,
-    pub has_next: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AdminProductListItem {
-    pub id: Uuid,
-    pub status: entities::product::ProductStatus,
-    pub title: String,
-    pub handle: String,
-    pub seller_id: Option<String>,
-    pub vendor: Option<String>,
-    pub product_type: Option<String>,
-    pub shipping_profile_slug: Option<String>,
-    pub primary_category_id: Option<Uuid>,
-    pub tags: Vec<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub published_at: Option<chrono::DateTime<chrono::Utc>>,
-}
+pub use rustok_product_ports::{
+    AdminProductList, AdminProductListItem, StorefrontProductList, StorefrontProductListImage,
+    StorefrontProductListItem, StorefrontProductListPrice,
+};
 
 #[derive(Debug, Clone)]
 pub struct ProductTagState {

@@ -1,18 +1,17 @@
+use std::sync::Arc;
+
 use rustok_content::normalize_locale_code;
-use rustok_taxonomy::{
-    TaxonomyOwnerCategoryReader, TaxonomyScopeType, TaxonomyService, TaxonomyTermKind,
-};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::entities::{forum_category, forum_category_lifecycle};
 use crate::error::{ForumError, ForumResult};
+use crate::ports::taxonomy::{ForumTaxonomyPort, NoopForumTaxonomyPort};
 
 pub const MAX_FORUM_CATEGORY_ROUTE_LOCALE_LEN: usize = 64;
 pub const MAX_FORUM_CATEGORY_ROUTE_SLUG_LEN: usize = 255;
 pub const MAX_FORUM_CATEGORY_ROUTE_CANDIDATES: u64 = 64;
-const FORUM_TAXONOMY_SCOPE: &str = "forum";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -47,11 +46,20 @@ pub struct ForumCategoryRouteResolution {
 /// hierarchy is intentionally absent from it.
 pub struct ForumCategoryRouteService {
     db: DatabaseConnection,
+    port: Arc<dyn ForumTaxonomyPort>,
 }
 
 impl ForumCategoryRouteService {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            port: Arc::new(NoopForumTaxonomyPort),
+        }
+    }
+
+    pub fn with_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
+        self.port = port;
+        self
     }
 
     pub async fn canonical_descriptor(
@@ -66,17 +74,16 @@ impl ForumCategoryRouteService {
         ensure_active_category(&self.db, tenant_id, category_id).await?;
 
         let taxonomy_category_id = category_id;
-        let taxonomy_categories = TaxonomyOwnerCategoryReader::new(self.db.clone())
+        let taxonomy_categories = self
+            .port
             .load_scoped_categories(
+                (&self.db).into(),
                 tenant_id,
-                TaxonomyScopeType::Module,
-                Some(FORUM_TAXONOMY_SCOPE),
                 Some(&[taxonomy_category_id]),
                 requested_locale.as_str(),
                 fallback_locale.as_deref(),
             )
-            .await
-            .map_err(map_taxonomy_route_error)?;
+            .await?;
         let taxonomy_category = match taxonomy_categories.as_slice() {
             [category] if category.id == taxonomy_category_id => category,
             _ => return Err(ForumError::CategoryRouteResolutionConflict),
@@ -109,24 +116,17 @@ impl ForumCategoryRouteService {
         let requested_slug = normalize_route_slug(requested_slug)?;
         let fallback_locale = fallback_locale.map(normalize_route_locale).transpose()?;
 
-        let route = TaxonomyService::new(self.db.clone())
-            .resolve_term_route_for_module(
+        let route = self
+            .port
+            .resolve_category_route(
+                (&self.db).into(),
                 tenant_id,
-                TaxonomyTermKind::Category,
-                FORUM_TAXONOMY_SCOPE,
                 requested_locale.as_str(),
-                fallback_locale.as_deref(),
                 requested_slug.as_str(),
+                fallback_locale.as_deref(),
             )
-            .await
-            .map_err(map_taxonomy_route_error)?
+            .await?
             .ok_or(ForumError::CategoryRouteNotFound)?;
-        if route.kind != TaxonomyTermKind::Category
-            || route.scope_type != TaxonomyScopeType::Module
-            || route.scope_value.as_deref() != Some(FORUM_TAXONOMY_SCOPE)
-        {
-            return Err(ForumError::CategoryRouteNotFound);
-        }
 
         let category_id = route.term_id;
         ensure_active_category(&self.db, tenant_id, category_id).await?;
@@ -182,13 +182,6 @@ async fn ensure_active_category(
         return Err(ForumError::CategoryRouteNotFound);
     }
     Ok(())
-}
-
-fn map_taxonomy_route_error(error: rustok_taxonomy::TaxonomyError) -> ForumError {
-    match error {
-        rustok_taxonomy::TaxonomyError::Database(error) => ForumError::Database(error),
-        _ => ForumError::CategoryRouteResolutionConflict,
-    }
 }
 
 fn normalize_route_locale(value: &str) -> ForumResult<String> {

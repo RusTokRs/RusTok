@@ -72,10 +72,14 @@ pub struct ForumSearchCategoryScope {
     pub expanded_category_ids: Vec<Uuid>,
 }
 
+use std::sync::Arc;
+use crate::ports::taxonomy::{ForumTaxonomyPort, NoopForumTaxonomyPort};
+
 /// Resolves bounded, visibility-aware Forum category subtrees for Search callers.
 pub struct ForumSearchCategoryScopeService {
     db: DatabaseConnection,
     visibility: ForumCategoryVisibilityPolicyService,
+    port: Arc<dyn ForumTaxonomyPort>,
 }
 
 impl ForumSearchCategoryScopeService {
@@ -83,7 +87,13 @@ impl ForumSearchCategoryScopeService {
         Self {
             visibility: ForumCategoryVisibilityPolicyService::new(db.clone()),
             db,
+            port: Arc::new(NoopForumTaxonomyPort),
         }
+    }
+
+    pub fn with_taxonomy_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
+        self.port = port;
+        self
     }
 
     /// Expands exact category roots into deterministic visible subtree IDs.
@@ -122,13 +132,14 @@ impl ForumSearchCategoryScopeService {
             .iter()
             .map(|category| category.id)
             .collect::<Vec<_>>();
-        let parent_by_id = rustok_taxonomy::TaxonomyOwnerCategoryReader::load_category_parents_in(
-            &self.db,
-            tenant_id,
-            &tenant_category_ids,
-        )
-        .await
-        .map_err(crate::services::category::taxonomy_sync::map_taxonomy_error)?;
+        let parent_by_id = self
+            .port
+            .load_category_parents(
+                (&self.db).into(),
+                tenant_id,
+                &tenant_category_ids,
+            )
+            .await?;
 
         let hierarchy = CategoryHierarchy::from_ordered_nodes(
             tenant_category_ids

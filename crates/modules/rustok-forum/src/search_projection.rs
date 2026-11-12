@@ -9,7 +9,6 @@ use rustok_core::search_projection::{
 };
 use rustok_core::{Error, ModuleRuntimeExtensions, Result};
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
-use rustok_taxonomy::{TaxonomyError, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
@@ -17,6 +16,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::entities::{forum_category, forum_reply_body, forum_topic_tag, forum_topic_translation};
+use crate::ports::taxonomy::{ForumTaxonomyPort, NoopForumTaxonomyPort};
 use crate::search_projection_author::{
     load_public_author_summary, public_author_handle, public_author_id, public_author_keywords,
     public_author_payload,
@@ -62,7 +62,15 @@ impl SearchProjectionSourceFactory for ForumSearchProjectionSourceFactory {
             Some(reader) => ForumSettingsProviders::default().with_static_reader(reader),
             None => ForumSettingsProviders::default(),
         };
-        Arc::new(ForumSearchProjectionSource::new(db, settings))
+        let taxonomy_port = extensions
+            .get::<Arc<dyn ForumTaxonomyPort>>()
+            .cloned()
+            .unwrap_or_else(|| Arc::new(NoopForumTaxonomyPort));
+        Arc::new(ForumSearchProjectionSource::with_taxonomy_port(
+            db,
+            settings,
+            taxonomy_port,
+        ))
     }
 }
 
@@ -70,10 +78,19 @@ impl SearchProjectionSourceFactory for ForumSearchProjectionSourceFactory {
 struct ForumSearchProjectionSource {
     db: DatabaseConnection,
     discovery: Arc<ForumPublicDiscoveryService>,
+    taxonomy_port: Arc<dyn ForumTaxonomyPort>,
 }
 
 impl ForumSearchProjectionSource {
     fn new(db: DatabaseConnection, settings: ForumSettingsProviders) -> Self {
+        Self::with_taxonomy_port(db, settings, Arc::new(NoopForumTaxonomyPort))
+    }
+
+    fn with_taxonomy_port(
+        db: DatabaseConnection,
+        settings: ForumSettingsProviders,
+        taxonomy_port: Arc<dyn ForumTaxonomyPort>,
+    ) -> Self {
         let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
         Self {
             discovery: Arc::new(
@@ -81,6 +98,7 @@ impl ForumSearchProjectionSource {
                     .with_settings_providers(settings),
             ),
             db,
+            taxonomy_port,
         }
     }
 
@@ -193,17 +211,17 @@ impl ForumSearchProjectionSource {
             .map(|category| category.id)
             .collect::<Vec<_>>();
 
-        let projections = TaxonomyOwnerCategoryReader::new(self.db.clone())
+        let projections = self
+            .taxonomy_port
             .load_scoped_categories(
+                (&self.db).into(),
                 tenant_id,
-                TaxonomyScopeType::Module,
-                Some("forum"),
                 Some(&category_ids),
                 CATEGORY_LOCALE_PROJECTION_REQUEST_LOCALE,
                 None,
             )
             .await
-            .map_err(map_taxonomy_category_error)?;
+            .map_err(|e| Error::External(format!("Forum Search Taxonomy category projection failed: {e}")))?;
         let projection_by_taxonomy_id = projections
             .into_iter()
             .map(|projection| (projection.id, projection))
@@ -532,17 +550,17 @@ impl ForumSearchProjectionSource {
                 if category.is_none() {
                     return Ok(Vec::new());
                 }
-                let mut projections = TaxonomyOwnerCategoryReader::new(self.db.clone())
+                let mut projections = self
+                    .taxonomy_port
                     .load_scoped_categories(
+                        (&self.db).into(),
                         tenant_id,
-                        TaxonomyScopeType::Module,
-                        Some("forum"),
                         Some(&[entity_id]),
                         CATEGORY_LOCALE_PROJECTION_REQUEST_LOCALE,
                         None,
                     )
                     .await
-                    .map_err(map_taxonomy_category_error)?;
+                    .map_err(|e| Error::External(format!("Forum Search Taxonomy category projection failed: {e}")))?;
                 let projection = projections.pop().ok_or_else(|| {
                     Error::External(format!(
                         "Forum Search category {entity_id} Taxonomy Category projection is missing"
@@ -807,8 +825,26 @@ pub(crate) async fn load_topic_tags_for_topics(
     locale: &str,
     fallback_locale: Option<&str>,
 ) -> Result<HashMap<Uuid, Vec<String>>> {
+    load_topic_tags_for_topics_with_port(
+        &NoopForumTaxonomyPort,
+        db,
+        tenant_id,
+        topic_ids,
+        locale,
+        fallback_locale,
+    )
+    .await
+}
+
+pub(crate) async fn load_topic_tags_for_topics_with_port(
+    port: &dyn ForumTaxonomyPort,
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    topic_ids: &[Uuid],
+    locale: &str,
+    fallback_locale: Option<&str>,
+) -> Result<HashMap<Uuid, Vec<String>>> {
     use std::collections::{HashMap, HashSet};
-    use rustok_taxonomy::TaxonomyService;
     use sea_orm::ColumnTrait;
 
     if topic_ids.is_empty() {
@@ -832,8 +868,8 @@ pub(crate) async fn load_topic_tags_for_topics(
         all_term_ids.insert(row.term_id);
     }
     let all_term_ids: Vec<Uuid> = all_term_ids.into_iter().collect();
-    let resolved = TaxonomyService::new(db.clone())
-        .resolve_term_names(tenant_id, &all_term_ids, locale, fallback_locale)
+    let resolved = port
+        .resolve_term_names((db).into(), tenant_id, &all_term_ids, locale, fallback_locale)
         .await
         .map_err(|e| Error::External(format!("Forum Search taxonomy batch failed: {e}")))?;
     let mut result: HashMap<Uuid, Vec<String>> = HashMap::new();
@@ -851,13 +887,4 @@ pub(crate) async fn load_topic_tags_for_topics(
         }
     }
     Ok(result)
-}
-
-fn map_taxonomy_category_error(error: TaxonomyError) -> Error {
-    match error {
-        TaxonomyError::Database(error) => Error::Database(error),
-        other => Error::External(format!(
-            "Forum Search Taxonomy category projection failed: {other}"
-        )),
-    }
 }

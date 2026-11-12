@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
 use uuid::Uuid;
@@ -12,15 +13,25 @@ use crate::dto::{
 };
 use crate::entities::forum_category_lifecycle;
 use crate::error::{ForumError, ForumResult};
+use crate::ports::taxonomy::{ForumTaxonomyPort, NoopForumTaxonomyPort};
 use crate::services::rbac::enforce_scope;
 
 pub(super) struct CategoryCommandProjectionOwnerService {
     db: DatabaseConnection,
+    port: Arc<dyn ForumTaxonomyPort>,
 }
 
 impl CategoryCommandProjectionOwnerService {
     pub(super) fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            port: Arc::new(NoopForumTaxonomyPort),
+        }
+    }
+
+    pub(super) fn with_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
+        self.port = port;
+        self
     }
 
     pub(super) async fn move_category(
@@ -32,9 +43,9 @@ impl CategoryCommandProjectionOwnerService {
     ) -> ForumResult<MoveCategoryResponse> {
         enforce_scope(&security, Resource::ForumCategories, Action::Manage)?;
         let txn = self.db.begin().await?;
-        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
-            .await
-            .map_err(super::category::taxonomy_sync::map_taxonomy_error)?;
+        self.port
+            .lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
+            .await?;
 
         let categories =
             super::category::CategoryService::load_categories_in_tx(&txn, tenant_id).await?;
@@ -76,6 +87,7 @@ impl CategoryCommandProjectionOwnerService {
             ForumError::Validation("Category sibling position exceeds i32 range".to_string())
         })?;
         let updated = super::category::taxonomy_sync::move_category_in_tx(
+            &*self.port,
             &txn,
             tenant_id,
             category_id,
@@ -115,9 +127,9 @@ impl CategoryCommandProjectionOwnerService {
             )));
         }
         let txn = self.db.begin().await?;
-        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
-            .await
-            .map_err(super::category::taxonomy_sync::map_taxonomy_error)?;
+        self.port
+            .lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
+            .await?;
         let categories =
             super::category::CategoryService::load_categories_in_tx(&txn, tenant_id).await?;
         let models = categories
@@ -138,6 +150,7 @@ impl CategoryCommandProjectionOwnerService {
             }
         }
         let current = super::category::taxonomy_sync::load_category_siblings_in_tx(
+            &*self.port,
             &txn,
             tenant_id,
             input.parent_id,
@@ -157,6 +170,7 @@ impl CategoryCommandProjectionOwnerService {
             ));
         }
         super::category::taxonomy_sync::reorder_category_siblings_in_tx(
+            &*self.port,
             &txn,
             tenant_id,
             input.parent_id,

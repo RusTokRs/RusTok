@@ -25,13 +25,17 @@ use crate::{
         UpdateVariantInput, VariantAxesPreviewResponse, VariantAxisConfigResponse, VariantResponse,
     },
 };
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Serialize, de::DeserializeOwned};
 use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 use tonic::{Code, Request, Status};
 use uuid::Uuid;
 
 use super::auth::{AUTHORIZATION_METADATA, TENANT_ID_METADATA};
+use super::payloads::{
+    ProductIdPayload, ProductImageIdPayload, ProductInputPayload, ReorderProductImagesPayload,
+    UpdateProductImagePayload, VariantIdPayload, VariantInputPayload,
+};
 use super::proto::JsonRequest;
 use super::proto::product_catalog_command_service_client::ProductCatalogCommandServiceClient;
 use super::proto::product_catalog_read_service_client::ProductCatalogReadServiceClient;
@@ -260,47 +264,6 @@ impl ProductVariantIdentityReadPort for GrpcProductCatalogReadProvider {
             .into_inner();
         decode(&response.output_json)
     }
-}
-
-#[derive(Serialize, Deserialize)]
-pub(crate) struct ProductIdPayload {
-    pub product_id: Uuid,
-}
-
-#[derive(Serialize, Deserialize)]
-pub(crate) struct VariantIdPayload {
-    pub variant_id: Uuid,
-}
-
-#[derive(Serialize, Deserialize)]
-pub(crate) struct ProductInputPayload<T> {
-    pub product_id: Uuid,
-    pub input: T,
-}
-
-#[derive(Serialize, Deserialize)]
-pub(crate) struct VariantInputPayload<T> {
-    pub variant_id: Uuid,
-    pub input: T,
-}
-
-#[derive(Serialize, Deserialize)]
-pub(crate) struct ProductImageIdPayload {
-    pub product_id: Uuid,
-    pub image_id: Uuid,
-}
-
-#[derive(Serialize, Deserialize)]
-pub(crate) struct UpdateProductImagePayload {
-    pub product_id: Uuid,
-    pub image_id: Uuid,
-    pub input: UpdateProductImageInput,
-}
-
-#[derive(Serialize, Deserialize)]
-pub(crate) struct ReorderProductImagesPayload {
-    pub product_id: Uuid,
-    pub image_ids: Vec<Uuid>,
 }
 
 /// Consumer-side gRPC adapter implementing the Product-owned catalog command port.

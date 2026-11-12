@@ -30,6 +30,26 @@ impl std::fmt::Display for ProductStatus {
     }
 }
 
+impl From<ProductStatus> for rustok_product_ports::dto::ProductStatus {
+    fn from(status: ProductStatus) -> Self {
+        match status {
+            ProductStatus::Draft => rustok_product_ports::dto::ProductStatus::Draft,
+            ProductStatus::Active => rustok_product_ports::dto::ProductStatus::Active,
+            ProductStatus::Archived => rustok_product_ports::dto::ProductStatus::Archived,
+        }
+    }
+}
+
+impl From<rustok_product_ports::dto::ProductStatus> for ProductStatus {
+    fn from(status: rustok_product_ports::dto::ProductStatus) -> Self {
+        match status {
+            rustok_product_ports::dto::ProductStatus::Draft => ProductStatus::Draft,
+            rustok_product_ports::dto::ProductStatus::Active => ProductStatus::Active,
+            rustok_product_ports::dto::ProductStatus::Archived => ProductStatus::Archived,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "products")]
 pub struct Model {

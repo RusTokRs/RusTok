@@ -1,8 +1,8 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
-use rustok_taxonomy::{TaxonomyError, TaxonomyOwnerCategoryReader, TaxonomyScopeType};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
     QuerySelect, Select,
@@ -13,11 +13,13 @@ use uuid::Uuid;
 use crate::dto::{CategoryListItem, CategoryResponse};
 use crate::entities::{forum_category, forum_category_lifecycle};
 use crate::error::{ForumError, ForumResult};
+use crate::ports::taxonomy::{ForumTaxonomyPort, NoopForumTaxonomyPort};
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;
 
 pub(in crate::services) struct CategoryTaxonomyReadService {
     db: DatabaseConnection,
+    port: Arc<dyn ForumTaxonomyPort>,
 }
 
 pub(in crate::services) struct CategoryTaxonomyListFilter<'a> {
@@ -43,7 +45,15 @@ pub(in crate::services) struct CategoryTaxonomyKeysetFilter<'a> {
 
 impl CategoryTaxonomyReadService {
     pub(in crate::services) fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            port: Arc::new(NoopForumTaxonomyPort),
+        }
+    }
+
+    pub(in crate::services) fn with_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
+        self.port = port;
+        self
     }
 
     pub(in crate::services) async fn get_with_locale_fallback(
@@ -62,17 +72,16 @@ impl CategoryTaxonomyReadService {
             .await?
             .ok_or(ForumError::CategoryNotFound(category_id))?;
 
-        let mut projections = TaxonomyOwnerCategoryReader::new(self.db.clone())
+        let mut projections = self
+            .port
             .load_scoped_categories(
+                (&self.db).into(),
                 tenant_id,
-                TaxonomyScopeType::Module,
-                Some("forum"),
                 Some(&[category_id]),
                 locale,
                 fallback_locale,
             )
-            .await
-            .map_err(map_taxonomy_read_error)?;
+            .await?;
         let projection = projections
             .pop()
             .ok_or_else(|| missing_projection(category_id))?;
@@ -187,17 +196,16 @@ impl CategoryTaxonomyReadService {
             return Ok(Vec::new());
         }
 
-        let projections = TaxonomyOwnerCategoryReader::new(self.db.clone())
+        let projections = self
+            .port
             .load_scoped_categories(
+                (&self.db).into(),
                 tenant_id,
-                TaxonomyScopeType::Module,
-                Some("forum"),
                 Some(&category_ids),
                 locale,
                 fallback_locale,
             )
-            .await
-            .map_err(map_taxonomy_read_error)?;
+            .await?;
         let projection_by_id = projections
             .into_iter()
             .map(|projection| (projection.id, projection))
@@ -263,13 +271,4 @@ fn missing_projection(category_id: Uuid) -> ForumError {
     ForumError::Validation(format!(
         "Forum category {category_id} Taxonomy Category projection is missing"
     ))
-}
-
-fn map_taxonomy_read_error(error: TaxonomyError) -> ForumError {
-    match error {
-        TaxonomyError::Database(error) => ForumError::Database(error),
-        other => ForumError::Validation(format!(
-            "Forum Taxonomy category read projection failed: {other}"
-        )),
-    }
 }

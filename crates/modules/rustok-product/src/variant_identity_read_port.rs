@@ -19,47 +19,14 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub use rustok_product_ports::{
+    MAX_VARIANT_IDENTITY_BATCH, ProductVariantIdentitiesRequest,
+    ProductVariantIdentityListRequest, ProductVariantIdentityReadPort,
+    ProductVariantIdentitySnapshot,
+};
+
 use crate::CatalogService;
 use crate::entities::{product, product_variant};
-
-pub const MAX_VARIANT_IDENTITY_BATCH: usize = 256;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProductVariantIdentitiesRequest {
-    /// When provided, every SKU must belong to this Product, not merely to the tenant.
-    pub product_id: Option<Uuid>,
-    pub variant_ids: Vec<Uuid>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProductVariantIdentityListRequest {
-    pub product_ids: Vec<Uuid>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProductVariantIdentitySnapshot {
-    /// Explicit owner response scope; a consumer must correlate it with the trusted context.
-    pub tenant_id: Uuid,
-    pub product_id: Uuid,
-    pub variant_id: Uuid,
-}
-
-#[async_trait]
-pub trait ProductVariantIdentityReadPort: Send + Sync {
-    /// Returns every requested identity in request order, or refuses the whole read.
-    /// A foreign/missing SKU is not an absent price and is never silently omitted.
-    async fn read_variant_identities(
-        &self,
-        context: PortContext,
-        request: ProductVariantIdentitiesRequest,
-    ) -> Result<Vec<ProductVariantIdentitySnapshot>, PortError>;
-    /// Bounded identities for an already selected Product page, not a catalog discovery query.
-    async fn list_product_variant_identities(
-        &self,
-        context: PortContext,
-        request: ProductVariantIdentityListRequest,
-    ) -> Result<Vec<ProductVariantIdentitySnapshot>, PortError>;
-}
 
 #[async_trait]
 impl ProductVariantIdentityReadPort for CatalogService {

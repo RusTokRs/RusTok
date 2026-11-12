@@ -85,7 +85,7 @@ pub trait ProductCatalogReadPort: Send + Sync {
         &self,
         _context: PortContext,
         _request: StorefrontProductProjectionRequest,
-    ) -> Result<ProductResponse, PortError> {
+    ) -> Result<Option<ProductResponse>, PortError> {
         Err(PortError::unavailable(
             "product.storefront_projection_unavailable",
             "storefront product projection is unavailable",
@@ -96,7 +96,7 @@ pub trait ProductCatalogReadPort: Send + Sync {
         &self,
         _context: PortContext,
         _request: StorefrontVariantProductProjectionRequest,
-    ) -> Result<ProductResponse, PortError> {
+    ) -> Result<Option<ProductResponse>, PortError> {
         Err(PortError::unavailable(
             "product.storefront_variant_projection_unavailable",
             "storefront variant product projection is unavailable",

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use chrono::Utc;
 use sea_orm::{
     sea_query::{Expr, ExprTrait},
@@ -16,6 +18,7 @@ use rustok_core::SecurityContext;
 use crate::dto::{CreateCategoryInput, UpdateCategoryInput};
 use crate::entities::forum_category;
 use crate::error::{ForumError, ForumResult};
+use crate::ports::taxonomy::{ForumTaxonomyPort, NoopForumTaxonomyPort};
 use crate::services::rbac::enforce_scope;
 
 use crate::dto::MAX_FORUM_CATEGORY_TREE_NODES;
@@ -73,6 +76,15 @@ impl CategoryService {
         tenant_id: Uuid,
         record: &crate::import_write_preparation::ForumPreparedImportCategory,
     ) -> ForumResult<()> {
+        Self::insert_import_category_with_port_in_tx(&NoopForumTaxonomyPort, txn, tenant_id, record).await
+    }
+
+    pub(crate) async fn insert_import_category_with_port_in_tx(
+        port: &dyn ForumTaxonomyPort,
+        txn: &DatabaseTransaction,
+        tenant_id: Uuid,
+        record: &crate::import_write_preparation::ForumPreparedImportCategory,
+    ) -> ForumResult<()> {
         if tenant_id.is_nil() || record.id.is_nil() {
             return Err(ForumError::Validation(
                 "Forum import category insert requires non-nil tenant and category IDs".to_string(),
@@ -103,9 +115,8 @@ impl CategoryService {
                 )
             })?;
 
-        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(txn, tenant_id)
-            .await
-            .map_err(taxonomy_sync::map_taxonomy_error)?;
+        port.lock_category_hierarchy_writer_in_tx(txn, tenant_id)
+            .await?;
         if let Some(parent_id) = record.parent_id {
             Self::find_category_in_tx(txn, tenant_id, parent_id).await?;
         }
@@ -122,6 +133,7 @@ impl CategoryService {
         .await?;
 
         taxonomy_sync::sync_category_copy_in_tx(
+            port,
             txn,
             tenant_id,
             record.id,
@@ -137,6 +149,7 @@ impl CategoryService {
         .await?;
 
         taxonomy_sync::shift_category_siblings_for_insert_in_tx(
+            port,
             txn,
             tenant_id,
             record.id,
@@ -300,11 +313,20 @@ impl CategoryService {
 /// reads are composed separately through Taxonomy-backed read adapters.
 pub(super) struct CategoryProjectionOwnerService {
     db: DatabaseConnection,
+    port: Arc<dyn ForumTaxonomyPort>,
 }
 
 impl CategoryProjectionOwnerService {
     pub(super) fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            port: Arc::new(NoopForumTaxonomyPort),
+        }
+    }
+
+    pub(super) fn with_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
+        self.port = port;
+        self
     }
 
     #[instrument(skip(self, security, input))]
@@ -330,9 +352,9 @@ impl CategoryProjectionOwnerService {
         let now = Utc::now();
         let id = Uuid::new_v4();
         let txn = self.db.begin().await?;
-        rustok_taxonomy::lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
-            .await
-            .map_err(taxonomy_sync::map_taxonomy_error)?;
+        self.port
+            .lock_category_hierarchy_writer_in_tx(&txn, tenant_id)
+            .await?;
 
         if let Some(parent_id) = input.parent_id {
             CategoryService::find_category_in_tx(&txn, tenant_id, parent_id).await?;
@@ -360,6 +382,7 @@ impl CategoryProjectionOwnerService {
         .await?;
 
         taxonomy_sync::sync_category_copy_in_tx(
+            &*self.port,
             &txn,
             tenant_id,
             id,
@@ -374,6 +397,7 @@ impl CategoryProjectionOwnerService {
         )
         .await?;
         taxonomy_sync::shift_category_siblings_for_insert_in_tx(
+            &*self.port,
             &txn,
             tenant_id,
             id,
@@ -422,6 +446,7 @@ impl CategoryProjectionOwnerService {
         active.update(&txn).await?;
 
         let taxonomy_category = taxonomy_sync::load_category_owner_snapshot_in_tx(
+            &*self.port,
             &txn,
             tenant_id,
             category_id,
@@ -435,9 +460,14 @@ impl CategoryProjectionOwnerService {
         let icon = requested_icon.or(taxonomy_category.icon_key);
         let color = requested_color.or(taxonomy_category.color);
 
-        let existing_canonical =
-            taxonomy_sync::load_category_locale_copy_in_tx(&txn, tenant_id, category_id, &locale)
-                .await?;
+        let existing_canonical = taxonomy_sync::load_category_locale_copy_in_tx(
+            &*self.port,
+            &txn,
+            tenant_id,
+            category_id,
+            &locale,
+        )
+        .await?;
         let (canonical_name, canonical_slug, canonical_description) = match existing_canonical {
             Some(existing) => {
                 let name = requested_name.clone().unwrap_or(existing.name);
@@ -470,6 +500,7 @@ impl CategoryProjectionOwnerService {
         };
 
         taxonomy_sync::sync_category_copy_in_tx(
+            &*self.port,
             &txn,
             tenant_id,
             category_id,

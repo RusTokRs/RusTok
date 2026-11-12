@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use sea_orm::{
     ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
@@ -11,9 +12,6 @@ use rustok_content::{
     available_locales_from, normalize_locale_code, resolve_by_locale_with_fallback,
 };
 use rustok_core::SecurityContext;
-use rustok_taxonomy::{
-    TaxonomyError, TaxonomyOwnerCategory, TaxonomyOwnerCategoryReader, TaxonomyScopeType,
-};
 
 use crate::dto::{
     CategoryCursorPage, CategoryCursorQuery, CategoryReadModel, MAX_FORUM_CATEGORY_TREE_NODES,
@@ -27,6 +25,7 @@ use crate::entities::{
     forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
+use crate::ports::taxonomy::{ForumTaxonomyCategorySnapshot, ForumTaxonomyPort, NoopForumTaxonomyPort};
 use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;
@@ -41,6 +40,7 @@ const REPLY_CURSOR_VERSION: &str = "r1";
 pub struct ForumReadModelService {
     db: DatabaseConnection,
     settings: ForumSettingsProviders,
+    taxonomy_port: Arc<dyn ForumTaxonomyPort>,
 }
 
 impl ForumReadModelService {
@@ -48,11 +48,17 @@ impl ForumReadModelService {
         Self {
             db,
             settings: ForumSettingsProviders::default(),
+            taxonomy_port: Arc::new(NoopForumTaxonomyPort),
         }
     }
 
     pub fn with_settings_providers(mut self, settings: ForumSettingsProviders) -> Self {
         self.settings = settings;
+        self
+    }
+
+    pub fn with_taxonomy_port(mut self, port: Arc<dyn ForumTaxonomyPort>) -> Self {
+        self.taxonomy_port = port;
         self
     }
 
@@ -95,17 +101,16 @@ impl ForumReadModelService {
             .map(|category| category.id)
             .collect::<Vec<_>>();
 
-        let projections = TaxonomyOwnerCategoryReader::new(self.db.clone())
+        let projections = self
+            .taxonomy_port
             .load_scoped_categories(
+                (&self.db).into(),
                 tenant_id,
-                TaxonomyScopeType::Module,
-                Some("forum"),
                 Some(&category_ids),
                 &requested_locale,
                 fallback_locale.as_deref(),
             )
-            .await
-            .map_err(map_taxonomy_read_error)?;
+            .await?;
         let mut projection_by_id = projections
             .into_iter()
             .map(|projection| (projection.id, projection))
@@ -565,7 +570,7 @@ impl ForumReadModelService {
 
 struct BoundCategoryReadModel {
     owner: forum_category::Model,
-    canonical: TaxonomyOwnerCategory,
+    canonical: ForumTaxonomyCategorySnapshot,
     parent_id: Option<Uuid>,
 }
 
@@ -627,15 +632,6 @@ fn decode_reply_cursor(value: &str) -> ForumResult<ReplyCursor> {
 
 fn invalid_cursor(kind: &str) -> ForumError {
     ForumError::Validation(format!("Invalid {kind} cursor"))
-}
-
-fn map_taxonomy_read_error(error: TaxonomyError) -> ForumError {
-    match error {
-        TaxonomyError::Database(error) => ForumError::Database(error),
-        other => ForumError::Validation(format!(
-            "Forum Taxonomy category read projection failed: {other}"
-        )),
-    }
 }
 
 fn normalized_locale(locale: Option<&str>) -> ForumResult<String> {

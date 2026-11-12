@@ -53,6 +53,14 @@ impl TopicService {
         self
     }
 
+    pub fn with_taxonomy_port(
+        mut self,
+        port: std::sync::Arc<dyn crate::ports::taxonomy::ForumTaxonomyPort>,
+    ) -> Self {
+        self.inner = self.inner.with_taxonomy_port(port);
+        self
+    }
+
     fn with_optional_audience_facts(
         db: DatabaseConnection,
         event_bus: TransactionalEventBus,

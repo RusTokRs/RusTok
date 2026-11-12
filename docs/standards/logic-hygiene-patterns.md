@@ -552,6 +552,9 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-TLS-DANGER-BYPASS` | Security | Root CAs and signatures strictly verified | Critical: danger_accept_invalid_certs or dummy assertions |
 | `P-UNBOUNDED-ALLOC-OOM` | Preconditions & bounds | Network payload lengths validated against max limit | Critical: vector allocated from unvalidated byte buffer length |
 | `P-CANONICAL-DIGEST` | Cryptographic integrity | Variable-length elements prefixed with length in signatures/hashes | Manual |
+| `P-PTR-ARG` | API design | Borrowed slices used instead of &String, &Vec, &PathBuf | High: &String, &Vec, or &PathBuf in function parameters |
+| `P-BLOCKING-IO-IN-ASYNC` | Concurrency | Asynchronous tasks use non-blocking I/O or spawn_blocking | High: synchronous std::fs in async fn |
+| `P-STALE-ALLOW-LINT` | Code completeness | Unused functions tested, deleted, or marked with #[expect(dead_code, reason = "...")] | Medium: bare #[allow(dead_code)] on function |
 
 ---
 
@@ -1061,3 +1064,70 @@ for addr in &addrs {
 ```
 
 Detection: Review signature generation and hash commitment implementations in security and identity boundaries.
+
+## P-PTR-ARG — Use borrowed slices rather than references to owned containers
+
+- **Category:** API design and allocation minimization.
+- **Logic dimensions:** Preconditions and bounds, algorithmic efficiency.
+- **Observed behavior:** Function signatures accepting `&String`, `&Vec<T>`, or `&PathBuf` (or nested in `Option<&String>`, `Option<&Vec<T>>`, `Option<&PathBuf>`, or `&[&String]`) force callers to construct, allocate, or borrow specifically owned containers, even when a borrowed slice `&str`, `&[T]`, or `&Path` would suffice. For example, `fn validate(name: &String)` rejects a string literal `"admin"` without an explicit `String::from("admin")` allocation. Observed in fulfillment administration ([core.rs](../../crates/modules/rustok-fulfillment/admin/src/core.rs)) and flex standalone schemas ([standalone.rs](../../crates/modules/flex/src/standalone.rs)).
+- **Remediation:** Replace references to owned types with their standard borrowed slice counterparts: `&str` instead of `&String`, `&[T]` instead of `&Vec<T>`, and `&Path` instead of `&PathBuf`. For in-place mutation buffers (e.g. `&mut String` or `&mut Vec<T>`), retain the mutable reference.
+
+```rust
+// Vulnerable to redundant allocations and inflexible caller requirements
+pub fn format_allowed_profiles(locale: Option<&str>, profiles: Option<&Vec<String>>) -> String {
+    // ...
+}
+
+// Idiomatic and zero-cost: accepts &[String], &Vec<String>, array slices, and literals
+pub fn format_allowed_profiles(locale: Option<&str>, profiles: Option<&[String]>) -> String {
+    // ...
+}
+```
+
+Detection: `cargo xtask doctor hygiene --crate <crate>` or
+`rg -n 'fn \w+\([^)]*:\s*(Option<)?&(String|Vec<|PathBuf)' crates/ apps/`.
+Doctor flags immutable references to `String`, `Vec`, or `PathBuf` in non-test function signatures.
+
+## P-BLOCKING-IO-IN-ASYNC — Disallow synchronous filesystem I/O in async functions
+
+- **Category:** Async concurrency and worker thread starvation.
+- **Logic dimensions:** Order and concurrency, side-effect completeness.
+- **Observed behavior:** Calling synchronous filesystem operations (`std::fs::read`, `std::fs::write`, `std::fs::File::open`, `std::fs::remove_file`) directly within an `async fn` blocks the executing Tokio worker thread for the entire duration of the OS syscall. Under concurrent load, multiple blocking I/O calls deplete the async executor thread pool, causing severe request latency, timer drifts, and thread starvation.
+- **Remediation:** In asynchronous contexts, use non-blocking equivalents from `tokio::fs` or offload heavy/blocking file operations to the dedicated blocking pool via `tokio::task::spawn_blocking`:
+
+```rust
+// Blocking: starves executor worker thread
+async fn load_template(path: &Path) -> Result<String, Error> {
+    let content = std::fs::read_to_string(path)?;
+    Ok(content)
+}
+
+// Non-blocking remediation via tokio::fs
+async fn load_template(path: &Path) -> Result<String, Error> {
+    let content = tokio::fs::read_to_string(path).await?;
+    Ok(content)
+}
+```
+
+Detection: `cargo xtask doctor hygiene --crate <crate>`.
+Doctor flags direct calls to `std::fs::` inside functions declared with `async fn`.
+
+## P-STALE-ALLOW-LINT — Prohibit bare dead-code lint suppression on functions
+
+- **Category:** Production readiness and incomplete code detection.
+- **Logic dimensions:** Branch completeness, state transitions.
+- **Observed behavior:** Attaching `#[allow(dead_code)]` to uncalled functions or methods masks abandoned stubs, incomplete features, and unverified logic chains from the compiler. Unlike `#[expect(dead_code, reason = "...")]` (stabilized in Rust 1.81), `#[allow]` permanently silences the warning even after callers are added or if the stub is abandoned indefinitely. Observed in SEO bulk processing ([bulk.rs](../../crates/modules/rustok-seo/src/services/bulk.rs)) where multiple batch executor variants were left commented out or dormant.
+- **Remediation:** Either provide active unit tests and callers for the function, remove dead and abandoned code, or migrate to `#[expect(dead_code, reason = "...")]` with an explicit justification if the API is part of an agreed pending milestone.
+
+```rust
+// Masked dead code: compiler never reminds author to wire or test
+#[allow(dead_code)]
+fn parse_bulk_csv(...) -> SeoResult<Vec<BulkImportRow>> { ... }
+
+// Self-cleaning expectation: compiler warns if function becomes used
+#[expect(dead_code, reason = "planned bulk ingestion API for milestone 4")]
+fn parse_bulk_csv(...) -> SeoResult<Vec<BulkImportRow>> { ... }
+```
+
+Detection: `cargo xtask doctor hygiene --crate <crate>`.
+Doctor detects bare `#[allow(dead_code)]` on function definitions in non-test, non-migration crates.

@@ -21,7 +21,7 @@ use super::auth::{
     AUTHORIZATION_METADATA, ProductCatalogGrpcAuthenticationError, ProductCatalogGrpcBearerToken,
     TENANT_ID_METADATA,
 };
-use super::client::{
+use super::payloads::{
     ProductIdPayload, ProductImageIdPayload, ProductInputPayload, ReorderProductImagesPayload,
     UpdateProductImagePayload, VariantIdPayload, VariantInputPayload,
 };

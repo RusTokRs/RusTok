@@ -1,6 +1,7 @@
 use std::fmt;
 
 use sha2::{Digest, Sha256};
+#[cfg(feature = "grpc-server")]
 use subtle::ConstantTimeEq;
 use thiserror::Error;
 use tonic::metadata::{Ascii, MetadataValue};
@@ -45,10 +46,12 @@ impl ProductCatalogGrpcBearerToken {
         })
     }
 
+    #[cfg(feature = "grpc-client")]
     pub(crate) fn authorization_value(&self) -> MetadataValue<Ascii> {
         self.authorization.clone()
     }
 
+    #[cfg(feature = "grpc-server")]
     pub(crate) fn matches_authorization(&self, candidate: &[u8]) -> bool {
         let candidate_digest = authorization_digest(candidate);
         bool::from(self.authorization_digest.ct_eq(&candidate_digest))

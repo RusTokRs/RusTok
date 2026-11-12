@@ -729,11 +729,11 @@ impl CatalogService {
         let response = ProductResponse {
             id: product.id,
             tenant_id: product.tenant_id,
-            status: product.status,
+            status: product.status.into(),
             seller_id: product.seller_id,
             vendor: product.vendor,
             product_type: product.product_type,
-            fulfillment_requirement,
+            fulfillment_requirement: fulfillment_requirement.into(),
             shipping_profile_slug: product
                 .shipping_profile_slug
                 .clone()
