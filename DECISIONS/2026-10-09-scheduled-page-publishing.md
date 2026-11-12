@@ -165,5 +165,14 @@ behavior from cutover; immediate publishing is unchanged.
 - Content edited after scheduling intentionally fails the scheduled publish instead of
   publishing unreviewed content; the job failure surface is the editor's signal to
   reschedule after re-review.
-- Hosts must run the sweep (or the `run()` loop) for schedules to fire; documented in the
-  module README Known Limitations.
+- The sweep is driven by the host scheduler: the module publishes
+  `PageScheduledPublishWorkRegistration` through `rustok_runtime::ModuleWorkRegistrations`
+  (feature `runtime`, enabled by `mod-pages` in `apps/server`), and the server's module-work
+  scheduler executes it every poll. A host that compiles the module without that feature must
+  run `PagePublishScheduler` (or `process_due_publish_jobs`) itself for schedules to fire;
+  documented in the module README Known Limitations.
+- Discovery claims a tenant for a due `scheduled` job or for an `executing` job whose lease
+  expired, so the reaper is reachable while no other work exists. Executions are paced by
+  `PAGE_PUBLISH_SWEEP_INTERVAL_SECS`: the host polls every second, and an unpaced sweep would
+  spend a transiently failing job's attempt budget in seconds and turn a brief outage into a
+  terminal `failed` publication.

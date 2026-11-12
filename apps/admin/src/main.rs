@@ -29,9 +29,10 @@ async fn main() {
     use rustok_pages_admin::{
         BrowserIntentEnvelope, DraftSessionOwner, FLY_CSRF_HEADER_NAME,
         PagesBrowserIntentAccessError, PagesBrowserIntentProblem, PagesBrowserIntentResponse,
-        PagesBuilderSaveSnapshot, dispatch_pages_browser_intent_with_capabilities,
-        fetch_pages_builder_rollout_snapshot, pages_editor_capabilities_for_snapshot,
-        pages_editor_capability_policy_from_effective, verify_csrf_token,
+        PagesBuilderSaveSnapshot, csrf_secret_from_access_token,
+        dispatch_pages_browser_intent_with_capabilities, fetch_pages_builder_rollout_snapshot,
+        pages_editor_capabilities_for_snapshot, pages_editor_capability_policy_from_effective,
+        verify_csrf_token,
     };
     use rustok_ui_auth::AuthError;
     use serde_json::{Value, json};
@@ -68,12 +69,16 @@ async fn main() {
                     )
                 })?;
                 let csrf_header = header_value(&headers, FLY_CSRF_HEADER_NAME);
-                // The CSRF secret is the session id: stable across
-                // refresh-token rotation (unlike the access token),
-                // unguessable, and only ever embedded into pages this
-                // host renders for the authenticated browser.
-                let csrf_secret =
-                    leptos_auth::session_id_from_access_token(&session.token).unwrap_or_default();
+                // The CSRF secret is the session id: stable across refresh-token rotation
+                // (unlike the access token), unguessable, and only ever embedded into pages this
+                // host renders for the authenticated browser. The page that embeds it derives it
+                // with the same helper, so the two sides cannot drift apart.
+                let csrf_secret = csrf_secret_from_access_token(&session.token).ok_or_else(|| {
+                    auth_error(
+                        StatusCode::FORBIDDEN,
+                        "Page Builder session has no session id to verify a CSRF token against",
+                    )
+                })?;
                 match csrf_header {
                     Some(client_csrf) if verify_csrf_token(&csrf_secret, &client_csrf) => {
                         (session.token.clone(), session.tenant.clone())

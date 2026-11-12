@@ -2539,7 +2539,15 @@ pub enum SsrDraftSessionError {
     Poisoned,
     #[error("SSR draft session belongs to page `{expected}`, not `{actual}`")]
     PageMismatch { expected: String, actual: String },
-    #[error("SSR draft session generation conflict: expected `{expected}`, received `{actual}`")]
+    /// A commit carried a generation that is not the one the session holds.
+    ///
+    /// The field names read as a validation pair, so read them with the message: `expected` is
+    /// the generation the **stored record** holds (what the store expected the caller to send)
+    /// and `actual` is the generation the **caller** sent. Every constructor in this crate and in
+    /// its consumers uses that order; the values are diagnostics only (the browser receives
+    /// `DRAFT_GENERATION_CONFLICT`), so a swap would not mis-behave, it would only mislead an
+    /// operator reading the log line.
+    #[error("SSR draft session generation conflict: stored `{expected}`, caller sent `{actual}`")]
     GenerationConflict { expected: u64, actual: u64 },
     #[error("SSR draft session token `{0}` is invalid")]
     InvalidToken(String),

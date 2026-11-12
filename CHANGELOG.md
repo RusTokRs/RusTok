@@ -195,6 +195,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (migration `m20261008_000031`). The field had no writer and always returned 0.
 
 ### Fixed
+- Pages scheduled publishing never fired in a deployed host: `PagePublishScheduler` had no
+  caller and `rustok-pages` published no module work, so a scheduled publication stayed
+  `scheduled` until an operator ran a sweep by hand. The module now publishes
+  `PageScheduledPublishWorkRegistration` through `rustok_runtime::ModuleWorkRegistrations`
+  (feature `runtime`, enabled by `mod-pages` in `apps/server`), and the host module-work
+  scheduler executes `page_scheduled_publish`. Discovery claims a tenant for a due `scheduled`
+  job or for an `executing` job whose lease expired, so a publication stranded by a crashed
+  worker is reachable while no other work exists, and executions are paced by
+  `PAGE_PUBLISH_SWEEP_INTERVAL_SECS` so a per-second poll cannot spend a transiently failing
+  job's attempt budget in seconds. `PagePublishScheduler` remains as the manual facade for
+  hosts that compile the module without the feature. See
+  `DECISIONS/2026-10-09-scheduled-page-publishing.md`.
 - Blog `featured_image_url` is validated on create and update: only absolute `http`/`https` URLs or
   root-relative paths, at most 2048 characters. Other schemes were previously stored and reached SEO
   and JSON-LD output.

@@ -16954,6 +16954,7 @@ dependencies = [
  "rustok-events",
  "rustok-outbox",
  "rustok-page-builder",
+ "rustok-runtime",
  "rustok-seo-targets",
  "rustok-telemetry",
  "rustok-tenant",

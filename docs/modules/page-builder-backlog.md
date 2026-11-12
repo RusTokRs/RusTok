@@ -30,6 +30,16 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
 - Editable design-token panel in both adapter workspaces (`fly-leptos`,
   `fly-dioxus`) on `EditorCommand::Theme`; adapter token display is no longer
   read-only.
+- Pages scheduled publishing is driven by the deployed host: with the `runtime`
+  feature (enabled by `mod-pages`) `rustok-pages` publishes
+  `PageScheduledPublishWorkRegistration` through
+  `rustok_runtime::ModuleWorkRegistrations`, and discovery claims a tenant for a
+  due job or for an `executing` job whose lease expired, so a publication
+  stranded by a crashed worker is reachable while no other Pages work exists.
+  Executions are paced by `PAGE_PUBLISH_SWEEP_INTERVAL_SECS`. Statically
+  verified only: the SQLite cases in
+  `crates/modules/rustok-pages/tests/page_publish_scheduler_sqlite.rs` are
+  written but were not executed (no Rust toolchain in the authoring environment).
 
 ## Open, in priority order
 

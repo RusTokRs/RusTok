@@ -838,6 +838,12 @@ fn default_intent_request_timeout_message() -> String {
 /// state-changing routes do not require an explicit credential that only same-origin JavaScript
 /// can read and provide. Because cross-origin scripts cannot read the session cookie under SOP,
 /// a SHA-256 derivation of the session token is unguessable by an attacker.
+///
+/// The secret must be the **session id**, not the access token: the access token rotates on
+/// refresh, so a token derived from it dies with the token that happened to render the page,
+/// while the id identifies the refresh lineage and lives as long as the session. A caller that
+/// has only an access token derives the id with
+/// [`csrf_secret_from_access_token`] — the same rule the endpoint that verifies the token uses.
 pub fn derive_csrf_token(session_token: &str) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
@@ -848,6 +854,59 @@ pub fn derive_csrf_token(session_token: &str) -> String {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
+}
+
+/// The CSRF secret carried by an access token, or nothing when the token carries none.
+///
+/// This is the one rule both sides of the protocol use: the page renderer that embeds the token
+/// and the endpoint that verifies the header. They must agree, because disagreeing fails closed
+/// twice — an editor whose every save answers 403, and a secret derived from an access token
+/// that dies at the next refresh rotation while the embedded page keeps sending the old one.
+///
+/// A token without a `session_id` claim has no secret that survives rotation, so the caller
+/// fails closed instead of substituting the access token. On this platform every access token
+/// carries the claim (`UserClaims::session_id` is a non-optional `Uuid`); the `None` arm covers a
+/// foreign issuer and a token whose payload cannot be parsed.
+pub fn csrf_secret_from_access_token(access_token: &str) -> Option<String> {
+    let payload = access_token.split('.').nth(1)?;
+    let decoded = base64url_decode(payload)?;
+    let claims: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
+    claims
+        .get("session_id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|session_id| !session_id.is_empty())
+        .map(str::to_string)
+}
+
+/// Base64url (unpadded) decoding, the encoding a JWT segment uses.
+fn base64url_decode(input: &str) -> Option<Vec<u8>> {
+    fn value_of(byte: u8) -> Option<u8> {
+        match byte {
+            b'A'..=b'Z' => Some(byte - b'A'),
+            b'a'..=b'z' => Some(byte - b'a' + 26),
+            b'0'..=b'9' => Some(byte - b'0' + 52),
+            b'-' => Some(62),
+            b'_' => Some(63),
+            _ => None,
+        }
+    }
+
+    let mut output = Vec::with_capacity(input.len() * 3 / 4);
+    let mut buffer: u32 = 0;
+    let mut bits: u32 = 0;
+    for byte in input.bytes() {
+        if byte == b'=' {
+            break;
+        }
+        buffer = (buffer << 6) | u32::from(value_of(byte)?);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            output.push(((buffer >> bits) & 0xFF) as u8);
+        }
+    }
+    Some(output)
 }
 
 /// Constant-time verification of a client-supplied CSRF token against the expected session token.

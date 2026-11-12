@@ -1274,14 +1274,14 @@ fn PagesFlyBuilder(
                 .with_runtime_scenarios(scenarios)
                 .with_browser_intent_endpoint(browser_endpoint)
                 .on_runtime_scenario_baseline(on_baseline);
+            // Derive from the session id, not the access token: the id is stable across
+            // refresh rotation, so the embedded CSRF token stays valid for the session. The
+            // endpoint that verifies the header uses this same helper, so a token without a
+            // session id embeds nothing instead of embedding a value the endpoint would reject.
             if let Some(csrf) = token
                 .get_untracked()
                 .as_deref()
-                .filter(|s| !s.trim().is_empty())
-                // Derive from the session id, not the access token:
-                // the id is stable across refresh rotation, so the
-                // embedded CSRF token stays valid for the session.
-                .and_then(leptos_auth::session_id_from_access_token)
+                .and_then(fly_browser::csrf_secret_from_access_token)
                 .map(|session_id| fly_browser::derive_csrf_token(&session_id))
             {
                 host = host.with_browser_csrf_token(csrf);

@@ -74,7 +74,8 @@ pub use contributions::{
     pages_landing_blocks_contribution, pages_metadata_contribution, pages_metadata_property_schema,
 };
 pub use fly_browser::{
-    BrowserIntentEnvelope, FLY_CSRF_HEADER_NAME, derive_csrf_token, verify_csrf_token,
+    BrowserIntentEnvelope, FLY_CSRF_HEADER_NAME, csrf_secret_from_access_token, derive_csrf_token,
+    verify_csrf_token,
 };
 pub use rustok_page_builder_admin::DraftSessionOwner;
 pub use starters::{

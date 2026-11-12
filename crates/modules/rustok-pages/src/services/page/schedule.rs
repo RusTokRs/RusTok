@@ -50,6 +50,17 @@ pub const PAGE_PUBLISH_SCHEDULE_NOT_CANCELABLE: &str = "PAGE_PUBLISH_SCHEDULE_NO
 pub const PAGE_PUBLISH_SCHEDULE_TIME_INVALID: &str = "PAGE_PUBLISH_SCHEDULE_TIME_INVALID";
 pub const PAGE_PUBLISH_JOB_LEASE_EXPIRED: &str = "PAGE_PUBLISH_JOB_LEASE_EXPIRED";
 
+/// Stable scheduler identity of the Pages scheduled-publish queue.
+pub const PAGE_SCHEDULED_PUBLISH_WORKER: &str = "page_scheduled_publish";
+
+/// How often one host executes the queue.
+///
+/// This is the cadence of [`PagePublishScheduler`]'s own loop, kept because the module-work
+/// scheduler polls every second: without the pace a transiently failing job would spend its
+/// whole attempt budget in seconds and become terminally `failed` instead of outlasting a short
+/// outage.
+pub const PAGE_PUBLISH_SWEEP_INTERVAL_SECS: u64 = 30;
+
 /// What one reaper pass did with expired `executing` jobs.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PagePublishReapOutcome {
@@ -203,6 +214,11 @@ impl PageService {
     }
 
     /// Cancels the pending schedule of one page.
+    ///
+    /// Cancellation targets the pending job, not the newest row of any state: a page that was
+    /// published, rescheduled and published again holds terminal rows newer than its live
+    /// schedule, so reading "the latest job" would report a completed publication as
+    /// non-cancelable while a real pending job was still going to fire.
     #[instrument(skip(self, security))]
     pub async fn cancel_scheduled_publish(
         &self,
@@ -213,14 +229,19 @@ impl PageService {
         let page = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(&security, Resource::Pages, Action::Publish, page.author_id)?;
 
-        let job = self.latest_publish_job(tenant_id, page_id).await?;
+        // A page has at most one pending job (unique partial index), so this lookup is exact.
+        let job = self.pending_publish_job(tenant_id, page_id).await?;
         let Some(job) = job else {
-            return Err(schedule_not_found(page_id));
+            // No pending schedule: report what the page's newest job is, or that it never had one.
+            return match self.latest_publish_job(tenant_id, page_id).await? {
+                Some(job) => {
+                    let state = PagePublishJobState::parse(&job.state)
+                        .expect("job state is storage-checked");
+                    Err(schedule_not_cancelable(state))
+                }
+                None => Err(schedule_not_found(page_id)),
+            };
         };
-        let state = PagePublishJobState::parse(&job.state).expect("job state is storage-checked");
-        if state != PagePublishJobState::Scheduled {
-            return Err(schedule_not_cancelable(state));
-        }
 
         let mut active: page_publish_job::ActiveModel = job.into();
         active.state = Set(PagePublishJobState::Canceled.as_str().to_string());
@@ -229,9 +250,12 @@ impl PageService {
         Ok(schedule_response_from_model(model))
     }
 
-    /// Returns the most recent schedule job of one page, whatever its state.
+    /// Returns the schedule of one page as the editor should see it: the pending job when there is
+    /// one, otherwise the newest job of any state.
     ///
-    /// `None` means the page was never scheduled.
+    /// The pending job has to win. A page that published on schedule and was then scheduled again
+    /// keeps the earlier terminal row, and "newest row" would report the completed publication
+    /// while the live schedule — the thing the editor is asking about — went unread.
     #[instrument(skip(self, security))]
     pub async fn page_publish_schedule(
         &self,
@@ -242,6 +266,9 @@ impl PageService {
         let page = self.find_page(tenant_id, page_id).await?;
         enforce_owned_scope(&security, Resource::Pages, Action::Read, page.author_id)?;
 
+        if let Some(pending) = self.pending_publish_job(tenant_id, page_id).await? {
+            return Ok(Some(schedule_response_from_model(pending)));
+        }
         Ok(self
             .latest_publish_job(tenant_id, page_id)
             .await?
@@ -498,6 +525,24 @@ impl PageService {
         Ok(outcome)
     }
 
+    /// The page's pending (not yet executed) job; at most one by the unique partial index.
+    async fn pending_publish_job(
+        &self,
+        tenant_id: Uuid,
+        page_id: Uuid,
+    ) -> PagesResult<Option<page_publish_job::Model>> {
+        Ok(page_publish_job::Entity::find()
+            .filter(page_publish_job::Column::TenantId.eq(tenant_id))
+            .filter(page_publish_job::Column::PageId.eq(page_id))
+            .filter(page_publish_job::Column::State.eq(PagePublishJobState::Scheduled.as_str()))
+            .one(&self.db)
+            .await?)
+    }
+
+    /// The page's most recently changed job of any state.
+    ///
+    /// Ordered by `updated_at`: an `executing` row is rewritten by the reaper and a requeued row
+    /// returns to `scheduled`, so `created_at` alone would put a stale terminal row first.
     async fn latest_publish_job(
         &self,
         tenant_id: Uuid,
@@ -506,6 +551,7 @@ impl PageService {
         Ok(page_publish_job::Entity::find()
             .filter(page_publish_job::Column::TenantId.eq(tenant_id))
             .filter(page_publish_job::Column::PageId.eq(page_id))
+            .order_by_desc(page_publish_job::Column::UpdatedAt)
             .order_by_desc(page_publish_job::Column::CreatedAt)
             .order_by_desc(page_publish_job::Column::Id)
             .one(&self.db)
