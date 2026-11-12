@@ -153,6 +153,15 @@ of Blog terms is `module` / `blog`, and the canonical key of a Blog Category
 term is `blog-category-{category_id}` (pinned by
 `tests/category_taxonomy_dual_write.rs`).
 
+Open, same cause: `tests/category_taxonomy_delete_lifecycle.rs` does not
+compile. It passes a `rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort` to
+`CategoryService::with_category_delete_cleanup`, which takes
+`BlogCategoryDeleteCleanupPort` since the port migration. Changing the trait in
+the test is not enough: the test builds the service with
+`CategoryService::new`, which uses `NoopBlogTaxonomyPort`, and then asserts on
+`taxonomy_term` and `taxonomy_category_hierarchy` rows that only the adapter
+writes. The test needs the adapter and `with_taxonomy_port`.
+
 Do not reintroduce a second `blog/category` Translation provider or direct
 localized Blog Category storage. Translation-control-plane work for Category
 copy must use the canonical Taxonomy owner contract.
