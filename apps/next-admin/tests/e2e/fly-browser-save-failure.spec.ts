@@ -1,6 +1,7 @@
 import { expect, Page, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { openBlankDocument } from './support/fly-blank-document';
 
 const adapterPath = resolve(
   process.cwd(),
@@ -41,9 +42,10 @@ type SaveFailureScope = typeof globalThis & {
   };
 };
 
-// Storage needs a real origin, so the adapter is mounted over a page of the host.
+// Storage needs a real origin, so the adapter is mounted in an empty document of the origin
+// under test. No page of the host is loaded: see `openBlankDocument`.
 async function openHost(page: Page) {
-  await page.goto('/auth/sign-in', { waitUntil: 'networkidle' });
+  await openBlankDocument(page);
 }
 
 // Mounts the adapter into the current document. `parked` is written to `sessionStorage` first,
@@ -56,7 +58,6 @@ async function mountAdapter(
   const adapterSource = await readFile(adapterPath, 'utf8');
   await page.evaluate(
     async ({ source, mode, parked, failure, key }) => {
-      window.stop();
       document.body.innerHTML = `
         <div
           id="fly-root"
