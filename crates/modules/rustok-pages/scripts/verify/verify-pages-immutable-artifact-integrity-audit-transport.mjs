@@ -232,7 +232,8 @@ for (const source of [gqlMutation, httpHandler]) {
 
 for (const marker of [
   "mod artifact_integrity_audit;",
-  "pub use artifact_integrity_audit::audit_page_artifacts;",
+  // The re-export also carries the `__path_` item utoipa needs; rustfmt puts both on one line.
+  "pub use artifact_integrity_audit::{__path_audit_page_artifacts, audit_page_artifacts};",
   ".merge(artifact_integrity_audit::router(runtime)?)",
 ]) need(sources.httpMod, marker, "HTTP module wiring");
 

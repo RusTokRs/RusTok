@@ -320,7 +320,10 @@ for (const marker of [
 ]) forbid(sources.http, marker, "HTTP adapter boundary");
 for (const marker of [
   "mod artifact_repair;",
-  "pub use artifact_repair::{activate_rebuilt_page_artifact, rebuild_page_artifact};",
+  // The re-export is a multi-line brace list that also carries the `__path_` items utoipa needs;
+  // pin the two handlers and the module path rather than one exact formatting of the block.
+  "pub use artifact_repair::{",
+  "activate_rebuilt_page_artifact, rebuild_page_artifact,",
   ".merge(artifact_repair::router(runtime)?)",
 ]) need(sources.httpMod, marker, "HTTP module wiring");
 

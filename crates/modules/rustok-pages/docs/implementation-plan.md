@@ -374,6 +374,12 @@ Release, infrastructure and hardening workflows use the allow-listed full action
 
 No release workflow, reproducibility job, Docker build or artifact was executed in this source slice.
 
+This slice is the release composition, not its execution: the label
+`release-composition-source-ready / execution-browser-rollout-pending` names the two halves —
+the composition is owned and pinned, and the release workflow, the Docker build and the browser
+rollout have not run. Execution remains pending for all three, and the source packets say so
+rather than inferring a pass from the source review.
+
 ### Anonymous storefront boundary: source-ready
 
 Authenticated inline, asset and admin-launch profiles remain non-default. Anonymous default/CSR/hydrate/SSR profiles do not enable them. Public Pages HTML does not reference the authoring bootstrap.
