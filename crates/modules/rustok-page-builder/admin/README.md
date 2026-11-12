@@ -97,12 +97,15 @@ Pages of a document in the default runtime (`src/editor/ssr_inspector.rs`):
 
 SSR draft session storage (`src/draft_session.rs`):
 
-- **Nothing schedules `prune`.** An expired session is dropped when it is read (the file store
-  deletes the file under the token lock, the key-value backend deletes the key only while it still
-  holds the generation that was read), and the per-owner cap is enforced when a session is
-  created. Everything else waits for a host to call `SsrDraftSessionStore::prune`, and no host
-  does yet: a session nobody reads again stays in storage, and the global cap (`maximum_entries`)
-  of the file and key-value backends is not enforced.
+- **`prune` has one host caller, and it is the standalone admin.** Expired sessions are also
+  dropped when they are read (the file store deletes the file under the token lock, the key-value
+  backend deletes the key only while it still holds the generation that was read), and the
+  per-owner cap is enforced when a session is created. Both are lazy: a session nobody reads again
+  would never be collected, and the global cap (`maximum_entries`) would never apply. The
+  standalone admin now runs `apps/admin/src/app/draft_retention.rs`
+  (`DRAFT_SESSION_PRUNE_INTERVAL`, five minutes) over the store the intent endpoint resolves, so
+  a store installed through `set_pages_browser_draft_store` is pruned too. A host that embeds the
+  editor but not that binary still owes the same call.
 - **Drafts of the pre-partition file layout are not migrated.** Files written directly into the
   storage root by earlier builds are no longer read; `prune` deletes them once they are older than
   one TTL.

@@ -220,9 +220,12 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
     `crates/modules/rustok-page-builder/contracts/landing-css-scope-parity.json`), all four
     Leptos surfaces scope project CSS, and the scope root no longer depends on the host `class`.
     Remaining, each recorded under "Known Limitations / Pending Implementation" of its owner:
-    - Schedule `SsrDraftSessionStore::prune` from a host; until then the global session cap of
-      the persistent backends is not enforced and untouched sessions are not collected.
-      Owner: Page Builder admin (`crates/modules/rustok-page-builder/admin/README.md`).
+    - ~~Schedule `SsrDraftSessionStore::prune` from a host.~~ The standalone admin starts
+      `DRAFT_SESSION_PRUNE_INTERVAL`-paced pruning (`apps/admin/src/app/draft_retention.rs`) over
+      the store the intent endpoint resolves, so the global session cap of the persistent backends
+      applies and untouched sessions are collected. A host that embeds the editor without that
+      binary still owns the call; the owner README says so. Remaining owner: Page Builder admin
+      (`crates/modules/rustok-page-builder/admin/README.md`) for the embedded-host contract.
     - Give the persisted draft session record a format version. Without one the file store
       cannot tell a damaged record from the live session of another build, so a record that
       does not parse fails its token until it has not been written for one TTL. Owner: Page

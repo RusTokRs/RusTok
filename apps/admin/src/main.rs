@@ -23,8 +23,9 @@ async fn main() {
     use leptos_auth::{ServerAuthSnapshot, provide_server_auth_snapshot};
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use rustok_admin::app::{
-        App, admin_security_headers, auth_ssr::verify_auth_snapshot, request_auth_snapshot,
-        request_csp_nonce, shell, validate_admin_security_profile,
+        App, DRAFT_SESSION_PRUNE_INTERVAL, admin_security_headers,
+        auth_ssr::verify_auth_snapshot, request_auth_snapshot, request_csp_nonce, shell,
+        spawn_draft_session_prune, validate_admin_security_profile,
     };
     use rustok_pages_admin::{
         BrowserIntentEnvelope, DraftSessionOwner, FLY_CSRF_HEADER_NAME,
@@ -244,6 +245,11 @@ async fn main() {
         .with_state(options)
         .layer(middleware::from_fn(verify_auth_snapshot))
         .layer(middleware::from_fn(admin_security_headers));
+
+    // Draft sessions expire and are capped only when something calls `prune`; the intent
+    // endpoint touches a session only for a browser that asks. Without this loop an abandoned
+    // draft outlives its TTL until the process restarts.
+    spawn_draft_session_prune(DRAFT_SESSION_PRUNE_INTERVAL);
 
     log!("RusTok admin SSR listening on http://{address}");
     let listener = tokio::net::TcpListener::bind(address)
