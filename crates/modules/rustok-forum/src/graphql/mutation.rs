@@ -19,7 +19,7 @@ use crate::topic_create_transport::{
     ForumTopicCreateTransport, topic_create_audience_port_context,
 };
 use crate::{
-    CategoryResponse, CategoryService, ForumCategoryReadOperation, ForumCategoryReadTransport,
+    CategoryResponse, ForumCategoryReadOperation, ForumCategoryReadTransport,
     ForumTopicReadOperation, ForumTopicReadTransport, category_read_audience_port_context,
     topic_read_audience_port_context,
 };

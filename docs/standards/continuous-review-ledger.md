@@ -4,8 +4,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules  
-**Next pending component:** [`crates/modules/rustok-rbac/admin`](../../crates/modules/rustok-rbac/admin)  
-**Current main SHA:** `92b8a17373`  
+**Next pending component:** [`crates/modules/rustok-cache`](../../crates/modules/rustok-cache)  
+**Current main SHA:** `2ef0b35797`  
 **Active branch:** `main`
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **285 components** (~2.5M LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
