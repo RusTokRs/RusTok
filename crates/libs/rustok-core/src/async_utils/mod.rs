@@ -561,7 +561,8 @@ mod tests {
     #[tokio::test]
     async fn test_parallel_zero_concurrency_does_not_deadlock() {
         let items = vec![1, 2, 3];
-        let results: Vec<Result<i32, ()>> = parallel(items, 0, |item| async move { item * 2 }).await;
+        let results: Vec<Result<i32, ()>> =
+            parallel(items, 0, |item| async move { item * 2 }).await;
         let mut values: Vec<i32> = results.into_iter().map(|r| r.unwrap()).collect();
         values.sort();
         assert_eq!(values, vec![2, 4, 6]);

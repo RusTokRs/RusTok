@@ -146,7 +146,7 @@ async fn backfill_legacy_metadata_tags(txn: &sea_orm::DatabaseTransaction) -> Re
                             term_id: Set(term_id),
                             tenant_id: Set(product.tenant_id),
                             created_at: Set(
-                                (created_at + Duration::microseconds(position as i64)).into(),
+                                (created_at + Duration::microseconds(position as i64)).into()
                             ),
                         }
                         .insert(txn)
@@ -264,10 +264,7 @@ async fn find_existing_term(
     locale: &str,
     route_key: &str,
 ) -> Result<Option<Uuid>, DbErr> {
-    for (scope_type, scope_value) in [
-        ("module", PRODUCT_SCOPE_VALUE),
-        ("global", ""),
-    ] {
+    for (scope_type, scope_value) in [("module", PRODUCT_SCOPE_VALUE), ("global", "")] {
         for candidate_locale in locale_candidates(locale) {
             let row = RouteKeyTermIdRow::find_by_statement(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,

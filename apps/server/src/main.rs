@@ -18,7 +18,8 @@ fn main() -> eyre::Result<()> {
     let telemetry_cfg = telemetry_config();
     let has_otel = telemetry_cfg.otel.is_some();
     let _telemetry = rustok_telemetry::init(telemetry_cfg)?;
-    let stack_size = parse_thread_stack_size(std::env::var("RUSTOK_THREAD_STACK_SIZE").ok().as_deref());
+    let stack_size =
+        parse_thread_stack_size(std::env::var("RUSTOK_THREAD_STACK_SIZE").ok().as_deref());
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_stack_size(stack_size)
@@ -107,16 +108,28 @@ mod tests {
         assert_eq!(parse_thread_stack_size(Some("1048576")), DEFAULT_STACK_SIZE);
         // Between 2MB and 64MB is accepted
         assert_eq!(parse_thread_stack_size(Some("4194304")), 4 * 1024 * 1024);
-        assert_eq!(parse_thread_stack_size(Some("  16777216  ")), 16 * 1024 * 1024);
+        assert_eq!(
+            parse_thread_stack_size(Some("  16777216  ")),
+            16 * 1024 * 1024
+        );
         // Exceeding 64MB ceiling falls back to default
-        assert_eq!(parse_thread_stack_size(Some("134217728")), DEFAULT_STACK_SIZE);
+        assert_eq!(
+            parse_thread_stack_size(Some("134217728")),
+            DEFAULT_STACK_SIZE
+        );
     }
 
     #[test]
     fn log_format_parsing_normalizes_input() {
         assert!(matches!(parse_log_format(Some("json")), LogFormat::Json));
-        assert!(matches!(parse_log_format(Some("  JSON  ")), LogFormat::Json));
-        assert!(matches!(parse_log_format(Some("pretty")), LogFormat::Pretty));
+        assert!(matches!(
+            parse_log_format(Some("  JSON  ")),
+            LogFormat::Json
+        ));
+        assert!(matches!(
+            parse_log_format(Some("pretty")),
+            LogFormat::Pretty
+        ));
         assert!(matches!(parse_log_format(None), LogFormat::Pretty));
         assert!(matches!(parse_log_format(Some("other")), LogFormat::Pretty));
     }
@@ -137,7 +150,10 @@ mod tests {
     #[test]
     fn service_name_precedence_and_trimming() {
         assert_eq!(
-            resolve_service_name(Some("  otel-svc  ".to_string()), Some("rustok-svc".to_string())),
+            resolve_service_name(
+                Some("  otel-svc  ".to_string()),
+                Some("rustok-svc".to_string())
+            ),
             "otel-svc"
         );
         assert_eq!(

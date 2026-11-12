@@ -3,7 +3,11 @@
 import { useTranslations } from '@rustok/next-fluent/client';
 import Link from 'next/link';
 import { DataTableShell } from '@/widgets/data-table/data-table-shell';
-import { PostSortSelect, PostStatusSelect, PostTextFilter } from './sort-select';
+import {
+  PostSortSelect,
+  PostStatusSelect,
+  PostTextFilter
+} from './sort-select';
 import { createColumns } from './columns';
 import type { GqlOpts, PostSummary } from '../../api/posts';
 import { useMemo } from 'react';

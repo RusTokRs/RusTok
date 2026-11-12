@@ -88,7 +88,7 @@ async fn storefront_forum_native(
     #[cfg(feature = "ssr")]
     {
         use crate::model::bounded_forum_read_limit;
-use rustok_api::{
+        use rustok_api::{
             HostRuntimeContext, OptionalAuthContext, Permission, RequestContext,
             SharedStaticModuleSettingsReader, SharedStaticModuleSettingsTransactionReader,
             TenantContext, has_any_effective_permission,
@@ -487,7 +487,7 @@ async fn storefront_topic_mark_read_native(
     #[cfg(feature = "ssr")]
     {
         use crate::model::bounded_forum_read_limit;
-use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
         use rustok_forum::{
             ForumError, ForumStorefrontReadStateService, ForumTopicReadOperation,
@@ -914,7 +914,7 @@ async fn storefront_category_mark_read_native(
     #[cfg(feature = "ssr")]
     {
         use crate::model::bounded_forum_read_limit;
-use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
         use rustok_forum::{
             ForumError, ForumStorefrontReadStateService, ForumTopicReadOperation,
@@ -1014,7 +1014,7 @@ async fn storefront_all_topics_mark_read_native(
     #[cfg(feature = "ssr")]
     {
         use crate::model::bounded_forum_read_limit;
-use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
         use rustok_forum::{
             ForumStorefrontReadStateService, ForumTopicReadOperation, ForumTopicReadTransport,
@@ -1131,7 +1131,7 @@ async fn storefront_category_route_native(
     #[cfg(feature = "ssr")]
     {
         use crate::model::bounded_forum_read_limit;
-use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
         use rustok_forum::{
             ForumCategoryAudienceReadService, ForumCategoryReadOperation,
@@ -1286,7 +1286,7 @@ async fn storefront_topic_route_native(
     #[cfg(feature = "ssr")]
     {
         use crate::model::bounded_forum_read_limit;
-use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
         use rustok_forum::services::ForumTopicRouteTombstoneVisibilityService;
         use rustok_forum::{
@@ -1501,7 +1501,7 @@ async fn storefront_topic_current_revision_native(
     #[cfg(feature = "ssr")]
     {
         use crate::model::bounded_forum_read_limit;
-use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_forum::{
             ForumTopicAudienceReadService, RevisionService, SharedForumAudienceFactsPort,
         };
@@ -1583,7 +1583,7 @@ async fn storefront_reply_current_revision_native(
     #[cfg(feature = "ssr")]
     {
         use crate::model::bounded_forum_read_limit;
-use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
+        use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, TenantContext};
         use rustok_core::SecurityContext;
         use rustok_forum::{
             ForumReplyAudienceReadService, ForumReplyReadOperation, ForumReplyReadTransport,
@@ -1683,4 +1683,3 @@ use rustok_api::{HostRuntimeContext, OptionalAuthContext, RequestContext, Tenant
         ))
     }
 }
-

@@ -524,4 +524,3 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
         Ok(())
     }
 }
-

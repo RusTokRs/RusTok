@@ -909,6 +909,198 @@ Detection: `rg -n "dangerouslySetInnerHTML|inner_html" apps crates` lists the si
 for each, follow the value back and read every branch of its reader for one that
 returns or wraps the input (`rg -n "return \{ html: " apps` finds the direct form).
 
+## P-CHECK-FOLLOWS-SOURCE — A source-pinning check changes with the source it pins
+
+- **Category:** Verification integrity.
+- **Logic dimensions:** Preconditions and bounds, branch completeness.
+- **Observed defect:** Source verifiers of Pages and Page Builder pin Rust, TypeScript
+  and Markdown by text. Sources changed without them, in six ways. A cleanup removed
+  the statements that read deleted documents by text and left 75 scripts that do not
+  parse. A governance change deleted three plans that verifiers and contracts still
+  read. A module implementation moved from `lib.rs` to `module.rs` and three checks
+  kept reading the old file. A formatter rewrote quotes, so required markers stopped
+  matching and forbidden ones (`trace: "on"`) could never match. A check on one
+  struct read to the end of the file and failed on an unrelated type added later.
+  An ordering check compared positions of helper functions in a file instead of the
+  order of calls. More than half of the affected scripts ran in no workflow, so
+  nothing showed the drift; the workflows that ran the rest were already red.
+- **Canonical solution:** A change that moves, renames, reformats or deletes pinned
+  source updates the check in the same commit, and runs it. Remove a reference by
+  editing the syntax tree or by hand, never by deleting lines, and parse the result.
+  Slice the source to the item the check is about (one function, one struct) and
+  assert order inside the function that makes the calls. Compare data as data: split
+  a table row into cells, compare strings without their quote form. After changing a
+  check, break the source once and see the check fail. A check that no workflow runs
+  is not evidence; wire it or delete it.
+
+```js
+// One struct, not the rest of the file.
+const start = model.indexOf("pub struct PageMetadataPatch {");
+const patch = model.slice(start, model.indexOf("\n}\n", start) + 2);
+```
+
+Detection: `for f in $(git ls-files '*.mjs'); do node --check "$f" || echo "$f"; done`
+lists scripts that do not parse. Running every verifier at the commit and at its
+parent separates new failures from old ones. For each path string in a verifier or
+contract, `test -e` finds references to deleted files.
+
+## P-TWO-SIDED-MARKUP — A markup contract is derived from both of its sides
+
+- **Category:** Verification integrity, cross-language contracts.
+- **Logic dimensions:** Branch completeness, preconditions and bounds.
+- **Observed defect:** In the default server-rendered Page Builder the editor controls
+  work only when a Rust view emits a `data-fly-*` attribute and `fly-browser.js` binds
+  the same one. A migration replaced the views that emitted `data-fly-block-id` and
+  three action values with views that emitted `data-fly-block` and a Leptos click
+  handler, which does not exist without hydration. The adapter bound nothing, the
+  palette and the layer tree rendered and did nothing, and every build was green: the
+  adapter tests ran against markup written in the test, and the view tests asserted
+  the attributes the views happened to emit. A second control had the opposite defect:
+  the view emitted an action the adapter had no case for. A list of the contract kept
+  in a check would have been a third copy with the same fate.
+- **Canonical solution:** Name both sides of the contract and derive it from them.
+  The check reads what the consumer binds and what the producers emit, compares the
+  two sets in both directions, and keeps no list of its own; a known gap is an entry
+  that names the backlog record, and the entry is rejected once the gap is closed.
+  Each part needs a test on each side that uses the real artifact: the producer test
+  renders the real view, the consumer test loads the shipped script. A control whose
+  transport the host did not provide is not rendered. State that the server renders
+  from and that is not a command (a previewed viewport) travels in the route under a
+  key that the view and the server resolver share as one constant.
+
+```js
+// Both directions, from the sources, with no list in the check.
+for (const action of adapterActions) if (!emitted.has(action)) fail(`unbound: ${action}`);
+for (const action of emitted) if (!handles(action)) fail(`unhandled: ${action}`);
+```
+
+Detection: `rg -o 'data-[a-z-]+' <script>` against `rg -o 'data-[a-z-]+' <views>`;
+the difference in either direction is a candidate. For each test of the script,
+check whether its markup comes from a view or was typed into the test.
+
+## P-ADMITTED-STATE — A gate before a transition accepts the state after it
+
+- **Category:** Verification integrity, state transitions.
+- **Logic dimensions:** State transitions, branch completeness.
+- **Observed defect:** A verifier required a registry node to be `pending` so that an
+  admission could run. The admission ran and set the node to `verified`; the verifier
+  then failed forever, and nothing separated that from a real drift. In the same
+  family, one module's readiness was written in a registry, in the local plan the
+  registry names as its source, and in two contracts; one commit changed the registry
+  only, and the contracts went on requiring the old row "until approval". Two
+  evidence runners compared the row as a string against a table that a formatter had
+  padded, so they refused to run for a reason unrelated to the state.
+- **Canonical solution:** A check on a value that a transition changes accepts exactly
+  the value before and the value after, names which one it found, and rejects any
+  third value. The transition itself still refuses to run twice. A fact stated in more
+  than one place has one source; every other statement is checked against it by a
+  check that runs with the others, and a change to the source updates them in the same
+  commit. Compare a table row by its cells.
+
+```js
+const allowed = [admission.before_value, admission.admitted_value];
+if (!allowed.includes(current)) fail(`drift: ${current} is neither ${allowed.join(" nor ")}`);
+```
+
+Detection: `rg -n '!== "pending"|=== "pending"' scripts/verify` lists checks that
+know one side of a transition. For a status that appears in a registry, search the
+same identifier in `contracts/` and in the owner plan and compare the values.
+
+## P-SHADOWED-HANDLER — A handler is tested through the entry point that reaches it
+
+- **Category:** Verification integrity, dispatch.
+- **Logic dimensions:** Branch completeness, preconditions and bounds.
+- **Observed defect:** Four page intents were sent in two payload shapes under one name:
+  a typed envelope that addressed a page by index, and an SSR form that named it by id.
+  The dispatcher had an arm for each name that read the envelope shape, and a fallback
+  that handed every other name to a form resolver. The resolver had arms for the same
+  four names, written for the form shape. They were never reached: the dispatcher arms
+  came first. Three forms failed on a missing index, and the fourth succeeded with a
+  generated id in place of the one the author typed. The resolver arms had no test
+  through the dispatcher, and a first check that asked "does some arm carry this name"
+  answered yes.
+- **Canonical solution:** One name with two shapes needs an explicit discriminator in
+  one place: a guard that names the keys that tell the shapes apart, before the arms
+  that read either of them. A handler is tested by sending the bytes its producer sends
+  to the public entry point, not by calling the handler. A check that follows a request
+  to its handler reads the arms in source order with their guards and reports an arm
+  that an earlier one always pre-empts.
+  The shapes differ in how the payload is read, not in what the intent does. A step that
+  follows the read (opening the page that was created) is one function both arms call.
+  In the same code the envelope arm opened the created page and the form arm did not,
+  for as long as each arm kept its own tail.
+
+```rust
+"create_page" if is_ssr_page_form(payload) => {
+    let effects = dispatch_ssr_form(controller, intent, payload)?;
+    open_created_page(controller, effects)?
+}
+"activate_page" | "remove_page" | "rename_page" | "patch_page_metadata"
+    if is_ssr_page_form(payload) => dispatch_ssr_form(controller, intent, payload)?,
+```
+
+Detection: list the string arms of the dispatcher and of every resolver it falls back
+to; a name in both is a candidate. For each, send the payload of every producer through
+the entry point.
+
+## P-ATTRIBUTE-REACH — A reused attribute is checked against everything that already reads it
+
+- **Category:** Markup contracts, verification integrity.
+- **Logic dimensions:** Preconditions and bounds, parity across surfaces.
+- **Observed defect:** `data-fly-component-id` marked the nodes of the canvas preview. A
+  later change put the same attribute on the rows of the layer tree, so that the browser
+  adapter could select a component from a row. The canvas preview also wrote a global
+  style rule for the selected component, `[data-fly-component-id="<id>"] { outline … }`,
+  with no canvas scope: it was correct while only canvas nodes carried the attribute. In
+  the workspace, which renders both in one document, the row of the selected component
+  took the canvas outline, `position: relative` and `z-index`. The change that added the
+  attribute was reviewed against the consumer it was written for and against no other.
+- **Canonical solution:** An attribute is a public name. Before an element gains an
+  attribute that already exists, list every reader of that attribute in the same document
+  — style rules, `querySelector`, `closest`, observers — and decide for each whether the
+  new element belongs to it. A style rule or a query that means "inside this surface"
+  says so with the scope of the surface.
+
+```rust
+format!(".fly-canvas--interactive [data-fly-component-id=\"{id}\"] {{ outline: … }}")
+```
+
+Detection: search for the attribute name in selectors and queries, not only in the views
+that emit it. `scripts/verify/verify-fly-ssr-control-contract.mjs` (part 7) fails on a
+canvas style rule keyed on a contract attribute without a class scope.
+
+## P-HOST-DELIVERY — A capability is verified in the configuration that the host builds
+
+- **Category:** Build configuration, verification integrity.
+- **Logic dimensions:** Parity across surfaces, preconditions and bounds.
+- **Observed defect:** `rustok-page-builder-admin` declares `default = ["ssr", "browser-js"]`,
+  and its tests ran with the default features. Both of its consumers depend on it with
+  `default-features = false` and enabled `ssr` alone, so the admin binary rendered
+  `<span data-fly-browser-adapter="disabled">` where the tested build rendered the adapter.
+  The adapter script also took a `script_nonce` property that no caller passed, and the
+  canvas `srcdoc` document had no nonce at all, while the host answers with a
+  `script-src … 'nonce-<n>'` policy that drops an inline element without it. The browser
+  tests served their pages without a policy. Every check was green; no control worked in
+  the host.
+- **Canonical solution:** A capability has three conditions outside its own crate: the
+  features that the host enables, the inputs that the host passes, and the policy under
+  which the host serves it. Each is stated at the consumer and checked there. A default
+  feature is not a guarantee for a consumer that turns defaults off; an optional input
+  with no caller is an unconnected capability.
+
+```toml
+ssr = [
+  "rustok-page-builder-admin/ssr",
+  "rustok-page-builder-admin/browser-js",
+]
+```
+
+Detection: for a crate with default features, list the consumers that set
+`default-features = false` and compare the features they name with the features the tests
+use. For an optional property or context value, search for a writer. `scripts/verify/
+verify-fly-ssr-first.mjs` fails on a manifest feature that enables the editor's `ssr`
+without `browser-js` and on a missing nonce hand-off.
+
 ## P-ORPHAN-SPAWN — Supervise background tasks and retain JoinHandles
 
 - **Category:** Concurrency, task supervision, and lifecycle shutdown.

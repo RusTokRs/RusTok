@@ -1,5 +1,21 @@
 use crate::{PageBuilderAdminProviderStatus, editor::AdminEditorRuntime};
 use leptos::prelude::*;
+use rustok_ui_core::UiCspNonce;
+
+/// The preview document as the panel embeds it.
+///
+/// The frame shows it through `srcdoc`, so it inherits the policy of the document that embeds
+/// it. Under a host policy that names a nonce the browser drops the stylesheet of the preview
+/// unless it carries that nonce. The preview is rendered by the server pipeline, which does not
+/// know the nonce of the page that asked for it, so it is written here, where both are known.
+///
+/// `fly` owns the document envelope and puts the nonce on the stylesheet of that envelope and
+/// on nothing else. Markup that is not the envelope is embedded as it arrived.
+fn embedded_preview_document(html: String, csp_nonce: Option<&UiCspNonce>) -> String {
+    csp_nonce
+        .and_then(|nonce| fly::document_html_with_style_nonce(&html, nonce.as_str()))
+        .unwrap_or(html)
+}
 
 #[component]
 pub fn ServerPreviewPanel(
@@ -15,6 +31,7 @@ pub fn ServerPreviewPanel(
     let provider_preview_enabled = provider_status
         .as_ref()
         .is_none_or(PageBuilderAdminProviderStatus::preview_enabled);
+    let csp_nonce = use_context::<UiCspNonce>();
 
     view! {
         <section
@@ -67,7 +84,7 @@ pub fn ServerPreviewPanel(
                         class="mt-3 min-h-[360px] w-full rounded-lg border border-border bg-white"
                         title="Server-rendered page preview"
                         sandbox=""
-                        srcdoc=html
+                        srcdoc=embedded_preview_document(html, csp_nonce.as_ref())
                         data-page-builder-server-preview-frame="true"
                     ></iframe>
                 }.into_any(),
@@ -85,5 +102,101 @@ pub fn ServerPreviewPanel(
                 }.into_any(),
             }}
         </section>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AdminCanvasController;
+    use fly::{PageHead, compose_document_html};
+    use serde_json::json;
+
+    fn preview_document() -> String {
+        compose_document_html(&PageHead::default(), "p{color:red}", "<p>Preview</p>")
+    }
+
+    #[test]
+    fn preview_document_carries_the_host_nonce_on_its_stylesheet() {
+        let nonce = UiCspNonce::new("0f3a9c").expect("nonce");
+
+        let embedded = embedded_preview_document(preview_document(), Some(&nonce));
+        assert!(
+            embedded.contains("<style nonce=\"0f3a9c\">p{color:red}</style>"),
+            "{embedded}"
+        );
+        assert_eq!(embedded.matches(" nonce=\"").count(), 1, "{embedded}");
+
+        let without_host_policy = embedded_preview_document(preview_document(), None);
+        assert_eq!(without_host_policy, preview_document());
+    }
+
+    #[test]
+    fn markup_that_is_not_the_fly_envelope_is_embedded_as_it_arrived() {
+        let nonce = UiCspNonce::new("0f3a9c").expect("nonce");
+        let foreign = "<html><head><style>p{color:red}</style></head></html>".to_string();
+        assert_eq!(
+            embedded_preview_document(foreign.clone(), Some(&nonce)),
+            foreign
+        );
+    }
+
+    /// The `srcdoc` attribute of the preview frame, with its character references resolved.
+    fn rendered_srcdoc(csp_nonce: Option<UiCspNonce>, preview: Option<String>) -> Option<String> {
+        let owner = Owner::new();
+        let html = owner.with(|| {
+            if let Some(nonce) = csp_nonce {
+                provide_context(nonce);
+            }
+            let controller = AdminCanvasController::new(
+                "home",
+                "rev-preview-1",
+                json!({
+                    "pages": [{
+                        "id": "home",
+                        "name": "Home",
+                        "component": {
+                            "id": "home-root",
+                            "type": "wrapper",
+                            "components": [{ "id": "hero", "type": "text", "content": "Hero" }]
+                        }
+                    }]
+                }),
+            )
+            .expect("preview controller");
+            let runtime = AdminEditorRuntime::new(controller, None, None, "", "");
+            runtime.server_preview_html.set(preview);
+            view! { <ServerPreviewPanel runtime=runtime provider_status=None /> }.to_html()
+        });
+        let marker = " srcdoc=\"";
+        let start = html.find(marker)? + marker.len();
+        let end = start + html[start..].find('"')?;
+        Some(
+            html[start..end]
+                .replace("&quot;", "\"")
+                .replace("&#34;", "\"")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&"),
+        )
+    }
+
+    #[test]
+    fn preview_frame_embeds_the_document_with_the_nonce_the_host_provided() {
+        let nonce = UiCspNonce::new("0f3a9c").expect("nonce");
+        let srcdoc = rendered_srcdoc(Some(nonce), Some(preview_document())).expect("frame");
+        assert!(
+            srcdoc.contains("<style nonce=\"0f3a9c\">p{color:red}</style>"),
+            "{srcdoc}"
+        );
+
+        let srcdoc = rendered_srcdoc(None, Some(preview_document())).expect("frame");
+        assert_eq!(srcdoc, preview_document());
+    }
+
+    #[test]
+    fn preview_frame_is_absent_until_a_preview_was_rendered() {
+        let nonce = UiCspNonce::new("0f3a9c").expect("nonce");
+        assert_eq!(rendered_srcdoc(Some(nonce), None), None);
     }
 }

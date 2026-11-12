@@ -7,10 +7,7 @@ use sea_orm::{
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use crate::{
-    entities,
-    error::CommerceResult,
-};
+use crate::{entities, error::CommerceResult};
 
 use crate::entities::product_tag;
 

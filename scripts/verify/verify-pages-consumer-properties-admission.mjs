@@ -165,7 +165,7 @@ for (const key of [
   "admission_output_is_not_fba_registry_update",
 ]) ok(admission.admission_boundary?.[key] === true, `${files.admission}: ${key} must be true`);
 
-for (const required of [files.admission, files.runner, files.test, files.source, files.sourceWorkflow, files.browser, files.browserWorkflow, files.consumer, files.registry]) {
+for (const required of [files.admission, files.runner, files.test,  files.source, files.sourceWorkflow, files.browser, files.browserWorkflow, files.consumer, files.registry]) {
   ok(admission.required_source_files?.includes(required), `${files.admission}: missing ${required}`);
   ok(source.required_source_files?.includes(required), `${files.source}: successor receipt source set missing ${required}`);
 }

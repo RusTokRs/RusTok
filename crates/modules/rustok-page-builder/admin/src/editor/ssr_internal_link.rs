@@ -107,6 +107,9 @@ impl AdminCanvasController {
 pub fn SsrInternalPageLinkPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     #[cfg(not(target_arch = "wasm32"))]
     {
+        // Each form renders disabled when the intent endpoint would refuse it.
+        let set_internal_page_link_enabled = runtime.form_enabled("set_internal_page_link");
+        let remove_internal_page_link_enabled = runtime.form_enabled("remove_internal_page_link");
         let route_context = use_context::<UiRouteContext>().unwrap_or_default();
         let locale = route_context.locale;
         let title = t(
@@ -220,6 +223,7 @@ pub fn SsrInternalPageLinkPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     <p class="text-xs text-muted-foreground">{description}</p>
                 </div>
                 <form class="grid gap-2" data-fly-intent-form="set_internal_page_link">
+                    <fieldset class="contents" disabled=!set_internal_page_link_enabled>
                     <input
                         type="hidden"
                         name="component_id"
@@ -291,9 +295,11 @@ pub fn SsrInternalPageLinkPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         type="submit"
                         class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary"
                     >{save}</button>
+                    </fieldset>
                 </form>
                 {has_link.then(|| view! {
                     <form data-fly-intent-form="remove_internal_page_link">
+                        <fieldset class="contents" disabled=!remove_internal_page_link_enabled>
                         <input
                             type="hidden"
                             name="component_id"
@@ -304,6 +310,7 @@ pub fn SsrInternalPageLinkPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                             type="submit"
                             class="w-fit rounded border border-destructive/40 px-2 py-1 text-xs text-destructive"
                         >{remove}</button>
+                        </fieldset>
                     </form>
                 })}
             </section>

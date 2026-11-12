@@ -47,7 +47,6 @@ const CHANGE_JOURNAL_TABLE: &str = "seo_translation_change_journal";
 const APPLY_RECEIPTS_TABLE: &str = "seo_translation_apply_receipts";
 const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
-
 static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
     TranslationTargetProviderDescriptor {
             owner_slug: OwnerSlug::new(OWNER_SLUG)
@@ -86,7 +85,7 @@ impl SeoTranslationTargetProvider {
         }
     }
 
-        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+    fn descriptor_value() -> TranslationTargetProviderDescriptor {
         DESCRIPTOR.clone()
     }
 

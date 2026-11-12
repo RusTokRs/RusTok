@@ -4,6 +4,7 @@ use fly::{
     PageSelection, ProjectDocument, RenderPolicy, RenderedPage, render_page_with_runtime_context,
 };
 use fly_leptos::FLY_IFRAME_PROTOCOL;
+use rustok_ui_core::UiCspNonce;
 use serde_json::Value;
 
 const CANVAS_SCRIPT: &str = include_str!("canvas_runtime.js");
@@ -12,13 +13,14 @@ const CANVAS_MAX_GEOMETRY_COMPONENTS: usize = 4096;
 #[cfg(test)]
 pub fn render_canvas_srcdoc(document: &ProjectDocument, instance_id: &str) -> String {
     let rendered = render_page(document, &PageSelection::First, &canvas_render_policy());
-    render_srcdoc(rendered, instance_id, 0, 0)
+    render_srcdoc(rendered, instance_id, 0, 0, None)
 }
 
 pub fn render_canvas_srcdoc_with_context(
     document: &ProjectDocument,
     instance_id: &str,
     context: &Value,
+    csp_nonce: Option<&UiCspNonce>,
 ) -> String {
     match render_page_with_runtime_context(
         document,
@@ -31,8 +33,9 @@ pub fn render_canvas_srcdoc_with_context(
             instance_id,
             result.diagnostics.len(),
             result.repeated_nodes,
+            csp_nonce,
         ),
-        Err(error) => render_srcdoc(Err(error), instance_id, 0, 0),
+        Err(error) => render_srcdoc(Err(error), instance_id, 0, 0, csp_nonce),
     }
 }
 
@@ -49,6 +52,7 @@ fn render_srcdoc(
     instance_id: &str,
     runtime_diagnostics: usize,
     repeated_nodes: usize,
+    csp_nonce: Option<&UiCspNonce>,
 ) -> String {
     let (head, canvas, project_styles) = match rendered {
         Ok(rendered) => (rendered.head.render_html(), rendered.html, rendered.css),
@@ -71,9 +75,15 @@ fn render_srcdoc(
         .replace("__FLY_PROTOCOL__", &protocol)
         .replace("__FLY_INSTANCE__", &instance)
         .replace("__FLY_MAX_GEOMETRY_COMPONENTS__", &geometry_limit);
+    // A `srcdoc` document inherits the policy of the document that embeds it. Under a host policy
+    // that names a nonce, the `'unsafe-inline'` of the `<meta>` policy below is not enough: the
+    // browser drops the canvas stylesheet and the canvas runtime unless they carry that nonce.
+    let nonce_attribute = csp_nonce
+        .map(|nonce| format!(" nonce=\"{}\"", nonce.as_str()))
+        .unwrap_or_default();
 
     format!(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https: http:; media-src data: https: http:; font-src data: https: http:;\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{head}<style>{}{}</style></head><body data-runtime-diagnostics=\"{runtime_diagnostics}\" data-repeated-nodes=\"{repeated_nodes}\"><main id=\"fly-canvas-root\">{canvas}</main><script>{script}</script></body></html>",
+        "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: https: http:; media-src data: https: http:; font-src data: https: http:;\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">{head}<style{nonce_attribute}>{}{}</style></head><body data-runtime-diagnostics=\"{runtime_diagnostics}\" data-repeated-nodes=\"{repeated_nodes}\"><main id=\"fly-canvas-root\">{canvas}</main><script{nonce_attribute}>{script}</script></body></html>",
         canvas_styles(),
         project_styles,
     )
@@ -164,6 +174,7 @@ mod tests {
                 "showBanner": false,
                 "items": [{ "name": "One" }, { "name": "Two" }]
             }),
+            None,
         );
         assert!(!html.contains("Banner"));
         assert!(html.contains("One"));
@@ -213,5 +224,29 @@ mod tests {
         let html = render_canvas_srcdoc(&document, "canvas-home");
         assert!(html.contains("@media (max-width: 767px)"));
         assert!(html.contains("[data-fly-style-id=\"hero\"]{padding:24px}"));
+    }
+
+    #[test]
+    fn canvas_document_carries_the_host_nonce_on_its_inline_elements() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "component": { "id": "root", "type": "wrapper", "components": [] }
+            }]
+        }))
+        .expect("decode");
+        let nonce = UiCspNonce::new("0f3a9c").expect("nonce");
+
+        let html =
+            render_canvas_srcdoc_with_context(&document, "canvas-home", &json!({}), Some(&nonce));
+        assert!(html.contains("<style nonce=\"0f3a9c\">"));
+        assert!(html.contains("<script nonce=\"0f3a9c\">"));
+        assert_eq!(html.matches(" nonce=\"").count(), 2);
+
+        let without_host_policy =
+            render_canvas_srcdoc_with_context(&document, "canvas-home", &json!({}), None);
+        assert!(without_host_policy.contains("<style>"));
+        assert!(without_host_policy.contains("<script>"));
+        assert!(!without_host_policy.contains(" nonce=\""));
     }
 }

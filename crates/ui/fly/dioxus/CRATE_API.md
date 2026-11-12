@@ -11,8 +11,8 @@ SSR and Web/Desktop Dioxus 0.7 adapter foundation and component shells for Fly v
 - `FlyReadOnly`: Non-editable presentation container.
 - `FlyEditorWorkspace`: Composite workspace component binding palette, layer tree, canvas preview, design-token editor, and undo/redo history with typed `on_error` and `on_intent` support.
 - `FlyContributionSummary`: Summary badge rendering loaded block, dynamic slot, and extension counts with accessible status semantics.
-- `FlyPalette`: Category-grouped block palette honoring `EditorCapabilities` (insert permissions) and `ContributionAccess` filtering.
-- `FlyLayerTree`: Interactive layer hierarchy tree with selection highlighting and navigation.
+- `FlyPalette`: Category-grouped block palette honoring `CapabilityState` (`edit` for insert, `drag_drop` for drag) and contribution-access filtering. Renders the same item, insert-control and drag-control markup as `fly-leptos`; the drag control appears only when the host passes `on_begin_drag`.
+- `FlyLayerTree`: Interactive layer hierarchy tree with selection highlighting and navigation. Selectable rows carry `data-fly-component-id` and `data-fly-action="select-component"`, as in `fly-leptos`.
 - `FlyThemeTokens`: Read-only design token listing displaying token keys and resolved values.
 - `FlyThemeTokenEditor`: Interactive design token management panel supporting upsert, remove, and error dispatch.
 - `FlyCanvasPreview`: Responsive live canvas preview container rendering the active page AST into styled HTML with error fallback.

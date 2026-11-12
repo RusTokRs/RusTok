@@ -106,6 +106,11 @@ call a native adapter directly.
   on the same backend origin and can be the preferred path for surfaces that need server-side runtime.
 - If a surface supports a dual-path model, the GraphQL/REST selected path must actually work in `csr`;
   `#[server]` cannot be the only critical transport for standalone debug.
+- Every profile provides the Content Security Policy nonce of its document to module surfaces as
+  `rustok_ui_core::UiCspNonce`. The `ssr` host takes it from the request (`request_csp_nonce`). The
+  `csr` and `hydrate` builds have no request and read the `nonce` property of a script of their own
+  document (`document_csp_nonce` in `src/main.rs`); `apps/server` writes its nonce on the trusted
+  tags of the embedded `index.html`. A document served without a nonce provides nothing.
 - GraphQL and the native Leptos `#[server]` path must coexist in parallel; `#[server]` does not replace `/api/graphql`.
 - The reason for the split: monolith admin benefits from same-origin SSR/hydrate, server-side auth/session/policy, and a short Rust path via `#[server]`, but headless and standalone debug require a live GraphQL/REST fallback.
 - The current data-layer for admin supports a dual-path model: the host selects native `#[server]` or GraphQL/REST by build/runtime profile, when that is provided for by the specific surface.

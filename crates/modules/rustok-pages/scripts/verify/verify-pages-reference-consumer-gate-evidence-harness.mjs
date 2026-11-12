@@ -123,7 +123,100 @@ if (
   contract.output?.automatic_ffa_fba_promotion !== false
 ) failures.push("candidate output boundary drifted");
 
-, marker, "candidate actualization");
+for (const relativePath of [
+  files.matrix,
+  files.feature,
+  files.matrixGuard,
+  files.featureGuard,
+  "crates/modules/rustok-pages/contracts/evidence/pages-builder-rollout-feature-preflight-harness-source.json",
+  "apps/next-admin/playwright.pages-builder-rollout-feature-preflight.config.ts",
+  "apps/next-admin/tests/pages-builder-rollout-feature-preflight/feature-preflight.spec.ts",
+  "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
+]) {
+  if (!contract.required_source_files?.includes(relativePath)) failures.push(`candidate required_source_files is missing ${relativePath}`);
+}
+
+if (evidence.format !== "pages_reference_consumer_gate_evidence_harness_source_v1") failures.push("source evidence format drifted");
+if (evidence.status !== "pages_reference_consumer_gate_evidence_harness_source_unvalidated") failures.push("source evidence status drifted");
+if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) failures.push("source evidence execution must remain empty");
+for (const [key, value] of Object.entries(evidence.validation ?? {})) if (value !== false) failures.push(`validation.${key} must remain false`);
+for (const key of [
+  "artifact_http_packet_is_required",
+  "browser_packet_is_required",
+  "rollout_matrix_packet_is_required",
+  "rollout_feature_preflight_packet_is_required",
+  "rollout_matrix_must_bind_exact_browser_hash",
+  "rollout_matrix_settings_restore_must_be_verified",
+  "rollout_feature_preflight_must_bind_exact_browser_hash",
+  "rollout_feature_preflight_must_bind_exact_matrix_hash",
+  "rollout_feature_preflight_settings_restore_must_be_verified",
+  "rollout_feature_preflight_all_four_profiles_are_rechecked",
+  "rollout_feature_preflight_requires_feature_disabled_kind",
+  "rollout_feature_preflight_requires_FEATURE_DISABLED_code",
+  "browser_intent_FLY_CAPABILITY_DENIED_is_not_used_as_FEATURE_DISABLED_evidence",
+  "rollout_feature_preflight_source_guard_is_required_by_gate",
+  "raw_input_packets_are_not_persisted",
+  "raw_rollout_settings_are_not_persisted",
+  "candidate_output_is_atomic",
+  "candidate_status_is_owner_review_pending",
+  "provider_health_remains_unobserved",
+  "owner_signoff_remains_pending",
+  "rollback_decision_remains_pending",
+  "gate_acceptance_is_not_automatic",
+]) if (evidence.source_contract?.[key] !== true) failures.push(`source_contract.${key} must be true`);
+for (const key of [
+  "tests_run",
+  "source_verifiers_run",
+  "cargo_run",
+  "node_run",
+  "artifact_http_input_observed",
+  "browser_input_observed",
+  "rollout_matrix_input_observed",
+  "rollout_feature_preflight_input_observed",
+  "candidate_packet_produced",
+  "owner_review_observed",
+  "gate_accepted",
+  "forum_wave_accepted",
+  "ffa_promoted",
+  "fba_promoted",
+]) if (evidence.source_contract?.[key] !== false) failures.push(`source_contract.${key} must remain false`);
+
+if (
+  gate.accepted !== false ||
+  gate.current_boundary?.execution_gate !== "pending" ||
+  gate.current_boundary?.provider_health !== "unobserved" ||
+  gate.current_boundary?.reference_candidate_rollout_matrix_input !== "source_ready_required_before_candidate" ||
+  gate.current_boundary?.reference_candidate_feature_preflight_input !== "source_ready_required_before_candidate"
+) failures.push("canonical gate pending boundary drifted");
+if (
+  gate.execution_harness?.required_inputs?.rollout_matrix !== "pages_builder_rollout_runtime_matrix_v1" ||
+  gate.execution_harness?.required_inputs?.rollout_feature_preflight !== "pages_builder_rollout_feature_preflight_v1" ||
+  gate.execution_harness?.canonical_feature_disabled_code_required !== "FEATURE_DISABLED"
+) failures.push("canonical gate execution-harness input registration drifted");
+
+for (const marker of [
+  "contract.inputs.rollout_feature_preflight.environment",
+  "validateRolloutFeaturePreflight(",
+  "matrix.sha256 !== matrixInput.record.sha256",
+  'result.error_kind !== "feature-disabled"',
+  'result.error_code !== "FEATURE_DISABLED"',
+  "canonical_feature_disabled_catalog_passed: true",
+  "browser_intent_denial_kept_separate: true",
+  "provider_health: \"unobserved\"",
+  "owner_signoff: \"pending\"",
+  "rollback_decision: \"pending\"",
+  "gate_acceptance: \"pending\"",
+  "raw_input_packets_persisted: false",
+  "raw_rollout_settings_persisted: false",
+  "shell: false",
+]) need(runner, marker, "candidate runner");
+for (const marker of [
+  "shell: true",
+  "gate_accepted: true",
+  "provider_health: \"healthy\"",
+  "ffa_promoted: true",
+  "fba_promoted: true",
+]) forbid(runner, marker, "candidate runner");
 
 if (failures.length) {
   console.error("[verify-pages-reference-consumer-gate-evidence-harness] FAIL");

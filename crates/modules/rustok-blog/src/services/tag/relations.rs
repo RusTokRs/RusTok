@@ -159,9 +159,7 @@ async fn validate_post_tag_terms_in_tx(
     }
 
     for term in terms.values() {
-        if term.scope_type == "module"
-            && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE)
-        {
+        if term.scope_type == "module" && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE) {
             validate_tag_name(&term.name)?;
         }
     }
@@ -205,15 +203,14 @@ pub(super) async fn refresh_tag_usage_in_tx(
 
     for tag_id in unique_ids {
         let term = terms.get(&tag_id);
-        if let Some(term) = term {
-            if term.scope_type == "module"
-                && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
-            {
-                return Err(BlogError::invariant(format!(
-                    "Blog post tag {} references a Taxonomy term outside the Blog/module scope",
-                    term.id
-                )));
-            }
+        if let Some(term) = term
+            && term.scope_type == "module"
+            && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
+        {
+            return Err(BlogError::invariant(format!(
+                "Blog post tag {} references a Taxonomy term outside the Blog/module scope",
+                term.id
+            )));
         }
 
         let use_count = blog_post_tag::Entity::find()
@@ -420,13 +417,7 @@ pub(crate) async fn load_post_tags_map(
 
     let term_ids = relations.iter().map(|item| item.tag_id).collect::<Vec<_>>();
     let names = port
-        .load_tags_by_ids(
-            db.into(),
-            tenant_id,
-            &term_ids,
-            locale,
-            fallback_locale,
-        )
+        .load_tags_by_ids(db.into(), tenant_id, &term_ids, locale, fallback_locale)
         .await?;
 
     for relation in relations {
@@ -453,12 +444,6 @@ pub(crate) async fn resolve_tag_id_for_posts(
     locale: &str,
     fallback_locale: Option<&str>,
 ) -> BlogResult<Option<Uuid>> {
-    port.resolve_tag_id_for_module(
-        db.into(),
-        tenant_id,
-        tag,
-        locale,
-        fallback_locale,
-    )
-    .await
+    port.resolve_tag_id_for_module(db.into(), tenant_id, tag, locale, fallback_locale)
+        .await
 }

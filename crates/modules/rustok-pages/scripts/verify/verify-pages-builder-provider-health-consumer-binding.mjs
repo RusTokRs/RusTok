@@ -79,8 +79,43 @@ for (const [object, key, expected] of [
   [contract.validation, "node_verifier_run", false],
 ]) if (object?.[key] !== expected) failures.push(`${key} must equal ${JSON.stringify(expected)}`);
 
-, marker, "consumer binding actualization");
-, marker, "canonical parity");
+for (const marker of ["pub fn effective_provider_runtime_flags(", "effective.publish_enabled = false"])
+  need(sources.coreRollout, marker, "shared provider runtime policy");
+for (const marker of ["pub fn effective_runtime_flags(&self) -> BuilderCapabilityFlags", "effective_provider_runtime_flags(&self.flags, self.health.as_ref())"])
+  need(sources.providerStatus, marker, "admin provider status delegation");
+for (const marker of [
+  "fn provider_health_snapshot(ctx: &Context<'_>) -> Option<ProviderHealthSnapshot>",
+  "let provider_health = provider_health_snapshot(ctx);",
+  "effective_provider_runtime_flags(&flags, provider_health.as_ref())",
+  "ensure_capability(&effective_flags, capability_kind)",
+]) need(sources.owner, marker, "health-aware GraphQL preflight");
+for (const forbidden of ["std::fs::", "RUSTOK_PAGES_PROVIDER_HEALTH_ACCEPTANCE_PATH"]) forbid(sources.owner, forbidden, "GraphQL must consume typed runtime authority");
+
+for (const marker of [
+  "pub fn provider_status(&self) -> PageBuilderAdminProviderStatus",
+  "self.provider_status().effective_runtime_flags()",
+  "pages_editor_capabilities_for_snapshot(",
+  "snapshot.provider_status().limit_capabilities(capabilities)",
+]) need(sources.rollout, marker, "Pages snapshot/provider status seam");
+for (const marker of [
+  "provider_status: Option<PageBuilderAdminProviderStatus>",
+  "pub fn with_provider_status(",
+  "fetch_pages_builder_rollout_snapshot(",
+  "let effective_flags = trusted_rollout.effective_runtime_flags();",
+  "compose_configured_fly_page_builder_handlers(\n        service,\n        effective_flags,",
+]) need(sources.facade, marker, "Pages facade/SSR binding");
+forbid(sources.facade, "trusted_rollout.flags", "SSR must not bypass health-limited flags");
+for (const marker of [".provider_status();", "provider_status: PageBuilderAdminProviderStatus", ".with_provider_status(provider_status)"])
+  need(sources.composition, marker, "workspace provider binding");
+forbid(sources.composition, ".with_provider_flags(provider_flags)", "workspace must not discard health");
+for (const marker of [
+  "pages_editor_capabilities_for_snapshot",
+  "pages_editor_capabilities_for_snapshot(role_capabilities, &rollout)",
+  "dispatch_pages_browser_intent_with_capabilities(snapshot, envelope, editor_capabilities)",
+]) need(sources.adminMain, marker, "standalone browser intent health binding");
+forbid(sources.adminMain, "pages_editor_capabilities_for_rollout(role_capabilities, &rollout.flags)", "browser intent must not discard health");
+
+if (gate.accepted !== false || gate.current_boundary?.provider_health !== "unobserved") failures.push("retained Pages gate must remain unaccepted/provider-health-unobserved");
 
 if (contract.next_cursor?.provider_health_consumer_binding !== "source_ready_runtime_activation_pending") failures.push("consumer binding cursor drifted");
 if (contract.next_cursor?.provider_health_capability_preflight !== "source_ready_runtime_execution_pending") failures.push("capability preflight cursor drifted");

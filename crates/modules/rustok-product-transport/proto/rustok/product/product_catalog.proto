@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package rustok.product;
+
+// Product owns canonical request/response DTOs. Protobuf owns RPC identity,
+// framing, deadlines, and status semantics; JSON preserves the owner contract.
+service ProductCatalogReadService {
+  rpc ReadProductProjection(JsonRequest) returns (JsonResponse);
+  rpc ReadVariantProductProjection(JsonRequest) returns (JsonResponse);
+  rpc ListPublishedProducts(JsonRequest) returns (JsonResponse);
+  rpc ReadVariantIdentities(JsonRequest) returns (JsonResponse);
+  rpc ListProductVariantIdentities(JsonRequest) returns (JsonResponse);
+  rpc ReadStorefrontVariantProductProjection(JsonRequest) returns (JsonResponse);
+  rpc ListFilteredPublishedProducts(JsonRequest) returns (JsonResponse);
+  rpc LoadStorefrontCatalogFacets(JsonRequest) returns (JsonResponse);
+  rpc ReadStorefrontProductProjection(JsonRequest) returns (JsonResponse);
+}
+
+service ProductCatalogCommandService {
+  rpc CreateProduct(JsonRequest) returns (JsonResponse);
+  rpc UpdateProduct(JsonRequest) returns (JsonResponse);
+  rpc PublishProduct(JsonRequest) returns (JsonResponse);
+  rpc UnpublishProduct(JsonRequest) returns (JsonResponse);
+  rpc ArchiveProduct(JsonRequest) returns (JsonResponse);
+  rpc DeleteProduct(JsonRequest) returns (JsonResponse);
+  rpc CreateVariant(JsonRequest) returns (JsonResponse);
+  rpc UpdateVariant(JsonRequest) returns (JsonResponse);
+  rpc DeleteVariant(JsonRequest) returns (JsonResponse);
+  rpc SetVariantAxes(JsonRequest) returns (JsonResponse);
+  rpc PreviewVariantAxes(JsonRequest) returns (JsonResponse);
+  rpc AddProductImage(JsonRequest) returns (JsonResponse);
+  rpc UpdateProductImage(JsonRequest) returns (JsonResponse);
+  rpc DeleteProductImage(JsonRequest) returns (JsonResponse);
+  rpc ReorderProductImages(JsonRequest) returns (JsonResponse);
+}
+
+message JsonRequest {
+  bytes context_json = 1;
+  bytes input_json = 2;
+}
+
+message JsonResponse {
+  bytes output_json = 1;
+}

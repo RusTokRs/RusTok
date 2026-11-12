@@ -1,13 +1,68 @@
 use crate::editor::{AdminEditorRuntime, dispatch_shortcut};
 use crate::i18n::t;
 use fly_ui::{
-    CapabilityState, EditorShortcut, UiIntent, builtin_viewport_presets, viewport_preset,
+    CapabilityState, EditorShortcut, UiIntent, ViewportState, builtin_viewport_presets,
+    custom_viewport, viewport_preset,
 };
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
+use std::collections::BTreeMap;
 
+/// Route query key that names the previewed viewport preset.
+///
+/// The previewed viewport is view state, not project state. In the default `ssr + browser-js`
+/// runtime the canvas frame is rendered on the server, so the choice has to reach the server
+/// with the page request: the browser adapter writes the selected preset id under this key and
+/// navigates, and [`route_viewport`] resolves it before the canvas is rendered. Keeping it in
+/// the route rather than in the draft session makes it work for a read-only caller, who has no
+/// session, and lets it survive the reload that follows every mutating intent.
+pub(crate) const VIEWPORT_ROUTE_QUERY_KEY: &str = "fly_viewport";
+
+/// Viewport requested by the route, when it names a built-in preset.
+///
+/// An unknown or empty value yields `None`: a stale or hand-edited route renders the current
+/// viewport instead of failing the page.
+pub(crate) fn route_viewport(
+    query: &BTreeMap<String, String>,
+    current: ViewportState,
+) -> Option<ViewportState> {
+    let preset = viewport_preset(query.get(VIEWPORT_ROUTE_QUERY_KEY)?.trim())?;
+    Some(preset.apply(current))
+}
+
+/// Id of the built-in preset whose frame is the given viewport, if any.
+fn active_viewport_preset_id(viewport: ViewportState) -> Option<String> {
+    builtin_viewport_presets()
+        .into_iter()
+        .find(|preset| preset.width == viewport.width && preset.height == viewport.height)
+        .map(|preset| preset.id)
+}
+
+/// Label of the option that stands for the frame the editor holds without a route preset.
+///
+/// `None` when that frame is a built-in preset: the preset's own option already names it, and a
+/// second option for the same frame would let the control state one frame two ways.
+fn base_viewport_option_label(base_viewport: ViewportState) -> Option<String> {
+    active_viewport_preset_id(base_viewport).is_none().then(|| {
+        custom_viewport(
+            base_viewport.width,
+            base_viewport.height,
+            base_viewport.zoom,
+        )
+        .label
+    })
+}
+
+/// Toolbar of the authoring surface.
+///
+/// `base_viewport` is the viewport the editor holds when the route names no preset, read before
+/// [`route_viewport`] is applied. The device select offers it under the empty value, which
+/// removes [`VIEWPORT_ROUTE_QUERY_KEY`] from the route, so a chosen preset can be left again.
 #[component]
-pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
+pub fn AuthoringToolbar(
+    runtime: AdminEditorRuntime,
+    base_viewport: ViewportState,
+) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
     let undo = t(locale.as_deref(), "page_builder.action.undo", "Undo");
@@ -63,6 +118,16 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
 
     install_keyboard_bindings(runtime.clone());
     let presets = builtin_viewport_presets();
+    // The select states the viewport the canvas is rendered with, so it never names a preset
+    // that is not in effect. The frame held without a route preset (the initial 1280 × 720 one,
+    // or a custom size) is no built-in preset and gets the leading option with the empty value.
+    // That option is rendered whether or not it is in effect: it is the way back from a preset.
+    let current_viewport = runtime
+        .controller
+        .with_untracked(|controller| controller.ui().state.viewport);
+    let active_preset_id = active_viewport_preset_id(current_viewport);
+    let base_option_label = base_viewport_option_label(base_viewport);
+    let base_option_selected = active_preset_id.is_none();
     let status_runtime = runtime.clone();
 
     view! {
@@ -196,11 +261,14 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
                 <select
                     class="rounded border border-input bg-background px-2 py-1"
                     data-fly-action="set-viewport"
+                    data-fly-route-query=VIEWPORT_ROUTE_QUERY_KEY
                     on:change={
                         let runtime = runtime.clone();
                         move |event| {
                             let id = event_target_value(&event);
-                            if let Some(preset) = viewport_preset(&id) {
+                            if id.is_empty() {
+                                runtime.dispatch(UiIntent::SetViewport(base_viewport));
+                            } else if let Some(preset) = viewport_preset(&id) {
                                 let viewport = runtime.controller.with(|controller| {
                                     preset.apply(controller.ui().state.viewport)
                                 });
@@ -209,8 +277,14 @@ pub fn AuthoringToolbar(runtime: AdminEditorRuntime) -> impl IntoView {
                         }
                     }
                 >
-                    {presets.into_iter().map(|preset| view! {
-                        <option value=preset.id>{preset.label}</option>
+                    {base_option_label.map(|label| view! {
+                        <option value="" selected=base_option_selected>{label}</option>
+                    })}
+                    {presets.into_iter().map(|preset| {
+                        let selected = active_preset_id.as_deref() == Some(preset.id.as_str());
+                        view! {
+                            <option value=preset.id selected=selected>{preset.label}</option>
+                        }
                     }).collect_view()}
                 </select>
             </label>
@@ -311,5 +385,75 @@ fn install_keyboard_bindings(runtime: AdminEditorRuntime) {
     #[cfg(not(all(target_arch = "wasm32", feature = "wasm-client")))]
     {
         let _ = runtime;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn query(value: &str) -> BTreeMap<String, String> {
+        BTreeMap::from([(VIEWPORT_ROUTE_QUERY_KEY.to_string(), value.to_string())])
+    }
+
+    #[test]
+    fn route_viewport_resolves_a_built_in_preset() {
+        let viewport = route_viewport(&query("tablet"), ViewportState::default())
+            .expect("tablet is a built-in preset");
+        let preset = viewport_preset("tablet").expect("tablet preset");
+
+        assert_eq!(viewport.width, preset.width);
+        assert_eq!(viewport.height, preset.height);
+        assert_eq!(viewport, preset.apply(ViewportState::default()));
+        assert_eq!(
+            active_viewport_preset_id(viewport).as_deref(),
+            Some("tablet")
+        );
+    }
+
+    #[test]
+    fn route_viewport_ignores_missing_empty_and_unknown_values() {
+        let current = ViewportState::default();
+
+        assert_eq!(route_viewport(&BTreeMap::new(), current), None);
+        assert_eq!(route_viewport(&query(""), current), None);
+        assert_eq!(route_viewport(&query("watch-ultra"), current), None);
+        // Another key with a valid preset id is not the viewport key.
+        let other = BTreeMap::from([("fly_draft".to_string(), "tablet".to_string())]);
+        assert_eq!(route_viewport(&other, current), None);
+    }
+
+    #[test]
+    fn every_built_in_preset_round_trips_through_the_route() {
+        for preset in builtin_viewport_presets() {
+            let viewport = route_viewport(&query(&preset.id), ViewportState::default())
+                .unwrap_or_else(|| panic!("preset {} must resolve", preset.id));
+            assert_eq!(
+                active_viewport_preset_id(viewport).as_deref(),
+                Some(preset.id.as_str()),
+                "preset {} must be reported as the active one",
+                preset.id
+            );
+        }
+    }
+
+    #[test]
+    fn the_initial_viewport_is_not_reported_as_a_preset() {
+        // 1280 × 720 is no built-in preset; the toolbar renders it as its own option instead of
+        // presenting the first preset as if it were in effect.
+        assert_eq!(active_viewport_preset_id(ViewportState::default()), None);
+    }
+
+    #[test]
+    fn the_base_frame_gets_an_option_unless_a_preset_already_names_it() {
+        assert_eq!(
+            base_viewport_option_label(ViewportState::default()).as_deref(),
+            Some("Custom 1280 × 720")
+        );
+
+        let tablet = viewport_preset("tablet")
+            .expect("tablet preset")
+            .apply(ViewportState::default());
+        assert_eq!(base_viewport_option_label(tablet), None);
     }
 }

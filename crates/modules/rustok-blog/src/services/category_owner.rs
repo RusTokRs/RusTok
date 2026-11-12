@@ -21,7 +21,7 @@ use crate::dto::{
 use crate::entities::blog_category;
 use crate::error::{BlogError, BlogResult};
 use crate::ports::taxonomy::{
-    BlogCategoryDeleteCleanupPort, BlogTaxonomyPort, NoopBlogTaxonomyPort,
+    AsBlogTaxonomyConnection, BlogCategoryDeleteCleanupPort, BlogTaxonomyPort, NoopBlogTaxonomyPort,
 };
 
 /// Public Blog Category owner facade.
@@ -90,7 +90,14 @@ impl CategoryService {
             return Err(BlogError::validation("Category ID must not be nil"));
         }
         enforce_scope(&security, Resource::BlogCategories, Action::Read)?;
-        load_category_response(&*self.taxonomy_port, &self.db, tenant_id, category_id, locale).await
+        load_category_response(
+            &*self.taxonomy_port,
+            &self.db,
+            tenant_id,
+            category_id,
+            locale,
+        )
+        .await
     }
 
     pub async fn update(
@@ -252,20 +259,27 @@ impl CategoryService {
             .into_iter()
             .skip(offset)
             .take(per_page as usize)
-            .map(|(category, canonical)| CategoryListItem {
-                id: category.id,
-                locale: canonical.requested_locale,
-                effective_locale: canonical.effective_locale,
-                name: canonical.name,
-                slug: canonical.slug,
-                description: canonical.description,
-                parent_id: canonical.parent_id,
-                position: canonical.position,
-                settings: category.settings,
-                created_at: category.created_at.into(),
-                updated_at: category.updated_at.into(),
+            .map(|(category, canonical)| {
+                let (locale, effective_locale) = projection_locales(
+                    category.id,
+                    canonical.requested_locale,
+                    canonical.effective_locale,
+                )?;
+                Ok(CategoryListItem {
+                    id: category.id,
+                    locale,
+                    effective_locale,
+                    name: canonical.name,
+                    slug: canonical.slug,
+                    description: canonical.description,
+                    parent_id: canonical.parent_id,
+                    position: canonical.position,
+                    settings: category.settings,
+                    created_at: category.created_at.into(),
+                    updated_at: category.updated_at.into(),
+                })
             })
-            .collect();
+            .collect::<BlogResult<Vec<_>>>()?;
 
         Ok((items, total))
     }
@@ -329,12 +343,17 @@ async fn load_category_response_impl<C: ConnectionTrait>(
     }
     let parent_id = canonical.parent_id;
     validate_persisted_category_settings(&category.settings)?;
+    let (locale, effective_locale) = projection_locales(
+        category_id,
+        canonical.requested_locale,
+        canonical.effective_locale,
+    )?;
 
     Ok(CategoryResponse {
         id: category.id,
         tenant_id,
-        locale: canonical.requested_locale,
-        effective_locale: canonical.effective_locale,
+        locale,
+        effective_locale,
         available_locales: canonical.available_locales,
         name: canonical.name,
         slug: canonical.slug,

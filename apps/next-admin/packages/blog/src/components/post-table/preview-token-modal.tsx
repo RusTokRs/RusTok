@@ -13,7 +13,11 @@ import {
   SelectTrigger,
   SelectValue
 } from '@/shared/ui/shadcn/select';
-import { createPreviewToken, type BlogPreviewToken, type GqlOpts } from '../../api/posts';
+import {
+  createPreviewToken,
+  type BlogPreviewToken,
+  type GqlOpts
+} from '../../api/posts';
 
 /**
  * Draft preview link mint dialog.
@@ -53,7 +57,11 @@ function storefrontBaseUrl(): string | null {
   return url ? url.replace(/\/+$/, '') : null;
 }
 
-async function copyToClipboard(value: string, successMessage: string, failureMessage: string): Promise<void> {
+async function copyToClipboard(
+  value: string,
+  successMessage: string,
+  failureMessage: string
+): Promise<void> {
   try {
     await navigator.clipboard.writeText(value);
     toast.success(successMessage);
@@ -104,7 +112,8 @@ export function PreviewTokenModal({
 
   const previewPath = token ? `/blog/preview#token=${token.token}` : null;
   const baseUrl = storefrontBaseUrl();
-  const absoluteUrl = previewPath && baseUrl ? `${baseUrl}${previewPath}` : null;
+  const absoluteUrl =
+    previewPath && baseUrl ? `${baseUrl}${previewPath}` : null;
   const expiresLabel = token
     ? new Date(token.expiresAt).toLocaleString(hostLocale, {
         dateStyle: 'medium',
@@ -116,9 +125,7 @@ export function PreviewTokenModal({
     <Modal
       title={t('preview.title')}
       description={
-        token
-          ? t('preview.descriptionReady')
-          : t('preview.description')
+        token ? t('preview.descriptionReady') : t('preview.description')
       }
       isOpen={isOpen}
       onClose={onClose}
@@ -126,11 +133,15 @@ export function PreviewTokenModal({
       {!token ? (
         <div className='space-y-4 pt-2'>
           {postTitle ? (
-            <p className='text-sm text-muted-foreground'>{t('preview.post')}<span className='font-medium text-foreground'>{postTitle}</span>
+            <p className='text-muted-foreground text-sm'>
+              {t('preview.post')}
+              <span className='text-foreground font-medium'>{postTitle}</span>
             </p>
           ) : null}
           <div className='space-y-2'>
-            <label className='text-sm font-medium' htmlFor='preview-token-ttl'>{t('preview.lifetime')}</label>
+            <label className='text-sm font-medium' htmlFor='preview-token-ttl'>
+              {t('preview.lifetime')}
+            </label>
             <Select value={ttlHours} onValueChange={setTtlHours}>
               <SelectTrigger id='preview-token-ttl' className='w-full'>
                 <SelectValue placeholder={t('preview.lifetime')} />
@@ -145,7 +156,9 @@ export function PreviewTokenModal({
             </Select>
           </div>
           <div className='flex items-center justify-end space-x-2 pt-2'>
-            <Button disabled={loading} variant='outline' onClick={onClose}>{t('categories.cancel')}</Button>
+            <Button disabled={loading} variant='outline' onClick={onClose}>
+              {t('categories.cancel')}
+            </Button>
             <Button disabled={loading} onClick={onGenerate}>
               {loading ? 'Generating…' : 'Generate link'}
             </Button>
@@ -155,13 +168,11 @@ export function PreviewTokenModal({
         <div className='space-y-4 pt-2'>
           <div className='space-y-1'>
             <p className='text-sm font-medium'>{t('preview.title')}</p>
-            <code className='block max-w-full overflow-x-auto rounded bg-muted px-2 py-1.5 text-xs'>
+            <code className='bg-muted block max-w-full overflow-x-auto rounded px-2 py-1.5 text-xs'>
               {absoluteUrl ?? previewPath}
             </code>
-            <p className='text-xs text-muted-foreground'>
-              {absoluteUrl
-                ? t('preview.linkHint')
-                : t('preview.pathHint')}
+            <p className='text-muted-foreground text-xs'>
+              {absoluteUrl ? t('preview.linkHint') : t('preview.pathHint')}
             </p>
           </div>
           <div className='flex flex-wrap items-center gap-2'>
@@ -169,26 +180,47 @@ export function PreviewTokenModal({
               size='sm'
               variant='outline'
               onClick={() =>
-                previewPath && copyToClipboard(absoluteUrl ?? previewPath, t('preview.linkCopied'), t('preview.copyError'))
+                previewPath &&
+                copyToClipboard(
+                  absoluteUrl ?? previewPath,
+                  t('preview.linkCopied'),
+                  t('preview.copyError')
+                )
               }
             >
-              <Copy className='mr-2 h-4 w-4' />{t('preview.copyLink')}</Button>
+              <Copy className='mr-2 h-4 w-4' />
+              {t('preview.copyLink')}
+            </Button>
             {absoluteUrl ? (
               <Button size='sm' variant='outline' asChild>
                 <a href={absoluteUrl} target='_blank' rel='noopener noreferrer'>
-                  <ExternalLink className='mr-2 h-4 w-4' />{t('preview.open')}</a>
+                  <ExternalLink className='mr-2 h-4 w-4' />
+                  {t('preview.open')}
+                </a>
               </Button>
             ) : null}
             <Button
               size='sm'
               variant='ghost'
-              onClick={() => copyToClipboard(token.token, t('preview.tokenCopied'), t('preview.copyError'))}
+              onClick={() =>
+                copyToClipboard(
+                  token.token,
+                  t('preview.tokenCopied'),
+                  t('preview.copyError')
+                )
+              }
             >
-              <Copy className='mr-2 h-4 w-4' />{t('preview.copyToken')}</Button>
+              <Copy className='mr-2 h-4 w-4' />
+              {t('preview.copyToken')}
+            </Button>
           </div>
-          <p className='text-xs text-muted-foreground'>{t('preview.expires', { at: expiresLabel ?? '' })}</p>
+          <p className='text-muted-foreground text-xs'>
+            {t('preview.expires', { at: expiresLabel ?? '' })}
+          </p>
           <div className='flex items-center justify-end'>
-            <Button variant='outline' onClick={onClose}>{t('preview.done')}</Button>
+            <Button variant='outline' onClick={onClose}>
+              {t('preview.done')}
+            </Button>
           </div>
         </div>
       )}

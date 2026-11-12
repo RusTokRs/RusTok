@@ -21,7 +21,10 @@ const apiSource = readFileSync(
 );
 const cleanApiSource = stripTypeScriptTypes(
   apiSource
-    .replace("import { graphqlRequest, type GqlOpts } from '@/lib/graphql';", '')
+    .replace(
+      "import { graphqlRequest, type GqlOpts } from '@/lib/graphql';",
+      ''
+    )
     .replace('export type { GqlOpts };', '')
     .replaceAll('export ', '')
 );
@@ -106,21 +109,63 @@ test('GraphQL operations expose required workflow queries and mutations', () => 
   const api = createApiModule(async () => ({}));
   assert.match(api.WORKFLOWS_QUERY, /query Workflows/);
   assert.match(api.WORKFLOW_QUERY, /query Workflow\(\$id: UUID!\)/);
-  assert.match(api.WORKFLOW_EXECUTIONS_QUERY, /query WorkflowExecutions\(\$workflowId: UUID!\)/);
-  assert.match(api.CREATE_WORKFLOW_MUTATION, /mutation CreateWorkflow\(\$input: GqlCreateWorkflowInput!\)/);
-  assert.match(api.UPDATE_WORKFLOW_MUTATION, /mutation UpdateWorkflow\(\$id: UUID!, \$input: GqlUpdateWorkflowInput!\)/);
-  assert.match(api.DELETE_WORKFLOW_MUTATION, /mutation DeleteWorkflow\(\$id: UUID!\)/);
-  assert.match(api.ACTIVATE_WORKFLOW_MUTATION, /mutation ActivateWorkflow\(\$id: UUID!\)/);
-  assert.match(api.PAUSE_WORKFLOW_MUTATION, /mutation PauseWorkflow\(\$id: UUID!\)/);
-  assert.match(api.TRIGGER_WORKFLOW_MUTATION, /mutation TriggerWorkflow\(\$id: UUID!, \$payload: JSON, \$force: Boolean\)/);
-  assert.match(api.ADD_STEP_MUTATION, /mutation AddWorkflowStep\(\$workflowId: UUID!, \$input: GqlCreateStepInput!\)/);
-  assert.match(api.UPDATE_STEP_MUTATION, /mutation UpdateWorkflowStep\(\$workflowId: UUID!, \$stepId: UUID!, \$input: GqlUpdateStepInput!\)/);
-  assert.match(api.DELETE_STEP_MUTATION, /mutation DeleteWorkflowStep\(\$workflowId: UUID!, \$stepId: UUID!\)/);
+  assert.match(
+    api.WORKFLOW_EXECUTIONS_QUERY,
+    /query WorkflowExecutions\(\$workflowId: UUID!\)/
+  );
+  assert.match(
+    api.CREATE_WORKFLOW_MUTATION,
+    /mutation CreateWorkflow\(\$input: GqlCreateWorkflowInput!\)/
+  );
+  assert.match(
+    api.UPDATE_WORKFLOW_MUTATION,
+    /mutation UpdateWorkflow\(\$id: UUID!, \$input: GqlUpdateWorkflowInput!\)/
+  );
+  assert.match(
+    api.DELETE_WORKFLOW_MUTATION,
+    /mutation DeleteWorkflow\(\$id: UUID!\)/
+  );
+  assert.match(
+    api.ACTIVATE_WORKFLOW_MUTATION,
+    /mutation ActivateWorkflow\(\$id: UUID!\)/
+  );
+  assert.match(
+    api.PAUSE_WORKFLOW_MUTATION,
+    /mutation PauseWorkflow\(\$id: UUID!\)/
+  );
+  assert.match(
+    api.TRIGGER_WORKFLOW_MUTATION,
+    /mutation TriggerWorkflow\(\$id: UUID!, \$payload: JSON, \$force: Boolean\)/
+  );
+  assert.match(
+    api.ADD_STEP_MUTATION,
+    /mutation AddWorkflowStep\(\$workflowId: UUID!, \$input: GqlCreateStepInput!\)/
+  );
+  assert.match(
+    api.UPDATE_STEP_MUTATION,
+    /mutation UpdateWorkflowStep\(\$workflowId: UUID!, \$stepId: UUID!, \$input: GqlUpdateStepInput!\)/
+  );
+  assert.match(
+    api.DELETE_STEP_MUTATION,
+    /mutation DeleteWorkflowStep\(\$workflowId: UUID!, \$stepId: UUID!\)/
+  );
   assert.match(api.WORKFLOW_TEMPLATES_QUERY, /query WorkflowTemplates/);
-  assert.match(api.CREATE_FROM_TEMPLATE_MUTATION, /mutation CreateWorkflowFromTemplate\(\$templateId: String!, \$name: String!\)/);
-  assert.match(api.GENERATE_WORKFLOW_MUTATION, /mutation GenerateWorkflowFromDescription\(\$description: String!\)/);
-  assert.match(api.WORKFLOW_VERSIONS_QUERY, /query WorkflowVersions\(\$workflowId: UUID!\)/);
-  assert.match(api.RESTORE_VERSION_MUTATION, /mutation RestoreWorkflowVersion\(\$workflowId: UUID!, \$version: Int!\)/);
+  assert.match(
+    api.CREATE_FROM_TEMPLATE_MUTATION,
+    /mutation CreateWorkflowFromTemplate\(\$templateId: String!, \$name: String!\)/
+  );
+  assert.match(
+    api.GENERATE_WORKFLOW_MUTATION,
+    /mutation GenerateWorkflowFromDescription\(\$description: String!\)/
+  );
+  assert.match(
+    api.WORKFLOW_VERSIONS_QUERY,
+    /query WorkflowVersions\(\$workflowId: UUID!\)/
+  );
+  assert.match(
+    api.RESTORE_VERSION_MUTATION,
+    /mutation RestoreWorkflowVersion\(\$workflowId: UUID!, \$version: Int!\)/
+  );
 });
 
 test('workflow lifecycle operations enforce non-empty identifier validation', async () => {
@@ -144,13 +189,34 @@ test('workflow lifecycle operations enforce non-empty identifier validation', as
   );
 
   // Workflow ID validation
-  await assert.rejects(async () => api.getWorkflow(''), /Workflow ID is required/);
-  await assert.rejects(async () => api.updateWorkflow('', {}), /Workflow ID is required/);
-  await assert.rejects(async () => api.deleteWorkflow(''), /Workflow ID is required/);
-  await assert.rejects(async () => api.activateWorkflow(''), /Workflow ID is required/);
-  await assert.rejects(async () => api.pauseWorkflow(''), /Workflow ID is required/);
-  await assert.rejects(async () => api.triggerWorkflow(''), /Workflow ID is required/);
-  await assert.rejects(async () => api.listWorkflowExecutions(''), /Workflow ID is required/);
+  await assert.rejects(
+    async () => api.getWorkflow(''),
+    /Workflow ID is required/
+  );
+  await assert.rejects(
+    async () => api.updateWorkflow('', {}),
+    /Workflow ID is required/
+  );
+  await assert.rejects(
+    async () => api.deleteWorkflow(''),
+    /Workflow ID is required/
+  );
+  await assert.rejects(
+    async () => api.activateWorkflow(''),
+    /Workflow ID is required/
+  );
+  await assert.rejects(
+    async () => api.pauseWorkflow(''),
+    /Workflow ID is required/
+  );
+  await assert.rejects(
+    async () => api.triggerWorkflow(''),
+    /Workflow ID is required/
+  );
+  await assert.rejects(
+    async () => api.listWorkflowExecutions(''),
+    /Workflow ID is required/
+  );
 });
 
 test('step operations enforce non-empty workflowId and stepId validation', async () => {
@@ -161,7 +227,13 @@ test('step operations enforce non-empty workflowId and stepId validation', async
   }));
 
   await assert.rejects(
-    async () => api.addWorkflowStep('', { position: 1, stepType: 'ACTION', config: {}, onError: 'STOP' }),
+    async () =>
+      api.addWorkflowStep('', {
+        position: 1,
+        stepType: 'ACTION',
+        config: {},
+        onError: 'STOP'
+      }),
     /Workflow ID is required/
   );
   await assert.rejects(

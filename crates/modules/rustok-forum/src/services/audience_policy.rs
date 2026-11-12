@@ -1,5 +1,5 @@
-use std::marker::PhantomData;
 use serde::{Deserialize, Serialize};
+use std::marker::PhantomData;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -24,7 +24,11 @@ pub struct AudienceLayer<S: AudienceScope> {
 
 impl<S: AudienceScope> AudienceLayer<S> {
     pub fn new(subject_id: Uuid, constraints: ForumAudienceConstraints) -> Self {
-        Self { subject_id, constraints, _marker: PhantomData }
+        Self {
+            subject_id,
+            constraints,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -53,31 +57,59 @@ impl<S: AudienceScope> AudiencePolicy<S> {
         }
     }
 
-    pub fn subject_id(&self) -> Uuid { self.subject_id }
-    pub fn is_inherited_only(&self) -> bool { self.configured_constraints.is_none() }
+    pub fn subject_id(&self) -> Uuid {
+        self.subject_id
+    }
+    pub fn is_inherited_only(&self) -> bool {
+        self.configured_constraints.is_none()
+    }
     pub fn effective_constraints(&self) -> Option<&ForumAudienceConstraints> {
         self.effective_layers.last().map(|l| &l.constraints)
     }
 }
 
 // Concrete scopes — one line per former copy-paste module
-#[derive(Clone, Debug)] pub struct CategoryScope;
-impl AudienceScope for CategoryScope { const NAME: &'static str = "category"; const TABLE_PREFIX: &'static str = "forum_category_audience"; }
+#[derive(Clone, Debug)]
+pub struct CategoryScope;
+impl AudienceScope for CategoryScope {
+    const NAME: &'static str = "category";
+    const TABLE_PREFIX: &'static str = "forum_category_audience";
+}
 
-#[derive(Clone, Debug)] pub struct CategoryModerationScope;
-impl AudienceScope for CategoryModerationScope { const NAME: &'static str = "category_moderation"; const TABLE_PREFIX: &'static str = "forum_category_moderation_audience"; }
+#[derive(Clone, Debug)]
+pub struct CategoryModerationScope;
+impl AudienceScope for CategoryModerationScope {
+    const NAME: &'static str = "category_moderation";
+    const TABLE_PREFIX: &'static str = "forum_category_moderation_audience";
+}
 
-#[derive(Clone, Debug)] pub struct CategoryTopicCreateScope;
-impl AudienceScope for CategoryTopicCreateScope { const NAME: &'static str = "category_topic_create"; const TABLE_PREFIX: &'static str = "forum_category_topic_create_audience"; }
+#[derive(Clone, Debug)]
+pub struct CategoryTopicCreateScope;
+impl AudienceScope for CategoryTopicCreateScope {
+    const NAME: &'static str = "category_topic_create";
+    const TABLE_PREFIX: &'static str = "forum_category_topic_create_audience";
+}
 
-#[derive(Clone, Debug)] pub struct CategoryReplyCreateScope;
-impl AudienceScope for CategoryReplyCreateScope { const NAME: &'static str = "category_reply_create"; const TABLE_PREFIX: &'static str = "forum_category_reply_create_audience"; }
+#[derive(Clone, Debug)]
+pub struct CategoryReplyCreateScope;
+impl AudienceScope for CategoryReplyCreateScope {
+    const NAME: &'static str = "category_reply_create";
+    const TABLE_PREFIX: &'static str = "forum_category_reply_create_audience";
+}
 
-#[derive(Clone, Debug)] pub struct TopicScope;
-impl AudienceScope for TopicScope { const NAME: &'static str = "topic"; const TABLE_PREFIX: &'static str = "forum_topic_audience"; }
+#[derive(Clone, Debug)]
+pub struct TopicScope;
+impl AudienceScope for TopicScope {
+    const NAME: &'static str = "topic";
+    const TABLE_PREFIX: &'static str = "forum_topic_audience";
+}
 
-#[derive(Clone, Debug)] pub struct TopicReplyCreateScope;
-impl AudienceScope for TopicReplyCreateScope { const NAME: &'static str = "topic_reply_create"; const TABLE_PREFIX: &'static str = "forum_topic_reply_create_audience"; }
+#[derive(Clone, Debug)]
+pub struct TopicReplyCreateScope;
+impl AudienceScope for TopicReplyCreateScope {
+    const NAME: &'static str = "topic_reply_create";
+    const TABLE_PREFIX: &'static str = "forum_topic_reply_create_audience";
+}
 
 // Backwards-compatible type aliases — existing transports keep importing
 // `ForumCategoryAudiencePolicy` but now it is a single generic instantiation.

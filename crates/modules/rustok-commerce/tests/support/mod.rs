@@ -211,7 +211,9 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
         schema.create_table_from_entity(shipping_profile_translation::Entity),
     )
     .await;
-    rustok_pricing::ensure_pricing_tables(db).await;
+    rustok_pricing::ensure_pricing_tables(db)
+        .await
+        .expect("failed to create pricing test tables");
     create_entity_table(db, &builder, schema.create_table_from_entity(cart::Entity)).await;
     create_entity_table(
         db,

@@ -1195,6 +1195,15 @@ revisions reconcile through one shared identity
 = `ContractEventEnvelope.causation_id`) and one `ingest_sequence` order, so a
 replay can only move forward.
 
+Tag resolution for the Search projection is still one round-trip pair per topic
+(`forum_topic_tags`, then Taxonomy term names): `project_topic` reads each topic
+through `get_public_topic_with_locale_fallback`, which resolves its tags itself.
+Finding 9.2 of `forum-audit-report-2026-11-07.md` asks for one batch per page. Two
+`load_topic_tags_for_topics` helpers were added for it in `24c41d87bc` without a
+caller and were removed as dead code; the batch needs a page-level read in the
+projection source that hands the resolved tags to `project_topic`, and a reindex
+round-trip count as its evidence. Open.
+
 The `forum-search-*.json` contracts in this directory state an execution-pending
 status of their own - commonly `source_complete_execution_pending`,
 `source_complete_runtime_evidence_pending` or
@@ -1302,6 +1311,22 @@ These commands remain maintainer-run in this source slice.
 ## `FORUM-33` — analytics, observability and reconciliation
 
 **Status:** `in_progress`
+
+The counter, solution, subscription and mention reports share one
+`ReconciliationExecutor` (`services/reconciliation_executor.rs`): it owns the
+operator fence (`ForumCategories::Manage` and `ForumTopics::Manage`), the
+entry-point, span and error metrics, and the page bound. Each report declares a
+single `EXECUTOR` constant with its bounds and its three metric labels and keeps
+no copy of those rules. The labels are explicit because they are three published
+series: the entry-point counter uses `<report>_reconciliation_report`, the module
+error counter uses `<report>_reconciliation`, and the span metrics use
+`forum.<report>_reconciliation_report`. The first executor revision reused the
+span operation for all three, which renamed two series per report; the labels are
+back to their published values. `scripts/verify/lib/forum-reconciliation-executor.mjs`
+states this contract for the three reconciliation source guards, and
+`forum-reconciliation-executor.test.mjs` next to it mutates the live sources one
+rule at a time. The attachment-hold report still carries its own fence, metrics
+and clamp and has not moved onto the executor.
 
 FORUM-33A/B provide the read-only `ForumCounterReconciliationService`; FORUM-33C
 adds a sibling read-only `ForumSolutionReconciliationService`. Both are exposed

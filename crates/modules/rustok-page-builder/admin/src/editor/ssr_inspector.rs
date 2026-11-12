@@ -5,6 +5,8 @@ use crate::i18n::t;
 use fly::PageMetadata;
 #[cfg(not(target_arch = "wasm32"))]
 use fly::ProjectPage;
+#[cfg(not(target_arch = "wasm32"))]
+use fly_ui::EditorCapability;
 use leptos::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 use rustok_ui_core::UiRouteContext;
@@ -21,6 +23,28 @@ struct SsrComponentOption {
 pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     #[cfg(not(target_arch = "wasm32"))]
     {
+        // Each form renders disabled when the intent endpoint would refuse it.
+        let set_runtime_context_enabled = runtime.form_enabled("set_runtime_context");
+        let patch_page_metadata_enabled = runtime.form_enabled("patch_page_metadata");
+        let create_page_enabled = runtime.form_enabled("create_page");
+        let rename_page_enabled = runtime.form_enabled("rename_page");
+        let remove_page_enabled = runtime.form_enabled("remove_page");
+        let activate_page_enabled = runtime.form_enabled("activate_page");
+        // The page the editor is on is kept in the draft session, and the host keeps a session
+        // for a caller that may edit only. For anyone else the choice would be gone with the
+        // next request, so the form is absent: a control is not rendered without its transport.
+        let page_navigation_available = runtime.capability_enabled(EditorCapability::Edit);
+        // A component patch needs the style capability for an inline style and the property
+        // capability for a field or an attribute, so the form offers the kinds it may post.
+        let property_kind_enabled = runtime.form_enabled_with(
+            "patch_component_property",
+            &serde_json::json!({ "kind": "field" }),
+        );
+        let style_kind_enabled = runtime.form_enabled_with(
+            "patch_component_property",
+            &serde_json::json!({ "kind": "style" }),
+        );
+        let patch_component_property_enabled = property_kind_enabled || style_kind_enabled;
         let route_context = use_context::<UiRouteContext>().unwrap_or_default();
         let locale = route_context.locale;
         let inspector_title = t(
@@ -113,6 +137,11 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
             "page_builder.ssrInspector.pageLifecycle",
             "Page lifecycle",
         );
+        let open_page = t(
+            locale.as_deref(),
+            "page_builder.ssrInspector.openPage",
+            "Open page",
+        );
         let add_page = t(
             locale.as_deref(),
             "page_builder.ssrInspector.addPage",
@@ -190,20 +219,45 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
             "Prevent search indexing",
         );
 
-        let (components, pages) = runtime.controller.with(|controller| {
+        let (components, pages, active_page_index) = runtime.controller.with(|controller| {
             let components = controller
                 .layer_items()
                 .iter()
                 .flat_map(flatten_layer)
                 .collect::<Vec<_>>();
             let pages = controller.editor().document().project.pages.clone();
-            (components, pages)
+            (components, pages, controller.active_page_index())
         });
         let default_component = components.first().map(|component| component.id.clone());
         let runtime_context_json =
             serde_json::to_string_pretty(&runtime.runtime_context.get_untracked())
                 .unwrap_or_else(|_| "{}".to_string());
         let metadata_page_fallback = page_fallback.clone();
+        // The page tabs of the workspace act through hydration only. This form is how an author
+        // changes the page in the default runtime, so it stays outside the collapsed sections.
+        let open_page_form = page_navigation_available.then(|| {
+            let pages = pages.clone();
+            let page_fallback = page_fallback.clone();
+            view! {
+                <form class="grid gap-2" data-fly-intent-form="activate_page">
+                    <fieldset class="contents" disabled=!activate_page_enabled>
+                    <strong class="text-xs">{open_page.clone()}</strong>
+                    <PageSelect
+                        pages=pages
+                        name="page_id"
+                        page_fallback=page_fallback
+                        active_page_index=active_page_index
+                    />
+                    <button
+                        type="submit"
+                        class="w-fit rounded border border-border px-2 py-1 text-xs"
+                    >
+                        {open_page}
+                    </button>
+                    </fieldset>
+                </form>
+            }
+        });
 
         view! {
             <section
@@ -217,12 +271,15 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     </p>
                 </div>
 
+                {open_page_form}
+
                 <details class="rounded border border-border p-2" open>
                     <summary class="cursor-pointer text-xs font-semibold">{runtime_context_title}</summary>
                     <form
                         class="mt-3 grid gap-2"
                         data-fly-intent-form="set_runtime_context"
                     >
+                        <fieldset class="contents" disabled=!set_runtime_context_enabled>
                         <textarea
                             name="context_json"
                             required
@@ -239,6 +296,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         >
                             {apply_runtime_context}
                         </button>
+                        </fieldset>
                     </form>
                 </details>
 
@@ -260,6 +318,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     class="grid gap-2 rounded border border-border p-2"
                     data-fly-intent-form="patch_component_property"
                 >
+                    <fieldset class="contents" disabled=!patch_component_property_enabled>
                     <strong class="text-xs">{component_property}</strong>
                     <input
                         type="hidden"
@@ -269,9 +328,15 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     />
                     <div class="grid grid-cols-2 gap-2">
                         <select name="kind" class="rounded border border-input bg-background px-2 py-1 text-xs">
-                            <option value="field">{field_kind}</option>
-                            <option value="attribute">{attribute_kind}</option>
-                            <option value="style">{inline_style_kind}</option>
+                            <option value="field" disabled=!property_kind_enabled>
+                                {field_kind}
+                            </option>
+                            <option value="attribute" disabled=!property_kind_enabled>
+                                {attribute_kind}
+                            </option>
+                            <option value="style" disabled=!style_kind_enabled>
+                                {inline_style_kind}
+                            </option>
                         </select>
                         <input
                             name="name"
@@ -292,6 +357,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">
                         {apply_component_patch}
                     </button>
+                    </fieldset>
                 </form>
 
                 <details class="rounded border border-border p-2">
@@ -305,6 +371,10 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                     class="grid gap-2 rounded bg-muted/30 p-2"
                                     data-fly-intent-form="patch_page_metadata"
                                 >
+                                    <fieldset
+                                        class="contents"
+                                        disabled=!patch_page_metadata_enabled
+                                    >
                                     <strong class="text-xs">{page_label(page, index, &metadata_page_fallback)}</strong>
                                     <input type="hidden" name="page_id" value=page_id/>
                                     <input class="rounded border border-input bg-background px-2 py-1 text-xs" name="title" placeholder=seo_title.clone() value=metadata.title.unwrap_or_default()/>
@@ -319,6 +389,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                         <span>{no_index.clone()}</span>
                                     </label>
                                     <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">{save_page_metadata.clone()}</button>
+                                    </fieldset>
                                 </form>
                             }
                         }).collect_view()}
@@ -329,22 +400,38 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     <summary class="cursor-pointer text-xs font-semibold">{page_lifecycle}</summary>
                     <div class="mt-3 grid gap-3">
                         <form class="grid gap-2" data-fly-intent-form="create_page">
+                            <fieldset class="contents" disabled=!create_page_enabled>
                             <strong class="text-xs">{add_page.clone()}</strong>
                             <input required name="page_id" class="rounded border border-input bg-background px-2 py-1 text-xs" placeholder=page_id_placeholder/>
                             <input name="name" class="rounded border border-input bg-background px-2 py-1 text-xs" placeholder=page_name_placeholder/>
                             <button type="submit" class="w-fit rounded border border-border px-2 py-1 text-xs">{add_page}</button>
+                            </fieldset>
                         </form>
                         <form class="grid gap-2 border-t border-border pt-3" data-fly-intent-form="rename_page">
+                            <fieldset class="contents" disabled=!rename_page_enabled>
                             <strong class="text-xs">{rename_page.clone()}</strong>
-                            <PageSelect pages=pages.clone() name="page_id" page_fallback=page_fallback.clone()/>
+                            <PageSelect
+                                pages=pages.clone()
+                                name="page_id"
+                                page_fallback=page_fallback.clone()
+                                active_page_index=active_page_index
+                            />
                             <input required name="new_page_id" class="rounded border border-input bg-background px-2 py-1 text-xs" placeholder=new_page_id_placeholder/>
                             <input name="name" class="rounded border border-input bg-background px-2 py-1 text-xs" placeholder=new_page_name_placeholder/>
                             <button type="submit" class="w-fit rounded border border-border px-2 py-1 text-xs">{rename_page}</button>
+                            </fieldset>
                         </form>
                         <form class="grid gap-2 border-t border-border pt-3" data-fly-intent-form="remove_page">
+                            <fieldset class="contents" disabled=!remove_page_enabled>
                             <strong class="text-xs text-destructive">{remove_page.clone()}</strong>
-                            <PageSelect pages=pages name="page_id" page_fallback=page_fallback/>
+                            <PageSelect
+                                pages=pages
+                                name="page_id"
+                                page_fallback=page_fallback
+                                active_page_index=active_page_index
+                            />
                             <button type="submit" class="w-fit rounded border border-destructive/40 px-2 py-1 text-xs text-destructive">{remove_page}</button>
+                            </fieldset>
                         </form>
                     </div>
                 </details>
@@ -360,14 +447,23 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     }
 }
 
+/// Page picker of a page form. It opens on the page the editor is on, so that a form names the
+/// page in front of the author unless another one is chosen.
 #[cfg(not(target_arch = "wasm32"))]
 #[component]
-fn PageSelect(pages: Vec<ProjectPage>, name: &'static str, page_fallback: String) -> impl IntoView {
+fn PageSelect(
+    pages: Vec<ProjectPage>,
+    name: &'static str,
+    page_fallback: String,
+    active_page_index: usize,
+) -> impl IntoView {
     view! {
         <select name=name class="rounded border border-input bg-background px-2 py-1 text-xs">
             {pages.into_iter().enumerate().map(move |(index, page)| {
                 let value = page.id.clone().unwrap_or_else(|| format!("page-{index}"));
-                view! { <option value=value>{page_label(&page, index, &page_fallback)}</option> }
+                let selected = index == active_page_index;
+                let label = page_label(&page, index, &page_fallback);
+                view! { <option value=value selected=selected>{label}</option> }
             }).collect_view()}
         </select>
     }

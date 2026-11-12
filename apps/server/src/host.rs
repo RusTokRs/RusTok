@@ -735,8 +735,8 @@ mod tests {
         let config = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
             .with_issuer("https://")
             .with_audience("rustok-production-admin");
-        let error = validate_auth_deployment(&config, true)
-            .expect_err("issuer without host must fail");
+        let error =
+            validate_auth_deployment(&config, true).expect_err("issuer without host must fail");
         assert!(error.to_string().contains("issuer"));
 
         let config_ws = crate::auth::AuthConfig::new("aB3!zY7@qW8#eR2$".repeat(5))
@@ -785,7 +785,11 @@ mod tests {
             true,
         )
         .expect_err("user:password placeholder pattern must fail");
-        assert!(error_pattern.to_string().contains("development credentials"));
+        assert!(
+            error_pattern
+                .to_string()
+                .contains("development credentials")
+        );
     }
 
     #[test]
@@ -798,7 +802,8 @@ mod tests {
             binding: "127.0.0.1".to_string(),
             port: 8080,
         };
-        let (binding, port) = super::resolve_server_endpoint(&config).expect("valid trimmed binding");
+        let (binding, port) =
+            super::resolve_server_endpoint(&config).expect("valid trimmed binding");
         assert_eq!(binding, "10.0.0.1");
         assert_eq!(port, 8080);
 
@@ -809,8 +814,8 @@ mod tests {
             binding: "   ".to_string(),
             port: 8080,
         };
-        let error = super::resolve_server_endpoint(&config_empty)
-            .expect_err("empty binding must fail");
+        let error =
+            super::resolve_server_endpoint(&config_empty).expect_err("empty binding must fail");
         assert!(error.to_string().contains("must not be empty"));
     }
 }

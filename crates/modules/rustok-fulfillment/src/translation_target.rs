@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, LazyLock},
+};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -40,41 +43,27 @@ const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
 fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
     OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.owner_contract_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.owner_contract_invalid", error.to_string())
     })
 }
 
 fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
     ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.owner_contract_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.owner_contract_invalid", error.to_string())
     })
 }
 
 fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
     ResourceId::new(value).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.resource_id_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.resource_id_invalid", error.to_string())
     })
 }
 
 fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
     FieldKey::new(key).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.field_key_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.field_key_invalid", error.to_string())
     })
 }
-
-
 
 static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
     TranslationTargetProviderDescriptor {
@@ -107,7 +96,7 @@ impl ShippingOptionTranslationTargetProvider {
         Self { service }
     }
 
-        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+    fn descriptor_value() -> TranslationTargetProviderDescriptor {
         DESCRIPTOR.clone()
     }
 
@@ -515,7 +504,9 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
     Ok(shipping_option_id)
 }
 
-fn shipping_option_identity(shipping_option_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
+fn shipping_option_identity(
+    shipping_option_id: Uuid,
+) -> Result<TranslationResourceIdentity, PortError> {
     Ok(TranslationResourceIdentity {
         owner_slug: owner_slug_or_invariant()?,
         resource_kind: resource_kind_or_invariant()?,

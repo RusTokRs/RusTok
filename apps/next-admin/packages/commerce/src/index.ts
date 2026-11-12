@@ -25,13 +25,15 @@ registerAdminModule({
       id: 'commerce:metrics',
       slot: 'dashboard:metric',
       order: 20,
-      render: (context) => React.createElement(CommerceMetricsWidget, { context })
+      render: (context) =>
+        React.createElement(CommerceMetricsWidget, { context })
     },
     {
       id: 'commerce:recent-orders',
       slot: 'dashboard:section',
       order: 10,
-      render: (context) => React.createElement(CommerceRecentOrdersWidget, { context })
+      render: (context) =>
+        React.createElement(CommerceRecentOrdersWidget, { context })
     }
   ]
 });

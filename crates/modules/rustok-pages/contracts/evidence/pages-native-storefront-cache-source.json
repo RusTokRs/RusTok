@@ -5,8 +5,7 @@
   "basis": {
     "production_adapter": "crates/modules/rustok-pages/storefront/src/transport/native_server_adapter.rs",
     "cache_contract": "crates/modules/rustok-pages/src/cache_invalidation.rs",
-    "harness": "crates/modules/rustok-pages/tests/native_storefront_cache_contract.rs",
-    "parity_plan": "docs/modules/pages-page-builder-parity-continuation-plan.md"
+    "harness": "crates/modules/rustok-pages/tests/native_storefront_cache_contract.rs"
   },
   "source_contract": {
     "production_native_server_function_inspected": true,

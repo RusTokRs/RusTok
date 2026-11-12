@@ -15,6 +15,7 @@ use toml::Value as TomlValue;
 
 mod docs_markdown;
 mod docs_registry_contracts;
+mod fba_layout;
 mod i18n_api_inventory;
 mod install_dev;
 mod manifest_io;
@@ -23,7 +24,6 @@ mod migrations;
 mod module_boundary_contracts;
 mod module_cli_args;
 mod module_commands;
-mod fba_layout;
 mod module_contracts;
 #[path = "../../crates/utils/rustok-build/src/module_manifest_contribution.rs"]
 pub mod module_manifest_contribution;

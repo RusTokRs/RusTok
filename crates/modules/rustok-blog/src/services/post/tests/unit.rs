@@ -53,12 +53,14 @@ fn admin_post_cursor_rejects_a_different_sort_and_garbage() {
         AdminPostCursor::decode(&token, PostSortField::UpdatedAt, PostSortOrder::Desc).is_err()
     );
     assert!(AdminPostCursor::decode(&token, PostSortField::CreatedAt, PostSortOrder::Asc).is_err());
-    assert!(AdminPostCursor::decode(
-        "not-a-cursor",
-        PostSortField::CreatedAt,
-        PostSortOrder::Desc
-    )
-    .is_err());
+    assert!(
+        AdminPostCursor::decode(
+            "not-a-cursor",
+            PostSortField::CreatedAt,
+            PostSortOrder::Desc
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -119,7 +121,6 @@ fn post_title_limit_counts_unicode_characters_not_utf8_bytes() {
 /// with `publish: true`, `update_post` may only set it while the row is a draft, and a publish
 /// clears it. Clearing and keeping stay available on every status, so a stale schedule can
 /// still be removed from a published post.
-
 #[test]
 fn schedule_patch_is_bounded_to_drafts_and_the_future() {
     let now = chrono::Utc::now();

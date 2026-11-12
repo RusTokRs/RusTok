@@ -453,8 +453,8 @@ mod tests {
 
     #[test]
     fn inventory_deletion_refusals_have_closed_kind_code_and_public_copy() {
-        use rustok_api::PortErrorKind as K;
         use crate::ports::ProductInventoryDeletionBlocker as B;
+        use rustok_api::PortErrorKind as K;
         let cases = [
             (
                 B::InvalidRequest,
@@ -565,9 +565,8 @@ mod tests {
 
     #[test]
     fn inventory_deletion_storage_failure_remains_unavailable_not_a_domain_refusal() {
-        let error = CommerceError::Database(
-            sea_orm::DbErr::Custom("private-database-details".into()),
-        );
+        let error =
+            CommerceError::Database(sea_orm::DbErr::Custom("private-database-details".into()));
         assert!(matches!(&error, CommerceError::Database(_)));
         let public = crate::map_product_public_error(&error, "delete_product", "deletion_test");
         assert_eq!(public.code, "PRODUCT_TEMPORARILY_UNAVAILABLE");
@@ -639,15 +638,12 @@ mod quantity_errors {
         let port = inventory_quantity_port_error(&B::PublicationUnverified);
         assert!(!crate::product_catalog_command_error_is_terminal(&port));
         for error in [
-            CommerceError::Database(sea_orm::DbErr::Custom(
+            CommerceError::Database(sea_orm::DbErr::Custom("private-provider-details".into())),
+            CommerceError::Core(CoreError::Database(sea_orm::DbErr::Custom(
                 "private-provider-details".into(),
-            )),
-            CommerceError::Core(CoreError::Database(
-                sea_orm::DbErr::Custom("private-provider-details".into()),
-            )),
+            ))),
         ] {
-            let public =
-                crate::map_product_public_error(&error, "update_variant", "quantity_test");
+            let public = crate::map_product_public_error(&error, "update_variant", "quantity_test");
             assert!(public.retryable);
             assert!(!public.message.contains("private-provider-details"));
         }

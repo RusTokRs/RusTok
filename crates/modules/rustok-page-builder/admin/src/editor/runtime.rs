@@ -1,6 +1,10 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::capability_access::intent_allowed;
 use crate::core::gate_error_message;
 use crate::{AdminCanvasController, AdminCanvasEffect, PageBuilderAdminFacade};
 use fly::{GrapesJsCodec, ProjectHash, TraitSchemaRegistry};
+#[cfg(not(target_arch = "wasm32"))]
+use fly_browser::BrowserIntentKind;
 use fly_ui::{EditorCapability, EditorCapabilityEvaluation, UiIntent};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -82,6 +86,24 @@ impl AdminEditorRuntime {
     pub fn capability_enabled(&self, capability: EditorCapability) -> bool {
         self.controller
             .with(|controller| controller.ui().state.capabilities.allows(capability))
+    }
+
+    /// Whether the intent endpoint admits the form that posts `intent`, by the rule the endpoint
+    /// applies. A server-rendered form renders disabled when it does not, and an intent name
+    /// the endpoint does not know is not admitted.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn form_enabled(&self, intent: &str) -> bool {
+        self.form_enabled_with(intent, &Value::Null)
+    }
+
+    /// As [`Self::form_enabled`], for a form whose requirement depends on a field it posts.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn form_enabled_with(&self, intent: &str, payload: &Value) -> bool {
+        BrowserIntentKind::parse(intent).is_some_and(|kind| {
+            self.controller.with(|controller| {
+                intent_allowed(kind, payload, controller.ui().state.capabilities)
+            })
+        })
     }
 
     pub fn with_runtime_context(mut self, runtime_context: Value) -> Self {

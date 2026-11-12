@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, LazyLock},
+};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -35,42 +38,27 @@ const OPERATION_APPLY_PATCH: &str = "translation_target_apply_variant_patch";
 
 fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
     OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.owner_contract_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.owner_contract_invalid", error.to_string())
     })
 }
 
 fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
     ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.owner_contract_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.owner_contract_invalid", error.to_string())
     })
 }
 
 fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
     ResourceId::new(value).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.resource_id_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.resource_id_invalid", error.to_string())
     })
 }
 
-#[allow(dead_code)]
 fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
     FieldKey::new(key).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.field_key_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.field_key_invalid", error.to_string())
     })
 }
-
-
 
 static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
     TranslationTargetProviderDescriptor {
@@ -106,7 +94,7 @@ impl ProductVariantTranslationTargetProvider {
         Self { service }
     }
 
-        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+    fn descriptor_value() -> TranslationTargetProviderDescriptor {
         DESCRIPTOR.clone()
     }
 
@@ -420,7 +408,7 @@ fn snapshot_from_owner(
             .target_revision
             .map(|revision| opaque_revision(revision, "target_revision"))
             .transpose()?,
-        fields: variant_fields(&snapshot.source, snapshot.target.as_ref()),
+        fields: variant_fields(&snapshot.source, snapshot.target.as_ref())?,
     };
     resource.validate().map_err(|error| {
         PortError::invariant_violation(
@@ -455,12 +443,11 @@ fn product_lifecycle(status: &ProductStatus) -> TranslationResourceLifecycle {
 fn variant_fields(
     source: &ProductVariantTranslationExactLocaleRecord,
     target: Option<&ProductVariantTranslationExactLocaleRecord>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     let source_value = source.title.as_deref().unwrap_or_default();
-    vec![TranslationFieldSnapshot {
+    Ok(vec![TranslationFieldSnapshot {
         descriptor: TranslationFieldDescriptor {
-            key: FieldKey::new("title")
-                .expect("static Product Variant field key must satisfy the target contract: invariant validated at startup"),
+            key: field_key_or_invariant("title")?,
             profile: TranslationValueProfile::PlainText,
             strategy: TranslationStrategy::Translate,
             classification: TranslationDataClassification::Public,
@@ -473,7 +460,7 @@ fn variant_fields(
         exact_target_value: target.and_then(|value| value.title.clone()),
         source_hash: field_hash(source_value),
         protected_tokens: Vec::new(),
-    }]
+    }])
 }
 
 fn merged_target_title(
@@ -632,7 +619,8 @@ mod tests {
 
     #[test]
     fn variant_title_is_optional_public_and_bounded() {
-        let fields = variant_fields(&record("en", Some("Small / Blue")), None);
+        let fields = variant_fields(&record("en", Some("Small / Blue")), None)
+            .expect("the static Variant field key satisfies the target contract");
         assert_eq!(fields.len(), 1);
         let field = &fields[0];
         assert_eq!(field.descriptor.key.as_str(), "title");

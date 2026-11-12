@@ -1,6 +1,6 @@
-mod graphql_adapter;
 mod composer_graphql;
 mod composer_native_server;
+mod graphql_adapter;
 mod native_server_adapter;
 mod native_server_adapter_pages;
 

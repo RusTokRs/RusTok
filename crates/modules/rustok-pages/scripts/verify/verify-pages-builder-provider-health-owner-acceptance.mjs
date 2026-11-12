@@ -77,11 +77,6 @@ if (server.format !== "pages_builder_provider_health_server_binding_source_v1") 
 if (consumer.format !== "pages_builder_provider_health_consumer_binding_source_v1") failures.push("consumer continuation missing");
 need(source.graphql, "PagesGraphqlRuntimeData::provider_health_snapshot", "GraphQL typed authority");
 forbid(source.graphql, "pages_builder_provider_health_owner_acceptance_v1", "GraphQL direct packet parsing");
-for (const marker of [
-  "provider-health-owner-acceptance-source-ready",
-  "provider-health-server-binding-source-ready",
-  "provider-health-consumer-binding-source-ready",
-]) need(source.parity, marker, "parity continuation");
 
 if (contract.next_cursor?.owner_acceptance_packet !== "source_ready_maintainer_execution_pending") failures.push("owner acceptance cursor drifted");
 if (contract.next_cursor?.server_owner_health_binding !== "source_ready_maintainer_activation_pending") failures.push("server source cursor drifted");

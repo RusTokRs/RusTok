@@ -10,8 +10,8 @@ use sea_orm::{
     QueryOrder, QuerySelect, sea_query::Expr,
 };
 use serde_json::from_value;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -410,7 +410,7 @@ impl PageService {
     ///
     /// - attempts exhausted -> terminal `failed` (operator attention needed);
     /// - a newer `scheduled` job exists for the same page -> terminal
-    ///   `canceled`: the newer schedule wins, and requeueing would violate
+    ///   `canceled`: the newer schedule wins, and requeuing would violate
     ///   `uq_page_publish_jobs_active`;
     /// - otherwise -> back to `scheduled` with the lease cleared; the next
     ///   sweep reclaims it. Replays stay safe: the captured command carries the
@@ -570,10 +570,14 @@ pub struct PagePublishSchedulerMetricsSnapshot {
 impl PagePublishSchedulerMetrics {
     fn record(&self, outcome: &PagePublishSweepOutcome) {
         self.sweeps_total.fetch_add(1, Ordering::Relaxed);
-        self.published_total.fetch_add(outcome.published, Ordering::Relaxed);
-        self.requeued_total.fetch_add(outcome.reaped.requeued, Ordering::Relaxed);
-        self.reaped_failed_total.fetch_add(outcome.reaped.failed, Ordering::Relaxed);
-        self.superseded_total.fetch_add(outcome.reaped.superseded, Ordering::Relaxed);
+        self.published_total
+            .fetch_add(outcome.published, Ordering::Relaxed);
+        self.requeued_total
+            .fetch_add(outcome.reaped.requeued, Ordering::Relaxed);
+        self.reaped_failed_total
+            .fetch_add(outcome.reaped.failed, Ordering::Relaxed);
+        self.superseded_total
+            .fetch_add(outcome.reaped.superseded, Ordering::Relaxed);
     }
 
     fn snapshot(&self) -> PagePublishSchedulerMetricsSnapshot {

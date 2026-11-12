@@ -36,7 +36,6 @@ const TRANSLATION_RESOURCE_KIND: &str = "schema_copy";
 const FIELD_KEY_NAMESPACE: &str = "rustok-flex/schema-copy-field-key/v1";
 const PATCH_FINGERPRINT_NAMESPACE: &str = "rustok-flex/schema-copy-neutral-patch/v1";
 
-
 static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
     TranslationTargetProviderDescriptor {
             // INVARIANT: TRANSLATION_OWNER_SLUG ("flex") is a compile-time static ASCII identifier under 191 bytes.
@@ -67,7 +66,7 @@ impl FlexSchemaTranslationTargetProvider {
         Self { owner }
     }
 
-        fn descriptor_value() -> TranslationTargetProviderDescriptor {
+    fn descriptor_value() -> TranslationTargetProviderDescriptor {
         DESCRIPTOR.clone()
     }
 

@@ -61,7 +61,6 @@ const servicePath = "apps/server/src/services/module_rollout_promotion_settings.
 const lifecyclePath = "crates/modules/rustok-modules/src/lifecycle_writer.rs";
 const storePath = "crates/modules/rustok-modules/src/operation_store.rs";
 const snapshotPath = "crates/modules/rustok-pages/src/graphql/builder_rollout.rs";
-const planPath = "docs/modules/pages-page-builder-parity-continuation-plan.md";
 
 const contract = json(contractPath);
 const reviewContract = json(reviewContractPath);
@@ -72,7 +71,6 @@ const service = read(servicePath);
 const lifecycle = read(lifecyclePath);
 const store = read(storePath);
 const snapshot = read(snapshotPath);
-const plan = read(planPath);
 
 requireValue(
   contract.format === "forum_page_builder_ffa_fba_promotion_execution_source_v1" &&
@@ -245,9 +243,6 @@ for (const marker of [
   "Permission::PAGES_READ",
   "BuilderCapabilityFlags::from_module_settings",
 ]) requireText(snapshot, marker, snapshotPath);
-
-requireText(plan, "separate explicit FFA/FBA promotion review", planPath);
-requireText(plan, "accepted observed-Wave owner evidence", planPath);
 
 if (failures.length > 0) {
   console.error("[verify-forum-page-builder-ffa-fba-promotion-execution] FAIL");

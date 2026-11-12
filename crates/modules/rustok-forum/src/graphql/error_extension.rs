@@ -305,7 +305,9 @@ fn annotate_forum_error(error: &mut ServerError) {
             code: source.stable_code(),
             retryable: Some(source.is_retryable()),
             retry_after_seconds: match source {
-                ForumError::RateLimited { retry_after_seconds } => Some(*retry_after_seconds),
+                ForumError::RateLimited {
+                    retry_after_seconds,
+                } => Some(*retry_after_seconds),
                 ForumError::CapabilityFailure { retryable, .. } if *retryable => Some(5),
                 _ => None,
             },

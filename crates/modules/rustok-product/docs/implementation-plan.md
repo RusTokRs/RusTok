@@ -325,8 +325,8 @@ credentials are debug-redacted, the trusted caller actor is configured
 server-side, SQL logging is disabled, and tonic shutdown is coordinated with
 Ctrl-C / `SIGTERM` plus platform telemetry shutdown. Provider schema migration
 remains an external deployment precondition. The provider startup command is
-`cargo run -p rustok-product-catalog-service`; see the
-[service README](../../rustok-product-catalog-service/README.md) for prerequisites.
+`cargo run -p rustok-product --bin rustok-product-catalog-service --features service`; see the
+[Product README](../README.md#standalone-catalog-profile) for prerequisites.
 
 The provider schema preflight is source-complete. After the PostgreSQL pool
 connects and before `CatalogService`, outbox composition, or tonic listener
@@ -532,12 +532,12 @@ The July 29 attestation is retained for its original projection and consumer har
 | Transactions | Product, Pricing and Inventory lifecycle/bootstrap operations share a local SQL transaction. Their transaction-participant interfaces cannot cross RPC. |
 | Packaging | Public contracts and implementation are in the existing owner crate, with unconditional implementation dependencies. A contracts-only feature is unimplemented and is not a prerequisite for this bounded FBA profile. |
 
-Product's next packaging change follows the [canonical FBA layout](../../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout).
-Move published contracts and gRPC adapters to `rustok-product-ports`. The owner
-keeps the implementation and composes the standalone process in `src/bin/service.rs`.
-Reconcile shared transactions and donor-attached Flex value ownership by capability.
-Update live workspace, launch and evidence inputs together. Retain historical
-evidence with its original source paths and commands.
+Product's packaging now implements the [canonical FBA layout](../../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout):
+- Published contracts, DTOs, protobuf definitions, and tonic gRPC adapters live in `rustok-product-ports` (`ports/`).
+- The domain implementation, entities, migrations, and standalone service binary live in `rustok-product` (`src/bin/service.rs` behind feature `service`).
+- Former separate crates `rustok-product-transport` and `rustok-product-catalog-service` are retired and consolidated into `rustok-product`.
+- Cross-module foreign keys (`taxonomy_terms`, `flex_field_definition_cache_generation`) are guarded during migrations for independent database execution.
+- Historical evidence files retain their original recorded paths and commands.
 
 The bounded remote read profile is compatible with local commands. A shared database
 supports process extraction with coordinated schema. For independent storage, first

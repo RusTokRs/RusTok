@@ -161,7 +161,6 @@ for (const marker of [
   need(sources.workflow, marker, "focused provider-health workflow");
 }
 
-
 if (
   contract.next_cursor?.observed_health_owner_acceptance_runner !==
   "synthetic_fail_closed_ci_coverage_source_ready"

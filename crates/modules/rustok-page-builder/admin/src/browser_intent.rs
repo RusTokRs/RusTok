@@ -192,6 +192,15 @@ fn dispatch_named_intent(
             }))?
         }
         "save" => controller.dispatch(UiIntent::RequestSave)?,
+        "create_page" if is_ssr_page_form(payload) => {
+            let effects = dispatch_ssr_form(controller, intent, payload)?;
+            open_created_page(controller, effects)?
+        }
+        "activate_page" | "remove_page" | "rename_page" | "patch_page_metadata"
+            if is_ssr_page_form(payload) =>
+        {
+            dispatch_ssr_form(controller, intent, payload)?
+        }
         "activate_page" => {
             let page_index = integer_field(payload, "page_index")? as usize;
             let page_id = payload
@@ -218,17 +227,13 @@ fn dispatch_named_intent(
                 .collect::<std::collections::BTreeSet<_>>();
             let id = unique_page_id_for(&existing, &name);
             let index = controller.page_summaries().len();
-            let mut effects = controller.dispatch(UiIntent::execute(EditorCommand::Page {
+            let effects = controller.dispatch(UiIntent::execute(EditorCommand::Page {
                 command: PageCommand::Add {
                     index,
-                    page: Box::new(blank_page(id.clone(), name)),
+                    page: Box::new(blank_page(id, name)),
                 },
             }))?;
-            effects.extend(controller.dispatch(UiIntent::ActivatePage {
-                page_id: Some(id),
-                page_index: index,
-            })?);
-            effects
+            open_created_page(controller, effects)?
         }
         "remove_page" => {
             let page_index = integer_field(payload, "page_index")? as usize;
@@ -395,15 +400,62 @@ fn dispatch_named_intent(
                 intent.to_string(),
             ));
         }
-        other => match controller
-            .ssr_form_intent(other, payload)
-            .map_err(BrowserIntentDispatchError::Authoring)?
-        {
-            Some(intent) => controller.dispatch(intent)?,
-            None => return Err(BrowserIntentDispatchError::Unsupported(other.to_string())),
-        },
+        other => dispatch_ssr_form(controller, other, payload)?,
     };
     Ok(effects)
+}
+
+/// Resolves an intent through the classic SSR form resolver and dispatches the result.
+fn dispatch_ssr_form(
+    controller: &mut AdminCanvasController,
+    intent: &str,
+    payload: &Value,
+) -> Result<Vec<AdminCanvasEffect>, BrowserIntentDispatchError> {
+    match controller
+        .ssr_form_intent(intent, payload)
+        .map_err(BrowserIntentDispatchError::Authoring)?
+    {
+        Some(ui_intent) => Ok(controller.dispatch(ui_intent)?),
+        None => Err(BrowserIntentDispatchError::Unsupported(intent.to_string())),
+    }
+}
+
+/// Moves the editor to the page a `create_page` intent has just appended.
+///
+/// Creating a page is one gesture in both payload shapes: the page is appended, and the editor
+/// opens it so that the author fills the page that was asked for. The two `create_page` arms
+/// differ in how the page gets its id and call this for the rest, so the shapes cannot drift
+/// apart again: the form shape used to append the page and leave the editor where it was.
+///
+/// The activation is a separate navigation step and no part of the page command, so `undo`
+/// removes the page and the editor falls back to the last page that is left.
+fn open_created_page(
+    controller: &mut AdminCanvasController,
+    mut effects: Vec<AdminCanvasEffect>,
+) -> Result<Vec<AdminCanvasEffect>, BrowserIntentDispatchError> {
+    let Some(created) = controller.page_summaries().pop() else {
+        return Ok(effects);
+    };
+    effects.extend(controller.dispatch(UiIntent::ActivatePage {
+        page_id: created.id,
+        page_index: created.index,
+    })?);
+    Ok(effects)
+}
+
+/// `true` when a page intent carries the payload of a classic SSR form.
+///
+/// `activate_page`, `create_page`, `remove_page`, `rename_page` and `patch_page_metadata`
+/// arrive in two shapes under one wire name. The typed envelopes of the adapter workspaces
+/// (`BrowserIntentEnvelope::remove_page` and its siblings) address a page by `page_index`, and
+/// the `create_page` envelope names no page at all. The SSR inspector forms have no index to
+/// send: they name the page by `page_id` alone and send the fields of their `Ssr*Request`.
+///
+/// The arms of [`dispatch_named_intent`] for these names read the envelope shape. A form
+/// payload that reached them failed on the missing `page_index`, or — for `create_page` — lost
+/// the page id the author typed, and the form resolver that owns the shape was never asked.
+fn is_ssr_page_form(payload: &Value) -> bool {
+    payload.get("page_index").is_none() && payload.get("page_id").is_some()
 }
 
 fn dispatch_shortcut(

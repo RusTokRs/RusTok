@@ -116,12 +116,14 @@ fn admin_post_cursor_rejects_a_different_sort_and_garbage() {
         AdminPostCursor::decode(&token, PostSortField::UpdatedAt, PostSortOrder::Desc).is_err()
     );
     assert!(AdminPostCursor::decode(&token, PostSortField::CreatedAt, PostSortOrder::Asc).is_err());
-    assert!(AdminPostCursor::decode(
-        "not-a-cursor",
-        PostSortField::CreatedAt,
-        PostSortOrder::Desc
-    )
-    .is_err());
+    assert!(
+        AdminPostCursor::decode(
+            "not-a-cursor",
+            PostSortField::CreatedAt,
+            PostSortOrder::Desc
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -182,7 +184,6 @@ fn post_title_limit_counts_unicode_characters_not_utf8_bytes() {
 /// with `publish: true`, `update_post` may only set it while the row is a draft, and a publish
 /// clears it. Clearing and keeping stay available on every status, so a stale schedule can
 /// still be removed from a published post.
-
 #[test]
 fn schedule_patch_is_bounded_to_drafts_and_the_future() {
     let now = chrono::Utc::now();
@@ -215,7 +216,7 @@ fn schedule_patch_is_bounded_to_drafts_and_the_future() {
         Ok(Patch::Keep)
     ));
 }
-;
+
 fn post_edit_input(version: i32) -> UpdatePostInput {
     UpdatePostInput {
         locale: None,
@@ -695,14 +696,13 @@ async fn create_and_update_post_store_channel_visibility_in_typed_relation() {
     assert_eq!(updated.channel_slugs, vec!["storefront".to_string()]);
     assert_eq!(updated.metadata["custom"], "next");
 }
-;
+
 /// The customer-facing list is a public surface, so it applies the same corpus
 /// rule as the public keyset list, the SEO scan and the comment target gate.
 ///
 /// A published row whose `published_at` was lost is damaged state: an editor with
 /// tenant-wide read authority still sees it (that is how it gets repaired), a
 /// customer does not — the list used to filter on `status` only and showed it.
-
 #[tokio::test]
 async fn public_visible_listing_filters_by_typed_channel_relation() {
     let db = setup_test_db().await;
@@ -1031,7 +1031,6 @@ async fn customer_list_hides_a_published_post_without_a_publication_timestamp() 
 
 /// The public cursor must be calculated over renderable posts, not a page
 /// containing posts whose translations have been lost.
-
 #[tokio::test]
 async fn public_keyset_skips_untranslated_pinned_post_before_limit() {
     let db = setup_test_db().await;
@@ -1092,7 +1091,6 @@ async fn public_keyset_skips_untranslated_pinned_post_before_limit() {
 
 /// The authenticated post endpoints used to expose channel-restricted posts to
 /// non-editor readers, even though the public Blog list hid them.
-
 #[tokio::test]
 async fn customer_channel_scope_applies_before_post_list_keyset() {
     let db = setup_test_db().await;
@@ -1211,7 +1209,6 @@ async fn customer_channel_scope_applies_before_post_list_keyset() {
 /// Comments and post listings must agree on a canonical channel slug. A route
 /// carrying an uppercase/space-padded slug must not turn a visible post into a
 /// false 404 or mask a Channel owner failure as missing content.
-
 #[tokio::test]
 async fn public_comment_target_uses_same_normalized_channel_as_post_listing() {
     let db = setup_test_db().await;
@@ -1257,10 +1254,9 @@ async fn public_comment_target_uses_same_normalized_channel_as_post_listing() {
         "empty channel does not inherit another channel's authorization"
     );
 }
-;
+
 /// The wiring, not just the predicate: a caller that patches `scheduled_at` on a post it has
 /// already published is refused, and publishing a scheduled draft clears the field.
-
 #[tokio::test]
 async fn published_posts_reject_a_schedule_patch() {
     let db = setup_test_db().await;
@@ -1379,11 +1375,10 @@ async fn published_posts_reject_a_schedule_patch() {
         .expect_err("a published post must not take a schedule");
     assert!(matches!(refused, BlogError::Validation(_)));
 }
-;
+
 /// Search must not treat a stale indexed `blog_post` row as authority: the
 /// Blog owner supplies current published/channel eligibility independently of
 /// whatever was previously projected into Search storage.
-
 #[tokio::test]
 async fn search_audience_rechecks_live_publication_and_channel_binding() {
     let db = setup_test_db().await;
@@ -1398,34 +1393,46 @@ async fn search_audience_rechecks_live_publication_and_channel_binding() {
 
     let mut global = crate::tests::hardening::post_input("search-global");
     global.publish = true;
-    let global_id = posts.create_post(tenant, admin.clone(), global)
-        .await.expect("global published post");
+    let global_id = posts
+        .create_post(tenant, admin.clone(), global)
+        .await
+        .expect("global published post");
 
     let mut mobile = crate::tests::hardening::post_input("search-mobile-only");
     mobile.publish = true;
     mobile.channel_slugs = Some(vec!["mobile".to_string()]);
-    let mobile_id = posts.create_post(tenant, admin.clone(), mobile)
-        .await.expect("mobile published post");
+    let mobile_id = posts
+        .create_post(tenant, admin.clone(), mobile)
+        .await
+        .expect("mobile published post");
 
     let draft = crate::tests::hardening::post_input("search-draft");
-    let draft_id = posts.create_post(tenant, admin, draft)
-        .await.expect("draft post");
+    let draft_id = posts
+        .create_post(tenant, admin, draft)
+        .await
+        .expect("draft post");
 
     let requested = vec![global_id, mobile_id, draft_id, Uuid::new_v4()];
     let owner = crate::search_projection::filter_public_search_post_ids;
     assert_eq!(
-        owner(&db, tenant, Some(" WEB "), &requested).await.expect("web audience"),
+        owner(&db, tenant, Some(" WEB "), &requested)
+            .await
+            .expect("web audience"),
         vec![global_id],
         "a search row for another channel or a draft is not discoverable"
     );
     assert_eq!(
-        owner(&db, tenant, Some("mobile"), &requested).await.expect("mobile audience"),
+        owner(&db, tenant, Some("mobile"), &requested)
+            .await
+            .expect("mobile audience"),
         vec![global_id, mobile_id],
     );
     let channels = rustok_channel::ChannelService::new(db.clone());
     let mobile_channel = channels
         .get_channel_by_slug(tenant, "mobile")
-        .await.expect("lookup mobile channel").expect("mobile exists");
+        .await
+        .expect("lookup mobile channel")
+        .expect("mobile exists");
     channels
         .bind_module(
             mobile_channel.id,
@@ -1434,10 +1441,14 @@ async fn search_audience_rechecks_live_publication_and_channel_binding() {
                 is_enabled: false,
                 settings: None,
             },
-        ).await.expect("disable Blog on mobile");
+        )
+        .await
+        .expect("disable Blog on mobile");
     assert!(
         owner(&db, tenant, Some("mobile"), &requested)
-            .await.expect("disabled channel must be hidden").is_empty(),
+            .await
+            .expect("disabled channel must be hidden")
+            .is_empty(),
         "even indexed global Blog posts must not be exposed by a disabled channel"
     );
     channels
@@ -1448,26 +1459,36 @@ async fn search_audience_rechecks_live_publication_and_channel_binding() {
                 is_enabled: true,
                 settings: None,
             },
-        ).await.expect("re-enable Blog on mobile");
+        )
+        .await
+        .expect("re-enable Blog on mobile");
     assert_eq!(
-        owner(&db, tenant, Some("mobile"), &requested).await.expect("reenabled mobile"),
+        owner(&db, tenant, Some("mobile"), &requested)
+            .await
+            .expect("reenabled mobile"),
         vec![global_id, mobile_id],
     );
     assert_eq!(
-        owner(&db, tenant, None, &requested).await.expect("unscoped audience"),
+        owner(&db, tenant, None, &requested)
+            .await
+            .expect("unscoped audience"),
         vec![global_id],
         "unscoped search must not publish channel-specific posts"
     );
     assert!(
         owner(&db, tenant, Some("missing-channel"), &requested)
-            .await.expect("missing channel is closed").is_empty()
+            .await
+            .expect("missing channel is closed")
+            .is_empty()
     );
     assert!(
         owner(&db, Uuid::new_v4(), Some("mobile"), &requested)
-            .await.expect("other tenant is isolated").is_empty()
+            .await
+            .expect("other tenant is isolated")
+            .is_empty()
     );
 }
-;
+
 // Admin text filters (`title`, `slug`) on the authenticated post list.
 //
 // These tests pin the contract the admin tables rely on: a case-insensitive
@@ -2084,4 +2105,3 @@ async fn admin_list_text_filters_normalize_blank_and_reject_oversized_needles() 
         "an oversized title needle must be rejected"
     );
 }
-;

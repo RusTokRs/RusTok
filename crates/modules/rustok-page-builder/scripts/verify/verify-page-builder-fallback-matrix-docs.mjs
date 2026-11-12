@@ -9,7 +9,6 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
 
 const docs = [
-  "docs/modules/page-builder-implementation-plan.md",
   "crates/modules/rustok-page-builder/docs/README.md",
 ];
 

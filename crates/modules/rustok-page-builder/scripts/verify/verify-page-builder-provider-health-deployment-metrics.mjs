@@ -89,9 +89,51 @@ for (const [key, expected] of Object.entries({
   if (contract[key] !== expected) failures.push(`source_contract.${key} must equal ${JSON.stringify(expected)}`);
 }
 
-, marker, "deployment metrics overlay");
+for (const marker of [
+  'pub const PAGE_BUILDER_PROVIDER_OPERATIONS: [&str; 2] = ["preview", "publish"]',
+  '"succeeded"',
+  '"sanitize_failed"',
+  '"runtime_failed"',
+  '"other_failed"',
+  'rustok_page_builder_provider_operation_duration_seconds',
+  'rustok_page_builder_provider_operation_completed_total',
+  'rustok_page_builder_provider_last_observation_unix_seconds',
+  '1.5',
+  '3.0',
+  '&["operation"]',
+  '&["operation", "outcome"]',
+  'pub fn record_page_builder_provider_operation',
+]) need(sources.telemetryMetrics, marker, "platform Page Builder metrics");
+for (const forbidden of [
+  '"tenant_id"',
+  '"page_id"',
+  '"revision_id"',
+  '"correlation_id"',
+  '&["deployment"]',
+  '&["instance"]',
+]) forbid(sources.telemetryMetrics, forbidden, "platform Page Builder metrics cardinality");
 
-, marker, "plan parity actualization");
+need(sources.telemetryLib, "pub mod page_builder_provider_metrics;", "telemetry module registration");
+need(sources.telemetryLib, "page_builder_provider_metrics::register(registry)?;", "telemetry registry registration");
+need(sources.pageBuilderCargo, '"dep:rustok-telemetry"', "Page Builder server feature");
+need(sources.pageBuilderCargo, "rustok-telemetry = { workspace = true, optional = true }", "Page Builder telemetry dependency");
+
+for (const marker of [
+  "record_page_builder_provider_operation",
+  'ProviderHealthOperation::Preview => "preview"',
+  'ProviderHealthOperation::Publish => "publish"',
+  'ProviderHealthOutcome::Succeeded => "succeeded"',
+  'ProviderHealthOutcome::SanitizeFailed => "sanitize_failed"',
+  'ProviderHealthOutcome::RuntimeFailed => "runtime_failed"',
+  'ProviderHealthOutcome::OtherFailed => "other_failed"',
+  "let elapsed = pending_call.started_at.elapsed();",
+  "record_provider_health_observation(operation, elapsed, outcome);",
+]) need(sources.runtimeTelemetry, marker, "Page Builder runtime export");
+
+need(sources.pagesGraphql, "provider_health_observed: false", "Pages GraphQL remains unobserved");
+need(sources.pagesFacade, "PageBuilderAdminProviderStatus::unobserved", "Pages admin remains unobserved");
+forbid(sources.pagesGraphql, "page_builder_provider_metrics", "Pages GraphQL must not consume raw metrics");
+forbid(sources.pagesFacade, "page_builder_provider_metrics", "Pages admin must not consume raw metrics");
 
 if (evidence.next_cursor?.exact_source_deployment_identity !== "open") {
   failures.push("next cursor must keep exact source/deployment identity open");

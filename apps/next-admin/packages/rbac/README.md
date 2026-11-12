@@ -5,6 +5,7 @@ Module-owned Next.js administration package for the RusToK Role-Based Access Con
 ## Overview
 
 This package provides the administration interface for tenant roles, permissions matrix, and role assignments:
+
 - **Roles Management**: View system and custom roles, grant counts, descriptions, and active/dormant status.
 - **Permission Matrix**: Inspect and edit granular permissions grouped by domain module, respecting dormant grant locks when modules are inactive.
 - **User Role Assignments**: Assign tenant roles to user accounts with fail-closed UUID validation.

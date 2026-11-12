@@ -1,6 +1,10 @@
 import { auth } from '@/auth';
 import { PageContainer } from '@/widgets/app-shell';
-import { BrandsPage, listCatalogCategories, type CatalogCategorySummary } from '@rustok/product-admin';
+import {
+  BrandsPage,
+  listCatalogCategories,
+  type CatalogCategorySummary
+} from '@rustok/product-admin';
 
 export const metadata = {
   title: 'RusTok Admin: Brands'

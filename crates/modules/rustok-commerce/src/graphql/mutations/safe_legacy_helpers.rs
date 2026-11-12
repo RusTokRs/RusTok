@@ -1130,4 +1130,3 @@ mod variant_patch_tests {
         }
     }
 }
-

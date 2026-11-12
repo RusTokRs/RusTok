@@ -1,17 +1,15 @@
 use crate::core::{
-    SELECTED_CART_QUERY_KEY, build_cart_checkout_handoff_labels,
-    build_fetch_commerce_request, build_fulfillment_delivery_groups,
-    build_fulfillment_shipping_selection_labels, build_order_checkout_action_labels,
-    build_order_checkout_result_data, build_order_checkout_result_labels,
-    build_payment_collection_action_labels, build_payment_collection_card_data,
-    build_payment_collection_card_labels, build_select_shipping_option_request,
-    build_storefront_context_view_model, build_storefront_route_state,
-    build_storefront_shell_view_model, error_with_context,
+    SELECTED_CART_QUERY_KEY, build_cart_checkout_handoff_labels, build_fetch_commerce_request,
+    build_fulfillment_delivery_groups, build_fulfillment_shipping_selection_labels,
+    build_order_checkout_action_labels, build_order_checkout_result_data,
+    build_order_checkout_result_labels, build_payment_collection_action_labels,
+    build_payment_collection_card_data, build_payment_collection_card_labels,
+    build_select_shipping_option_request, build_storefront_context_view_model,
+    build_storefront_route_state, build_storefront_shell_view_model, error_with_context,
 };
 use crate::model::{
-    StorefrontCheckoutCart, StorefrontCheckoutCompletion,
-    StorefrontCheckoutDeliveryGroup, StorefrontCheckoutPaymentCollection,
-    StorefrontCheckoutShippingOption, StorefrontCommerceData,
+    StorefrontCheckoutCart, StorefrontCheckoutCompletion, StorefrontCheckoutDeliveryGroup,
+    StorefrontCheckoutPaymentCollection, StorefrontCheckoutShippingOption, StorefrontCommerceData,
 };
 
 #[test]
@@ -63,7 +61,8 @@ fn storefront_route_state_and_request_normalization() {
     assert_eq!(state_val.selected_cart_id.as_deref(), Some("cart-xyz-123"));
 
     // Fetch commerce request normalizes cart and locale
-    let req = build_fetch_commerce_request(Some("  cart-abc  ".to_string()), Some("  ru  ".to_string()));
+    let req =
+        build_fetch_commerce_request(Some("  cart-abc  ".to_string()), Some("  ru  ".to_string()));
     assert_eq!(req.selected_cart_id.as_deref(), Some("cart-abc"));
     assert_eq!(req.locale.as_deref(), Some("ru"));
 
@@ -77,14 +76,26 @@ fn storefront_shell_view_model_bilingual_labels() {
     let shell_en = build_storefront_shell_view_model(Some("en"));
     assert_eq!(shell_en.badge, "commerce");
     assert_eq!(shell_en.title, "Commerce orchestration hub");
-    assert_eq!(shell_en.load_error, "Failed to load commerce storefront data");
-    assert_eq!(shell_en.action_error, "Failed to update aggregate checkout state");
+    assert_eq!(
+        shell_en.load_error,
+        "Failed to load commerce storefront data"
+    );
+    assert_eq!(
+        shell_en.action_error,
+        "Failed to update aggregate checkout state"
+    );
 
     let shell_ru = build_storefront_shell_view_model(Some("ru"));
     assert_eq!(shell_ru.badge, "commerce");
     assert_eq!(shell_ru.title, "Commerce orchestration hub");
-    assert_eq!(shell_ru.load_error, "Не удалось загрузить storefront-данные commerce");
-    assert_eq!(shell_ru.action_error, "Не удалось обновить aggregate checkout state");
+    assert_eq!(
+        shell_ru.load_error,
+        "Не удалось загрузить storefront-данные commerce"
+    );
+    assert_eq!(
+        shell_ru.action_error,
+        "Не удалось обновить aggregate checkout state"
+    );
 }
 
 #[test]
@@ -151,16 +162,14 @@ fn select_shipping_option_request_mapping() {
             seller_id: Some("vendor-99".to_string()),
             line_item_count: 2,
             selected_shipping_option_id: Some("opt-dhl".to_string()),
-            available_shipping_options: vec![
-                StorefrontCheckoutShippingOption {
-                    id: "opt-dhl".to_string(),
-                    name: "DHL Express".to_string(),
-                    currency_code: "EUR".to_string(),
-                    amount: "15.00".to_string(),
-                    provider_id: "dhl".to_string(),
-                    active: true,
-                },
-            ],
+            available_shipping_options: vec![StorefrontCheckoutShippingOption {
+                id: "opt-dhl".to_string(),
+                name: "DHL Express".to_string(),
+                currency_code: "EUR".to_string(),
+                amount: "15.00".to_string(),
+                provider_id: "dhl".to_string(),
+                active: true,
+            }],
         }],
     };
 
@@ -174,10 +183,19 @@ fn select_shipping_option_request_mapping() {
     assert_eq!(req.owner_request.cart_id, "cart-42");
     assert_eq!(req.owner_request.shipping_profile_slug, "express");
     assert_eq!(req.owner_request.seller_id.as_deref(), Some("vendor-99"));
-    assert_eq!(req.owner_request.shipping_option_id.as_deref(), Some("opt-dhl"));
+    assert_eq!(
+        req.owner_request.shipping_option_id.as_deref(),
+        Some("opt-dhl")
+    );
     assert_eq!(req.owner_request.delivery_groups.len(), 1);
-    assert_eq!(req.owner_request.delivery_groups[0].shipping_profile_slug, "express");
-    assert_eq!(req.owner_request.delivery_groups[0].available_shipping_option_ids, vec!["opt-dhl"]);
+    assert_eq!(
+        req.owner_request.delivery_groups[0].shipping_profile_slug,
+        "express"
+    );
+    assert_eq!(
+        req.owner_request.delivery_groups[0].available_shipping_option_ids,
+        vec!["opt-dhl"]
+    );
 }
 
 #[test]
@@ -237,15 +255,14 @@ fn presentation_models_and_labels_mapping() {
     assert_eq!(result_labels.badge, "checkout result");
     assert_eq!(result_labels.order_status_label, "Order status");
 
-    let delivery_groups = build_fulfillment_delivery_groups(vec![
-        StorefrontCheckoutDeliveryGroup {
+    let delivery_groups =
+        build_fulfillment_delivery_groups(vec![StorefrontCheckoutDeliveryGroup {
             shipping_profile_slug: "priority".to_string(),
             seller_id: None,
             line_item_count: 3,
             selected_shipping_option_id: None,
             available_shipping_options: vec![],
-        },
-    ]);
+        }]);
     assert_eq!(delivery_groups.len(), 1);
     assert_eq!(delivery_groups[0].shipping_profile_slug, "priority");
     assert_eq!(delivery_groups[0].seller_id, None);

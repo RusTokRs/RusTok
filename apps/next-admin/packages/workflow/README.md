@@ -5,6 +5,7 @@ Module-owned Next.js administration package for the RusToK Workflows platform.
 ## Overview
 
 This package provides the administration interface for event-driven workflows, visual step orchestration, execution tracing, and version control:
+
 - **Workflows Management**: List, filter, inspect, and toggle workflow lifecycle states (`DRAFT`, `ACTIVE`, `PAUSED`, `ARCHIVED`).
 - **Step Orchestration**: Configure linear and branching execution pipelines (`ACTION`, `CONDITION`, `DELAY`, `ALLOY_SCRIPT`, `EMIT_EVENT`, `HTTP`, `NOTIFY`, `TRANSFORM`).
 - **Execution History**: Inspect real-time and historical workflow runs, step-by-step inputs/outputs, error logs, and execution duration.

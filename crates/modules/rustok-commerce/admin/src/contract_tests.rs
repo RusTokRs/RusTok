@@ -6,9 +6,7 @@ use crate::core::{
     prepare_cart_promotion_command, prepare_order_change_action_command,
     prepare_shipping_profile_draft, trimmed_non_empty,
 };
-use crate::model::{
-    CommerceCartPromotionKind, CommerceCartPromotionScope, CommerceOrderChange,
-};
+use crate::model::{CommerceCartPromotionKind, CommerceCartPromotionScope, CommerceOrderChange};
 
 #[test]
 fn test_crate_api_compliance() {
@@ -71,7 +69,9 @@ fn shipping_profile_form_state_and_draft_invariants() {
     assert!(prepare_shipping_profile_draft("", "Name", "", "{}", "en".to_string()).is_none());
     assert!(prepare_shipping_profile_draft("slug", "  ", "", "{}", "en".to_string()).is_none());
     // Invalid JSON yields None
-    assert!(prepare_shipping_profile_draft("slug", "Name", "", "{not-json", "en".to_string()).is_none());
+    assert!(
+        prepare_shipping_profile_draft("slug", "Name", "", "{not-json", "en".to_string()).is_none()
+    );
 }
 
 #[test]
@@ -91,11 +91,20 @@ fn cart_promotion_command_normalizes_kind_and_scope() {
     let cmd = prepare_cart_promotion_command(form).expect("valid promo");
     assert_eq!(cmd.cart_id, "cart-123");
     assert_eq!(cmd.draft.source_id, "PROMO-10");
-    assert_eq!(cmd.draft.kind, CommerceCartPromotionKind::PercentageDiscount);
+    assert_eq!(
+        cmd.draft.kind,
+        CommerceCartPromotionKind::PercentageDiscount
+    );
     assert_eq!(cmd.draft.scope, CommerceCartPromotionScope::Cart);
     assert_eq!(cmd.draft.discount_percent, "15");
-    assert_eq!(cmd.draft.amount, "", "amount must be empty for PercentageDiscount");
-    assert_eq!(cmd.draft.line_item_id, "", "line_item_id must be empty for Cart scope");
+    assert_eq!(
+        cmd.draft.amount, "",
+        "amount must be empty for PercentageDiscount"
+    );
+    assert_eq!(
+        cmd.draft.line_item_id, "",
+        "line_item_id must be empty for Cart scope"
+    );
 
     // 2. Fixed discount: discount_percent must be cleared, line_item_id preserved
     let form = CartPromotionForm {
@@ -112,7 +121,10 @@ fn cart_promotion_command_normalizes_kind_and_scope() {
     let cmd = prepare_cart_promotion_command(form).expect("valid promo");
     assert_eq!(cmd.draft.kind, CommerceCartPromotionKind::FixedDiscount);
     assert_eq!(cmd.draft.scope, CommerceCartPromotionScope::LineItem);
-    assert_eq!(cmd.draft.discount_percent, "", "discount_percent must be empty for FixedDiscount");
+    assert_eq!(
+        cmd.draft.discount_percent, "",
+        "discount_percent must be empty for FixedDiscount"
+    );
     assert_eq!(cmd.draft.amount, "10.00");
     assert_eq!(cmd.draft.line_item_id, "line-item-456");
 }
@@ -128,7 +140,8 @@ fn order_change_resolution_summary_fallbacks() {
         status: "pending".to_string(),
         description: None,
         preview: "{\"order_return_id\":\"preview-ret\"}".to_string(),
-        metadata: "{\"order_return_id\":\"meta-ret\",\"cancellation_reason\":\"Customer request\"}".to_string(),
+        metadata: "{\"order_return_id\":\"meta-ret\",\"cancellation_reason\":\"Customer request\"}"
+            .to_string(),
         created_at: "2026-11-06T00:00:00Z".to_string(),
         updated_at: "2026-11-06T00:00:00Z".to_string(),
         applied_at: None,
@@ -138,7 +151,10 @@ fn order_change_resolution_summary_fallbacks() {
     let summary = order_change_resolution_summary(&change);
     assert!(summary.has_any());
     assert_eq!(summary.order_return_id.as_deref(), Some("meta-ret"));
-    assert_eq!(summary.cancellation_reason.as_deref(), Some("Customer request"));
+    assert_eq!(
+        summary.cancellation_reason.as_deref(),
+        Some("Customer request")
+    );
     assert_eq!(summary.return_decision_action.as_deref(), Some("exchange"));
 
     // Empty metadata falls back to preview
@@ -155,8 +171,9 @@ fn order_change_action_command_validation() {
     assert!(prepare_order_change_action_command("  ", "{}", "reason").is_none());
     assert!(prepare_order_change_action_command("chg-1", "{invalid-json", "reason").is_none());
 
-    let cmd = prepare_order_change_action_command("  chg-1  ", " {\"source\":\"test\"} ", " Approved ")
-        .expect("valid command");
+    let cmd =
+        prepare_order_change_action_command("  chg-1  ", " {\"source\":\"test\"} ", " Approved ")
+            .expect("valid command");
     assert_eq!(cmd.change_id, "chg-1");
     assert_eq!(cmd.draft.metadata_json, "{\"source\":\"test\"}");
     assert_eq!(cmd.draft.reason, "Approved");
@@ -174,16 +191,40 @@ fn presentation_helpers_and_badge_classes() {
     assert_eq!(trimmed_non_empty("   "), None);
     assert_eq!(trimmed_non_empty(""), None);
 
-    assert_eq!(active_badge_class(true), "border-emerald-200 bg-emerald-50 text-emerald-700");
-    assert_eq!(active_badge_class(false), "border-slate-200 bg-slate-100 text-slate-700");
+    assert_eq!(
+        active_badge_class(true),
+        "border-emerald-200 bg-emerald-50 text-emerald-700"
+    );
+    assert_eq!(
+        active_badge_class(false),
+        "border-slate-200 bg-slate-100 text-slate-700"
+    );
 
-    assert_eq!(order_change_status_badge_class("applied"), "border-emerald-200 bg-emerald-50 text-emerald-700");
-    assert_eq!(order_change_status_badge_class("cancelled"), "border-rose-200 bg-rose-50 text-rose-700");
-    assert_eq!(order_change_status_badge_class("pending"), "border-amber-200 bg-amber-50 text-amber-700");
+    assert_eq!(
+        order_change_status_badge_class("applied"),
+        "border-emerald-200 bg-emerald-50 text-emerald-700"
+    );
+    assert_eq!(
+        order_change_status_badge_class("cancelled"),
+        "border-rose-200 bg-rose-50 text-rose-700"
+    );
+    assert_eq!(
+        order_change_status_badge_class("pending"),
+        "border-amber-200 bg-amber-50 text-amber-700"
+    );
 
-    assert_eq!(localized_order_change_status(Some("en"), "pending"), "Pending");
-    assert_eq!(localized_order_change_status(Some("ru"), "pending"), "В ожидании");
-    assert_eq!(localized_order_change_status(Some("en"), DEFAULT_ORDER_CHANGE_STATUS), "Pending");
+    assert_eq!(
+        localized_order_change_status(Some("en"), "pending"),
+        "Pending"
+    );
+    assert_eq!(
+        localized_order_change_status(Some("ru"), "pending"),
+        "В ожидании"
+    );
+    assert_eq!(
+        localized_order_change_status(Some("en"), DEFAULT_ORDER_CHANGE_STATUS),
+        "Pending"
+    );
 
     assert_eq!(DEFAULT_PROMOTION_KIND, "fixed_discount");
     assert_eq!(DEFAULT_PROMOTION_SCOPE, "shipping");

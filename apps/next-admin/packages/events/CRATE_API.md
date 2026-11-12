@@ -37,4 +37,3 @@
 - **Host Interface:** Depends on React 19, `@rustok/next-fluent`, `@/modules/registry`, and `@/shared/ui/shadcn` design system components from `apps/next-admin`.
 - **Backend API:** Communicates exclusively with `apps/server` via GraphQL endpoint (`/api/graphql`).
 - **No Direct Queue Access:** Never accesses PostgreSQL outbox tables or Iggy streaming brokers directly.
-

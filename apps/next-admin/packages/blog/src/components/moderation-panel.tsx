@@ -4,7 +4,13 @@ import { useTranslations } from '@rustok/next-fluent/client';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from '@/components/ui/card';
 import {
   listBlogModerationComments,
   moderateBlogComment,
@@ -14,11 +20,14 @@ import {
 import type { GqlOpts } from '../api/posts';
 
 const PER_PAGE = 20;
-const STATUSES: ReadonlyArray<{ value: BlogModerationStatus; label: string }> = [
-  { value: 'APPROVED', label: 'Approve' },
-  { value: 'SPAM', label: 'Mark spam' },
-  { value: 'TRASH', label: 'Move to trash' }
-];
+const STATUSES = [
+  { value: 'APPROVED', labelKey: 'moderation.approved' },
+  { value: 'SPAM', labelKey: 'moderation.spam' },
+  { value: 'TRASH', labelKey: 'moderation.trash' }
+] as const satisfies ReadonlyArray<{
+  value: BlogModerationStatus;
+  labelKey: string;
+}>;
 
 /** The same Blog-owned moderation projection and lifecycle as the Leptos admin. */
 export function BlogModerationPanel({
@@ -64,18 +73,26 @@ export function BlogModerationPanel({
       .finally(() => {
         if (active) setLoading(false);
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [postId, locale, page, revision, token, tenantSlug, tenantId]);
 
   const moderate = async (commentId: string, status: BlogModerationStatus) => {
     if (pendingId) return;
     setPendingId(commentId);
     try {
-      await moderateBlogComment(commentId, status, locale, { token, tenantSlug, tenantId });
+      await moderateBlogComment(commentId, status, locale, {
+        token,
+        tenantSlug,
+        tenantId
+      });
       toast.success(t('moderation.updated'));
       setRevision((value) => value + 1);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to moderate comment');
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to moderate comment'
+      );
     } finally {
       setPendingId(null);
     }
@@ -91,47 +108,84 @@ export function BlogModerationPanel({
         <CardDescription>{t('moderation.subtitle')}</CardDescription>
       </CardHeader>
       <CardContent className='space-y-4'>
-        {loading && <p className='text-muted-foreground text-sm'>{t('moderation.loading')}</p>}
+        {loading && (
+          <p className='text-muted-foreground text-sm'>
+            {t('moderation.loading')}
+          </p>
+        )}
         {loadError && (
-          <p role='alert' className='text-destructive text-sm'>{t('moderation.unavailable')}
+          <p role='alert' className='text-destructive text-sm'>
+            {t('moderation.unavailable')}
           </p>
         )}
         {!loading && !loadError && data?.items.length === 0 && (
-          <p className='text-muted-foreground text-sm'>{t('moderation.empty')}</p>
+          <p className='text-muted-foreground text-sm'>
+            {t('moderation.empty')}
+          </p>
         )}
-        {!loading && !loadError && data?.items.map((comment) => (
-          <article key={comment.id} className='space-y-3 rounded-lg border p-4'>
-            <div className='text-muted-foreground flex flex-wrap gap-3 text-xs'>
-              <span className='font-semibold'>{comment.status}</span>
-              <span>{comment.effectiveLocale}</span>
-              <time dateTime={comment.createdAt}>
-                {new Date(comment.createdAt).toLocaleString(locale)}
-              </time>
-            </div>
-            <p className='whitespace-pre-wrap break-words text-sm'>{comment.contentPreview}</p>
-            <div className='flex flex-wrap gap-2'>
-              {STATUSES.map((action) => (
-                <Button
-                  key={action.value}
-                  type='button'
-                  variant='outline'
-                  size='sm'
-                  disabled={pendingId !== null}
-                  onClick={() => void moderate(comment.id, action.value)}
-                >
-                  {pendingId === comment.id ? t('moderation.saving') : t(`moderation.${action.value.toLowerCase()}`)}
-                </Button>
-              ))}
-            </div>
-          </article>
-        ))}
+        {!loading &&
+          !loadError &&
+          data?.items.map((comment) => (
+            <article
+              key={comment.id}
+              className='space-y-3 rounded-lg border p-4'
+            >
+              <div className='text-muted-foreground flex flex-wrap gap-3 text-xs'>
+                <span className='font-semibold'>{comment.status}</span>
+                <span>{comment.effectiveLocale}</span>
+                <time dateTime={comment.createdAt}>
+                  {new Date(comment.createdAt).toLocaleString(locale)}
+                </time>
+              </div>
+              <p className='text-sm break-words whitespace-pre-wrap'>
+                {comment.contentPreview}
+              </p>
+              <div className='flex flex-wrap gap-2'>
+                {STATUSES.map((action) => (
+                  <Button
+                    key={action.value}
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    disabled={pendingId !== null}
+                    onClick={() => void moderate(comment.id, action.value)}
+                  >
+                    {pendingId === comment.id
+                      ? t('moderation.saving')
+                      : t(action.labelKey)}
+                  </Button>
+                ))}
+              </div>
+            </article>
+          ))}
         {!loading && !loadError && (
-          <nav aria-label={t('moderation.pages')} className='flex items-center justify-end gap-3 text-sm'>
-            <span>{t('moderation.pageSummary', { total, page, pages: totalPages })}</span>
-            <Button type='button' size='sm' variant='outline' disabled={page <= 1 || pendingId !== null}
-              onClick={() => setPage((value) => Math.max(1, value - 1))}>{t('pagination.previous')}</Button>
-            <Button type='button' size='sm' variant='outline' disabled={page >= totalPages || pendingId !== null}
-              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>{t('pagination.next')}</Button>
+          <nav
+            aria-label={t('moderation.pages')}
+            className='flex items-center justify-end gap-3 text-sm'
+          >
+            <span>
+              {t('moderation.pageSummary', { total, page, pages: totalPages })}
+            </span>
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              disabled={page <= 1 || pendingId !== null}
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+            >
+              {t('pagination.previous')}
+            </Button>
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              disabled={page >= totalPages || pendingId !== null}
+              onClick={() =>
+                setPage((value) => Math.min(totalPages, value + 1))
+              }
+            >
+              {t('pagination.next')}
+            </Button>
           </nav>
         )}
       </CardContent>

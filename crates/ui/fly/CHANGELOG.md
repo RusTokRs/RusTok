@@ -257,6 +257,148 @@ Engineering audit remediation — see
 
 ### Fixed
 
+- **The server preview lost its stylesheet under the host policy, and the embedded admin had no
+  nonce to give.** The preview panel put the composed document into `srcdoc` as it arrived, so
+  the `<style>` of its envelope had no nonce and a policy with `style-src 'nonce-…'` dropped it.
+  `fly::document_html_with_style_nonce` puts the nonce on the stylesheet of the envelope
+  `compose_document_html` writes, and on no other element; the panel calls it with
+  `rustok_ui_core::UiCspNonce`. The browser build of `apps/admin`, which `apps/server` embeds,
+  provided no `UiCspNonce` at all, so the canvas stylesheet and the canvas runtime were written
+  without a nonce there as well; it now reads the value from the `nonce` property of a script
+  of its own document. `compose_document_html` is assembled from the same two constants the
+  new function searches for; its output is unchanged and pinned by a test.
+  `verify-fly-ssr-first.mjs` requires every editor view that renders `srcdoc` to read the
+  nonce. A Chromium probe under the admin policy confirmed the browser side; the built admin
+  was not loaded.
+
+- **A page created through the server-rendered form could not be opened, and nothing in the
+  default runtime changed the page.** The `create_page` form appended the page and left the
+  editor where it was, while the typed envelope and the local mode opened the new page. The
+  page tabs act through Leptos handlers, so without hydration the author had no way to reach
+  the new page, or any page but the first. Now:
+  - both shapes of `create_page` open the page they created, through one function;
+  - the SSR inspector has an "Open page" form (`activate_page` with `page_id`), rendered for a
+    caller that may edit, because the open page is kept in the draft session;
+  - the Pages endpoint answers `reload: true` when the open page changed;
+  - the page selects of the rename and remove forms open on the page the editor is on, not on
+    the first page of the list.
+
+- **The Pages editor opened the saved page in silence when the draft could not be loaded.**
+  `PagesFlyBuilder` read a draft store error (I/O, a lock timeout, a record that does not
+  parse, a session of another user) as "no draft". The author saw the saved document without
+  the unsaved edits and learned of the problem from the first refused action. The error is now
+  shown in an alert above the workspace; the editor still opens the saved page.
+
+- **Server-rendered forms stayed enabled for a caller the endpoint refuses.** Of the SSR panels
+  only the asset panel read the editor capabilities, from a list of its own; the locale, locale
+  policy, translation, localized metadata, internal link, action and form, and inspector panels
+  rendered every form enabled, and the endpoint answered `FLY_CAPABILITY_DENIED`. Every
+  `data-fly-intent-form` now asks `AdminEditorRuntime::form_enabled`, which answers from the
+  requirement function the endpoint validates with (`capability_access.rs`), and a refused form
+  renders inside a disabled `<fieldset>`. The component property form offers the kinds the
+  caller may post: an inline style needs `styles`, a field or an attribute `properties`.
+
+- **The translation bind form lost its target on every reload.** `ssr_translations.rs` rendered
+  the selection input of the bind form with an empty value, and the browser adapter starts each
+  document without a selection. After the reload that follows an intent the form posted no
+  `component_id` and the server refused the binding until the component was selected again.
+  The form now renders the selection the server holds, as the asset and internal-link panels
+  do; the host bootstrap still replaces it when the author selects another component.
+
+- **Three adapter specs mounted over a page of the Next host.** `fly-browser-capability-problem`,
+  `fly-browser-response-order` and `fly-browser-save-failure` opened `/auth/sign-in` for an
+  origin and wrote the editor root into its `body`. React regenerated the body when it hydrated
+  or rendered later, the root was gone, and the "Browser E2E" job failed intermittently with
+  `#fly-root` not found. The specs now mount in an empty document answered by a route on the
+  same origin (`apps/next-admin/tests/e2e/support/fly-blank-document.ts`).
+
+- **The editor reached no browser in the admin host.** `apps/admin` and `rustok-pages-admin`
+  enabled `rustok-page-builder-admin/ssr` without `browser-js`, so the binary rendered
+  `<span data-fly-browser-adapter="disabled">` instead of the adapter. The adapter script and
+  the canvas `srcdoc` document also carried no CSP nonce, and the host policy drops an inline
+  element without one. Both consumers now enable the feature pair; the host provides
+  `rustok_ui_core::UiCspNonce`, and the editor writes it on its inline `<script>` and `<style>`
+  elements. `verify-fly-ssr-first.mjs` checks the feature pair in every manifest and the nonce
+  hand-off. Not verified in a browser under the host policy.
+- **The selection rule of the `fly-leptos` canvas wrote the selected id into a `<style>`
+  element unescaped.** `SECURITY.md` promises an allow-list escape for every CSS selector built
+  from an id; the renderer did that, `FlyCanvasPreview` did not. A valid document holds only
+  inert ids and the editor refuses a selection that is not in the document, so no injection is
+  known; the sink no longer depends on either. `fly::escape_css_attribute` is public for this.
+- **The viewport select could not leave a preset.** The initial 1280 × 720 frame is no built-in
+  preset. Its option was rendered only while that frame was in effect, and
+  `navigateRouteQuery()` ignored the empty value, so after a preset was chosen the only way back
+  was to edit the address. The Page Builder toolbar now always offers the frame held without a
+  route preset under the empty value. **Behaviour change in `fly-browser.js`:** a
+  `data-fly-route-query` control whose value is empty removes its key from the route and
+  navigates; it used to do nothing.
+- **A selection could change without `fly:select`.** A `dragstart` on a layer row and a
+  `select-component` control added after mount changed `selectedId` silently, and the host
+  bootstrap, which retargets the server-rendered forms on that event, kept the previous
+  component. A click on a row could announce the same selection twice. `fly-browser.js` now
+  changes the selection in `select()` only; a change is announced once and a repeated
+  selection is not announced. **Behaviour change:** `fly:select` is no longer dispatched when
+  the selected component is selected again.
+- **Formatting.** 19 files of the crates that the "Focused formatting" job checks were not in
+  `rustfmt` form (14 of them before this change set). They are formatted now.
+
+- **The canvas selection style no longer reaches the layer tree.** `FlyCanvasPreview` writes
+  its interactive styles as a plain `<style>` element, and the rule for the selected component
+  was `[data-fly-component-id="<id>"]` with no scope. Once `FlyLayerTree` rendered
+  `data-fly-component-id` on selectable rows (the entry below), the row of the selected
+  component in `FlyEditorWorkspace` took the canvas outline, `position: relative` and
+  `z-index: 5`. The rule is now under `.fly-canvas--interactive`, like the two rules next to
+  it. Part 7 of `scripts/verify/verify-fly-ssr-control-contract.mjs` rejects an unscoped canvas
+  rule keyed on a contract attribute; `fly-leptos` has a render test for it.
+
+- **The palette, the layer tree and the viewport switch work on a server-rendered page.**
+  In the default `ssr + browser-js` runtime a control works only when a view renders the
+  `data-fly-*` attribute that `fly-browser.js` binds. `FlyPalette` rendered `data-fly-block` with
+  a Leptos click handler, while the adapter binds `[data-fly-block-id]` and
+  `data-fly-action="insert-block"` / `"begin-block-drag"` / `"select-component"`: without
+  hydration nothing could be inserted, dragged or selected, and no test failed.
+  - `fly-leptos` and `fly-dioxus`: `FlyPalette` renders each block as
+    `<div class="fly-palette__item" role="listitem" data-fly-block-id data-fly-category
+    data-fly-contribution-ids data-fly-can-insert data-fly-can-drag>` with an insert button
+    (`fly-palette__block`, `data-fly-action="insert-block"`) and an optional drag button
+    (`fly-palette__drag`, `data-fly-action="begin-block-drag"`). The palette root is
+    `role="group"`; each category holds a `role="list"`. **Markup change:** the item is no
+    longer the button, and `data-fly-block` is gone. `FlyLayerTree` renders
+    `data-fly-component-id` and `data-fly-action="select-component"` on selectable rows only.
+  - `FlyPalette` takes an optional `on_begin_drag`. The drag control renders only when it is
+    passed; `FlyEditorWorkspace` passes it in intent mode and emits
+    `BrowserIntentEnvelope::begin_palette_drag` (new typed constructor in `fly-browser`).
+    The insert control follows `CapabilityState::edit`, the drag control
+    `CapabilityState::drag_drop`.
+  - `fly-ui`: `EditorMessages` gains `insert_block` ("Add") and `drag_block` ("Drag"), the
+    accessible-name prefixes of the two controls. Both have serde defaults, so stored message
+    sets keep deserializing. A host that builds the struct field by field must add them.
+  - `fly-browser.js`: no drag is offered from an item with `data-fly-can-drag="false"`. A
+    `<select data-fly-action data-fly-route-query="<key>">` is route view state: on `change`
+    the adapter sets `<key>` in the URL, keeps the other parameters and navigates, without
+    posting an intent. The Page Builder admin uses it for the previewed viewport
+    (`?fly_viewport=<preset id>`), which the server resolves before it renders the canvas
+    frame.
+  - `scripts/verify/verify-fly-ssr-control-contract.mjs` derives the contract from the
+    adapter and the views and fails on a difference in either direction. Decision:
+    `DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`.
+
+- **The classic SSR forms of the Page Builder admin reach their handlers with the target the
+  server rendered.** The forms (`form[data-fly-intent-form]`) are bound by the Page Builder host
+  bootstrap that is composed with `fly-browser.js`, not by the adapter itself.
+  - At mount the bootstrap wrote the adapter selection, which is empty at that point, into every
+    `[data-fly-selected-component-input]`. Every form lost the `component_id` the server had
+    rendered and posted without a target. The component picker did not follow a selection made
+    on the canvas or in the layer tree. The bootstrap now keeps the rendered value, applies the
+    selection over it, restores it when the selection is cleared, and moves the picker with it.
+  - The page forms `create_page`, `rename_page`, `remove_page` and `patch_page_metadata` never
+    reached the form resolver: the dispatcher resolved the same names in arms that read the typed
+    envelope shape (`page_index`). Three forms were refused for a missing `page_index`, and
+    `create_page` generated an id in place of the one the author typed. A payload with `page_id`
+    and without `page_index` is now resolved as a form; the typed envelopes are unchanged.
+  - Part 6 of `verify-fly-ssr-control-contract.mjs` derives this second consumer and follows
+    each form to the arm that handles its payload.
+
 - **A save rejected after the edit was applied no longer leaves the canvas diverged from the
   server.** A host may now answer an intent with a successful response that carries
   `save_failure` (`status`, `code`, `error`, `intent`) next to `reload: true`: the edit is in the

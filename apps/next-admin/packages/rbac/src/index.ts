@@ -8,7 +8,10 @@ registerAdminModule({
 });
 
 export { rbacNavItems } from './nav';
-export { default as RolesPage, default as RolesAdminPage } from './pages/roles-page';
+export {
+  default as RolesPage,
+  default as RolesAdminPage
+} from './pages/roles-page';
 export { RolesTable } from './components/roles-table';
 export { PermissionsTable } from './components/permissions-table';
 export { AssignRoleDialog } from './components/assign-role-dialog';

@@ -29,9 +29,9 @@ mod source_reconciliation_scheduler;
 mod source_replay;
 mod source_replay_job;
 mod source_replay_retry;
+mod source_replay_runner;
 mod source_replay_scheduler;
 mod source_replay_timeout;
-mod source_replay_runner;
 
 #[cfg(test)]
 mod mutation_store_tests;

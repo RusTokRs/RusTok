@@ -47,10 +47,7 @@ pub async fn dispatch_pages_browser_intent_with_capabilities(
     capabilities: CapabilityState,
 ) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentAccessError> {
     let envelope = preflight_pages_intent(envelope, capabilities)?;
-    Ok(
-        browser_intent::dispatch_pages_browser_intent(snapshot, envelope, capabilities)
-            .await?,
-    )
+    Ok(browser_intent::dispatch_pages_browser_intent(snapshot, envelope, capabilities).await?)
 }
 
 pub async fn dispatch_pages_browser_intent_with_store(
@@ -74,15 +71,13 @@ pub async fn dispatch_pages_browser_intent_with_store_and_capabilities(
     capabilities: CapabilityState,
 ) -> Result<PagesBrowserIntentResponse, PagesBrowserIntentAccessError> {
     let envelope = preflight_pages_intent(envelope, capabilities)?;
-    Ok(
-        browser_intent::dispatch_pages_browser_intent_with_store(
-            snapshot,
-            envelope,
-            draft_store,
-            capabilities,
-        )
-        .await?,
+    Ok(browser_intent::dispatch_pages_browser_intent_with_store(
+        snapshot,
+        envelope,
+        draft_store,
+        capabilities,
     )
+    .await?)
 }
 
 fn preflight_pages_intent(

@@ -5,6 +5,7 @@ Module-owned Next.js administration package for the RusToK Product Catalog platf
 ## Overview
 
 This package provides the administration workspace for comprehensive product catalog management, variant matrices, category taxonomies, attribute schemas, and product bundles:
+
 - **Products Workspace**: List, filter (by status, search, vendor), inspect, and edit products with full multi-locale translations, SEO metadata, and media gallery.
 - **Variants & Pricing**: Manage multi-axis product variants, SKU, barcode, inventory policy, exact major-unit decimal pricing (via `ExactDecimal` matching Rust's 96-bit decimal bounds), and explicit zero compare-at promotions.
 - **Category Taxonomy**: Hierarchy of catalog categories with slugs, paths, codes, and multi-locale names.

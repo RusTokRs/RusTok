@@ -34,7 +34,9 @@ function loadTsModule(relativePath, extraImports = {}) {
 
 function extractExportNames(src) {
   const names = [];
-  const matches = src.matchAll(/export\s+(?:function|const|let|var)\s+([a-zA-Z0-9_]+)/g);
+  const matches = src.matchAll(
+    /export\s+(?:function|const|let|var)\s+([a-zA-Z0-9_]+)/g
+  );
   for (const m of matches) {
     names.push(m[1]);
   }
@@ -57,10 +59,9 @@ const cleanNavSource = stripTypeScriptTypes(
     .replaceAll('export ', '')
 );
 const navModule = {};
-compileFunction(
-  `${cleanNavSource}\nnavModule.forumNav = forumNav;`,
-  ['navModule']
-)(navModule);
+compileFunction(`${cleanNavSource}\nnavModule.forumNav = forumNav;`, [
+  'navModule'
+])(navModule);
 const { forumNav } = navModule;
 
 test('forumNav specifies correct plugin group and 8 permission-guarded sub-routes', () => {
@@ -77,14 +78,46 @@ test('forumNav specifies correct plugin group and 8 permission-guarded sub-route
   }));
 
   assert.deepEqual(subroutes, [
-    { title: 'Categories', url: '/dashboard/forum/categories', permission: 'forum_categories:manage' },
-    { title: 'Topic Composer', url: '/dashboard/forum/topic', permission: undefined },
-    { title: 'Reply Composer', url: '/dashboard/forum/reply', permission: undefined },
-    { title: 'Rename Topic Route', url: '/dashboard/forum/rename-slug', permission: 'forum_topics:update' },
-    { title: 'Merge Topics', url: '/dashboard/forum/merge', permission: 'forum_topics:manage' },
-    { title: 'Fork Reply Branch', url: '/dashboard/forum/fork', permission: 'forum_topics:manage' },
-    { title: 'Move Reply Range', url: '/dashboard/forum/reply-range', permission: 'forum_topics:manage' },
-    { title: 'Split Topic', url: '/dashboard/forum/split', permission: 'forum_topics:manage' }
+    {
+      title: 'Categories',
+      url: '/dashboard/forum/categories',
+      permission: 'forum_categories:manage'
+    },
+    {
+      title: 'Topic Composer',
+      url: '/dashboard/forum/topic',
+      permission: undefined
+    },
+    {
+      title: 'Reply Composer',
+      url: '/dashboard/forum/reply',
+      permission: undefined
+    },
+    {
+      title: 'Rename Topic Route',
+      url: '/dashboard/forum/rename-slug',
+      permission: 'forum_topics:update'
+    },
+    {
+      title: 'Merge Topics',
+      url: '/dashboard/forum/merge',
+      permission: 'forum_topics:manage'
+    },
+    {
+      title: 'Fork Reply Branch',
+      url: '/dashboard/forum/fork',
+      permission: 'forum_topics:manage'
+    },
+    {
+      title: 'Move Reply Range',
+      url: '/dashboard/forum/reply-range',
+      permission: 'forum_topics:manage'
+    },
+    {
+      title: 'Split Topic',
+      url: '/dashboard/forum/split',
+      permission: 'forum_topics:manage'
+    }
   ]);
 });
 
@@ -93,7 +126,10 @@ test('identity module generates and validates RFC-compliant UUIDs', () => {
   assert.equal(identity.isForumUuid(uuid), true);
   assert.equal(identity.isForumUuid('invalid-uuid-string'), false);
   assert.equal(identity.isForumUuid(''), false);
-  assert.equal(identity.isForumUuid('123e4567-e89b-12d3-a456-426614174000'), true);
+  assert.equal(
+    identity.isForumUuid('123e4567-e89b-12d3-a456-426614174000'),
+    true
+  );
 });
 
 test('buildForumTopicForkCommand enforces identity, existence, and disallows self-fork', () => {
@@ -193,7 +229,12 @@ test('buildForumTopicMergeCommand rejects self-merge and empty reasons', () => {
 
 test('buildForumTopicSlugRenameCommand normalizes and validates slugs', () => {
   const topicId = '123e4567-e89b-12d3-a456-426614174021';
-  const candidate = { id: topicId, locale: 'en', slug: 'old-slug', title: 'Topic Title' };
+  const candidate = {
+    id: topicId,
+    locale: 'en',
+    slug: 'old-slug',
+    title: 'Topic Title'
+  };
 
   assert.throws(
     () =>

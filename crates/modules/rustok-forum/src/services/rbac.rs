@@ -49,7 +49,9 @@ pub(crate) fn enforce_author_deletion_policy(
         PermissionScope::Own => Ok(DeleteSnapshotReason::UserRequest),
         PermissionScope::All => match security.actor_kind {
             SecurityActorKind::User => Ok(DeleteSnapshotReason::Moderation),
-            SecurityActorKind::Service | SecurityActorKind::System => Ok(DeleteSnapshotReason::System),
+            SecurityActorKind::Service | SecurityActorKind::System => {
+                Ok(DeleteSnapshotReason::System)
+            }
             SecurityActorKind::Public => Err(ForumError::forbidden("Permission denied")),
         },
         PermissionScope::None => Err(ForumError::forbidden("Permission denied")),

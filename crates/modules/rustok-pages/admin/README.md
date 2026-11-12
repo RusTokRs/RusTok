@@ -51,6 +51,12 @@
   the next edit that changes the document. An intent that does not change the document (selecting,
   switching panels) does not retry, so after a transient outage the draft stays unsaved until one
   of those happens.
+- **A draft that cannot be loaded is reported, not recovered.** When the address names a draft
+  session and the draft store fails or refuses the caller, the editor opens the saved page and
+  shows the error above the workspace. The error is not logged (the crate has no `tracing`
+  dependency), the address keeps the draft token, so each editor action is refused with the same
+  error until the page is opened without it, and a session that is gone or belongs to another
+  saved revision still opens the saved page without a message.
 - **The save-failure message ages out.** It stays on screen, and across reloads, until a save
   succeeds, but the browser keeps it for at most 10 minutes; after that only the toolbar's unsaved
   state says that the draft is not stored.

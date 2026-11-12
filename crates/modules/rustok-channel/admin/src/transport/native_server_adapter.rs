@@ -335,7 +335,12 @@ pub(super) async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, 
 
         let effective_locale = normalize_locale_tag(&request_context.locale)
             .filter(|locale| locale != "und")
-            .unwrap_or_else(|| "en".to_string());
+            .ok_or_else(|| {
+                ServerFnError::new(
+                    "channel OAuth bootstrap requires a normalized effective locale \
+                     other than `und`",
+                )
+            })?;
         let backend = db.get_database_backend();
         let stmt = match backend {
             DbBackend::Postgres => Statement::from_sql_and_values(
@@ -396,17 +401,21 @@ pub(super) async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, 
                     let app_id = row
                         .try_get::<uuid::Uuid>("", "id")
                         .map_err(ServerFnError::new)?;
-                    let slug = row
-                        .try_get::<String>("", "slug")
-                        .map_err(ServerFnError::new)?;
                     let name = row
                         .try_get::<Option<String>>("", "name")
                         .map_err(ServerFnError::new)?
-                        .unwrap_or_else(|| slug.clone());
+                        .ok_or_else(|| {
+                            ServerFnError::new(format!(
+                                "OAuth app translation missing: app {app_id}, \
+                                 locale `{effective_locale}`"
+                            ))
+                        })?;
                     Ok(AvailableOauthAppItem {
                         id: app_id.to_string(),
                         name,
-                        slug,
+                        slug: row
+                            .try_get::<String>("", "slug")
+                            .map_err(ServerFnError::new)?,
                         app_type: row
                             .try_get::<String>("", "app_type")
                             .map_err(ServerFnError::new)?,

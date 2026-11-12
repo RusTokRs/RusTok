@@ -1,6 +1,4 @@
-// Instant via executor
-
-use rustok_api::{Action, Resource, normalize_locale_tag};
+use rustok_api::normalize_locale_tag;
 use rustok_core::SecurityContext;
 use sea_orm::{
     AccessMode, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
@@ -9,17 +7,24 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::reconciliation_executor::ReconciliationExecutor;
-use super::{
-    counter_reconciliation::{
-        DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
-    },
-    rbac::enforce_scope,
+use super::counter_reconciliation::{
+    DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
 };
+use super::reconciliation_executor::ReconciliationExecutor;
 use crate::error::{ForumError, ForumResult};
 use crate::mentions::FORUM_MAX_MENTION_TARGETS_PER_REVISION;
 
 const FORUM_MENTION_RECONCILIATION_OPERATION: &str = "forum.mention_reconciliation_report";
+
+/// The operator fence and the page bounds of this report. `report_page` runs through it
+/// and the page query takes its size from it, so each rule has one definition.
+const EXECUTOR: ReconciliationExecutor = ReconciliationExecutor {
+    operation: FORUM_MENTION_RECONCILIATION_OPERATION,
+    entrypoint: "mention_reconciliation_report",
+    error_type: "mention_reconciliation",
+    default_limit: DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT,
+    max_limit: MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
+};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -102,15 +107,12 @@ impl ForumMentionReconciliationService {
         requested_limit: Option<u64>,
         relation_after: Option<i64>,
     ) -> ForumResult<ForumMentionReconciliationReport> {
-        ReconciliationExecutor::new(
-            FORUM_MENTION_RECONCILIATION_OPERATION,
-            DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT,
-            MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
-        )
-        .execute(security, || async {
-            self.report_inner(tenant_id, requested_limit, relation_after).await
-        })
-        .await
+        EXECUTOR
+            .execute(security, || async {
+                self.report_inner(tenant_id, requested_limit, relation_after)
+                    .await
+            })
+            .await
     }
 
     async fn report_inner(
@@ -157,7 +159,12 @@ impl ForumMentionReconciliationService {
                 Ok(report)
             }
             Err(error) => {
-                if let Err(rollback_err) = transaction.rollback().await { tracing::warn!(error = %rollback_err, "forum reconciliation rollback failed; transaction will be dropped"); }
+                if let Err(rollback_err) = transaction.rollback().await {
+                    tracing::warn!(
+                        error = %rollback_err,
+                        "forum reconciliation rollback failed; transaction will be dropped"
+                    );
+                }
                 Err(error)
             }
         }
@@ -171,9 +178,7 @@ impl ForumMentionReconciliationService {
         requested_limit: Option<u64>,
         relation_after: Option<i64>,
     ) -> ForumResult<ForumMentionReconciliationReport> {
-        let effective_limit = requested_limit
-            .unwrap_or(DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT)
-            .clamp(1, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT);
+        let effective_limit = EXECUTOR.effective_limit(requested_limit);
         let fetch_limit = effective_limit.saturating_add(1);
         let rows = transaction
             .query_all_raw(mention_statement(
@@ -275,11 +280,6 @@ impl ForumMentionReconciliationService {
             drifts,
         })
     }
-}
-
-fn enforce_operations_scope(security: &SecurityContext) -> ForumResult<()> {
-    enforce_scope(security, Resource::ForumCategories, Action::Manage)?;
-    enforce_scope(security, Resource::ForumTopics, Action::Manage)
 }
 
 fn valid_projection_fingerprint(value: &str) -> bool {

@@ -3,9 +3,7 @@ use rustok_inventory::{
     PublicChannelInventoryVariantProjectionInput, check_variant_availability_for_public_channel,
 };
 use rustok_pricing::ResolveProductPriceRequest;
-use rustok_product::{
-    ProductFulfillmentRequirement, StorefrontVariantProductProjectionRequest,
-};
+use rustok_product::{ProductFulfillmentRequirement, StorefrontVariantProductProjectionRequest};
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;

@@ -16,7 +16,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use sha2::{Digest, Sha256};
 
-use super::{connect_benchmark_database, ensure_database_metadata_stable, read_database_metadata};
+use super::{
+    connect_benchmark_database, ensure_database_metadata_stable, read_database_metadata,
+    with_rollback_failure,
+};
 
 const MANIFEST_CONTRACT: &str = "index_partition_evidence_manifest_v1";
 const SHADOW_PLAN_VERSION: &str = "tenant_hash_shadow_v1";
@@ -516,12 +519,7 @@ async fn commit_churn_cycle(
                 .context("failed to commit partition maintenance evidence churn")?;
             Ok(value)
         }
-        Err(error) => {
-            if let Err(rollback_err) = transaction.rollback().await {
-                tracing::warn!(%rollback_err, "failed to rollback bench maintenance transaction");
-            }
-            Err(error)
-        }
+        Err(error) => Err(with_rollback_failure(error, transaction.rollback().await)),
     }
 }
 
@@ -638,12 +636,7 @@ async fn create_maintenance_clones(
             .commit()
             .await
             .context("failed to commit partition maintenance evidence clones"),
-        Err(error) => {
-            if let Err(rollback_err) = transaction.rollback().await {
-                tracing::warn!(%rollback_err, "failed to rollback bench maintenance transaction");
-            }
-            Err(error)
-        }
+        Err(error) => Err(with_rollback_failure(error, transaction.rollback().await)),
     }
 }
 

@@ -14,7 +14,6 @@ mod module_term_lookup;
 pub mod module_term_mutation;
 mod normalization;
 pub mod groups_taxonomy_port;
-pub mod product_taxonomy_port;
 mod owner_category_hierarchy_mutation;
 mod owner_category_read;
 mod owner_category_revision;
@@ -22,6 +21,7 @@ mod owner_category_route_sync;
 mod owner_category_sync;
 mod owner_identity;
 mod owner_read;
+pub mod product_taxonomy_port;
 mod route_key_registry;
 pub mod seo_targets;
 pub mod services;
@@ -72,11 +72,11 @@ pub use owner_category_sync::{
 pub use groups_taxonomy_port::{
     TaxonomyGroupTaxonomyPortAdapter, in_process_group_taxonomy_port,
 };
+pub use owner_identity::taxonomy_term_identity_exists;
+pub use owner_read::{TaxonomyOwnerReader, TaxonomyOwnerTerm, TaxonomyOwnerTermNames};
 pub use product_taxonomy_port::{
     TaxonomyProductTaxonomyPortAdapter, in_process_product_taxonomy_port,
 };
-pub use owner_identity::taxonomy_term_identity_exists;
-pub use owner_read::{TaxonomyOwnerReader, TaxonomyOwnerTerm, TaxonomyOwnerTermNames};
 pub use services::TaxonomyService;
 pub use translation_target::{
     TaxonomyModuleTermTranslationOwner, TaxonomyModuleTermTranslationOwnerRegistry,

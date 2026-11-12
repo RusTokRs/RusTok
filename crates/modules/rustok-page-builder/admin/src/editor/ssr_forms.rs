@@ -104,6 +104,12 @@ impl AdminCanvasController {
                 serde_json::from_value(payload.clone())
                     .map_err(|error| format!("invalid page metadata form: {error}"))?,
             )?,
+            "activate_page" => self.ssr_activate_page_intent(
+                payload
+                    .get("page_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "open page form requires `page_id`".to_string())?,
+            )?,
             "create_page" => self.ssr_create_page_intent(
                 serde_json::from_value(payload.clone())
                     .map_err(|error| format!("invalid create page form: {error}"))?,
@@ -249,6 +255,23 @@ impl AdminCanvasController {
                 },
             },
         }))
+    }
+
+    /// The navigation intent for the page a form names by id.
+    ///
+    /// A server-rendered form has no index to send, so the page is resolved here, against the
+    /// document the intent is dispatched on.
+    pub fn ssr_activate_page_intent(&self, page_id: &str) -> Result<UiIntent, String> {
+        let page_id = required(page_id, "page id")?;
+        let page_index = self
+            .page_summaries()
+            .iter()
+            .position(|page| page.id.as_deref() == Some(page_id))
+            .ok_or_else(|| format!("page `{page_id}` does not exist"))?;
+        Ok(UiIntent::ActivatePage {
+            page_id: Some(page_id.to_string()),
+            page_index,
+        })
     }
 
     pub fn ssr_create_page_intent(

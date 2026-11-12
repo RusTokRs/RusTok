@@ -101,7 +101,8 @@ async fn storefront_cart_remove_line_item(
 ) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
     {
-        super::native_server_adapter_ssr::storefront_cart_remove_line_item(cart_id, line_item_id).await
+        super::native_server_adapter_ssr::storefront_cart_remove_line_item(cart_id, line_item_id)
+            .await
     }
     #[cfg(not(feature = "ssr"))]
     {

@@ -7,7 +7,9 @@ use crate::dto::{
     AdjustInventoryInput, CreateVariantInput, PriceInput, PriceResponse, VariantResponse,
 };
 use crate::entities::product::ProductStatus;
-use crate::entities::{inventory_level, product, reservation_item, shipping_profile, stock_location};
+use crate::entities::{
+    inventory_level, product, reservation_item, shipping_profile, stock_location,
+};
 use crate::error::CommerceError;
 use crate::search::{
     MAX_SEARCH_QUERY_LEN, product_translation_title_and_locale_search_condition,
@@ -50,11 +52,8 @@ fn search_query_bounding_and_backends() {
     assert!(!cond_sqlite.is_empty());
 
     // Localized condition with locale fallback
-    let cond_fallback = product_translation_title_and_locale_search_condition(
-        DbBackend::Sqlite,
-        "   ",
-        "shoes",
-    );
+    let cond_fallback =
+        product_translation_title_and_locale_search_condition(DbBackend::Sqlite, "   ", "shoes");
     assert!(!cond_fallback.is_empty());
 
     // Truncation at MAX_SEARCH_QUERY_LEN

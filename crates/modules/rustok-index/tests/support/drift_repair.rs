@@ -896,7 +896,8 @@ async fn count_value(
 
 fn schema_ref(entity: &str) -> SchemaRef {
     SchemaRef {
-        module: ModuleName::new("repair-evidence").expect("static module: invariant validated at startup"),
+        module: ModuleName::new("repair-evidence")
+            .expect("static module: invariant validated at startup"),
         entity: EntityName::new(entity).expect("static entity: invariant validated at startup"),
         version: SchemaVersion::new(1),
     }

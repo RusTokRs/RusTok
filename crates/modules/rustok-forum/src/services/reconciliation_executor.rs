@@ -1,28 +1,35 @@
 use std::time::Instant;
-use uuid::Uuid;
-use rustok_core::SecurityContext;
-use crate::error::{ForumError, ForumResult};
-use super::rbac::enforce_scope;
-use rustok_api::{Action, Resource};
 
-/// Generic fence for all Forum reconciliation reports (P2#16).
+use rustok_api::{Action, Resource};
+use rustok_core::SecurityContext;
+
+use super::rbac::enforce_scope;
+use crate::error::ForumResult;
+
+/// The shared fence of the Forum reconciliation reports (P2#16).
 ///
-/// Every report is tenant-scoped, bounded by `requested_limit`, and
-/// requires both `ForumCategories::Manage` + `ForumTopics::Manage` so
-/// future non-GraphQL adapters cannot bypass the operator boundary.
-/// Implementors only supply `collect` — everything else (metrics,
-/// scope check, limit normalization) lives here once.
+/// Each report declares one executor with its metric labels and page bounds.
+/// `execute` records the entry-point metrics and requires both
+/// `ForumCategories::Manage` and `ForumTopics::Manage` before it runs the report
+/// body, so a future non-GraphQL adapter cannot bypass the operator boundary.
+/// `effective_limit` is the only normalization of a requested page size.
+///
+/// The three labels are separate fields because they are separate, already
+/// published series with different names: the entry-point counter and the module
+/// error counter use the short names, the span metrics use the `forum.`-prefixed
+/// one. Renaming any of them starts a new series.
 pub struct ReconciliationExecutor {
+    /// `operation` label of the span duration and span error metrics.
     pub operation: &'static str,
+    /// `entry_point` label of the module entry-point counter.
+    pub entrypoint: &'static str,
+    /// `error_type` label of the module error counter.
+    pub error_type: &'static str,
     pub default_limit: u64,
     pub max_limit: u64,
 }
 
 impl ReconciliationExecutor {
-    pub const fn new(operation: &'static str, default_limit: u64, max_limit: u64) -> Self {
-        Self { operation, default_limit, max_limit }
-    }
-
     pub fn effective_limit(&self, requested: Option<u64>) -> u64 {
         let v = requested.unwrap_or(self.default_limit);
         v.clamp(1, self.max_limit)
@@ -40,20 +47,24 @@ impl ReconciliationExecutor {
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = ForumResult<T>>,
     {
-        rustok_telemetry::metrics::record_module_entrypoint_call("forum", self.operation, "library");
+        rustok_telemetry::metrics::record_module_entrypoint_call(
+            "forum",
+            self.entrypoint,
+            "library",
+        );
         let started = Instant::now();
         let res = match self.enforce_operator(security) {
             Ok(()) => f().await,
             Err(e) => Err(e),
         };
-        rustok_telemetry::metrics::record_span_duration(self.operation, started.elapsed().as_secs_f64());
+        rustok_telemetry::metrics::record_span_duration(
+            self.operation,
+            started.elapsed().as_secs_f64(),
+        );
         if res.is_err() {
             rustok_telemetry::metrics::record_span_error(self.operation, "owner_report");
-            rustok_telemetry::metrics::record_module_error("forum", self.operation, "error");
+            rustok_telemetry::metrics::record_module_error("forum", self.error_type, "error");
         }
         res
     }
 }
-
-// Convenience for topic/category dual-cursor reports (counter, subscription, etc.)
-// Keeps `topic_after` / `category_after` keyset logic in one place.

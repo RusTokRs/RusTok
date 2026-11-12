@@ -88,7 +88,8 @@ where
 }
 
 fn retryable_timeout(code: &'static str) -> IndexSourceFailure {
-    IndexSourceFailure::retryable(code).expect("static Index source timeout code must be valid: invariant validated at startup")
+    IndexSourceFailure::retryable(code)
+        .expect("static Index source timeout code must be valid: invariant validated at startup")
 }
 
 #[cfg(test)]

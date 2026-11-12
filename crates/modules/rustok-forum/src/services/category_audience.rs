@@ -13,16 +13,9 @@ use uuid::Uuid;
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 
-use crate::audience::{
-    ForumAudienceConstraints, MAX_FORUM_AUDIENCE_CHANNELS, MAX_FORUM_AUDIENCE_EXPLICIT_USERS,
-    MAX_FORUM_AUDIENCE_GROUPS, MAX_FORUM_AUDIENCE_ROLES,
-};
+use crate::audience::ForumAudienceConstraints;
 use crate::dto::{MAX_FORUM_CATEGORY_TREE_DEPTH, MAX_FORUM_CATEGORY_TREE_NODES};
-use crate::entities::{
-    forum_category, forum_category_audience_channel, forum_category_audience_group,
-    forum_category_audience_policy, forum_category_audience_role,
-    forum_category_audience_user::{self, ForumCategoryAudienceUserEffect},
-};
+use crate::entities::{forum_category, forum_category_audience_policy};
 use crate::error::{ForumError, ForumResult};
 use crate::services::audience_policy::{AudienceLayer, AudiencePolicy, CategoryScope};
 use crate::services::rbac::enforce_scope;
@@ -209,7 +202,11 @@ where
                 .map(|constraints| AudienceLayer::new(ancestor_id, constraints))
         })
         .collect();
-    Ok(AudiencePolicy::new(category_id, configured_constraints, effective_layers))
+    Ok(AudiencePolicy::new(
+        category_id,
+        configured_constraints,
+        effective_layers,
+    ))
 }
 
 pub(crate) async fn load_category_ancestor_ids<C>(
@@ -301,11 +298,6 @@ where
         "category_id",
     )
     .await
-    .map(|mut layers| {
-        // keep original ensure_storage_bound error wording for compat
-        layers
-    })
-    .or_else(|e| Err(e))
 }
 
 pub(super) fn constraints_are_empty(constraints: &ForumAudienceConstraints) -> bool {

@@ -566,23 +566,25 @@ async fn sync_created_category_to_taxonomy_in_tx(
     translations: &[CategoryTranslationInput],
 ) -> CommerceResult<()> {
     for translation in translations {
-        service.taxonomy().sync_category_translation_in_tx(
-            txn,
-            tenant_id,
-            crate::ports::ProductTaxonomyCategoryTranslationInput {
-                category_id,
-                module_scope: PRODUCT_TAXONOMY_SCOPE.to_owned(),
-                canonical_key: canonical_key_for_product_category(category_id),
-                locale: translation.locale.clone(),
-                name: translation.name.clone(),
-                slug: input.slug.clone(),
-                aliases: Vec::new(),
-                description: translation.description.clone(),
-                parent_id: input.parent_id,
-                position: input.position,
-            },
-        )
-        .await?;
+        service
+            .taxonomy()
+            .sync_category_translation_in_tx(
+                txn,
+                tenant_id,
+                crate::ports::ProductTaxonomyCategoryTranslationInput {
+                    category_id,
+                    module_scope: PRODUCT_TAXONOMY_SCOPE.to_owned(),
+                    canonical_key: canonical_key_for_product_category(category_id),
+                    locale: translation.locale.clone(),
+                    name: translation.name.clone(),
+                    slug: input.slug.clone(),
+                    aliases: Vec::new(),
+                    description: translation.description.clone(),
+                    parent_id: input.parent_id,
+                    position: input.position,
+                },
+            )
+            .await?;
     }
 
     Ok(())

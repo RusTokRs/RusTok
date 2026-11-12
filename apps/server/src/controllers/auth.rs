@@ -67,7 +67,10 @@ fn user_response_from_model(
 /// Stable display form of an effective permission snapshot: sorted and
 /// deduplicated `"{resource}:{action}"` strings.
 fn permission_strings(permissions: &[Permission]) -> Vec<String> {
-    let mut values = permissions.iter().map(ToString::to_string).collect::<Vec<_>>();
+    let mut values = permissions
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
     values.sort();
     values.dedup();
     values

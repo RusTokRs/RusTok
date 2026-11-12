@@ -10,7 +10,9 @@ const read = (relativePath) =>
   fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 const owner = read("crates/modules/rustok-pages/src/cache_invalidation.rs");
-const pagesModule = read("crates/modules/rustok-pages/src/lib.rs");
+const pagesLib = read("crates/modules/rustok-pages/src/lib.rs");
+// The `RusToKModule` implementation lives in `module.rs`; `lib.rs` keeps the exports.
+const pagesModule = read("crates/modules/rustok-pages/src/module.rs");
 const reviewedPublish = read(
   "crates/modules/rustok-pages/src/services/page/reviewed_publish.rs",
 );
@@ -102,11 +104,15 @@ for (const marker of [
   "PagesCacheReadRuntime",
   "PagesCacheReadPort",
   "storefront_pages_cache_key",
+]) {
+  requireMarker(pagesLib, marker, "Pages module cache exports");
+}
+for (const marker of [
   "fn register_event_listeners(",
   ".get::<PagesCacheInvalidationRuntime>()",
   "registry.register(PageCacheInvalidationEventHandler::new(runtime))",
 ]) {
-  requireMarker(pagesModule, marker, "Pages module cache exports and listener registration");
+  requireMarker(pagesModule, marker, "Pages module listener registration");
 }
 
 const reviewedPublishOwner = sliceBetween(

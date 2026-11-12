@@ -105,7 +105,7 @@ export function BrandCreateDialog({ onCreateBrand }: BrandCreateDialogProps) {
 
           <div className='grid gap-4 py-4'>
             {error && (
-              <div className='rounded-md bg-destructive/15 p-3 text-destructive text-sm'>
+              <div className='bg-destructive/15 text-destructive rounded-md p-3 text-sm'>
                 {error}
               </div>
             )}

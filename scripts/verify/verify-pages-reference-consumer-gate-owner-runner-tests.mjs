@@ -199,7 +199,6 @@ for (const marker of [
   need(sources.workflow, marker, "focused provider-health/gate workflow");
 }
 
-
 if (
   contract.next_cursor?.reference_consumer_gate_acceptance_runner !==
   "synthetic_fail_closed_ci_coverage_source_ready"

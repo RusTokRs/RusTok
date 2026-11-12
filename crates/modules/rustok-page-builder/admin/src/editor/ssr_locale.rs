@@ -13,6 +13,8 @@ use serde_json::Value;
 pub fn SsrLocalePanel(runtime: AdminEditorRuntime) -> impl IntoView {
     #[cfg(not(target_arch = "wasm32"))]
     {
+        // Each form renders disabled when the intent endpoint would refuse it.
+        let set_runtime_locale_enabled = runtime.form_enabled("set_runtime_locale");
         let route_context = use_context::<UiRouteContext>().unwrap_or_default();
         let ui_locale = route_context.locale;
         let title = t(
@@ -73,6 +75,7 @@ pub fn SsrLocalePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     <p class="text-xs text-muted-foreground">{help}</p>
                 </div>
                 <form class="grid gap-2" data-fly-intent-form="set_runtime_locale">
+                    <fieldset class="contents" disabled=!set_runtime_locale_enabled>
                     <label class="grid gap-1 text-xs">
                         <span class="font-medium">{locale_label}</span>
                         <input
@@ -101,6 +104,7 @@ pub fn SsrLocalePanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     >
                         {apply_locale}
                     </button>
+                    </fieldset>
                 </form>
             </section>
         }

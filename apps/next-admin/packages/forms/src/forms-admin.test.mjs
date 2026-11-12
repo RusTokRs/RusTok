@@ -47,10 +47,9 @@ const cleanNavSource = stripTypeScriptTypes(
     .replaceAll('export ', '')
 );
 const navModule = {};
-compileFunction(
-  `${cleanNavSource}\nnavModule.formsNavItems = formsNavItems;`,
-  ['navModule']
-)(navModule);
+compileFunction(`${cleanNavSource}\nnavModule.formsNavItems = formsNavItems;`, [
+  'navModule'
+])(navModule);
 const { formsNavItems } = navModule;
 
 test('formsNavItems specifies correct dashboard route and plugin group', () => {
@@ -66,14 +65,29 @@ test('GraphQL queries and mutations expose required schema fields and async-grap
   const api = createApiModule(async () => ({}));
 
   // Query fields
-  assert.match(api.FORM_SUBMISSIONS_QUERY, /formSubmissions\(filter: \$filter\)/);
+  assert.match(
+    api.FORM_SUBMISSIONS_QUERY,
+    /formSubmissions\(filter: \$filter\)/
+  );
   assert.match(api.FORM_SUBMISSIONS_QUERY, /ListGqlFormSubmissionsFilter/);
-  assert.match(api.FORM_SUBMISSIONS_QUERY, /id formId locale pageId payload state createdAt handledAt/);
+  assert.match(
+    api.FORM_SUBMISSIONS_QUERY,
+    /id formId locale pageId payload state createdAt handledAt/
+  );
 
   // Mutation fields
-  assert.match(api.UPDATE_FORM_SUBMISSION_STATE_MUTATION, /updateFormSubmissionState\(id: \$id, input: \$input\)/);
-  assert.match(api.UPDATE_FORM_SUBMISSION_STATE_MUTATION, /UpdateGqlFormSubmissionStateInput/);
-  assert.match(api.UPDATE_FORM_SUBMISSION_STATE_MUTATION, /id formId locale pageId payload state createdAt handledAt/);
+  assert.match(
+    api.UPDATE_FORM_SUBMISSION_STATE_MUTATION,
+    /updateFormSubmissionState\(id: \$id, input: \$input\)/
+  );
+  assert.match(
+    api.UPDATE_FORM_SUBMISSION_STATE_MUTATION,
+    /UpdateGqlFormSubmissionStateInput/
+  );
+  assert.match(
+    api.UPDATE_FORM_SUBMISSION_STATE_MUTATION,
+    /id formId locale pageId payload state createdAt handledAt/
+  );
 });
 
 test('listFormSubmissions passes filter arguments and auth context to gateway', async () => {
@@ -136,13 +150,11 @@ test('updateFormSubmissionState passes id, input, and auth context to gateway', 
     return { updateFormSubmissionState: updatedSubmission };
   });
 
-  const res = await api.updateFormSubmissionState(
-    'sub-1',
-    'handled',
-    { token: 'secret-token', tenantSlug: 'tenant-slug' }
-  );
+  const res = await api.updateFormSubmissionState('sub-1', 'handled', {
+    token: 'secret-token',
+    tenantSlug: 'tenant-slug'
+  });
 
   assert.deepEqual(res, updatedSubmission);
   assert.equal(res.state, 'handled');
 });
-

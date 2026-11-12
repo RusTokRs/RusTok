@@ -54,11 +54,6 @@ const storefrontLib = read("crates/modules/rustok-page-builder/storefront/src/li
 const inline = read("crates/modules/rustok-page-builder/storefront/src/inline_edit.rs");
 const pagesStorefrontCargo = read("crates/modules/rustok-pages/storefront/Cargo.toml");
 const pagesStorefrontLib = read("crates/modules/rustok-pages/storefront/src/lib.rs");
-const plan = read("docs/modules/pages-page-builder-parity-continuation-plan.md");
-const actualization = read(
-);
-const packet = read(
-);
 
 if (evidence.format !== "page_builder_authenticated_inline_edit_adapter_source_v1") {
   failures.push(`evidence format mismatch: ${evidence.format}`);
@@ -72,10 +67,192 @@ if (!Array.isArray(evidence.execution) || evidence.execution.length !== 0) {
 for (const [key, value] of Object.entries(evidence.validation ?? {})) {
   if (value !== false) failures.push(`validation.${key} must remain false`);
 }
-, marker, "Page Builder actualization overlay");
-, marker, "authenticated inline adapter packet");
+for (const key of [
+  "real_dom_adapter_owned_by_fly_leptos",
+  "page_builder_storefront_inline_feature_is_optional",
+  "anonymous_read_only_renderer_remains_uninstrumented",
+  "inline_renderer_forces_component_instrumentation",
+  "grant_binds_session_page_revision_hash_expiry_and_proof",
+  "authorization_proof_is_redacted_from_debug",
+  "authorization_proof_is_not_rendered_into_dom",
+  "grant_session_is_not_rendered_into_dom",
+  "dom_root_identity_uses_page_and_project_hash",
+  "plain_text_is_bounded_and_normalized",
+  "dom_is_a_temporary_focusout_buffer",
+  "dom_listener_cleanup_restores_attributes",
+  "only_allowlisted_components_receive_contenteditable",
+  "runtime_bound_conditional_and_repeated_subtrees_are_excluded",
+  "provider_and_composite_components_are_excluded",
+  "interactive_controls_are_excluded",
+  "static_leaf_children_in_unowned_layouts_remain_eligible",
+  "unchanged_focusout_does_not_consume_grant",
+  "server_authorization_port_precedes_mutation",
+  "exact_project_hash_precedes_mutation",
+  "monotonic_sequence_precedes_mutation",
+  "canonical_fly_patch_is_the_only_document_mutation",
+  "successful_commit_returns_full_current_project_data",
+  "new_grant_is_required_after_document_hash_changes",
+]) {
+  if (evidence.source_contract?.[key] !== true) {
+    failures.push(`source_contract.${key} must be true`);
+  }
+}
+for (const key of [
+  "pages_consumer_grant_issuance_added",
+  "pages_consumer_save_transport_added",
+  "anonymous_storefront_inline_mount_added",
+  "database_schema_changed",
+  "graphql_schema_changed",
+  "rest_http_api_changed",
+  "event_schema_changed",
+  "page_builder_publish_behavior_changed",
+  "ffa_promoted",
+  "fba_promoted",
+]) {
+  if (evidence.source_contract?.[key] !== false) {
+    failures.push(`historical source_contract.${key} must remain false`);
+  }
+}
 
-for (const text of [realDom, inline, packet, actualization]) {
+// The inline-edit surface must stay reachable from `fly-leptos`: the crate root re-exports the
+// `foundation` module, which re-exports `fly-web`. Both re-exports are explicit name lists, so
+// the pins check that the inline-edit contract names are in each list.
+const reexportedNames = (source, from) => {
+  const block = source.match(new RegExp(`^pub use ${from}::\\{([^}]*)\\};`, "m"));
+  if (!block) return null;
+  return new Set(block[1].split(",").map((name) => name.trim()).filter(Boolean));
+};
+const needReexports = (source, from, names, label) => {
+  const exported = reexportedNames(source, from);
+  if (!exported) {
+    failures.push(`${label}: missing pub use ${from}::{...};`);
+    return;
+  }
+  for (const name of names) {
+    if (!exported.has(name)) failures.push(`${label}: pub use ${from}::{...} does not list ${name}`);
+  }
+};
+const inlineEditContractNames = [
+  "AuthenticatedInlineEditGrant",
+  "AuthenticatedInlineEditRequest",
+  "InlineEditContractError",
+  "InlineEditableField",
+  "MAX_INLINE_TEXT_BYTES",
+  "FLY_REAL_DOM_COMPONENT_ATTRIBUTE",
+  "FLY_REAL_DOM_INLINE_ATTRIBUTE",
+];
+need(flyRoot, "mod foundation;", "fly-leptos crate root");
+needReexports(flyRoot, "foundation", inlineEditContractNames, "fly-leptos crate root");
+needReexports(flyFoundation, "fly_web", inlineEditContractNames, "fly-leptos exports");
+for (const marker of ['"Node"', '"NodeList"', '"HtmlElement"']) {
+  need(flyCargo, marker, "fly-leptos browser capabilities");
+}
+for (const marker of [
+  'FLY_REAL_DOM_COMPONENT_ATTRIBUTE: &str = "data-fly-component-id"',
+  'FLY_REAL_DOM_INLINE_ATTRIBUTE: &str = "data-fly-inline-editable"',
+  "MAX_INLINE_TEXT_BYTES: usize = 64 * 1024",
+  "pub struct AuthenticatedInlineEditGrant",
+  "expected_project_hash: ProjectHash",
+  "authorization_proof: String",
+  '.field("authorization_proof", &"[REDACTED]")',
+  'set_attribute("contenteditable", "plaintext-only")',
+  '"focusout"',
+  "element.inner_text()",
+  "normalize_plain_text",
+  "impl Drop for MarkedElement",
+  "impl Drop for RealDomInlineEditSubscription",
+]) need(realDom, marker, "fly-leptos real-DOM adapter");
+forbid(realDom, 'add_event_listener_with_callback("input"', "focusout commit boundary");
+forbid(realDom, "data-inline-proof", "authorization proof DOM boundary");
+
+for (const marker of [
+  'inline-edit = ["dep:fly-leptos"]',
+  'fly-leptos = { path = "../../../ui/fly/leptos", optional = true, default-features = false }',
+  '"fly-leptos?/wasm-client"',
+  '"fly-leptos?/ssr"',
+]) need(storefrontCargo, marker, "optional Page Builder inline feature");
+for (const marker of [
+  '#[cfg(feature = "inline-edit")]',
+  "mod inline_edit;",
+  "policy.instrument_components = false",
+]) need(storefrontLib, marker, "Page Builder storefront exports");
+needReexports(
+  storefrontLib,
+  "inline_edit",
+  [
+    "AuthenticatedInlineEditSession",
+    "InlineEditApplyResult",
+    "InlineEditAuthorizationPort",
+    "InlineEditError",
+    "InlineEditGrant",
+    "InlineEditRequest",
+    "PageBuilderAuthenticatedInlineStorefront",
+  ],
+  "Page Builder storefront exports",
+);
+
+for (const marker of [
+  "pub trait InlineEditAuthorizationPort",
+  "pub struct AuthenticatedInlineEditSession",
+  "self.grant.validate_request(&request, now_unix_ms)?",
+  "request.sequence <= self.last_sequence",
+  "request.expected_project_hash != current_hash",
+  "collect_runtime_owned_subtree",
+  "NoContentChange",
+  ".authorize(&request)",
+  "InlineEditError::AuthorizationRejected",
+  "EditorCommand::Patch",
+  'ComponentPatch::default().set_field("content"',
+  "GrapesJsCodec::encode_value(self.editor.document())",
+  "policy.instrument_components = true",
+  "PageBuilderAuthenticatedInlineStorefront",
+  "let root_id = inline_root_id(&grant);",
+  "fn inline_root_id(grant: &AuthenticatedInlineEditGrant) -> String",
+  "dom_id(grant.page_id())",
+  "grant.expected_project_hash().hex()",
+  "inline_dom_identity_excludes_grant_session_and_authorization_proof",
+]) need(inline, marker, "Page Builder canonical inline session");
+for (const marker of [
+  "data-inline-proof",
+  "data-inline-session",
+  "dom_id(grant.session_id())",
+]) forbid(inline, marker, "Page Builder secret/session DOM boundary");
+
+const apply = between(
+  inline,
+  "pub fn apply_authorized(",
+  "#[derive(Debug, Clone, PartialEq)]",
+  "authenticated inline apply owner",
+);
+ordered(apply, [
+  "self.grant.validate_request(&request, now_unix_ms)?",
+  "request.sequence <= self.last_sequence",
+  "request.expected_project_hash != current_hash",
+  "location.page_index != page_index",
+  "runtime_owned.contains(&request.component_id)",
+  "NoContentChange",
+  ".authorize(&request)",
+  "self.editor.apply(EditorCommand::Patch",
+  "GrapesJsCodec::encode_value(self.editor.document())",
+], "identity eligibility authorization mutation ordering");
+
+for (const marker of [
+  "inline-edit = [",
+  '"rustok-page-builder-storefront/inline-edit"',
+]) need(pagesStorefrontCargo, marker, "later Pages consumer opt-in feature");
+for (const baseFeature of ["default", "hydrate", "ssr"]) {
+  forbid(
+    featureBody(pagesStorefrontCargo, baseFeature, "Pages storefront manifest"),
+    "inline-edit",
+    `Pages storefront ${baseFeature} profile`,
+  );
+}
+for (const marker of [
+  '#[cfg(feature = "inline-edit")]',
+  "mod inline_edit;",
+]) need(pagesStorefrontLib, marker, "later Pages consumer gate");
+
+for (const text of [realDom, inline]) {
   forbid(text, "Iggy", "authenticated inline adapter slice");
 }
 

@@ -238,8 +238,7 @@ The single canonical trigger to continue this audit sequence is:
 - [ ] **[`crates/modules/rustok-product-bundles/admin`](../../crates/modules/rustok-product-bundles/admin)** (9 files, 2,617 LOC)
 - [ ] **[`crates/modules/rustok-product-relations`](../../crates/modules/rustok-product-relations)** (25 files, 4,211 LOC)
 - [ ] **[`crates/modules/rustok-product-relations/admin`](../../crates/modules/rustok-product-relations/admin)** (9 files, 1,712 LOC)
-- [ ] **[`crates/modules/rustok-product-transport`](../../crates/modules/rustok-product-transport)** (8 files, 1,704 LOC)
-- [ ] **[`crates/modules/rustok-product-catalog-service`](../../crates/modules/rustok-product-catalog-service)** (1 files, 508 LOC)
+- [ ] **[`crates/modules/rustok-product/ports`](../../crates/modules/rustok-product/ports)** (12 files, 3,200 LOC)
 - [ ] **[`crates/modules/rustok-taxonomy`](../../crates/modules/rustok-taxonomy)** (53 files, 14,828 LOC)
 - [ ] **[`crates/modules/rustok-brand`](../../crates/modules/rustok-brand)** (22 files, 3,399 LOC)
 - [ ] **[`crates/modules/rustok-brand/admin`](../../crates/modules/rustok-brand/admin)** (9 files, 2,081 LOC)
@@ -584,10 +583,9 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-product](../../crates/modules/rustok-product) | `modules` | 240 | 102,317 | None |  |
 | [ ] | [rustok-product-bundles](../../crates/modules/rustok-product-bundles) | `modules` | 28 | 7,122 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product-bundles/admin) | `modules` | 10 | 2,961 | None |  |
-| [ ] | [rustok-product-catalog-service](../../crates/modules/rustok-product-catalog-service) | `modules` | 2 | 544 | None |  |
 | [ ] | [rustok-product-relations](../../crates/modules/rustok-product-relations) | `modules` | 30 | 4,491 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product-relations/admin) | `modules` | 11 | 1,851 | None |  |
-| [ ] | [rustok-product-transport](../../crates/modules/rustok-product-transport) | `modules` | 9 | 3,261 | None |  |
+| [ ] | [ports](../../crates/modules/rustok-product/ports) | `modules` | 12 | 3,200 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-product/admin) | `modules` | 52 | 28,526 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-product/storefront) | `modules` | 16 | 5,584 | None |  |
 | [ ] | [rustok-profiles](../../crates/modules/rustok-profiles) | `modules` | 59 | 9,706 | None |  |

@@ -7,7 +7,7 @@ import { AlertTriangle, RefreshCcw } from 'lucide-react';
 
 export default function DashboardError({
   error,
-  reset,
+  reset
 }: {
   error: Error & { digest?: string };
   reset: () => void;
@@ -23,7 +23,8 @@ export default function DashboardError({
           <AlertTriangle className='h-4 w-4' />
           <AlertTitle>An error occurred</AlertTitle>
           <AlertDescription className='mt-2 text-sm'>
-            {error.message || 'Unable to load this section of the administration dashboard.'}
+            {error.message ||
+              'Unable to load this section of the administration dashboard.'}
           </AlertDescription>
         </Alert>
         <div className='flex justify-end gap-2'>
@@ -36,4 +37,3 @@ export default function DashboardError({
     </div>
   );
 }
-

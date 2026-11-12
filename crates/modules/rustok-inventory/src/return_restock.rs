@@ -164,13 +164,8 @@ pub async fn restock_returned_items(
 
         // INVARIANT: the item is tenant-proved. Include consumed history, but never select
         // the oldest/first of several allocations or infer SKU-less from an absent row.
-        let reservation = lock_line_reservation(
-            &txn,
-            &context,
-            item.id,
-            line.order_line_item_id,
-        )
-        .await?;
+        let reservation =
+            lock_line_reservation(&txn, &context, item.id, line.order_line_item_id).await?;
         validate_allocation(&reservation, line, item.id, variant_id)?;
         movements.insert(
             line.return_item_id,
@@ -436,9 +431,10 @@ async fn lock_line_reservation(
     } else {
         query.lock_exclusive()
     };
-    let mut reservations = query.all(txn).await.map_err(|error| {
-        storage_unavailable_with_context(context, RESTOCK_OPERATION, error)
-    })?;
+    let mut reservations = query
+        .all(txn)
+        .await
+        .map_err(|error| storage_unavailable_with_context(context, RESTOCK_OPERATION, error))?;
     if reservations.len() != 1 {
         return Err(PortError::invariant_violation(
             "inventory.return_restock_allocation_unverified",
@@ -463,9 +459,10 @@ async fn lock_inventory_level(
     } else {
         query.lock_exclusive()
     };
-    let mut matching = query.all(txn).await.map_err(|error| {
-        storage_unavailable_with_context(context, RESTOCK_OPERATION, error)
-    })?;
+    let mut matching = query
+        .all(txn)
+        .await
+        .map_err(|error| storage_unavailable_with_context(context, RESTOCK_OPERATION, error))?;
     if matching.len() != 1 {
         return Err(PortError::invariant_violation(
             "inventory.return_restock_level_unverified",

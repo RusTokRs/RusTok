@@ -28,31 +28,21 @@ const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
 fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
     OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.owner_contract_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.owner_contract_invalid", error.to_string())
     })
 }
 
 fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
     ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.owner_contract_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.owner_contract_invalid", error.to_string())
     })
 }
 
 fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
     ResourceId::new(value).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.resource_id_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.resource_id_invalid", error.to_string())
     })
 }
-
 
 /// Adds exact-locale aggregate progress and durable change polling to the
 /// Product Image target while preserving the existing list/read/validate/apply

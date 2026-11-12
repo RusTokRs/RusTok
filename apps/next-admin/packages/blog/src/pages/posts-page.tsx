@@ -102,9 +102,10 @@ export default async function PostsPage({
   tenantId
 }: PostsPageProps) {
   const requestedPageSize = Number(searchParams.perPage);
-  const perPage = Number.isInteger(requestedPageSize) && requestedPageSize > 0
-    ? Math.min(requestedPageSize, 100)
-    : 20;
+  const perPage =
+    Number.isInteger(requestedPageSize) && requestedPageSize > 0
+      ? Math.min(requestedPageSize, 100)
+      : 20;
   const status: BlogPostStatus | undefined =
     searchParams.status === 'DRAFT' ||
     searchParams.status === 'PUBLISHED' ||
@@ -124,7 +125,17 @@ export default async function PostsPage({
 
   const opts: GqlOpts = { token, tenantSlug, tenantId };
   const data = await listPosts(
-    { after, perPage, status, title, slug, locale, authorId, sortBy, sortOrder },
+    {
+      after,
+      perPage,
+      status,
+      title,
+      slug,
+      locale,
+      authorId,
+      sortBy,
+      sortOrder
+    },
     opts
   );
 

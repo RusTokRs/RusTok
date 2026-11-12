@@ -35,6 +35,7 @@ Nothing that affects the first paint happens in an `Effect` (effects never run o
 
 - `<th scope="col">` with a live `aria-sort`, and sorting is triggered by a real `<button>` (keyboard operable).
 - Resize handles follow the WAI-ARIA *window splitter* pattern: `role="separator"`, `tabindex="0"`, `aria-valuemin/valuenow/valuemax`, Arrow keys (±16 px) and Home/End.
+- A pointer resize takes pointer capture on the handle, so the drag survives a cursor that leaves the 8 px handle. A drag starts only when the capture was taken: without it a release outside the handle would never reach the handle and the drag would stay active. The browser releases the capture after `pointerup` and `pointercancel`; the handle does not release it itself. The keyboard path does not depend on capture.
 - The header checkbox exposes the `indeterminate` state for a partially selected page; all checkboxes and filter controls have accessible names.
 - Pagination lives in a `<nav aria-label="Pagination">`; infinite mode exposes a keyboard-reachable **Load more** button alongside its intersection-observer sentinel. The row-count summary and the loading/empty row are `aria-live="polite"`.
 - The columns popover is closed by a backdrop click or `Escape` and reports `aria-expanded`.

@@ -1362,7 +1362,10 @@ impl AuthLifecycleService {
         let permissions = RbacService::get_user_permissions_authoritative(db, &tenant_id, &user_id)
             .await
             .map_err(AuthLifecycleError::from)?;
-        let mut values = permissions.iter().map(ToString::to_string).collect::<Vec<_>>();
+        let mut values = permissions
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
         values.sort();
         values.dedup();
         Ok(values)

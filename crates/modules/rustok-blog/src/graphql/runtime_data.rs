@@ -1,12 +1,15 @@
 use std::sync::Arc;
 
+use async_graphql::Context;
 use rustok_api::{SharedStaticModuleSettingsReader, graphql::GraphqlRuntimeInputs};
 use rustok_comments::CommentsThreadPort;
 use rustok_profiles::ProfileSummaryReader;
 use sea_orm::DatabaseConnection;
 
 use crate::ports::taxonomy::{BlogCategoryDeleteCleanupPort, BlogTaxonomyPort};
-use crate::{CategoryService, CommentService, PublicCommentsSnapshotStore};
+use crate::{
+    CategoryService, CommentService, PostService, PublicCommentsSnapshotStore, TagService,
+};
 
 /// Manifest-attached Blog GraphQL runtime capabilities.
 ///
@@ -37,6 +40,16 @@ pub fn attach_schema_data(inputs: &GraphqlRuntimeInputs) -> Result<BlogGraphqlRu
 }
 
 impl BlogGraphqlRuntimeData {
+    /// Blog runtime capabilities the host attached to this schema.
+    ///
+    /// Post, tag and category resolvers build their services through this value, so the
+    /// Taxonomy port a host publishes reaches GraphQL the same way it reaches the HTTP
+    /// controllers. A schema built without the manifest factory gets the unattached value;
+    /// its services keep the port they are constructed with by `new`.
+    pub(crate) fn attached(ctx: &Context<'_>) -> Self {
+        ctx.data_opt::<Self>().cloned().unwrap_or_default()
+    }
+
     pub(crate) fn comment_service(&self, db: DatabaseConnection) -> CommentService {
         CommentService::from_runtime_capabilities(
             db,
@@ -60,6 +73,25 @@ impl BlogGraphqlRuntimeData {
         service
     }
 
+    pub(crate) fn post_service(
+        &self,
+        db: DatabaseConnection,
+        event_bus: rustok_outbox::TransactionalEventBus,
+    ) -> PostService {
+        let mut service = PostService::new(db, event_bus);
+        if let Some(taxonomy) = self.taxonomy_port.clone() {
+            service = service.with_taxonomy_port(taxonomy);
+        }
+        service
+    }
+
+    pub(crate) fn tag_service(&self, db: DatabaseConnection) -> TagService {
+        let mut service = TagService::new(db);
+        if let Some(taxonomy) = self.taxonomy_port.clone() {
+            service = service.with_taxonomy_port(taxonomy);
+        }
+        service
+    }
     pub(crate) fn public_comments_snapshot_store(
         &self,
     ) -> Option<&Arc<dyn PublicCommentsSnapshotStore>> {

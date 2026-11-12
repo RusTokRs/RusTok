@@ -836,9 +836,11 @@ fn ensure_postgres(db: &DatabaseConnection) -> Result<(), IndexDriftRepairFailur
 }
 
 fn retryable_failure(code: &str) -> IndexDriftRepairFailure {
-    IndexDriftRepairFailure::retryable(code).expect("static repair retryable code is valid: invariant validated at startup")
+    IndexDriftRepairFailure::retryable(code)
+        .expect("static repair retryable code is valid: invariant validated at startup")
 }
 
 fn permanent_failure(code: &str) -> IndexDriftRepairFailure {
-    IndexDriftRepairFailure::permanent(code).expect("static repair permanent code is valid: invariant validated at startup")
+    IndexDriftRepairFailure::permanent(code)
+        .expect("static repair permanent code is valid: invariant validated at startup")
 }

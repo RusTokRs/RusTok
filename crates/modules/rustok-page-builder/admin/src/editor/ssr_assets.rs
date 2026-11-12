@@ -6,8 +6,6 @@ use fly::{
     AssetCatalog, AssetCommand, AssetDescriptor, AssetPolicy, EditorCommand, source_allowed,
     visit_project_components,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use fly_ui::EditorCapability;
 use fly_ui::UiIntent;
 use leptos::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
@@ -196,9 +194,10 @@ pub fn SsrAssetPanel(runtime: AdminEditorRuntime) -> impl IntoView {
             .controller
             .with(|controller| controller.ui().state.selection.component_id.clone())
             .unwrap_or_default();
-        let assets_enabled = runtime.capability_enabled(EditorCapability::Assets);
-        let apply_enabled =
-            assets_enabled && runtime.capability_enabled(EditorCapability::Properties);
+        // Each form renders disabled when the intent endpoint would refuse it.
+        let assets_enabled = runtime.form_enabled("upsert_asset");
+        let apply_enabled = runtime.form_enabled("select_asset");
+        let remove_enabled = runtime.form_enabled("remove_asset");
         let has_assets = !catalog.assets.is_empty();
 
         view! {
@@ -293,7 +292,7 @@ pub fn SsrAssetPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                         <input type="hidden" name="asset_id" value=remove_asset_id />
                                         <button
                                             type="submit"
-                                            disabled=!assets_enabled
+                                            disabled=!remove_enabled
                                             class="w-fit rounded border border-destructive/40 px-2 py-1 text-destructive"
                                         >{remove_label}</button>
                                     </form>
