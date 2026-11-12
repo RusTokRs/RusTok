@@ -334,13 +334,16 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
         deleted `topic_widget_preview.rs`). Each needs the same reading as the repaired ones:
         is the pinned source gone, or only its wording. Owner: `rustok-pages`, `rustok-forum`,
         repository tooling.
-      - Six workflows still name deleted documents in their `paths:` filters
-        (`fly-page-builder.yml`, `pages-page-builder-parity.yml`,
-        `pages-page-builder-provider-health.yml`,
+      - ~~Six workflows still name deleted documents in their `paths:` filters~~
+        Done 2026-11-12: the entries are gone from `fly-page-builder.yml`,
+        `pages-page-builder-parity.yml`, `pages-page-builder-provider-health.yml`,
         `pages-artifact-repair-rollback-continuity-postgres-evidence.yml`,
-        `pages-rollback-activated-repair-rollback-continuity-postgres-evidence.yml`,
-        `pages-consumer-properties-source-evidence.yml`). The entries are inert. Owner:
-        repository tooling.
+        `pages-rollback-activated-repair-rollback-continuity-postgres-evidence.yml` and
+        `pages-consumer-properties-source-evidence.yml` (14 lines, in both the `push` and the
+        `pull_request` filter of each). They were inert — a path that cannot match never fires —
+        but each one is a filter entry that reads as a live trigger for a document that no longer
+        exists. No workflow was run; the remaining entries of every filter name an existing
+        path. Owner: repository tooling.
       - ~~`pages-artifact-http-cache-source.json` (dated 2026-08-04) still describes the
         artifact endpoint before its cache entry followed every page event.~~ Done 2026-11-12:
         the packet is re-issued (`generated_at` 2026-11-12) with the second harness test in

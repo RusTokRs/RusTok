@@ -14,8 +14,6 @@ on:
       - "crates/modules/rustok-page-builder/src/**"
       - "crates/modules/rustok-outbox/src/**"
       - "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json"
-      - "docs/modules/pages-page-builder-repair-rollback-continuity-actualization-2026-08-07.md"
-      - "docs/modules/pages-artifact-repair-rollback-continuity-postgres-evidence-actualization-2026-08-15.md"
       - ".github/workflows/pages-artifact-repair-rollback-continuity-postgres-evidence.yml"
   pull_request:
     paths:
@@ -28,8 +26,6 @@ on:
       - "crates/modules/rustok-page-builder/src/**"
       - "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json"
       - "crates/modules/rustok-outbox/src/**"
-      - "docs/modules/pages-page-builder-repair-rollback-continuity-actualization-2026-08-07.md"
-      - "docs/modules/pages-artifact-repair-rollback-continuity-postgres-evidence-actualization-2026-08-15.md"
       - ".github/workflows/pages-artifact-repair-rollback-continuity-postgres-evidence.yml"
   workflow_dispatch:
 

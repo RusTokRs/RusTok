@@ -195,6 +195,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (migration `m20261008_000031`). The field had no writer and always returned 0.
 
 ### Fixed
+- Six workflows no longer list deleted documents in their `paths:` filters
+  (`fly-page-builder.yml`, `pages-page-builder-parity.yml`,
+  `pages-page-builder-provider-health.yml` and the three Pages evidence workflows of the
+  2026-11-10 series). The entries could never match; they read as live triggers for documents
+  that `111d6dd4bf` and DAR-04 removed.
 - The Pages artifact HTTP cache entry now follows page and route events. The key already
   carried the page and route generations, but nothing pinned that, and the evidence packet of
   the endpoint predated the change: `pages-artifact-http-cache-source.json` is re-issued with
