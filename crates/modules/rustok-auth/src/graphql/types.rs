@@ -175,3 +175,53 @@ impl AuthorizedAppGql {
         self.0.granted_at
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_record() -> OAuthAppMutationRecord {
+        OAuthAppMutationRecord {
+            id: Uuid::new_v4(),
+            name: "test app".to_string(),
+            slug: "test-app".to_string(),
+            description: None,
+            icon_url: None,
+            app_type: "confidential".to_string(),
+            client_id: Uuid::new_v4(),
+            redirect_uris: vec![],
+            scopes: vec![],
+            grant_types: vec![],
+            granted_permissions: vec![],
+            manifest_ref: None,
+            auto_created: false,
+            managed_by_manifest: false,
+            is_active: true,
+            can_edit: true,
+            can_rotate_secret: true,
+            can_revoke: true,
+            active_token_count: 0,
+            last_used_at: None,
+            created_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn create_and_rotate_result_debug_redacts_client_secret() {
+        let create_res = CreateOAuthAppResultGql {
+            app: OAuthAppGql(dummy_record()),
+            client_secret: "secret-plaintext-key-123".to_string(),
+        };
+        let formatted = format!("{create_res:?}");
+        assert!(!formatted.contains("secret-plaintext-key-123"));
+        assert!(formatted.contains("<redacted>"));
+
+        let rotate_res = RotateSecretResultGql {
+            app: OAuthAppGql(dummy_record()),
+            client_secret: "new-secret-plaintext-key-456".to_string(),
+        };
+        let formatted = format!("{rotate_res:?}");
+        assert!(!formatted.contains("new-secret-plaintext-key-456"));
+        assert!(formatted.contains("<redacted>"));
+    }
+}
