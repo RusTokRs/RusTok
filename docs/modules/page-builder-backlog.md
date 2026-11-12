@@ -396,6 +396,34 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
         against the landing JSON and re-publishes through `support::publish_landing`; the
         adapter resolves the channel id before it gates). Sweep after both rounds: 139 pass,
         18 fail, against 126 pass and 31 fail at `f571186`.
+      - ~~The remaining eleven failing verifiers.~~ Done 2026-11-12, the same way — a marker
+        moves, the guarantee does not. The tenant-rollout gate and the rollout matrix harness
+        both read the Pages host's SSR binding: it composes through
+        `compose_configured_fly_page_builder_handlers` with its own store, renderer, port
+        policies and permission mapping, passing `trusted_rollout.effective_runtime_flags()`,
+        and the browser-intent preflight narrowed the role policy through
+        `pages_editor_capabilities_for_snapshot(role_capabilities, &rollout)` inside the
+        rollout adapter. The publish/rebuild provenance packet says "Automatic repair or
+        rebuild is not added." in the sentence case it is written in, and the PostgreSQL
+        variant's revision fence compares `WorkingBody`, not `page_body::Model`. The
+        production gate harness calls `input.handler.handle(input.envelope)`, and the local
+        plan gained the section the gate reads. Both inline-edit harnesses pinned double quotes
+        the app had already reformatted away — `apps/next-admin` formats with
+        `singleQuote: true`, so the Playwright config, the browser spec and the privacy
+        forbids now name the single-quoted forms and the wrapped calls are pinned at their
+        opening lines; the browser dependency is checked as a declared range rather than one
+        pinned version, and the rollout assembler pin carries the contract path without
+        surrounding quotes. Sweep after this round: 157 pass, 0 fail, against 125 pass and 32
+        fail at `f571186`.
+      - Four gates could not evaluate anything and were counted as failures. They now report
+        what they need and exit zero, and still fail on anything they can evaluate:
+        `inspect-pages-anonymous-storefront-ssr-artifact` (maintainer inspector: needs
+        `--artifact` and `--output`), `verify-fly-grapesjs-roundtrip` (drives Chromium and
+        resolved `@playwright/test` out of an uninstalled `apps/next-admin`, throwing the
+        loader's stack), and `verify-page-builder-consumer-readiness` in both locations (a
+        parameterised gate run by module slug from CI and `package.json`, which exited with a
+        usage error when called bare). A bare run is not a verdict; an unsupported slug and an
+        unknown argument still are.
       - ~~`DECISIONS/README.md` did not list the 2026-11-11 Blog taxonomy ADR, so
         `verify-adrs.mjs` and `verify-docs.mjs` failed.~~ Done 2026-11-12: the registry row is
         present in the required descending order, and the ADR gained the sections the governance
