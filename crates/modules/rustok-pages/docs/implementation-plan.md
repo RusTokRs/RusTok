@@ -16,7 +16,7 @@ Runtime/build/test evidence is maintainer-owned and remains unrun.
 # Implementation Plan for `rustok-pages`
 
 Date: 2026-08-08  
-Status: `in_progress / contribution-manifest-generation-source-ready / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / artifact-repair-multilocale-recovery-source-ready / rollback-activated-artifact-loss-recovery-source-ready / rollback-activated-repair-rollback-continuity-source-ready / repeated-artifact-loss-recovery-source-ready / execution-rollout-pending`
+Status: `in_progress / contribution-manifest-generation-source-ready / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / storefront-composition-etag-source-ready / artifact-repair-multilocale-recovery-source-ready / rollback-activated-artifact-loss-recovery-source-ready / rollback-activated-repair-rollback-continuity-source-ready / repeated-artifact-loss-recovery-source-ready / execution-rollout-pending`
 
 ## FFA/FBA status
 
@@ -200,6 +200,32 @@ migration, concurrent CAS, and change-cursor recovery evidence.
 - The anonymous public Pages route remains SSR-only and unchanged.
 - `NodeUpdated`, `NodePublished`, `NodeUnpublished` and `NodeDeleted` drive bounded generation rotation for route/page/artifact caches after commit.
 - Publish, rollback and repair activation reuse the same event-driven cache boundary; no repair path writes cache state inline.
+
+### Canonical storefront composition ETag: source-ready
+
+`storefront-composition-etag-source-ready` — the canonical page response of the anonymous
+storefront host is the one response that may carry a revalidation identity
+(`apps/storefront/src/shared/context/pages_composition.rs`,
+`apps/storefront/src/lib.rs`).
+
+- Navigation-owned header/footer menus are loaded once by the host
+  (`fetch_pages_navigation_snapshot` joins the two owner calls), the Navigation owner transport
+  is reused rather than re-entered, and the snapshot is preloaded into the SSR components
+  through `NavigationSnapshotProvider`.
+- The SEO owner context is resolved before the Pages render, and its host-side redirect
+  decision ends the response before any composition work.
+- The identity binds the route, page and artifact generations from the canonical route
+  decision, the channel identity, the canonical page id, locale and slug, the SEO payload, the
+  navigation payload and the exact rendered HTML — the digest of the document the host is
+  about to send, not of its inputs alone.
+- The identity is a deterministic SHA-256 ETag over the serialized payload. It is claimed by
+  canonical routes only: a terminal route (redirect, gone) or a nonce-bearing document never
+  claims it, so a per-request nonce cannot be cached.
+- Matching strong, weak or comma-separated `If-None-Match` returns `304`; both the `200` and
+  the `304` use `private, no-cache`, while terminal routes remain `private, no-store`.
+
+This remains source-ready: no Cargo, storefront, navigation, HTTP or browser execution is
+recorded for it.
 
 ### Authenticated real-DOM adapter: source-ready
 
