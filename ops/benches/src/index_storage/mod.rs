@@ -18,6 +18,7 @@ mod sql;
 
 pub use config::{BenchmarkConfig, BenchmarkRunProvenance, DatasetConfig, DatasetScale};
 pub(crate) use connection::connect as connect_benchmark_database;
+pub(crate) use connection::with_rollback_failure;
 pub use database_metadata::DatabaseMetadata;
 pub(crate) use database_metadata::{ensure_database_metadata_stable, read_database_metadata};
 pub use maintenance_runner::{
