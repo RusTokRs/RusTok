@@ -356,6 +356,7 @@ Pricing-subtitle = This storefront route reads pricing visibility, currency cove
 Pricing-selectedProductDetail = Selected Product Detail
 Pricing-clearSelection = ✕ Clear selection
 Pricing-productPricingCatalog = Product Pricing Catalog
+# plural-exempt: label form 'Total products: N' needs no agreement
 Pricing-totalProducts = Total products: { $total }
 Pricing-noProductsFound = No products found
 Pricing-failedToLoad = Failed to load pricing data
