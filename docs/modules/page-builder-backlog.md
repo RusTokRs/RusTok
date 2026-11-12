@@ -523,12 +523,21 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
       them with `--features ssr`. Owner: `rustok-pages` storefront.
     - Decide whether a failed draft save should be retried without a document change (today
       only an explicit save or the next edit retries). Owner: `rustok-pages-admin`.
-    - `PagesFlyBuilder` (`rustok-pages/admin/src/composition.rs`) restores the draft session
-      with `.load(…).ok().flatten()`: a store error on page open (I/O, lock timeout, a record
-      that does not parse, an owner mismatch) opens the editor on the saved document, without
-      the unsaved edits and without a message or a log line. The error is reported only by
-      the first editor action, whose intent loads the same session. Show the problem on open
-      and log it (the crate has no `tracing` dependency yet). Owner: `rustok-pages-admin`.
+    - DONE (2026-11-12), message only: `PagesFlyBuilder`
+      (`rustok-pages/admin/src/composition.rs`) restored the draft session with
+      `.load(…).ok().flatten()`: a store error on page open (I/O, lock timeout, a record that
+      does not parse, an owner mismatch) opened the editor on the saved document, without the
+      unsaved edits and without a message. `load_route_draft` returns the error, and the
+      editor renders it in an alert above the workspace (`pages.builder.draftLoadError`, en
+      and ru) while it still opens the saved page. Two unit tests on an in-memory store; not
+      compiled here, CI decides. Open:
+      - The error is not logged: the crate has no `tracing` dependency, and adding one changes
+        `Cargo.lock`, which cannot be regenerated in this workspace.
+        Owner: `rustok-pages-admin`.
+      - A session that is gone, or that was started from another saved revision, still opens
+        the saved page without a message. Owner: `rustok-pages-admin`.
+      - The address keeps the draft token, so each editor action is refused with the same
+        error until the author opens the page without it. Owner: `rustok-pages-admin`.
     - The save-failure Playwright spec (`apps/next-admin/tests/e2e/fly-browser-save-failure.spec.ts`)
       drives the adapter with a stubbed intent endpoint. No test runs the Pages endpoint and
       the adapter together through a rejected save. Owner: `rustok-pages-admin`.

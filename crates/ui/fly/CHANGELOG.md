@@ -257,6 +257,12 @@ Engineering audit remediation — see
 
 ### Fixed
 
+- **The Pages editor opened the saved page in silence when the draft could not be loaded.**
+  `PagesFlyBuilder` read a draft store error (I/O, a lock timeout, a record that does not
+  parse, a session of another user) as "no draft". The author saw the saved document without
+  the unsaved edits and learned of the problem from the first refused action. The error is now
+  shown in an alert above the workspace; the editor still opens the saved page.
+
 - **Server-rendered forms stayed enabled for a caller the endpoint refuses.** Of the SSR panels
   only the asset panel read the editor capabilities, from a list of its own; the locale, locale
   policy, translation, localized metadata, internal link, action and form, and inspector panels

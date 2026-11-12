@@ -22,7 +22,8 @@ use rustok_page_builder::runtime_scenario_release::{
 use rustok_page_builder::{RuntimeContextExamplePolicy, RuntimeContextScenario};
 use rustok_page_builder_admin::{
     DraftSessionOwner, PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext,
-    PageBuilderAdminProviderStatus,
+    PageBuilderAdminProviderStatus, SsrDraftSessionError, SsrDraftSessionSnapshot,
+    SsrDraftSessionStore,
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use serde_json::{Value, json};
@@ -1146,15 +1147,27 @@ fn PagesFlyBuilder(
             tenant_id: tenant_slug,
             user_id: user.id,
         });
-    let restored_draft = draft_token
-        .as_deref()
-        .and_then(|token| {
-            pages_browser_draft_store()
-                .load(token, &page.id, draft_owner.as_ref())
-                .ok()
-                .flatten()
-        })
-        .filter(|draft| draft.controller.revision_id() == revision_id);
+    // A store that cannot answer, or that refuses the caller, is not the same as an address
+    // that names no draft: the editor then shows the saved page and has to say so.
+    let (route_draft, draft_load_error) = match load_route_draft(
+        pages_browser_draft_store(),
+        draft_token.as_deref(),
+        &page.id,
+        draft_owner.as_ref(),
+    ) {
+        Ok(draft) => (draft, None),
+        Err(error) => (None, Some(error.to_string())),
+    };
+    let draft_load_error = draft_load_error.map(|error| {
+        let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
+        let label = t(
+            ui_locale.as_deref(),
+            "pages.builder.draftLoadError",
+            "The draft of this address could not be loaded; the editor shows the saved page",
+        );
+        format!("{label}: {error}")
+    });
+    let restored_draft = route_draft.filter(|draft| draft.controller.revision_id() == revision_id);
     let (controller, runtime_context) = match restored_draft {
         Some(draft) => (Ok(draft.controller), draft.runtime_context),
         None => (
@@ -1279,6 +1292,15 @@ fn PagesFlyBuilder(
             provide_context(host);
             view! {
                 <div class="space-y-2">
+                    {draft_load_error.map(|message| view! {
+                        <div
+                            class="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+                            role="alert"
+                            data-pages-draft-load-error="true"
+                        >
+                            {message}
+                        </div>
+                    })}
                     <ServerReleaseStatus status=server_status />
                     <PageBuilderAdmin />
                     {move || persistence_error.get().map(|error| view! {
@@ -1296,6 +1318,23 @@ fn PagesFlyBuilder(
             </div>
         }
         .into_any(),
+    }
+}
+
+/// The draft session the route names, if the store still holds it.
+///
+/// `Ok(None)` means the route names no draft or the session is gone. An error is returned to
+/// the caller instead of being read as "no draft": the editor would otherwise open the saved
+/// page in silence while the store is down or the session belongs to another user.
+fn load_route_draft(
+    store: &dyn SsrDraftSessionStore,
+    draft_token: Option<&str>,
+    page_id: &str,
+    owner: Option<&DraftSessionOwner>,
+) -> Result<Option<SsrDraftSessionSnapshot>, SsrDraftSessionError> {
+    match draft_token {
+        Some(token) => store.load(token, page_id, owner),
+        None => Ok(None),
     }
 }
 
@@ -1333,5 +1372,72 @@ fn ServerReleaseStatus(status: RwSignal<PageBuilderScenarioReleaseStatus>) -> im
                 )
             }}
         </div>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rustok_page_builder_admin::{AdminCanvasController, InMemorySsrDraftSessionStore};
+
+    fn owner(user_id: &str) -> DraftSessionOwner {
+        DraftSessionOwner {
+            tenant_id: "tenant".to_string(),
+            user_id: user_id.to_string(),
+        }
+    }
+
+    fn controller() -> AdminCanvasController {
+        AdminCanvasController::new(
+            "home",
+            "rev-1",
+            json!({
+                "pages": [{
+                    "id": "home",
+                    "component": { "id": "root", "type": "wrapper" }
+                }]
+            }),
+        )
+        .expect("controller")
+    }
+
+    #[test]
+    fn route_draft_reports_a_refused_session_instead_of_no_draft() {
+        let store = InMemorySsrDraftSessionStore::editor_default();
+        let author = owner("author");
+        let session = store
+            .commit(None, None, controller(), Some(&author))
+            .expect("draft session");
+
+        let restored = load_route_draft(&store, Some(&session.token), "home", Some(&author))
+            .expect("the author's own draft")
+            .expect("live session");
+        assert_eq!(restored.token, session.token);
+
+        let reader = owner("reader");
+        let error = load_route_draft(&store, Some(&session.token), "home", Some(&reader))
+            .expect_err("the draft of another user");
+        assert!(
+            matches!(error, SsrDraftSessionError::OwnerMismatch),
+            "unexpected error: {error}"
+        );
+
+        let error = load_route_draft(&store, Some(&session.token), "about", Some(&author))
+            .expect_err("the draft of another page");
+        assert!(
+            matches!(error, SsrDraftSessionError::PageMismatch { .. }),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn route_without_a_live_draft_is_not_an_error() {
+        let store = InMemorySsrDraftSessionStore::editor_default();
+
+        let without_token = load_route_draft(&store, None, "home", None).expect("no token");
+        assert!(without_token.is_none());
+        let unknown = load_route_draft(&store, Some("non-existent-token"), "home", None)
+            .expect("a token the store does not hold");
+        assert!(unknown.is_none());
     }
 }
