@@ -60,7 +60,6 @@ fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
     })
 }
 
-#[allow(dead_code)]
 fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
     ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
         PortError::invariant_violation(
@@ -1440,9 +1439,7 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
 fn attribute_value_identity(value_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
     Ok(TranslationResourceIdentity {
         owner_slug: owner_slug_or_invariant()?,
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
-            "static Product Attribute Value resource kind must satisfy Translation contract",
-        ),
+        resource_kind: resource_kind_or_invariant()?,
         resource_id: resource_id_or_invariant(value_id.to_string())?,
         subresource_id: None,
     })

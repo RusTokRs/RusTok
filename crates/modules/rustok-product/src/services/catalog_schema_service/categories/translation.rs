@@ -76,16 +76,6 @@ fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
     })
 }
 
-#[allow(dead_code)]
-fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
-    FieldKey::new(key).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.field_key_invalid",
-            error.to_string(),
-        )
-    })
-}
-
 const RESOURCE_REVISION_NAMESPACE: &str = "rustok-product/category-form-translation-resource/v1";
 const LOCALE_REVISION_NAMESPACE: &str = "rustok-product/category-form-translation-locale/v1";
 const DELETED_REVISION_NAMESPACE: &str = "rustok-product/category-form-translation-deleted/v1";

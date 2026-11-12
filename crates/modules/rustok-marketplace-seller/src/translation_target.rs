@@ -508,9 +508,7 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
 fn seller_identity(seller_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
     Ok(TranslationResourceIdentity {
         owner_slug: owner_slug_or_invariant()?,
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
-            "static Marketplace Seller presentation resource kind must satisfy the target contract",
-        ),
+        resource_kind: resource_kind_or_invariant()?,
         resource_id: resource_id_or_invariant(seller_id.to_string())?,
         subresource_id: None,
     })
