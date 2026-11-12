@@ -257,6 +257,20 @@ Engineering audit remediation — see
 
 ### Fixed
 
+- **The translation bind form lost its target on every reload.** `ssr_translations.rs` rendered
+  the selection input of the bind form with an empty value, and the browser adapter starts each
+  document without a selection. After the reload that follows an intent the form posted no
+  `component_id` and the server refused the binding until the component was selected again.
+  The form now renders the selection the server holds, as the asset and internal-link panels
+  do; the host bootstrap still replaces it when the author selects another component.
+
+- **Three adapter specs mounted over a page of the Next host.** `fly-browser-capability-problem`,
+  `fly-browser-response-order` and `fly-browser-save-failure` opened `/auth/sign-in` for an
+  origin and wrote the editor root into its `body`. React regenerated the body when it hydrated
+  or rendered later, the root was gone, and the "Browser E2E" job failed intermittently with
+  `#fly-root` not found. The specs now mount in an empty document answered by a route on the
+  same origin (`apps/next-admin/tests/e2e/support/fly-blank-document.ts`).
+
 - **The editor reached no browser in the admin host.** `apps/admin` and `rustok-pages-admin`
   enabled `rustok-page-builder-admin/ssr` without `browser-js`, so the binary rendered
   `<span data-fly-browser-adapter="disabled">` instead of the adapter. The adapter script and

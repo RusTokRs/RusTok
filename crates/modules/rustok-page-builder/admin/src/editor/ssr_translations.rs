@@ -145,6 +145,14 @@ pub fn SsrTranslationsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
         let catalog = runtime
             .controller
             .with(|controller| TranslationCatalog::from_document(controller.editor().document()));
+        // The selection the server holds. The browser adapter starts every document without a
+        // selection, so after the reload that follows an intent the bind form names its target
+        // only if the server renders it; the host bootstrap replaces it when the author selects
+        // another component.
+        let selected_component_id = runtime
+            .controller
+            .with(|controller| controller.ui().state.selection.component_id.clone())
+            .unwrap_or_default();
 
         view! {
             <section
@@ -210,6 +218,7 @@ pub fn SsrTranslationsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         catalog.entries.into_iter().map(|entry| {
                             translation_entry_view(
                                 entry,
+                                selected_component_id.clone(),
                                 id_label.clone(),
                                 values_label.clone(),
                                 values_help.clone(),
@@ -247,6 +256,7 @@ pub fn SsrTranslationsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
 #[cfg(not(target_arch = "wasm32"))]
 fn translation_entry_view(
     entry: TranslationEntry,
+    selected_component_id: String,
     id_label: String,
     values_label: String,
     values_help: String,
@@ -334,7 +344,7 @@ fn translation_entry_view(
                         type="hidden"
                         name="component_id"
                         data-fly-selected-component-input="true"
-                        value=""
+                        value=selected_component_id
                     />
                     <label class="grid gap-1 text-xs">
                         <span class="font-medium">{bind_kind}</span>

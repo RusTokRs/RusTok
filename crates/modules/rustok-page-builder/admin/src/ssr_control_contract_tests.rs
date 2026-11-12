@@ -10,7 +10,7 @@
 //! `scripts/verify/verify-fly-ssr-control-contract.mjs` keeps the two in step.
 
 use crate::{AdminCanvasController, PageBuilderAdmin, PageBuilderAdminHostContext};
-use fly_ui::CapabilityState;
+use fly_ui::{CapabilityState, UiIntent};
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 use serde_json::json;
@@ -35,6 +35,14 @@ fn controller() -> AdminCanvasController {
 }
 
 fn render_admin(capabilities: CapabilityState, query: &[(&str, &str)]) -> String {
+    render_admin_with(controller(), capabilities, query)
+}
+
+fn render_admin_with(
+    controller: AdminCanvasController,
+    capabilities: CapabilityState,
+    query: &[(&str, &str)],
+) -> String {
     let owner = Owner::new();
     owner.with(|| {
         provide_context(UiRouteContext {
@@ -45,7 +53,7 @@ fn render_admin(capabilities: CapabilityState, query: &[(&str, &str)]) -> String
             ..UiRouteContext::default()
         });
         provide_context(
-            PageBuilderAdminHostContext::new(controller()).with_editor_capabilities(capabilities),
+            PageBuilderAdminHostContext::new(controller).with_editor_capabilities(capabilities),
         );
         view! { <PageBuilderAdmin /> }.to_html()
     })
@@ -337,6 +345,79 @@ fn selected_component_input_is_rendered_with_the_component_the_picker_shows() {
     assert!(
         options.contains("value=\"hero\""),
         "the picker must list every component of the active page: {options}"
+    );
+}
+
+/// A project with one translation, so that the translations panel renders its bind form.
+fn controller_with_translation() -> AdminCanvasController {
+    AdminCanvasController::new(
+        "home",
+        "rev-translation-1",
+        json!({
+            "flyTranslations": [{ "id": "hero-title", "values": { "en": "Hero" } }],
+            "pages": [{
+                "id": "home",
+                "name": "Home",
+                "component": {
+                    "id": "home-root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero", "type": "text", "content": "Hero" }]
+                }
+            }]
+        }),
+    )
+    .expect("translation controller")
+}
+
+/// The selection input of the translation bind form, which is the only selection input of the
+/// translations panel.
+fn translation_bind_target(html: &str) -> &str {
+    let start = html
+        .find("data-fly-ssr-translations=\"true\"")
+        .expect("the composed admin must render the SSR translations panel");
+    let panel = &html[start..];
+    let panel = &panel[..panel
+        .find("</section>")
+        .expect("end of the translations panel")];
+    opening_tag(
+        panel,
+        "data-fly-selected-component-input=\"true\"",
+        "<input",
+    )
+}
+
+#[test]
+fn translation_bind_form_is_rendered_with_the_selection_the_server_holds() {
+    let mut controller = controller_with_translation();
+    controller
+        .dispatch(UiIntent::Select(Some("hero".to_string())))
+        .expect("select the component to bind");
+    let html = render_admin_with(controller, CapabilityState::full(), &[]);
+
+    let target = translation_bind_target(&html);
+    assert_eq!(
+        attribute(target, "name"),
+        Some("component_id"),
+        "the selection input is the `component_id` field of the bind form: {target}"
+    );
+    // The adapter of a new document has no selection: without the rendered value the form
+    // posts no target after a reload and the server refuses the binding.
+    assert_eq!(
+        attribute(target, "value"),
+        Some("hero"),
+        "the bind form must name the component the server holds as selected: {target}"
+    );
+}
+
+#[test]
+fn translation_bind_form_names_no_component_without_a_selection() {
+    let html = render_admin_with(controller_with_translation(), CapabilityState::full(), &[]);
+
+    let target = translation_bind_target(&html);
+    assert_eq!(
+        attribute(target, "value").unwrap_or_default(),
+        "",
+        "a binding has no default target; the server refuses the form by name: {target}"
     );
 }
 

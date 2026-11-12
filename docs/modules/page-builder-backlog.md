@@ -391,10 +391,15 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           should become the active one is a product decision. Owner: Page Builder admin.
         - Renaming the id of the page the editor is on (either shape) leaves the route on the
           old id. What the host does after the reload was not traced. Owner: Pages admin host.
-        - The bind form of `ssr_translations.rs` renders its selection input with `value=""`,
-          while the other panels render the selection the server knows. Without a selection in
-          the browser the form is refused with "translation binding requires component_id,
-          bind_kind, and bind_name together". Owner: Page Builder admin.
+        - DONE (2026-11-12): the bind form of `ssr_translations.rs` rendered its selection
+          input with `value=""`, while the other panels render the selection the server knows.
+          The adapter starts every document without a selection, so after the reload that
+          follows an intent (creating the translation is one) the form posted no target and was
+          refused with "translation binding requires component_id, bind_kind, and bind_name
+          together" until the author selected the component again. The form now renders the
+          selection the server holds. Without a selection it still names no component: a
+          binding has no default target. Two render tests in `ssr_control_contract_tests.rs`;
+          the Rust was not compiled here, CI decides. Owner: Page Builder admin.
         - The SSR panels are rendered outside `CapabilityFieldset`: a read-only caller sees
           enabled forms and the server refuses each intent. Owner: Page Builder admin.
         - The envelope arms of the four page intents have no dispatch test of their own beyond
