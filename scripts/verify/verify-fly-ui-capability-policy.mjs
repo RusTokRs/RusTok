@@ -70,7 +70,7 @@ const flattenKeys = (value, prefix = '') => Object.entries(value).flatMap(([key,
 
 requireMarkers('vocabulary', [
   'pub enum BrowserIntentKind',
-  'pub const ALL: [Self; 52]',
+  'pub const ALL: [Self; 53]',
   'pub fn parse(value: &str)',
   'pub const fn as_str(self)',
   'pub const fn is_mutating(self)',

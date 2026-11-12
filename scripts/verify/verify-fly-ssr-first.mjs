@@ -110,7 +110,7 @@ for (const forbidden of ['wasm-bindgen', 'wasm_bindgen', 'web-sys', 'web_sys']) 
 requireMarkers('flyBrowserLib', [
   'FLY_BROWSER_ADAPTER_JS',
   'pub enum BrowserIntentKind',
-  'pub const ALL: [Self; 52]',
+  'pub const ALL: [Self; 53]',
   'pub struct BrowserIntentEnvelope',
   'pub fn kind(&self) -> Option<BrowserIntentKind>',
   'pub fn is_mutating(&self)',
@@ -119,6 +119,25 @@ requireMarkers('flyBrowserLib', [
   'Self::SelectAsset => "select_asset"',
   'intent_kind_names_are_unique_and_round_trip',
 ], 'framework-neutral typed browser protocol');
+// The `ALL` array's length is part of the protocol vocabulary, so it is a byte-exact marker. That
+// makes it possible for the marker to disagree with the enum it describes — a variant added without
+// the count updated, or the count padded to make the marker pass. Derive the count from the enum
+// body itself so the marker cannot be maintained by hand into a lie.
+const intentVocabulary = /pub enum BrowserIntentKind \{([\s\S]*?)\n\}/.exec(source.flyBrowserLib);
+const derivedIntentKinds = intentVocabulary
+  ? intentVocabulary[1]
+      .split('\n')
+      .filter((line) => /^ {4}[A-Z][A-Za-z]*,$/.test(line))
+      .length
+  : 0;
+if (derivedIntentKinds === 0) {
+  failures.push('the browser intent vocabulary cannot be read from `BrowserIntentKind`');
+} else if (!source.flyBrowserLib.includes(`pub const ALL: [Self; ${derivedIntentKinds}]`)) {
+  failures.push(
+    `\`BrowserIntentKind::ALL\` is not declared with the ${derivedIntentKinds} variants the enum has`,
+  );
+}
+
 requireMarkers('flyBrowserJs', [
   'export class FlyBrowserAdapter',
   'event.source !== this.iframe.contentWindow',

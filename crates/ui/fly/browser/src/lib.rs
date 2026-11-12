@@ -87,10 +87,16 @@ pub enum BrowserIntentKind {
     Duplicate,
     KeyStroke,
     Save,
+    /// Asks the host to render the current draft on the server and answer with the document.
+    ///
+    /// A server-rendered editor has no Leptos handlers, so the preview panel cannot request a
+    /// render from a click. This is the SSR path of that control: a form posts it, the host
+    /// resolves it to a `Preview` capability request and delivers the rendered document back.
+    RenderServerPreview,
 }
 
 impl BrowserIntentKind {
-    pub const ALL: [Self; 52] = [
+    pub const ALL: [Self; 53] = [
         Self::Select,
         Self::FocusRequested,
         Self::Hover,
@@ -143,6 +149,7 @@ impl BrowserIntentKind {
         Self::Duplicate,
         Self::KeyStroke,
         Self::Save,
+        Self::RenderServerPreview,
     ];
 
     pub fn parse(value: &str) -> Option<Self> {
@@ -205,6 +212,7 @@ impl BrowserIntentKind {
             Self::Duplicate => "duplicate",
             Self::KeyStroke => "key_stroke",
             Self::Save => "save",
+            Self::RenderServerPreview => "render_server_preview",
         }
     }
 
