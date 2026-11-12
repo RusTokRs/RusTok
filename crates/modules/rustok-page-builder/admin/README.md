@@ -47,7 +47,9 @@ and no control works. Under a host Content Security Policy with a nonce, the hos
 from the `nonce` property of a script of its own document. The editor writes it on the adapter
 `<script>`, on the `<style>` and `<script>` of the canvas `srcdoc` document, and on the
 stylesheet of the server preview document (`fly::document_html_with_style_nonce`). Both
-documents inherit the host policy.
+documents inherit the host policy. The adapter workspace reaches the same nonce from the same
+context: `AdapterWorkspacePanel` passes it to `fly_leptos::FlyEditorWorkspace`, whose canvas
+renders the project stylesheet as an inline `<style>` that the policy would otherwise drop.
 
 The current canvas supports rendering, geometry, hover, selection, overlays and persistence. It
 also provides the block palette, drag-and-drop insertion, resize handles, keyboard editing,

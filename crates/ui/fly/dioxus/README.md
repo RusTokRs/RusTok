@@ -2,6 +2,10 @@
 
 For full public interface and component definitions, see [CRATE_API.md](CRATE_API.md).
 
+`FlyCanvasPreview` and `FlyEditorWorkspace` render the project stylesheet as an inline `style`
+element and accept `csp_nonce`. Under a nonce policy (`style-src 'self' {nonce}`) the browser drops
+that element unless it carries the request nonce, and the canvas renders unstyled.
+
 > **Status (2026-11-11): active parity snapshot.** The Dioxus adapter provides modular panels (`FlyContributionSummary`, `FlyPalette`, `FlyLayerTree`, `FlyThemeTokens`, `FlyThemeTokenEditor`, `FlyCanvasPreview`) and `FlyEditorWorkspace` with complete SSR intent and local command execution, design token mutation, contribution filtering, and typed error callbacks matching the `fly-leptos` workspace contract.
 
 

@@ -18,7 +18,7 @@ default = []
 inline-edit-assets = []
 # Host scheduler integration: publishes the scheduled-publish queue through
 # `rustok-runtime`'s `ModuleWorkRegistrations`. Enabled by `apps/server`.
-runtime = ["dep:rustok-runtime"]
+runtime = ["rustok-api/runtime", "dep:rustok-runtime"]
 
 [dependencies]
 anyhow.workspace = true

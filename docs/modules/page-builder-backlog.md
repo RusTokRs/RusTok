@@ -719,10 +719,15 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           published page is a document with its own response and its own policy, as
           `/richtext/frame` is. Needs a decision. Owner: Page Builder admin, `apps/admin`,
           `apps/server`.
-    - [ ] `fly-leptos` `FlyCanvasPreview` renders an inline `<style>` and a `style` attribute,
+    - [x] `fly-leptos` `FlyCanvasPreview` renders an inline `<style>` and a `style` attribute,
           and `fly-dioxus` renders `style` attributes. The admin editor uses neither; a host
           that composes them under a nonce policy loses those styles. Owner: `fly-leptos`,
-          `fly-dioxus`.
+          `fly-dioxus`. Resolved 2026-11-12: `FlyCanvasPreview` and `FlyEditorWorkspace` in both
+          adapters accept `csp_nonce` and write it on the inline `<style>`; `AdapterWorkspacePanel`
+          (`rustok-page-builder-admin`) and the Dioxus adapter host pass the `UiCspNonce` of the
+          render context. The `style` *attribute* of the canvas is still `style-src-attr 'none'`
+          under the admin policy and stays dropped; it only sets the preview width, which is not
+          worth weakening the attribute policy for.
     - [x] The step "Check admin SSR Page Builder endpoint" of the "Fly Page Builder" workflow
           failed on this branch after the merges of `main` (`7ce2048c`, `728ba4f8`). It passes
           on `65a67b7c` (job "Focused tests and source guards"), together with "Run Page
