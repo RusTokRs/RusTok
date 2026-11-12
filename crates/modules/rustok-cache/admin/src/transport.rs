@@ -194,13 +194,16 @@ mod native_server_adapter {
         ensure_cache_admin_authority(&auth, required, host_authority)?;
         // The cache settings category is per-tenant; the GraphQL transport enforces the same
         // boundary (`require_tenant_settings_scope`), so both paths must agree.
-        if auth.tenant_id != tenant.id {
+        if auth.tenant_id.is_nil() || tenant.id.is_nil() || auth.tenant_id != tenant.id {
             tracing::warn!(
                 auth_tenant_id = %auth.tenant_id,
                 resolved_tenant_id = %tenant.id,
                 code = "cache.tenant_scope_mismatch",
                 "cache admin authority cannot cross the resolved tenant boundary"
             );
+            return Err(ServerFnError::new("Cache admin access is denied"));
+        }
+        if auth.user_id.is_nil() {
             return Err(ServerFnError::new("Cache admin access is denied"));
         }
         let host = leptos::prelude::use_context::<rustok_api::HostRuntimeContext>()

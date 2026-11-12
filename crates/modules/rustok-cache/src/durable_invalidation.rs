@@ -172,8 +172,14 @@ impl DurableCacheInvalidationRecord {
                 maximum,
             });
         }
-        let record: Self = postcard::from_bytes(bytes)
+        let (record, remainder): (Self, &[u8]) = postcard::take_from_bytes(bytes)
             .map_err(|error| DurableCacheInvalidationError::Decode(error.to_string()))?;
+        if !remainder.is_empty() {
+            return Err(DurableCacheInvalidationError::Decode(format!(
+                "durable invalidation record has {} trailing bytes after a complete record",
+                remainder.len()
+            )));
+        }
         record.validate()?;
         Ok(record)
     }
@@ -434,6 +440,17 @@ mod tests {
         assert!(matches!(
             DurableCacheInvalidationRecord::decode(&bytes),
             Err(DurableCacheInvalidationError::UnsupportedFormatVersion { .. })
+        ));
+    }
+
+    #[test]
+    fn decoder_rejects_trailing_garbage_bytes() {
+        let record = record();
+        let mut bytes = record.encode().unwrap();
+        bytes.push(0x42);
+        assert!(matches!(
+            DurableCacheInvalidationRecord::decode(&bytes),
+            Err(DurableCacheInvalidationError::Decode(ref msg)) if msg.contains("trailing bytes")
         ));
     }
 }
