@@ -361,7 +361,9 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
         those controls render and do nothing; the SSR panels (`ssr_*.rs`) cover part of the
         same functions through `data-fly-intent-form`. Decide per control: give it the SSR
         attribute, or do not render it without hydration. Owner: `fly-leptos`, Page Builder
-        admin.
+        admin. Since 2026-11-12 the page switch has an SSR path, the "Open page" form of the
+        SSR inspector (see the `create_page` entry below); the tabs themselves still render
+        and do nothing without hydration.
       - The host bootstrap (`PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS` in
         `crates/modules/rustok-page-builder/src/browser_host.rs`) is a second consumer:
         `form[data-fly-intent-form]`, `[data-fly-component-picker]`,
@@ -386,11 +388,60 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
         "Browser E2E" workflow runs it). Server side: `ssr_page_forms_browser_tests.rs`
         (dispatch of the exact form fields) and three render tests in
         `ssr_control_contract_tests.rs`. Open:
-        - The envelope arm of `create_page` activates the new page; the form path does not,
-          and the author stays on the page the form was submitted from. Whether a created page
-          should become the active one is a product decision. Owner: Page Builder admin.
-        - Renaming the id of the page the editor is on (either shape) leaves the route on the
-          old id. What the host does after the reload was not traced. Owner: Pages admin host.
+        - DONE (2026-11-12): the envelope arm of `create_page` activated the new page and
+          the form path did not. Decision: a created page becomes the open page in every
+          shape. The typed envelope and the local mode of `fly-leptos` (`on_add_page`) already
+          did so, and an author creates a page in order to fill it. `open_created_page` in
+          `browser_intent.rs` is the one activation both `create_page` arms call.
+
+          Following the form to the browser found the larger defect behind it. In the default
+          runtime nothing changed the page at all: the page tabs act through Leptos handlers
+          only, so a page created through the form could not be opened, and with the activation
+          alone the author could not have gone back. Fixed in the same change:
+          - The SSR inspector renders an "Open page" form (`activate_page`, `page_id` alone).
+            `is_ssr_page_form` hands it to `ssr_activate_page_intent`, which resolves the id
+            against the document.
+          - The Pages endpoint answers `reload: true` when the open page changed. It compares
+            the page before and after the dispatch, so `activate_page`, which changes no
+            document and is not a mutating intent, is covered without a list of intent names.
+          - The page selects of the rename and remove forms open on the page the editor is on.
+            They used to open on the first page of the list, whichever page was shown.
+
+          Tests: `ssr_page_forms_browser_tests.rs` (both shapes land on the created page, a
+          refused create opens nothing, undo, the open form and its way back, remove and rename
+          of the open page), `ssr_control_contract_tests.rs` (the form is rendered, is absent
+          for a read-only caller, and the selects name the open page),
+          `rustok-pages/admin/src/browser_intent.rs` (`open_page` before and after an intent),
+          `fly-browser-host-bootstrap.spec.ts` (the form posts `page_id` without `page_index`;
+          an answer with `reload: true` reloads the address that carries the draft token).
+          Open:
+          - A caller without the edit capability cannot change the page in the default
+            runtime. The open page is kept in the draft session, and the Pages endpoint keeps
+            no session for such a caller, so the form is not rendered for them. The page is
+            editing state and not route view state, because commands are resolved against it
+            (`DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`, item 9).
+            Serving a reader needs a route key that the renderer applies and that every
+            envelope repeats to the endpoint, the way the selection hint is repeated. Owner:
+            Page Builder admin, `fly-browser`.
+          - `undo` of a created page removes the page and leaves the editor on the last page
+            that is left (`synchronize_page_navigation` clamps the index), not on the page the
+            author came from. The typed envelope and the local mode behave the same way. Owner:
+            Page Builder admin.
+          - The `reload` term for a page switch is computed inside
+            `dispatch_pages_browser_intent_with_store`, which fetches the page over the
+            transport and has no test. The tests pin `open_page` and the dispatch it compares.
+            Owner: Pages admin host.
+          - `PageSelect` offers a page without an id as `page-<index>`. The page forms address
+            a page by id, so the server refuses that option. Pages created by the editor always
+            carry an id; an imported document may not. Owner: Page Builder admin.
+          - The Rust of this change was not compiled or run locally. Owner: CI.
+        - CLOSED (2026-11-12), no defect: "renaming the id of the page the editor is on leaves
+          the route on the old id". The address names the Pages record, and the id of a
+          document page is no part of it. The open page is kept in the draft session by id and
+          index, and `synchronize_page_navigation` keeps the index when the id changes; after
+          the reload the host renders the session (`load_route_draft`). Tests, one per shape:
+          `rename_page_envelope_keeps_the_editor_on_the_page_whose_id_it_changes`,
+          `rename_page_form_keeps_the_editor_on_the_page_whose_id_it_changes`.
         - DONE (2026-11-12): the bind form of `ssr_translations.rs` rendered its selection
           input with `value=""`, while the other panels render the selection the server knows.
           The adapter starts every document without a selection, so after the reload that

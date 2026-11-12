@@ -989,9 +989,17 @@ same identifier in `contracts/` and in the owner plan and compare the values.
   to the public entry point, not by calling the handler. A check that follows a request
   to its handler reads the arms in source order with their guards and reports an arm
   that an earlier one always pre-empts.
+  The shapes differ in how the payload is read, not in what the intent does. A step that
+  follows the read (opening the page that was created) is one function both arms call.
+  In the same code the envelope arm opened the created page and the form arm did not,
+  for as long as each arm kept its own tail.
 
 ```rust
-"create_page" | "remove_page" | "rename_page" | "patch_page_metadata"
+"create_page" if is_ssr_page_form(payload) => {
+    let effects = dispatch_ssr_form(controller, intent, payload)?;
+    open_created_page(controller, effects)?
+}
+"activate_page" | "remove_page" | "rename_page" | "patch_page_metadata"
     if is_ssr_page_form(payload) => dispatch_ssr_form(controller, intent, payload)?,
 ```
 

@@ -92,11 +92,14 @@ a read-only caller has no draft session, by design.
    over that value and restores it when the selection is cleared.
 
 7. **An intent name with two payload shapes is resolved by an explicit discriminator.**
-   `create_page`, `remove_page`, `rename_page` and `patch_page_metadata` are sent as a typed
-   envelope (`page_index`) and as an SSR form (`page_id` alone). `dispatch_named_intent` hands the
-   form shape to `ssr_form_intent` in one guarded arm, `is_ssr_page_form`, before the arms that
-   read the envelope shape. A new shape is a new term of that guard or a new intent name, never an
-   arm that happens to come first.
+   `activate_page`, `create_page`, `remove_page`, `rename_page` and `patch_page_metadata` are sent
+   as a typed envelope (`page_index`) and as an SSR form (`page_id` alone). `dispatch_named_intent`
+   hands the form shape to `ssr_form_intent` behind one guard, `is_ssr_page_form`, before the arms
+   that read the envelope shape. A new shape is a new term of that guard or a new intent name,
+   never an arm that happens to come first.
+   The shapes differ in how the payload is read, not in what the intent does. What follows the
+   read is one function that both arms call: `open_created_page` opens the page that either
+   shape of `create_page` appended.
 8. **The contract is delivered to the host, not only to the crate.** Two things stood between
    the markup and a browser, and neither was visible in a test of the crate.
    - *Feature.* Every consumer of `rustok-page-builder-admin` sets `default-features = false`.
@@ -109,6 +112,19 @@ a read-only caller has no draft session, by design.
      the adapter `<script>`, and the `<style>` and `<script>` of the canvas `srcdoc` document,
      which inherits the policy of the document that embeds it. A surface that receives no nonce
      renders the elements without the attribute.
+9. **The page the editor is on is editing state, kept in the draft session.** It is not route
+   view state in the sense of item 3. Commands are resolved against it: a block is inserted
+   into the root of that page, and an insertion next to a component of another page, or a drop
+   onto one, is refused. The endpoint therefore has to hold the same page as the render, and
+   the draft session is the one place both read. The selection is state of the same kind.
+   - An author changes the page in the default runtime through the "Open page" form of the SSR
+     inspector, an `activate_page` intent in the form shape. The page tabs of the workspace act
+     through hydration.
+   - The consumer endpoint answers `reload: true` when the open page differs before and after
+     the dispatch. It compares state and keeps no list of intents that navigate.
+   - The host keeps a draft session for a caller that may edit. For any other caller the form
+     is absent (item 4): the choice would not survive the request.
+   - A created page becomes the open page, in every shape of `create_page`.
 
 ## Sources of truth and ownership
 
@@ -153,7 +169,8 @@ a read-only caller has no draft session, by design.
 
 ### Allowed states
 
-- A control that needs a transport the host did not provide is absent.
+- A control that needs a transport the host did not provide is absent. The draft session is
+  the transport of the "Open page" form.
 - A control whose capability is denied renders disabled; the server still refuses the intent.
 - An unknown, empty or stale route value renders the current view state.
 
@@ -162,7 +179,8 @@ a read-only caller has no draft session, by design.
 - A control that renders enabled and does nothing in the default runtime.
 - An adapter binding with no producer.
 - View state stored in the draft session, or sent as a mutating intent, in order to reach the
-  server renderer.
+  server renderer. The open page and the selection are not view state: commands read them.
+- Two shapes of one intent that leave the editor in different states.
 - A route key written by the adapter and not resolved by the server.
 - A form control whose name the handler does not read, or whose JSON type the request type
   rejects.
@@ -225,6 +243,11 @@ Not applicable. The contract emits no domain event and owns no projection.
   a visible control that does nothing in the default runtime.
 - **Keep a hand-written list of contract attributes in the verifier.** Rejected. The list becomes
   a third copy that drifts; this is the failure the decision removes.
+- **Carry the open page in the route, like the viewport.** Not taken now. It would serve a
+  read-only caller and make the page shareable through the URL. The renderer alone could apply
+  it, but the endpoint resolves commands against the open page, so every envelope would have to
+  repeat the route value, and `create_page` would have to answer with a new address instead of
+  a reload. Recorded as open in the backlog.
 
 ## Verification
 
@@ -238,7 +261,8 @@ Not applicable. The contract emits no domain event and owns no projection.
   `apps/next-admin/tests/e2e/fly-browser-host-bootstrap.spec.ts`, which imports the module
   composed from the shipped adapter and the shipped constant;
   `crates/modules/rustok-page-builder/admin/src/ssr_page_forms_browser_tests.rs`, which sends the
-  fields of each page form through `dispatch_browser_intent`.
+  fields of each page form through `dispatch_browser_intent` and compares the page the editor
+  is on after each shape.
 - Unit tests of `route_viewport` in `toolbar.rs`.
 - Host delivery: `scripts/verify/verify-fly-ssr-first.mjs` reads every tracked `Cargo.toml` for
   the feature pair and the sources for the nonce hand-off; the `canvas_document.rs` test

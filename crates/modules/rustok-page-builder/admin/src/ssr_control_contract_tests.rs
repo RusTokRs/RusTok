@@ -302,6 +302,7 @@ fn ssr_inspector_renders_the_forms_and_the_picker_the_host_bootstrap_binds() {
     for intent in [
         "patch_component_property",
         "patch_page_metadata",
+        "activate_page",
         "create_page",
         "rename_page",
         "remove_page",
@@ -679,4 +680,96 @@ fn page_forms_render_the_fields_their_request_types_read() {
         Some("checkbox"),
         "`no_index` is a boolean of the request type: {no_index}"
     );
+}
+
+/// Two pages, with the editor moved to the second one.
+fn controller_on_the_second_page() -> AdminCanvasController {
+    let mut controller = AdminCanvasController::new(
+        "home",
+        "rev-pages-1",
+        json!({
+            "pages": [{
+                "id": "home",
+                "name": "Home",
+                "component": { "id": "home-root", "type": "wrapper" }
+            }, {
+                "id": "about",
+                "name": "About",
+                "component": { "id": "about-root", "type": "wrapper" }
+            }]
+        }),
+    )
+    .expect("pages controller");
+    controller
+        .dispatch(UiIntent::ActivatePage {
+            page_id: Some("about".to_string()),
+            page_index: 1,
+        })
+        .expect("open the second page");
+    controller
+}
+
+#[test]
+fn open_page_form_is_how_the_default_runtime_changes_the_page() {
+    let html = render_admin_with(
+        controller_on_the_second_page(),
+        CapabilityState::full(),
+        &[],
+    );
+    let inspector = ssr_inspector(&html);
+
+    let form = intent_form(inspector, "activate_page");
+    opening_tag(form, "name=\"page_id\"", "<select");
+    for page_id in ["home", "about"] {
+        opening_tag(form, &format!("value=\"{page_id}\""), "<option");
+    }
+    let start = form.as_ptr() as usize - html.as_ptr() as usize;
+    assert!(
+        form_can_be_submitted(&html, start),
+        "opening a page needs no capability: {form}"
+    );
+}
+
+#[test]
+fn open_page_form_is_absent_for_a_caller_without_a_draft_session() {
+    // The page the editor is on is kept in the draft session, which the host keeps for a
+    // caller that may edit. A form whose choice is lost with the next request is not rendered.
+    let html = render_admin_with(
+        controller_on_the_second_page(),
+        CapabilityState::read_only(),
+        &[],
+    );
+
+    assert!(
+        intent_forms(&html)
+            .iter()
+            .all(|(intent, _)| *intent != "activate_page"),
+        "a read-only caller must not be offered a page switch that is not kept"
+    );
+}
+
+#[test]
+fn page_forms_open_on_the_page_the_editor_is_on() {
+    let html = render_admin_with(
+        controller_on_the_second_page(),
+        CapabilityState::full(),
+        &[],
+    );
+    let inspector = ssr_inspector(&html);
+
+    // A form that removes or renames "the first page of the list" while the author looks at
+    // another one acts on the wrong page.
+    for intent in ["activate_page", "rename_page", "remove_page"] {
+        let form = intent_form(inspector, intent);
+        let open = opening_tag(form, "value=\"about\"", "<option");
+        assert!(
+            is_selected(open),
+            "the {intent:?} form must open on the page the editor is on: {open}"
+        );
+        let other = opening_tag(form, "value=\"home\"", "<option");
+        assert!(
+            !is_selected(other),
+            "the {intent:?} form must name one page: {other}"
+        );
+    }
 }

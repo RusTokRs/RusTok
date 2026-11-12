@@ -84,7 +84,7 @@ async function importHostModule(page: Page) {
   }, source);
 }
 
-async function mountHost(page: Page) {
+async function mountHost(page: Page, options: { reload?: boolean } = {}) {
   await page.setContent(`
     <div
       id="fly-root"
@@ -129,6 +129,13 @@ async function mountHost(page: Page) {
             Remove
           </label>
           <button id="property-submit" type="submit">Apply</button>
+        </form>
+        <form id="open-page-form" data-fly-intent-form="activate_page">
+          <select id="open-page-id" name="page_id">
+            <option value="home" selected>Home</option>
+            <option value="about">About</option>
+          </select>
+          <button id="open-page-submit" type="submit">Open</button>
         </form>
         <form id="create-page-form" data-fly-intent-form="create_page">
           <input id="create-page-id" name="page_id" required />
@@ -178,7 +185,7 @@ async function mountHost(page: Page) {
     </div>
   `);
 
-  await page.evaluate(() => {
+  await page.evaluate((reload) => {
     const root = document.querySelector('#fly-root');
     if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
 
@@ -192,11 +199,12 @@ async function mountHost(page: Page) {
         body: typeof init.body === 'string' ? JSON.parse(init.body) : null
       });
       // `reload: false` keeps the page: a real endpoint answers a mutating intent with
-      // `reload: true`, which would discard the state this test reads back.
+      // `reload: true`, which would discard the state a test reads back. A test of the reload
+      // itself asks for it.
       return new Response(
         JSON.stringify({
           result: { revision_id: 'rev-2', project_hash: 'hash-2' },
-          reload: false,
+          reload,
           draft_token: 'draft-1',
           draft_generation: 1
         }),
@@ -209,7 +217,7 @@ async function mountHost(page: Page) {
     root.addEventListener('fly:select', (event) => {
       selections.push((event as CustomEvent).detail);
     });
-  });
+  }, options.reload === true);
 
   await importHostModule(page);
   await expect(page.locator('#fly-root')).toHaveAttribute(
@@ -274,9 +282,11 @@ test('a page form names its page by id and sends no page index', async ({
   await page.locator('#rename-page-submit').click();
   await page.locator('#remove-page-id').selectOption('about');
   await page.locator('#remove-page-submit').click();
+  await page.locator('#open-page-id').selectOption('about');
+  await page.locator('#open-page-submit').click();
 
-  await expect.poll(async () => (await requests(page)).length).toBe(2);
-  const [rename, remove] = await requests(page);
+  await expect.poll(async () => (await requests(page)).length).toBe(3);
+  const [rename, remove, open] = await requests(page);
   // The envelope names the page the editor is on, the payload the page the form acts on.
   expect(rename.body).toMatchObject({ intent: 'rename_page', page_id: 'home' });
   // An optional text input left empty is sent as `""`, not left out.
@@ -287,9 +297,13 @@ test('a page form names its page by id and sends no page index', async ({
   });
   expect(remove.body).toMatchObject({ intent: 'remove_page', page_id: 'home' });
   expect(remove.body?.payload).toMatchObject({ page_id: 'about' });
+  // Opening a page is the same shape: the page tabs of the workspace need hydration, and
+  // this form is how the default runtime changes the page.
+  expect(open.body).toMatchObject({ intent: 'activate_page', page_id: 'home' });
+  expect(open.body?.payload).toMatchObject({ page_id: 'about' });
   // The server tells a form from a typed envelope of the same intent by these two keys:
   // `page_id` present, `page_index` absent. A form has no index to send.
-  for (const request of [rename, remove]) {
+  for (const request of [rename, remove, open]) {
     expect(request.body?.payload).not.toHaveProperty('page_index');
   }
 });
@@ -408,7 +422,11 @@ test('loading the module again does not bind the forms twice', async ({
 // bootstrap adopts the token of the route and writes the token of a response back into it.
 const editorOrigin = 'http://fly-editor.test';
 
-async function openEditorRoute(page: Page, search: string) {
+async function openEditorRoute(
+  page: Page,
+  search: string,
+  options: { reload?: boolean } = {}
+) {
   await page.route(`${editorOrigin}/**`, (route) =>
     route.fulfill({
       contentType: 'text/html',
@@ -416,7 +434,7 @@ async function openEditorRoute(page: Page, search: string) {
     })
   );
   await page.goto(`${editorOrigin}/admin/pages/home${search}`);
-  await mountHost(page);
+  await mountHost(page, options);
 }
 
 test('the draft token of the route is sent with the first intent', async ({
@@ -450,4 +468,26 @@ test('the draft token of a response is written into the route without a navigati
     'data-fly-browser-mounted',
     'true'
   );
+});
+
+test('an answer that asks for a reload reloads the route that carries the draft token', async ({
+  page
+}) => {
+  // The page the editor is on lives in the draft session. The server renders it only when
+  // the reloaded address names that session, so the token is in the route before the reload.
+  await openEditorRoute(page, '?tab=builder', { reload: true });
+  const reloaded: string[] = [];
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) reloaded.push(frame.url());
+  });
+
+  await page.locator('#open-page-id').selectOption('about');
+  await page.locator('#open-page-submit').click();
+
+  await expect.poll(() => reloaded.length).toBeGreaterThan(0);
+  const url = new URL(reloaded[reloaded.length - 1]);
+  expect(url.searchParams.get('fly_draft')).toBe('draft-1');
+  expect(url.searchParams.get('tab')).toBe('builder');
+  // A navigation, not `history.replaceState`: the document the form was in is gone.
+  await expect(page.locator('#fly-root')).toHaveCount(0);
 });

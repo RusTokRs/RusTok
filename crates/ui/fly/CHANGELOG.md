@@ -257,6 +257,18 @@ Engineering audit remediation — see
 
 ### Fixed
 
+- **A page created through the server-rendered form could not be opened, and nothing in the
+  default runtime changed the page.** The `create_page` form appended the page and left the
+  editor where it was, while the typed envelope and the local mode opened the new page. The
+  page tabs act through Leptos handlers, so without hydration the author had no way to reach
+  the new page, or any page but the first. Now:
+  - both shapes of `create_page` open the page they created, through one function;
+  - the SSR inspector has an "Open page" form (`activate_page` with `page_id`), rendered for a
+    caller that may edit, because the open page is kept in the draft session;
+  - the Pages endpoint answers `reload: true` when the open page changed;
+  - the page selects of the rename and remove forms open on the page the editor is on, not on
+    the first page of the list.
+
 - **The Pages editor opened the saved page in silence when the draft could not be loaded.**
   `PagesFlyBuilder` read a draft store error (I/O, a lock timeout, a record that does not
   parse, a session of another user) as "no draft". The author saw the saved document without

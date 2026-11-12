@@ -5,6 +5,8 @@ use crate::i18n::t;
 use fly::PageMetadata;
 #[cfg(not(target_arch = "wasm32"))]
 use fly::ProjectPage;
+#[cfg(not(target_arch = "wasm32"))]
+use fly_ui::EditorCapability;
 use leptos::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 use rustok_ui_core::UiRouteContext;
@@ -27,6 +29,11 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
         let create_page_enabled = runtime.form_enabled("create_page");
         let rename_page_enabled = runtime.form_enabled("rename_page");
         let remove_page_enabled = runtime.form_enabled("remove_page");
+        let activate_page_enabled = runtime.form_enabled("activate_page");
+        // The page the editor is on is kept in the draft session, and the host keeps a session
+        // for a caller that may edit only. For anyone else the choice would be gone with the
+        // next request, so the form is absent: a control is not rendered without its transport.
+        let page_navigation_available = runtime.capability_enabled(EditorCapability::Edit);
         // A component patch needs the style capability for an inline style and the property
         // capability for a field or an attribute, so the form offers the kinds it may post.
         let property_kind_enabled = runtime.form_enabled_with(
@@ -130,6 +137,11 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
             "page_builder.ssrInspector.pageLifecycle",
             "Page lifecycle",
         );
+        let open_page = t(
+            locale.as_deref(),
+            "page_builder.ssrInspector.openPage",
+            "Open page",
+        );
         let add_page = t(
             locale.as_deref(),
             "page_builder.ssrInspector.addPage",
@@ -207,20 +219,45 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
             "Prevent search indexing",
         );
 
-        let (components, pages) = runtime.controller.with(|controller| {
+        let (components, pages, active_page_index) = runtime.controller.with(|controller| {
             let components = controller
                 .layer_items()
                 .iter()
                 .flat_map(flatten_layer)
                 .collect::<Vec<_>>();
             let pages = controller.editor().document().project.pages.clone();
-            (components, pages)
+            (components, pages, controller.active_page_index())
         });
         let default_component = components.first().map(|component| component.id.clone());
         let runtime_context_json =
             serde_json::to_string_pretty(&runtime.runtime_context.get_untracked())
                 .unwrap_or_else(|_| "{}".to_string());
         let metadata_page_fallback = page_fallback.clone();
+        // The page tabs of the workspace act through hydration only. This form is how an author
+        // changes the page in the default runtime, so it stays outside the collapsed sections.
+        let open_page_form = page_navigation_available.then(|| {
+            let pages = pages.clone();
+            let page_fallback = page_fallback.clone();
+            view! {
+                <form class="grid gap-2" data-fly-intent-form="activate_page">
+                    <fieldset class="contents" disabled=!activate_page_enabled>
+                    <strong class="text-xs">{open_page.clone()}</strong>
+                    <PageSelect
+                        pages=pages
+                        name="page_id"
+                        page_fallback=page_fallback
+                        active_page_index=active_page_index
+                    />
+                    <button
+                        type="submit"
+                        class="w-fit rounded border border-border px-2 py-1 text-xs"
+                    >
+                        {open_page}
+                    </button>
+                    </fieldset>
+                </form>
+            }
+        });
 
         view! {
             <section
@@ -233,6 +270,8 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         {inspector_description}
                     </p>
                 </div>
+
+                {open_page_form}
 
                 <details class="rounded border border-border p-2" open>
                     <summary class="cursor-pointer text-xs font-semibold">{runtime_context_title}</summary>
@@ -371,7 +410,12 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         <form class="grid gap-2 border-t border-border pt-3" data-fly-intent-form="rename_page">
                             <fieldset class="contents" disabled=!rename_page_enabled>
                             <strong class="text-xs">{rename_page.clone()}</strong>
-                            <PageSelect pages=pages.clone() name="page_id" page_fallback=page_fallback.clone()/>
+                            <PageSelect
+                                pages=pages.clone()
+                                name="page_id"
+                                page_fallback=page_fallback.clone()
+                                active_page_index=active_page_index
+                            />
                             <input required name="new_page_id" class="rounded border border-input bg-background px-2 py-1 text-xs" placeholder=new_page_id_placeholder/>
                             <input name="name" class="rounded border border-input bg-background px-2 py-1 text-xs" placeholder=new_page_name_placeholder/>
                             <button type="submit" class="w-fit rounded border border-border px-2 py-1 text-xs">{rename_page}</button>
@@ -380,7 +424,12 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         <form class="grid gap-2 border-t border-border pt-3" data-fly-intent-form="remove_page">
                             <fieldset class="contents" disabled=!remove_page_enabled>
                             <strong class="text-xs text-destructive">{remove_page.clone()}</strong>
-                            <PageSelect pages=pages name="page_id" page_fallback=page_fallback/>
+                            <PageSelect
+                                pages=pages
+                                name="page_id"
+                                page_fallback=page_fallback
+                                active_page_index=active_page_index
+                            />
                             <button type="submit" class="w-fit rounded border border-destructive/40 px-2 py-1 text-xs text-destructive">{remove_page}</button>
                             </fieldset>
                         </form>
@@ -398,14 +447,23 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     }
 }
 
+/// Page picker of a page form. It opens on the page the editor is on, so that a form names the
+/// page in front of the author unless another one is chosen.
 #[cfg(not(target_arch = "wasm32"))]
 #[component]
-fn PageSelect(pages: Vec<ProjectPage>, name: &'static str, page_fallback: String) -> impl IntoView {
+fn PageSelect(
+    pages: Vec<ProjectPage>,
+    name: &'static str,
+    page_fallback: String,
+    active_page_index: usize,
+) -> impl IntoView {
     view! {
         <select name=name class="rounded border border-input bg-background px-2 py-1 text-xs">
             {pages.into_iter().enumerate().map(move |(index, page)| {
                 let value = page.id.clone().unwrap_or_else(|| format!("page-{index}"));
-                view! { <option value=value>{page_label(&page, index, &page_fallback)}</option> }
+                let selected = index == active_page_index;
+                let label = page_label(&page, index, &page_fallback);
+                view! { <option value=value selected=selected>{label}</option> }
             }).collect_view()}
         </select>
     }

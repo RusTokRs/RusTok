@@ -211,6 +211,7 @@ page_builder-ssrInspector-localePlaceholder = en-US
 page_builder-ssrInspector-localeTitle = Preview locale
 page_builder-ssrInspector-newPageIdPlaceholder = new-page-id
 page_builder-ssrInspector-newPageNamePlaceholder = New page name
+page_builder-ssrInspector-openPage = Open page
 page_builder-ssrInspector-pageFallback = Page
 page_builder-ssrInspector-pageIdPlaceholder = page-id
 page_builder-ssrInspector-pageLifecycle = Page lifecycle

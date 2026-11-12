@@ -71,6 +71,16 @@ and WASM toolchains installed.
 
 ## Known Limitations / Pending Implementation
 
+Pages of a document in the default runtime (`src/editor/ssr_inspector.rs`):
+
+- **The page the editor is on is changed through the "Open page" form of the SSR inspector.**
+  The page tabs of the workspace act through hydration and do nothing without it.
+- **A caller without the edit capability cannot change the page.** The open page is kept in the
+  draft session, which the host keeps for a caller that may edit, so the form is not rendered for
+  anyone else. Such a caller sees the page the document opens on.
+- **Undoing a created page does not return to the page the author came from.** The page is
+  removed and the editor shows the last page that is left.
+
 SSR draft session storage (`src/draft_session.rs`):
 
 - **Nothing schedules `prune`.** An expired session is dropped when it is read (the file store

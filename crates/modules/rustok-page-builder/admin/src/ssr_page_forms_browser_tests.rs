@@ -1,12 +1,12 @@
 //! The page forms of the classic SSR inspector, dispatched the way the browser posts them.
 //!
-//! `create_page`, `remove_page`, `rename_page` and `patch_page_metadata` have two payload shapes
-//! under one wire name: the typed envelopes of the adapter workspaces address a page by
-//! `page_index`, the SSR forms by `page_id` alone. These tests send the exact fields the forms in
-//! `editor/ssr_inspector.rs` carry — as the host bootstrap serializes them — through
-//! [`dispatch_browser_intent`], because resolving a form in `ssr_form_intent` proves nothing when
-//! an arm of the dispatcher takes the intent first. The envelope shape is covered next to them
-//! so that neither shape is fixed at the cost of the other.
+//! `activate_page`, `create_page`, `remove_page`, `rename_page` and `patch_page_metadata` have
+//! two payload shapes under one wire name: the typed envelopes of the adapter workspaces address
+//! a page by `page_index`, the SSR forms by `page_id` alone. These tests send the exact fields
+//! the forms in `editor/ssr_inspector.rs` carry — as the host bootstrap serializes them —
+//! through [`dispatch_browser_intent`], because resolving a form in `ssr_form_intent` proves
+//! nothing when an arm of the dispatcher takes the intent first. The envelope shape is covered
+//! next to them so that neither shape is fixed at the cost of the other.
 
 use crate::{AdminCanvasController, dispatch_browser_intent};
 use fly::{PageLocator, PageMetadata};
@@ -78,6 +78,176 @@ fn create_page_form_keeps_the_page_id_the_author_typed() {
         .find(|page| page.id.as_deref() == Some("contact"))
         .expect("created page");
     assert_eq!(created.name, "Contact us");
+}
+
+#[test]
+fn create_page_form_opens_the_page_it_created() {
+    let mut controller = controller();
+    assert_eq!(active_page(&controller), (0, Some("home".to_string())));
+
+    let request = intent(
+        &controller,
+        BrowserIntentKind::CreatePage,
+        json!({ "page_id": "contact", "name": "" }),
+    );
+    dispatch_browser_intent(&mut controller, request).expect("create page form");
+
+    // The author asked for this page in order to fill it: the editor is on it, as it is after
+    // the same intent in the envelope shape.
+    assert_eq!(active_page(&controller), (2, Some("contact".to_string())));
+    let created = controller.active_page_summary().expect("open page");
+    assert_eq!(created.name, "contact", "a blank name falls back to the id");
+}
+
+#[test]
+fn both_shapes_of_create_page_leave_the_editor_on_the_created_page() {
+    let mut from_form = controller();
+    let request = intent(
+        &from_form,
+        BrowserIntentKind::CreatePage,
+        json!({ "page_id": "contact-us", "name": "Contact us" }),
+    );
+    dispatch_browser_intent(&mut from_form, request).expect("create page form");
+
+    let mut from_envelope = controller();
+    let request = BrowserIntentEnvelope::create_page("page-envelopes", "Contact us");
+    dispatch_browser_intent(&mut from_envelope, request).expect("create page envelope");
+
+    assert_eq!(page_ids(&from_form), page_ids(&from_envelope));
+    assert_eq!(active_page(&from_form), active_page(&from_envelope));
+    assert_eq!(active_page(&from_form), (2, Some("contact-us".to_string())));
+}
+
+#[test]
+fn create_page_form_that_is_refused_keeps_the_editor_where_it_was() {
+    let mut controller = controller();
+
+    // An id that is taken is refused by the page command; nothing is opened.
+    let request = intent(
+        &controller,
+        BrowserIntentKind::CreatePage,
+        json!({ "page_id": "about", "name": "Second about" }),
+    );
+    dispatch_browser_intent(&mut controller, request).expect_err("duplicate page id");
+
+    assert_eq!(page_ids(&controller), ["home", "about"]);
+    assert_eq!(active_page(&controller), (0, Some("home".to_string())));
+}
+
+#[test]
+fn undo_of_a_created_page_leaves_the_editor_on_a_page_that_exists() {
+    let mut controller = controller();
+
+    let request = intent(
+        &controller,
+        BrowserIntentKind::CreatePage,
+        json!({ "page_id": "contact", "name": "Contact us" }),
+    );
+    dispatch_browser_intent(&mut controller, request).expect("create page form");
+    let request = BrowserIntentEnvelope::undo("page-envelopes");
+    dispatch_browser_intent(&mut controller, request).expect("undo the created page");
+
+    // Opening the page is navigation and no part of the command, so one undo removes the page.
+    // The editor falls back to the last page that is left, which need not be the page the
+    // author came from.
+    assert_eq!(page_ids(&controller), ["home", "about"]);
+    assert_eq!(active_page(&controller), (1, Some("about".to_string())));
+}
+
+#[test]
+fn open_page_form_names_the_page_by_id_alone() {
+    let mut controller = controller();
+
+    let request = intent(
+        &controller,
+        BrowserIntentKind::ActivatePage,
+        json!({ "page_id": "about" }),
+    );
+    dispatch_browser_intent(&mut controller, request).expect("open page form");
+    assert_eq!(active_page(&controller), (1, Some("about".to_string())));
+
+    // The way back is the same form.
+    let request = intent(
+        &controller,
+        BrowserIntentKind::ActivatePage,
+        json!({ "page_id": "home" }),
+    );
+    dispatch_browser_intent(&mut controller, request).expect("open the first page again");
+    assert_eq!(active_page(&controller), (0, Some("home".to_string())));
+}
+
+#[test]
+fn open_page_form_for_a_page_that_is_gone_is_rejected() {
+    let mut controller = controller();
+
+    let request = intent(
+        &controller,
+        BrowserIntentKind::ActivatePage,
+        json!({ "page_id": "pricing" }),
+    );
+    let error = dispatch_browser_intent(&mut controller, request).expect_err("open a missing page");
+
+    assert!(
+        error.to_string().contains("pricing"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(active_page(&controller), (0, Some("home".to_string())));
+}
+
+#[test]
+fn activate_page_envelope_still_addresses_a_page_by_index() {
+    let mut controller = controller();
+
+    let request = BrowserIntentEnvelope::activate_page("page-envelopes", 1, Some("about"));
+    dispatch_browser_intent(&mut controller, request).expect("activate page envelope");
+    assert_eq!(active_page(&controller), (1, Some("about".to_string())));
+
+    // A page without an id has nothing but its index.
+    let request = BrowserIntentEnvelope::activate_page("page-envelopes", 0, None);
+    dispatch_browser_intent(&mut controller, request).expect("activate page by index alone");
+    assert_eq!(active_page(&controller), (0, Some("home".to_string())));
+}
+
+#[test]
+fn remove_page_form_of_the_open_page_leaves_the_editor_on_a_page_that_exists() {
+    let mut controller = controller();
+    let request = intent(
+        &controller,
+        BrowserIntentKind::ActivatePage,
+        json!({ "page_id": "about" }),
+    );
+    dispatch_browser_intent(&mut controller, request).expect("open page form");
+
+    let request = intent(
+        &controller,
+        BrowserIntentKind::RemovePage,
+        json!({ "page_id": "about" }),
+    );
+    dispatch_browser_intent(&mut controller, request).expect("remove the open page");
+
+    assert_eq!(page_ids(&controller), ["home"]);
+    assert_eq!(active_page(&controller), (0, Some("home".to_string())));
+}
+
+#[test]
+fn rename_page_form_keeps_the_editor_on_the_page_whose_id_it_changes() {
+    let mut controller = controller();
+    let request = intent(
+        &controller,
+        BrowserIntentKind::ActivatePage,
+        json!({ "page_id": "about" }),
+    );
+    dispatch_browser_intent(&mut controller, request).expect("open page form");
+
+    let request = intent(
+        &controller,
+        BrowserIntentKind::RenamePage,
+        json!({ "page_id": "about", "new_page_id": "company", "name": "" }),
+    );
+    dispatch_browser_intent(&mut controller, request).expect("rename the open page");
+
+    assert_eq!(page_ids(&controller), ["home", "company"]);
+    assert_eq!(active_page(&controller), (1, Some("company".to_string())));
 }
 
 #[test]
