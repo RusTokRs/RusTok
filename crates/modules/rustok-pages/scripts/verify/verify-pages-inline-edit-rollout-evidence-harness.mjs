@@ -250,8 +250,10 @@ for (const key of [
 }
 
 for (const marker of [
+  // The assembler writes the contract path as its own argument line, so it carries no wrapping
+  // quotes; the filename itself is the pin.
   'const contractPath = path.join(',
-  '"pages-inline-edit-rollout-execution-contract.json"',
+  'crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-rollout-execution-contract.json',
   'execFileSync("git", ["rev-parse", "HEAD"]',
   'document.format !== contract.browser_input.format',
   'document.status !== contract.browser_input.status',
