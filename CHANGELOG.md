@@ -195,6 +195,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (migration `m20261008_000031`). The field had no writer and always returned 0.
 
 ### Fixed
+- The immutable artifact integrity audit reads identifiers before payloads, as its packet and
+  its contract already said. `PageService::audit_immutable_artifact_integrity` selected whole
+  artifact rows and dropped the `max_records + 1` lookahead row only after it had been
+  hydrated, so an audit of one page materialised every document HTML, body HTML, CSS and
+  runtime snapshot of the requested slice — up to 513 of them — just to discard one. The
+  identifier query now projects `Id` (`select_only` + `into_tuple::<Uuid>`) with the same
+  `created_at, id` order and limit, and each retained artifact is loaded and verified through
+  `find_by_id` fenced by tenant and page. The result shape, ordering, truncation flags and
+  audit hash are unchanged.
 - Six workflows no longer list deleted documents in their `paths:` filters
   (`fly-page-builder.yml`, `pages-page-builder-parity.yml`,
   `pages-page-builder-provider-health.yml` and the three Pages evidence workflows of the

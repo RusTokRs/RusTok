@@ -356,6 +356,18 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
         `verify-pages-artifact-http-cache.mjs` now pins that second test body as well, so the
         packet cannot drift from the harness again. The SQLite harness itself still has not
         run. Owner: `rustok-pages`.
+      - ~~`verify-pages-immutable-artifact-integrity-audit.mjs` pinned a two-phase scan the
+        command no longer performs.~~ Done 2026-11-12, and the source was the side that was
+        wrong. The packet and the contract promise "the first query projects artifact
+        identifiers only … each selected full artifact payload is then loaded and verified one
+        record at a time", but the command selected the whole entity and popped the lookahead
+        row after it had been hydrated, so a page with large documents materialised every
+        HTML/CSS/runtime payload of the slice before discarding one. The command now selects
+        `Id` only (`select_only` + `into_tuple::<Uuid>`), keeps the `created_at, id` order and
+        the `max_records + 1` lookahead, and loads each payload through
+        `find_by_id` fenced by tenant and page, under the same shared-lock rule as before.
+        `verify-pages-immutable-artifact-integrity-audit.mjs` passes unchanged. The SQLite and
+        Postgres harnesses were not run (no toolchain here). Owner: `rustok-pages`.
     - The classic SSR control contract: closed on 2026-11-11, with the open parts listed here.
       Decision: `DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`.
       `2661a270ed` (2026-10-14) replaced the admin panels with the `fly-leptos` workspace,
