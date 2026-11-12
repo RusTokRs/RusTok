@@ -116,12 +116,40 @@ pub fn validate_browser_capability_access(
     Err(denial.into())
 }
 
+/// Whether the intent endpoint admits `kind` with `payload` from a caller that holds
+/// `capabilities`.
+///
+/// Server-rendered forms ask this before they render, so that a form the endpoint would refuse
+/// is disabled by the rule the endpoint applies and not by a second list kept in the views. A
+/// payload whose requirement cannot be read (a key stroke that names no shortcut) is not
+/// admitted.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn intent_allowed(
+    kind: BrowserIntentKind,
+    payload: &Value,
+    capabilities: CapabilityState,
+) -> bool {
+    let capabilities = capabilities.normalized();
+    intent_requirements(kind, payload).is_ok_and(|requirements| {
+        requirements
+            .into_iter()
+            .all(|capability| capabilities.allows(capability))
+    })
+}
+
 fn capability_requirements(
     envelope: &BrowserIntentEnvelope,
 ) -> Result<Option<(BrowserIntentKind, Vec<EditorCapability>)>, BrowserCapabilityAccessError> {
     let Some(kind) = envelope.kind() else {
         return Ok(None);
     };
+    Ok(Some((kind, intent_requirements(kind, &envelope.payload)?)))
+}
+
+fn intent_requirements(
+    kind: BrowserIntentKind,
+    payload: &Value,
+) -> Result<Vec<EditorCapability>, BrowserCapabilityAccessError> {
     let requirements = match kind {
         BrowserIntentKind::Select
         | BrowserIntentKind::FocusRequested
@@ -146,7 +174,7 @@ fn capability_requirements(
         | BrowserIntentKind::DropRequested
         | BrowserIntentKind::DragMoved => vec![EditorCapability::DragDrop],
         BrowserIntentKind::PatchComponentProperty => {
-            command_requirements(component_patch_command(&envelope.payload))
+            command_requirements(component_patch_command(payload))
         }
         BrowserIntentKind::PatchPageMetadata
         | BrowserIntentKind::RenamePage
@@ -173,7 +201,7 @@ fn capability_requirements(
         BrowserIntentKind::SelectAsset => {
             command_requirements(EditorCommand::batch([asset_command(), property_command()]))
         }
-        BrowserIntentKind::KeyStroke => return Ok(Some((kind, shortcut_requirements(envelope)?))),
+        BrowserIntentKind::KeyStroke => shortcut_requirements(payload)?,
         BrowserIntentKind::InsertBlock
         | BrowserIntentKind::RemoveSelected
         | BrowserIntentKind::MoveSelected
@@ -184,17 +212,16 @@ fn capability_requirements(
         | BrowserIntentKind::RemovePage
         | BrowserIntentKind::MovePage => command_requirements(structural_command()),
     };
-    Ok(Some((kind, requirements)))
+    Ok(requirements)
 }
 
 fn shortcut_requirements(
-    envelope: &BrowserIntentEnvelope,
+    payload: &Value,
 ) -> Result<Vec<EditorCapability>, BrowserCapabilityAccessError> {
-    let stroke_value = envelope
-        .payload
+    let stroke_value = payload
         .get("stroke")
         .cloned()
-        .unwrap_or_else(|| envelope.payload.clone());
+        .unwrap_or_else(|| payload.clone());
     let stroke = serde_json::from_value::<KeyStroke>(stroke_value)
         .map_err(|error| BrowserIntentDispatchError::Payload(error.to_string()))?;
     let shortcut = resolve_editor_shortcut(&stroke)
@@ -340,6 +367,79 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    #[test]
+    fn form_rule_admits_exactly_what_the_endpoint_admits() {
+        let full = CapabilityState::full();
+        let profiles = [
+            full,
+            CapabilityState::read_only(),
+            CapabilityState {
+                properties: false,
+                ..full
+            },
+            CapabilityState {
+                styles: false,
+                ..full
+            },
+            CapabilityState {
+                assets: false,
+                ..full
+            },
+            // Not normalized: without `edit` the endpoint ignores the other grants.
+            CapabilityState {
+                edit: false,
+                ..full
+            },
+        ];
+        let payloads = [
+            Value::Null,
+            json!({}),
+            json!({ "kind": "field" }),
+            json!({ "kind": "style" }),
+        ];
+        for kind in BrowserIntentKind::ALL {
+            for capabilities in profiles {
+                for payload in &payloads {
+                    let admitted = validate_browser_capability_access(
+                        &envelope(kind.as_str(), payload.clone()),
+                        capabilities,
+                    )
+                    .is_ok();
+                    assert_eq!(
+                        intent_allowed(kind, payload, capabilities),
+                        admitted,
+                        "{kind:?} with {payload} from {capabilities:?}"
+                    );
+                }
+            }
+        }
+        // The cases a form depends on, stated outright.
+        let no_properties = CapabilityState {
+            properties: false,
+            ..full
+        };
+        assert!(!intent_allowed(
+            BrowserIntentKind::SetLocalePolicy,
+            &Value::Null,
+            no_properties
+        ));
+        assert!(intent_allowed(
+            BrowserIntentKind::CreatePage,
+            &Value::Null,
+            no_properties
+        ));
+        assert!(intent_allowed(
+            BrowserIntentKind::PatchComponentProperty,
+            &json!({ "kind": "style" }),
+            no_properties
+        ));
+        assert!(!intent_allowed(
+            BrowserIntentKind::SelectAsset,
+            &Value::Null,
+            no_properties
+        ));
     }
 
     #[test]

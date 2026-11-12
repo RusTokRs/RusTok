@@ -15,6 +15,9 @@ use serde_json::Value;
 pub fn SsrTranslationsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     #[cfg(not(target_arch = "wasm32"))]
     {
+        // Each form renders disabled when the intent endpoint would refuse it.
+        let upsert_translation_enabled = runtime.form_enabled("upsert_translation");
+        let remove_translation_enabled = runtime.form_enabled("remove_translation");
         let route_context = use_context::<UiRouteContext>().unwrap_or_default();
         let locale = route_context.locale;
         let title = t(
@@ -167,6 +170,7 @@ pub fn SsrTranslationsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 <details class="rounded border border-border p-2" open>
                     <summary class="cursor-pointer text-xs font-semibold">{create_title}</summary>
                     <form class="mt-3 grid gap-2" data-fly-intent-form="upsert_translation">
+                        <fieldset class="contents" disabled=!upsert_translation_enabled>
                         <label class="grid gap-1 text-xs">
                             <span class="font-medium">{id_label.clone()}</span>
                             <input
@@ -203,6 +207,7 @@ pub fn SsrTranslationsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                             type="submit"
                             class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary"
                         >{save_label.clone()}</button>
+                        </fieldset>
                     </form>
                 </details>
 
@@ -219,6 +224,8 @@ pub fn SsrTranslationsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                             translation_entry_view(
                                 entry,
                                 selected_component_id.clone(),
+                                upsert_translation_enabled,
+                                remove_translation_enabled,
                                 id_label.clone(),
                                 values_label.clone(),
                                 values_help.clone(),
@@ -257,6 +264,8 @@ pub fn SsrTranslationsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
 fn translation_entry_view(
     entry: TranslationEntry,
     selected_component_id: String,
+    upsert_translation_enabled: bool,
+    remove_translation_enabled: bool,
     id_label: String,
     values_label: String,
     values_help: String,
@@ -298,6 +307,7 @@ fn translation_entry_view(
             </summary>
             <div class="mt-3 grid gap-3">
                 <form class="grid gap-2" data-fly-intent-form="upsert_translation">
+                    <fieldset class="contents" disabled=!upsert_translation_enabled>
                     <label class="grid gap-1 text-xs">
                         <span class="font-medium">{id_label.clone()}</span>
                         <input
@@ -332,9 +342,11 @@ fn translation_entry_view(
                     <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">
                         {save_label}
                     </button>
+                    </fieldset>
                 </form>
 
                 <form class="grid gap-2 border-t border-border pt-3" data-fly-intent-form="upsert_translation">
+                    <fieldset class="contents" disabled=!upsert_translation_enabled>
                     <strong class="text-xs">{bind_title}</strong>
                     <p class="text-xs text-muted-foreground">{bind_help}</p>
                     <input type="hidden" name="translation_id" value=bind_id/>
@@ -368,13 +380,16 @@ fn translation_entry_view(
                     <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">
                         {bind_label}
                     </button>
+                    </fieldset>
                 </form>
 
                 <form class="border-t border-border pt-3" data-fly-intent-form="remove_translation">
+                    <fieldset class="contents" disabled=!remove_translation_enabled>
                     <input type="hidden" name="translation_id" value=remove_id/>
                     <button type="submit" class="rounded border border-destructive/40 px-2 py-1 text-xs text-destructive">
                         {remove_label}
                     </button>
+                    </fieldset>
                 </form>
             </div>
         </details>

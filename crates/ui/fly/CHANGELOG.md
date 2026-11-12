@@ -257,6 +257,15 @@ Engineering audit remediation — see
 
 ### Fixed
 
+- **Server-rendered forms stayed enabled for a caller the endpoint refuses.** Of the SSR panels
+  only the asset panel read the editor capabilities, from a list of its own; the locale, locale
+  policy, translation, localized metadata, internal link, action and form, and inspector panels
+  rendered every form enabled, and the endpoint answered `FLY_CAPABILITY_DENIED`. Every
+  `data-fly-intent-form` now asks `AdminEditorRuntime::form_enabled`, which answers from the
+  requirement function the endpoint validates with (`capability_access.rs`), and a refused form
+  renders inside a disabled `<fieldset>`. The component property form offers the kinds the
+  caller may post: an inline style needs `styles`, a field or an attribute `properties`.
+
 - **The translation bind form lost its target on every reload.** `ssr_translations.rs` rendered
   the selection input of the bind form with an empty value, and the browser adapter starts each
   document without a selection. After the reload that follows an intent the form posted no

@@ -293,6 +293,12 @@ impl AdminCanvasController {
 pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     #[cfg(not(target_arch = "wasm32"))]
     {
+        // Each form renders disabled when the intent endpoint would refuse it.
+        let set_component_action_enabled = runtime.form_enabled("set_component_action");
+        let remove_component_action_enabled = runtime.form_enabled("remove_component_action");
+        let set_component_form_enabled = runtime.form_enabled("set_component_form");
+        let remove_component_form_enabled = runtime.form_enabled("remove_component_form");
+        let set_native_form_field_enabled = runtime.form_enabled("set_native_form_field");
         let route_context = use_context::<UiRouteContext>().unwrap_or_default();
         let locale = route_context.locale;
         let title = t(
@@ -387,6 +393,7 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 <details class="rounded border border-border p-2">
                     <summary class="cursor-pointer text-xs font-semibold">{action_title}</summary>
                     <form class="mt-3 grid gap-2" data-fly-intent-form="set_component_action">
+                        <fieldset class="contents" disabled=!set_component_action_enabled>
                         <input type="hidden" name="component_id" value=action_component data-fly-selected-component-input="true"/>
                         <select name="kind" class="rounded border border-input bg-background px-2 py-1 text-xs">
                             {option("navigate_page", "Navigate to page", &action_values.kind)}
@@ -448,11 +455,14 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                             <input name="index" value=action_values.index placeholder="Slide index (0, 1...)" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         </div>
                         <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">{save_action}</button>
+                        </fieldset>
                     </form>
                     {has_action.then(|| view! {
                         <form class="mt-2" data-fly-intent-form="remove_component_action">
+                            <fieldset class="contents" disabled=!remove_component_action_enabled>
                             <input type="hidden" name="component_id" value=action_remove_component data-fly-selected-component-input="true"/>
                             <button type="submit" class="rounded border border-destructive/40 px-2 py-1 text-xs text-destructive">{remove_action}</button>
+                            </fieldset>
                         </form>
                     })}
                 </details>
@@ -460,6 +470,7 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 <details class="rounded border border-border p-2">
                     <summary class="cursor-pointer text-xs font-semibold">{form_title}</summary>
                     <form class="mt-3 grid gap-2" data-fly-intent-form="set_component_form">
+                        <fieldset class="contents" disabled=!set_component_form_enabled>
                         <input type="hidden" name="component_id" value=form_component data-fly-selected-component-input="true"/>
                         <input required name="form_id" value=form_values.id placeholder="Stable form id" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         <div class="grid grid-cols-2 gap-2">
@@ -482,11 +493,14 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         <textarea name="input_json" class="min-h-20 rounded border border-input bg-background px-2 py-1 font-mono text-xs" placeholder="Provider input JSON">{form_values.input_json}</textarea>
                         <label class="flex items-center gap-2 text-xs"><input type="checkbox" name="novalidate" value="true" checked=form_values.novalidate/><span>"Disable browser validation"</span></label>
                         <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">{save_form}</button>
+                        </fieldset>
                     </form>
                     {has_form.then(|| view! {
                         <form class="mt-2" data-fly-intent-form="remove_component_form">
+                            <fieldset class="contents" disabled=!remove_component_form_enabled>
                             <input type="hidden" name="component_id" value=form_remove_component data-fly-selected-component-input="true"/>
                             <button type="submit" class="rounded border border-destructive/40 px-2 py-1 text-xs text-destructive">{remove_form}</button>
+                            </fieldset>
                         </form>
                     })}
                 </details>
@@ -494,6 +508,7 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                 <details class="rounded border border-border p-2">
                     <summary class="cursor-pointer text-xs font-semibold">{field_title}</summary>
                     <form class="mt-3 grid gap-2" data-fly-intent-form="set_native_form_field">
+                        <fieldset class="contents" disabled=!set_native_form_field_enabled>
                         <input type="hidden" name="component_id" value=field_component data-fly-selected-component-input="true"/>
                         <div class="grid grid-cols-2 gap-2">
                             <select name="tag_name" class="rounded border border-input bg-background px-2 py-1 text-xs">
@@ -519,6 +534,7 @@ pub fn SsrActionsFormsPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         <input name="placeholder" value=attribute(&attributes, "placeholder") placeholder="Placeholder" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         <input name="aria_label" value=attribute(&attributes, "aria-label") placeholder="Accessible label" class="rounded border border-input bg-background px-2 py-1 text-xs"/>
                         <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">{save}</button>
+                        </fieldset>
                     </form>
                 </details>
             </section>

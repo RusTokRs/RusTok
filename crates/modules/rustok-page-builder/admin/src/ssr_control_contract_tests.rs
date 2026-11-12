@@ -9,11 +9,15 @@
 //! `apps/next-admin/tests/e2e/fly-browser-ssr-controls.spec.ts`, and
 //! `scripts/verify/verify-fly-ssr-control-contract.mjs` keeps the two in step.
 
-use crate::{AdminCanvasController, PageBuilderAdmin, PageBuilderAdminHostContext};
+use crate::{
+    AdminCanvasController, PageBuilderAdmin, PageBuilderAdminHostContext,
+    validate_browser_capability_access,
+};
+use fly_browser::{BrowserIntentEnvelope, BrowserIntentKind, FLY_BROWSER_PROTOCOL};
 use fly_ui::{CapabilityState, UiIntent};
 use leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
-use serde_json::json;
+use serde_json::{Value, json};
 
 fn controller() -> AdminCanvasController {
     AdminCanvasController::new(
@@ -419,6 +423,222 @@ fn translation_bind_form_names_no_component_without_a_selection() {
         "",
         "a binding has no default target; the server refuses the form by name: {target}"
     );
+}
+
+/// A project in which every panel has something to render a form for: a translation, an asset
+/// and, once `hero` is selected, a component.
+fn controller_with_every_panel() -> AdminCanvasController {
+    let mut controller = AdminCanvasController::new(
+        "home",
+        "rev-forms-1",
+        json!({
+            "assets": [{ "id": "hero-image", "src": "/hero.webp", "name": "Hero" }],
+            "flyTranslations": [{ "id": "hero-title", "values": { "en": "Hero" } }],
+            "pages": [{
+                "id": "home",
+                "name": "Home",
+                "component": {
+                    "id": "home-root",
+                    "type": "wrapper",
+                    "components": [{ "id": "hero", "type": "text", "content": "Hero" }]
+                }
+            }]
+        }),
+    )
+    .expect("forms controller");
+    controller
+        .dispatch(UiIntent::Select(Some("hero".to_string())))
+        .expect("select the component the forms target");
+    controller
+}
+
+/// Intent name and document offset of every `<form data-fly-intent-form>` in `html`.
+///
+/// The marker also occurs in the inlined host bootstrap, so only an occurrence inside the
+/// opening tag of a form counts.
+fn intent_forms(html: &str) -> Vec<(&str, usize)> {
+    const MARKER: &str = "data-fly-intent-form=\"";
+    html.match_indices(MARKER)
+        .filter_map(|(marker_index, _)| {
+            let start = html[..marker_index].rfind('<')?;
+            if !html[start..].starts_with("<form") {
+                return None;
+            }
+            let name_start = marker_index + MARKER.len();
+            let name_end = name_start + html[name_start..].find('"')?;
+            Some((&html[name_start..name_end], start))
+        })
+        .collect()
+}
+
+/// Whether an element at `position` has an ancestor `<fieldset disabled>`.
+fn inside_disabled_fieldset(html: &str, position: usize) -> bool {
+    let before = &html[..position];
+    let mut tags = before
+        .match_indices("<fieldset")
+        .map(|(start, _)| {
+            let end = start + html[start..].find('>').expect("end of a fieldset tag");
+            (start, Some(is_disabled(&html[start..=end])))
+        })
+        .chain(
+            before
+                .match_indices("</fieldset>")
+                .map(|(start, _)| (start, None)),
+        )
+        .collect::<Vec<_>>();
+    tags.sort_by_key(|(start, _)| *start);
+
+    let mut open = Vec::new();
+    for (_, tag) in tags {
+        match tag {
+            Some(disabled) => open.push(disabled),
+            None => {
+                open.pop();
+            }
+        }
+    }
+    open.contains(&true)
+}
+
+/// Whether the form that starts at `form_start` can be submitted. A disabled submit button
+/// also stops the implicit submission from a text field.
+fn form_can_be_submitted(html: &str, form_start: usize) -> bool {
+    let end = form_start + html[form_start..].find("</form>").expect("end of the form");
+    let form = &html[form_start..end];
+    let (offset, submit) = form
+        .match_indices("<button")
+        .find_map(|(start, _)| {
+            let tag = &form[start..=start + form[start..].find('>')?];
+            tag.contains("type=\"submit\"").then_some((start, tag))
+        })
+        .unwrap_or_else(|| panic!("a form without a submit button: {form}"));
+    !is_disabled(submit) && !inside_disabled_fieldset(html, form_start + offset)
+}
+
+/// Whether the intent endpoint admits the form that posts `intent` from `capabilities`.
+fn endpoint_admits(intent: &str, capabilities: CapabilityState) -> bool {
+    let kind = BrowserIntentKind::parse(intent)
+        .unwrap_or_else(|| panic!("a form posts {intent:?}, which is no browser intent"));
+    let admits = |payload: Value| {
+        let envelope = BrowserIntentEnvelope {
+            protocol: FLY_BROWSER_PROTOCOL.to_string(),
+            instance_id: "ssr-forms".to_string(),
+            intent: intent.to_string(),
+            payload,
+            sequence: Some(1),
+            page_id: Some("home".to_string()),
+            revision: Some("rev-forms-1".to_string()),
+            project_hash: None,
+            draft_token: None,
+            draft_generation: None,
+        };
+        validate_browser_capability_access(&envelope, capabilities).is_ok()
+    };
+    if kind == BrowserIntentKind::PatchComponentProperty {
+        // The form offers each property kind it may post and is usable while one is left.
+        admits(json!({ "kind": "field" })) || admits(json!({ "kind": "style" }))
+    } else {
+        admits(json!({}))
+    }
+}
+
+#[test]
+fn every_ssr_form_is_disabled_exactly_when_the_endpoint_refuses_its_intent() {
+    let full = CapabilityState::full();
+    let profiles = [
+        ("full", full),
+        ("read-only", CapabilityState::read_only()),
+        (
+            "no properties",
+            CapabilityState {
+                properties: false,
+                ..full
+            },
+        ),
+        (
+            "no styles",
+            CapabilityState {
+                styles: false,
+                ..full
+            },
+        ),
+        (
+            "no assets",
+            CapabilityState {
+                assets: false,
+                ..full
+            },
+        ),
+        (
+            "structure only",
+            CapabilityState {
+                properties: false,
+                styles: false,
+                assets: false,
+                ..full
+            },
+        ),
+    ];
+
+    for (profile, capabilities) in profiles {
+        let html = render_admin_with(controller_with_every_panel(), capabilities, &[]);
+        let forms = intent_forms(&html);
+
+        for intent in [
+            "set_runtime_locale",
+            "set_locale_policy",
+            "clear_locale_policy",
+            "upsert_localized_page_metadata",
+            "upsert_translation",
+            "remove_translation",
+            "set_internal_page_link",
+            "set_component_action",
+            "set_component_form",
+            "set_native_form_field",
+            "upsert_asset",
+            "select_asset",
+            "remove_asset",
+            "set_runtime_context",
+            "patch_component_property",
+            "patch_page_metadata",
+            "create_page",
+            "rename_page",
+            "remove_page",
+        ] {
+            assert!(
+                forms.iter().any(|(rendered, _)| *rendered == intent),
+                "{profile}: the composed admin must render the {intent:?} form"
+            );
+        }
+        for (intent, form_start) in forms {
+            assert_eq!(
+                form_can_be_submitted(&html, form_start),
+                endpoint_admits(intent, capabilities),
+                "{profile}: the {intent:?} form must be usable exactly when the endpoint \
+                 admits its intent"
+            );
+        }
+    }
+}
+
+#[test]
+fn component_property_form_offers_only_the_kinds_the_caller_may_post() {
+    let capabilities = CapabilityState {
+        properties: false,
+        ..CapabilityState::full()
+    };
+    let html = render_admin_with(controller_with_every_panel(), capabilities, &[]);
+    let inspector = ssr_inspector(&html);
+    let form = intent_form(inspector, "patch_component_property");
+
+    for (kind, offered) in [("field", false), ("attribute", false), ("style", true)] {
+        let option = opening_tag(form, &format!("value=\"{kind}\""), "<option");
+        assert_eq!(
+            !is_disabled(option),
+            offered,
+            "without the property capability only an inline style may be posted: {option}"
+        );
+    }
 }
 
 #[test]

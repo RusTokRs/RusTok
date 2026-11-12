@@ -400,8 +400,20 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           selection the server holds. Without a selection it still names no component: a
           binding has no default target. Two render tests in `ssr_control_contract_tests.rs`;
           the Rust was not compiled here, CI decides. Owner: Page Builder admin.
-        - The SSR panels are rendered outside `CapabilityFieldset`: a read-only caller sees
-          enabled forms and the server refuses each intent. Owner: Page Builder admin.
+        - DONE (2026-11-12): the SSR panels are rendered outside `CapabilityFieldset`, and only
+          `ssr_assets.rs` read the capabilities, from a list of its own. A caller without the
+          capability saw enabled forms and the endpoint refused each intent with
+          `FLY_CAPABILITY_DENIED`. Each of the 24 forms now asks
+          `AdminEditorRuntime::form_enabled`, which answers from `intent_requirements` in
+          `capability_access.rs`, the function the endpoint validates with; a form whose intent
+          is refused renders inside a disabled `<fieldset>`. The component property form is
+          usable while one of its kinds is, and offers only those: an inline style needs
+          `styles`, a field or an attribute `properties`. A render test compares every form of
+          the composed admin with `validate_browser_capability_access` for six capability
+          profiles. The Rust was not compiled here, CI decides. No twin: `fly-leptos`,
+          `fly-dioxus` and the Next host render no intent form. Owner: Page Builder admin.
+        - A capability that changes while a document is open (a provider status that degrades)
+          reaches the forms with the next server render only. Owner: Page Builder admin.
         - The envelope arms of the four page intents have no dispatch test of their own beyond
           `rename_page` and `remove_page` by index in `ssr_page_forms_browser_tests.rs`.
           Owner: Page Builder admin.
@@ -580,10 +592,11 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           and `fly-dioxus` renders `style` attributes. The admin editor uses neither; a host
           that composes them under a nonce policy loses those styles. Owner: `fly-leptos`,
           `fly-dioxus`.
-    - [ ] The step "Check admin SSR Page Builder endpoint" of the "Fly Page Builder" workflow
-          fails on this branch after the merges of `main` (`7ce2048c`, `728ba4f8`) and passed
-          on `eb17526f`. The job log cannot be read from this workspace. The change to
-          `apps/admin/src/main.rs` is therefore not compiled by any green job. Owner: maintainer.
+    - [x] The step "Check admin SSR Page Builder endpoint" of the "Fly Page Builder" workflow
+          failed on this branch after the merges of `main` (`7ce2048c`, `728ba4f8`). It passes
+          on `65a67b7c` (job "Focused tests and source guards"), together with "Run Page
+          Builder admin unit tests" and "Lint Fly browser and Page Builder integrations", so
+          the change to `apps/admin/src/main.rs` is compiled by a green job.
 
 ## Rules for this backlog
 

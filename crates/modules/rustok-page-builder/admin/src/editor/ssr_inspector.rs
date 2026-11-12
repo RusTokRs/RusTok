@@ -21,6 +21,23 @@ struct SsrComponentOption {
 pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     #[cfg(not(target_arch = "wasm32"))]
     {
+        // Each form renders disabled when the intent endpoint would refuse it.
+        let set_runtime_context_enabled = runtime.form_enabled("set_runtime_context");
+        let patch_page_metadata_enabled = runtime.form_enabled("patch_page_metadata");
+        let create_page_enabled = runtime.form_enabled("create_page");
+        let rename_page_enabled = runtime.form_enabled("rename_page");
+        let remove_page_enabled = runtime.form_enabled("remove_page");
+        // A component patch needs the style capability for an inline style and the property
+        // capability for a field or an attribute, so the form offers the kinds it may post.
+        let property_kind_enabled = runtime.form_enabled_with(
+            "patch_component_property",
+            &serde_json::json!({ "kind": "field" }),
+        );
+        let style_kind_enabled = runtime.form_enabled_with(
+            "patch_component_property",
+            &serde_json::json!({ "kind": "style" }),
+        );
+        let patch_component_property_enabled = property_kind_enabled || style_kind_enabled;
         let route_context = use_context::<UiRouteContext>().unwrap_or_default();
         let locale = route_context.locale;
         let inspector_title = t(
@@ -223,6 +240,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         class="mt-3 grid gap-2"
                         data-fly-intent-form="set_runtime_context"
                     >
+                        <fieldset class="contents" disabled=!set_runtime_context_enabled>
                         <textarea
                             name="context_json"
                             required
@@ -239,6 +257,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         >
                             {apply_runtime_context}
                         </button>
+                        </fieldset>
                     </form>
                 </details>
 
@@ -260,6 +279,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     class="grid gap-2 rounded border border-border p-2"
                     data-fly-intent-form="patch_component_property"
                 >
+                    <fieldset class="contents" disabled=!patch_component_property_enabled>
                     <strong class="text-xs">{component_property}</strong>
                     <input
                         type="hidden"
@@ -269,9 +289,15 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     />
                     <div class="grid grid-cols-2 gap-2">
                         <select name="kind" class="rounded border border-input bg-background px-2 py-1 text-xs">
-                            <option value="field">{field_kind}</option>
-                            <option value="attribute">{attribute_kind}</option>
-                            <option value="style">{inline_style_kind}</option>
+                            <option value="field" disabled=!property_kind_enabled>
+                                {field_kind}
+                            </option>
+                            <option value="attribute" disabled=!property_kind_enabled>
+                                {attribute_kind}
+                            </option>
+                            <option value="style" disabled=!style_kind_enabled>
+                                {inline_style_kind}
+                            </option>
                         </select>
                         <input
                             name="name"
@@ -292,6 +318,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">
                         {apply_component_patch}
                     </button>
+                    </fieldset>
                 </form>
 
                 <details class="rounded border border-border p-2">
@@ -305,6 +332,10 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                     class="grid gap-2 rounded bg-muted/30 p-2"
                                     data-fly-intent-form="patch_page_metadata"
                                 >
+                                    <fieldset
+                                        class="contents"
+                                        disabled=!patch_page_metadata_enabled
+                                    >
                                     <strong class="text-xs">{page_label(page, index, &metadata_page_fallback)}</strong>
                                     <input type="hidden" name="page_id" value=page_id/>
                                     <input class="rounded border border-input bg-background px-2 py-1 text-xs" name="title" placeholder=seo_title.clone() value=metadata.title.unwrap_or_default()/>
@@ -319,6 +350,7 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                         <span>{no_index.clone()}</span>
                                     </label>
                                     <button type="submit" class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary">{save_page_metadata.clone()}</button>
+                                    </fieldset>
                                 </form>
                             }
                         }).collect_view()}
@@ -329,22 +361,28 @@ pub fn SsrInspectorPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     <summary class="cursor-pointer text-xs font-semibold">{page_lifecycle}</summary>
                     <div class="mt-3 grid gap-3">
                         <form class="grid gap-2" data-fly-intent-form="create_page">
+                            <fieldset class="contents" disabled=!create_page_enabled>
                             <strong class="text-xs">{add_page.clone()}</strong>
                             <input required name="page_id" class="rounded border border-input bg-background px-2 py-1 text-xs" placeholder=page_id_placeholder/>
                             <input name="name" class="rounded border border-input bg-background px-2 py-1 text-xs" placeholder=page_name_placeholder/>
                             <button type="submit" class="w-fit rounded border border-border px-2 py-1 text-xs">{add_page}</button>
+                            </fieldset>
                         </form>
                         <form class="grid gap-2 border-t border-border pt-3" data-fly-intent-form="rename_page">
+                            <fieldset class="contents" disabled=!rename_page_enabled>
                             <strong class="text-xs">{rename_page.clone()}</strong>
                             <PageSelect pages=pages.clone() name="page_id" page_fallback=page_fallback.clone()/>
                             <input required name="new_page_id" class="rounded border border-input bg-background px-2 py-1 text-xs" placeholder=new_page_id_placeholder/>
                             <input name="name" class="rounded border border-input bg-background px-2 py-1 text-xs" placeholder=new_page_name_placeholder/>
                             <button type="submit" class="w-fit rounded border border-border px-2 py-1 text-xs">{rename_page}</button>
+                            </fieldset>
                         </form>
                         <form class="grid gap-2 border-t border-border pt-3" data-fly-intent-form="remove_page">
+                            <fieldset class="contents" disabled=!remove_page_enabled>
                             <strong class="text-xs text-destructive">{remove_page.clone()}</strong>
                             <PageSelect pages=pages name="page_id" page_fallback=page_fallback/>
                             <button type="submit" class="w-fit rounded border border-destructive/40 px-2 py-1 text-xs text-destructive">{remove_page}</button>
+                            </fieldset>
                         </form>
                     </div>
                 </details>

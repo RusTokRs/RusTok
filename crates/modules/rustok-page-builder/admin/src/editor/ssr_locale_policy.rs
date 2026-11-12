@@ -63,6 +63,9 @@ impl AdminCanvasController {
 pub fn SsrLocalePolicyPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     #[cfg(not(target_arch = "wasm32"))]
     {
+        // Each form renders disabled when the intent endpoint would refuse it.
+        let set_locale_policy_enabled = runtime.form_enabled("set_locale_policy");
+        let clear_locale_policy_enabled = runtime.form_enabled("clear_locale_policy");
         let route_context = use_context::<UiRouteContext>().unwrap_or_default();
         let locale = route_context.locale;
         let title = t(
@@ -139,6 +142,7 @@ pub fn SsrLocalePolicyPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                     <p class="text-xs text-muted-foreground">{description}</p>
                 </div>
                 <form class="grid gap-2" data-fly-intent-form="set_locale_policy">
+                    <fieldset class="contents" disabled=!set_locale_policy_enabled>
                     <label class="grid gap-1 text-xs">
                         <span class="font-medium">{default_label}</span>
                         <input
@@ -200,12 +204,15 @@ pub fn SsrLocalePolicyPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                         type="submit"
                         class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary"
                     >{save_label}</button>
+                    </fieldset>
                 </form>
                 <form data-fly-intent-form="clear_locale_policy">
+                    <fieldset class="contents" disabled=!clear_locale_policy_enabled>
                     <button
                         type="submit"
                         class="w-fit rounded border border-destructive/40 px-2 py-1 text-xs text-destructive"
                     >{clear_label}</button>
+                    </fieldset>
                 </form>
             </section>
         }
