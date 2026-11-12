@@ -1123,9 +1123,9 @@
       "category": "modules",
       "files": 59,
       "loc": 15499,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-12T10:30:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: policy-based user role mutations preventing demotion/removal of last super admin, request authority ceiling enforcement, non-nil UUID guards in permission decision ports and role assignment mutations, non-nil tenant guard in require_direct_control_plane_user, early non-nil tenant guard in repair, non-empty name validation in update_role; verified with cargo check -p rustok-rbac and cargo check -p rustok-rbac --features graphql"
     },
     "crates/modules/rustok-rbac/admin": {
       "name": "admin",
@@ -1133,9 +1133,9 @@
       "category": "modules",
       "files": 9,
       "loc": 984,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-12T10:45:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation with pure-logic core.rs, non-nil user_id guard in fetch_bootstrap_native, non-nil tenant ID validation via require_direct_control_plane_user, SETTINGS_READ permission gate, deduplicated and sorted permission/role listings, localized DataGrid integration; verified with cargo check -p rustok-rbac-admin and cargo check -p rustok-rbac-admin --features ssr"
     },
     "crates/modules/rustok-rbac/cli": {
       "name": "cli",
@@ -1143,9 +1143,9 @@
       "category": "modules",
       "files": 2,
       "loc": 372,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-12T10:50:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID tenant ID guard in repair-system-roles, mutually exclusive flag validation (--tenant-id vs --all-tenants), invalid UUID rejection, transactional execution with automatic rollback on error, durable invalidation generation reservation; unit tests added; verified with cargo check -p rustok-rbac-cli"
     },
     "crates/modules/rustok-reactions": {
       "name": "rustok-reactions",
