@@ -54,7 +54,6 @@ fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
     })
 }
 
-#[allow(dead_code)]
 fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
     FieldKey::new(key).map_err(|error| {
         PortError::invariant_violation("translation.field_key_invalid", error.to_string())
@@ -409,7 +408,7 @@ fn snapshot_from_owner(
             .target_revision
             .map(|revision| opaque_revision(revision, "target_revision"))
             .transpose()?,
-        fields: image_fields(&snapshot.source, snapshot.target.as_ref()),
+        fields: image_fields(&snapshot.source, snapshot.target.as_ref())?,
     };
     resource.validate().map_err(|error| {
         PortError::invariant_violation(
@@ -444,12 +443,11 @@ fn product_lifecycle(status: &ProductStatus) -> TranslationResourceLifecycle {
 fn image_fields(
     source: &ProductImageTranslationExactLocaleRecord,
     target: Option<&ProductImageTranslationExactLocaleRecord>,
-) -> Vec<TranslationFieldSnapshot> {
+) -> Result<Vec<TranslationFieldSnapshot>, PortError> {
     let source_value = source.alt_text.as_deref().unwrap_or_default();
-    vec![TranslationFieldSnapshot {
+    Ok(vec![TranslationFieldSnapshot {
         descriptor: TranslationFieldDescriptor {
-            key: FieldKey::new(IMAGE_ALT_TEXT_FIELD)
-                .expect("static Product Image field key must satisfy the target contract: invariant validated at startup"),
+            key: field_key_or_invariant(IMAGE_ALT_TEXT_FIELD)?,
             profile: TranslationValueProfile::PlainText,
             strategy: TranslationStrategy::Translate,
             classification: TranslationDataClassification::Public,
@@ -462,7 +460,7 @@ fn image_fields(
         exact_target_value: target.and_then(|value| value.alt_text.clone()),
         source_hash: field_hash(source_value),
         protected_tokens: Vec::new(),
-    }]
+    }])
 }
 
 fn merged_target_alt_text(
