@@ -1199,7 +1199,7 @@ Tag resolution for the Search projection is still one round-trip pair per topic
 (`forum_topic_tags`, then Taxonomy term names): `project_topic` reads each topic
 through `get_public_topic_with_locale_fallback`, which resolves its tags itself.
 Finding 9.2 of `forum-audit-report-2026-11-07.md` asks for one batch per page. Two
-`load_topic_tags_for_topics` helpers were added for it in `ba9de18c` without a
+`load_topic_tags_for_topics` helpers were added for it in `24c41d87bc` without a
 caller and were removed as dead code; the batch needs a page-level read in the
 projection source that hands the resolved tags to `project_topic`, and a reindex
 round-trip count as its evidence. Open.

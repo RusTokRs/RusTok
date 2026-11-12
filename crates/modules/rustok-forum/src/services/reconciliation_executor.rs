@@ -15,8 +15,9 @@ use crate::error::ForumResult;
 /// `effective_limit` is the only normalization of a requested page size.
 ///
 /// The three labels are separate fields because they are separate, already
-/// published series: dashboards key the entry-point counter and the module error
-/// counter on the short names, and the span metrics on the `forum.`-prefixed one.
+/// published series with different names: the entry-point counter and the module
+/// error counter use the short names, the span metrics use the `forum.`-prefixed
+/// one. Renaming any of them starts a new series.
 pub struct ReconciliationExecutor {
     /// `operation` label of the span duration and span error metrics.
     pub operation: &'static str,
