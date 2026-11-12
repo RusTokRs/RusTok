@@ -339,7 +339,7 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
         `pages-page-builder-parity.yml`, `pages-page-builder-provider-health.yml`,
         `pages-artifact-repair-rollback-continuity-postgres-evidence.yml`,
         `pages-rollback-activated-repair-rollback-continuity-postgres-evidence.yml` and
-        `pages-consumer-properties-source-evidence.yml` (14 lines, in both the `push` and the
+        `pages-consumer-properties-source-evidence.yml` (30 lines, in both the `push` and the
         `pull_request` filter of each). They were inert — a path that cannot match never fires —
         but each one is a filter entry that reads as a live trigger for a document that no longer
         exists. No workflow was run; the remaining entries of every filter name an existing
