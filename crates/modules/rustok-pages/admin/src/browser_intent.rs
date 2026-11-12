@@ -437,7 +437,7 @@ fn open_page(controller: &AdminCanvasController) -> (usize, Option<String>) {
     )
 }
 
-fn controller_from_page(
+pub(crate) fn controller_from_page(
     page: &crate::model::PageDetail,
     revision_id: &str,
     default_locale: &str,
@@ -670,6 +670,8 @@ pub enum PagesBrowserIntentError {
     PageMismatch { expected: String, actual: String },
     #[error("invalid runtime preview context: {0}")]
     RuntimeContext(String),
+    #[error("server preview failed: {0}")]
+    Preview(String),
     #[error(
         "Page Builder browser intent produced {count} consumer requests, but one dispatch executes at most one"
     )]

@@ -427,19 +427,43 @@ for (const forbidden of ['<style>{}{}</style>', '<script>{script}</script>']) {
   );
 }
 
-// The server preview is a second `srcdoc` document. It arrives composed, so the nonce is put on
-// the stylesheet of its envelope by the function that owns the envelope.
+// The server preview has two shapes, and the guarantee differs by shape.
+//
+// A host without a preview route embeds the composed document through `srcdoc`, so it inherits the
+// console's policy and its stylesheet must carry the console's nonce — written by the function that
+// owns the envelope. A host with a preview route loads the document by `src`, so it is governed by
+// the policy of that response (`rustok-pages-admin`'s preview policy) and needs no nonce at all.
 requireMarkers('adminServerPreview', [
   'use_context::<UiCspNonce>()',
-  'srcdoc=preview_srcdoc',
+  'srcdoc=',
+  'preview_endpoint',
   'fly::document_html_with_style_nonce(',
-], 'Page Builder server preview nonce');
+], 'Page Builder server preview transport');
 
-// The attribute is what the browser executes, so the marker above is only half the guarantee: the
-// value it names has to be the one the envelope function produced. Derive the binding and require
-// the document that reaches `srcdoc` to pass through `embedded_preview_document` with the nonce the
-// host provided — an attribute bound to the rendered document directly is the regression this
-// catches, and it is invisible to a marker on the attribute alone.
+// The attributes are what the browser executes, so the markers above are only half the guarantee.
+// Derive both branches from the rendered view, so neither can be dropped while the other keeps the
+// markers green.
+//
+// `src`: a host that serves a preview document must be reachable — a panel that never loads one by
+// address cannot show a faithful preview even where the host provides the route (§737).
+if (!/\bsrc=/.test(source.adminServerPreview)) {
+  failures.push(
+    'Page Builder server preview never loads a host-served document by `src`, so a faithful ' +
+      'preview cannot be shown even by a host that serves one',
+  );
+}
+for (const reference of source.adminServerPreview.matchAll(/\bsrc=([\w.]+)/g)) {
+  if (!/preview_endpoint/.test(reference[1])) {
+    failures.push(
+      `Page Builder server preview binds \`src\` to \`${reference[1]}\`, which is not the host's ` +
+        'preview endpoint',
+    );
+  }
+}
+
+// `srcdoc`: the composed document and its nonce come from one binding. An attribute bound to the
+// rendered document directly is the regression this catches, and a marker on the attribute name
+// cannot see it.
 const previewSrcdocBindings = [];
 for (const match of source.adminServerPreview.matchAll(/let (\w+) = ([\s\S]*?);\n/g)) {
   // The `;` has to end the statement, not a nested expression, so the body is read to the next
@@ -449,14 +473,21 @@ for (const match of source.adminServerPreview.matchAll(/let (\w+) = ([\s\S]*?);\
   if (!/csp_nonce/.test(body)) continue;
   previewSrcdocBindings.push(match[1]);
 }
-const previewSrcdocAttribute = /srcdoc=(\w+)/.exec(source.adminServerPreview)?.[1];
-if (!previewSrcdocAttribute) {
+// The attribute may be bound directly or through an expression that chooses between the two
+// shapes; either way, every identifier it names has to be one the envelope function produced.
+const srcdocExpression = /srcdoc=([^\n]*(?:\n(?!\s*(?:src|srcdoc|hidden|sandbox|title|class|data-)[\w-]*=)[^\n]*)*)/.exec(
+  source.adminServerPreview,
+)?.[1];
+if (!srcdocExpression) {
   failures.push('Page Builder server preview does not bind its frame\'s `srcdoc` to a value');
-} else if (previewSrcdocBindings.includes(previewSrcdocAttribute) === false) {
-  failures.push(
-    'Page Builder server preview binds `srcdoc` to a document that never passed through ' +
-      '`embedded_preview_document` with the host nonce',
-  );
+} else {
+  const documentBinding = srcdocExpression.match(/\b(preview_srcdoc|\w*document\w*)\b/)?.[1];
+  if (!documentBinding || !previewSrcdocBindings.includes(documentBinding)) {
+    failures.push(
+      'Page Builder server preview binds `srcdoc` to a document that never passed through ' +
+        '`embedded_preview_document` with the host nonce',
+    );
+  }
 }
 requireMarkers('flyRender', [
   'pub fn document_html_with_style_nonce(',

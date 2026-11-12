@@ -21,10 +21,28 @@ fn embedded_preview_document(html: String, csp_nonce: Option<&UiCspNonce>) -> St
         .unwrap_or(html)
 }
 
+/// Where the host serves the preview document, if it serves one.
+///
+/// A host with a preview route gets a faithful preview: the frame loads the document by address,
+/// so it is governed by the policy of that response rather than by the policy of this console —
+/// which names no script source and forbids style attributes, and would silently drop an embed
+/// block's aspect ratio, a provider frame and a remote font. A host without one gets the inherited
+/// `srcdoc` document and the subset this policy admits, which is why the panel says which it shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerPreviewEndpoint {
+    /// The complete address of the preview document, including any query the host route reads.
+    ///
+    /// A frame cannot send a request header, so a route that serves it authenticates the browser
+    /// session the frame carries — with a session cookie that a cross-site embed does not receive
+    /// — rather than a token this panel would have to pass.
+    pub url: String,
+}
+
 #[component]
 pub fn ServerPreviewPanel(
     runtime: AdminEditorRuntime,
     provider_status: Option<PageBuilderAdminProviderStatus>,
+    #[prop(optional_no_strip)] preview_endpoint: Option<String>,
 ) -> impl IntoView {
     // The form's admission is decided before `runtime` is moved into `frame_runtime`; it is a
     // plain read of the capability state, not a signal, so it is taken here with the rest.
@@ -39,6 +57,9 @@ pub fn ServerPreviewPanel(
     let provider_preview_enabled = provider_status
         .as_ref()
         .is_none_or(PageBuilderAdminProviderStatus::preview_enabled);
+    let preview_endpoint = preview_endpoint
+        .filter(|url| !url.trim().is_empty())
+        .map(|url| ServerPreviewEndpoint { url });
     let csp_nonce = use_context::<UiCspNonce>();
     // The hydrated build has no capability state to consult here; the control it renders is the
     // handler, not the form.
@@ -62,7 +83,13 @@ pub fn ServerPreviewPanel(
         .get()
         .map(|html| embedded_preview_document(html, csp_nonce.as_ref()))
         .unwrap_or_default();
-    let preview_rendered = !preview_srcdoc.is_empty();
+    // With a preview route the frame has content as soon as the address exists: the render happens
+    // in that response. Without one, the frame is filled once a document was rendered.
+    let preview_rendered = preview_endpoint.is_some() || !preview_srcdoc.is_empty();
+    let preview_src = preview_endpoint
+        .as_ref()
+        .map(|endpoint| endpoint.url.clone())
+        .unwrap_or_default();
 
     view! {
         <section
@@ -131,12 +158,20 @@ pub fn ServerPreviewPanel(
             // from the response to the form above, and a frame created only after a re-render is
             // a frame the response has nothing to fill. `hidden` is how the empty state is shown,
             // so the two are one element rather than a branch that can disagree with the script.
+            // A document the host serves has its own response and its own policy, so the frame
+            // loads it by `src`. Without such a route the frame carries the composed document in
+            // `srcdoc` and inherits this policy.
             <iframe
                 class="mt-3 min-h-[360px] w-full rounded-lg border border-border bg-white"
                 title="Server-rendered page preview"
                 sandbox=""
                 hidden=!preview_rendered
-                srcdoc=preview_srcdoc.clone()
+                src=preview_endpoint.as_ref().map(|_| preview_src.clone())
+                srcdoc=if preview_endpoint.is_some() {
+                    String::new()
+                } else {
+                    preview_srcdoc.clone()
+                }
                 data-page-builder-server-preview-frame="true"
             ></iframe>
             <div
@@ -192,6 +227,15 @@ mod tests {
 
     /// The panel's markup for one preview state.
     fn panel_html(csp_nonce: Option<UiCspNonce>, preview: Option<String>) -> String {
+        panel_html_with_endpoint(csp_nonce, preview, None)
+    }
+
+    /// The same markup, with the host's preview address configured or absent.
+    fn panel_html_with_endpoint(
+        csp_nonce: Option<UiCspNonce>,
+        preview: Option<String>,
+        preview_endpoint: Option<&str>,
+    ) -> String {
         let owner = Owner::new();
         owner.with(|| {
             if let Some(nonce) = csp_nonce {
@@ -215,7 +259,14 @@ mod tests {
             .expect("preview controller");
             let runtime = AdminEditorRuntime::new(controller, None, None, "", "");
             runtime.server_preview_html.set(preview);
-            view! { <ServerPreviewPanel runtime=runtime provider_status=None /> }.to_html()
+            view! {
+                <ServerPreviewPanel
+                    runtime=runtime
+                    provider_status=None
+                    preview_endpoint=preview_endpoint.map(str::to_string)
+                />
+            }
+            .to_html()
         })
     }
 
@@ -256,6 +307,38 @@ mod tests {
 
         let html = panel_html(None, Some(preview_document()));
         assert_eq!(rendered_srcdoc(&html), preview_document());
+    }
+
+    #[test]
+    fn a_host_that_serves_a_preview_is_loaded_by_address_not_by_inheritance() {
+        // The point of the route: the frame is the page's own document under the page's own
+        // policy, not markup inherited from this console. Both the address and the emptiness of
+        // `srcdoc` are the guarantee — a frame with both would run whichever the browser prefers,
+        // and which one that is would decide whether the preview is faithful.
+        let nonce = UiCspNonce::new("0f3a9c").expect("nonce");
+        let html = panel_html_with_endpoint(
+            Some(nonce),
+            Some(preview_document()),
+            Some("/api/admin/pages/home/preview?draft=abc-123"),
+        );
+
+        assert!(
+            html.contains("src=\"/api/admin/pages/home/preview?draft=abc-123\""),
+            "the frame does not load the host's document: {html}"
+        );
+        assert_eq!(rendered_srcdoc(&html), "", "{html}");
+        assert!(!html.contains(" nonce=\"0f3a9c\""), "the document is not embedded: {html}");
+        // A frame that is not shown is not a frame that has not been asked for: the document is
+        // there as soon as a preview exists.
+        assert!(!is_hidden(&html, "data-page-builder-server-preview-frame"), "{html}");
+    }
+
+    #[test]
+    fn a_host_without_a_preview_route_still_embeds_the_document() {
+        let nonce = UiCspNonce::new("0f3a9c").expect("nonce");
+        let html = panel_html(Some(nonce), Some(preview_document()));
+        assert!(!html.contains(" src="), "{html}");
+        assert!(rendered_srcdoc(&html).contains("<style nonce=\"0f3a9c\">"), "{html}");
     }
 
     #[test]

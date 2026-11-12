@@ -1180,6 +1180,18 @@ fn PagesFlyBuilder(
         Ok(controller) => {
             let page_id = page.id.clone();
             let browser_endpoint = format!("/api/admin/pages/{page_id}/builder/intents");
+            // The preview is served by the host as its own document, so its policy is the policy
+            // of the page rather than the policy of this console. The address names the session
+            // the editor is showing, so a preview of an edited draft is a preview of that draft.
+            // The token is the one the route already put in the address: it is the editor's own
+            // session, and the route refuses it unless its owner is the verified caller.
+            // A draft token is `[A-Za-z0-9_-]` by construction (`SsrDraftSessionStore` refuses
+            // anything else), so it needs no escaping to travel in the address, and the route
+            // hands it back to the same owner-checked load the editor used.
+            let preview_endpoint = match draft_token.as_deref() {
+                Some(token) => format!("/api/admin/pages/{page_id}/preview?draft={token}"),
+                None => format!("/api/admin/pages/{page_id}/preview"),
+            };
             let snapshot_default_locale = default_locale.clone();
             let facade_token = token;
             let facade_tenant = tenant;
@@ -1281,6 +1293,7 @@ fn PagesFlyBuilder(
                 .with_runtime_context(runtime_context)
                 .with_runtime_scenarios(scenarios)
                 .with_browser_intent_endpoint(browser_endpoint)
+                .with_preview_endpoint(preview_endpoint)
                 .on_runtime_scenario_baseline(on_baseline);
             // Derive from the session id, not the access token: the id is stable across
             // refresh rotation, so the embedded CSRF token stays valid for the session. The

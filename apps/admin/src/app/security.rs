@@ -11,6 +11,12 @@ const API_CSP: &str =
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 const RICHTEXT_FRAME_CSP: &str = "default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 const ADMIN_UI_CSP_TEMPLATE: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' {nonce}; script-src-attr 'none'; style-src 'self' {nonce}; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src {connect_sources}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+/// The document a Page Builder preview serves. The route inside `rustok-pages-admin` derives the
+/// `style-src` hash from the stylesheet the document carries and already emits the policy; this
+/// one is for the failure responses that route answers with, which carry no document and must not
+/// fall back to the API policy — that would serve a blank frame under a policy nobody can read.
+const PAGE_PREVIEW_CSP: &str =
+    "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'";
 const SECURE_CONNECT_SOURCES: &str = "'self' https: wss:";
 const DEVELOPMENT_CONNECT_SOURCES: &str = "'self' https: ws: wss:";
 const HSTS: &str = "max-age=31536000; includeSubDomains";
@@ -41,11 +47,13 @@ pub async fn admin_security_headers(mut request: Request, next: Next) -> Respons
     );
     headers.insert(
         "x-frame-options",
-        HeaderValue::from_static(if is_richtext_frame_surface(&path) {
-            "SAMEORIGIN"
-        } else {
-            "DENY"
-        }),
+        HeaderValue::from_static(
+            if is_richtext_frame_surface(&path) || is_page_preview_surface(&path) {
+                "SAMEORIGIN"
+            } else {
+                "DENY"
+            },
+        ),
     );
     headers.insert("x-xss-protection", HeaderValue::from_static("0"));
     headers.insert(
@@ -68,6 +76,12 @@ pub async fn admin_security_headers(mut request: Request, next: Next) -> Respons
             "cache-control",
             HeaderValue::from_static(richtext_cache_control(path.as_str())),
         );
+    }
+    if is_page_preview_surface(&path) {
+        // The body is the caller's working copy. A proxy must not hand it to another caller, and
+        // the answer differs per caller, so it is derived from the request rather than the path.
+        headers.insert("cache-control", HeaderValue::from_static("no-store"));
+        headers.insert("vary", HeaderValue::from_static("Cookie, Authorization"));
     }
     if hsts_enabled() {
         headers.insert("strict-transport-security", HeaderValue::from_static(HSTS));
@@ -96,6 +110,15 @@ fn is_api_surface(path: &str) -> bool {
     path.starts_with("/api/")
 }
 
+/// A Page Builder preview is read in a frame of this host, under the page's policy rather than the
+/// console's, so it is the other surface that is not always `DENY`.
+fn is_page_preview_surface(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("/api/admin/pages/") else {
+        return false;
+    };
+    rest.ends_with("/preview")
+}
+
 fn is_richtext_frame_surface(path: &str) -> bool {
     path == "/richtext/frame" || path.starts_with("/richtext/frame/")
 }
@@ -112,7 +135,9 @@ fn richtext_cache_control(path: &str) -> &'static str {
 }
 
 fn select_csp(path: &str, csp_nonce: Option<&CspNonce>, allow_plaintext_websocket: bool) -> String {
-    if is_richtext_frame_surface(path) {
+    if is_page_preview_surface(path) {
+        return PAGE_PREVIEW_CSP.to_string();
+    } else if is_richtext_frame_surface(path) {
         return RICHTEXT_FRAME_CSP.to_string();
     } else if is_api_surface(path) {
         return API_CSP.to_string();
@@ -224,6 +249,29 @@ mod tests {
     #[test]
     fn standalone_admin_api_policy_is_scriptless() {
         assert_eq!(select_csp("/api/admin/pages", None, false), API_CSP);
+    }
+
+    #[test]
+    fn page_preview_is_framed_by_its_own_host_and_nothing_else() {
+        let policy = select_csp("/api/admin/pages/page-1/preview", None, false);
+        assert!(policy.contains("frame-ancestors 'self'"), "{policy}");
+        assert!(!policy.contains("frame-ancestors 'none'"), "{policy}");
+        // The route itself emits the document policy; this one must not blank it if it leaks
+        // through, so it names no script and no style rather than inheriting the console's.
+        assert!(!policy.contains("script-src"), "{policy}");
+        assert!(!policy.contains("style-src"), "{policy}");
+    }
+
+    #[test]
+    fn a_preview_is_not_the_api_surface_that_shares_its_prefix() {
+        for path in [
+            "/api/admin/pages",
+            "/api/admin/pages/page-1",
+            "/api/admin/pages/page-1/builder/intents",
+            "/api/admin/pages/page-1/preview/extra",
+        ] {
+            assert_eq!(select_csp(path, None, false), API_CSP, "{path}");
+        }
     }
 
     #[test]

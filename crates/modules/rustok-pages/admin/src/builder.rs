@@ -194,6 +194,17 @@ async fn pages_page_builder_capability(
     }
 }
 
+/// The preview capability of this consumer, for a caller that has already resolved the principal.
+///
+/// The intent endpoint and the host preview route both reach the same render through this, so a
+/// preview they answer cannot differ in policy, rollout gating or authorization.
+pub(crate) async fn execute_preview_capability(
+    snapshot: PagesBuilderSaveSnapshot,
+    input: PreviewPageBuilderInput,
+) -> Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError> {
+    execute_preview(snapshot, input).await
+}
+
 async fn execute_preview(
     snapshot: PagesBuilderSaveSnapshot,
     input: PreviewPageBuilderInput,

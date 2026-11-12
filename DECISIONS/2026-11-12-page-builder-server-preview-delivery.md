@@ -1,8 +1,8 @@
 # Page Builder server preview delivery
 
 - Date: 2026-11-12
-- Decision status: Proposed
-- Implementation status: In progress
+- Decision status: Accepted
+- Implementation status: Implemented
 - Owners: `rustok-page-builder` (admin), `rustok-pages` (admin), `fly-leptos`, `apps/admin`, `apps/server`
 - Extends: [Fly SSR control contract and route-carried view state](./2026-11-11-fly-ssr-control-contract-and-route-view-state.md), [Fly SSR-first browser runtime](./2026-07-16-fly-ssr-first-browser-runtime.md)
 - Supersedes: None
@@ -80,6 +80,37 @@ second policy vocabulary.
    cannot work: it renders the reason. `LocalResource` under `leptos/ssr` is not a supported way to
    load editor state, and a shell that omits `HydrationScripts` must not mount a view whose
    controls depend on a browser script.
+
+The `on:click` hydrated path and the SSR intent form are unchanged by this ADR: what is delivered
+is the preview document route, the panel branch that loads it, and the host surface class that lets
+the frame open. A host with no such route keeps the `srcdoc` shape.
+
+## The delivered route
+
+`GET /api/admin/pages/{page_id}/preview` in `apps/admin`, one handler in `main.rs`:
+
+- **Who is asking.** The host verifies the request once, in `verify_auth_snapshot`, by exchanging
+  the `HttpOnly` refresh cookie server-to-server. The handler reads that snapshot; it does not
+  re-exchange, and it does not accept a token from the query. A preview therefore needs no header
+  the browser would have to set on the frame, which is why `SameSite=Lax` + `HttpOnly` is the whole
+  of its protection for this read.
+- **What is previewed.** The `draft` query parameter names the draft session the editor is already
+  showing; without it the saved page is previewed. The token is `[A-Za-z0-9_-]` by construction
+  (`SsrDraftSessionStore::validate_token`), so it needs no escaping to travel in an address.
+- **Who owns it.** The session is loaded with `DraftSessionOwner { tenant_id, user_id }` taken from
+  the verified snapshot, so the token alone reads nothing, and a mismatch is `403` rather than a
+  silent fallback to the saved page.
+- **What it answers.** The document is composed by `rustok_pages_admin::render_server_preview` and
+  served by `pages_server_preview_response`, under the artifact policy derived from the stylesheet
+  the document carries. A document that does not carry the envelope is refused
+  (`PreviewError::MissingEnvelope`) rather than policied from a guess.
+
+The middleware in `apps/admin/src/app/security.rs` classifies this path as a frame surface:
+`frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN`, `cache-control: no-store`, and a
+fallback policy that names no script and no style. Without that classification the middleware
+would overwrite the route's policy with `API_CSP` (no `style-src`, so the document renders blank)
+and set `X-Frame-Options: DENY` (so the frame never opens) — the route would be dead on arrival
+while every unit test of the route itself still passed.
 
 ## Sources of truth and ownership
 

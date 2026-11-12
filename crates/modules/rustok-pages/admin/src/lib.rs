@@ -24,6 +24,7 @@ mod i18n;
 #[cfg(feature = "inline-edit-launch")]
 mod inline_edit_launch;
 mod metadata_properties;
+mod preview;
 mod model;
 mod rollback_control;
 mod standalone_metadata;
@@ -53,6 +54,12 @@ pub use browser_intent::{
 };
 pub use browser_problem::PagesBrowserIntentProblem;
 pub use builder::PagesBuilderSaveSnapshot;
+pub use preview::{PagesServerPreview, pages_server_preview_store};
+#[cfg(feature = "ssr")]
+pub use preview::{
+    PREVIEW_FRAME_ANCESTORS, PreviewError, pages_server_preview_policy,
+    pages_server_preview_response, render_server_preview,
+};
 pub use builder_rollout_settings::{
     PagesBuilderRolloutSnapshot, PagesBuilderRolloutSnapshotError,
     fetch_pages_builder_rollout_snapshot, pages_editor_capabilities_for_rollout,
