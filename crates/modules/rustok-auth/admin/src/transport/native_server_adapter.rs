@@ -55,7 +55,7 @@ fn require_auth_admin_tenant_scope(
     auth_tenant_id: Uuid,
     resolved_tenant_id: Uuid,
 ) -> Result<(), ServerFnError> {
-    if auth_tenant_id == resolved_tenant_id {
+    if !auth_tenant_id.is_nil() && auth_tenant_id == resolved_tenant_id {
         return Ok(());
     }
 
@@ -361,6 +361,9 @@ pub async fn user_details_native(id: String) -> Result<GraphqlUserResponse, Serv
 
         let user_id =
             Uuid::parse_str(&id).map_err(|err| server_error(format!("invalid user id: {err}")))?;
+        if user_id.is_nil() {
+            return Err(server_error("user id must not be nil"));
+        }
         let app_ctx = AuthAdminRuntime::from_host(expect_context::<HostRuntimeContext>());
 
         let statement = match app_ctx.db.get_database_backend() {
@@ -593,6 +596,9 @@ pub async fn update_user_native(
     #[cfg(feature = "ssr")]
     {
         let id = Uuid::parse_str(&id).map_err(|error| server_error(error.to_string()))?;
+        if id.is_nil() {
+            return Err(server_error("user id must not be nil"));
+        }
         let (context, runtime) = user_mutation_context().await?;
         runtime
             .port()
@@ -627,6 +633,9 @@ pub async fn delete_user_native(id: String) -> Result<bool, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         let id = Uuid::parse_str(&id).map_err(|error| server_error(error.to_string()))?;
+        if id.is_nil() {
+            return Err(server_error("user id must not be nil"));
+        }
         let (context, runtime) = user_mutation_context().await?;
         runtime
             .port()
@@ -688,6 +697,9 @@ pub async fn revoke_user_invite_native(
     #[cfg(feature = "ssr")]
     {
         let id = Uuid::parse_str(&id).map_err(|error| server_error(error.to_string()))?;
+        if id.is_nil() {
+            return Err(server_error("invite id must not be nil"));
+        }
         let (context, runtime) = user_mutation_context().await?;
         runtime
             .port()
@@ -1009,6 +1021,9 @@ pub async fn update_oauth_app_native(
 ) -> Result<OAuthApp, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        if id.is_nil() {
+            return Err(server_error("oauth app id must not be nil"));
+        }
         let (context, runtime) = oauth_mutation_context().await?;
         let result = runtime
             .port()
@@ -1044,6 +1059,9 @@ pub async fn rotate_oauth_app_secret_native(
 ) -> Result<super::CreateOAuthAppResult, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        if id.is_nil() {
+            return Err(server_error("oauth app id must not be nil"));
+        }
         let (context, runtime) = oauth_mutation_context().await?;
         let result = runtime
             .port()
@@ -1068,6 +1086,9 @@ pub async fn rotate_oauth_app_secret_native(
 pub async fn revoke_oauth_app_native(id: uuid::Uuid) -> Result<uuid::Uuid, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
+        if id.is_nil() {
+            return Err(server_error("oauth app id must not be nil"));
+        }
         let (context, runtime) = oauth_mutation_context().await?;
         runtime
             .port()
@@ -1097,6 +1118,7 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         assert!(require_auth_admin_tenant_scope(tenant_id, tenant_id).is_ok());
         assert!(require_auth_admin_tenant_scope(tenant_id, Uuid::new_v4()).is_err());
+        assert!(require_auth_admin_tenant_scope(Uuid::nil(), Uuid::nil()).is_err());
     }
 
     #[test]
