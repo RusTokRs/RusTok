@@ -1055,4 +1055,3 @@ fn decode_visibility_bulk_read_cursor(
 fn invalid_visibility_bulk_read_cursor() -> ForumError {
     ForumError::Validation("Invalid forum visibility-scoped bulk read cursor".to_string())
 }
-

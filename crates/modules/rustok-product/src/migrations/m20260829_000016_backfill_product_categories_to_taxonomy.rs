@@ -1,7 +1,5 @@
 use chrono::{DateTime, FixedOffset};
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, FromQueryResult, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement, TransactionTrait};
 use sea_orm_migration::prelude::*;
 use uuid::Uuid;
 
@@ -280,13 +278,14 @@ async fn ensure_category_translations_and_routes(
                 )));
             }
             None => {
-                let id_owner = TaxonomyTermOwnerRow::find_by_statement(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "SELECT term_id FROM taxonomy_term_translations WHERE id = $1",
-                    vec![translation.id.into()],
-                ))
-                .one(txn)
-                .await?;
+                let id_owner =
+                    TaxonomyTermOwnerRow::find_by_statement(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        "SELECT term_id FROM taxonomy_term_translations WHERE id = $1",
+                        vec![translation.id.into()],
+                    ))
+                    .one(txn)
+                    .await?;
 
                 if let Some(id_owner) = id_owner {
                     return Err(DbErr::Migration(format!(
@@ -401,11 +400,7 @@ async fn ensure_translation_change(
               AND operation = 'upsert'
               AND lifecycle = 'active'
         "#,
-        vec![
-            category.tenant_id.into(),
-            category.id.into(),
-            locale.into(),
-        ],
+        vec![category.tenant_id.into(), category.id.into(), locale.into()],
     ))
     .one(txn)
     .await?

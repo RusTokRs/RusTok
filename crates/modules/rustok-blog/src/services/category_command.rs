@@ -89,10 +89,6 @@ impl CategoryCommandService {
                 None,
             )
             .await?;
-            None,
-        )
-        .await
-        .map_err(BlogError::from)?;
         if canonical_terms.len() != blog_ids.len() {
             return Err(BlogError::invariant(
                 "Blog category Taxonomy ownership coverage is incomplete during move",
@@ -286,13 +282,8 @@ async fn persist_sibling_order(
     ordered_ids: &[Uuid],
     touched: &mut HashSet<Uuid>,
 ) -> BlogResult<Vec<CategoryPlacementResponse>> {
-    port.reorder_category_siblings_in_tx(
-        txn,
-        tenant_id,
-        parent_id,
-        ordered_ids,
-    )
-    .await?;
+    port.reorder_category_siblings_in_tx(txn, tenant_id, parent_id, ordered_ids)
+        .await?;
 
     let mut placements = Vec::with_capacity(ordered_ids.len());
     for (position, category_id) in ordered_ids.iter().copied().enumerate() {

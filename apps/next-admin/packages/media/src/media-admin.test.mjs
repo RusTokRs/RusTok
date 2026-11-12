@@ -50,10 +50,9 @@ const cleanNavSource = stripTypeScriptTypes(
     .replaceAll('export ', '')
 );
 const navModule = {};
-compileFunction(
-  `${cleanNavSource}\nnavModule.mediaNavItems = mediaNavItems;`,
-  ['navModule']
-)(navModule);
+compileFunction(`${cleanNavSource}\nnavModule.mediaNavItems = mediaNavItems;`, [
+  'navModule'
+])(navModule);
 const { mediaNavItems } = navModule;
 
 test('mediaNavItems specifies correct dashboard route and plugin group', () => {
@@ -80,12 +79,24 @@ test('formatBytes handles boundary conditions and units', () => {
 
 test('GraphQL documents expose required schema queries and mutations', () => {
   const api = createApiModule(async () => ({}));
-  assert.match(api.MEDIA_LIST_QUERY, /query MediaList\(\$tenantId: UUID!, \$pagination: PaginationInput!\)/);
-  assert.match(api.MEDIA_LIST_QUERY, /media\(tenantId: \$tenantId, pagination: \$pagination\)/);
+  assert.match(
+    api.MEDIA_LIST_QUERY,
+    /query MediaList\(\$tenantId: UUID!, \$pagination: PaginationInput!\)/
+  );
+  assert.match(
+    api.MEDIA_LIST_QUERY,
+    /media\(tenantId: \$tenantId, pagination: \$pagination\)/
+  );
   assert.match(api.MEDIA_USAGE_QUERY, /query MediaUsage\(\$tenantId: UUID!\)/);
   assert.match(api.MEDIA_USAGE_QUERY, /mediaUsage\(tenantId: \$tenantId\)/);
-  assert.match(api.DELETE_MEDIA_MUTATION, /mutation DeleteMedia\(\$tenantId: UUID!, \$id: UUID!\)/);
-  assert.match(api.DELETE_MEDIA_MUTATION, /deleteMedia\(tenantId: \$tenantId, id: \$id\)/);
+  assert.match(
+    api.DELETE_MEDIA_MUTATION,
+    /mutation DeleteMedia\(\$tenantId: UUID!, \$id: UUID!\)/
+  );
+  assert.match(
+    api.DELETE_MEDIA_MUTATION,
+    /deleteMedia\(tenantId: \$tenantId, id: \$id\)/
+  );
 });
 
 test('listMedia enforces tenant context and clamps pagination bounds', async () => {
@@ -129,7 +140,11 @@ test('listMedia enforces tenant context and clamps pagination bounds', async () 
 
   // Normal call
   const result = await api.listMedia(
-    { tenantId: '00000000-0000-0000-0000-000000000001', token: 'jwt-123', tenantSlug: 'demo' },
+    {
+      tenantId: '00000000-0000-0000-0000-000000000001',
+      token: 'jwt-123',
+      tenantSlug: 'demo'
+    },
     { page: 2, perPage: 10 }
   );
 

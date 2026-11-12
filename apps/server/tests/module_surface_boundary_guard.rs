@@ -948,8 +948,9 @@ fn ai_graphql_surface_is_owned_by_ai_crate() {
         "rustok-ai GraphQL must depend on owner/shared contracts: {offenders:?}"
     );
 
-    let manifest = std::fs::read_to_string(repo.join("crates/modules/rustok-ai/rustok-module.toml"))
-        .expect("AI package manifest should read");
+    let manifest =
+        std::fs::read_to_string(repo.join("crates/modules/rustok-ai/rustok-module.toml"))
+            .expect("AI package manifest should read");
     for contribution in [
         "graphql::AiQuery",
         "graphql::AiMutation",

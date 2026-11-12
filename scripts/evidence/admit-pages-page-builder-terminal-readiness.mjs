@@ -222,18 +222,41 @@ function sameArray(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+// The registry is a formatted Markdown table: a required row is compared cell by cell, so
+// column padding can neither break nor satisfy the precondition.
+function tableCells(row) {
+  return row
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function registryHasRow(registry, requiredRow) {
+  if (typeof requiredRow !== "string") return false;
+  const expected = tableCells(requiredRow);
+  // slug, UI surfaces, FFA status, FBA status, structural shape
+  if (expected.length !== 5 || expected.some((cell) => cell.length === 0)) return false;
+  return registry
+    .split("\n")
+    .filter((line) => line.trimStart().startsWith("|"))
+    .map(tableCells)
+    .some((cells) => expected.every((cell, index) => cells[index] === cell));
+}
+
 function validateRegistry(contract) {
   const precondition = objectValue(contract.registry_precondition, "registry_precondition");
   const registryRecord = repoFile(precondition.path, "module readiness registry");
   const registry = registryRecord.bytes.toString("utf8");
-  for (const [key, value] of [
-    ["pages_row_required", precondition.pages_row_required],
-    ["page_builder_row_required", precondition.page_builder_row_required],
-    ["source_of_truth_rule_required", precondition.source_of_truth_rule_required],
-  ]) {
-    if (typeof value !== "string" || !registry.includes(value)) {
+  for (const key of ["pages_row_required", "page_builder_row_required"]) {
+    if (!registryHasRow(registry, precondition[key])) {
       fail(`registry precondition ${key} no longer matches current source`);
     }
+  }
+  const sourceOfTruthRule = precondition.source_of_truth_rule_required;
+  if (typeof sourceOfTruthRule !== "string" || !registry.includes(sourceOfTruthRule)) {
+    fail("registry precondition source_of_truth_rule_required no longer matches current source");
   }
   const evidenceRule =
     "If status = `parity_verified` or `transport_verified`, the PR must contain verification evidence.";

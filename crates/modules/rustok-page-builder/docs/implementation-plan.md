@@ -312,9 +312,9 @@ and decision packets, not another production-consumer or provider-health archite
   source. The default-runtime lifecycle is removed and source-level cache invalidation/read boundaries
   are connected; executed Pages gate/sanitizer/rollback/repair/cache proof, accepted observed-health
   evidence, Forum runtime evidence/admission execution, observed Wave and rollout evidence remain open.
-- FFA status: `not_started`
+- FFA status: `in_progress`
 - FBA status: `boundary_ready`
-- Structural shape: `no_ui_boundary`
+- Structural shape: `core_transport_ui`
 - **Evidence:**
   - `admin/src/provider_status.rs`;
   - `admin/src/transport/mod.rs`;
@@ -322,16 +322,16 @@ and decision packets, not another production-consumer or provider-health archite
   - `admin/src/editor/server_preview.rs`;
   - `admin/src/editor/modular_canvas.rs`;
   - `admin/src/editor/consumer_properties.rs`;
-  - `admin/src/editor/asset_section.rs`;
-  - `admin/src/editor/style_section.rs`;
-  - `admin/src/editor/properties_section.rs`;
-  - `admin/src/editor/responsive_styles.rs`;
+  - `admin/src/editor/adapter_workspace.rs`;
+  - `admin/src/editor/toolbar.rs`;
   - `admin/src/editor/trait_panel.rs`;
-  - `admin/src/editor/page_manager.rs`;
-  - `admin/src/editor/palette_layers.rs`;
+  - `admin/src/ui/leptos.rs`;
+  - `admin/src/ui/browser_adapter.rs`;
+  - `admin/src/core/mod.rs`;
+  - `crates/ui/fly/leptos/src/editor.rs`;
+  - `crates/ui/fly/browser/assets/fly-browser.js`;
+  - `scripts/verify/verify-fly-ssr-control-contract.mjs`;
   - `scripts/verify/verify-page-builder-admin-accessibility.mjs`;
-  - `docs/modules/page-builder-admin-accessibility-actualization-2026-08-10.md`;
-  - `docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md`;
   - `contracts/page-builder-consumer-properties.json`;
   - `src/publish_runtime.rs`;
   - `src/static_publish_policy.rs`;

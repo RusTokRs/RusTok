@@ -2,6 +2,7 @@ use super::*;
 use crate::auth::{AuthConfig, encode_access_token, encode_oauth_access_token};
 use crate::common::settings::ForwardedHeadersMode;
 use axum::body::Body;
+use axum::http::HeaderValue;
 use rustok_core::UserRole;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use uuid::Uuid;

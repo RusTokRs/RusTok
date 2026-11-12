@@ -6,8 +6,7 @@
   "source_packet": {
     "historical_source_contract": "crates/modules/rustok-pages/contracts/evidence/pages-artifact-repair-rollback-continuity-source.json",
     "source_verifier": "crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-repair-rollback-continuity.mjs",
-    "postgres_test": "crates/modules/rustok-pages/tests/artifact_repair_rollback_continuity_postgres.rs",
-    "source_actualization": "docs/modules/pages-page-builder-repair-rollback-continuity-actualization-2026-08-07.md"
+    "postgres_test": "crates/modules/rustok-pages/tests/artifact_repair_rollback_continuity_postgres.rs"
   },
   "execution": {
     "postgres_version": "16",

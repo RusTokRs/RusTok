@@ -1488,7 +1488,10 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.kind, PortErrorKind::Unavailable);
         assert_eq!(error.code, "inventory.database_unavailable");
-        assert_eq!(error.message, "the requested capability is temporarily unavailable");
+        assert_eq!(
+            error.message,
+            "the requested capability is temporarily unavailable"
+        );
     }
 
     #[test]

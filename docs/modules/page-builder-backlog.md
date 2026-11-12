@@ -279,20 +279,272 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
       reviewer role is wanted. Until then such a principal sees the page record and
       "Document not available" in the Leptos admin (`documentReadable: false`). Owner:
       `rustok-pages`, `rustok-pages-admin`, `rustok-page-builder` (preflight mapping contract).
-    - The evidence packet `contracts/evidence/pages-artifact-http-cache-source.json` (dated
-      2026-08-04) describes the artifact endpoint before its cache entry followed every page
-      event. It is left as the record of that change: its verifier
-      `crates/modules/rustok-pages/scripts/verify/verify-pages-artifact-http-cache.mjs` does
-      not parse (`SyntaxError`), was committed that way, and history holds no complete copy,
-      so what the verifier pins in the packet is unknown. Restore the verifier from its
-      author's copy, then re-issue the packet with the second harness test
-      (`artifact_http_entry_does_not_outlive_a_page_update`). Owner: `rustok-pages`.
-    - 75 `verify-*.mjs` scripts do not parse (same set on `357a961`), among them eight of the
-      nine that the step "Verify cache-consumer source boundaries" of
-      `.github/workflows/pages-cache-consumer-exact-main-evidence.yml` runs under
-      `set -euo pipefail`; the ninth, `verify-pages-cache-invalidation.mjs`, fails on a missing
-      `fn register_event_listeners(`. That step cannot pass as committed. Owner: `rustok-pages`,
-      repository tooling.
+    - Source verifiers of Pages, Page Builder and Fly: repaired on 2026-11-11, the rest listed
+      here. Earlier text of this item said that 75 `verify-*.mjs` scripts do not parse and that
+      history holds no complete copy of `verify-pages-artifact-http-cache.mjs`; both were
+      symptoms of one commit and the second statement was wrong. Causes found:
+      - `111d6dd4bf` (2026-11-04) deleted 103 dated documents and removed the code that read
+        them from 85 verifiers by text; 75 stopped parsing. Every one has a parsable copy in
+        the parent `0be5f1fd`. All 85 were rebuilt from that copy with only the statements
+        that read a deleted document removed.
+      - `0caf312a4b358285ed3b79c3a2f8279af93d8976` (2026-11-05, DAR-04) removed
+        `docs/modules/page-builder-implementation-plan.md`,
+        `pages-page-builder-parity-continuation-plan.md` and
+        `pages-page-builder-inline-edit-execution-plan.md` while verifiers and contracts still
+        read them. `docs/standards/docs-governance-ledger.md` records them as archived to
+        `docs/archive/plans/`; that directory does not exist.
+      - `b0a4c97c93` (2026-10-22) moved the Pages `RusToKModule` implementation from
+        `src/lib.rs` to `src/module.rs`; three verifiers kept reading `lib.rs`.
+      - The published-landing series changed sources that seven verifiers and
+        `page-builder-service-boundary.json` pin (configured composition entrypoint,
+        `published_landing`, the artifact owner split into `public_landing_locale_candidates_in_tx`
+        and `find_landing_binding_in_tx`, the reviewed-publish gate, the audit scan).
+      - Markers written with double quotes against Prettier-formatted Next sources (single
+        quotes), a repository root computed one directory short in two verifiers, a struct
+        check that read to the end of the file, and exact-text comparison of a padded
+        Markdown table row.
+      State after the repair, measured on 176 scripts (all of
+      `crates/modules/rustok-{pages,page-builder}/scripts/verify`, the `page-builder|pages|fly`
+      scripts of `scripts/verify`, and their `scripts/evidence/*.test.mjs`): 137 pass, 39 fail;
+      at `c6629e7` 73 passed, at `0be5f1fd` 121. After the three entries below were closed the
+      same set plus `verify-fly-ssr-control-contract.mjs` (177 scripts) gives 144 pass, 33 fail.
+      No script that passed at either commit fails now. All `node` verifier steps of `fly-page-builder.yml`,
+      `pages-cache-consumer-exact-main-evidence.yml`, `pages-page-builder-parity.yml` and
+      `pages-consumer-properties-source-evidence.yml` exit 0 locally; in
+      `pages-page-builder-provider-health.yml` one fails (next entry). Not run: the Rust steps
+      of these workflows (no toolchain in the repair environment). Open:
+      - The 33 failing scripts failed before 2026-11-04 as well and no workflow runs them.
+        29 pin Pages storefront, artifact, inline-edit and rollout sources; 4 pin Forum
+        Page Builder evidence sources (one of them stops on an undefined `packetPath`, one on a
+        deleted `topic_widget_preview.rs`). Each needs the same reading as the repaired ones:
+        is the pinned source gone, or only its wording. Owner: `rustok-pages`, `rustok-forum`,
+        repository tooling.
+      - Six workflows still name deleted documents in their `paths:` filters
+        (`fly-page-builder.yml`, `pages-page-builder-parity.yml`,
+        `pages-page-builder-provider-health.yml`,
+        `pages-artifact-repair-rollback-continuity-postgres-evidence.yml`,
+        `pages-rollback-activated-repair-rollback-continuity-postgres-evidence.yml`,
+        `pages-consumer-properties-source-evidence.yml`). The entries are inert. Owner:
+        repository tooling.
+      - `pages-artifact-http-cache-source.json` (dated 2026-08-04) still describes the
+        artifact endpoint before its cache entry followed every page event. Re-issue it with
+        the second harness test (`artifact_http_entry_does_not_outlive_a_page_update`).
+        Owner: `rustok-pages`.
+    - The classic SSR control contract: closed on 2026-11-11, with the open parts listed here.
+      Decision: `DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`.
+      `2661a270ed` (2026-10-14) replaced the admin panels with the `fly-leptos` workspace,
+      whose palette emitted `data-fly-block` with an `on:click` handler, while
+      `fly-browser.js` binds `[data-fly-block-id]`, `data-fly-action="insert-block"`,
+      `"begin-block-drag"` and `"select-component"`. In the default `ssr + browser-js` runtime
+      the palette and the layer tree did nothing, and the adapter tests passed against
+      hand-written markup. Now `FlyPalette` and `FlyLayerTree` emit the attributes the adapter
+      binds, in `fly-leptos` and `fly-dioxus`; the drag control renders only in intent mode;
+      the adapter does not offer a drag on `data-fly-can-drag="false"`. The viewport switch
+      (`data-fly-action="set-viewport"`)
+      had no adapter case and no server intent; it is route view state now (`?fly_viewport=`,
+      resolved by `route_viewport` before render), which also makes it work for a read-only
+      caller. `scripts/verify/verify-fly-ssr-control-contract.mjs` derives the contract from
+      the adapter and compares it with the views in both directions; it runs through
+      `verify-fly-ssr-first.mjs`. Browser side:
+      `apps/next-admin/tests/e2e/fly-browser-ssr-controls.spec.ts` (10 tests against the
+      shipped adapter). Server side: render tests in `crates/ui/fly/leptos/src/editor.rs` and
+      `crates/modules/rustok-page-builder/admin/src/ssr_control_contract_tests.rs`. The Forum
+      harness and contract follow the new sources. Open:
+      - The Rust of this change was not compiled or run: the repair environment has no
+        toolchain. First CI run decides. Owner: `fly-leptos`, Page Builder admin.
+      - `fly-page-builder.yml` runs `cargo check -p fly-leptos --all-targets` and never
+        `cargo test -p fly-leptos`, so the `fly-leptos` render tests are compiled and not
+        executed in CI. `scripts/fly-check.sh` runs them now. The workflow needs the same step.
+        Owner: repository tooling.
+      - `FlyEditorWorkspace` still emits intents only from Leptos handlers for page tabs, page
+        and component properties, style rules, assets and theme tokens. In the default runtime
+        those controls render and do nothing; the SSR panels (`ssr_*.rs`) cover part of the
+        same functions through `data-fly-intent-form`. Decide per control: give it the SSR
+        attribute, or do not render it without hydration. Owner: `fly-leptos`, Page Builder
+        admin. Since 2026-11-12 the page switch has an SSR path, the "Open page" form of the
+        SSR inspector (see the `create_page` entry below); the tabs themselves still render
+        and do nothing without hydration.
+      - The host bootstrap (`PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS` in
+        `crates/modules/rustok-page-builder/src/browser_host.rs`) is a second consumer:
+        `form[data-fly-intent-form]`, `[data-fly-component-picker]`,
+        `[data-fly-selected-component-input]`. Closed on 2026-11-11: part 6 of the contract
+        check reads it, and follows every form to the arm Rust takes for the payload that
+        form sends. Doing so found two defects, both fixed in the same change:
+        - At mount the bootstrap wrote the empty adapter selection into every selection
+          input, so every SSR form lost the `component_id` the server had rendered and posted
+          without a target; the picker did not follow a selection made elsewhere.
+          `syncSelectionControls` keeps the rendered value, applies the selection over it and
+          restores it when the selection is cleared.
+        - `create_page`, `remove_page`, `rename_page` and `patch_page_metadata` have two
+          payload shapes under one name: the typed envelopes address a page by `page_index`,
+          the forms by `page_id` alone. `dispatch_named_intent` had its own arm for each name
+          and read the envelope shape, so the four arms of `ssr_form_intent` were unreachable:
+          three forms failed on the missing `page_index`, and `create_page` ignored the id the
+          author typed. One guarded arm (`is_ssr_page_form`) now hands the form shape to the
+          resolver. Pattern: `P-SHADOWED-HANDLER`.
+
+        Browser side: `apps/next-admin/tests/e2e/fly-browser-host-bootstrap.spec.ts` (10 tests
+        against the module composed from the shipped adapter and the shipped constant; the
+        "Browser E2E" workflow runs it). Server side: `ssr_page_forms_browser_tests.rs`
+        (dispatch of the exact form fields) and three render tests in
+        `ssr_control_contract_tests.rs`. Open:
+        - DONE (2026-11-12): the envelope arm of `create_page` activated the new page and
+          the form path did not. Decision: a created page becomes the open page in every
+          shape. The typed envelope and the local mode of `fly-leptos` (`on_add_page`) already
+          did so, and an author creates a page in order to fill it. `open_created_page` in
+          `browser_intent.rs` is the one activation both `create_page` arms call.
+
+          Following the form to the browser found the larger defect behind it. In the default
+          runtime nothing changed the page at all: the page tabs act through Leptos handlers
+          only, so a page created through the form could not be opened, and with the activation
+          alone the author could not have gone back. Fixed in the same change:
+          - The SSR inspector renders an "Open page" form (`activate_page`, `page_id` alone).
+            `is_ssr_page_form` hands it to `ssr_activate_page_intent`, which resolves the id
+            against the document.
+          - The Pages endpoint answers `reload: true` when the open page changed. It compares
+            the page before and after the dispatch, so `activate_page`, which changes no
+            document and is not a mutating intent, is covered without a list of intent names.
+          - The page selects of the rename and remove forms open on the page the editor is on.
+            They used to open on the first page of the list, whichever page was shown.
+
+          Tests: `ssr_page_forms_browser_tests.rs` (both shapes land on the created page, a
+          refused create opens nothing, undo, the open form and its way back, remove and rename
+          of the open page), `ssr_control_contract_tests.rs` (the form is rendered, is absent
+          for a read-only caller, and the selects name the open page),
+          `rustok-pages/admin/src/browser_intent.rs` (`open_page` before and after an intent),
+          `fly-browser-host-bootstrap.spec.ts` (the form posts `page_id` without `page_index`;
+          an answer with `reload: true` reloads the address that carries the draft token).
+          Open:
+          - A caller without the edit capability cannot change the page in the default
+            runtime. The open page is kept in the draft session, and the Pages endpoint keeps
+            no session for such a caller, so the form is not rendered for them. The page is
+            editing state and not route view state, because commands are resolved against it
+            (`DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`, item 9).
+            Serving a reader needs a route key that the renderer applies and that every
+            envelope repeats to the endpoint, the way the selection hint is repeated. Owner:
+            Page Builder admin, `fly-browser`.
+          - `undo` of a created page removes the page and leaves the editor on the last page
+            that is left (`synchronize_page_navigation` clamps the index), not on the page the
+            author came from. The typed envelope and the local mode behave the same way. Owner:
+            Page Builder admin.
+          - The `reload` term for a page switch is computed inside
+            `dispatch_pages_browser_intent_with_store`, which fetches the page over the
+            transport and has no test. The tests pin `open_page` and the dispatch it compares.
+            Owner: Pages admin host.
+          - `PageSelect` offers a page without an id as `page-<index>`. The page forms address
+            a page by id, so the server refuses that option. Pages created by the editor always
+            carry an id; an imported document may not. Owner: Page Builder admin.
+          - The Rust of this change was not compiled or run locally. Owner: CI.
+        - CLOSED (2026-11-12), no defect: "renaming the id of the page the editor is on leaves
+          the route on the old id". The address names the Pages record, and the id of a
+          document page is no part of it. The open page is kept in the draft session by id and
+          index, and `synchronize_page_navigation` keeps the index when the id changes; after
+          the reload the host renders the session (`load_route_draft`). Tests, one per shape:
+          `rename_page_envelope_keeps_the_editor_on_the_page_whose_id_it_changes`,
+          `rename_page_form_keeps_the_editor_on_the_page_whose_id_it_changes`.
+        - DONE (2026-11-12): the bind form of `ssr_translations.rs` rendered its selection
+          input with `value=""`, while the other panels render the selection the server knows.
+          The adapter starts every document without a selection, so after the reload that
+          follows an intent (creating the translation is one) the form posted no target and was
+          refused with "translation binding requires component_id, bind_kind, and bind_name
+          together" until the author selected the component again. The form now renders the
+          selection the server holds. Without a selection it still names no component: a
+          binding has no default target. Two render tests in `ssr_control_contract_tests.rs`;
+          the Rust was not compiled here, CI decides. Owner: Page Builder admin.
+        - DONE (2026-11-12): the SSR panels are rendered outside `CapabilityFieldset`, and only
+          `ssr_assets.rs` read the capabilities, from a list of its own. A caller without the
+          capability saw enabled forms and the endpoint refused each intent with
+          `FLY_CAPABILITY_DENIED`. Each of the 24 forms now asks
+          `AdminEditorRuntime::form_enabled`, which answers from `intent_requirements` in
+          `capability_access.rs`, the function the endpoint validates with; a form whose intent
+          is refused renders inside a disabled `<fieldset>`. The component property form is
+          usable while one of its kinds is, and offers only those: an inline style needs
+          `styles`, a field or an attribute `properties`. A render test compares every form of
+          the composed admin with `validate_browser_capability_access` for six capability
+          profiles. The Rust was not compiled here, CI decides. No twin: `fly-leptos`,
+          `fly-dioxus` and the Next host render no intent form. Owner: Page Builder admin.
+        - A capability that changes while a document is open (a provider status that degrades)
+          reaches the forms with the next server render only. Owner: Page Builder admin.
+        - DONE (2026-11-12): the envelope arms of the page intents had no dispatch test of
+          their own beyond `rename_page` and `remove_page` by index.
+          `ssr_page_forms_browser_tests.rs` now dispatches the envelopes that the typed
+          constructors of `fly-browser` build (`create_page`, `remove_page`, `rename_page`,
+          `page_properties`, `patch_page_metadata`, `move_page`): the id derived from the name
+          and its next free variant, the default name, the id winning over a stale index, the
+          editor staying on a page whose id changes, identity and metadata in one command, the
+          normalized slug, the refusal without `metadata`, and the page that is active after a
+          move in each direction. Tests only; not compiled here, CI decides.
+      - Hydrated `wasm-client` builds mount the adapter too (`wasm-client` enables
+        `browser-js`, `post_intents` defaults to `true`). A toolbar button then has both
+        `data-fly-action="intent:…"` and a live `on:click`. Whether both fire, and which one
+        must own the control, is not established: the profile cannot be built here. The
+        viewport select is in the same position since it became route state: its `on:change`
+        sets the viewport locally and the adapter navigates to `?fly_viewport=`, which reloads
+        a page that hydration had already updated; editor state that only the hydrated client
+        holds does not survive that reload. Before the select became route state, a hydrated
+        build changed the viewport without a reload. Owner: Page Builder admin.
+      - DONE: the viewport select could not return to the initial 1280 × 720 frame. Its option
+        was rendered only while the frame was in effect, and the adapter ignored the empty
+        value. The toolbar now always offers the frame the editor holds without a route preset
+        under the empty value, and the adapter removes `fly_viewport` for it. The initial
+        frame did not become a preset: a preset id for it would have to be resolved against
+        whatever frame the editor holds, which is not a constant of `fly-ui`. The browser half
+        ran in Chromium; the render tests are executed by CI only.
+      - DONE: `fly-browser.js` changed its selection without `fly:select` on a `dragstart`
+        of a layer row and in the delegated `select-component` case, so the SSR forms kept
+        the earlier target. Every selection now goes through `select()`, which announces a
+        change once. The canvas `teardown` message stays silent on purpose: it is not a
+        selection, and the server-rendered forms keep the component that the server holds.
+        Part 8 of `verify-fly-ssr-control-contract.mjs`; three browser tests in
+        `fly-browser-ssr-controls.spec.ts`.
+      - The browser tests of the contract run in Chromium only
+        (`apps/next-admin/playwright.config.ts` has one project). The pointer drag sources are
+        a layer row, which is a `<button>`, and a palette item whose only content is its two
+        buttons; whether a drag that starts on a `<button>` works in Firefox and
+        WebKit was not tested. The drag control (`begin-block-drag`) and "Move selected" do
+        not depend on it. Owner: `fly-browser`, repository tooling.
+      - A code review of this change found that `data-fly-component-id` on layer rows pulled
+        the row of the selected component under the unscoped selection rule of
+        `FlyCanvasPreview`. Fixed: the rule is scoped to `.fly-canvas--interactive`, part 7
+        of the contract check rejects an unscoped one. Pattern: `P-ATTRIBUTE-REACH`.
+      - `fly-dioxus` renders the same palette and layer markup now and the contract check
+        compares the twins, but the crate has no render test of its own and no host mounts
+        it with `fly-browser.js`. Owner: `fly-dioxus`.
+      - Viewport preset labels (`Desktop 1440`, `Custom 1280 × 720`) are English literals of
+        `fly-ui`. Owner: `fly-ui`.
+    - The readiness of `page_builder`: aligned on 2026-11-11 by owner instruction. It was
+      stated three ways: the registry had `admin + storefront | in_progress | boundary_ready |
+      core_transport_ui` since `74e4a62324` (2026-10-15), the local plan said
+      `not_started` / `no_ui_boundary`, and two terminal contracts required the registry row of
+      the plan. The module has `admin/src/{core,transport,ui}` and
+      `storefront/src/{core.rs,ui.rs}` and a `dual_surface` manifest, so by the definitions in
+      `docs/modules/registry.md` the registry was right. The local plan, both terminal
+      contracts and the admission verifier now state `in_progress` / `boundary_ready` /
+      `core_transport_ui`; the plan no longer lists deleted files as evidence. Both terminal
+      verifiers now also require the local plan to state the same three values as the
+      registry row, and the two evidence runners compare the row by cells. No terminal status
+      (`parity_verified`, `transport_verified`) was claimed. Open:
+      - `verify-ffa-ui-migration-contract.mjs` no longer fails on the padded header of the
+        FFA/FBA board (compared by cells now). It still fails for billing, calendar, calls,
+        deal, finance, messenger, party and tasks: their local plans have no status block at
+        all, so the registry rows have no source to be checked against. `messenger` is listed
+        as `none` / `no_ui_boundary` while the crate has `admin/` and `storefront/`; that row
+        needs the same reading `page_builder` got. Owner: those modules, platform.
+    - `page-builder-fba-registry.json`,
+      `/provider/static_sanitization_contract/executed_evidence`: resolved on 2026-11-11.
+      `verified` is correct: `b5d5a6ebc8` (#3515, 2026-08-13) admitted it against execution
+      run 31678544586 and admission run 31687278648. The admission verifier described the
+      state before admission only. It now accepts the contract before-value or the admitted
+      value and prints the state it found; the execution verifier prints it too instead of a
+      fixed `current=pending`.
+    - `scripts/verify/verify-fly-grapesjs-roundtrip.mjs` (step of `browser-e2e.yml`) resolves
+      `grapesjs` and `grapesjs-preset-webpage` from `apps/next-admin`; `2661a270ed` removed both
+      from its `package.json`, and the step fails (latest `main` run). They are back as exact-version
+      `devDependencies` (`0.23.6`, `1.0.3`, the versions of the committed capture). The script
+      passes locally with Chromium 153. It round-trips `baseline.json` and
+      `browser-current.json` through GrapesJS; the nine numbered fixtures are declared
+      `browser_roundtrip: false` and are covered by the Rust codec tests only, so item 4 above
+      overstates "all 9 fixture documents in real GrapesJS".
     - `npm run typecheck` fails in `apps/next-frontend` (3 errors, `rustok-blog` and
       `rustok-pricing`) and in `apps/next-admin` (10 errors, `packages/blog`): the script
       regenerates `src/types/i18n.d.ts` from `messages/en.ftl`, and the result differs from the
@@ -322,12 +574,21 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
       them with `--features ssr`. Owner: `rustok-pages` storefront.
     - Decide whether a failed draft save should be retried without a document change (today
       only an explicit save or the next edit retries). Owner: `rustok-pages-admin`.
-    - `PagesFlyBuilder` (`rustok-pages/admin/src/composition.rs`) restores the draft session
-      with `.load(…).ok().flatten()`: a store error on page open (I/O, lock timeout, a record
-      that does not parse, an owner mismatch) opens the editor on the saved document, without
-      the unsaved edits and without a message or a log line. The error is reported only by
-      the first editor action, whose intent loads the same session. Show the problem on open
-      and log it (the crate has no `tracing` dependency yet). Owner: `rustok-pages-admin`.
+    - DONE (2026-11-12), message only: `PagesFlyBuilder`
+      (`rustok-pages/admin/src/composition.rs`) restored the draft session with
+      `.load(…).ok().flatten()`: a store error on page open (I/O, lock timeout, a record that
+      does not parse, an owner mismatch) opened the editor on the saved document, without the
+      unsaved edits and without a message. `load_route_draft` returns the error, and the
+      editor renders it in an alert above the workspace (`pages.builder.draftLoadError`, en
+      and ru) while it still opens the saved page. Two unit tests on an in-memory store; not
+      compiled here, CI decides. Open:
+      - The error is not logged: the crate has no `tracing` dependency, and adding one changes
+        `Cargo.lock`, which cannot be regenerated in this workspace.
+        Owner: `rustok-pages-admin`.
+      - A session that is gone, or that was started from another saved revision, still opens
+        the saved page without a message. Owner: `rustok-pages-admin`.
+      - The address keeps the draft token, so each editor action is refused with the same
+        error until the author opens the page without it. Owner: `rustok-pages-admin`.
     - The save-failure Playwright spec (`apps/next-admin/tests/e2e/fly-browser-save-failure.spec.ts`)
       drives the adapter with a stubbed intent endpoint. No test runs the Pages endpoint and
       the adapter together through a rejected save. Owner: `rustok-pages-admin`.
@@ -342,15 +603,118 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
     - Measure how long `publish_reviewed` holds the page lock now that the scenario gate and
       the compilation are attempted before the transaction, and decide whether they move to a
       blocking pool. Owner: `rustok-pages`.
-    - Run the Rust and Node suites for the series on the repository toolchain. What was
-      compiled and run so far, in an offline workspace built from Git checkouts of the
-      dependencies (rustc 1.88, a few dependency versions and feature sets differ from
-      `Cargo.lock`; exact scope in the journal): `fly`, `fly-ui`, `fly-browser`,
-      `rustok-page-builder` without `server`, and those files of the four admin/storefront
-      crates that could be built without `leptos` (listed in the journal; among them
-      `draft_session.rs` and `css_scope.rs`). Of the 64 Rust files the series touches, 48
-      were never compiled: all of the server crate `rustok-pages` (`src/**`, `tests/**`),
-      the `apps/server` test, and the remaining admin/storefront files. Owner: maintainer.
+    - Bind the platform rich-text renderer where a landing is compiled. The series removed
+      `PagesRichTextRenderer` together with the storefront branch that rendered the
+      authoring document, and it was the only implementation of `fly::RichTextHtmlRenderer`.
+      The reviewed publish compiles without a renderer (it did before the series too), so
+      rich text in a published landing is the escaped fallback projection of `fly`. Before
+      the series the native storefront read already served that landing, while the GraphQL
+      fallback read of an `ssr` build rendered the authoring document through the platform
+      renderer; on that read the visible rich text changed to the fallback projection. The
+      port, `SharedRichTextRenderer` and the `rich_text_renderer` property of
+      `PageBuilderStorefront` have no production caller. Decide whether the publish
+      compilation gets the `rustok-content` Article renderer (the markup and hash of every
+      landing with rich text change) or the port is retired, and record it against
+      `DECISIONS/2026-10-14-fly-rich-text-embed-action-runtime-and-adapters.md`.
+      Owner: `rustok-page-builder`, `rustok-pages`.
+    - Run the remaining Rust suites for the series on the repository toolchain. The pull
+      request CI (workflow "Fly Page Builder" and the two "Pages Rollback-Activated"
+      workflows, on `d03db9f`) compiled `rustok-pages` with `--all-targets`, ran every test
+      target of `fly`, `fly-ui` and `fly-browser` and the `--lib` tests of
+      `rustok-page-builder-admin`, `rustok-pages` and `rustok-pages-admin`; it checked the
+      two storefront crates with `cargo check --lib` and no features, and
+      `cargo clippy -D warnings` passed for `fly`, `fly-ui`, `fly-web`, `fly-leptos` and
+      `fly-dioxus`. Not executed in any job whose result is green or readable: the five
+      integration tests of `rustok-pages` that the series changed (`tests/*_sqlite.rs`,
+      compiled only; the three PostgreSQL rollback tests that did run are not among them), the
+      Pages storefront under `--features ssr` (its `ssr` code and its five
+      `tests/*_sqlite.rs`), the unit tests of `rustok-page-builder-storefront` (the CSS scope
+      twin was run only in the offline workspace described in the journal), the `apps/server`
+      test `pages_production_relay_native_route_sqlite`, and `cargo clippy -D warnings` for
+      `fly-browser`, `rustok-page-builder-admin`, `rustok-pages`, `rustok-pages-admin` and
+      `rustok-pages-storefront` (that step fails on `main` as well, so it cannot show
+      whether the series added a warning). Owner: maintainer.
+
+11. **Host delivery of the editor — OPEN.** Decision 8 of
+    `DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`.
+    - [x] `apps/admin` and `rustok-pages-admin` enabled `rustok-page-builder-admin/ssr` without
+          `browser-js`; the admin binary rendered no adapter. Both now enable the pair.
+    - [x] The adapter script and the canvas `srcdoc` document carried no CSP nonce. The host
+          provides `UiCspNonce`; the editor writes it on its inline elements and on the
+          documents it embeds.
+    - [x] `ServerPreviewPanel` put the preview document into `srcdoc` as it arrived; the
+          stylesheet of the document had no nonce and was dropped under the host policy. The
+          preview arrives as one composed string from the server pipeline, which does not know
+          the nonce of the page that asked for it. `fly::document_html_with_style_nonce` puts
+          the nonce on the stylesheet of the envelope `compose_document_html` writes and on
+          nothing else; the panel calls it with the nonce the host provided.
+    - [x] The browser build of `apps/admin` (features `csr` and `hydrate`, the build
+          `apps/server` embeds) provided no `UiCspNonce`. `apps/server` renders nothing: it
+          serves `index.html` and writes its nonce on the `<script` and `<style` tags of that
+          file, so the value never reached a render context and the canvas stylesheet, the
+          canvas runtime and the preview stylesheet were written without it. The browser host
+          now reads the nonce from the `nonce` property of a script of its own document
+          (`document_csp_nonce` in `apps/admin/src/main.rs`) and provides the same context.
+          A probe page under the policy of `apps/admin/src/app/security.rs` showed, in
+          Chromium 153, that `script[nonce]` finds the script, that the property holds the
+          value while the attribute reads empty, and that a `sandbox=""` `srcdoc` frame with
+          the Fly envelope applies its stylesheet with the nonce and drops it without. The
+          probe did not use the built admin.
+    - [ ] **The standalone SSR admin does not render the editor.** Read from source, not
+          executed. `PagesAdmin` (`crates/modules/rustok-pages/admin/src/composition.rs`) loads
+          the page list and the open page through `LocalResource`. With `leptos/ssr` a
+          `LocalResource` never resolves (`leptos_server/src/local_resource.rs`: "in SSR mode,
+          this will simply always be pending"), so the response holds the `Suspense` fallback
+          in place of `PageWorkspace` and `PagesFlyBuilder`. The shell of that host renders no
+          script (`apps/admin/src/app/shell.rs`; `verify-fly-ssr-first.mjs` requires the
+          comment that says so), although `build-standalone-admin-ssr.sh` builds a hydration
+          bundle, so nothing resolves the resource in the browser either. The `ssr + browser-js`
+          editor is therefore rendered by the render tests of the crate and by the Playwright
+          fixtures, and by no host. Needs a decision: the Pages workspace loads on the server
+          (a `Resource` under a route mode that needs no script), or the standalone host ships
+          its hydration bundle. `LocalResource` is used in 68 files of `apps/admin` and the
+          module admin packages, so the decision is not local to Pages.
+          Owner: `rustok-pages-admin`, `apps/admin`.
+    - [ ] Load the editor in a browser under the policy of `apps/admin/src/app/security.rs`.
+          The two Playwright suites serve their pages without a policy, and `apps/admin` does
+          not build in this workspace. A probe page with that policy showed, in Chromium, that
+          an inline `<script>` or `<style>` without the nonce is dropped, that a sandboxed
+          `srcdoc` iframe inherits the policy, and that both run with the nonce. The probe
+          did not use the rendered editor. The workflow "Rust-hosted Browser Smoke" builds the
+          embedded admin and runs Chromium against `apps/server` under the enforced policy,
+          and its spec (`apps/next-admin/tests/rust-hosts/embedded-hosts.spec.ts`) stops at the
+          admin mount. A test there that opens a page in the editor would cover the canvas and
+          the preview under the policy. That job does not reach its spec today: it builds
+          `apps/server` with default features, and the server exits at startup because
+          `modules.toml` lists 14 modules (`billing`, `calendar`, `calls`, `deal`, `finance`,
+          `marketplace` and its six parts, `party`, `tasks`) whose `mod-*` features are not in
+          the default list of `apps/server/Cargo.toml` (read from CI on `c8141c9b` and
+          `a4d65ffe`; both files are unchanged from `main`). The distribution decision comes
+          first. Owner: Page Builder admin, repository tooling; the startup failure: platform,
+          `apps/server`.
+    - [ ] **The server preview cannot be requested in the default runtime.** "Refresh preview"
+          acts through `on:click`. No intent or SSR form requests a preview, and the draft
+          session holds none, so a server-rendered editor shows the empty state of the panel.
+          Owner: Page Builder admin, `rustok-pages-admin`.
+    - [ ] **The preview is shown under the policy of the admin, not of the storefront.** A
+          `srcdoc` document inherits the policy of its embedder. Under
+          `style-src-attr 'none'` a `style` attribute is dropped (the probe above recorded the
+          refusal); the embed block writes `style="aspect-ratio:…"`. By the directives of the
+          policy, and not probed: the provider `<iframe>` of an embed block is refused
+          (`default-src 'self'` covers frames), and so is a font or a media file from another
+          origin. The canvas document has the same limits. A preview that is faithful to the
+          published page is a document with its own response and its own policy, as
+          `/richtext/frame` is. Needs a decision. Owner: Page Builder admin, `apps/admin`,
+          `apps/server`.
+    - [ ] `fly-leptos` `FlyCanvasPreview` renders an inline `<style>` and a `style` attribute,
+          and `fly-dioxus` renders `style` attributes. The admin editor uses neither; a host
+          that composes them under a nonce policy loses those styles. Owner: `fly-leptos`,
+          `fly-dioxus`.
+    - [x] The step "Check admin SSR Page Builder endpoint" of the "Fly Page Builder" workflow
+          failed on this branch after the merges of `main` (`7ce2048c`, `728ba4f8`). It passes
+          on `65a67b7c` (job "Focused tests and source guards"), together with "Run Page
+          Builder admin unit tests" and "Lint Fly browser and Page Builder integrations", so
+          the change to `apps/admin/src/main.rs` is compiled by a green job.
 
 ## Rules for this backlog
 

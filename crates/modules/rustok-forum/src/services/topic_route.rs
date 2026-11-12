@@ -466,10 +466,12 @@ impl ForumTopicRouteService {
                 }
                 [alias] if alias.topic_id == topic_id => {
                     if alias.disposition == StoredRouteDisposition::Redirect {
-                        let target_topic_id = alias
+                        if alias
                             .target_topic_id
-                            .filter(|target_topic_id| !target_topic_id.is_nil())
-                            .ok_or(ForumError::TopicRouteResolutionConflict)?;
+                            .is_none_or(|target_topic_id| target_topic_id.is_nil())
+                        {
+                            return Err(ForumError::TopicRouteResolutionConflict);
+                        }
                         let target_locale = alias
                             .target_locale
                             .as_deref()

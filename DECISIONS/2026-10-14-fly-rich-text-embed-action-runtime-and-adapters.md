@@ -31,6 +31,12 @@ is the platform's single production renderer and browser editors are preview onl
    `ssr` feature, and `rustok-page-builder-storefront` accepts an optional shared
    renderer. An invalid payload renders nothing; validation reports
    `rich_text_payload_invalid` before publish.
+   (Amended 2026-11-10 by
+   [Published pages are transported as their landing](./2026-11-10-published-page-landing-transport.md):
+   `PagesRichTextRenderer` is removed with the storefront branch that rendered the
+   authoring document, and no implementation of the port remains. A published landing
+   carries the escaped fallback projection; binding the platform renderer in the publish
+   compilation is an open item of the Page Builder backlog.)
 2. **Embeds are a closed provider registry, never arbitrary iframes.** `fly::embed`
    ships YouTube (plus youtube-nocookie), Vimeo, and Google Maps providers with exact
    host matches and path prefixes over HTTPS only, a required title, and an `W / H`

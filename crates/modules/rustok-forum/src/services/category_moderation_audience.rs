@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, Statement,
-    TransactionTrait,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -13,16 +12,8 @@ use uuid::Uuid;
 use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 
-use crate::audience::{
-    ForumAudienceConstraints, MAX_FORUM_AUDIENCE_CHANNELS, MAX_FORUM_AUDIENCE_EXPLICIT_USERS,
-    MAX_FORUM_AUDIENCE_GROUPS, MAX_FORUM_AUDIENCE_ROLES,
-};
-use crate::entities::{
-    forum_category_audience_user::ForumCategoryAudienceUserEffect,
-    forum_category_moderation_audience_channel, forum_category_moderation_audience_group,
-    forum_category_moderation_audience_policy, forum_category_moderation_audience_role,
-    forum_category_moderation_audience_user,
-};
+use crate::audience::ForumAudienceConstraints;
+use crate::entities::forum_category_moderation_audience_policy;
 use crate::error::{ForumError, ForumResult};
 
 use super::category_audience::{load_category_ancestor_ids, lock_category_tree_in_tx};
@@ -212,7 +203,8 @@ pub(crate) async fn load_category_moderation_audience_policy<C>(
 where
     C: ConnectionTrait,
 {
-    let generic = load_category_moderation_audience_policy_generic(db, tenant_id, category_id).await?;
+    let generic =
+        load_category_moderation_audience_policy_generic(db, tenant_id, category_id).await?;
     Ok(ForumCategoryModerationAudiencePolicy {
         category_id: generic.subject_id,
         configured_constraints: generic.configured_constraints,
@@ -248,7 +240,11 @@ where
                 .map(|constraints| AudienceLayer::new(ancestor_id, constraints))
         })
         .collect();
-    Ok(AudiencePolicy::new(category_id, configured_constraints, effective_layers))
+    Ok(AudiencePolicy::new(
+        category_id,
+        configured_constraints,
+        effective_layers,
+    ))
 }
 
 async fn load_local_layers<C>(
@@ -259,7 +255,14 @@ async fn load_local_layers<C>(
 where
     C: ConnectionTrait,
 {
-    crate::services::audience_storage::load_audience_layers_raw(db, tenant_id, subject_ids, "forum_category_moderation_audience", "category_id").await
+    crate::services::audience_storage::load_audience_layers_raw(
+        db,
+        tenant_id,
+        subject_ids,
+        "forum_category_moderation_audience",
+        "category_id",
+    )
+    .await
 }
 
 fn constraints_are_empty(constraints: &ForumAudienceConstraints) -> bool {

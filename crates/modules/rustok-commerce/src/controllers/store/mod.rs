@@ -24,9 +24,9 @@ use rustok_cart::{CartStatus, CartStorefrontPort, CartStorefrontRepriceRequest};
 use rustok_channel::error::ChannelError;
 use rustok_customer::{CustomerUserProjectionRequest, in_process_customer_read_port};
 
-use rustok_pricing::{PriceResolutionContext, in_process_pricing_read_port};
 #[cfg(test)]
 use rustok_pricing::PricingReadPort;
+use rustok_pricing::{PriceResolutionContext, in_process_pricing_read_port};
 use rustok_product::entities::product_translation;
 use rustok_web::{HttpError, HttpResult, port_error_to_http_error};
 use sea_orm::DatabaseConnection;

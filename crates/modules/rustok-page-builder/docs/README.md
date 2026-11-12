@@ -176,5 +176,5 @@ unavailability narrows capabilities and never mounts a fallback editor.
 
 - `crates/modules/rustok-page-builder/docs/fly-runtime.md`;
 - `DECISIONS/2026-07-13-fly-page-builder-architecture.md`;
-- `docs/modules/page-builder-implementation-plan.md`;
+- `docs/modules/page-builder-backlog.md`;
 - `crates/modules/rustok-pages/docs/implementation-plan.md`.

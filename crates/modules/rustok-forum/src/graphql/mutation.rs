@@ -1288,8 +1288,8 @@ async fn load_author_profile(
 ) -> Option<GqlProfileSummary> {
     let author_id = author_id?;
 
-    if let Some(loader) = ctx.data_opt::<DataLoader<ProfileSummaryLoader>>() {
-        if let Ok(profile) = loader
+    if let Some(loader) = ctx.data_opt::<DataLoader<ProfileSummaryLoader>>()
+        && let Ok(profile) = loader
             .load_one(ProfileSummaryLoaderKey {
                 tenant_id,
                 user_id: author_id,
@@ -1297,9 +1297,8 @@ async fn load_author_profile(
                 tenant_default_locale: None,
             })
             .await
-        {
-            return profile.map(Into::into);
-        }
+    {
+        return profile.map(Into::into);
     }
 
     ProfileService::new(db.clone())

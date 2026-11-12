@@ -74,7 +74,11 @@ export interface CacheSettingsSnapshot {
 }
 
 interface PlatformSettingsResponse {
-  platformSettings: { category: string; settings: string; schemaVersion: number };
+  platformSettings: {
+    category: string;
+    settings: string;
+    schemaVersion: number;
+  };
 }
 
 interface UpdateSettingsResponse {
@@ -113,7 +117,9 @@ export async function getCacheSettings(
 
   const schemaVersion = data.platformSettings.schemaVersion;
   if (!Number.isInteger(schemaVersion) || schemaVersion < 0) {
-    throw new TypeError('Platform settings response is missing a valid schema version');
+    throw new TypeError(
+      'Platform settings response is missing a valid schema version'
+    );
   }
   try {
     const parsed = JSON.parse(
@@ -160,7 +166,9 @@ export async function updateCacheSettings(
 
   const schemaVersion = data.updatePlatformSettings.schemaVersion;
   if (!Number.isInteger(schemaVersion) || schemaVersion < 0) {
-    throw new TypeError('Platform settings response is missing a valid schema version');
+    throw new TypeError(
+      'Platform settings response is missing a valid schema version'
+    );
   }
   try {
     const parsed = JSON.parse(

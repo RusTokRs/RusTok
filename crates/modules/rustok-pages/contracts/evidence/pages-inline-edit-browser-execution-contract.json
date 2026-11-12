@@ -102,7 +102,6 @@
     "apps/next-admin/playwright.pages-inline-edit.config.ts",
     "apps/next-admin/tests/pages-inline-edit/browser-evidence.spec.ts",
     "crates/modules/rustok-pages/scripts/verify/verify-pages-inline-edit-browser-evidence-harness.mjs",
-    "docs/modules/pages-page-builder-inline-edit-execution-plan.md",
     "crates/modules/rustok-pages/contracts/evidence/pages-inline-edit-artifact-http-execution-contract.json",
     "crates/modules/rustok-pages/storefront/src/inline_edit.rs",
     "crates/modules/rustok-pages/admin/src/inline_edit_launch.rs",

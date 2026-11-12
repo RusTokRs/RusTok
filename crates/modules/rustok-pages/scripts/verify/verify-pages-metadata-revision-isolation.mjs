@@ -13,7 +13,6 @@ const sourcePath = "crates/modules/rustok-pages/admin/src/metadata_properties.rs
 const modelPath = "crates/modules/rustok-pages/admin/src/model.rs";
 const evidencePath =
   "crates/modules/rustok-pages/contracts/evidence/pages-metadata-revision-isolation-source.json";
-const planPath = "docs/modules/pages-page-builder-parity-continuation-plan.md";
 const consumerContractPath =
   "crates/modules/rustok-page-builder/contracts/page-builder-consumer-properties.json";
 const cargoPath = "crates/modules/rustok-pages/admin/Cargo.toml";
@@ -21,7 +20,6 @@ const cargoPath = "crates/modules/rustok-pages/admin/Cargo.toml";
 const source = read(sourcePath);
 const model = read(modelPath);
 const evidence = JSON.parse(read(evidencePath));
-const plan = read(planPath);
 const consumerContract = JSON.parse(read(consumerContractPath));
 const cargo = read(cargoPath);
 const failures = [];
@@ -57,7 +55,13 @@ function requireOrdered(content, markers, label) {
 }
 
 const patchRequestStart = model.indexOf("pub struct PageMetadataPatch {");
-const patchRequest = patchRequestStart < 0 ? "" : model.slice(patchRequestStart);
+// Only the struct body: the model file holds unrelated DTOs after it.
+const patchRequestEnd = patchRequestStart < 0 ? -1 : model.indexOf("\n}\n", patchRequestStart);
+const patchRequest =
+  patchRequestStart < 0 || patchRequestEnd < 0
+    ? ""
+    : model.slice(patchRequestStart, patchRequestEnd + 2);
+if (!patchRequest) failures.push("metadata patch request: PageMetadataPatch struct not found");
 const serverTransport = between(
   source,
   "impl PagesMetadataTransport for ServerPagesMetadataTransport",
@@ -299,17 +303,6 @@ if (
     "crates/modules/rustok-pages/scripts/verify/verify-pages-metadata-revision-isolation.mjs"
 ) {
   failures.push("consumer property metadata revision/isolation evidence registration is invalid");
-}
-
-for (const marker of [
-  "`source-ready` means code, contracts, build source or retained harness source exists.",
-  "Pages and Page Builder remain one vertical pipeline with explicit owners:",
-  "Pages owns persistence, lifecycle, immutable bindings",
-  "Pages admin owns the optional same-origin authoring launch control",
-  "Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization",
-  "No build, workflow, Docker, HTTP or browser execution is claimed by source inspection.",
-]) {
-  requireText(plan, marker, "Pages/Page Builder parity plan");
 }
 
 if (failures.length > 0) {

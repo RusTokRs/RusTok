@@ -9,7 +9,7 @@ use rustok_outbox::TransactionalEventBus;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{ModerateCommentInput, PostService};
+use crate::ModerateCommentInput;
 
 use super::runtime_data::BlogGraphqlRuntimeData;
 use super::types::*;
@@ -38,7 +38,8 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         let input: crate::CreatePostInput = input
             .try_into()
             .map_err(crate::error::public::to_graphql_error)?;
@@ -76,7 +77,8 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         let input: crate::UpdatePostInput = input
             .try_into()
             .map_err(crate::error::public::to_graphql_error)?;
@@ -114,7 +116,8 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         service
             .delete_post(
                 tenant_id,
@@ -148,7 +151,8 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         service
             .publish_post(
                 tenant_id,
@@ -182,7 +186,8 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         service
             .unpublish_post(
                 tenant_id,
@@ -217,7 +222,8 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         service
             .archive_post(
                 tenant_id,
@@ -252,7 +258,8 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        PostService::new(db.clone(), event_bus.clone())
+        BlogGraphqlRuntimeData::attached(ctx)
+            .post_service(db.clone(), event_bus.clone())
             .restore_post(
                 tenant_id,
                 id,
@@ -576,7 +583,8 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         let security = rustok_core::security_context_from_access_token(
             auth.user_id,
             &auth.grant_type,
@@ -613,7 +621,8 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         let security = rustok_core::security_context_from_access_token(
             auth.user_id,
             &auth.grant_type,
@@ -645,7 +654,8 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         let security = rustok_core::security_context_from_access_token(
             auth.user_id,
             &auth.grant_type,
@@ -682,7 +692,8 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         let security = rustok_core::security_context_from_access_token(
             auth.user_id,
             &auth.grant_type,
@@ -709,7 +720,8 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         service
             .pin_post(
                 tenant_id,
@@ -744,7 +756,8 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         service
             .unpin_post(
                 tenant_id,
@@ -779,7 +792,8 @@ impl BlogMutation {
         let tenant = ctx.data::<TenantContext>()?;
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
-        let service = PostService::new(db.clone(), event_bus.clone());
+        let service =
+            BlogGraphqlRuntimeData::attached(ctx).post_service(db.clone(), event_bus.clone());
         let security = rustok_core::security_context_from_access_token(
             auth.user_id,
             &auth.grant_type,

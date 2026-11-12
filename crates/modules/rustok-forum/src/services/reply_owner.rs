@@ -551,7 +551,9 @@ use super::mention_relation::MentionRelationService;
 use super::projection_invalidation::{
     publish_forum_category_projection_in_tx, publish_forum_topic_projection_in_tx,
 };
-use super::rbac::{DeleteSnapshotReason, enforce_author_deletion_policy, enforce_owned_scope, enforce_scope};
+use super::rbac::{
+    DeleteSnapshotReason, enforce_author_deletion_policy, enforce_owned_scope, enforce_scope,
+};
 use super::reply;
 use super::reply_create_audience_authorization::ForumReplyCreateAudienceAuthorizationService;
 use super::topic_owner::TopicService;
@@ -1543,4 +1545,3 @@ impl ReplyService {
             .await
     }
 }
-

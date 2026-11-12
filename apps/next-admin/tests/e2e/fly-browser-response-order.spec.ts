@@ -1,6 +1,7 @@
 import { expect, Page, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { openBlankDocument } from './support/fly-blank-document';
 
 const adapterPath = resolve(
   process.cwd(),
@@ -66,10 +67,9 @@ const success = {
 
 async function mountOrderContract(page: Page) {
   const adapterSource = await readFile(adapterPath, 'utf8');
-  await page.goto('/auth/sign-in', { waitUntil: 'networkidle' });
+  await openBlankDocument(page);
 
   await page.evaluate(async (source) => {
-    window.stop();
     document.body.innerHTML = `
       <div
         id="fly-root"

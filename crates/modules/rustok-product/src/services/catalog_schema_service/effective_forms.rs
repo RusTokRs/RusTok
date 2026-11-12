@@ -445,7 +445,10 @@ where
         return Ok(HashMap::new());
     }
 
-    Ok(rows.into_iter().map(|row| (row.category_id, row.parent_id)).collect())
+    Ok(rows
+        .into_iter()
+        .map(|row| (row.category_id, row.parent_id))
+        .collect())
 }
 
 fn taxonomy_ancestor_chain(

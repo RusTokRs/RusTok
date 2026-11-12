@@ -92,5 +92,5 @@ pub(crate) use ssr_localized_metadata::{
     SsrLocalizedMetadataPanel, SsrLocalizedPageMetadataRequest,
 };
 pub(crate) use ssr_translations::SsrTranslationsPanel;
-pub(crate) use toolbar::AuthoringToolbar;
+pub(crate) use toolbar::{AuthoringToolbar, route_viewport};
 pub(crate) use trait_panel::TraitPanel;

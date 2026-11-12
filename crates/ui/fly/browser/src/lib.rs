@@ -657,6 +657,15 @@ impl BrowserIntentEnvelope {
         )
     }
 
+    /// Arms a palette drag of one registry block; the following `drop` intent places it.
+    pub fn begin_palette_drag(instance_id: impl Into<String>, block_id: &str) -> Self {
+        Self::new(
+            instance_id,
+            BrowserIntentKind::BeginPaletteDrag,
+            serde_json::json!({ "block_id": block_id }),
+        )
+    }
+
     /// Inserts or updates one design token by name.
     pub fn set_theme_token(instance_id: impl Into<String>, name: &str, value: &str) -> Self {
         Self::new(
@@ -1034,6 +1043,14 @@ mod tests {
         assert_eq!(insert.kind(), Some(BrowserIntentKind::InsertBlock));
         assert_eq!(insert.payload["block_id"], "shop.product_card");
         assert!(insert.is_mutating());
+
+        let drag = BrowserIntentEnvelope::begin_palette_drag("workspace-1", "shop.product_card")
+            .normalized()
+            .expect("palette drag envelope");
+        assert_eq!(drag.kind(), Some(BrowserIntentKind::BeginPaletteDrag));
+        assert_eq!(drag.intent, "begin_palette_drag");
+        assert_eq!(drag.payload["block_id"], "shop.product_card");
+        assert!(!drag.is_mutating());
 
         let select = BrowserIntentEnvelope::select("workspace-1", Some("hero"))
             .normalized()

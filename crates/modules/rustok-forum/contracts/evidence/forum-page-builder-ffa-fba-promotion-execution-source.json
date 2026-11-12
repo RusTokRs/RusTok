@@ -117,9 +117,7 @@
     "crates/modules/rustok-modules/src/lifecycle_writer.rs",
     "crates/modules/rustok-modules/src/operation_store.rs",
     "crates/modules/rustok-pages/src/graphql/builder_rollout.rs",
-    "crates/modules/rustok-pages/rustok-module.toml",
-    "docs/modules/pages-page-builder-tenant-rollout-settings-runtime-actualization-2026-08-08.md",
-    "docs/modules/pages-page-builder-parity-continuation-plan.md"
+    "crates/modules/rustok-pages/rustok-module.toml"
   ],
   "non_claims": {
     "live_execution_run_by_this_source_slice": false,

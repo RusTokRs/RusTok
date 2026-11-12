@@ -727,9 +727,10 @@ impl ReplyService {
         let body_changed = if stored_body.is_some() {
             match &existing_body_row {
                 Some(existing_row) => {
-                    let existing_doc = crate::richtext::project_stored_discussion(&existing_row.body)
-                        .map(|p| p.view.document)
-                        .ok();
+                    let existing_doc =
+                        crate::richtext::project_stored_discussion(&existing_row.body)
+                            .map(|p| p.view.document)
+                            .ok();
                     existing_doc.as_ref() != Some(&document)
                 }
                 None => true,
@@ -797,11 +798,9 @@ impl ReplyService {
                 }
             }
         }
-        if body_changed {
-            if let Some(stored_body) = stored_body {
-                self.upsert_body_in_tx(&txn, tenant_id, reply_id, &locale, stored_body)
-                    .await?;
-            }
+        if body_changed && let Some(stored_body) = stored_body {
+            self.upsert_body_in_tx(&txn, tenant_id, reply_id, &locale, stored_body)
+                .await?;
         }
         relation_service
             .persist_in_tx(&txn, prepared_relations)
@@ -832,4 +831,3 @@ impl ReplyService {
 #[cfg(test)]
 #[path = "reply_tests.rs"]
 mod reply_tests;
-

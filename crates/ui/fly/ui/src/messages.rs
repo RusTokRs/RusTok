@@ -85,6 +85,12 @@ pub struct EditorMessages {
     pub edit: String,
     #[serde(default = "default_preview_label")]
     pub preview: String,
+    /// Accessible-name prefix of the palette insert control, completed with the block label.
+    #[serde(default = "default_insert_block_label")]
+    pub insert_block: String,
+    /// Label of the palette control that arms a block drag without a pointer drag gesture.
+    #[serde(default = "default_drag_block_label")]
+    pub drag_block: String,
 }
 
 fn default_edit_label() -> String {
@@ -93,6 +99,14 @@ fn default_edit_label() -> String {
 
 fn default_preview_label() -> String {
     "Preview".to_string()
+}
+
+fn default_insert_block_label() -> String {
+    "Add".to_string()
+}
+
+fn default_drag_block_label() -> String {
+    "Drag".to_string()
 }
 
 impl EditorMessages {
@@ -159,6 +173,8 @@ impl EditorMessages {
             preview_failed: "Preview failed".to_string(),
             edit: default_edit_label(),
             preview: default_preview_label(),
+            insert_block: default_insert_block_label(),
+            drag_block: default_drag_block_label(),
         }
     }
 }
@@ -186,6 +202,18 @@ mod tests {
         assert_eq!(messages.workspace_title, "Fly full editor");
         assert_eq!(messages.edit, "Edit");
         assert_eq!(messages.preview, "Preview");
+        assert_eq!(messages.insert_block, "Add");
+        assert_eq!(messages.drag_block, "Drag");
+    }
+
+    #[test]
+    fn message_sets_written_before_the_palette_controls_still_deserialize() {
+        let mut json = serde_json::to_value(EditorMessages::english()).expect("serialize messages");
+        let fields = json.as_object_mut().expect("message object");
+        fields.remove("insert_block");
+        fields.remove("drag_block");
+        let restored: EditorMessages = serde_json::from_value(json).expect("deserialize messages");
+        assert_eq!(restored, EditorMessages::english());
     }
 
     #[test]

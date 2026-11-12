@@ -1119,6 +1119,8 @@ blog-status-archived = В архиве
 blog-sort-updated_at = Последние изменения
 
 blog-moderation-approved = Одобрить
+blog-moderation-spam = Отметить как спам
+blog-moderation-trash = Переместить в корзину
 blog-moderation-saving = Сохранение...
 blog-moderation-pageSummary = Комментариев: { $total } · Страница { $page } из { $pages }
 
@@ -1131,6 +1133,7 @@ blog-preview-linkHint = Не публикуйте эту ссылку.
 blog-preview-pathHint = Перед отправкой добавьте к этому пути домен витрины.
 blog-preview-linkCopied = Ссылка предпросмотра скопирована
 blog-preview-tokenCopied = Токен скопирован
+blog-preview-copyError = Не удалось скопировать в буфер обмена.
 blog-preview-expires = Действует до { $at }. Не публикуйте эту ссылку.
 blog-preview-lifetimeHours = { $hours } ч
 blog-error-savePost = Не удалось сохранить пост

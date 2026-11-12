@@ -90,7 +90,8 @@ mod in_process {
 
     impl std::fmt::Debug for InProcessCommentsThreadProvider {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.debug_struct("InProcessCommentsThreadProvider").finish_non_exhaustive()
+            f.debug_struct("InProcessCommentsThreadProvider")
+                .finish_non_exhaustive()
         }
     }
 

@@ -373,7 +373,11 @@ pub fn start_worker() -> JoinHandle<()> {
     assert_eq!(orphans.len(), 2);
     assert_eq!(orphans[0].line, 5);
     assert_eq!(orphans[1].line, 9);
-    assert!(orphans.iter().all(|f| f.severity == rustok_doctor::Severity::High));
+    assert!(
+        orphans
+            .iter()
+            .all(|f| f.severity == rustok_doctor::Severity::High)
+    );
 
     // Ensure let _ = tokio::spawn did not trigger duplicate P-ANTI-SWALLOW
     assert!(
@@ -399,7 +403,10 @@ fn identifies_unchecked_vec_set_len() {
 
     assert_eq!(set_len_findings.len(), 1);
     assert_eq!(set_len_findings[0].line, 3);
-    assert_eq!(set_len_findings[0].severity, rustok_doctor::Severity::Critical);
+    assert_eq!(
+        set_len_findings[0].severity,
+        rustok_doctor::Severity::Critical
+    );
 }
 
 #[test]

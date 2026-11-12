@@ -20,6 +20,7 @@ Fly Visual Editor Engine: framework-neutral visual editor engine, AST models, de
 - `RuntimeContextContract`, `RuntimeContextPreflight`: Type-checked context contract validation and dependency analysis.
 - `LocaleResolver`: Pluggable trait for BCP-47 locale identity resolution (`PlatformLocaleResolver` with CLDR support or `BasicLocaleResolver`).
 - `RenderPolicy`, `RenderedPage`, `render_page`: Server-side HTML and CSS renderer generating static markup from document models.
+- `escape_css_attribute`: Allow-list escape of a value written into a double-quoted CSS attribute selector inside a `<style>` element. Used by the renderer and by framework adapters that style a component by its id.
 - `DynamicCatalog`, `RuntimeCondition`, `RuntimeRepeater`: Dynamic condition and iteration rendering with safety bounds.
 
 ## 2. Invariants & Business Rules

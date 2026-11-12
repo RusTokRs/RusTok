@@ -972,8 +972,8 @@ mod tests {
         PreparedUserTokens, REFRESH_TOKEN_GRANT, commit_refresh_rotation, require_grant,
         resolve_client, validate_requested_scopes,
     };
-    use chrono::Utc;
     use crate::models::{oauth_apps, oauth_authorization_codes as oauth_codes, oauth_tokens};
+    use chrono::Utc;
     use rustok_auth::TokenRequest;
     use sea_orm::{
         ActiveModelTrait, ConnectionTrait, Database, EntityTrait, PaginatorTrait, Schema, Set,

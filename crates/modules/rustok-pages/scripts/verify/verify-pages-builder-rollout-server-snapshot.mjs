@@ -71,7 +71,7 @@ for (const marker of [
 for (const marker of [
   "fetch_pages_builder_rollout_snapshot(",
   "trusted_rollout.effective_runtime_flags()",
-  "compose_fly_page_builder_handlers(store, renderer, effective_flags)",
+  "compose_configured_fly_page_builder_handlers(\n        service,\n        effective_flags,",
 ]) need(source.builder, marker, "authoritative SSR binding");
 for (const marker of ["fetch_pages_builder_rollout_snapshot(", ".provider_status();", ".with_provider_status(provider_status)"])
   need(source.composition, marker, "workspace binding");
@@ -108,13 +108,6 @@ if (health.format !== "pages_builder_provider_health_consumer_binding_source_v1"
 if (gate.accepted !== false) failures.push("Pages reference-consumer gate must remain unaccepted");
 if (gate.current_boundary?.provider_health !== "unobserved") failures.push("retained gate provider-health execution boundary must remain unobserved");
 if (gate.current_boundary?.four_profile_runtime_matrix !== "harness_source_ready_maintainer_execution_pending") failures.push("runtime matrix must remain maintainer-execution pending");
-
-for (const marker of [
-  "pages-server-owner-graphql-source-ready",
-  "stateless-admin-transport-source-ready",
-  "browser-intent-preflight-binding-source-ready",
-  "No tests, Node verifiers, Cargo commands",
-]) need(source.actualization, marker, "rollout server snapshot historical actualization");
 
 if (failures.length) {
   console.error("[verify-pages-builder-rollout-server-snapshot] FAIL");

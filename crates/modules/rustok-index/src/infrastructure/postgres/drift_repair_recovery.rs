@@ -1148,9 +1148,11 @@ fn permanent_recovery_failure(code: &str) -> IndexDriftRepairRecoveryFailure {
 }
 
 fn retryable_repair_failure(code: &str) -> IndexDriftRepairFailure {
-    IndexDriftRepairFailure::retryable(code).expect("static repair failure code is valid: invariant validated at startup")
+    IndexDriftRepairFailure::retryable(code)
+        .expect("static repair failure code is valid: invariant validated at startup")
 }
 
 fn permanent_repair_failure(code: &str) -> IndexDriftRepairFailure {
-    IndexDriftRepairFailure::permanent(code).expect("static repair failure code is valid: invariant validated at startup")
+    IndexDriftRepairFailure::permanent(code)
+        .expect("static repair failure code is valid: invariant validated at startup")
 }

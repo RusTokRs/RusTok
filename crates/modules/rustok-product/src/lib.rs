@@ -75,9 +75,9 @@ pub use ports::{
     MAX_CATALOG_DELETE_VARIANTS, MAX_PUBLISHED_PRODUCTS_PER_PAGE, NoopProductInventoryPort,
     NoopProductTaxonomyPort, PricingConnection, ProductCatalogReadPort, ProductInitialInventory,
     ProductInventoryDeletionBlocker, ProductInventoryPort, ProductInventoryQuantityBlocker,
-    ProductPricingPort, ProductProjectionRequest,
-    ProductTaxonomyCategorySnapshot, ProductTaxonomyCategoryTranslationInput, ProductTaxonomyPort,
-    PublishedProductsRequest, StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
+    ProductPricingPort, ProductProjectionRequest, ProductTaxonomyCategorySnapshot,
+    ProductTaxonomyCategoryTranslationInput, ProductTaxonomyPort, PublishedProductsRequest,
+    StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
     StorefrontProductProjectionSubject, StorefrontVariantProductProjectionRequest,
     TaxonomyConnection, VariantProductProjectionRequest,
 };

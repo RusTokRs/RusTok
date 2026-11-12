@@ -1,4 +1,7 @@
-use std::{collections::BTreeSet, sync::{Arc, LazyLock}};
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, LazyLock},
+};
 
 use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
@@ -52,37 +55,25 @@ const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
 fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
     OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.owner_contract_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.owner_contract_invalid", error.to_string())
     })
 }
 
 fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
     ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.owner_contract_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.owner_contract_invalid", error.to_string())
     })
 }
 
 fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
     ResourceId::new(value).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.resource_id_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.resource_id_invalid", error.to_string())
     })
 }
 
 fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
     FieldKey::new(key).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.field_key_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.field_key_invalid", error.to_string())
     })
 }
 
@@ -256,7 +247,6 @@ struct PreviousChangeRow {
     resource_revision: String,
     lifecycle: String,
 }
-
 
 static DESCRIPTOR: LazyLock<TranslationTargetProviderDescriptor> = LazyLock::new(|| {
     TranslationTargetProviderDescriptor {
@@ -730,7 +720,7 @@ LIMIT 1
 
 #[async_trait]
 impl TranslationTargetProvider for ProductCategorySeoTranslationTargetProvider {
-        fn descriptor(&self) -> TranslationTargetProviderDescriptor {
+    fn descriptor(&self) -> TranslationTargetProviderDescriptor {
         DESCRIPTOR.clone()
     }
 

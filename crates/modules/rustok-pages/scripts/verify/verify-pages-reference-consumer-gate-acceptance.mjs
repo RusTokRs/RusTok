@@ -78,8 +78,37 @@ if (
   contract.downstream_forum_wave?.admission_output_status !== "forum_wave_inputs_admitted_observed_control_plane_pending"
 ) failures.push("Pages gate downstream Forum admission pointer drifted");
 
-, marker, "acceptance actualization");
-, marker, "parity actualization");
+for (const marker of [
+  'const ACCEPT_DECISION = "accept_pages_reference_consumer_gate"',
+  'const RETAIN_DECISION = "retain_reference_consumer_candidate"',
+  'const ROLLBACK_DECISION = "rollback_reference_consumer_candidate"',
+  'spawnSync("git", ["rev-parse", "HEAD"]',
+  'const sourceGate = jsonSource(sourceGatePath, "Pages reference-consumer source gate")',
+  'sourceGate.accepted !== false',
+  'sourceGate.current_boundary?.execution_gate !== "pending"',
+  'sourceGate.current_boundary?.provider_health !== "unobserved"',
+  'verifyRetainedSourceHashes(document, candidateContract, "source_sha256", "reference candidate")',
+  'verifyRetainedSourceHashes(document, observedSource, "source_files", "observed-health acceptance")',
+  'record.id !== expected.id',
+  'record.program !== expected.program',
+  'canonicalJson(record.args) !== canonicalJson(expected.args)',
+  'requireCommandResults(document.source_guards, candidateContract.source_guards, "reference candidate source guards")',
+  'requireCommandResults(document.focused_tests, candidateContract.focused_tests, "reference candidate focused tests")',
+  'reference candidate input hash set drifted',
+  'candidate.provider_health !== "unobserved"',
+  'decision.value !== OBSERVED_ACCEPT_DECISION',
+  'observed-health deployment id is invalid',
+  'digest !== candidate.deploymentDigest',
+  'gate.eligible_for_pages_gate_review !== true',
+  'observed.current_provider_health_asserted !== false',
+  'binding.health_lease_extended !== false',
+  'rollback_action_performed: false',
+  'canonical_source_mutated: false',
+  'forum_wave_accepted: false',
+  'automatic_downstream_promotion: false',
+  'source_files: sourceHashes(contract)',
+]) need(runner, marker, "gate acceptance runner");
+for (const marker of ["fetch(", "@playwright/test", "cargo test", "gate.accepted = true", "forum_wave_accepted: true", "rollback_action_performed: true"]) forbid(runner, marker, "gate acceptance runner");
 
 if (contract.next_cursor?.reference_consumer_gate_acceptance !== "source_ready_maintainer_execution_pending") failures.push("acceptance cursor drifted");
 if (contract.next_cursor?.forum_wave_admission !== "source_ready_maintainer_execution_pending") failures.push("Forum Wave admission cursor drifted");

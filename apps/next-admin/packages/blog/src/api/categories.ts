@@ -193,7 +193,10 @@ export async function listAllBlogCategories(
 ): Promise<BlogCategory[]> {
   const items: BlogCategory[] = [];
   for (let page = 1; ; page += 1) {
-    const result = await listBlogCategories({ ...filter, page, perPage: 100 }, opts);
+    const result = await listBlogCategories(
+      { ...filter, page, perPage: 100 },
+      opts
+    );
     items.push(...result.items);
     if (items.length >= result.total) return items;
     if (result.items.length === 0) {
@@ -264,7 +267,8 @@ export async function deleteBlogCategory(
     opts.token,
     opts.tenantSlug
   );
-  if (!data.deleteBlogCategory) throw new Error('Category delete rejected by the owner');
+  if (!data.deleteBlogCategory)
+    throw new Error('Category delete rejected by the owner');
   return data.deleteBlogCategory;
 }
 

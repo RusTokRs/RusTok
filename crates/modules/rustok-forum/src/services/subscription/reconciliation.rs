@@ -15,6 +15,16 @@ use crate::services::{
 const FORUM_SUBSCRIPTION_RECONCILIATION_OPERATION: &str =
     "forum.subscription_reconciliation_report";
 
+/// The operator fence and the page bounds of this report. `report_page` runs through it
+/// and the page query takes its size from it, so each rule has one definition.
+const EXECUTOR: ReconciliationExecutor = ReconciliationExecutor {
+    operation: FORUM_SUBSCRIPTION_RECONCILIATION_OPERATION,
+    entrypoint: "subscription_reconciliation_report",
+    error_type: "subscription_reconciliation",
+    default_limit: DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT,
+    max_limit: MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
+};
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ForumSubscriptionTargetKind {
@@ -140,15 +150,11 @@ impl ForumSubscriptionReconciliationService {
         requested_limit: Option<u64>,
         cursors: ForumSubscriptionReconciliationCursors,
     ) -> ForumResult<ForumSubscriptionReconciliationReport> {
-        ReconciliationExecutor::new(
-            FORUM_SUBSCRIPTION_RECONCILIATION_OPERATION,
-            DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT,
-            MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
-        )
-        .execute(security, || async {
-            self.report_inner(tenant_id, requested_limit, cursors).await
-        })
-        .await
+        EXECUTOR
+            .execute(security, || async {
+                self.report_inner(tenant_id, requested_limit, cursors).await
+            })
+            .await
     }
 
     async fn report_inner(
@@ -202,7 +208,12 @@ impl ForumSubscriptionReconciliationService {
                 Ok(report)
             }
             Err(error) => {
-                if let Err(rollback_err) = transaction.rollback().await { tracing::warn!(error = %rollback_err, "forum reconciliation rollback failed; transaction will be dropped"); }
+                if let Err(rollback_err) = transaction.rollback().await {
+                    tracing::warn!(
+                        error = %rollback_err,
+                        "forum reconciliation rollback failed; transaction will be dropped"
+                    );
+                }
                 Err(error)
             }
         }
@@ -217,9 +228,7 @@ impl ForumSubscriptionReconciliationService {
         topic_after: Option<ForumSubscriptionCursor>,
         category_after: Option<ForumSubscriptionCursor>,
     ) -> ForumResult<ForumSubscriptionReconciliationReport> {
-        let effective_limit = requested_limit
-            .unwrap_or(DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT)
-            .clamp(1, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT);
+        let effective_limit = EXECUTOR.effective_limit(requested_limit);
         let fetch_limit = effective_limit.saturating_add(1);
 
         let topic_rows = transaction

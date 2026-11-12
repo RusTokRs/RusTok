@@ -36,7 +36,6 @@ const contract = readJson(
 );
 const helper = read("rustok_mobile/packages/app_core/lib/src/page_builder_errors.dart");
 const helperTest = read("rustok_mobile/packages/app_core/test/page_builder_errors_test.dart");
-const centralPlan = read("docs/modules/page-builder-implementation-plan.md");
 const flutterPlan = read("docs/research/flutter.md");
 
 if (contract.artifact !== "page_builder_flutter_wave_handoff_contract") {
@@ -90,7 +89,6 @@ for (const token of [
 }
 
 for (const [label, text, tokens] of [
-  ["central plan", centralPlan, ["Flutter device/runtime evidence"]],
   ["flutter research plan", flutterPlan, ["Flutter Wave hand-off must attach device/runtime evidence", "not duplicating"]],
 ]) {
   for (const token of tokens) {

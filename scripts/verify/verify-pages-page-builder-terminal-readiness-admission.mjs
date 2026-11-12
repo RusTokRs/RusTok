@@ -40,6 +40,42 @@ function requireText(source, marker, label) {
   if (!source.includes(marker)) failures.push(`${label}: missing '${marker}'`);
 }
 
+// The registry is a formatted Markdown table: compare cells, not column padding.
+function tableCells(row) {
+  return row
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function requireRegistryRow(source, expectedRow, label) {
+  const expected = tableCells(expectedRow);
+  const found = source
+    .split("\n")
+    .filter((line) => line.trimStart().startsWith("|"))
+    .map(tableCells)
+    .some((cells) => expected.every((cell, index) => cells[index] === cell));
+  if (!found) failures.push(`${label}: missing registry row '${expectedRow}'`);
+}
+
+// The registry rule makes the local plan the source of truth for a module's status, so a
+// required registry row is only a real precondition while the plan states the same three
+// values. Checking both closes the gap that let the registry, the plan and this contract
+// describe one module three different ways.
+function requireLocalPlanStatus(plan, requiredRow, label) {
+  const [, , ffaStatus, fbaStatus, structuralShape] = tableCells(requiredRow);
+  for (const line of [
+    `- FFA status: ${ffaStatus}`,
+    `- FBA status: ${fbaStatus}`,
+    `- Structural shape: ${structuralShape}`,
+  ]) {
+    const found = plan.split("\n").some((planLine) => planLine.trim() === line);
+    if (!found) failures.push(`${label}: local status block must contain '${line}'`);
+  }
+}
+
 function countPendingExecutedEvidence(value, prefix = "$") {
   const paths = [];
   if (Array.isArray(value)) {
@@ -71,6 +107,7 @@ const accessibilityContractPath =
 const registryPath = "docs/modules/registry.md";
 const fbaRegistryPath = "crates/modules/rustok-page-builder/contracts/page-builder-fba-registry.json";
 const pagesPlanPath = "crates/modules/rustok-pages/docs/implementation-plan.md";
+const pageBuilderPlanPath = "crates/modules/rustok-page-builder/docs/implementation-plan.md";
 
 const contract = json(contractPath);
 const inventorySource = json(inventorySourcePath);
@@ -81,6 +118,11 @@ const runner = read(runnerPath);
 const tests = read(testsPath);
 const registry = read(registryPath);
 const pagesPlan = read(pagesPlanPath);
+const pageBuilderPlan = read(pageBuilderPlanPath);
+// Registry cells of the two required rows: the contract's target mapping must agree with them.
+const cellValue = (row, index) => (tableCells(row ?? "")[index] ?? "").replaceAll("`", "");
+const pagesRow = contract.registry_precondition?.pages_row_required;
+const pageBuilderRow = contract.registry_precondition?.page_builder_row_required;
 
 requireValue(
   contract.format === "pages_page_builder_terminal_readiness_admission_source_v1" &&
@@ -93,10 +135,14 @@ requireValue(
     contract.potential_terminal_targets?.pages_ffa?.readiness_axis === "ffa" &&
     contract.potential_terminal_targets?.pages_ffa?.required_current_registry_status ===
       "in_progress" &&
+    contract.potential_terminal_targets?.pages_ffa?.required_current_registry_status ===
+      cellValue(pagesRow, 2) &&
+    contract.potential_terminal_targets?.pages_ffa?.local_plan === pagesPlanPath &&
     contract.potential_terminal_targets?.pages_ffa?.potential_terminal_status ===
       "parity_verified" &&
     contract.potential_terminal_targets?.pages_ffa?.terminal_candidate_ready === false &&
-    contract.potential_terminal_targets?.pages_ffa?.structural_shape === "core_transport_ui",
+    contract.potential_terminal_targets?.pages_ffa?.structural_shape ===
+      cellValue(pagesRow, 4),
   `${contractPath}: Pages FFA potential target mapping drifted`,
 );
 requireValue(
@@ -104,17 +150,167 @@ requireValue(
     contract.potential_terminal_targets?.page_builder_fba?.readiness_axis === "fba" &&
     contract.potential_terminal_targets?.page_builder_fba?.required_current_registry_status ===
       "boundary_ready" &&
+    contract.potential_terminal_targets?.page_builder_fba?.required_current_registry_status ===
+      cellValue(pageBuilderRow, 3) &&
+    contract.potential_terminal_targets?.page_builder_fba?.local_plan === pageBuilderPlanPath &&
     contract.potential_terminal_targets?.page_builder_fba?.potential_terminal_status ===
       "transport_verified" &&
     contract.potential_terminal_targets?.page_builder_fba?.terminal_candidate_ready === false &&
-    contract.potential_terminal_targets?.page_builder_fba?.structural_shape === "no_ui_boundary",
+    contract.potential_terminal_targets?.page_builder_fba?.structural_shape ===
+      cellValue(pageBuilderRow, 4),
   `${contractPath}: Page Builder FBA potential target mapping drifted`,
 );
-, marker, actualizationPath);
+for (const key of [
+  "pages_fba_status_mutated",
+  "page_builder_ffa_status_mutated",
+  "forum_ffa_status_mutated",
+  "forum_fba_status_mutated",
+  "other_module_status_mutated",
+]) {
+  requireValue(contract.non_targets?.[key] === false, `${contractPath}: ${key} must remain false`);
 }
 
-requireText(registry, contract.registry_precondition.pages_row_required, registryPath);
-requireText(registry, contract.registry_precondition.page_builder_row_required, registryPath);
+requireValue(
+  contract.promotion_review_input?.format === "forum_page_builder_ffa_fba_promotion_review_v1" &&
+    contract.promotion_review_input?.required_status ===
+      "owner_approved_ffa_fba_promotion_review_execution_pending" &&
+    contract.promotion_review_input?.decision_must_equal === "approve_ffa_fba_promotion_review" &&
+    JSON.stringify(contract.promotion_review_input?.targets_must_equal) ===
+      JSON.stringify(["ffa", "fba"]),
+  `${contractPath}: promotion review input drifted`,
+);
+requireValue(
+  contract.promotion_execution_input?.format === executionContract.output?.format &&
+    contract.promotion_execution_input?.required_status === executionContract.output?.success_status &&
+    contract.promotion_execution_input?.postcondition_passed_must_be_true === true &&
+    contract.promotion_execution_input?.rollback_must_not_have_run === true &&
+    contract.promotion_execution_input?.ffa_promoted_must_be_false === true &&
+    contract.promotion_execution_input?.fba_promoted_must_be_false === true,
+  `${contractPath}: successful promotion execution prerequisite drifted`,
+);
+requireValue(
+  contract.accessibility_input?.format === accessibilityContract.output?.format &&
+    contract.accessibility_input?.required_status === accessibilityContract.output?.status &&
+    JSON.stringify(contract.accessibility_input?.required_profiles) ===
+      JSON.stringify(["full", "read_only"]) &&
+    contract.accessibility_input?.owner_review_required_must_be_true === true &&
+    contract.accessibility_input?.screen_reader_execution_pending_must_be_true === true &&
+    contract.accessibility_input?.wcag_conformance_not_claimed_must_be_true === true,
+  `${contractPath}: accessibility prerequisite boundary drifted`,
+);
+
+const inventoryGuard = contract.terminal_evidence_inventory_guard ?? {};
+requireValue(
+  inventoryGuard.page_builder_fba_registry === fbaRegistryPath &&
+    inventoryGuard.page_builder_fba_required_current_status === "boundary_ready" &&
+    inventoryGuard.page_builder_fba_pending_key === "executed_evidence" &&
+    inventoryGuard.page_builder_fba_pending_value === "pending" &&
+    inventoryGuard.page_builder_fba_current_pending_entries_must_be_nonzero === true &&
+    inventoryGuard.page_builder_fba_pending_entries_block_transport_verified === true &&
+    inventoryGuard.pages_ffa_local_plan === pagesPlanPath &&
+    inventoryGuard.pages_ffa_current_pending_marker === "execution-rollout-pending" &&
+    inventoryGuard.pages_ffa_pending_marker_must_be_present === true &&
+    inventoryGuard.pages_ffa_pending_marker_blocks_parity_verified === true &&
+    inventoryGuard.complete_terminal_evidence_inventory_required_before_owner_platform_review ===
+      true &&
+    inventoryGuard.complete_terminal_evidence_inventory_format ===
+      "pages_page_builder_terminal_evidence_inventory_v1" &&
+    inventoryGuard.complete_terminal_evidence_inventory_source === inventorySourcePath &&
+    inventoryGuard.complete_terminal_evidence_inventory_source_format ===
+      "pages_page_builder_terminal_evidence_inventory_source_v1" &&
+    inventoryGuard.complete_terminal_evidence_inventory_source_defined === true,
+  `${contractPath}: terminal evidence inventory guard drifted`,
+);
+requireValue(
+  inventorySource.format === "pages_page_builder_terminal_evidence_inventory_source_v1" &&
+    inventorySource.status === "source_ready_maintainer_execution_pending" &&
+    inventorySource.output?.format === "pages_page_builder_terminal_evidence_inventory_v1",
+  `${inventorySourcePath}: inventory source identity drifted`,
+);
+const pendingEvidencePaths = countPendingExecutedEvidence(fbaRegistry);
+requireValue(
+  fbaRegistry.status === "boundary_ready" && pendingEvidencePaths.length > 0,
+  `${fbaRegistryPath}: current source no longer has the pending boundary this admission records`,
+);
+requireText(pagesPlan, "execution-rollout-pending", pagesPlanPath);
+
+requireValue(
+  contract.output?.format === "pages_page_builder_terminal_readiness_admission_v1" &&
+    contract.output?.status ===
+      "rollout_accessibility_prerequisites_admitted_terminal_inventory_pending" &&
+    contract.output?.default_path === "target/pages-page-builder-terminal-readiness-admission.json",
+  `${contractPath}: output identity drifted`,
+);
+for (const key of [
+  "admission_is_not_terminal_evidence_completion",
+  "admission_is_not_owner_approval",
+  "admission_is_not_platform_approval",
+  "admission_does_not_mutate_registry",
+  "admission_does_not_mutate_local_plans",
+  "admission_does_not_promote_ffa",
+  "admission_does_not_promote_fba",
+  "owner_platform_review_remains_blocked_while_terminal_inventory_incomplete",
+  "terminal_change_requires_same_pr_local_plan_and_registry_sync",
+  "terminal_change_requires_verification_evidence_in_pr",
+  "screen_reader_pending_does_not_claim_wcag_conformance",
+]) {
+  requireValue(contract.governance_boundary?.[key] === true, `${contractPath}: ${key} must remain true`);
+}
+
+for (const marker of [
+  "validatePromotionReview",
+  "validateExecution",
+  "validateAccessibility",
+  "validateRegistry",
+  "validateTerminalEvidenceInventoryGuard",
+  "collectPendingEvidence",
+  "promotion execution receipt was generated after the retained observed-Wave lease expired",
+  "promotion execution does not bind the supplied promotion-review packet",
+  "accessibility deployment RepoDigest differs from promotion execution",
+  "pending_executed_evidence_count",
+  "rollout_accessibility_prerequisites_admitted_terminal_inventory_pending",
+  "terminal_evidence_inventory_complete: false",
+  "owner_platform_review_ready: false",
+  "future_inventory_source_defined: true",
+  "future_inventory_source_path",
+  "pages_ffa_promoted: false",
+  "page_builder_fba_promoted: false",
+  "screen_reader_execution_pending: true",
+  "wcag_conformance_not_claimed: true",
+  "source_mutation_performed: false",
+]) {
+  requireText(runner, marker, runnerPath);
+}
+for (const forbidden of [
+  "fetch(",
+  "@playwright/test",
+  "chromium",
+  "compareAndSwapModuleSettings",
+  "updateModuleSettings",
+]) {
+  if (runner.includes(forbidden)) failures.push(`${runnerPath}: forbidden mutation/network marker '${forbidden}'`);
+}
+
+for (const label of [
+  "admits rollout and accessibility prerequisites while retaining incomplete terminal inventory",
+  "rejects non-successful promotion execution status",
+  "rejects promotion-review decision drift",
+  "rejects promotion-review source commit drift",
+  "rejects execution source commit drift",
+  "rejects accessibility deployment digest drift",
+  "rejects a promotion execution that required rollback",
+  "rejects failed full accessibility profile",
+  "rejects WCAG conformance overclaim",
+  "rejects execution generated after observed Wave lease",
+  "rejects execution readiness overclaim",
+]) {
+  requireText(tests, label, testsPath);
+}
+
+requireRegistryRow(registry, contract.registry_precondition.pages_row_required, registryPath);
+requireRegistryRow(registry, contract.registry_precondition.page_builder_row_required, registryPath);
+requireLocalPlanStatus(pagesPlan, pagesRow, pagesPlanPath);
+requireLocalPlanStatus(pageBuilderPlan, pageBuilderRow, pageBuilderPlanPath);
 requireText(registry, contract.registry_precondition.source_of_truth_rule_required, registryPath);
 requireText(
   registry,
@@ -127,7 +323,6 @@ for (const required of [
   runnerPath,
   testsPath,
   verifierPath,
-  actualizationPath,
   inventorySourcePath,
 ]) {
   requireValue(

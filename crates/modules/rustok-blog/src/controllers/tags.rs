@@ -12,7 +12,6 @@ use uuid::Uuid;
 
 use super::authorization::{ensure_blog_permission, security_context};
 use super::{BlogHttpRuntime, ensure_blog_module_enabled};
-use crate::TagService;
 use crate::dto::{CreateTagInput, ListTagsFilter, TagListItem, TagResponse, UpdateTagInput};
 
 #[derive(Debug, Serialize, ToSchema)]

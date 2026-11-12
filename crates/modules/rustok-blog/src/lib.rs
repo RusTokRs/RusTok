@@ -53,16 +53,16 @@ pub use integrations::reaction_subject::{
     BlogReactionSubjectProviderFactory,
 };
 pub use module::BlogModule;
+pub use ports::BlogCategoryDeleteCleanupPort as TaxonomyCategoryDeleteCleanupPort;
+pub use ports::{
+    BlogCategoryDeleteCleanupPort, BlogTaxonomyConnection, BlogTaxonomyPort,
+    NoopBlogCategoryDeleteCleanupPort, NoopBlogTaxonomyPort,
+};
 pub use ports::{
     CreatePromotedPostInput, DemotedPostRecord, DemotedPostTranslationRecord,
     PromotedPostTranslationInput, create_promoted_post_in_tx, delete_demoted_post_in_tx,
     ensure_blog_category_exists_in_tx, ensure_blog_slug_unique_in_tx, load_post_for_demotion_in_tx,
     load_post_tag_ids_in_tx,
-};
-pub use ports::BlogCategoryDeleteCleanupPort as TaxonomyCategoryDeleteCleanupPort;
-pub use ports::{
-    BlogCategoryDeleteCleanupPort, BlogTaxonomyConnection, BlogTaxonomyPort,
-    NoopBlogCategoryDeleteCleanupPort, NoopBlogTaxonomyPort,
 };
 pub use rustok_comments::CommentsThreadPort;
 pub use services::BlogWidgetService;

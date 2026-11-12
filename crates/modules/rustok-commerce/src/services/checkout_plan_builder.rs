@@ -1,3 +1,4 @@
+use futures_util::future::try_join_all;
 use rustok_api::{
     PLATFORM_FALLBACK_LOCALE, PortContext, PortError, PortErrorKind, normalize_locale_tag,
 };
@@ -11,7 +12,6 @@ use rustok_fulfillment::{
     in_process_shipping_option_read_port,
 };
 use rustok_inventory::{InventoryAvailabilityRequest, InventoryReservationPort};
-use futures_util::future::try_join_all;
 use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, VariantProductProjectionRequest,
 };
@@ -281,53 +281,56 @@ impl CheckoutPlanBuilder {
             crate::storefront_channel::resolve_cart_channel(&self.db, &channel_context, cart)
                 .await
                 .map_err(|error| boundary_error("read_checkout_channel", error))?;
-        let product_futures = demands.iter().map(|demand| {
-            let variant_id = demand.variant_id;
-            let product_id = demand.product_id;
-            let locale = cart.locale_code.clone();
-            let port = self.product_catalog_read_port.clone();
-            let product_context =
-                product_context(tenant_id, actor_id, cart, public_channel_slug.as_deref());
-            async move {
-                let product = match product_id {
-                    Some(product_id) => port
-                        .read_product_projection(
-                            product_context.clone(),
-                            ProductProjectionRequest {
-                                product_id,
-                                locale: locale.clone(),
-                                fallback_locale: None,
-                            },
-                        )
-                        .await
-                        .map_err(|error| {
-                            checkout_plan_product_projection_boundary_error(
-                                &product_context,
-                                PRODUCT_PROJECTION_READ_OPERATION,
-                                error,
+        let product_futures = demands
+            .iter()
+            .map(|demand| {
+                let variant_id = demand.variant_id;
+                let product_id = demand.product_id;
+                let locale = cart.locale_code.clone();
+                let port = self.product_catalog_read_port.clone();
+                let product_context =
+                    product_context(tenant_id, actor_id, cart, public_channel_slug.as_deref());
+                async move {
+                    let product = match product_id {
+                        Some(product_id) => port
+                            .read_product_projection(
+                                product_context.clone(),
+                                ProductProjectionRequest {
+                                    product_id,
+                                    locale: locale.clone(),
+                                    fallback_locale: None,
+                                },
                             )
-                        })?,
-                    None => port
-                        .read_variant_product_projection(
-                            product_context.clone(),
-                            VariantProductProjectionRequest {
-                                variant_id,
-                                locale: locale.clone(),
-                                fallback_locale: None,
-                            },
-                        )
-                        .await
-                        .map_err(|error| {
-                            checkout_plan_product_projection_boundary_error(
-                                &product_context,
-                                VARIANT_PRODUCT_PROJECTION_READ_OPERATION,
-                                error,
+                            .await
+                            .map_err(|error| {
+                                checkout_plan_product_projection_boundary_error(
+                                    &product_context,
+                                    PRODUCT_PROJECTION_READ_OPERATION,
+                                    error,
+                                )
+                            })?,
+                        None => port
+                            .read_variant_product_projection(
+                                product_context.clone(),
+                                VariantProductProjectionRequest {
+                                    variant_id,
+                                    locale: locale.clone(),
+                                    fallback_locale: None,
+                                },
                             )
-                        })?,
-                };
-                Ok::<_, CheckoutError>(product)
-            }
-        }).collect::<Vec<_>>();
+                            .await
+                            .map_err(|error| {
+                                checkout_plan_product_projection_boundary_error(
+                                    &product_context,
+                                    VARIANT_PRODUCT_PROJECTION_READ_OPERATION,
+                                    error,
+                                )
+                            })?,
+                    };
+                    Ok::<_, CheckoutError>(product)
+                }
+            })
+            .collect::<Vec<_>>();
         let products = try_join_all(product_futures).await?;
         for (demand, product) in demands.iter().zip(products.iter()) {
             for line_item in &demand.line_items {
@@ -407,25 +410,30 @@ impl CheckoutPlanBuilder {
                 Ok::<_, CheckoutError>((id, ctx))
             })
             .collect::<CheckoutResult<Vec<_>>>()?;
-        let shipping_futures = validated_groups.into_iter().map(|(id, ctx)| {
-            let port = self.shipping_option_read_port.clone();
-            let requested_locale = requested_locale.to_string();
-            let tenant_default_locale = tenant_default_locale.map(|s| s.to_string());
-            async move {
-                let option = port
-                    .read_shipping_option_projection(
-                        ctx.clone(),
-                        ReadShippingOptionProjectionRequest {
-                            shipping_option_id: id,
-                            requested_locale: Some(requested_locale),
-                            tenant_default_locale,
-                        },
-                    )
-                    .await
-                    .map_err(|error| checkout_plan_shipping_option_boundary_error(&ctx, error))?;
-                Ok::<_, CheckoutError>(option)
-            }
-        }).collect::<Vec<_>>();
+        let shipping_futures = validated_groups
+            .into_iter()
+            .map(|(id, ctx)| {
+                let port = self.shipping_option_read_port.clone();
+                let requested_locale = requested_locale.to_string();
+                let tenant_default_locale = tenant_default_locale.map(|s| s.to_string());
+                async move {
+                    let option = port
+                        .read_shipping_option_projection(
+                            ctx.clone(),
+                            ReadShippingOptionProjectionRequest {
+                                shipping_option_id: id,
+                                requested_locale: Some(requested_locale),
+                                tenant_default_locale,
+                            },
+                        )
+                        .await
+                        .map_err(|error| {
+                            checkout_plan_shipping_option_boundary_error(&ctx, error)
+                        })?;
+                    Ok::<_, CheckoutError>(option)
+                }
+            })
+            .collect::<Vec<_>>();
         let options = try_join_all(shipping_futures).await?;
         for (delivery_group, option) in cart.delivery_groups.iter().zip(options.iter()) {
             if !option

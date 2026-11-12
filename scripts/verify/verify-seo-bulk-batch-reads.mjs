@@ -4,6 +4,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { containsMarker } from './lib/source-text.mjs';
+
 const configuredRoot = process.env.RUSTOK_VERIFY_REPO_ROOT?.trim();
 const root = configuredRoot
   ? pathToFileURL(`${path.resolve(configuredRoot)}${path.sep}`)
@@ -30,11 +32,14 @@ const applyExecution = bulkModule.slice(applyStart, ioStart);
 const ioExecution = bulkModule.slice(ioStart, compatibilityStart);
 const ioCompatibility = bulkModule.slice(compatibilityStart, workerStart);
 
+// Markers are compared on a layout-normalized copy of the Rust source: `cargo fmt` breaks a
+// method chain longer than the chain width onto continuation lines, and the routing these
+// markers pin is the same call either way.
 const requireText = (source, value, label) => {
-  if (!source.includes(value)) failures.push(`${label}: missing ${value}`);
+  if (!containsMarker(source, value)) failures.push(`${label}: missing ${value}`);
 };
 const forbidText = (source, value, label) => {
-  if (source.includes(value)) failures.push(`${label}: forbidden ${value}`);
+  if (containsMarker(source, value)) failures.push(`${label}: forbidden ${value}`);
 };
 
 requireText(services, 'mod bulk_read_model;', 'shared read-model registration');

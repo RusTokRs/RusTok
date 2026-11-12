@@ -36,4 +36,3 @@
 - **Host Interface:** Depends on React 19, `@rustok/next-fluent`, `sonner`, `@/modules/registry`, and `@/shared/ui/shadcn` design system components from `apps/next-admin`.
 - **Backend API:** Communicates with `apps/server` via GraphQL endpoint (`/api/graphql`).
 - **No Direct Storage Access:** Never accesses configuration files or databases directly; all changes commit through the authenticated RusToK GraphQL gateway.
-

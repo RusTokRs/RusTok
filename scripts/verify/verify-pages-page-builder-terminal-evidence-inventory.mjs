@@ -40,6 +40,42 @@ function requireText(source, marker, label) {
   if (!source.includes(marker)) failures.push(`${label}: missing '${marker}'`);
 }
 
+// The registry is a formatted Markdown table: compare cells, not column padding.
+function tableCells(row) {
+  return row
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function requireRegistryRow(source, expectedRow, label) {
+  const expected = tableCells(expectedRow);
+  const found = source
+    .split("\n")
+    .filter((line) => line.trimStart().startsWith("|"))
+    .map(tableCells)
+    .some((cells) => expected.every((cell, index) => cells[index] === cell));
+  if (!found) failures.push(`${label}: missing registry row '${expectedRow}'`);
+}
+
+// The registry rule makes the local plan the source of truth for a module's status, so a
+// required registry row is only a real precondition while the plan states the same three
+// values. Checking both closes the gap that let the registry, the plan and this contract
+// describe one module three different ways.
+function requireLocalPlanStatus(plan, requiredRow, label) {
+  const [, , ffaStatus, fbaStatus, structuralShape] = tableCells(requiredRow);
+  for (const line of [
+    `- FFA status: ${ffaStatus}`,
+    `- FBA status: ${fbaStatus}`,
+    `- Structural shape: ${structuralShape}`,
+  ]) {
+    const found = plan.split("\n").some((planLine) => planLine.trim() === line);
+    if (!found) failures.push(`${label}: local status block must contain '${line}'`);
+  }
+}
+
 function pointerToken(value) {
   return String(value).replaceAll("~", "~0").replaceAll("/", "~1");
 }
@@ -172,19 +208,112 @@ requireValue(
   `${sourcePath}: output contract drifted`,
 );
 
-, marker, actualizationPath);
+for (const key of [
+  "inventory_is_not_owner_approval",
+  "inventory_is_not_platform_approval",
+  "inventory_does_not_mutate_registry",
+  "inventory_does_not_mutate_local_plans",
+  "inventory_does_not_promote_ffa",
+  "inventory_does_not_promote_fba",
+  "owner_platform_review_must_remain_blocked_when_incomplete",
+  "terminal_change_requires_same_pr_local_plan_and_registry_sync",
+  "terminal_change_requires_verification_evidence_in_pr",
+]) {
+  requireValue(source.governance_boundary?.[key] === true, `${sourcePath}: ${key} must remain true`);
+}
+
+requireValue(
+  predecessorSource.terminal_evidence_inventory_guard
+    ?.complete_terminal_evidence_inventory_source_defined === true &&
+    predecessorSource.terminal_evidence_inventory_guard
+      ?.complete_terminal_evidence_inventory_source === sourcePath &&
+    predecessorSource.terminal_evidence_inventory_guard
+      ?.complete_terminal_evidence_inventory_source_format ===
+      "pages_page_builder_terminal_evidence_inventory_source_v1" &&
+    predecessorSource.next_cursor?.terminal_evidence_inventory ===
+      "source_ready_maintainer_execution_pending" &&
+    Array.isArray(predecessorSource.required_source_files) &&
+    predecessorSource.required_source_files.includes(sourcePath),
+  `${predecessorSourcePath}: predecessor cursor is not actualized to the inventory source`,
+);
+for (const marker of [
+  "complete_terminal_evidence_inventory_source_defined === true",
+  'inventorySource.format === "pages_page_builder_terminal_evidence_inventory_source_v1"',
+  "future_inventory_source_defined: true",
+  "future_inventory_source_path",
+]) {
+  requireText(predecessorVerifier, marker, predecessorVerifierPath);
 }
 
 for (const marker of [
+  "collectPendingEvidence",
+  "evaluateInventory",
+  "--prerequisite-admission",
+  "prerequisite admission source_commit does not equal checkout HEAD",
+  "prerequisite retained admission-source hash does not match checkout",
+  "prerequisite retained inventory-source hash does not match checkout",
+  "prerequisite terminal-inventory source binding does not match checkout",
+  "prerequisite admission contains a terminal-readiness overclaim",
+  "prerequisite Page Builder FBA blocker count does not match same-source canonical registry",
+  "prerequisite Pages rollout blocker fact does not match same-source canonical plan",
+  "pending_executed_evidence_paths",
+  "contract.completion.complete_status",
+  "contract.completion.incomplete_status",
+  "owner_platform_review_ready",
+  "pages_ffa_promoted: false",
+  "page_builder_fba_promoted: false",
+  "source_mutation_performed: false",
+]) {
+  requireText(runner, marker, runnerPath);
+}
+for (const forbidden of [
+  "fetch(",
+  "@playwright/test",
+  "chromium",
+  "compareAndSwapModuleSettings",
+  "updateModuleSettings",
+  "git push",
+]) {
+  if (runner.includes(forbidden)) failures.push(`${runnerPath}: forbidden network/mutation marker '${forbidden}'`);
+}
+
+for (const marker of [
+  "collects every nested executed-evidence blocker as a stable JSON Pointer",
+  "escapes JSON Pointer tokens",
+  "ignores unrelated pending values",
+  "remains incomplete while Page Builder FBA blockers exist",
+  "remains incomplete while Pages execution rollout marker exists",
+  "requires a valid predecessor even when canonical blockers are clear",
+  "becomes review-ready only when predecessor and both canonical blocker sets are clear",
+  "does not infer readiness from a reduced but nonzero blocker set",
+]) {
+  requireText(tests, marker, testsPath);
+}
+
+for (const row of [
   source.readiness_precondition.pages_row_required,
   source.readiness_precondition.page_builder_row_required,
+]) {
+  requireRegistryRow(centralRegistry, row, centralRegistryPath);
+}
+requireLocalPlanStatus(
+  pagesPlan,
+  source.readiness_precondition.pages_row_required,
+  pagesPlanPath,
+);
+requireLocalPlanStatus(
+  pageBuilderPlan,
+  source.readiness_precondition.page_builder_row_required,
+  pageBuilderPlanPath,
+);
+for (const marker of [
   source.readiness_precondition.source_of_truth_rule_required,
   "If status = `parity_verified` or `transport_verified`, the PR must contain verification evidence.",
 ]) {
   requireText(centralRegistry, marker, centralRegistryPath);
 }
 
-for (const required of [sourcePath, runnerPath, testsPath, verifierPath, actualizationPath]) {
+for (const required of [sourcePath, runnerPath, testsPath, verifierPath]) {
   requireValue(
     Array.isArray(source.required_source_files) && source.required_source_files.includes(required),
     `${sourcePath}: required_source_files is missing ${required}`,

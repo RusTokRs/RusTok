@@ -27,7 +27,15 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import type { PostSummary, GqlOpts } from '../../api/posts';
-import { archivePost, deletePost, pinPost, publishPost, restorePost, unpinPost, unpublishPost } from '../../api/posts';
+import {
+  archivePost,
+  deletePost,
+  pinPost,
+  publishPost,
+  restorePost,
+  unpinPost,
+  unpublishPost
+} from '../../api/posts';
 import { PreviewTokenModal } from './preview-token-modal';
 
 interface CellActionProps {
@@ -35,10 +43,7 @@ interface CellActionProps {
   gqlOpts: GqlOpts;
 }
 
-export const CellAction: React.FC<CellActionProps> = ({
-  data,
-  gqlOpts
-}) => {
+export const CellAction: React.FC<CellActionProps> = ({ data, gqlOpts }) => {
   const t = useTranslations('blog');
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -142,39 +147,62 @@ export const CellAction: React.FC<CellActionProps> = ({
             disabled={loading}
             onClick={() => router.push(`/dashboard/blog/${data.id}/edit`)}
           >
-            <IconEdit className='mr-2 h-4 w-4' />{t('table.edit')}</DropdownMenuItem>
+            <IconEdit className='mr-2 h-4 w-4' />
+            {t('table.edit')}
+          </DropdownMenuItem>
           <DropdownMenuItem disabled={loading} onClick={onTogglePublish}>
             {data.status === 'ARCHIVED' ? (
               <>
-                <IconRestore className='mr-2 h-4 w-4' />{t('table.restore')}</>
+                <IconRestore className='mr-2 h-4 w-4' />
+                {t('table.restore')}
+              </>
             ) : data.status === 'PUBLISHED' ? (
               <>
-                <IconWorldOff className='mr-2 h-4 w-4' />{t('table.unpublish')}</>
+                <IconWorldOff className='mr-2 h-4 w-4' />
+                {t('table.unpublish')}
+              </>
             ) : (
               <>
-                <IconWorldUpload className='mr-2 h-4 w-4' />{t('table.publish')}</>
+                <IconWorldUpload className='mr-2 h-4 w-4' />
+                {t('table.publish')}
+              </>
             )}
           </DropdownMenuItem>
           {data.status === 'PUBLISHED' && (
             <DropdownMenuItem disabled={loading} onClick={onArchive}>
-              <IconArchive className='mr-2 h-4 w-4' />{t('table.archive')}</DropdownMenuItem>
+              <IconArchive className='mr-2 h-4 w-4' />
+              {t('table.archive')}
+            </DropdownMenuItem>
           )}
           {(data.status === 'PUBLISHED' || data.isPinned) && (
             <DropdownMenuItem disabled={loading} onClick={onTogglePin}>
               {data.isPinned ? (
-                <><IconPinnedOff className='mr-2 h-4 w-4' />{t('table.unpin')}</>
+                <>
+                  <IconPinnedOff className='mr-2 h-4 w-4' />
+                  {t('table.unpin')}
+                </>
               ) : (
-                <><IconPinned className='mr-2 h-4 w-4' />{t('table.pin')}</>
+                <>
+                  <IconPinned className='mr-2 h-4 w-4' />
+                  {t('table.pin')}
+                </>
               )}
             </DropdownMenuItem>
           )}
           {data.status === 'DRAFT' && (
-            <DropdownMenuItem disabled={loading} onClick={() => setPreviewOpen(true)}>
-              <IconEye className='mr-2 h-4 w-4' />{t('preview.title')}</DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={loading}
+              onClick={() => setPreviewOpen(true)}
+            >
+              <IconEye className='mr-2 h-4 w-4' />
+              {t('preview.title')}
+            </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
           <DropdownMenuItem disabled={loading} onClick={() => setOpen(true)}>
-            <IconTrash className='mr-2 h-4 w-4' />{t('table.delete')}</DropdownMenuItem>
+            <IconTrash className='mr-2 h-4 w-4' />
+            {t('table.delete')}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </>

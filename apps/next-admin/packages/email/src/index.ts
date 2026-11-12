@@ -8,6 +8,9 @@ registerAdminModule({
 });
 
 export { emailNavItems } from './nav';
-export { default as EmailSettingsPage, EmailSettingsPage as EmailSettingsAdminPage } from './pages/email-settings-page';
+export {
+  default as EmailSettingsPage,
+  EmailSettingsPage as EmailSettingsAdminPage
+} from './pages/email-settings-page';
 export { EmailSettingsForm } from './components/email-settings-form';
 export * from './api/email';

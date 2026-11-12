@@ -189,5 +189,7 @@ pub fn adapter_editor_messages(locale: Option<&str>) -> EditorMessages {
         ),
         edit: t(locale, "page_builder.action.edit", "Edit"),
         preview: t(locale, "page_builder.action.preview", "Preview"),
+        insert_block: t(locale, "page_builder.action.add", "Add"),
+        drag_block: t(locale, "page_builder.action.drag", "Drag"),
     }
 }

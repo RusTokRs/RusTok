@@ -1,7 +1,6 @@
 {
   "status": "metadata_surface_cutover_complete",
   "format": "page_builder_consumer_properties_v1",
-  "parity_plan": "docs/modules/pages-page-builder-parity-continuation-plan.md",
   "provider": {
     "contract_source": "crates/modules/rustok-page-builder/admin/src/consumer_properties.rs",
     "panel_source": "crates/modules/rustok-page-builder/admin/src/editor/consumer_properties.rs",

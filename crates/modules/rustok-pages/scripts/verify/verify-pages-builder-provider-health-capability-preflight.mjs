@@ -66,8 +66,46 @@ for (const [object, key, expected] of [
   [contract.anti_promotion, "pages_reference_consumer_gate_accepted", false],
 ]) if (object?.[key] !== expected) failures.push(`${key} must equal ${JSON.stringify(expected)}`);
 
-, marker, "capability-preflight actualization");
-, marker, "plan parity actualization");
+for (const marker of [
+  "pub fn effective_provider_runtime_flags(", "ProviderHealthState::Unavailable", "ProviderHealthState::Degraded", "effective.publish_enabled = false",
+]) need(sources.coreRollout, marker, "shared runtime policy");
+for (const marker of [
+  "effective_provider_runtime_flags(&self.flags, self.health.as_ref())", "pub fn effective_runtime_flags(&self) -> BuilderCapabilityFlags",
+]) need(sources.providerStatus, marker, "admin provider status delegation");
+forbid(sources.providerStatus, "PageBuilderAdminProviderState::Unavailable => BuilderCapabilityFlags", "admin provider status must not duplicate runtime policy");
+
+for (const marker of [
+  "PagesGraphqlRuntimeData::provider_health_snapshot", "async fn page_builder_capability_preflight(",
+  "let provider_health = provider_health_snapshot(ctx);", "effective_provider_runtime_flags(&flags, provider_health.as_ref())",
+  "ensure_capability(&effective_flags, capability_kind)", "PAGE_BUILDER_FEATURE_DISABLED_ERROR_CODE",
+]) need(sources.owner, marker, "Pages GraphQL provider-health preflight");
+for (const marker of ["provider_health_authority", "authority.current_snapshot()"])
+  need(sources.runtimeData, marker, "fresh runtime health authority");
+need(sources.pagesSnapshot, "self.provider_status().effective_runtime_flags()", "Pages snapshot runtime policy");
+for (const marker of ["let effective_flags = trusted_rollout.effective_runtime_flags();", "compose_configured_fly_page_builder_handlers(\n        service,\n        effective_flags,"])
+  need(sources.pagesFacade, marker, "authoritative SSR runtime policy");
+
+if (
+  rolloutContract.provider_health_boundary?.harness_purpose !== "rollout_only" ||
+  rolloutContract.provider_health_boundary?.provider_health_must_remain_unobserved !== true ||
+  rolloutContract.provider_health_boundary?.observe_before_each_profile_preflight !== true ||
+  rolloutContract.provider_health_boundary?.observe_after_each_profile_preflight !== true ||
+  rolloutContract.provider_health_boundary?.provider_health_payload_must_be_absent !== true
+) failures.push("rollout-only feature-preflight health boundary drifted");
+if (rolloutEvidence.source_contract?.provider_health_observed !== false || rolloutEvidence.source_contract?.raw_provider_health_payload_persisted !== false) failures.push("rollout-only harness must remain unobserved without raw health retention");
+for (const marker of [
+  "async function assertProviderHealthUnobserved(", "snapshot.providerHealthObserved !== false", "snapshot.providerHealth !== null",
+  "provider_health_before: providerHealthBefore", "provider_health_after: providerHealthAfter",
+]) need(sources.rolloutHarnessSpec, marker, "rollout-only live health isolation");
+
+if (runtimeHarness.format !== "pages_builder_provider_health_runtime_harness_source_v1" || runtimeHarness.status !== "source_ready_maintainer_execution_pending") failures.push("observed-health runtime harness continuation is not source-ready");
+if (consumerBinding.format !== "pages_builder_provider_health_consumer_binding_source_v1") failures.push("consumer binding predecessor drifted");
+if (serverBinding.format !== "pages_builder_provider_health_server_binding_source_v1") failures.push("server binding predecessor drifted");
+if (gate.accepted !== false || gate.current_boundary?.provider_health !== "unobserved") failures.push("retained Pages gate must remain unaccepted/provider-health-unobserved");
+
+if (contract.next_cursor?.provider_health_capability_preflight !== "source_ready_runtime_execution_pending") failures.push("capability-preflight cursor drifted");
+if (contract.next_cursor?.observed_health_runtime_evidence_harness !== "source_ready_maintainer_execution_pending") failures.push("observed-health runtime harness must be source-ready/maintainer-execution-pending");
+if (contract.next_cursor?.observed_health_acceptance !== "pending") failures.push("observed-health acceptance must remain pending");
 
 if (failures.length) {
   console.error("[verify-pages-builder-provider-health-capability-preflight] FAIL");

@@ -517,4 +517,3 @@ impl ForumCategoryAudienceReadService {
         Ok(tree)
     }
 }
-

@@ -120,6 +120,8 @@ pub struct PagesBrowserIntentResponse {
     /// uses the same shape as the HTTP error body of this endpoint.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub save_failure: Option<PagesBrowserIntentProblem>,
+    /// `true` when the server render the browser holds is out of date: the document, the
+    /// preview context or the page the editor is on changed, or a save was answered.
     pub reload: bool,
     pub draft_token: String,
     pub draft_generation: u64,
@@ -276,6 +278,7 @@ pub async fn dispatch_pages_browser_intent_with_store(
         "set_runtime_context" | "set_runtime_locale"
     );
     let failed_save_before = failed_save_hash(&controller);
+    let open_page_before = open_page(&controller);
     let mut result = match envelope.intent.as_str() {
         "set_runtime_context" => {
             runtime_context = runtime_context_from_payload(&envelope.payload)?;
@@ -379,6 +382,13 @@ pub async fn dispatch_pages_browser_intent_with_store(
         }
     }
 
+    // The server renders the page of the document the editor is on, and the draft session
+    // committed below carries that page to the next request. An intent that only moves the
+    // editor to another page (`activate_page`) changes the render and leaves the document as
+    // it is, so no other term of `reload` reports it. A caller without a session keeps
+    // nothing and is not sent into a reload that would show the page it came from.
+    let page_switched = capabilities.edit && open_page_before != open_page(&controller);
+
     let (draft_token, draft_generation) = if capabilities.edit {
         let committed = draft_store.commit_with_context(
             session_token.as_deref(),
@@ -400,6 +410,7 @@ pub async fn dispatch_pages_browser_intent_with_store(
 
     Ok(PagesBrowserIntentResponse {
         reload: context_update
+            || page_switched
             || envelope.is_mutating()
             || persistence.is_some()
             || save_failure.is_some(),
@@ -410,6 +421,15 @@ pub async fn dispatch_pages_browser_intent_with_store(
         draft_generation,
         runtime_context,
     })
+}
+
+/// Index and id of the page of the document the editor is on, which is the page the server
+/// renders into the canvas.
+fn open_page(controller: &AdminCanvasController) -> (usize, Option<String>) {
+    (
+        controller.active_page_index(),
+        controller.active_page_summary().and_then(|page| page.id),
+    )
 }
 
 fn controller_from_page(
@@ -729,6 +749,77 @@ mod tests {
         controller
     }
 
+    fn two_page_controller() -> AdminCanvasController {
+        AdminCanvasController::new(
+            "home",
+            "rev-1",
+            json!({
+                "pages": [{
+                    "id": "home",
+                    "component": {
+                        "id": "home-root",
+                        "type": "wrapper",
+                        "components": [{ "id": "hero", "type": "section" }]
+                    }
+                }, {
+                    "id": "about",
+                    "component": { "id": "about-root", "type": "wrapper" }
+                }]
+            }),
+        )
+        .expect("controller")
+    }
+
+    fn form_envelope(intent: &str, payload: Value) -> BrowserIntentEnvelope {
+        BrowserIntentEnvelope {
+            protocol: FLY_BROWSER_PROTOCOL.to_string(),
+            instance_id: "pages-endpoint".to_string(),
+            intent: intent.to_string(),
+            payload,
+            sequence: Some(1),
+            page_id: Some("home".to_string()),
+            revision: Some("rev-1".to_string()),
+            project_hash: None,
+            draft_token: None,
+            draft_generation: None,
+        }
+    }
+
+    // `reload` is decided from `open_page` before and after the dispatch. The endpoint itself
+    // fetches the page over the transport and has no test; these pin the two halves it reads.
+    #[test]
+    fn open_page_follows_the_page_a_form_opens_or_creates() {
+        let mut controller = two_page_controller();
+        assert_eq!(open_page(&controller), (0, Some("home".to_string())));
+
+        let opened = form_envelope("activate_page", json!({ "page_id": "about" }));
+        assert!(
+            !opened.is_mutating(),
+            "opening a page changes no document, so `is_mutating` cannot ask for the reload"
+        );
+        dispatch_browser_intent(&mut controller, opened).expect("open page form");
+        assert_eq!(open_page(&controller), (1, Some("about".to_string())));
+
+        let created = form_envelope("create_page", json!({ "page_id": "contact", "name": "" }));
+        dispatch_browser_intent(&mut controller, created).expect("create page form");
+        assert_eq!(open_page(&controller), (2, Some("contact".to_string())));
+    }
+
+    #[test]
+    fn open_page_is_unchanged_by_an_intent_that_stays_on_the_page() {
+        let mut controller = two_page_controller();
+        let before = open_page(&controller);
+
+        let select = form_envelope("select", json!({ "component_id": "hero" }));
+        dispatch_browser_intent(&mut controller, select).expect("select");
+        assert_eq!(open_page(&controller), before);
+
+        // Opening the page the editor is already on is not a switch either.
+        let same = form_envelope("activate_page", json!({ "page_id": "home" }));
+        dispatch_browser_intent(&mut controller, same).expect("open the current page");
+        assert_eq!(open_page(&controller), before);
+    }
+
     #[test]
     fn failed_save_keeps_the_edit_and_marks_the_draft_unsaved() {
         let mut controller = dirty_controller();
@@ -903,10 +994,12 @@ mod tests {
         let default_durable = pages_browser_default_durable_store();
         assert_eq!(default_durable.memory().len().unwrap(), 0);
         let store = pages_browser_draft_store();
-        assert!(store
-            .load("non-existent-token", "home", None)
-            .unwrap()
-            .is_none());
+        assert!(
+            store
+                .load("non-existent-token", "home", None)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -966,15 +1059,14 @@ mod tests {
 
     #[test]
     fn persisted_revision_key_separates_auth_contexts() {
-        let snapshot = |token: Option<&str>, tenant: Option<&str>, page: &str| {
-            PagesBuilderSaveSnapshot {
+        let snapshot =
+            |token: Option<&str>, tenant: Option<&str>, page: &str| PagesBuilderSaveSnapshot {
                 token: token.map(ToString::to_string),
                 tenant_slug: tenant.map(ToString::to_string),
                 page_id: page.to_string(),
                 default_locale: "en".to_string(),
                 owner: None,
-            }
-        };
+            };
         let base = snapshot(Some("token-a"), Some("tenant-1"), "home");
         assert_eq!(
             persisted_revision_key(&base),

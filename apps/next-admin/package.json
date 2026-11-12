@@ -162,6 +162,8 @@
     "@types/uuid": "^11.0.0",
     "@typescript-eslint/eslint-plugin": "^8.72.1",
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
+    "grapesjs": "0.23.6",
+    "grapesjs-preset-webpage": "1.0.3",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",
     "prettier": "3.9.10",

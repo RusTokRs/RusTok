@@ -183,4 +183,3 @@ impl ProductTaxonomyPort for NoopProductTaxonomyPort {
         Ok(Vec::new())
     }
 }
-

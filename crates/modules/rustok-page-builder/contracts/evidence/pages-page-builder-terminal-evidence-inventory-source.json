@@ -27,7 +27,7 @@
   },
   "readiness_precondition": {
     "pages_row_required": "| `pages` | admin + storefront | `in_progress` | `boundary_ready` | `core_transport_ui` |",
-    "page_builder_row_required": "| `page_builder` | no module-owned UI | `not_started` | `boundary_ready` | `no_ui_boundary` |",
+    "page_builder_row_required": "| `page_builder` | admin + storefront | `in_progress` | `boundary_ready` | `core_transport_ui` |",
     "source_of_truth_rule_required": "The source of truth for status is the local `docs/implementation-plan.md` of the module.",
     "terminal_status_requires_verification_evidence": true,
     "readiness_rows_must_not_change_before_owner_platform_approval": true

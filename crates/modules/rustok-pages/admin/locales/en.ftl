@@ -1,4 +1,5 @@
 pages-badge = pages
+pages-builder-draftLoadError = The draft of this address could not be loaded; the editor shows the saved page
 pages-builder-loadError = Failed to load the selected page for visual editing
 pages-builder-loading = Loading visual editor...
 pages-builder-missing = Select an existing page to open the Fly visual editor.

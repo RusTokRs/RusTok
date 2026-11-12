@@ -7,7 +7,7 @@ use crate::editor::{
     RuntimeScenarioPanel, RuntimeScenarioRegressionPanel, ServerPreviewPanel, SsrActionsFormsPanel,
     SsrAssetPanel, SsrInspectorPanel, SsrInternalPageLinkPanel, SsrLocaleCoveragePanel,
     SsrLocalePanel, SsrLocalePolicyPanel, SsrLocalizedMetadataPanel, SsrTranslationsPanel,
-    TraitPanel,
+    TraitPanel, route_viewport,
 };
 use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
@@ -26,7 +26,7 @@ use rustok_page_builder::runtime_scenario_release::PageBuilderScenarioBaselineCh
 use rustok_page_builder::{
     RuntimeContextScenario, RuntimePublishGatePolicy, RuntimeScenarioReleaseBaseline,
 };
-use rustok_ui_core::UiRouteContext;
+use rustok_ui_core::{UiCspNonce, UiRouteContext};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -115,6 +115,17 @@ pub fn AdminCanvas(
         runtime.dispatch(UiIntent::SetEditableCapabilities(capabilities));
     }
 
+    // The previewed viewport is view state carried by the route (see `VIEWPORT_ROUTE_QUERY_KEY`).
+    // It is applied before any child renders: the toolbar and the canvas frame both read it.
+    // The viewport held before the route is applied stays known to the toolbar, which offers it
+    // as the way back from a preset.
+    let base_viewport = runtime
+        .controller
+        .with_untracked(|controller| controller.ui().state.viewport);
+    if let Some(viewport) = route_viewport(&route_context.query, base_viewport) {
+        runtime.dispatch(UiIntent::SetViewport(viewport));
+    }
+
     let scenario_baseline = RwSignal::new(runtime_scenario_baseline);
     let host_baseline_callback = StoredValue::new(on_runtime_scenario_baseline);
     let baseline_signal = scenario_baseline;
@@ -135,6 +146,8 @@ pub fn AdminCanvas(
         .controller
         .with(|controller| controller.editor().revision().project_hash.hex());
     let root_intent_endpoint = browser_intent_endpoint.clone();
+    // The host policy admits an inline script only with the nonce of this response.
+    let browser_script_nonce = use_context::<UiCspNonce>().map(|nonce| nonce.as_str().to_string());
     let root_csrf_token = browser_csrf_token.clone();
     let adapter_runtime = runtime.clone();
     let adapter_assembly = contribution_assembly.clone();
@@ -186,8 +199,9 @@ pub fn AdminCanvas(
             <PageBuilderBrowserAdapter
                 intent_endpoint=browser_intent_endpoint
                 csrf_token=browser_csrf_token
+                script_nonce=browser_script_nonce
             />
-            <AuthoringToolbar runtime=toolbar_runtime />
+            <AuthoringToolbar runtime=toolbar_runtime base_viewport=base_viewport />
             <AdapterWorkspacePanel
                 runtime=adapter_runtime.clone()
                 contribution_assembly=adapter_assembly.clone()

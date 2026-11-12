@@ -991,4 +991,3 @@ fn payment_collection_owner_graphql_error(
         extensions.set("reconciliation_required", reconciliation_required);
     })
 }
-

@@ -23,7 +23,10 @@ const apiSource = readFileSync(
 const cleanApiSource = stripTypeScriptTypes(
   apiSource
     .replace("import { graphqlRequest } from '@/lib/graphql';", '')
-    .replace("export { builderUrlForPage, storefrontUrlForPage } from './urls';", '')
+    .replace(
+      "export { builderUrlForPage, storefrontUrlForPage } from './urls';",
+      ''
+    )
     .replaceAll('export ', '')
 );
 
@@ -54,10 +57,9 @@ const cleanNavSource = stripTypeScriptTypes(
     .replaceAll('export ', '')
 );
 const navModule = {};
-compileFunction(
-  `${cleanNavSource}\nnavModule.pagesNavItems = pagesNavItems;`,
-  ['navModule']
-)(navModule);
+compileFunction(`${cleanNavSource}\nnavModule.pagesNavItems = pagesNavItems;`, [
+  'navModule'
+])(navModule);
 const { pagesNavItems } = navModule;
 
 test('builderUrlForPage constructs deep link to Leptos admin editor', () => {
@@ -133,12 +135,24 @@ test('pagesNavItems specifies correct navigation structure and shortcuts', () =>
 
 test('GraphQL queries and mutations expose required schema fields', () => {
   const api = createApiModule(async () => ({}));
-  assert.match(api.PAGES_LIST_QUERY, /pages\(filter: \$filter, tenantId: \$tenantId\)/);
+  assert.match(
+    api.PAGES_LIST_QUERY,
+    /pages\(filter: \$filter, tenantId: \$tenantId\)/
+  );
   assert.match(api.PAGES_LIST_QUERY, /ListGqlPagesFilter/);
-  assert.match(api.CREATE_PAGE_MUTATION, /createPage\(input: \$input, tenantId: \$tenantId\)/);
+  assert.match(
+    api.CREATE_PAGE_MUTATION,
+    /createPage\(input: \$input, tenantId: \$tenantId\)/
+  );
   assert.match(api.CREATE_PAGE_MUTATION, /CreateGqlPageInput!/);
-  assert.match(api.UNPUBLISH_PAGE_MUTATION, /unpublishPage\(id: \$id, expectedVersion: \$expectedVersion, tenantId: \$tenantId\)/);
-  assert.match(api.DELETE_PAGE_MUTATION, /deletePage\(id: \$id, tenantId: \$tenantId\)/);
+  assert.match(
+    api.UNPUBLISH_PAGE_MUTATION,
+    /unpublishPage\(id: \$id, expectedVersion: \$expectedVersion, tenantId: \$tenantId\)/
+  );
+  assert.match(
+    api.DELETE_PAGE_MUTATION,
+    /deletePage\(id: \$id, tenantId: \$tenantId\)/
+  );
 });
 
 test('listPages clamps pagination bounds and forwards tenant context', async () => {
@@ -225,10 +239,22 @@ test('unpublishPage and deletePage enforce non-empty page id', async () => {
     deletePage: true
   }));
 
-  await assert.rejects(async () => api.unpublishPage(''), /Page id cannot be empty/);
-  await assert.rejects(async () => api.unpublishPage('   '), /Page id cannot be empty/);
-  await assert.rejects(async () => api.deletePage(''), /Page id cannot be empty/);
-  await assert.rejects(async () => api.deletePage('   '), /Page id cannot be empty/);
+  await assert.rejects(
+    async () => api.unpublishPage(''),
+    /Page id cannot be empty/
+  );
+  await assert.rejects(
+    async () => api.unpublishPage('   '),
+    /Page id cannot be empty/
+  );
+  await assert.rejects(
+    async () => api.deletePage(''),
+    /Page id cannot be empty/
+  );
+  await assert.rejects(
+    async () => api.deletePage('   '),
+    /Page id cannot be empty/
+  );
 
   const unpublished = await api.unpublishPage('p-1', 1);
   assert.equal(unpublished.status, 'draft');

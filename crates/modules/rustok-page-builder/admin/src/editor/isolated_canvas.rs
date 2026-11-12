@@ -9,6 +9,7 @@ use fly_ui::{CanvasRect, ViewportState};
 #[cfg(target_arch = "wasm32")]
 use fly_ui::{UiIntent, resolve_editor_shortcut};
 use leptos::prelude::*;
+use rustok_ui_core::UiCspNonce;
 #[cfg(target_arch = "wasm32")]
 use std::collections::BTreeMap;
 
@@ -37,6 +38,7 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
     let ready = RwSignal::new(false);
     let pointer = RwSignal::new(None::<String>);
 
+    let csp_nonce = use_context::<UiCspNonce>();
     let canvas_srcdoc = Memo::new({
         let runtime = runtime.clone();
         let instance_id = instance_id.clone();
@@ -53,7 +55,12 @@ pub fn IsolatedAuthoringCanvas(runtime: AdminEditorRuntime) -> impl IntoView {
                     .cloned()
                     .into_iter()
                     .collect();
-                render_canvas_srcdoc_with_context(&active_document, &instance_id, &context)
+                render_canvas_srcdoc_with_context(
+                    &active_document,
+                    &instance_id,
+                    &context,
+                    csp_nonce.as_ref(),
+                )
             })
         }
     });

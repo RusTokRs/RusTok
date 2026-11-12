@@ -93,7 +93,9 @@ fn check_production_secrets(jwt_secret: &str, database_uri: &str, production: bo
 
     if let Some((variable, password)) = configured_superadmin_password() {
         let trimmed_password = password.trim();
-        if known_sample_superadmin_password(trimmed_password).is_some() || trimmed_password.len() < 8 {
+        if known_sample_superadmin_password(trimmed_password).is_some()
+            || trimmed_password.len() < 8
+        {
             return Err(crate::error::Error::Message(format!(
                 "FATAL: env var {variable} contains a weak or known sample superadmin password. Set a unique secret of at least 8 characters before starting the release build."
             )));
@@ -380,11 +382,19 @@ mod tests {
         let secret = "aB3!zY7@qW8#eR2$".repeat(5);
         let error_empty = check_production_secrets(&secret, "", true)
             .expect_err("production must reject empty database URI");
-        assert!(error_empty.to_string().contains("database URI must not be empty"));
+        assert!(
+            error_empty
+                .to_string()
+                .contains("database URI must not be empty")
+        );
 
         let error_ws = check_production_secrets(&secret, "   ", true)
             .expect_err("production must reject whitespace database URI");
-        assert!(error_ws.to_string().contains("database URI must not be empty"));
+        assert!(
+            error_ws
+                .to_string()
+                .contains("database URI must not be empty")
+        );
     }
 
     #[test]
@@ -425,16 +435,26 @@ mod tests {
         unsafe {
             std::env::set_var("SUPERADMIN_PASSWORD", "short");
         }
-        let error_short = check_production_secrets(&secret, "postgres://app:strong@db/rustok", true)
-            .expect_err("short superadmin password must fail");
-        assert!(error_short.to_string().contains("weak or known sample superadmin password"));
+        let error_short =
+            check_production_secrets(&secret, "postgres://app:strong@db/rustok", true)
+                .expect_err("short superadmin password must fail");
+        assert!(
+            error_short
+                .to_string()
+                .contains("weak or known sample superadmin password")
+        );
 
         unsafe {
             std::env::set_var("SUPERADMIN_PASSWORD", "admin12345");
         }
-        let error_sample = check_production_secrets(&secret, "postgres://app:strong@db/rustok", true)
-            .expect_err("sample superadmin password must fail");
-        assert!(error_sample.to_string().contains("weak or known sample superadmin password"));
+        let error_sample =
+            check_production_secrets(&secret, "postgres://app:strong@db/rustok", true)
+                .expect_err("sample superadmin password must fail");
+        assert!(
+            error_sample
+                .to_string()
+                .contains("weak or known sample superadmin password")
+        );
     }
 
     #[test]

@@ -12,10 +12,18 @@ import {
   CardFooter
 } from '@/shared/ui/shadcn/card';
 import { Button } from '@/shared/ui/shadcn/button';
-import { IconReceipt, IconActivity, IconArrowUpRight } from '@tabler/icons-react';
+import {
+  IconReceipt,
+  IconActivity,
+  IconArrowUpRight
+} from '@tabler/icons-react';
 import type { AdminRenderContext } from '@/modules/types';
 
-export function CommerceMetricsWidget({ context }: { context: AdminRenderContext }) {
+export function CommerceMetricsWidget({
+  context
+}: {
+  context: AdminRenderContext;
+}) {
   // In an ideal FFA module, module metrics can be hydrated from context or module query.
   return (
     <>
@@ -35,7 +43,11 @@ export function CommerceMetricsWidget({ context }: { context: AdminRenderContext
   );
 }
 
-export function CommerceRecentOrdersWidget({ context }: { context: AdminRenderContext }) {
+export function CommerceRecentOrdersWidget({
+  context
+}: {
+  context: AdminRenderContext;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -46,7 +58,8 @@ export function CommerceRecentOrdersWidget({ context }: { context: AdminRenderCo
       </CardHeader>
       <CardContent>
         <p className='text-muted-foreground text-sm'>
-          Manage pending orders, shipping profiles, and promotions directly in Commerce management.
+          Manage pending orders, shipping profiles, and promotions directly in
+          Commerce management.
         </p>
       </CardContent>
       <CardFooter>
@@ -60,4 +73,3 @@ export function CommerceRecentOrdersWidget({ context }: { context: AdminRenderCo
     </Card>
   );
 }
-

@@ -59,7 +59,8 @@ export function BrandsPage({
   const [error, setError] = React.useState<string | null>(null);
 
   const [search, setSearch] = React.useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = React.useState<string>('all');
+  const [selectedCategoryId, setSelectedCategoryId] =
+    React.useState<string>('all');
   const [statusFilter, setStatusFilter] = React.useState<string>('all');
 
   const fetchBrands = React.useCallback(async () => {
@@ -75,8 +76,8 @@ export function BrandsPage({
             statusFilter === 'active'
               ? true
               : statusFilter === 'inactive'
-              ? false
-              : null,
+                ? false
+                : null,
           page: 1,
           perPage: 100
         },
@@ -108,9 +109,12 @@ export function BrandsPage({
     <div className='space-y-6'>
       <div className='flex items-center justify-between'>
         <div>
-          <h2 className='text-lg font-semibold tracking-tight'>Brand Directory</h2>
+          <h2 className='text-lg font-semibold tracking-tight'>
+            Brand Directory
+          </h2>
           <p className='text-muted-foreground text-sm'>
-            Manage manufacturers, co-branding partners, and category-scoped brand catalogs.
+            Manage manufacturers, co-branding partners, and category-scoped
+            brand catalogs.
           </p>
         </div>
         <BrandCreateDialog onCreateBrand={handleCreateBrand} />
@@ -168,13 +172,15 @@ export function BrandsPage({
           </CardContent>
         </Card>
       ) : loading ? (
-        <div className='py-12 text-center text-sm text-muted-foreground'>
+        <div className='text-muted-foreground py-12 text-center text-sm'>
           Loading brands...
         </div>
       ) : (
         <Card>
           <CardHeader className='pb-3'>
-            <CardTitle className='text-base'>Brands ({brands.length})</CardTitle>
+            <CardTitle className='text-base'>
+              Brands ({brands.length})
+            </CardTitle>
             <CardDescription>
               {selectedCategoryId !== 'all'
                 ? 'Showing brands scoped to the selected category.'
@@ -182,10 +188,7 @@ export function BrandsPage({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <BrandsTable
-              brands={brands}
-              onDeleteBrand={handleDeleteBrand}
-            />
+            <BrandsTable brands={brands} onDeleteBrand={handleDeleteBrand} />
           </CardContent>
         </Card>
       )}

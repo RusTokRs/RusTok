@@ -52,14 +52,12 @@ const predecessorPath =
   "crates/modules/rustok-forum/contracts/evidence/forum-page-builder-wave-observed-acceptance-source.json";
 const runnerPath = "scripts/evidence/review-forum-page-builder-ffa-fba-promotion.mjs";
 const testsPath = "scripts/evidence/review-forum-page-builder-ffa-fba-promotion.test.mjs";
-const planPath = "docs/modules/pages-page-builder-parity-continuation-plan.md";
 const workflowPath = ".github/workflows/pages-page-builder-provider-health.yml";
 
 const contract = json(contractPath);
 const predecessor = json(predecessorPath);
 const runner = read(runnerPath);
 const tests = read(testsPath);
-const plan = read(planPath);
 const workflow = read(workflowPath);
 
 requireValue(
@@ -165,10 +163,6 @@ for (const label of [
   "rejects invalid promotion-review owner identifier",
   "rejects unsupported promotion-review decision",
 ]) requireText(tests, label, testsPath);
-
-
-requireText(plan, "separate explicit FFA/FBA promotion review", planPath);
-requireText(plan, "accepted observed-Wave owner evidence", planPath);
 
 for (const marker of [
   contractPath,

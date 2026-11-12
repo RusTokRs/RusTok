@@ -77,5 +77,138 @@ if (JSON.stringify(contract.profiles) !== JSON.stringify(["full", "read_only"]))
 if (contract.fixture_requirements?.minimum_page_count < 2) {
   throw new Error("generic accessibility browser fixture must retain at least two pages");
 }
+for (const pending of [
+  "browser execution before a retained passing packet exists",
+  "screen-reader execution",
+  "WCAG conformance",
+  "browser-independent digest-to-deployment attestation",
+  "provider SLO health",
+  "Pages gate acceptance",
+  "Forum Wave admission",
+]) {
+  if (!contract.not_claimed?.includes(pending)) {
+    throw new Error(`generic accessibility browser contract must keep ${pending} unclaimed`);
+  }
+}
+
+for (const marker of [
+  "RUSTOK_PAGE_BUILDER_ACCESSIBILITY_SOURCE_COMMIT",
+  "RUSTOK_PAGE_BUILDER_ACCESSIBILITY_DEPLOYMENT_DIGEST",
+  "RUSTOK_PAGE_BUILDER_ACCESSIBILITY_EDITOR_STORAGE_STATE",
+  "RUSTOK_PAGE_BUILDER_ACCESSIBILITY_FULL_URL",
+  "RUSTOK_PAGE_BUILDER_ACCESSIBILITY_READ_ONLY_URL",
+]) {
+  requireContains(contractSource, marker, `accessibility browser contract missing ${marker}`);
+}
+
+for (const marker of [
+  'globalSetup: "./tests/page-builder-accessibility/global-setup.ts"',
+  "fullyParallel: false",
+  "retries: 0",
+  "workers: 1",
+  'trace: "off"',
+  'screenshot: "off"',
+  'video: "off"',
+  'name: "page-builder-accessibility-chromium"',
+]) {
+  requireContains(config, marker, `accessibility Playwright config missing ${marker}`);
+}
+
+for (const marker of [
+  'path.resolve(__dirname, "../../../..")',
+  "contract.output.environment",
+  "contract.output.default_path",
+  'path.resolve(repoRoot, "target")',
+  "rmSync(resolveOutput(contract), { force: true })",
+]) {
+  requireContains(setup, marker, `accessibility browser setup missing ${marker}`);
+}
+for (const forbidden of [
+  "import.meta",
+  "readFileSync(resolveOutput",
+  "writeFileSync",
+  "renameSync",
+]) {
+  requireAbsent(setup, forbidden, `global setup must remain CommonJS-safe and only clear output: ${forbidden}`);
+}
+
+for (const marker of [
+  'path.resolve(__dirname, "../../../..")',
+  'button[aria-pressed]',
+  'page.keyboard.press(forward ? "Tab" : "Shift+Tab")',
+  'page.keyboard.press("Enter")',
+  'toMatchAriaSnapshot(`- button [pressed=true]`)',
+  'textbox "Add page: Page name"',
+  'name: "Page name"',
+  'name: "Page id"',
+  'fieldset[data-fly-capability=\'edit\']',
+  'fieldset[data-fly-capability=\'properties\']',
+  'toHaveAttribute("aria-disabled", "true")',
+  "toBeDisabled()",
+  "source_files: inputs.sourceHashes",
+  "profile_url_sha256: inputs.routeHashes",
+  "retained_secrets: false",
+  "raw_dom_retained: false",
+  "aria_snapshot_text_retained: false",
+  "screen_reader_execution_pending: true",
+  "wcag_conformance_not_claimed: true",
+]) {
+  requireContains(runner, marker, `accessibility browser runner missing ${marker}`);
+}
+for (const forbidden of [
+  "import.meta",
+  ".content()",
+  ".cookies()",
+  "response.text()",
+  "response.body()",
+  "storageState({ path:",
+  "screenshot(",
+  "tracing.start",
+  ".ariaSnapshot()",
+]) {
+  requireAbsent(
+    runner,
+    forbidden,
+    `accessibility browser runner must not retain sensitive browser material or require ESM through ${forbidden}`,
+  );
+}
+
+for (const marker of [
+  "Compile-list Page Builder accessibility evidence harness",
+  "matrix.app == 'apps/next-admin'",
+  "npx --no-install playwright test --config=playwright.page-builder-accessibility.config.ts --list",
+]) {
+  requireContains(browserWorkflow, marker, `Browser E2E workflow missing accessibility discovery guard ${marker}`);
+}
+
+if (packageJson.devDependencies?.["@playwright/test"] === undefined) {
+  throw new Error("generic accessibility browser harness must reuse the existing Playwright dependency");
+}
+
+for (const marker of [
+  "aria-pressed=is_active.to_string()",
+  "aria-label=new_page_name_label.clone()",
+  "<span>{page_name_label}</span>",
+  "<span>{page_id_label}</span>",
+]) {
+  requireContains(pageManager, marker, `page manager browser boundary missing ${marker}`);
+}
+for (const marker of [
+  "disabled=move || !disabled_runtime.capability_enabled(capability)",
+  "aria-disabled=move || (!enabled_runtime.capability_enabled(capability)).to_string()",
+  "data-fly-capability=capability_id",
+]) {
+  requireContains(
+    capabilityControls,
+    marker,
+    `capability browser boundary missing ${marker}`,
+  );
+}
+for (const marker of [
+  "generic_editor_ssr_exposes_selected_page_and_programmatic_page_name",
+  "generic_editor_ssr_exposes_denied_capabilities_as_disabled_fieldsets",
+]) {
+  requireContains(renderedEvidence, marker, `rendered evidence continuity missing ${marker}`);
+}
 
 console.log("Page Builder generic accessibility browser evidence harness source: ok");

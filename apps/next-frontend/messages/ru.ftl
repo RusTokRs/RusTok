@@ -359,7 +359,7 @@ Pricing-subtitle = Этот раздел витрины отображает в�
 Pricing-selectedProductDetail = Детализация выбранного товара
 Pricing-clearSelection = ✕ Сбросить выбор
 Pricing-productPricingCatalog = Каталог товаров с ценами
-Pricing-totalProducts = Всего товаров: {  }
+Pricing-totalProducts = Всего товаров: { $total }
 Pricing-noProductsFound = Товары не найдены
 Pricing-failedToLoad = Не удалось загрузить данные ценообразования
 

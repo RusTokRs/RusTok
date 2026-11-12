@@ -47,11 +47,17 @@ export async function listBlogModerationComments(
     { post: { moderationComments: BlogModerationPage } | null }
   >(
     COMMENTS_QUERY,
-    { postId, locale, page: Math.max(1, page), perPage: Math.max(1, Math.min(perPage, 100)) },
+    {
+      postId,
+      locale,
+      page: Math.max(1, page),
+      perPage: Math.max(1, Math.min(perPage, 100))
+    },
     opts.token,
     opts.tenantSlug
   );
-  if (!response.post) throw new Error('Blog post is unavailable for moderation');
+  if (!response.post)
+    throw new Error('Blog post is unavailable for moderation');
   return response.post.moderationComments;
 }
 
@@ -63,7 +69,12 @@ export async function moderateBlogComment(
 ): Promise<void> {
   const commandId = crypto.randomUUID();
   const response = await graphqlRequest<
-    { id: string; commandId: string; status: BlogModerationStatus; locale: string },
+    {
+      id: string;
+      commandId: string;
+      status: BlogModerationStatus;
+      locale: string;
+    },
     { moderateComment: boolean }
   >(
     MODERATE_COMMENT_MUTATION,

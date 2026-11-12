@@ -13,17 +13,14 @@ pub mod entities {
 
 pub mod migrations;
 pub mod module;
-pub mod product_inventory_port;
-pub mod product_port;
 #[path = "ports.rs"]
 mod ports_impl;
+pub mod product_inventory_port;
+pub mod product_port;
 
 /// Canonical owner contracts and admitted in-process entry points. The persistent
 /// implementation stays private; all public paths use the same diagnostic boundary.
 pub mod ports {
-    pub use crate::product_inventory_port::{
-        InventoryProductInventoryPortAdapter, in_process_product_inventory_port,
-    };
     pub use crate::ports_impl::{
         InventoryAvailabilityRequest, InventoryAvailabilitySnapshot,
         InventoryIdentityReservationAdoptionItem, InventoryIdentityReservationAdoptionRequest,
@@ -33,6 +30,9 @@ pub mod ports {
         InventoryReservationPort, InventoryReservationReleaseRequest,
         InventoryReservationReleaseSnapshot, InventoryReservationRequest,
         InventoryReservationSnapshot, MAX_RESERVATION_ADOPTION_ITEMS,
+    };
+    pub use crate::product_inventory_port::{
+        InventoryProductInventoryPortAdapter, in_process_product_inventory_port,
     };
     pub use crate::product_port::{
         DatabaseFallbackProductAdapter, InventoryProductPort, InventoryProductVariantInfo,
@@ -61,16 +61,19 @@ mod contract_tests;
 
 pub use module::{InventoryModule, InventoryRuntimeSelected};
 pub use ports::{
-    InProcessInventoryReservationPort, InventoryAvailabilityRequest, InventoryAvailabilitySnapshot,
+    DatabaseFallbackProductAdapter, InProcessInventoryReservationPort,
+    InventoryAvailabilityRequest, InventoryAvailabilitySnapshot,
     InventoryIdentityReservationAdoptionItem, InventoryIdentityReservationAdoptionRequest,
     InventoryIdentityReservationAdoptionSnapshot, InventoryIdentityReservationReleaseRequest,
     InventoryIdentityReservationReleaseSnapshot, InventoryIdentityReservationRequest,
-    InventoryIdentityReservationSnapshot, InventoryReservationIdentityPort,
-    InventoryReservationPort, InventoryReservationReleaseRequest,
+    InventoryIdentityReservationSnapshot, InventoryProductPort, InventoryProductVariantInfo,
+    InventoryReservationIdentityPort, InventoryReservationPort, InventoryReservationReleaseRequest,
     InventoryReservationReleaseSnapshot, InventoryReservationRequest, InventoryReservationSnapshot,
-    InventoryProductPort, InventoryProductVariantInfo, DatabaseFallbackProductAdapter,
     MAX_RESERVATION_ADOPTION_ITEMS, PersistentInventoryReservationIdentityPort,
     in_process_inventory_reservation_identity_port, in_process_inventory_reservation_port,
+};
+pub use product_inventory_port::{
+    InventoryProductInventoryPortAdapter, in_process_product_inventory_port,
 };
 pub use services::{
     BootstrapService, CatalogDeletionBlocker, CatalogDeletionError, InitialInventory,
@@ -88,9 +91,6 @@ pub use services::{
     load_available_inventory_for_variant_in_public_channel,
     load_inventory_projection_by_variant_for_public_channel, normalize_public_channel_slug,
     public_channel_inventory_projection,
-};
-pub use product_inventory_port::{
-    InventoryProductInventoryPortAdapter, in_process_product_inventory_port,
 };
 pub use translation_changes::{
     StockLocationTranslationChangeLifecycle, StockLocationTranslationChangeRecord,

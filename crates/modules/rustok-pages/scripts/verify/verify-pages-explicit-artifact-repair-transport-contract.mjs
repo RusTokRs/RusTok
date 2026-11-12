@@ -100,10 +100,6 @@ for (const marker of [
   "oneshot(",
 ]) forbid(test, marker, "contract test");
 
-need(continuation, "explicit-artifact-repair-transport-contract-harness-source-ready", "continuation");
-need(continuation, "explicit_artifact_repair_transport_contract", "continuation");
-need(continuation, "intentionally not run", "continuation");
-
 if (failures.length > 0) {
   console.error("[verify-pages-explicit-artifact-repair-transport-contract] FAIL");
   failures.forEach((failure) => console.error(`- ${failure}`));

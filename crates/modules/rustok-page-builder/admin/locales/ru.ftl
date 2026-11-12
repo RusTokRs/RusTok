@@ -211,6 +211,7 @@ page_builder-ssrInspector-localePlaceholder = ru-RU
 page_builder-ssrInspector-localeTitle = Локаль предпросмотра
 page_builder-ssrInspector-newPageIdPlaceholder = новый-id-страницы
 page_builder-ssrInspector-newPageNamePlaceholder = Новое название страницы
+page_builder-ssrInspector-openPage = Открыть страницу
 page_builder-ssrInspector-pageFallback = Страница
 page_builder-ssrInspector-pageIdPlaceholder = id-страницы
 page_builder-ssrInspector-pageLifecycle = Управление страницами

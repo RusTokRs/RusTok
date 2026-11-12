@@ -16,7 +16,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use sha2::{Digest, Sha256};
 
-use super::{connect_benchmark_database, ensure_database_metadata_stable, read_database_metadata};
+use super::{
+    connect_benchmark_database, ensure_database_metadata_stable, read_database_metadata,
+    with_rollback_failure,
+};
 
 const MANIFEST_CONTRACT: &str = "index_partition_evidence_manifest_v1";
 const SHADOW_PLAN_VERSION: &str = "tenant_hash_shadow_v1";
@@ -342,10 +345,7 @@ async fn capture_cutover_run(
             rollback?;
             value
         }
-        Err(error) => {
-            let _ = rollback;
-            return Err(error);
-        }
+        Err(error) => return Err(with_rollback_failure(error, rollback)),
     };
 
     let after_rollback = read_clone_identities(db, layout).await?;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   registerAdminComponent,
   getAdminComponentsForSlot,
-  normalizeAdminSlot,
+  normalizeAdminSlot
 } from './registry.ts';
 
 test('normalizeAdminSlot normalizes snake_case to colon-separated', () => {
@@ -20,14 +20,14 @@ test('getAdminComponentsForSlot fails closed when enabledModules is undefined', 
     moduleSlug: 'test_module',
     slot: 'dashboard:metric',
     order: 10,
-    render: () => null,
+    render: () => null
   });
 
   registerAdminComponent({
     id: 'test-metric-core',
     slot: 'dashboard:metric',
     order: 5,
-    render: () => null,
+    render: () => null
   });
 
   // When enabledModules is undefined, only core components without moduleSlug are returned
@@ -36,7 +36,9 @@ test('getAdminComponentsForSlot fails closed when enabledModules is undefined', 
   assert.ok(!closed.some((c) => c.id === 'test-metric-module'));
 
   // When module is enabled, both are returned
-  const enabled = getAdminComponentsForSlot('dashboard:metric', ['test_module']);
+  const enabled = getAdminComponentsForSlot('dashboard:metric', [
+    'test_module'
+  ]);
   assert.ok(enabled.some((c) => c.id === 'test-metric-core'));
   assert.ok(enabled.some((c) => c.id === 'test-metric-module'));
 
@@ -46,7 +48,11 @@ test('getAdminComponentsForSlot fails closed when enabledModules is undefined', 
 });
 
 test('getAdminComponentsForSlot matches normalized snake_case slot queries', () => {
-  const fromSnake = getAdminComponentsForSlot('dashboard_metric', ['test_module']);
-  const fromColon = getAdminComponentsForSlot('dashboard:metric', ['test_module']);
+  const fromSnake = getAdminComponentsForSlot('dashboard_metric', [
+    'test_module'
+  ]);
+  const fromColon = getAdminComponentsForSlot('dashboard:metric', [
+    'test_module'
+  ]);
   assert.equal(fromSnake.length, fromColon.length);
 });

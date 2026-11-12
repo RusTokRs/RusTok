@@ -506,6 +506,7 @@ fn retryable_failure(code: &'static str) -> IndexDriftDependencyFailure {
 }
 
 fn permanent_failure(code: &'static str) -> IndexDriftDependencyFailure {
-    IndexDriftDependencyFailure::permanent(code)
-        .expect("static Index drift snapshot permanent code is valid: invariant validated at startup")
+    IndexDriftDependencyFailure::permanent(code).expect(
+        "static Index drift snapshot permanent code is valid: invariant validated at startup",
+    )
 }

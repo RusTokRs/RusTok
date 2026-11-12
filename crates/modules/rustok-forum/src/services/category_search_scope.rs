@@ -402,4 +402,3 @@ mod tests {
         assert!(matches!(error, ForumError::Validation(message) if message.contains("cycle")));
     }
 }
-

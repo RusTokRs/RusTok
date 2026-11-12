@@ -8,6 +8,32 @@ pub struct UiRouteContext {
     pub query: BTreeMap<String, String>,
 }
 
+/// Per-response Content Security Policy nonce that a host hands to module surfaces.
+///
+/// A host that enforces `script-src` / `style-src` with a nonce provides this value as render
+/// context. A module that has to render an inline `<script>` or `<style>` element reads it and
+/// writes it into the element's `nonce` attribute; the browser drops the element otherwise.
+///
+/// The value is limited to the CSP `base64-value` alphabet, so it can be written into an HTML
+/// attribute as is. Any other value is rejected instead of escaped.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UiCspNonce(String);
+
+impl UiCspNonce {
+    pub fn new(value: &str) -> Option<Self> {
+        let value = value.trim();
+        let is_nonce_byte =
+            |byte: u8| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'-' | b'_');
+        let body = value.trim_end_matches('=');
+        let valid = !body.is_empty() && body.bytes().all(is_nonce_byte);
+        valid.then(|| Self(value.to_string()))
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UiRouteQueryUpdate {
     Clear,
@@ -510,5 +536,36 @@ mod tests {
             ui_scoped_busy_key("category", "save", None),
             "category:save"
         );
+    }
+}
+
+#[cfg(test)]
+mod csp_nonce_tests {
+    use super::UiCspNonce;
+
+    #[test]
+    fn accepts_the_csp_base64_value_alphabet() {
+        for value in ["0f3a9c", "AbC+/-_09", "YWJj", "YWI=", "YQ==", "  0f3a9c  "] {
+            let nonce = UiCspNonce::new(value).expect("valid nonce");
+            assert_eq!(nonce.as_str(), value.trim());
+        }
+    }
+
+    #[test]
+    fn rejects_values_that_would_need_escaping_in_an_attribute() {
+        for value in [
+            "",
+            "   ",
+            "=",
+            "a b",
+            "a\"b",
+            "a'b",
+            "a>b",
+            "a&b",
+            "a=b",
+            "\u{43d}\u{43e}\u{43d}\u{441}",
+        ] {
+            assert_eq!(UiCspNonce::new(value), None, "{value:?}");
+        }
     }
 }

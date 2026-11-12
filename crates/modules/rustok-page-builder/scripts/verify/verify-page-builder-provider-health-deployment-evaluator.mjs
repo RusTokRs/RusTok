@@ -103,9 +103,66 @@ if (failures.length === 0) {
     if (object?.[key] !== expected) failures.push(`${key} must equal ${JSON.stringify(expected)}`);
   }
 
-  , marker, "evaluator overlay");
+  for (const reserved of ["__name__", "source_commit", "operation", "outcome", "le"]) {
+    if (!(contract.backend_target_map?.reserved_matcher_labels ?? []).includes(reserved)) {
+      failures.push(`reserved matcher label missing: ${reserved}`);
+    }
+  }
 
-  , marker, "parity actualization");
+  for (const marker of [
+    "pub const PROVIDER_HEALTH_MINIMUM_SAMPLES_PER_OPERATION: usize = 20;",
+    "preview_p95_ms: 1500",
+    "publish_p95_ms: 3000",
+    "sanitize_failure_rate_max: 0.01",
+    "runtime_error_rate_max: 0.01",
+    "thresholds.runtime_error_rate_max * 2.0",
+  ]) need(sources.health, marker, "Rust health policy");
+
+  for (const marker of [
+    "rustok_page_builder_provider_build_info",
+    "rustok_page_builder_provider_operation_duration_seconds",
+    "rustok_page_builder_provider_operation_completed_total",
+    "rustok_page_builder_provider_last_observation_unix_seconds",
+  ]) need(sources.telemetry, marker, "provider metrics");
+
+  for (const marker of [
+    '"deployment_health_backend_evaluator": "open"',
+    '"deployment_identity_capture": "maintainer_execution_pending"',
+  ]) need(sources.identity, marker, "identity predecessor");
+
+  for (const marker of [
+    "--identity",
+    "--backend-map",
+    "--prometheus-url",
+    "--window-seconds",
+    "--freshness-seconds",
+    "RESERVED_MATCHER_LABELS",
+    "backend map targets must exactly cover the identity target count",
+    "backend map target set is incomplete",
+    'redirect: "manual"',
+    'queryPrometheus(prometheusUrl, "time()"',
+    "identity capture must predate the entire query window",
+    "identity capture is older than the admitted maximum age",
+    "must expose exactly one current admitted build-info series equal to 1",
+    "count_over_time(rustok_page_builder_provider_build_info",
+    "selectorExcludingSource",
+    "observed an unexpected source commit inside the query window",
+    "multiple expected target ids resolve to the same current backend series",
+    "rustok_page_builder_provider_last_observation_unix_seconds",
+    "freshness is stale",
+    "increase(rustok_page_builder_provider_operation_completed_total",
+    "increase(rustok_page_builder_provider_operation_duration_seconds_bucket",
+    "requireHistogramPopulationConsistency",
+    "histogram +Inf population does not match terminal completion population",
+    "MINIMUM_SAMPLES_PER_OPERATION = 20",
+    "histogramQuantile95",
+    "sanitizeFailures / publishSamples",
+    "runtimeFailures / (previewSamples + publishSamples)",
+    "THRESHOLDS.runtime_error_rate_max * 2.0",
+    "raw_prometheus_url_persisted: false",
+    "raw_matcher_values_persisted: false",
+    "pages_provider_health_observed: false",
+  ]) need(sources.evaluator, marker, "evaluator runner");
 
   need(sources.pagesGraphql, "provider_health_observed: false", "Pages GraphQL remains unobserved");
   forbid(sources.pagesGraphql, "provider_health_observed: true", "Pages GraphQL promotion");

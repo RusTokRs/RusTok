@@ -127,6 +127,10 @@ The current boundary is:
 - `rustok-taxonomy` owns canonical Blog Category localized copy and route
   history;
 - Blog Category reads and mutation responses project canonical Taxonomy state;
+- a `BlogTaxonomyPort` snapshot states the locale it was asked for and the locale
+  of the copy it returned; Blog rejects a Category or tag snapshot that omits
+  them as a broken projection and does not substitute a locale. A tag update
+  checks this inside its transaction, so the update rolls back;
 - Blog Category create/update and hierarchy commands synchronize Taxonomy in the
   owner transaction;
 - Blog Category delete delegates canonical lifecycle cleanup to Taxonomy;
@@ -136,6 +140,27 @@ The current boundary is:
   migration-local entity during upgrade, after which `000021` irreversibly removes
   `blog_category_translations` and `blog_translation_changes` once same-ID
   Taxonomy ownership is proven.
+
+Open: `BlogTaxonomyPort` has no Taxonomy-backed implementation yet. ADR
+`DECISIONS/2026-11-11-blog-taxonomy-sovereignty-and-port-decoupling.md` step 3
+plans `TaxonomyBlogTaxonomyPortAdapter` in `rustok-taxonomy`; until a host
+publishes it, HTTP controllers and GraphQL resolvers run on
+`NoopBlogTaxonomyPort`, which stores nothing in Taxonomy and returns generated
+identifiers. Both transports read the port from the host runtime
+(`BlogHttpRuntime`, `BlogGraphqlRuntimeData::attached`), so the adapter needs
+no further Blog wiring. It owns two rules that Blog no longer holds: the scope
+of Blog terms is `module` / `blog`, and the canonical key of a Blog Category
+term is `blog-category-{category_id}` (pinned by
+`tests/category_taxonomy_dual_write.rs`).
+
+Open, same cause: `tests/category_taxonomy_delete_lifecycle.rs` does not
+compile. It passes a `rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort` to
+`CategoryService::with_category_delete_cleanup`, which takes
+`BlogCategoryDeleteCleanupPort` since the port migration. Changing the trait in
+the test is not enough: the test builds the service with
+`CategoryService::new`, which uses `NoopBlogTaxonomyPort`, and then asserts on
+`taxonomy_term` and `taxonomy_category_hierarchy` rows that only the adapter
+writes. The test needs the adapter and `with_taxonomy_port`.
 
 Do not reintroduce a second `blog/category` Translation provider or direct
 localized Blog Category storage. Translation-control-plane work for Category

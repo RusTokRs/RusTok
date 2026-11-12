@@ -3,6 +3,7 @@ use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
+use futures_util::future::try_join_all;
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, normalize_locale_tag};
 use rustok_api::{PortContext, PortError, PortErrorKind};
 use rustok_cart::error::CartError;
@@ -17,7 +18,6 @@ use rustok_outbox::TransactionalEventBus;
 use rustok_payment::PaymentService;
 use rustok_payment::error::PaymentError;
 use rustok_payment::providers::{PaymentProviderOperationRequest, PaymentProviderRegistry};
-use futures_util::future::try_join_all;
 use rustok_product::{
     ProductCatalogReadPort, ProductProjectionRequest, VariantProductProjectionRequest,
 };
@@ -709,50 +709,55 @@ impl CheckoutService {
                 .await
                 .map_err(|error| checkout_port_error("read_checkout_channel", error))?;
         // Batch product reads concurrently to avoid N+1 sequential owner calls
-        let product_futures = demands.iter().map(|demand| {
-            let variant_id = demand.variant_id;
-            let product_id = demand.product_id;
-            let locale = cart.locale_code.clone();
-            let cart_locale = cart.locale_code.clone();
-            let cart_id = cart.id;
-            let channel_slug = public_channel_slug.clone();
-            let port = self.product_catalog_read_port.clone();
-            async move {
-                let ctx = checkout_product_port_context(
-                    tenant_id,
-                    actor_id,
-                    cart_id,
-                    cart_locale.as_deref(),
-                    channel_slug.as_deref(),
-                );
-                let product = match product_id {
-                    Some(product_id) => {
-                        port.read_product_projection(
-                            ctx,
-                            ProductProjectionRequest {
-                                product_id,
-                                locale: locale.clone(),
-                                fallback_locale: None,
-                            },
-                        )
-                        .await
+        let product_futures = demands
+            .iter()
+            .map(|demand| {
+                let variant_id = demand.variant_id;
+                let product_id = demand.product_id;
+                let locale = cart.locale_code.clone();
+                let cart_locale = cart.locale_code.clone();
+                let cart_id = cart.id;
+                let channel_slug = public_channel_slug.clone();
+                let port = self.product_catalog_read_port.clone();
+                async move {
+                    let ctx = checkout_product_port_context(
+                        tenant_id,
+                        actor_id,
+                        cart_id,
+                        cart_locale.as_deref(),
+                        channel_slug.as_deref(),
+                    );
+                    let product = match product_id {
+                        Some(product_id) => {
+                            port.read_product_projection(
+                                ctx,
+                                ProductProjectionRequest {
+                                    product_id,
+                                    locale: locale.clone(),
+                                    fallback_locale: None,
+                                },
+                            )
+                            .await
+                        }
+                        None => {
+                            port.read_variant_product_projection(
+                                ctx,
+                                VariantProductProjectionRequest {
+                                    variant_id,
+                                    locale: locale.clone(),
+                                    fallback_locale: None,
+                                },
+                            )
+                            .await
+                        }
                     }
-                    None => {
-                        port.read_variant_product_projection(
-                            ctx,
-                            VariantProductProjectionRequest {
-                                variant_id,
-                                locale: locale.clone(),
-                                fallback_locale: None,
-                            },
-                        )
-                        .await
-                    }
+                    .map_err(|error| {
+                        checkout_port_error("read_checkout_product_projection", error)
+                    })?;
+                    Ok::<_, CheckoutError>(product)
                 }
-                .map_err(|error| checkout_port_error("read_checkout_product_projection", error))?;
-                Ok::<_, CheckoutError>(product)
-            }
-        }).collect::<Vec<_>>();
+            })
+            .collect::<Vec<_>>();
         let products = try_join_all(product_futures).await?;
         for (demand, product) in demands.iter().zip(products.iter()) {
             for line_item in &demand.line_items {

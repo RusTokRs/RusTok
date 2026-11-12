@@ -13,8 +13,7 @@ use rustok_product::{
     dto::{
         AddProductImageInput, CreateProductInput, CreateVariantInput, ProductImageResponse,
         ProductResponse, SetVariantAxesInput, UpdateProductImageInput, UpdateProductInput,
-        UpdateVariantInput, VariantAxesPreviewResponse, VariantAxisConfigResponse,
-        VariantResponse,
+        UpdateVariantInput, VariantAxesPreviewResponse, VariantAxisConfigResponse, VariantResponse,
     },
     entities::product::ProductStatus,
 };
@@ -477,7 +476,10 @@ impl ProductCatalogCommandPort for MockProductCatalogCommandPort {
         _product_id: Uuid,
         _input: SetVariantAxesInput,
     ) -> Result<VariantAxesPreviewResponse, PortError> {
-        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+        Err(PortError::unavailable(
+            "mock.unimplemented",
+            "not used in test",
+        ))
     }
 
     async fn set_variant_axes(
@@ -486,7 +488,10 @@ impl ProductCatalogCommandPort for MockProductCatalogCommandPort {
         _product_id: Uuid,
         _input: SetVariantAxesInput,
     ) -> Result<Vec<VariantAxisConfigResponse>, PortError> {
-        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+        Err(PortError::unavailable(
+            "mock.unimplemented",
+            "not used in test",
+        ))
     }
 
     async fn update_product(
@@ -495,10 +500,17 @@ impl ProductCatalogCommandPort for MockProductCatalogCommandPort {
         _product_id: Uuid,
         _input: UpdateProductInput,
     ) -> Result<ProductResponse, PortError> {
-        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+        Err(PortError::unavailable(
+            "mock.unimplemented",
+            "not used in test",
+        ))
     }
 
-    async fn delete_product(&self, context: PortContext, product_id: Uuid) -> Result<(), PortError> {
+    async fn delete_product(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+    ) -> Result<(), PortError> {
         context.require_policy(PortCallPolicy::write())?;
         assert_eq!(product_id, self.product_id);
         Ok(())
@@ -509,7 +521,10 @@ impl ProductCatalogCommandPort for MockProductCatalogCommandPort {
         _context: PortContext,
         _product_id: Uuid,
     ) -> Result<ProductResponse, PortError> {
-        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+        Err(PortError::unavailable(
+            "mock.unimplemented",
+            "not used in test",
+        ))
     }
 
     async fn unpublish_product(
@@ -517,7 +532,10 @@ impl ProductCatalogCommandPort for MockProductCatalogCommandPort {
         _context: PortContext,
         _product_id: Uuid,
     ) -> Result<ProductResponse, PortError> {
-        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+        Err(PortError::unavailable(
+            "mock.unimplemented",
+            "not used in test",
+        ))
     }
 
     async fn archive_product(
@@ -525,7 +543,10 @@ impl ProductCatalogCommandPort for MockProductCatalogCommandPort {
         _context: PortContext,
         _product_id: Uuid,
     ) -> Result<ProductResponse, PortError> {
-        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+        Err(PortError::unavailable(
+            "mock.unimplemented",
+            "not used in test",
+        ))
     }
 
     async fn create_variant(
@@ -534,7 +555,10 @@ impl ProductCatalogCommandPort for MockProductCatalogCommandPort {
         _product_id: Uuid,
         _input: CreateVariantInput,
     ) -> Result<VariantResponse, PortError> {
-        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+        Err(PortError::unavailable(
+            "mock.unimplemented",
+            "not used in test",
+        ))
     }
 
     async fn update_variant(
@@ -543,10 +567,17 @@ impl ProductCatalogCommandPort for MockProductCatalogCommandPort {
         _variant_id: Uuid,
         _input: UpdateVariantInput,
     ) -> Result<VariantResponse, PortError> {
-        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+        Err(PortError::unavailable(
+            "mock.unimplemented",
+            "not used in test",
+        ))
     }
 
-    async fn delete_variant(&self, _context: PortContext, _variant_id: Uuid) -> Result<(), PortError> {
+    async fn delete_variant(
+        &self,
+        _context: PortContext,
+        _variant_id: Uuid,
+    ) -> Result<(), PortError> {
         Ok(())
     }
 
@@ -556,7 +587,10 @@ impl ProductCatalogCommandPort for MockProductCatalogCommandPort {
         _product_id: Uuid,
         _input: AddProductImageInput,
     ) -> Result<ProductImageResponse, PortError> {
-        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+        Err(PortError::unavailable(
+            "mock.unimplemented",
+            "not used in test",
+        ))
     }
 
     async fn update_product_image(
@@ -566,7 +600,10 @@ impl ProductCatalogCommandPort for MockProductCatalogCommandPort {
         _image_id: Uuid,
         _input: UpdateProductImageInput,
     ) -> Result<ProductImageResponse, PortError> {
-        Err(PortError::unavailable("mock.unimplemented", "not used in test"))
+        Err(PortError::unavailable(
+            "mock.unimplemented",
+            "not used in test",
+        ))
     }
 
     async fn delete_product_image(

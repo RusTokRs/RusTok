@@ -30,7 +30,9 @@ type PageProps = {
   }>;
 };
 
-export default async function ProductRelationsRoute({ searchParams }: PageProps) {
+export default async function ProductRelationsRoute({
+  searchParams
+}: PageProps) {
   const { productId } = await searchParams;
   const session = await auth();
 
@@ -52,10 +54,10 @@ export default async function ProductRelationsRoute({ searchParams }: PageProps)
 
   return (
     <PageContainer
-      pageTitle="Product Relations"
-      pageDescription="Merchandising associations, cross-sells, up-sells, accessories, and alternatives."
+      pageTitle='Product Relations'
+      pageDescription='Merchandising associations, cross-sells, up-sells, accessories, and alternatives.'
     >
-      <div className="space-y-6">
+      <div className='space-y-6'>
         {productId ? (
           <ProductRelationsCard
             productId={productId}
@@ -74,15 +76,20 @@ export default async function ProductRelationsRoute({ searchParams }: PageProps)
             }}
           />
         ) : (
-          <div className="rounded-lg border border-border p-8 text-center text-muted-foreground">
-            <h3 className="text-lg font-medium text-foreground">Select a Product</h3>
-            <p className="mt-2 text-sm">
-              Product relations are managed within each product aggregate. Open any product in the{' '}
-              <a href="/dashboard/product" className="text-primary underline">
+          <div className='border-border text-muted-foreground rounded-lg border p-8 text-center'>
+            <h3 className='text-foreground text-lg font-medium'>
+              Select a Product
+            </h3>
+            <p className='mt-2 text-sm'>
+              Product relations are managed within each product aggregate. Open
+              any product in the{' '}
+              <a href='/dashboard/product' className='text-primary underline'>
                 Product Catalog
               </a>{' '}
-              to configure its cross-sells, up-sells, and merchandising links, or specify{' '}
-              <code className="text-xs">?productId=&lt;UUID&gt;</code> in the URL.
+              to configure its cross-sells, up-sells, and merchandising links,
+              or specify{' '}
+              <code className='text-xs'>?productId=&lt;UUID&gt;</code> in the
+              URL.
             </p>
           </div>
         )}

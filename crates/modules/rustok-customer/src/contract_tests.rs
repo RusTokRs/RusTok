@@ -196,4 +196,3 @@ async fn customer_service_and_in_process_port_derive_debug_and_clone() {
     assert!(port_debug.contains("InProcessCustomerReadPort"));
     drop(port_clone);
 }
-

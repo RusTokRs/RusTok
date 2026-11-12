@@ -217,21 +217,15 @@ export async function updateBrand(
   return data.updateBrand;
 }
 
-export async function deleteBrand(
-  opts: GqlOpts,
-  id: string
-): Promise<boolean> {
+export async function deleteBrand(opts: GqlOpts, id: string): Promise<boolean> {
   const executor = opts.graphql ?? graphqlRequest;
   const data = await executor<
     Record<string, unknown>,
     { deleteBrand: boolean }
-  >(
-    DELETE_BRAND_MUTATION,
-    { id },
-    opts.token,
-    opts.tenantSlug,
-    { tenantId: opts.tenantId, locale: opts.locale }
-  );
+  >(DELETE_BRAND_MUTATION, { id }, opts.token, opts.tenantSlug, {
+    tenantId: opts.tenantId,
+    locale: opts.locale
+  });
 
   return data.deleteBrand;
 }

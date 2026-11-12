@@ -191,8 +191,6 @@ impl ProductTaxonomyPort for TaxonomyProductTaxonomyPortAdapter {
 }
 
 /// Constructs an in-process `ProductTaxonomyPort` adapter backed by the native Taxonomy module.
-pub fn in_process_product_taxonomy_port(
-    db: DatabaseConnection,
-) -> Arc<dyn ProductTaxonomyPort> {
+pub fn in_process_product_taxonomy_port(db: DatabaseConnection) -> Arc<dyn ProductTaxonomyPort> {
     Arc::new(TaxonomyProductTaxonomyPortAdapter::new(db))
 }

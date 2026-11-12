@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 
 use super::{
     connect_benchmark_database, ensure_database_metadata_stable,
-    explain::parse_mutation_explain_metrics, read_database_metadata,
+    explain::parse_mutation_explain_metrics, read_database_metadata, with_rollback_failure,
 };
 
 const MANIFEST_CONTRACT: &str = "index_partition_evidence_manifest_v1";
@@ -279,10 +279,7 @@ async fn capture_locked_mutations(
                 .context("failed to roll back partition mutation evidence transaction")?;
             Ok(runs)
         }
-        Err(error) => {
-            let _ = rollback_result;
-            Err(error)
-        }
+        Err(error) => Err(with_rollback_failure(error, rollback_result)),
     }
 }
 

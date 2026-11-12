@@ -5,8 +5,8 @@ use chrono::{DateTime, Utc};
 use rustok_api::{PortActorKind, PortCallPolicy, PortContext, PortError};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set,
-    Statement, TransactionTrait,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    Set, Statement, TransactionTrait,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};

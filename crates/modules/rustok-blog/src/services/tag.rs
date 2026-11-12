@@ -15,9 +15,9 @@ use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::Set,
-    ColumnTrait, Condition, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
-    sea_query::{Expr, ExprTrait, OnConflict, Query},
+    ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, TransactionTrait,
+    sea_query::{Expr, OnConflict},
 };
 use tracing::instrument;
 use uuid::Uuid;
@@ -116,13 +116,19 @@ impl TagService {
         enforce_scope(&security, Resource::Tags, Action::Read)?;
         let locale = normalize_locale(locale)?;
         let term = self.find_visible_term(tenant_id, tag_id, &locale).await?;
-        let require_usage_projection = term.scope_type == "module"
-            && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE);
+        let require_usage_projection =
+            term.scope_type == "module" && term.scope_value.as_deref() == Some(BLOG_SCOPE_VALUE);
         let use_count = self
             .load_tag_usage_count(tenant_id, tag_id, require_usage_projection)
             .await?;
 
-        Ok(to_tag_owner_response(tenant_id, term, use_count))
+        let effective_locale = tag_effective_locale(&term)?;
+        Ok(to_tag_owner_response(
+            tenant_id,
+            term,
+            effective_locale,
+            use_count,
+        ))
     }
 
     #[instrument(skip(self, security, input))]
@@ -163,13 +169,17 @@ impl TagService {
                 },
             )
             .await?;
-        relations::refresh_tag_usage_in_tx(Some(&*self.taxonomy_port), &txn, tenant_id, &[tag_id]).await?;
+        // Checked inside the transaction: a snapshot that cannot be presented rolls the
+        // update back instead of failing after the commit.
+        let effective_locale = tag_effective_locale(&term)?;
+        relations::refresh_tag_usage_in_tx(Some(&*self.taxonomy_port), &txn, tenant_id, &[tag_id])
+            .await?;
         relations::publish_blog_reindex_in_tx(&txn, tenant_id, security.user_id).await?;
         txn.commit().await.map_err(BlogError::from)?;
 
         let use_count = self.load_tag_usage_count(tenant_id, tag_id, true).await?;
 
-        Ok(to_tag_mutation_response(term, use_count))
+        Ok(to_tag_mutation_response(term, effective_locale, use_count))
     }
 
     #[instrument(skip(self, security))]
@@ -249,13 +259,7 @@ impl TagService {
         let term_ids = usage_rows.iter().map(|row| row.tag_id).collect::<Vec<_>>();
         let terms_by_id = self
             .taxonomy_port
-            .load_tags_by_ids(
-                (&txn).into(),
-                tenant_id,
-                &term_ids,
-                &locale,
-                None,
-            )
+            .load_tags_by_ids((&txn).into(), tenant_id, &term_ids, &locale, None)
             .await?;
 
         let mut items = Vec::with_capacity(usage_rows.len());
@@ -268,8 +272,7 @@ impl TagService {
                 );
                 continue;
             };
-            if term.scope_type == "module"
-                && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
+            if term.scope_type == "module" && term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
             {
                 tracing::warn!(
                     tenant_id = %tenant_id,
@@ -281,7 +284,7 @@ impl TagService {
             items.push(TagListItem {
                 id: term.id,
                 locale: locale.clone(),
-                effective_locale: term.effective_locale.clone(),
+                effective_locale: tag_effective_locale(term)?,
                 name: term.name.clone(),
                 slug: term.slug.clone(),
                 use_count: usage.use_count,
@@ -300,9 +303,7 @@ impl TagService {
         locale: &str,
     ) -> BlogResult<()> {
         let term = self.find_visible_term(tenant_id, tag_id, locale).await?;
-        if term.scope_type != "module"
-            || term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE)
-        {
+        if term.scope_type != "module" || term.scope_value.as_deref() != Some(BLOG_SCOPE_VALUE) {
             return Err(BlogError::forbidden(
                 "Shared Taxonomy tags must be managed by the Taxonomy owner",
             ));
@@ -430,16 +431,31 @@ fn normalize_locale(locale: &str) -> BlogResult<String> {
     normalize_locale_code(locale).ok_or_else(|| BlogError::validation("Locale cannot be empty"))
 }
 
+/// The Taxonomy provider states the locale of the copy it returned. A snapshot without
+/// it cannot be presented as a localized tag, so it is rejected as a broken projection
+/// instead of being given an assumed locale.
+fn tag_effective_locale(term: &BlogTaxonomyTagSnapshot) -> BlogResult<String> {
+    term.effective_locale.clone().ok_or_else(|| {
+        BlogError::invariant(format!(
+            "Taxonomy tag {} was returned without an effective locale",
+            term.id
+        ))
+    })
+}
+
 fn to_tag_owner_response(
     tenant_id: Uuid,
     term: BlogTaxonomyTagSnapshot,
+    effective_locale: String,
     use_count: i32,
 ) -> TagResponse {
     TagResponse {
         id: term.id,
         tenant_id,
-        locale: term.locale.unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()),
-        effective_locale: term.effective_locale,
+        locale: term
+            .locale
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()),
+        effective_locale,
         name: term.name,
         slug: term.slug,
         use_count,
@@ -449,13 +465,16 @@ fn to_tag_owner_response(
 
 fn to_tag_mutation_response(
     term: BlogTaxonomyTagSnapshot,
+    effective_locale: String,
     use_count: i32,
 ) -> TagResponse {
     TagResponse {
         id: term.id,
         tenant_id: term.tenant_id,
-        locale: term.locale.unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()),
-        effective_locale: term.effective_locale,
+        locale: term
+            .locale
+            .unwrap_or_else(|| PLATFORM_FALLBACK_LOCALE.to_string()),
+        effective_locale,
         name: term.name,
         slug: term.slug,
         use_count,

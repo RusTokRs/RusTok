@@ -901,4 +901,3 @@ async fn inline_quote_preserve_detects_concurrent_relation_replacement() {
         super::relation_quote_input::InlineQuoteExpectation::Any
     );
 }
-

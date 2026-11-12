@@ -48,11 +48,13 @@ impl IndexReplayFailure {
     }
 
     pub(crate) fn retryable_static(code: &'static str) -> Self {
-        Self::retryable(code).expect("static replay failure code is valid: invariant validated at startup")
+        Self::retryable(code)
+            .expect("static replay failure code is valid: invariant validated at startup")
     }
 
     pub(crate) fn permanent_static(code: &'static str) -> Self {
-        Self::permanent(code).expect("static replay failure code is valid: invariant validated at startup")
+        Self::permanent(code)
+            .expect("static replay failure code is valid: invariant validated at startup")
     }
 
     pub fn kind(&self) -> IndexReplayFailureKind {

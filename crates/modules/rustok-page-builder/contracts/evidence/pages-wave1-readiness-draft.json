@@ -216,7 +216,7 @@
   "rollback": {
     "decision": "keep",
     "reason": "Readiness draft keeps Wave 1 on hold until real tenant snapshots, smoke output, SLO observations, and owner signatures replace this packet.",
-    "rollback_reference": "docs/modules/page-builder-implementation-plan.md#fallback-matrix",
+    "rollback_reference": "crates/modules/rustok-page-builder/docs/README.md#fallback-matrix",
     "timestamp": "2026-06-17T00:00:00Z"
   },
   "approvals": {

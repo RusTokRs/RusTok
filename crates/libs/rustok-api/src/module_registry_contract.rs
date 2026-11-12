@@ -311,7 +311,8 @@ mod tests {
         };
 
         assert_eq!(
-            serde_json::to_value(&view).expect("static module registry view serializes: invariant validated at startup"),
+            serde_json::to_value(&view)
+                .expect("static module registry view serializes: invariant validated at startup"),
             serde_json::json!({
                 "moduleSlug": "blog",
                 "name": "Blog",

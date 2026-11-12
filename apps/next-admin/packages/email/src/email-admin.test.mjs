@@ -48,10 +48,9 @@ const cleanNavSource = stripTypeScriptTypes(
     .replaceAll('export ', '')
 );
 const navModule = {};
-compileFunction(
-  `${cleanNavSource}\nnavModule.emailNavItems = emailNavItems;`,
-  ['navModule']
-)(navModule);
+compileFunction(`${cleanNavSource}\nnavModule.emailNavItems = emailNavItems;`, [
+  'navModule'
+])(navModule);
 const { emailNavItems } = navModule;
 
 test('emailNavItems specifies admin access, shortcut, and correct dashboard route', () => {
@@ -83,13 +82,19 @@ test('GraphQL queries and mutations expose required schema fields', () => {
   const api = createApiModule(async () => ({}));
 
   // Query fields
-  assert.match(api.PLATFORM_SETTINGS_QUERY, /platformSettings\(category: \$category\)/);
+  assert.match(
+    api.PLATFORM_SETTINGS_QUERY,
+    /platformSettings\(category: \$category\)/
+  );
   assert.match(api.PLATFORM_SETTINGS_QUERY, /category/);
   assert.match(api.PLATFORM_SETTINGS_QUERY, /settings/);
   assert.match(api.PLATFORM_SETTINGS_QUERY, /schemaVersion/);
 
   // Mutation fields
-  assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /updatePlatformSettings\(input: \$input\)/);
+  assert.match(
+    api.UPDATE_PLATFORM_SETTINGS_MUTATION,
+    /updatePlatformSettings\(input: \$input\)/
+  );
   assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /success/);
   assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /category/);
   assert.match(api.UPDATE_PLATFORM_SETTINGS_MUTATION, /settings/);
@@ -140,7 +145,10 @@ test('getEmailSettings falls back to DEFAULT_EMAIL_SETTINGS on unparseable JSON'
   }));
 
   const res = await api.getEmailSettings();
-  assert.deepEqual(res, { settings: api.DEFAULT_EMAIL_SETTINGS, schemaVersion: 4 });
+  assert.deepEqual(res, {
+    settings: api.DEFAULT_EMAIL_SETTINGS,
+    schemaVersion: 4
+  });
 });
 
 test('updateEmailSettings serializes payload and returns merged settings', async () => {
@@ -185,10 +193,11 @@ test('updateEmailSettings serializes payload and returns merged settings', async
   assert.match(calledQuery, /updatePlatformSettings/);
   assert.equal(calledVars.input.category, 'email');
   assert.equal(calledVars.input.expectedSchemaVersion, 8);
-  assert.deepEqual(
-    JSON.parse(calledVars.input.settings),
-    { enabled: true, from: 'admin@rustok.io', smtpHost: 'smtp.rustok.io' }
-  );
+  assert.deepEqual(JSON.parse(calledVars.input.settings), {
+    enabled: true,
+    from: 'admin@rustok.io',
+    smtpHost: 'smtp.rustok.io'
+  });
   assert.equal(calledToken, 'secret-token');
   assert.equal(calledTenant, 'tenant-prod');
 });
@@ -204,11 +213,16 @@ test('updateEmailSettings returns defaults if backend returns unparseable respon
   }));
 
   const res = await api.updateEmailSettings({ enabled: true }, 5);
-  assert.deepEqual(res, { settings: api.DEFAULT_EMAIL_SETTINGS, schemaVersion: 6 });
+  assert.deepEqual(res, {
+    settings: api.DEFAULT_EMAIL_SETTINGS,
+    schemaVersion: 6
+  });
 });
 
 test('updateEmailSettings propagates a stale-revision conflict without replacing the snapshot', async () => {
-  const conflict = new Error('CONFLICT: Settings were changed concurrently; re-read the category and retry');
+  const conflict = new Error(
+    'CONFLICT: Settings were changed concurrently; re-read the category and retry'
+  );
   const api = createApiModule(async (_query, variables) => {
     assert.equal(variables.input.expectedSchemaVersion, 7);
     throw conflict;
@@ -227,4 +241,3 @@ test('email settings reads reject a missing revision instead of inventing a CAS 
 
   await assert.rejects(api.getEmailSettings(), TypeError);
 });
-

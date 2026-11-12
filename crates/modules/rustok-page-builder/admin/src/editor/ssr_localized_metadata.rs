@@ -127,6 +127,9 @@ impl AdminCanvasController {
 pub fn SsrLocalizedMetadataPanel(runtime: AdminEditorRuntime) -> impl IntoView {
     #[cfg(not(target_arch = "wasm32"))]
     {
+        // Each form renders disabled when the intent endpoint would refuse it.
+        let upsert_localized_page_metadata_enabled =
+            runtime.form_enabled("upsert_localized_page_metadata");
         let route_context = use_context::<UiRouteContext>().unwrap_or_default();
         let locale = route_context.locale;
         let title = t(
@@ -190,6 +193,10 @@ pub fn SsrLocalizedMetadataPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                     class="mt-3 grid gap-2"
                                     data-fly-intent-form="upsert_localized_page_metadata"
                                 >
+                                    <fieldset
+                                        class="contents"
+                                        disabled=!upsert_localized_page_metadata_enabled
+                                    >
                                     <input type="hidden" name="page_id" value=page_id/>
                                     <label class="grid gap-1 text-xs">
                                         <span class="font-medium">{values_label.clone()}</span>
@@ -215,6 +222,7 @@ pub fn SsrLocalizedMetadataPanel(runtime: AdminEditorRuntime) -> impl IntoView {
                                         type="submit"
                                         class="w-fit rounded border border-primary/40 px-2 py-1 text-xs text-primary"
                                     >{save_label.clone()}</button>
+                                    </fieldset>
                                 </form>
                             </details>
                         }

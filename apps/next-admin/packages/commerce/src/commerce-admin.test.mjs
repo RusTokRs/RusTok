@@ -15,10 +15,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import { compileFunction } from 'node:vm';
 
 // Load api.ts by injecting mock graphqlRequest
-const apiSource = readFileSync(
-  new URL('./api.ts', import.meta.url),
-  'utf8'
-);
+const apiSource = readFileSync(new URL('./api.ts', import.meta.url), 'utf8');
 const cleanApiSource = stripTypeScriptTypes(
   apiSource
     .replace(/import\s+type\s+\{[^}]*\}\s+from\s+'\.\/types';/g, '')
@@ -92,7 +89,10 @@ test('commerceNavItems specifies manager role, plugin group, and all 5 sub-route
   const items = root.items.map((i) => ({ title: i.title, url: i.url }));
   assert.deepEqual(items, [
     { title: 'Orders', url: '/dashboard/commerce/orders' },
-    { title: 'Shipping Profiles', url: '/dashboard/commerce/shipping-profiles' },
+    {
+      title: 'Shipping Profiles',
+      url: '/dashboard/commerce/shipping-profiles'
+    },
     { title: 'Cart Promotions', url: '/dashboard/commerce/promotions' },
     { title: 'Order Changes', url: '/dashboard/commerce/order-changes' },
     { title: 'Return Decisions', url: '/dashboard/commerce/return-decisions' }
@@ -114,7 +114,12 @@ test('API functions enforce fail-closed credential checks', async () => {
   );
 
   await assert.rejects(
-    () => api.previewCartPromotion(emptyOpts, 'cart-1', { sourceId: 'p1', kind: 'PERCENT', scope: 'CART' }),
+    () =>
+      api.previewCartPromotion(emptyOpts, 'cart-1', {
+        sourceId: 'p1',
+        kind: 'PERCENT',
+        scope: 'CART'
+      }),
     /Sign in again to manage promotions\./
   );
 
@@ -124,7 +129,11 @@ test('API functions enforce fail-closed credential checks', async () => {
   );
 
   await assert.rejects(
-    () => api.createOrderReturnDecision(emptyOpts, 'ord-1', { returnRequest: {}, decision: { action: 'return_only' } }),
+    () =>
+      api.createOrderReturnDecision(emptyOpts, 'ord-1', {
+        returnRequest: {},
+        decision: { action: 'return_only' }
+      }),
     /Sign in again to manage return decisions\./
   );
 });
@@ -180,7 +189,9 @@ test('listShippingProfiles and createShippingProfile pass correct payload and he
     metadata: '{}',
     createdAt: null,
     updatedAt: null,
-    translations: [{ locale: 'en', name: 'Standard Shipping', description: null }]
+    translations: [
+      { locale: 'en', name: 'Standard Shipping', description: null }
+    ]
   };
 
   const api = createApiModule(async (query, vars, token, tenant) => {
@@ -206,7 +217,11 @@ test('listShippingProfiles and createShippingProfile pass correct payload and he
     throw new Error('Unexpected query');
   });
 
-  const opts = { token: 'jwt-token', tenantSlug: 'store-slug', tenantId: 'ten-uuid-1' };
+  const opts = {
+    token: 'jwt-token',
+    tenantSlug: 'store-slug',
+    tenantId: 'ten-uuid-1'
+  };
   const list = await api.listShippingProfiles(opts, { page: 1, perPage: 10 });
   assert.equal(list.total, 1);
   assert.equal(list.items[0].slug, 'standard');
@@ -270,19 +285,27 @@ test('previewCartPromotion and applyCartPromotion dispatch typed mutations', asy
 test('GraphQL queries and mutations define expected schema contracts', () => {
   const api = createApiModule(async () => ({}));
 
-  assert.match(api.ORDERS_QUERY, /orders\(tenantId: \$tenantId, filter: \$filter\)/);
+  assert.match(
+    api.ORDERS_QUERY,
+    /orders\(tenantId: \$tenantId, filter: \$filter\)/
+  );
   assert.match(api.ORDERS_QUERY, /totalAmount/);
   assert.match(api.ORDERS_QUERY, /lineItems/);
 
-  assert.match(api.SHIPPING_PROFILES_QUERY, /shippingProfiles\(tenantId: \$tenantId/);
+  assert.match(
+    api.SHIPPING_PROFILES_QUERY,
+    /shippingProfiles\(tenantId: \$tenantId/
+  );
   assert.match(api.SHIPPING_PROFILES_QUERY, /translations/);
 
   assert.match(api.ORDER_CHANGES_QUERY, /orderChanges\(tenantId: \$tenantId/);
   assert.match(api.ORDER_CHANGES_QUERY, /changeType/);
   assert.match(api.ORDER_CHANGES_QUERY, /status/);
 
-  assert.match(api.CREATE_ORDER_RETURN_DECISION_MUTATION, /createOrderReturnDecision/);
+  assert.match(
+    api.CREATE_ORDER_RETURN_DECISION_MUTATION,
+    /createOrderReturnDecision/
+  );
   assert.match(api.CREATE_ORDER_RETURN_DECISION_MUTATION, /orderReturn/);
   assert.match(api.CREATE_ORDER_RETURN_DECISION_MUTATION, /refund/);
 });
-

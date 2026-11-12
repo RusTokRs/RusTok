@@ -53,38 +53,25 @@ const PROGRESS_STABILITY_ATTEMPTS: usize = 3;
 
 fn owner_slug_or_invariant() -> Result<OwnerSlug, PortError> {
     OwnerSlug::new(TRANSLATION_OWNER_SLUG).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.owner_contract_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.owner_contract_invalid", error.to_string())
     })
 }
 
-#[allow(dead_code)]
 fn resource_kind_or_invariant() -> Result<ResourceKind, PortError> {
     ResourceKind::new(TRANSLATION_RESOURCE_KIND).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.owner_contract_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.owner_contract_invalid", error.to_string())
     })
 }
 
 fn resource_id_or_invariant(value: String) -> Result<ResourceId, PortError> {
     ResourceId::new(value).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.resource_id_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.resource_id_invalid", error.to_string())
     })
 }
 
 fn field_key_or_invariant(key: &'static str) -> Result<FieldKey, PortError> {
     FieldKey::new(key).map_err(|error| {
-        PortError::invariant_violation(
-            "translation.field_key_invalid",
-            error.to_string(),
-        )
+        PortError::invariant_violation("translation.field_key_invalid", error.to_string())
     })
 }
 
@@ -1440,9 +1427,7 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
 fn attribute_value_identity(value_id: Uuid) -> Result<TranslationResourceIdentity, PortError> {
     Ok(TranslationResourceIdentity {
         owner_slug: owner_slug_or_invariant()?,
-        resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND).expect(
-            "static Product Attribute Value resource kind must satisfy Translation contract",
-        ),
+        resource_kind: resource_kind_or_invariant()?,
         resource_id: resource_id_or_invariant(value_id.to_string())?,
         subresource_id: None,
     })

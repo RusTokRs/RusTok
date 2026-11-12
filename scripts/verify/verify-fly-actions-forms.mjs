@@ -195,7 +195,12 @@ requireOrder('browserIntent', [
   'validate_revision(controller, &envelope)?',
   'dispatch_named_intent(controller, &envelope.intent, &envelope.payload)?',
 ], 'browser revision protection');
-requireMarker('browserIntent', '.ssr_form_intent(other, payload)', 'browser dispatcher must delegate SSR forms');
+requireMarker(
+  'browserIntent',
+  'other => dispatch_ssr_form(controller, other, payload)?',
+  'browser dispatcher must delegate every intent it has no arm for to the SSR form resolver',
+);
+requireMarker('browserIntent', '.ssr_form_intent(intent, payload)', 'browser dispatcher must delegate SSR forms');
 const adapterSrc = (source.browserAdapter || '') + (source.browserHost || '');
 if (!adapterSrc.includes('input[type="number"][name]') || (!adapterSrc.includes('number.value !== ""') && !adapterSrc.includes('number.value === ""'))) {
   failures.push('SSR form number normalization is missing required input checks');

@@ -16,7 +16,7 @@ use sea_orm::{
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::entities::{forum_category, forum_reply_body, forum_topic_tag, forum_topic_translation};
+use crate::entities::{forum_category, forum_reply_body, forum_topic_translation};
 use crate::search_projection_author::{
     load_public_author_summary, public_author_handle, public_author_id, public_author_keywords,
     public_author_payload,
@@ -795,62 +795,6 @@ fn parse_timestamp(value: &str, field: &str) -> Result<DateTime<Utc>> {
 
 fn map_forum_error(error: crate::ForumError) -> Error {
     Error::External(format!("Forum Search projection source failed: {error}"))
-}
-
-/// Batch counterpart to `TopicService::load_topic_tags` — single DB round-trip
-/// for `N` topics instead of `N` sequential `SELECT … WHERE topic_id = $1`.
-/// Keeps Search ingestion bounded for the tenant-wide reindex path.
-pub(crate) async fn load_topic_tags_for_topics(
-    db: &DatabaseConnection,
-    tenant_id: Uuid,
-    topic_ids: &[Uuid],
-    locale: &str,
-    fallback_locale: Option<&str>,
-) -> Result<HashMap<Uuid, Vec<String>>> {
-    use std::collections::{HashMap, HashSet};
-    use rustok_taxonomy::TaxonomyService;
-    use sea_orm::ColumnTrait;
-
-    if topic_ids.is_empty() {
-        return Ok(HashMap::new());
-    }
-    let rows = forum_topic_tag::Entity::find()
-        .filter(forum_topic_tag::Column::TenantId.eq(tenant_id))
-        .filter(forum_topic_tag::Column::TopicId.is_in(topic_ids.to_vec()))
-        .order_by_asc(forum_topic_tag::Column::TopicId)
-        .order_by_asc(forum_topic_tag::Column::CreatedAt)
-        .all(db)
-        .await
-        .map_err(Error::Database)?;
-    if rows.is_empty() {
-        return Ok(topic_ids.iter().map(|id| (*id, Vec::new())).collect());
-    }
-    let mut topic_to_terms: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
-    let mut all_term_ids = HashSet::new();
-    for row in rows {
-        topic_to_terms.entry(row.topic_id).or_default().push(row.term_id);
-        all_term_ids.insert(row.term_id);
-    }
-    let all_term_ids: Vec<Uuid> = all_term_ids.into_iter().collect();
-    let resolved = TaxonomyService::new(db.clone())
-        .resolve_term_names(tenant_id, &all_term_ids, locale, fallback_locale)
-        .await
-        .map_err(|e| Error::External(format!("Forum Search taxonomy batch failed: {e}")))?;
-    let mut result: HashMap<Uuid, Vec<String>> = HashMap::new();
-    for topic_id in topic_ids {
-        if let Some(term_ids) = topic_to_terms.get(topic_id) {
-            let mut tags = term_ids
-                .iter()
-                .filter_map(|tid| resolved.get(tid).cloned())
-                .collect::<Vec<_>>();
-            tags.sort();
-            tags.dedup();
-            result.insert(*topic_id, tags);
-        } else {
-            result.insert(*topic_id, Vec::new());
-        }
-    }
-    Ok(result)
 }
 
 fn map_taxonomy_category_error(error: TaxonomyError) -> Error {

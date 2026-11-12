@@ -43,7 +43,7 @@ export function BrandsTable({ brands, onDeleteBrand }: BrandsTableProps) {
 
   if (brands.length === 0) {
     return (
-      <div className='py-8 text-center text-sm text-muted-foreground'>
+      <div className='text-muted-foreground py-8 text-center text-sm'>
         No brands found. Create your first brand to get started.
       </div>
     );
@@ -59,7 +59,9 @@ export function BrandsTable({ brands, onDeleteBrand }: BrandsTableProps) {
             <TableHead>Website</TableHead>
             <TableHead className='text-center'>Status</TableHead>
             <TableHead className='text-right'>Products</TableHead>
-            {onDeleteBrand && <TableHead className='text-right'>Actions</TableHead>}
+            {onDeleteBrand && (
+              <TableHead className='text-right'>Actions</TableHead>
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -72,24 +74,24 @@ export function BrandsTable({ brands, onDeleteBrand }: BrandsTableProps) {
                     <img
                       src={brand.logoUrl}
                       alt={brand.name}
-                      className='h-7 w-7 rounded object-contain bg-muted p-0.5'
+                      className='bg-muted h-7 w-7 rounded object-contain p-0.5'
                     />
                   ) : (
-                    <div className='flex h-7 w-7 items-center justify-center rounded bg-primary/10 text-primary text-xs font-bold'>
+                    <div className='bg-primary/10 text-primary flex h-7 w-7 items-center justify-center rounded text-xs font-bold'>
                       {brand.name.charAt(0).toUpperCase()}
                     </div>
                   )}
                   <div>
                     <div>{brand.name}</div>
                     {brand.description && (
-                      <div className='text-xs text-muted-foreground line-clamp-1'>
+                      <div className='text-muted-foreground line-clamp-1 text-xs'>
                         {brand.description}
                       </div>
                     )}
                   </div>
                 </div>
               </TableCell>
-              <TableCell className='font-mono text-xs text-muted-foreground'>
+              <TableCell className='text-muted-foreground font-mono text-xs'>
                 {brand.slug}
               </TableCell>
               <TableCell className='text-xs'>
@@ -98,7 +100,7 @@ export function BrandsTable({ brands, onDeleteBrand }: BrandsTableProps) {
                     href={brand.websiteUrl}
                     target='_blank'
                     rel='noreferrer'
-                    className='inline-flex items-center gap-1 text-primary hover:underline'
+                    className='text-primary inline-flex items-center gap-1 hover:underline'
                   >
                     Visit <ExternalLink className='h-3 w-3' />
                   </a>
@@ -119,7 +121,7 @@ export function BrandsTable({ brands, onDeleteBrand }: BrandsTableProps) {
                   <Button
                     variant='ghost'
                     size='sm'
-                    className='h-8 w-8 p-0 text-destructive hover:bg-destructive/10'
+                    className='text-destructive hover:bg-destructive/10 h-8 w-8 p-0'
                     disabled={deletingId === brand.id}
                     onClick={() => handleDelete(brand.id)}
                   >

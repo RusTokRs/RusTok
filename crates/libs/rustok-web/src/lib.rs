@@ -172,13 +172,12 @@ impl HttpError {
 impl IntoResponse for HttpError {
     fn into_response(self) -> axum::response::Response {
         let mut response = (self.status, Json(self.body())).into_response();
-        if let Some(seconds) = self.retry_after_seconds {
-            if let Ok(value) = axum::http::HeaderValue::from_str(&seconds.to_string()) {
-                response.headers_mut().insert(
-                    axum::http::header::RETRY_AFTER,
-                    value,
-                );
-            }
+        if let Some(seconds) = self.retry_after_seconds
+            && let Ok(value) = axum::http::HeaderValue::from_str(&seconds.to_string())
+        {
+            response
+                .headers_mut()
+                .insert(axum::http::header::RETRY_AFTER, value);
         }
         for (name, value) in self.extra_headers {
             if let (Ok(header_name), Ok(header_value)) = (

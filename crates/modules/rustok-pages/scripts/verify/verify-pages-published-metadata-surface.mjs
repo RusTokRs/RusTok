@@ -27,7 +27,6 @@ const surfaceProduction = surface.split("#[cfg(test)]")[0];
 const surfaceTests = surface.includes("#[cfg(test)]")
   ? surface.slice(surface.indexOf("#[cfg(test)]"))
   : "";
-const parityPlan = read(contract.parity_plan);
 const failures = [];
 
 const requireText = (content, value, label) => {
@@ -244,17 +243,6 @@ if (
   revisionEvidence.source_contract?.metadata_revision_advances_independently !== true
 ) {
   failures.push("linked metadata revision/isolation evidence is invalid");
-}
-
-for (const marker of [
-  "`source-ready` means code, contracts, build source or retained harness source exists.",
-  "Pages and Page Builder remain one vertical pipeline with explicit owners:",
-  "Pages owns persistence, lifecycle, immutable bindings",
-  "Pages admin owns the optional same-origin authoring launch control",
-  "Page Builder/Fly owns the reviewed document, sanitizer, runtime materialization",
-  "No build, workflow, Docker, HTTP or browser execution is claimed by source inspection.",
-]) {
-  requireText(parityPlan, marker, "parity continuation plan");
 }
 
 if (failures.length > 0) {

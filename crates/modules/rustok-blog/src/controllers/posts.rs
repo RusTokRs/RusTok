@@ -22,9 +22,7 @@ use utoipa::ToSchema;
 
 use crate::dto::BulkOperationResult;
 use crate::state_machine::BlogPostStatus;
-use crate::{
-    ArchivePostInput, CreatePostInput, PostListQuery, PostResponse, PostService, UpdatePostInput,
-};
+use crate::{ArchivePostInput, CreatePostInput, PostListQuery, PostResponse, UpdatePostInput};
 
 /// List blog posts
 #[utoipa::path(
@@ -430,7 +428,8 @@ pub async fn archive_post(
         "Permission denied: blog_posts:publish required",
     )?;
 
-    runtime.post_service()
+    runtime
+        .post_service()
         .archive_post(tenant.id, id, security_context(&auth), input.reason)
         .await
         .map_err(crate::error::public::to_http_error)
@@ -475,7 +474,8 @@ pub async fn restore_post(
         "Permission denied: blog_posts:publish required",
     )?;
 
-    runtime.post_service()
+    runtime
+        .post_service()
         .restore_post(tenant.id, id, security_context(&auth))
         .await
         .map_err(crate::error::public::to_http_error)
@@ -664,7 +664,8 @@ async fn bulk_transition(
         &[Permission::BLOG_POSTS_PUBLISH],
         "Permission denied: blog_posts:publish required",
     )?;
-    let result = runtime.post_service()
+    let result = runtime
+        .post_service()
         .bulk_transition_posts(tenant.id, &post_ids, target, security_context(auth))
         .await
         .map_err(crate::error::public::to_http_error)?;
@@ -722,7 +723,8 @@ pub async fn bulk_unpublish_posts(
         &[Permission::BLOG_POSTS_PUBLISH],
         "Permission denied: blog_posts:publish required",
     )?;
-    let result = runtime.post_service()
+    let result = runtime
+        .post_service()
         .bulk_unpublish_posts(tenant.id, &input.post_ids, security_context(&auth))
         .await
         .map_err(crate::error::public::to_http_error)?;
@@ -753,7 +755,8 @@ pub async fn bulk_restore_posts(
         &[Permission::BLOG_POSTS_PUBLISH],
         "Permission denied: blog_posts:publish required",
     )?;
-    let result = runtime.post_service()
+    let result = runtime
+        .post_service()
         .bulk_restore_posts(tenant.id, &input.post_ids, security_context(&auth))
         .await
         .map_err(crate::error::public::to_http_error)?;
@@ -811,7 +814,8 @@ pub async fn bulk_delete_posts(
         &[Permission::BLOG_POSTS_DELETE],
         "Permission denied: blog_posts:delete required",
     )?;
-    let result = runtime.post_service()
+    let result = runtime
+        .post_service()
         .bulk_delete_posts(tenant.id, &input.post_ids, security_context(&auth))
         .await
         .map_err(crate::error::public::to_http_error)?;

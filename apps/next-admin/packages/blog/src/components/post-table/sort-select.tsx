@@ -19,7 +19,11 @@ import {
   parsePostSortField,
   parsePostSortOrder
 } from '../../api/posts';
-import { SORT_FIELD_OPTIONS, SORT_ORDER_OPTIONS, STATUS_OPTIONS } from './options';
+import {
+  SORT_FIELD_OPTIONS,
+  SORT_ORDER_OPTIONS,
+  STATUS_OPTIONS
+} from './options';
 
 /**
  * Sort control for the cursor-paged post list.
@@ -57,13 +61,16 @@ export function PostSortSelect() {
           })
         }
       >
-        <SelectTrigger className='h-8 w-[170px]' aria-label={t('table.sortField')}>
+        <SelectTrigger
+          className='h-8 w-[170px]'
+          aria-label={t('table.sortField')}
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {SORT_FIELD_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
-              {t(`sort.${option.value.toLowerCase()}`)}
+              {t(option.labelKey)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -79,13 +86,16 @@ export function PostSortSelect() {
           })
         }
       >
-        <SelectTrigger className='h-8 w-[140px]' aria-label={t('table.sortOrder')}>
+        <SelectTrigger
+          className='h-8 w-[140px]'
+          aria-label={t('table.sortOrder')}
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {SORT_ORDER_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
-              {t(`sort.${option.value.toLowerCase()}`)}
+              {t(option.labelKey)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -111,20 +121,26 @@ export function PostStatusSelect() {
       value={filters.status ?? 'ALL'}
       onValueChange={(value) =>
         void setFilters({
-          status: value === 'ALL' ? null : value as 'DRAFT' | 'PUBLISHED' | 'ARCHIVED',
+          status:
+            value === 'ALL'
+              ? null
+              : (value as 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'),
           after: null,
           history: null
         })
       }
     >
-      <SelectTrigger className='h-8 w-[150px]' aria-label={t('table.filterStatus')}>
+      <SelectTrigger
+        className='h-8 w-[150px]'
+        aria-label={t('table.filterStatus')}
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value='ALL'>{t('table.allStatuses')}</SelectItem>
         {STATUS_OPTIONS.map((option) => (
           <SelectItem key={option.value} value={option.value}>
-            {t(`status.${option.value.toLowerCase()}`)}
+            {t(option.labelKey)}
           </SelectItem>
         ))}
       </SelectContent>
@@ -141,7 +157,12 @@ export function PostStatusSelect() {
  * restarts at page one under the new filter instead of resuming a stale
  * position that would silently skip matching rows.
  */
-const POST_TEXT_FILTER_PARAMS = ['title', 'slug', 'locale', 'authorId'] as const;
+const POST_TEXT_FILTER_PARAMS = [
+  'title',
+  'slug',
+  'locale',
+  'authorId'
+] as const;
 
 type PostTextFilterParam = (typeof POST_TEXT_FILTER_PARAMS)[number];
 
@@ -175,10 +196,10 @@ export function PostTextFilter({
   label: string;
   placeholder: string;
 }) {
-  const [filters, setFilters] = useQueryStates(
-    postTextFilterParsers(param),
-    { shallow: false, history: 'push' }
-  );
+  const [filters, setFilters] = useQueryStates(postTextFilterParsers(param), {
+    shallow: false,
+    history: 'push'
+  });
 
   const value = filters[param] ?? '';
 

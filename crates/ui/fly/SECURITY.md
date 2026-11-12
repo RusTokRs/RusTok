@@ -21,7 +21,7 @@ it then trusts for authorisation decisions, Fly cannot help.
 | HTML text | Escaped on a single pass; no lossy pre-stripping | `render.rs::push_escaped_html` |
 | HTML attributes | Escaped including quotes; attribute names allow-listed | `push_escaped_attribute`, `safe_attribute_name` |
 | `<style>` contents | Cannot terminate the element — `<` is CSS-escaped | `render.rs::escape_style_element_text` |
-| CSS selectors built from ids | Allow-list escape, not a deny-list | `render.rs::escape_css_attribute` |
+| CSS selectors built from ids | Allow-list escape, not a deny-list, at every writer: the renderer and the selection rule of the `fly-leptos` canvas | `render.rs::escape_css_attribute` (public) |
 | Component and page ids | `[A-Za-z0-9_.:-]`, non-empty, ≤128 bytes | `validation.rs::validate_identifier` |
 | URLs | One policy module; per-slot scheme allow-list | `safe_url.rs` |
 | Decode depth | Bounded, checked iteratively (no recursion) | `codec.rs::MAXIMUM_DECODE_DEPTH` |

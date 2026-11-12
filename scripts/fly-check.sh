@@ -120,6 +120,9 @@ run_tests() {
   step 'cargo test -p fly-browser'         cargo test -p fly-browser --all-targets
   step 'cargo test -p fly-ui -p fly-web'   cargo test -p fly-ui -p fly-web --all-targets
   step 'cargo check adapters'              cargo check -p fly-leptos -p fly-dioxus --all-targets
+  # `cargo check` only compiles the adapter tests. The fly-leptos render tests pin the markup
+  # that fly-browser.js binds in the default ssr runtime, so they have to run.
+  step 'cargo test -p fly-leptos'          cargo test -p fly-leptos --lib
 }
 
 # --------------------------------------------------------------------------------------------
