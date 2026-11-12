@@ -59,26 +59,32 @@ impl MigrationTrait for Migration {
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_product_catalog_category_taxonomy_binding_taxonomy")
-                            .from(
-                                ProductCatalogCategoryTaxonomyBindings::Table,
-                                (
-                                    ProductCatalogCategoryTaxonomyBindings::TenantId,
-                                    ProductCatalogCategoryTaxonomyBindings::TaxonomyCategoryId,
-                                ),
-                            )
-                            .to(
-                                TaxonomyTerms::Table,
-                                (TaxonomyTerms::TenantId, TaxonomyTerms::Id),
-                            )
-                            .on_update(ForeignKeyAction::Cascade)
-                            .on_delete(ForeignKeyAction::Restrict),
-                    )
                     .to_owned(),
             )
             .await?;
+
+        if manager.has_table("taxonomy_terms").await? {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_product_catalog_category_taxonomy_binding_taxonomy")
+                        .from(
+                            ProductCatalogCategoryTaxonomyBindings::Table,
+                            (
+                                ProductCatalogCategoryTaxonomyBindings::TenantId,
+                                ProductCatalogCategoryTaxonomyBindings::TaxonomyCategoryId,
+                            ),
+                        )
+                        .to(
+                            TaxonomyTerms::Table,
+                            (TaxonomyTerms::TenantId, TaxonomyTerms::Id),
+                        )
+                        .on_update(ForeignKeyAction::Cascade)
+                        .on_delete(ForeignKeyAction::Restrict)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .create_index(

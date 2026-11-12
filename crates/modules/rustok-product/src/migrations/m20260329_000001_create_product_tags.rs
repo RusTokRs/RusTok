@@ -34,17 +34,23 @@ impl MigrationTrait for Migration {
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_product_tags_term")
-                            .from(ProductTags::Table, ProductTags::TermId)
-                            .to(TaxonomyTerms::Table, TaxonomyTerms::Id)
-                            .on_update(ForeignKeyAction::Cascade)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
                     .to_owned(),
             )
             .await?;
+
+        if manager.has_table("taxonomy_terms").await? {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_product_tags_term")
+                        .from(ProductTags::Table, ProductTags::TermId)
+                        .to(TaxonomyTerms::Table, TaxonomyTerms::Id)
+                        .on_update(ForeignKeyAction::Cascade)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .create_index(
