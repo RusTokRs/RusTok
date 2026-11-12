@@ -8,3 +8,4 @@ Publishes:
 - `ProductCatalogCommandPort`: Mutating lifecycle and catalog commands.
 - Canonical DTOs, requests, and domain models.
 - Optional `grpc-client` and `grpc-server` tonic adapters.
+

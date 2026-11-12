@@ -1,7 +1,5 @@
 use std::{collections::HashSet, fmt, sync::Arc};
 
-use bytes::Bytes;
-use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use crate::{
     FilteredPublishedProductsRequest, ProductCatalogCommandPort, ProductCatalogReadPort,
     ProductProjectionRequest, ProductVariantIdentityReadPort, PublishedProductsRequest,
@@ -12,6 +10,8 @@ use crate::{
         UpdateProductInput, UpdateVariantInput,
     },
 };
+use bytes::Bytes;
+use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::service::Interceptor;
 use tonic::{Code, Request, Response, Status};

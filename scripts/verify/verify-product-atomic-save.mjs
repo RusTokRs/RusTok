@@ -8,7 +8,7 @@ export const paths = {
   commands: 'crates/modules/rustok-product/src/services/catalog/commands.rs',
   values:
     'crates/modules/rustok-product/src/services/catalog_schema_service/values.rs',
-  dto: 'crates/modules/rustok-product/src/dto/product.rs',
+  dto: 'crates/modules/rustok-product/ports/src/dto/product.rs',
   next: 'apps/next-admin/src/app/dashboard/product/actions.ts',
   leptos: 'crates/modules/rustok-product/admin/src/ui/leptos.rs',
   routedEditor: 'crates/modules/rustok-product/admin/src/ui/product_editor.rs'
@@ -39,7 +39,7 @@ export function verifyAtomicSave(source) {
     require(write >= 0 &&
       publish > write &&
       commit >
-        publish, `${method}: all batches must precede final publication validation and commit`);
+      publish, `${method}: all batches must precede final publication validation and commit`);
     require(command.includes(
       '&input.attribute_values'
     ), `${method}: canonical batches must reach the transaction writer`);
@@ -76,7 +76,7 @@ export function verifyAtomicSave(source) {
   const form = writer.indexOf('Self::load_effective_form_for_category_in(');
   require(lock >= 0 &&
     form >
-      lock, 'shared writer must lock the parent before reading the candidate category');
+    lock, 'shared writer must lock the parent before reading the candidate category');
   for (const helper of [batches, writer]) {
     for (const forbidden of [
       'ProductWriteTransaction::begin(',

@@ -12,7 +12,7 @@ export function run() {
   const owner = 'crates/modules/rustok-product/';
   const commerce = 'crates/modules/rustok-commerce/src/graphql/';
   const fields = ['sku', 'barcode', 'shipping_profile_slug', 'weight', 'weight_unit'];
-  const dto = section(read(`${owner}src/dto/variant.rs`), 'pub struct UpdateVariantInput', '\n#[derive');
+  const dto = section(read(`${owner}ports/src/dto/variant.rs`), 'pub struct UpdateVariantInput', '\n#[derive');
   const command = section(read(`${owner}src/services/catalog/commands.rs`), 'pub async fn update_variant(', 'pub async fn ');
   const gql = section(read(`${commerce}types.rs`), 'pub struct UpdateVariantInput', '\n#[derive');
   const conversion = section(read(`${commerce}mutations/helpers.rs`), 'pub(crate) fn convert_update_variant_input(', '\npub(crate) fn ');

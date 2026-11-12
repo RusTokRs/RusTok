@@ -1,9 +1,9 @@
 use rustok_api::{PortContext, PortError};
 
 pub use rustok_product_ports::{
-    MAX_ADMIN_PRODUCTS_PER_PAGE, MAX_PUBLISHED_PRODUCTS_PER_PAGE, AdminCatalogFacetsRequest,
-    AdminProductsRequest, FilteredPublishedProductsRequest, LegacyAdminProductsRequest,
-    LegacyStorefrontProductList, LegacyStorefrontProductListItem, LegacyStorefrontProductsRequest,
+    AdminCatalogFacetsRequest, AdminProductsRequest, FilteredPublishedProductsRequest,
+    LegacyAdminProductsRequest, LegacyStorefrontProductList, LegacyStorefrontProductListItem,
+    LegacyStorefrontProductsRequest, MAX_ADMIN_PRODUCTS_PER_PAGE, MAX_PUBLISHED_PRODUCTS_PER_PAGE,
     ProductProjectionRequest, PublishedProductsRequest, StorefrontCatalogFacetsRequest,
     StorefrontProductProjectionRequest, StorefrontProductProjectionSubject,
     StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,

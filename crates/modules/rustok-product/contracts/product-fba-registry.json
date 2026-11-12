@@ -24,13 +24,17 @@
       "module": "commerce",
       "profile": "checkout_product_projection",
       "degraded_modes": [],
-      "fallback_profiles": ["embedded_native"]
+      "fallback_profiles": [
+        "embedded_native"
+      ]
     },
     {
       "module": "marketplace-listing",
       "profile": "listing_product_projection",
       "degraded_modes": [],
-      "fallback_profiles": ["embedded_native"]
+      "fallback_profiles": [
+        "embedded_native"
+      ]
     },
     {
       "module": "ai-product",
@@ -40,7 +44,9 @@
         "skip_catalog_enrichment",
         "require_operator_review"
       ],
-      "fallback_profiles": ["embedded_native"]
+      "fallback_profiles": [
+        "embedded_native"
+      ]
     }
   ],
   "evidence": {
@@ -76,7 +82,10 @@
     "runtime": "ProductCatalogReadRuntime",
     "source": "crates/modules/rustok-product/src/runtime.rs",
     "host_composition": "apps/server/src/services/commerce_provider_runtime.rs",
-    "profiles": ["embedded_native", "external"],
+    "profiles": [
+      "embedded_native",
+      "external"
+    ],
     "source_complete_consumers": [
       "ai-product",
       "marketplace-listing",
@@ -97,7 +106,10 @@
     "server": "ProductCatalogGrpcService",
     "server_authenticator": "ProductCatalogGrpcBearerInterceptor",
     "trusted_authority": "TrustedProductCatalogAuthority",
-    "authentication_metadata": ["authorization", "x-rustok-tenant-id"],
+    "authentication_metadata": [
+      "authorization",
+      "x-rustok-tenant-id"
+    ],
     "authentication_assertions": [
       "constant_time_complete_authorization_compare",
       "tenant_uuid_validated",
@@ -110,7 +122,10 @@
     "host_deployment": "apps/server/src/services/product_catalog_deployment.rs",
     "runtime_factory": "ProductCatalogReadRuntime::external",
     "variant_identity_port": "ProductVariantIdentityReadPort",
-    "variant_identity_operations": ["read_variant_identities", "list_product_variant_identities"],
+    "variant_identity_operations": [
+      "read_variant_identities",
+      "list_product_variant_identities"
+    ],
     "storefront_variant_projection_operation": "read_storefront_variant_product_projection",
     "provider_selector_env": "RUSTOK_PRODUCT_CATALOG_PROVIDER",
     "endpoint_env": "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT",
@@ -145,7 +160,10 @@
     "transport_profile": "grpc_loopback_external_runtime",
     "commerce_test": "crates/modules/rustok-commerce/tests/product_remote_consumer_behavior.rs",
     "ai_source_test": "crates/modules/rustok-ai/src/direct_product_attributes.rs",
-    "failure_profiles": ["unavailable", "timeout"],
+    "failure_profiles": [
+      "unavailable",
+      "timeout"
+    ],
     "assertions": [
       "commerce_hard_dependency_no_cart_snapshot_fallback",
       "commerce_typed_boundary_error_preserved",
@@ -213,7 +231,11 @@
     "source": "crates/modules/rustok-product/contracts/product-fba-registry.json",
     "runner": "scripts/verify/verify-ecommerce-fba-registries.mjs",
     "execution_attestation": "maintainer_attested_passed_no_raw_logs",
-    "profiles": ["in_process", "remote_adapter_placeholder", "grpc_loopback"],
+    "profiles": [
+      "in_process",
+      "remote_adapter_placeholder",
+      "grpc_loopback"
+    ],
     "cases": [
       {
         "operation": "read_product_projection",
@@ -258,7 +280,9 @@
     ],
     "fallback_smoke": {
       "status": "planned_runtime_pending",
-      "profiles": ["embedded_native"],
+      "profiles": [
+        "embedded_native"
+      ],
       "degraded_modes": [
         "generate_from_prompt_only",
         "skip_catalog_enrichment",

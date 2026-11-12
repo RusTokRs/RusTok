@@ -649,9 +649,7 @@ pub(crate) fn pick_product_translation<'a>(
         .or_else(|| translations.first())
 }
 
-pub(crate) fn map_product_status(
-    status: rustok_product::ProductStatus,
-) -> ProductStatus {
+pub(crate) fn map_product_status(status: rustok_product::ProductStatus) -> ProductStatus {
     match status {
         rustok_product::ProductStatus::Draft => ProductStatus::Draft,
         rustok_product::ProductStatus::Active => ProductStatus::Active,

@@ -538,16 +538,6 @@ pub fn attach_commerce_provider_registries(
             host
         };
 
-    #[cfg(all(feature = "mod-ai", feature = "mod-product"))]
-    let host =
-        if let Some(runtime) = server.shared_get::<rustok_product::ProductCatalogCommandRuntime>() {
-            host.with_shared_value(rustok_ai::SharedAiProductCatalogCommandPort(
-                runtime.command_port(),
-            ))
-        } else {
-            host
-        };
-
     host
 }
 

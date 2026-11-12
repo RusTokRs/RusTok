@@ -586,7 +586,8 @@ impl CatalogService {
             })?;
         let existing_product = product.clone();
         ensure_expected_revision(&existing_product, input.expected_revision)?;
-        let existing_status: rustok_product_ports::ProductStatus = existing_product.status.clone().into();
+        let existing_status: rustok_product_ports::ProductStatus =
+            existing_product.status.clone().into();
         if !input.changes_document() && input.status.as_ref() == Some(&existing_status) {
             let result = self
                 .get_product_in(

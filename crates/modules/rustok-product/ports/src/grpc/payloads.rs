@@ -43,3 +43,4 @@ pub(crate) struct ReorderProductImagesPayload {
     pub product_id: Uuid,
     pub image_ids: Vec<Uuid>,
 }
+

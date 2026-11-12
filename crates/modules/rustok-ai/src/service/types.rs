@@ -110,9 +110,6 @@ pub fn ai_host_runtime_from_context(
     let product_catalog_read_port = context
         .shared_get::<SharedAiProductCatalogReadPort>()
         .map(|shared| shared.0);
-    let product_catalog_command_port = context
-        .shared_get::<SharedAiProductCatalogCommandPort>()
-        .map(|shared| shared.0);
     let rag_retrieval_port = context
         .shared_get::<SharedAiRagRetrievalPort>()
         .map(|shared| shared.0);
@@ -129,7 +126,6 @@ pub fn ai_host_runtime_from_context(
     .with_alloy_runtime(context.shared_get::<alloy::SharedAlloyRuntime>())
     .with_order_status_port(order_status_port)
     .with_product_catalog_read_port(product_catalog_read_port)
-    .with_product_catalog_command_port(product_catalog_command_port)
     .with_rag_retrieval_port(rag_retrieval_port);
     Ok(runtime)
 }
@@ -190,14 +186,6 @@ impl AiHostRuntime {
         self
     }
 
-    pub(crate) fn with_product_catalog_command_port(
-        mut self,
-        product_catalog_command_port: Option<Arc<dyn rustok_product::ProductCatalogCommandPort>>,
-    ) -> Self {
-        self.product_catalog_command_port = product_catalog_command_port;
-        self
-    }
-
     pub(crate) fn with_rag_retrieval_port(
         mut self,
         rag_retrieval_port: Option<Arc<dyn crate::RagRetrievalPort>>,
@@ -242,12 +230,6 @@ impl AiHostRuntime {
         &self,
     ) -> Option<Arc<dyn rustok_product::ProductCatalogReadPort>> {
         self.product_catalog_read_port.clone()
-    }
-
-    pub fn product_catalog_command_port(
-        &self,
-    ) -> Option<Arc<dyn rustok_product::ProductCatalogCommandPort>> {
-        self.product_catalog_command_port.clone()
     }
 
     pub fn rag_retrieval_port(&self) -> Option<Arc<dyn crate::RagRetrievalPort>> {

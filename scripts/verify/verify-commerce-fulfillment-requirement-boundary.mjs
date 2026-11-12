@@ -13,7 +13,7 @@ const forbidText = (source, value, label) => {
 };
 
 const product = read('crates/modules/rustok-product/src/fulfillment.rs');
-const productDto = read('crates/modules/rustok-product/src/dto/product.rs');
+const productDto = read('crates/modules/rustok-product/ports/src/dto/product.rs');
 const cart = read('crates/modules/rustok-cart/src/dto/cart.rs');
 const cartEntity = read(
   'crates/modules/rustok-cart/src/entities/cart_line_item.rs',

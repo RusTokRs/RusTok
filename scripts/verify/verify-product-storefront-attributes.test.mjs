@@ -25,7 +25,7 @@ const read = (...segments) => readFileSync(path.join(repoRoot, ...segments), "ut
 const ownerProjection = read(
   "crates/modules/rustok-product/src/services/catalog/storefront_attributes.rs",
 );
-const ownerDto = read("crates/modules/rustok-product/src/dto/product.rs");
+const ownerDto = read("crates/modules/rustok-product/ports/src/dto/product.rs");
 const commerceTypes = read("crates/modules/rustok-commerce/src/graphql/types.rs");
 const storefrontModel = read("crates/modules/rustok-product/storefront/src/model.rs");
 const storefrontCore = read("crates/modules/rustok-product/storefront/src/core.rs");

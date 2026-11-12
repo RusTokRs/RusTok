@@ -59,7 +59,10 @@ impl CatalogService {
         if let Some(raw_status) = raw_status {
             query = query.filter(entities::product::Column::Status.eq(raw_status));
         } else if let Some(status) = list_query.status {
-            query = query.filter(entities::product::Column::Status.eq(entities::product::ProductStatus::from(status)));
+            query = query.filter(
+                entities::product::Column::Status
+                    .eq(entities::product::ProductStatus::from(status)),
+            );
         }
         if let Some(vendor) = vendor {
             query = query.filter(entities::product::Column::Vendor.eq(vendor));

@@ -153,12 +153,12 @@ pub(crate) async fn find_variant_info_from_conn<C: ConnectionTrait>(
         .one(conn)
         .await?
         .map(|row| InventoryProductVariantInfo {
-        variant_id: row.0,
-        product_id: row.1,
-        tenant_id: row.2,
-        sku: row.3,
-        inventory_policy: row.4,
-    }))
+            variant_id: row.0,
+            product_id: row.1,
+            tenant_id: row.2,
+            sku: row.3,
+            inventory_policy: row.4,
+        }))
 }
 
 /// Helper function to load batch variant metadata from an active database connection or transaction.

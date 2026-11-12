@@ -10,21 +10,21 @@
 
 use std::time::Duration;
 
-use async_trait::async_trait;
-use rustok_api::{PortContext, PortError, PortErrorKind};
 use crate::{
     FilteredPublishedProductsRequest, ProductCatalogCommandPort, ProductCatalogReadPort,
-    ProductProjectionRequest, ProductVariantIdentitiesRequest,
-    ProductVariantIdentityListRequest, ProductVariantIdentityReadPort,
-    ProductVariantIdentitySnapshot, PublishedProductsRequest, StorefrontCatalogFacet,
-    StorefrontCatalogFacetsRequest, StorefrontProductList, StorefrontProductProjectionRequest,
-    StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,
+    ProductProjectionRequest, ProductVariantIdentitiesRequest, ProductVariantIdentityListRequest,
+    ProductVariantIdentityReadPort, ProductVariantIdentitySnapshot, PublishedProductsRequest,
+    StorefrontCatalogFacet, StorefrontCatalogFacetsRequest, StorefrontProductList,
+    StorefrontProductProjectionRequest, StorefrontVariantProductProjectionRequest,
+    VariantProductProjectionRequest,
     dto::{
         AddProductImageInput, CreateProductInput, CreateVariantInput, ProductImageResponse,
         ProductResponse, SetVariantAxesInput, UpdateProductImageInput, UpdateProductInput,
         UpdateVariantInput, VariantAxesPreviewResponse, VariantAxisConfigResponse, VariantResponse,
     },
 };
+use async_trait::async_trait;
+use rustok_api::{PortContext, PortError, PortErrorKind};
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::metadata::{Ascii, MetadataValue};
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
@@ -390,7 +390,11 @@ impl ProductCatalogCommandPort for GrpcProductCatalogCommandProvider {
         decode(&response.output_json)
     }
 
-    async fn delete_product(&self, context: PortContext, product_id: Uuid) -> Result<(), PortError> {
+    async fn delete_product(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+    ) -> Result<(), PortError> {
         let payload = ProductIdPayload { product_id };
         let request = self.command_request(&context, &payload)?;
         let _ = self
@@ -489,7 +493,11 @@ impl ProductCatalogCommandPort for GrpcProductCatalogCommandProvider {
         decode(&response.output_json)
     }
 
-    async fn delete_variant(&self, context: PortContext, variant_id: Uuid) -> Result<(), PortError> {
+    async fn delete_variant(
+        &self,
+        context: PortContext,
+        variant_id: Uuid,
+    ) -> Result<(), PortError> {
         let payload = VariantIdPayload { variant_id };
         let request = self.command_request(&context, &payload)?;
         let _ = self
@@ -676,11 +684,8 @@ mod tests {
     fn structured_port_error_is_preserved_from_grpc_status_details() {
         let expected = PortError::validation("product.sku_invalid", "SKU format is invalid");
         let encoded = serde_json::to_vec(&expected).expect("port error should serialize");
-        let status = Status::with_details(
-            Code::InvalidArgument,
-            "validation failed",
-            encoded.into(),
-        );
+        let status =
+            Status::with_details(Code::InvalidArgument, "validation failed", encoded.into());
 
         assert_eq!(status_to_port_error(status), expected);
     }

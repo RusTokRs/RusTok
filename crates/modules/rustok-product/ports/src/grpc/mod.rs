@@ -1,10 +1,10 @@
 pub mod auth;
-#[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
-pub mod payloads;
 #[cfg(feature = "grpc-client")]
 pub mod client;
 #[cfg(feature = "grpc-client")]
 pub mod connection;
+#[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+pub mod payloads;
 #[cfg(feature = "grpc-server")]
 pub mod server;
 

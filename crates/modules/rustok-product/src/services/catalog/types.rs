@@ -15,7 +15,9 @@ const MAX_ATTRIBUTE_FILTER_VALUE_LENGTH: usize = 512;
 /// Maximum effective Storefront Product title-search input in UTF-8 bytes.
 pub const MAX_STOREFRONT_PRODUCT_SEARCH_BYTES: usize = 1022;
 
-pub(crate) fn parse_storefront_sort_by(value: Option<String>) -> CommerceResult<StorefrontProductSortBy> {
+pub(crate) fn parse_storefront_sort_by(
+    value: Option<String>,
+) -> CommerceResult<StorefrontProductSortBy> {
     match value
         .as_deref()
         .map(str::trim)
@@ -45,7 +47,9 @@ pub(crate) fn parse_storefront_sort_direction(
     }
 }
 
-pub(crate) fn parse_product_attribute_filter(value: String) -> CommerceResult<ProductAttributeFilter> {
+pub(crate) fn parse_product_attribute_filter(
+    value: String,
+) -> CommerceResult<ProductAttributeFilter> {
     let (code, raw_value) = value.split_once('=').ok_or_else(|| {
         CommerceError::Validation("attribute_filters entries must use `code=value`".to_string())
     })?;
@@ -449,7 +453,10 @@ mod tests {
         )
         .expect("valid admin list query");
         assert_eq!(query.search.as_deref(), Some("camera"));
-        assert_eq!(query.status, Some(rustok_product_ports::ProductStatus::Active));
+        assert_eq!(
+            query.status,
+            Some(rustok_product_ports::ProductStatus::Active)
+        );
         assert_eq!(query.sort_by, StorefrontProductSortBy::CreatedAt);
         assert_eq!(query.sort_direction, StorefrontProductSortDirection::Asc);
         assert_eq!(query.attribute_filters.len(), 1);

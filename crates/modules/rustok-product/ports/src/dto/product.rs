@@ -6,9 +6,7 @@ use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
 use super::{CreateVariantInput, VariantAxisConfigResponse, VariantAxisInput, VariantResponse};
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ProductStatus {
     Draft,

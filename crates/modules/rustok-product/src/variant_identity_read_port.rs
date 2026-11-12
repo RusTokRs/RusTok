@@ -19,9 +19,8 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
 use uuid::Uuid;
 
 pub use rustok_product_ports::{
-    MAX_VARIANT_IDENTITY_BATCH, ProductVariantIdentitiesRequest,
-    ProductVariantIdentityListRequest, ProductVariantIdentityReadPort,
-    ProductVariantIdentitySnapshot,
+    MAX_VARIANT_IDENTITY_BATCH, ProductVariantIdentitiesRequest, ProductVariantIdentityListRequest,
+    ProductVariantIdentityReadPort, ProductVariantIdentitySnapshot,
 };
 
 use crate::CatalogService;

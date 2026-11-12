@@ -65,7 +65,7 @@ function tree(directory, extensions) {
 }
 
 const OWNER_PROJECTION = "crates/modules/rustok-product/src/services/catalog/storefront_attributes.rs";
-const OWNER_DTO = "crates/modules/rustok-product/src/dto/product.rs";
+const OWNER_DTO = "crates/modules/rustok-product/ports/src/dto/product.rs";
 const OWNER_DETAIL_QUERY = "crates/modules/rustok-product/src/services/catalog/queries.rs";
 const OWNER_ADMIN_PROJECTION = "crates/modules/rustok-product/src/services/catalog/projection.rs";
 const OWNER_FORM_LOADER = "crates/modules/rustok-product/src/services/catalog_schema_service/effective_forms.rs";
