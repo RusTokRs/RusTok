@@ -61,7 +61,7 @@ fn tenant_admin_correlation_id() -> String {
 
 #[cfg(feature = "ssr")]
 fn tenant_admin_scope_matches(auth_tenant_id: uuid::Uuid, resolved_tenant_id: uuid::Uuid) -> bool {
-    auth_tenant_id == resolved_tenant_id
+    !auth_tenant_id.is_nil() && auth_tenant_id == resolved_tenant_id
 }
 
 #[cfg(feature = "ssr")]
@@ -377,5 +377,6 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         assert!(tenant_admin_scope_matches(tenant_id, tenant_id));
         assert!(!tenant_admin_scope_matches(tenant_id, Uuid::new_v4()));
+        assert!(!tenant_admin_scope_matches(Uuid::nil(), Uuid::nil()));
     }
 }
