@@ -402,7 +402,7 @@ impl CatalogService {
             Err(error) => return Err(error),
         };
 
-        if product.status != entities::product::ProductStatus::Active
+        if product.status != crate::dto::ProductStatus::Active
             || product.published_at.is_none()
             || !is_metadata_visible_for_public_channel(&product.metadata, public_channel_slug)
         {

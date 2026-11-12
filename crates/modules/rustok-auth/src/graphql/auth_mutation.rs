@@ -143,6 +143,9 @@ impl AuthMutation {
         let auth = super::require_auth_context(ctx)?;
         let session_id = Uuid::parse_str(&session_id)
             .map_err(|_| FieldError::new("Invalid session ID format"))?;
+        if session_id.is_nil() {
+            return Err(FieldError::new("Session ID must not be nil"));
+        }
         let revoked = auth_runtime(ctx)?
             .port()
             .revoke_session(&auth_lifecycle_context(ctx, Some(auth))?, session_id)
@@ -165,7 +168,7 @@ impl AuthMutation {
 
         Ok(RevokeAllSessionsPayload {
             success: true,
-            revoked_count: revoked_count as i32,
+            revoked_count: i32::try_from(revoked_count).unwrap_or(i32::MAX),
         })
     }
 

@@ -68,12 +68,23 @@ impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
             "Listing users for profile backfill"
         );
         let backend = self.db.get_database_backend();
+        ensure_supported_backend(backend)?;
         let sql = match backend {
             DbBackend::Sqlite => {
                 "SELECT id, email, name FROM users WHERE tenant_id = ?1 ORDER BY created_at ASC, id ASC LIMIT ?2"
             }
-            _ => {
+            DbBackend::Postgres => {
                 "SELECT id, email, name FROM users WHERE tenant_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2"
+            }
+            DbBackend::MySql => {
+                return Err(AuthLifecycleMutationError::Internal(
+                    "auth user backfill does not support mysql".to_string(),
+                ));
+            }
+            _ => {
+                return Err(AuthLifecycleMutationError::Internal(
+                    "auth user backfill does not support this database backend".to_string(),
+                ));
             }
         };
         let statement = Statement::from_sql_and_values(
@@ -107,10 +118,30 @@ impl AuthUserBackfillReadPort for AuthUserBackfillDbReader {
     }
 }
 
+fn ensure_supported_backend(backend: DbBackend) -> Result<(), AuthLifecycleMutationError> {
+    match backend {
+        DbBackend::Postgres | DbBackend::Sqlite => Ok(()),
+        DbBackend::MySql => Err(AuthLifecycleMutationError::Internal(
+            "auth user backfill does not support mysql".to_string(),
+        )),
+        _ => Err(AuthLifecycleMutationError::Internal(
+            "auth user backfill does not support this database backend".to_string(),
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::validate_backfill_user_read_limit;
+    use super::{ensure_supported_backend, validate_backfill_user_read_limit};
     use crate::AuthLifecycleMutationError;
+    use sea_orm::DbBackend;
+
+    #[test]
+    fn backfill_database_backend_validation() {
+        assert!(ensure_supported_backend(DbBackend::Sqlite).is_ok());
+        assert!(ensure_supported_backend(DbBackend::Postgres).is_ok());
+        assert!(ensure_supported_backend(DbBackend::MySql).is_err());
+    }
 
     #[test]
     fn internal_backfill_errors_are_redacted() {

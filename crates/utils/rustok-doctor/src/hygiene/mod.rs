@@ -433,22 +433,25 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
             && test_scopes.is_empty()
             && !pending_test
             && !test_attribute
+            && re!(r"^#\s*\[\s*allow\s*\(\s*dead_code\s*\)\s*\]").is_match(code_part)
         {
-            if re!(r"^#\s*\[\s*allow\s*\(\s*dead_code\s*\)\s*\]").is_match(code_part) {
-                let next_code = scan.lines.iter().skip(index + 1).take(3)
-                    .map(|l| l.syntax.trim())
-                    .find(|s| !s.is_empty())
-                    .unwrap_or("");
-                if re!(r"\b(?:pub(?:\s*\([^)]*\))?\s+)?(?:async\s+)?fn\s+").is_match(next_code) {
-                    scan.add(
-                        line_number,
-                        "P-STALE-ALLOW-LINT",
-                        "Suppressed Dead Code Without Expectation",
-                        Severity::Medium,
-                        "Function suppressed using bare '#[allow(dead_code)]'. Dead functions mask incomplete features or abandoned stubs.",
-                        "Either add tests/callers, delete unused code, or migrate to '#[expect(dead_code, reason = \"...\")]' if temporarily required.",
-                    );
-                }
+            let next_code = scan
+                .lines
+                .iter()
+                .skip(index + 1)
+                .take(3)
+                .map(|l| l.syntax.trim())
+                .find(|s| !s.is_empty())
+                .unwrap_or("");
+            if re!(r"\b(?:pub(?:\s*\([^)]*\))?\s+)?(?:async\s+)?fn\s+").is_match(next_code) {
+                scan.add(
+                    line_number,
+                    "P-STALE-ALLOW-LINT",
+                    "Suppressed Dead Code Without Expectation",
+                    Severity::Medium,
+                    "Function suppressed using bare '#[allow(dead_code)]'. Dead functions mask incomplete features or abandoned stubs.",
+                    "Either add tests/callers, delete unused code, or migrate to '#[expect(dead_code, reason = \"...\")]' if temporarily required.",
+                );
             }
         }
         if !scan.test_file
@@ -555,25 +558,29 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
         }
 
         if let Some(captures) =
-            re!(r"\b(?:pub(?:\s*\([^)]*\))?\s+)?(?:async\s+)?fn\s+([a-zA-Z_]\w*)").captures(code_part)
+            re!(r"\b(?:pub(?:\s*\([^)]*\))?\s+)?(?:async\s+)?fn\s+([a-zA-Z_]\w*)")
+                .captures(code_part)
         {
             let fn_name = &captures[1];
-            if fn_name != "from" && !fn_name.starts_with("from_") {
-                if let Some(paren_pos) = code_part.find('(') {
-                    let after_paren = &code_part[paren_pos..];
-                    let open_p = after_paren.bytes().filter(|b| *b == b'(').count();
-                    let close_p = after_paren.bytes().filter(|b| *b == b')').count();
-                    if open_p > close_p {
-                        in_fn_params = true;
-                        fn_param_parens = open_p - close_p;
-                    }
-                    if !test_context && !scan.test_file && !scan.build_file {
-                        let ptr_arg = re!(r":\s*(?:Option\s*<\s*)?&(?:String|Vec\s*<|PathBuf)\b|&\[\s*&String\s*\]");
-                        if ptr_arg.is_match(after_paren) {
-                            scan.add(line_number, "P-PTR-ARG", "Overly Restrictive Pointer Argument", Severity::High,
-                                "Function takes an immutable reference to an owned container ('&String', '&Vec', or '&PathBuf') instead of a borrowed slice ('&str', '&[T]', or '&Path').",
-                                "Change parameter to a borrowed slice ('&str', '&[T]', or '&Path') to accept both borrowed and owned callers without unnecessary allocations.");
-                        }
+            if fn_name != "from"
+                && !fn_name.starts_with("from_")
+                && let Some(paren_pos) = code_part.find('(')
+            {
+                let after_paren = &code_part[paren_pos..];
+                let open_p = after_paren.bytes().filter(|b| *b == b'(').count();
+                let close_p = after_paren.bytes().filter(|b| *b == b')').count();
+                if open_p > close_p {
+                    in_fn_params = true;
+                    fn_param_parens = open_p - close_p;
+                }
+                if !test_context && !scan.test_file && !scan.build_file {
+                    let ptr_arg = re!(
+                        r":\s*(?:Option\s*<\s*)?&(?:String|Vec\s*<|PathBuf)\b|&\[\s*&String\s*\]"
+                    );
+                    if ptr_arg.is_match(after_paren) {
+                        scan.add(line_number, "P-PTR-ARG", "Overly Restrictive Pointer Argument", Severity::High,
+                            "Function takes an immutable reference to an owned container ('&String', '&Vec', or '&PathBuf') instead of a borrowed slice ('&str', '&[T]', or '&Path').",
+                            "Change parameter to a borrowed slice ('&str', '&[T]', or '&Path') to accept both borrowed and owned callers without unnecessary allocations.");
                     }
                 }
             }
@@ -581,7 +588,8 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
             let open_p = code_part.bytes().filter(|b| *b == b'(').count();
             let close_p = code_part.bytes().filter(|b| *b == b')').count();
             if !test_context && !scan.test_file && !scan.build_file {
-                let ptr_arg = re!(r":\s*(?:Option\s*<\s*)?&(?:String|Vec\s*<|PathBuf)\b|&\[\s*&String\s*\]");
+                let ptr_arg =
+                    re!(r":\s*(?:Option\s*<\s*)?&(?:String|Vec\s*<|PathBuf)\b|&\[\s*&String\s*\]");
                 if ptr_arg.is_match(code_part) {
                     scan.add(line_number, "P-PTR-ARG", "Overly Restrictive Pointer Argument", Severity::High,
                         "Function takes an immutable reference to an owned container ('&String', '&Vec', or '&PathBuf') instead of a borrowed slice ('&str', '&[T]', or '&Path').",
@@ -635,7 +643,9 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
                     "Use tokio::time::sleep(duration).await on executor workers.",
                 );
             }
-            let blocking_fs = re!(r"\bstd::fs::(?:read|read_to_string|write|remove_file|remove_dir|remove_dir_all|create_dir|create_dir_all|copy|rename|File::open|File::create)\s*\(");
+            let blocking_fs = re!(
+                r"\bstd::fs::(?:read|read_to_string|write|remove_file|remove_dir|remove_dir_all|create_dir|create_dir_all|copy|rename|File::open|File::create)\s*\("
+            );
             if blocking_fs.is_match(code_part) {
                 scan.add(
                     line_number,

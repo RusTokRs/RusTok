@@ -1,4 +1,5 @@
-use async_graphql::{Context, Object, Result};
+use async_graphql::{Context, FieldError, Object, Result};
+use rustok_api::graphql::GraphQLError;
 use uuid::Uuid;
 
 use crate::{CreateOAuthAppCommand, UpdateOAuthAppCommand};
@@ -49,6 +50,11 @@ impl OAuthMutation {
         id: Uuid,
         input: UpdateOAuthAppInput,
     ) -> Result<OAuthAppGql> {
+        if id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "App ID must not be nil",
+            ));
+        }
         let auth = require_auth_context(ctx)?;
         runtime(ctx)?
             .port()
@@ -75,6 +81,11 @@ impl OAuthMutation {
         ctx: &Context<'_>,
         id: Uuid,
     ) -> Result<RotateSecretResultGql> {
+        if id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "App ID must not be nil",
+            ));
+        }
         let auth = require_auth_context(ctx)?;
         let result = runtime(ctx)?
             .port()
@@ -88,6 +99,11 @@ impl OAuthMutation {
     }
 
     async fn revoke_oauth_app(&self, ctx: &Context<'_>, id: Uuid) -> Result<OAuthAppGql> {
+        if id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "App ID must not be nil",
+            ));
+        }
         let auth = require_auth_context(ctx)?;
         runtime(ctx)?
             .port()
@@ -103,6 +119,11 @@ impl OAuthMutation {
         app_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<bool> {
+        if app_id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "App ID must not be nil",
+            ));
+        }
         let auth = require_auth_context(ctx)?;
         runtime(ctx)?
             .port()
@@ -113,6 +134,11 @@ impl OAuthMutation {
     }
 
     async fn revoke_app_consent(&self, ctx: &Context<'_>, app_id: Uuid) -> Result<bool> {
+        if app_id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "App ID must not be nil",
+            ));
+        }
         let auth = require_auth_context(ctx)?;
         runtime(ctx)?
             .port()

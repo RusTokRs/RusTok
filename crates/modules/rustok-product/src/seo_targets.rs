@@ -1,5 +1,4 @@
-use crate::dto::{ProductImageResponse, ProductSeoProjection, ProductTranslationResponse};
-use crate::entities::product::ProductStatus;
+use crate::dto::{ProductImageResponse, ProductSeoProjection, ProductStatus, ProductTranslationResponse};
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use rustok_seo_targets::SeoTargetImageRecord;

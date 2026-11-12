@@ -836,7 +836,7 @@ mod tests {
     use tonic::{Code, Request};
     use uuid::Uuid;
 
-    use crate::auth::{AUTHORIZATION_METADATA, TENANT_ID_METADATA};
+    use crate::grpc::auth::{AUTHORIZATION_METADATA, TENANT_ID_METADATA};
 
     #[test]
     fn owner_error_is_preserved_in_status_details() {

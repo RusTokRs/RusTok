@@ -208,7 +208,7 @@ async fn list_legacy_storefront_http_products(
             });
             LegacyStorefrontProductListItem {
                 id: product.id,
-                status: product.status,
+                status: product.status.into(),
                 title: translation
                     .map(|value| value.title.clone())
                     .unwrap_or_default(),

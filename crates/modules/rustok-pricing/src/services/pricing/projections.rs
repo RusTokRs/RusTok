@@ -650,21 +650,21 @@ pub(crate) fn pick_product_translation<'a>(
 }
 
 pub(crate) fn map_product_status(
-    status: rustok_product::entities::product::ProductStatus,
+    status: rustok_product::ProductStatus,
 ) -> ProductStatus {
     match status {
-        rustok_product::entities::product::ProductStatus::Draft => ProductStatus::Draft,
-        rustok_product::entities::product::ProductStatus::Active => ProductStatus::Active,
-        rustok_product::entities::product::ProductStatus::Archived => ProductStatus::Archived,
+        rustok_product::ProductStatus::Draft => ProductStatus::Draft,
+        rustok_product::ProductStatus::Active => ProductStatus::Active,
+        rustok_product::ProductStatus::Archived => ProductStatus::Archived,
     }
 }
 
 pub(crate) fn map_foundation_product_status(
     status: ProductStatus,
-) -> rustok_product::entities::product::ProductStatus {
+) -> rustok_product::ProductStatus {
     match status {
-        ProductStatus::Draft => rustok_product::entities::product::ProductStatus::Draft,
-        ProductStatus::Active => rustok_product::entities::product::ProductStatus::Active,
-        ProductStatus::Archived => rustok_product::entities::product::ProductStatus::Archived,
+        ProductStatus::Draft => rustok_product::ProductStatus::Draft,
+        ProductStatus::Active => rustok_product::ProductStatus::Active,
+        ProductStatus::Archived => rustok_product::ProductStatus::Archived,
     }
 }

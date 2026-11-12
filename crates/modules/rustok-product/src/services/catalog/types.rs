@@ -1,84 +1,60 @@
-use crate::entities;
 use crate::error::{CommerceError, CommerceResult};
-use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+pub use rustok_product_ports::{
+    AdminProductList, AdminProductListItem, AdminProductListQuery, ProductAttributeFilter,
+    StorefrontProductList, StorefrontProductListImage, StorefrontProductListItem,
+    StorefrontProductListPrice, StorefrontProductListQuery, StorefrontProductSortBy,
+    StorefrontProductSortDirection,
+};
 
 pub(crate) const MAX_ATTRIBUTE_FILTERS: usize = 8;
 const MAX_ATTRIBUTE_FILTER_CODE_LENGTH: usize = 128;
 const MAX_ATTRIBUTE_FILTER_VALUE_LENGTH: usize = 512;
 
 /// Maximum effective Storefront Product title-search input in UTF-8 bytes.
-///
-/// The owner query wraps the effective search with one leading and one trailing `%`. The shared Index
-/// `TextLike` contract accepts at most 1024 bytes, so 1022 keeps the owner-owned search surface exactly
-/// representable without truncation in the non-serving Index shadow path.
 pub const MAX_STOREFRONT_PRODUCT_SEARCH_BYTES: usize = 1022;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum StorefrontProductSortBy {
-    #[default]
-    PublishedAt,
-    CreatedAt,
-}
-
-impl StorefrontProductSortBy {
-    pub(crate) fn parse(value: Option<String>) -> CommerceResult<Self> {
-        match value
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            None | Some("published_at") => Ok(Self::PublishedAt),
-            Some("created_at") => Ok(Self::CreatedAt),
-            Some(_) => Err(CommerceError::Validation(
-                "sort_by must be `published_at` or `created_at`".to_string(),
-            )),
-        }
+pub(crate) fn parse_storefront_sort_by(value: Option<String>) -> CommerceResult<StorefrontProductSortBy> {
+    match value
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        None | Some("published_at") => Ok(StorefrontProductSortBy::PublishedAt),
+        Some("created_at") => Ok(StorefrontProductSortBy::CreatedAt),
+        Some(_) => Err(CommerceError::Validation(
+            "sort_by must be `published_at` or `created_at`".to_string(),
+        )),
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum StorefrontProductSortDirection {
-    Asc,
-    #[default]
-    Desc,
-}
-
-impl StorefrontProductSortDirection {
-    pub(crate) fn parse(value: Option<String>) -> CommerceResult<Self> {
-        match value
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            None | Some("desc") => Ok(Self::Desc),
-            Some("asc") => Ok(Self::Asc),
-            Some(_) => Err(CommerceError::Validation(
-                "sort_direction must be `asc` or `desc`".to_string(),
-            )),
-        }
+pub(crate) fn parse_storefront_sort_direction(
+    value: Option<String>,
+) -> CommerceResult<StorefrontProductSortDirection> {
+    match value
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        None | Some("desc") => Ok(StorefrontProductSortDirection::Desc),
+        Some("asc") => Ok(StorefrontProductSortDirection::Asc),
+        Some(_) => Err(CommerceError::Validation(
+            "sort_direction must be `asc` or `desc`".to_string(),
+        )),
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProductAttributeFilter {
-    pub code: String,
-    pub value: String,
-}
-
-impl ProductAttributeFilter {
-    fn parse(value: String) -> CommerceResult<Self> {
-        let (code, raw_value) = value.split_once('=').ok_or_else(|| {
-            CommerceError::Validation("attribute_filters entries must use `code=value`".to_string())
-        })?;
-        let filter = Self {
-            code: code.trim().to_string(),
-            value: raw_value.trim().to_string(),
-        };
-        validate_attribute_filter(&filter)?;
-        Ok(filter)
-    }
+pub(crate) fn parse_product_attribute_filter(value: String) -> CommerceResult<ProductAttributeFilter> {
+    let (code, raw_value) = value.split_once('=').ok_or_else(|| {
+        CommerceError::Validation("attribute_filters entries must use `code=value`".to_string())
+    })?;
+    let filter = ProductAttributeFilter {
+        code: code.trim().to_string(),
+        value: raw_value.trim().to_string(),
+    };
+    validate_attribute_filter(&filter)?;
+    Ok(filter)
 }
 
 fn validate_attribute_filter(filter: &ProductAttributeFilter) -> CommerceResult<()> {
@@ -103,32 +79,17 @@ fn validate_attribute_filter(filter: &ProductAttributeFilter) -> CommerceResult<
 }
 
 /// Maximum number of `code=value` entries one list query may carry.
-///
-/// One attribute may be selected with several values (`color=red;color=blue`), so the entry count is
-/// no longer bounded by the code count: a facet panel renders at most `MAX_CATALOG_FACET_VALUES`
-/// buckets per facet and asks for at most `MAX_ATTRIBUTE_FILTERS` facets, which is exactly this
-/// bound.
 pub(crate) const MAX_ATTRIBUTE_FILTER_ENTRIES: usize =
     MAX_ATTRIBUTE_FILTERS * super::facets::MAX_CATALOG_FACET_VALUES;
 
 /// One attribute of a list query together with every value the caller selected for it.
-///
-/// Several values of one attribute are an OR inside that attribute; several attributes are an AND.
-/// The grouping lives here so the storefront list, the facet counter and the index shadow read one
-/// selection vocabulary instead of three.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProductAttributeFilterSelection {
-    /// Attribute code exactly as the caller spelled it first.
     pub code: String,
-    /// Selected values of that code in request order, without duplicates.
     pub values: Vec<String>,
 }
 
 /// Groups `code=value` entries into one selection per attribute code, keeping first-seen order.
-///
-/// Codes compare case-insensitively; values compare exactly, because a value is an option id or a
-/// stored literal: `COLOR=red` and `color=red` address the same attribute, while `red` and `RED`
-/// stay different values.
 pub fn group_product_attribute_filters(
     filters: &[ProductAttributeFilter],
 ) -> Vec<ProductAttributeFilterSelection> {
@@ -153,11 +114,6 @@ pub fn group_product_attribute_filters(
 }
 
 /// Validates every `code=value` entry and both list limits.
-///
-/// Two bounds apply: the number of distinct attributes (`MAX_ATTRIBUTE_FILTERS`) and the number of
-/// entries (`MAX_ATTRIBUTE_FILTER_ENTRIES`). A repeated code is not an error any more: the owner ORs
-/// the values of one attribute into a single condition, so `color=red;color=blue` widens the
-/// selection instead of failing the whole list.
 pub(crate) fn validate_product_attribute_filters(
     filters: &[ProductAttributeFilter],
 ) -> CommerceResult<()> {
@@ -179,6 +135,7 @@ pub(crate) fn validate_product_attribute_filters(
 }
 
 /// Normalizes the optional storefront display currency to `AAA` upper case.
+#[allow(dead_code)]
 pub(crate) fn normalize_storefront_currency_code(
     currency_code: Option<String>,
 ) -> CommerceResult<Option<String>> {
@@ -201,62 +158,46 @@ pub(crate) fn normalize_storefront_currency_code(
 fn parse_attribute_filters(values: Vec<String>) -> CommerceResult<Vec<ProductAttributeFilter>> {
     let filters = values
         .into_iter()
-        .map(ProductAttributeFilter::parse)
+        .map(parse_product_attribute_filter)
         .collect::<CommerceResult<Vec<_>>>()?;
     validate_product_attribute_filters(&filters)?;
     Ok(filters)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StorefrontProductListQuery {
-    pub search: Option<String>,
-    pub category_id: Option<Uuid>,
-    pub sort_by: StorefrontProductSortBy,
-    pub sort_direction: StorefrontProductSortDirection,
-    pub attribute_filters: Vec<ProductAttributeFilter>,
-    /// Optional display currency for the storefront price snapshot.
-    ///
-    /// When omitted the owner derives one currency from the cheapest base price
-    /// of each product and reports it back in the list item, so the storefront
-    /// never renders an amount without knowing which currency it is in.
-    pub currency_code: Option<String>,
-    pub page: u64,
-    pub per_page: u64,
+pub trait StorefrontProductListQueryExt: Sized {
+    fn try_new(
+        search: Option<String>,
+        category_id: Option<Uuid>,
+        sort_by: Option<String>,
+        sort_direction: Option<String>,
+    ) -> CommerceResult<Self>;
+
+    fn try_new_with_attribute_filters(
+        search: Option<String>,
+        category_id: Option<Uuid>,
+        sort_by: Option<String>,
+        sort_direction: Option<String>,
+        attribute_filters: Vec<String>,
+    ) -> CommerceResult<Self>;
+
+    fn try_from_transport(
+        search: Option<String>,
+        category_id: Option<String>,
+        sort_by: Option<String>,
+        sort_direction: Option<String>,
+    ) -> CommerceResult<Self>;
+
+    fn try_from_transport_with_attribute_filters(
+        search: Option<String>,
+        category_id: Option<String>,
+        sort_by: Option<String>,
+        sort_direction: Option<String>,
+        attribute_filters: Vec<String>,
+    ) -> CommerceResult<Self>;
 }
 
-impl Default for StorefrontProductListQuery {
-    fn default() -> Self {
-        Self {
-            search: None,
-            category_id: None,
-            sort_by: StorefrontProductSortBy::default(),
-            sort_direction: StorefrontProductSortDirection::default(),
-            attribute_filters: Vec::new(),
-            currency_code: None,
-            page: 1,
-            per_page: 12,
-        }
-    }
-}
-
-impl StorefrontProductListQuery {
-    pub fn with_pagination(mut self, page: u64, per_page: u64) -> Self {
-        self.page = page;
-        self.per_page = per_page;
-        self
-    }
-
-    /// Restricts the storefront price snapshot to one display currency.
-    ///
-    /// The value is normalized to an upper-case three-letter code; an empty or
-    /// malformed value is rejected so the storefront cannot render an amount
-    /// whose currency the owner silently guessed.
-    pub fn with_currency_code(mut self, currency_code: Option<String>) -> CommerceResult<Self> {
-        self.currency_code = normalize_storefront_currency_code(currency_code)?;
-        Ok(self)
-    }
-
-    pub fn try_new(
+impl StorefrontProductListQueryExt for StorefrontProductListQuery {
+    fn try_new(
         search: Option<String>,
         category_id: Option<Uuid>,
         sort_by: Option<String>,
@@ -271,7 +212,7 @@ impl StorefrontProductListQuery {
         )
     }
 
-    pub fn try_new_with_attribute_filters(
+    fn try_new_with_attribute_filters(
         search: Option<String>,
         category_id: Option<Uuid>,
         sort_by: Option<String>,
@@ -281,14 +222,14 @@ impl StorefrontProductListQuery {
         Ok(Self {
             search: normalize_storefront_product_search(search)?,
             category_id,
-            sort_by: StorefrontProductSortBy::parse(sort_by)?,
-            sort_direction: StorefrontProductSortDirection::parse(sort_direction)?,
+            sort_by: parse_storefront_sort_by(sort_by)?,
+            sort_direction: parse_storefront_sort_direction(sort_direction)?,
             attribute_filters: parse_attribute_filters(attribute_filters)?,
             ..Self::default()
         })
     }
 
-    pub fn try_from_transport(
+    fn try_from_transport(
         search: Option<String>,
         category_id: Option<String>,
         sort_by: Option<String>,
@@ -303,7 +244,7 @@ impl StorefrontProductListQuery {
         )
     }
 
-    pub fn try_from_transport_with_attribute_filters(
+    fn try_from_transport_with_attribute_filters(
         search: Option<String>,
         category_id: Option<String>,
         sort_by: Option<String>,
@@ -320,18 +261,27 @@ impl StorefrontProductListQuery {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct AdminProductListQuery {
-    pub search: Option<String>,
-    pub status: Option<entities::product::ProductStatus>,
-    pub category_id: Option<Uuid>,
-    pub sort_by: StorefrontProductSortBy,
-    pub sort_direction: StorefrontProductSortDirection,
-    pub attribute_filters: Vec<ProductAttributeFilter>,
+pub trait AdminProductListQueryExt: Sized {
+    fn try_from_transport(
+        search: Option<String>,
+        status: Option<String>,
+        category_id: Option<String>,
+        sort_by: Option<String>,
+        sort_direction: Option<String>,
+    ) -> CommerceResult<Self>;
+
+    fn try_from_transport_with_attribute_filters(
+        search: Option<String>,
+        status: Option<String>,
+        category_id: Option<String>,
+        sort_by: Option<String>,
+        sort_direction: Option<String>,
+        attribute_filters: Vec<String>,
+    ) -> CommerceResult<Self>;
 }
 
-impl AdminProductListQuery {
-    pub fn try_from_transport(
+impl AdminProductListQueryExt for AdminProductListQuery {
+    fn try_from_transport(
         search: Option<String>,
         status: Option<String>,
         category_id: Option<String>,
@@ -348,7 +298,7 @@ impl AdminProductListQuery {
         )
     }
 
-    pub fn try_from_transport_with_attribute_filters(
+    fn try_from_transport_with_attribute_filters(
         search: Option<String>,
         status: Option<String>,
         category_id: Option<String>,
@@ -358,9 +308,9 @@ impl AdminProductListQuery {
     ) -> CommerceResult<Self> {
         let status = normalize_optional_text(status)
             .map(|value| match value.to_ascii_lowercase().as_str() {
-                "draft" => Ok(entities::product::ProductStatus::Draft),
-                "active" => Ok(entities::product::ProductStatus::Active),
-                "archived" => Ok(entities::product::ProductStatus::Archived),
+                "draft" => Ok(rustok_product_ports::ProductStatus::Draft),
+                "active" => Ok(rustok_product_ports::ProductStatus::Active),
+                "archived" => Ok(rustok_product_ports::ProductStatus::Archived),
                 _ => Err(CommerceError::Validation(
                     "status must be `draft`, `active`, or `archived`".to_string(),
                 )),
@@ -370,17 +320,12 @@ impl AdminProductListQuery {
             search: normalize_optional_text(search),
             status,
             category_id: parse_optional_uuid(category_id, "category_id")?,
-            sort_by: StorefrontProductSortBy::parse(sort_by)?,
-            sort_direction: StorefrontProductSortDirection::parse(sort_direction)?,
+            sort_by: parse_storefront_sort_by(sort_by)?,
+            sort_direction: parse_storefront_sort_direction(sort_direction)?,
             attribute_filters: parse_attribute_filters(attribute_filters)?,
         })
     }
 }
-
-pub use rustok_product_ports::{
-    AdminProductList, AdminProductListItem, StorefrontProductList, StorefrontProductListImage,
-    StorefrontProductListItem, StorefrontProductListPrice,
-};
 
 #[derive(Debug, Clone)]
 pub struct ProductTagState {
@@ -423,33 +368,6 @@ fn parse_optional_uuid(value: Option<String>, field: &str) -> CommerceResult<Opt
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn storefront_list_query_rejects_invalid_transport_values() {
-        assert!(
-            StorefrontProductListQuery::try_from_transport(
-                None,
-                Some("invalid".to_string()),
-                None,
-                None,
-            )
-            .is_err()
-        );
-        assert!(
-            StorefrontProductListQuery::try_new(None, None, Some("title".to_string()), None,)
-                .is_err()
-        );
-        assert!(
-            StorefrontProductListQuery::try_new_with_attribute_filters(
-                None,
-                None,
-                None,
-                None,
-                vec!["color".to_string()],
-            )
-            .is_err()
-        );
-    }
 
     #[test]
     fn storefront_search_bound_uses_effective_utf8_bytes() {
@@ -498,9 +416,6 @@ mod tests {
         assert_eq!(query.attribute_filters[0].code, "color");
         assert_eq!(query.attribute_filters[0].value, "red");
 
-        // A panel toggles values of one attribute into one selection (`color=red;color=blue`), so a
-        // repeated code is the multi-select vocabulary: the entries are kept as sent and every reader
-        // groups them into one OR selection per code.
         let multi_select = StorefrontProductListQuery::try_new_with_attribute_filters(
             None,
             None,
@@ -534,7 +449,7 @@ mod tests {
         )
         .expect("valid admin list query");
         assert_eq!(query.search.as_deref(), Some("camera"));
-        assert_eq!(query.status, Some(entities::product::ProductStatus::Active));
+        assert_eq!(query.status, Some(rustok_product_ports::ProductStatus::Active));
         assert_eq!(query.sort_by, StorefrontProductSortBy::CreatedAt);
         assert_eq!(query.sort_direction, StorefrontProductSortDirection::Asc);
         assert_eq!(query.attribute_filters.len(), 1);

@@ -489,7 +489,11 @@ fn build_insecure_client() {
         .collect();
 
     assert_eq!(bypasses.len(), 3);
-    assert!(bypasses.iter().all(|f| f.severity == rustok_doctor::Severity::Critical));
+    assert!(
+        bypasses
+            .iter()
+            .all(|f| f.severity == rustok_doctor::Severity::Critical)
+    );
 }
 
 #[test]
@@ -658,8 +662,7 @@ fn expected_stub() {
 
 #[test]
 fn detects_real_fulfillment_and_pages_pointer_args() {
-    let fulfillment_source =
-        include_str!("../../../modules/rustok-fulfillment/admin/src/core.rs");
+    let fulfillment_source = include_str!("../../../modules/rustok-fulfillment/admin/src/core.rs");
     let findings = rustok_doctor::scan_source(
         Path::new("crates/modules/rustok-fulfillment/admin/src/core.rs"),
         fulfillment_source,
@@ -671,8 +674,7 @@ fn detects_real_fulfillment_and_pages_pointer_args() {
     assert_eq!(ptr_findings.len(), 1);
     assert_eq!(ptr_findings[0].line, 237);
 
-    let pages_source =
-        include_str!("../../../modules/rustok-pages/src/provider_health_binding.rs");
+    let pages_source = include_str!("../../../modules/rustok-pages/src/provider_health_binding.rs");
     let findings = rustok_doctor::scan_source(
         Path::new("crates/modules/rustok-pages/src/provider_health_binding.rs"),
         pages_source,

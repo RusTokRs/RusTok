@@ -16,7 +16,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub use rustok_product_ports::{

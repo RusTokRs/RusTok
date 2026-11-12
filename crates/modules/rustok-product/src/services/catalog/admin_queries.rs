@@ -59,7 +59,7 @@ impl CatalogService {
         if let Some(raw_status) = raw_status {
             query = query.filter(entities::product::Column::Status.eq(raw_status));
         } else if let Some(status) = list_query.status {
-            query = query.filter(entities::product::Column::Status.eq(status));
+            query = query.filter(entities::product::Column::Status.eq(entities::product::ProductStatus::from(status)));
         }
         if let Some(vendor) = vendor {
             query = query.filter(entities::product::Column::Vendor.eq(vendor));
@@ -154,7 +154,7 @@ impl CatalogService {
                 };
                 AdminProductListItem {
                     id: product.id,
-                    status: product.status,
+                    status: product.status.into(),
                     title: translation
                         .map(|value| value.title.clone())
                         .unwrap_or_else(|| {

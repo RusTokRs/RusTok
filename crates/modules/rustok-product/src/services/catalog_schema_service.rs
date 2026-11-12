@@ -478,26 +478,7 @@ pub struct BindCategoryAttributeInput {
     pub default_variant_axis: Option<bool>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
-pub enum ProductAttributeValuePatchValue {
-    Clear,
-    Text(String),
-    Integer(i64),
-    Decimal(Decimal),
-    Boolean(bool),
-    Date(NaiveDate),
-    Datetime(DateTime<Utc>),
-    Select(Uuid),
-    Multiselect(Vec<Uuid>),
-    Json(Value),
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct ProductAttributeValuePatch {
-    pub attribute_id: Uuid,
-    pub value: ProductAttributeValuePatchValue,
-}
+pub use rustok_product_ports::dto::{ProductAttributeValuePatch, ProductAttributeValuePatchValue};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]

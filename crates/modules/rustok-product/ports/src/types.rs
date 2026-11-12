@@ -96,10 +96,9 @@ pub struct LegacyStorefrontProductsRequest {
 pub struct LegacyAdminProductsRequest {
     pub locale: Option<String>,
     pub fallback_locale: Option<String>,
+    pub search: Option<String>,
     pub status: Option<ProductStatus>,
     pub vendor: Option<String>,
-    pub product_type: Option<String>,
-    pub search: Option<String>,
     pub page: u64,
     pub per_page: u64,
 }
@@ -108,7 +107,11 @@ pub struct LegacyAdminProductsRequest {
 pub struct AdminProductsRequest {
     pub locale: Option<String>,
     pub fallback_locale: Option<String>,
-    pub status: Option<ProductStatus>,
+    pub query: AdminProductListQuery,
+    pub raw_status: Option<String>,
+    pub vendor: Option<String>,
+    pub product_type: Option<String>,
+    pub empty_missing_title: bool,
     pub page: u64,
     pub per_page: u64,
 }
@@ -184,12 +187,14 @@ pub struct LegacyStorefrontProductList {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LegacyStorefrontProductListItem {
     pub id: Uuid,
+    pub status: ProductStatus,
     pub title: String,
     pub handle: String,
+    pub seller_id: Option<String>,
     pub vendor: Option<String>,
     pub product_type: Option<String>,
-    pub primary_image_url: Option<String>,
-    pub price_from: Option<Decimal>,
+    pub shipping_profile_slug: String,
+    pub tags: Vec<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub published_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -282,6 +287,14 @@ impl Default for StorefrontProductListQuery {
             page: 1,
             per_page: 12,
         }
+    }
+}
+
+impl StorefrontProductListQuery {
+    pub fn with_pagination(mut self, page: u64, per_page: u64) -> Self {
+        self.page = page;
+        self.per_page = per_page;
+        self
     }
 }
 

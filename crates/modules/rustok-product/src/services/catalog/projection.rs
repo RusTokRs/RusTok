@@ -384,7 +384,7 @@ impl CatalogService {
     ) -> crate::dto::ProductSeoProjection {
         crate::dto::ProductSeoProjection {
             id: product.id,
-            status: product.status.clone(),
+            status: product.status.clone().into(),
             published_at: product.published_at.map(Into::into),
             translations: translations
                 .into_iter()

@@ -35,6 +35,7 @@ impl AppType {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct OAuthAppGql(pub OAuthAppMutationRecord);
 
 #[Object]
@@ -134,10 +135,30 @@ pub struct CreateOAuthAppResultGql {
     pub client_secret: String,
 }
 
+impl std::fmt::Debug for CreateOAuthAppResultGql {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CreateOAuthAppResultGql")
+            .field("app", &self.app)
+            .field("client_secret", &"<redacted>")
+            .finish()
+    }
+}
+
 #[derive(SimpleObject)]
 pub struct RotateSecretResultGql {
     pub app: OAuthAppGql,
     pub client_secret: String,
+}
+
+impl std::fmt::Debug for RotateSecretResultGql {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RotateSecretResultGql")
+            .field("app", &self.app)
+            .field("client_secret", &"<redacted>")
+            .finish()
+    }
 }
 
 pub struct AuthorizedAppGql(pub AuthorizedOAuthAppRecord);

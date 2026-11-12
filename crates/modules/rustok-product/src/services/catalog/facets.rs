@@ -129,13 +129,14 @@ impl super::CatalogService {
     ) -> CommerceResult<Vec<StorefrontCatalogFacet>> {
         let fallback_locale = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
         super::types::validate_storefront_product_search(list_query.search.as_deref())?;
+        let admin_status = list_query.status.map(ProductStatus::from);
         load_catalog_facets(
             &self.db,
             tenant_id,
             locale,
             fallback_locale,
             CatalogFacetScope::Admin {
-                status: list_query.status.as_ref(),
+                status: admin_status.as_ref(),
             },
             CatalogFacetFilters {
                 search: list_query.search.as_deref(),

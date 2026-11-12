@@ -586,7 +586,8 @@ impl CatalogService {
             })?;
         let existing_product = product.clone();
         ensure_expected_revision(&existing_product, input.expected_revision)?;
-        if !input.changes_document() && input.status.as_ref() == Some(&existing_product.status) {
+        let existing_status: rustok_product_ports::ProductStatus = existing_product.status.clone().into();
+        if !input.changes_document() && input.status.as_ref() == Some(&existing_status) {
             let result = self
                 .get_product_in(
                     &txn,
@@ -703,20 +704,21 @@ impl CatalogService {
         }
         product_active.revision = Set(next_revision(existing_product.revision)?);
 
-        let will_become_active = match input.status.as_ref() {
+        let input_status = input.status.map(entities::product::ProductStatus::from);
+        let will_become_active = match input_status.as_ref() {
             Some(entities::product::ProductStatus::Active) => {
                 existing_product.status != entities::product::ProductStatus::Active
             }
             _ => false,
         };
-        let will_archive = match input.status.as_ref() {
+        let will_archive = match input_status.as_ref() {
             Some(status) => {
                 *status == entities::product::ProductStatus::Archived
                     && existing_product.status != entities::product::ProductStatus::Archived
             }
             _ => false,
         };
-        let will_deactivate = match input.status.as_ref() {
+        let will_deactivate = match input_status.as_ref() {
             Some(status) => {
                 *status != entities::product::ProductStatus::Active
                     && existing_product.status == entities::product::ProductStatus::Active
@@ -724,7 +726,7 @@ impl CatalogService {
             _ => false,
         };
 
-        let remains_active = input.status.as_ref().unwrap_or(&existing_product.status)
+        let remains_active = input_status.as_ref().unwrap_or(&existing_product.status)
             == &entities::product::ProductStatus::Active;
         if will_become_active {
             product_active.published_at = Set(Some(Utc::now().into()));
@@ -732,7 +734,7 @@ impl CatalogService {
             product_active.published_at = Set(None);
         }
 
-        if let Some(status) = input.status {
+        if let Some(status) = input_status {
             product_active.status = Set(status);
         }
 

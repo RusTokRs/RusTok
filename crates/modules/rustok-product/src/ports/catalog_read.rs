@@ -349,7 +349,7 @@ impl ProductCatalogReadPort for crate::CatalogService {
             fallback_locale.as_deref(),
             crate::AdminProductListQuery {
                 search,
-                status,
+                status: status.map(Into::into),
                 category_id: None,
                 sort_by: crate::StorefrontProductSortBy::CreatedAt,
                 sort_direction: crate::StorefrontProductSortDirection::Desc,

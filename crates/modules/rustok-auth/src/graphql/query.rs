@@ -1,4 +1,5 @@
-use async_graphql::{Context, Object, Result};
+use async_graphql::{Context, FieldError, Object, Result};
+use rustok_api::graphql::GraphQLError;
 use rustok_telemetry::metrics;
 use uuid::Uuid;
 
@@ -41,6 +42,11 @@ impl OAuthQuery {
     }
 
     async fn oauth_app(&self, ctx: &Context<'_>, id: Uuid) -> Result<Option<OAuthAppGql>> {
+        if id.is_nil() {
+            return Err(<FieldError as GraphQLError>::bad_user_input(
+                "App ID must not be nil",
+            ));
+        }
         let auth = require_auth_context(ctx)?;
         runtime(ctx)?
             .port()
