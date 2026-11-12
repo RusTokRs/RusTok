@@ -1,5 +1,5 @@
 use std::future::Future;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rustok_api::PortContext;
 use serde_json::Value;
@@ -46,16 +46,27 @@ where
         .await
 }
 
+impl GuestCartRequestScope {
+    /// The token issued during this request.
+    ///
+    /// The slot holds a plain `Option<String>` that is only assigned or cloned, so a panic
+    /// while it was locked cannot leave it half-written. A poisoned lock is therefore read
+    /// through: treating it as "no token" would drop the capability the response has to carry
+    /// and the guest would lose the cart that was just created.
+    fn issued_token(&self) -> MutexGuard<'_, Option<String>> {
+        self.issued_token
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
 pub fn current_guest_cart_token() -> Option<String> {
     CURRENT_GUEST_CART_SCOPE
         .try_with(|scope| {
-            scope.presented_token.clone().or_else(|| {
-                scope
-                    .issued_token
-                    .lock()
-                    .ok()
-                    .and_then(|guard| guard.clone())
-            })
+            scope
+                .presented_token
+                .clone()
+                .or_else(|| scope.issued_token().clone())
         })
         .ok()
         .flatten()
@@ -65,22 +76,22 @@ pub fn record_issued_guest_cart_token(token: &str) {
     let Some(token) = normalize_guest_cart_token(token).map(str::to_string) else {
         return;
     };
-    let _ = CURRENT_GUEST_CART_SCOPE.try_with(|scope| {
-        if let Ok(mut issued) = scope.issued_token.lock() {
-            *issued = Some(token);
-        }
+    let recorded = CURRENT_GUEST_CART_SCOPE.try_with(|scope| {
+        *scope.issued_token() = Some(token);
     });
+    if recorded.is_err() {
+        // No guest-cart request scope: there is no HTTP response to carry the token. Such
+        // callers receive it on the created cart itself (`create_storefront_cart`).
+        tracing::debug!(
+            boundary = "guest_cart_request_scope",
+            "guest cart token issued outside a request scope"
+        );
+    }
 }
 
 pub fn issued_guest_cart_token() -> Option<String> {
     CURRENT_GUEST_CART_SCOPE
-        .try_with(|scope| {
-            scope
-                .issued_token
-                .lock()
-                .ok()
-                .and_then(|issued| issued.clone())
-        })
+        .try_with(|scope| scope.issued_token().clone())
         .ok()
         .flatten()
 }
@@ -255,5 +266,34 @@ mod tests {
         })
         .await;
         assert!(current_guest_cart_token().is_none());
+    }
+
+    #[test]
+    fn issuing_outside_a_request_scope_records_nothing() {
+        let issued = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+        record_issued_guest_cart_token(&issued);
+        assert!(issued_guest_cart_token().is_none());
+        assert!(current_guest_cart_token().is_none());
+    }
+
+    #[tokio::test]
+    async fn a_poisoned_issued_token_slot_still_carries_the_token() {
+        with_guest_cart_request_scope(None, async {
+            let slot = CURRENT_GUEST_CART_SCOPE.with(|scope| scope.issued_token.clone());
+            let poisoner = slot.clone();
+            let joined = std::thread::spawn(move || {
+                let _guard = poisoner.lock();
+                panic!("poison the issued token slot");
+            })
+            .join();
+            assert!(joined.is_err());
+            assert!(slot.is_poisoned());
+
+            let issued = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+            record_issued_guest_cart_token(&issued);
+            assert_eq!(issued_guest_cart_token(), Some(issued.clone()));
+            assert_eq!(current_guest_cart_token(), Some(issued));
+        })
+        .await;
     }
 }
