@@ -414,9 +414,15 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           `fly-dioxus` and the Next host render no intent form. Owner: Page Builder admin.
         - A capability that changes while a document is open (a provider status that degrades)
           reaches the forms with the next server render only. Owner: Page Builder admin.
-        - The envelope arms of the four page intents have no dispatch test of their own beyond
-          `rename_page` and `remove_page` by index in `ssr_page_forms_browser_tests.rs`.
-          Owner: Page Builder admin.
+        - DONE (2026-11-12): the envelope arms of the page intents had no dispatch test of
+          their own beyond `rename_page` and `remove_page` by index.
+          `ssr_page_forms_browser_tests.rs` now dispatches the envelopes that the typed
+          constructors of `fly-browser` build (`create_page`, `remove_page`, `rename_page`,
+          `page_properties`, `patch_page_metadata`, `move_page`): the id derived from the name
+          and its next free variant, the default name, the id winning over a stale index, the
+          editor staying on a page whose id changes, identity and metadata in one command, the
+          normalized slug, the refusal without `metadata`, and the page that is active after a
+          move in each direction. Tests only; not compiled here, CI decides.
       - Hydrated `wasm-client` builds mount the adapter too (`wasm-client` enables
         `browser-js`, `post_intents` defaults to `true`). A toolbar button then has both
         `data-fly-action="intent:…"` and a live `on:click`. Whether both fire, and which one

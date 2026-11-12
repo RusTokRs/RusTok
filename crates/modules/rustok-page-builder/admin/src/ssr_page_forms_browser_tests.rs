@@ -167,6 +167,198 @@ fn page_envelopes_of_the_adapter_workspaces_still_address_a_page_by_index() {
     assert_eq!(page_ids(&controller), ["home"]);
 }
 
+/// Index and id of the page the editor is on.
+fn active_page(controller: &AdminCanvasController) -> (usize, Option<String>) {
+    (
+        controller.active_page_index(),
+        controller.active_page_summary().and_then(|page| page.id),
+    )
+}
+
+// The envelopes below come from the typed constructors of `fly-browser`, which is how the
+// adapter workspaces build them: a field renamed on either side fails here.
+
+#[test]
+fn create_page_envelope_derives_the_id_from_the_name_and_activates_the_page() {
+    let mut controller = controller();
+
+    let request = BrowserIntentEnvelope::create_page("page-envelopes", "Contact us");
+    dispatch_browser_intent(&mut controller, request).expect("create page envelope");
+    assert_eq!(page_ids(&controller), ["home", "about", "contact-us"]);
+    assert_eq!(
+        active_page(&controller),
+        (2, Some("contact-us".to_string()))
+    );
+
+    // The same name again gets the next free id instead of a duplicate.
+    let request = BrowserIntentEnvelope::create_page("page-envelopes", "Contact us");
+    dispatch_browser_intent(&mut controller, request).expect("second page of that name");
+    assert_eq!(
+        page_ids(&controller),
+        ["home", "about", "contact-us", "contact-us-2"]
+    );
+    assert_eq!(
+        active_page(&controller),
+        (3, Some("contact-us-2".to_string()))
+    );
+
+    // A blank name is not an error: the page gets the default one.
+    let request = BrowserIntentEnvelope::create_page("page-envelopes", "  ");
+    dispatch_browser_intent(&mut controller, request).expect("page without a name");
+    let created = controller
+        .page_summaries()
+        .into_iter()
+        .next_back()
+        .expect("created page");
+    assert_eq!(created.name, "Untitled page");
+    assert_eq!(created.id.as_deref(), Some("untitled-page"));
+}
+
+#[test]
+fn remove_page_envelope_prefers_the_page_id_over_a_stale_index() {
+    let mut controller = controller();
+
+    // The index is the one the workspace rendered; the id decides when both are sent.
+    let request = BrowserIntentEnvelope::remove_page("page-envelopes", 0, Some("about"));
+    dispatch_browser_intent(&mut controller, request).expect("remove page envelope");
+
+    assert_eq!(page_ids(&controller), ["home"]);
+    assert_eq!(active_page(&controller), (0, Some("home".to_string())));
+}
+
+#[test]
+fn rename_page_envelope_changes_the_name_and_the_id_in_one_command() {
+    let mut controller = controller();
+
+    let request = BrowserIntentEnvelope::rename_page(
+        "page-envelopes",
+        1,
+        Some("about"),
+        "Company",
+        Some("company"),
+    );
+    dispatch_browser_intent(&mut controller, request).expect("rename page envelope");
+
+    let renamed = controller
+        .page_summaries()
+        .into_iter()
+        .find(|page| page.index == 1)
+        .expect("second page");
+    assert_eq!(renamed.id.as_deref(), Some("company"));
+    assert_eq!(renamed.name, "Company");
+    assert_eq!(page_ids(&controller), ["home", "company"]);
+}
+
+#[test]
+fn rename_page_envelope_keeps_the_editor_on_the_page_whose_id_it_changes() {
+    let mut controller = controller();
+
+    let request = BrowserIntentEnvelope::rename_page(
+        "page-envelopes",
+        0,
+        Some("home"),
+        "Start",
+        Some("start"),
+    );
+    dispatch_browser_intent(&mut controller, request).expect("rename the active page");
+
+    assert_eq!(page_ids(&controller), ["start", "about"]);
+    assert_eq!(active_page(&controller), (0, Some("start".to_string())));
+}
+
+#[test]
+fn page_properties_envelope_applies_identity_and_metadata_together() {
+    let mut controller = controller();
+
+    let metadata = serde_json::to_value(PageMetadata {
+        title: Some("About us".to_string()),
+        no_index: true,
+        ..PageMetadata::default()
+    })
+    .expect("page metadata");
+    let request = BrowserIntentEnvelope::page_properties(
+        "page-envelopes",
+        1,
+        Some("about"),
+        "Company",
+        None,
+        metadata,
+    );
+    dispatch_browser_intent(&mut controller, request).expect("page properties envelope");
+
+    let document = controller.editor().document();
+    let page = document
+        .page(&PageLocator::by_id("about"))
+        .expect("about page");
+    let metadata = PageMetadata::from_page(page);
+    assert_eq!(metadata.title.as_deref(), Some("About us"));
+    assert!(metadata.no_index);
+    let renamed = controller
+        .page_summaries()
+        .into_iter()
+        .find(|page| page.index == 1)
+        .expect("second page");
+    assert_eq!(renamed.name, "Company");
+}
+
+#[test]
+fn page_metadata_envelope_carries_the_metadata_projection() {
+    let mut controller = controller();
+
+    let metadata = serde_json::to_value(PageMetadata {
+        title: Some("About us".to_string()),
+        slug: Some("About Us".to_string()),
+        ..PageMetadata::default()
+    })
+    .expect("page metadata");
+    let request =
+        BrowserIntentEnvelope::patch_page_metadata("page-envelopes", 1, Some("about"), metadata);
+    dispatch_browser_intent(&mut controller, request).expect("page metadata envelope");
+
+    let document = controller.editor().document();
+    let page = document
+        .page(&PageLocator::by_id("about"))
+        .expect("about page");
+    let metadata = PageMetadata::from_page(page);
+    assert_eq!(metadata.title.as_deref(), Some("About us"));
+    // The server normalizes the slug whichever shape carries it.
+    assert_eq!(metadata.slug.as_deref(), Some("about-us"));
+}
+
+#[test]
+fn page_metadata_envelope_without_metadata_is_rejected() {
+    let mut controller = controller();
+
+    let request = intent(
+        &controller,
+        BrowserIntentKind::PatchPageMetadata,
+        json!({ "page_index": 1 }),
+    );
+    let error = dispatch_browser_intent(&mut controller, request)
+        .expect_err("page metadata envelope without metadata");
+
+    assert!(
+        error.to_string().contains("metadata"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn move_page_envelope_activates_the_page_where_it_lands() {
+    let mut controller = controller();
+
+    let request = BrowserIntentEnvelope::move_page("page-envelopes", 1, Some("about"), 0);
+    dispatch_browser_intent(&mut controller, request).expect("move page to the front");
+    assert_eq!(page_ids(&controller), ["about", "home"]);
+    assert_eq!(active_page(&controller), (0, Some("about".to_string())));
+
+    // The target is an insertion index of the list before the move: its length means the end.
+    let request = BrowserIntentEnvelope::move_page("page-envelopes", 0, Some("about"), 2);
+    dispatch_browser_intent(&mut controller, request).expect("move page to the end");
+    assert_eq!(page_ids(&controller), ["home", "about"]);
+    assert_eq!(active_page(&controller), (1, Some("about".to_string())));
+}
+
 #[test]
 fn a_page_form_without_its_required_field_is_rejected_by_the_form_resolver() {
     let mut controller = controller();
