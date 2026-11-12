@@ -16,7 +16,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
@@ -124,7 +124,7 @@ function runSpecifications(body) {
   writeFileSync(
     harness,
     [
-      `import * as specifications from ${JSON.stringify(specificationsPath)};`,
+      `import * as specifications from ${JSON.stringify(pathToFileURL(specificationsPath).href)};`,
       "const checks = {};",
       body,
       "process.stdout.write(JSON.stringify(checks));",

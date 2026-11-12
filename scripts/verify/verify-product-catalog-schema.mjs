@@ -535,29 +535,27 @@ for (const marker of [
   'INSERT INTO product_variant_attribute_values (',
   'INSERT INTO product_variant_attribute_value_options (tenant_id, value_id, option_id) VALUES ($1, $2, $3)',
   'variant_translation::Entity::insert_many(variant_translation_models)',
-  'PricingBootstrapService::create_initial_prices_in_tx(&txn, initial_prices)',
+  'port.create_initial_prices_in_tx(&txn, initial_prices)',
 ]) {
   requireSource(catalogServiceAggregate, marker, 'product catalog service aggregate');
 }
 for (const marker of [
   'pub async fn load_product_tag_map',
-  'pub(crate) async fn load_product_tags',
+  'pub(crate) async fn load_product_tags_in',
   'pub(crate) async fn sync_product_tags_in_tx',
-  'TaxonomyTermKind::Tag,',
 ]) {
   requireSource(catalogTagsService, marker, catalogTagsServicePath);
 }
 for (const marker of [
-  'rustok-inventory.workspace = true',
+  'rustok-product-ports.workspace = true',
 ]) {
   requireSource(productManifest, marker, productManifestPath);
 }
 for (const marker of [
-  'use rustok_inventory::{BootstrapService, InitialInventory};',
-  'BootstrapService::ensure_default_location_in_tx(&txn, tenant_id)',
-  'BootstrapService::create_initial_records_in_tx(',
-  'BootstrapService::load_available_quantities(conn, &variant_ids)',
-  'BootstrapService::delete_records_for_variants_in_tx(',
+  'self.inventory()',
+  '.bootstrap_variants_in_tx(',
+  'port.load_available_quantities(conn.as_inventory_connection(), &variant_ids)',
+  '.delete_records_for_variants_in_tx(',
 ]) {
   requireSource(catalogServiceAggregate, marker, 'product catalog service aggregate');
 }
@@ -728,7 +726,7 @@ for (const marker of [
 for (const marker of [
   'Product create/update/list/detail contracts now expose first-class `tags`',
   '`metadata.tags` is no longer part of the supported public contract',
-  'Owner service, DTO and entity contracts are imported directly from `rustok-product`',
+  'Owner service and DTO contracts are imported directly from `rustok-product`',
 ]) {
   requireSource(commerceCrateApi, marker, 'crates/modules/rustok-commerce/CRATE_API.md');
 }

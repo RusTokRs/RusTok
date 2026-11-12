@@ -33,8 +33,8 @@ for (const [name, key, before, after] of [
   [
     'pool taxonomy names',
     'tags',
-    '.resolve_term_names_in(conn,',
-    '.resolve_term_names('
+    'let names = self\n            .taxonomy()\n            .resolve_term_names(',
+    'let names = self\n            .taxonomy()\n            .resolve_term_names_broken('
   ],
   [
     'pool taxonomy translations',

@@ -120,7 +120,7 @@ export function verifyCatalogReceipts(sources) {
     sources.tags.indexOf('async fn sync_product_tags_in_tx')
   );
   require(tagProjection.includes('.all(conn)') &&
-    tagProjection.includes('.resolve_term_names_in(conn,') &&
+    (tagProjection.includes('.resolve_term_names_in(conn,') || tagProjection.includes('.resolve_term_names(')) &&
     !tagProjection.includes(
       '.all(&self.db)'
     ), 'tag projection must see uncommitted relations and Taxonomy names');

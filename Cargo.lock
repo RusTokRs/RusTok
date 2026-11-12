@@ -18426,6 +18426,7 @@ dependencies = [
  "rustok-content",
  "rustok-core",
  "rustok-events",
+ "rustok-groups",
  "rustok-outbox",
  "rustok-product",
  "rustok-seo-targets",

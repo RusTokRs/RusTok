@@ -78,14 +78,13 @@ BEGIN
             REFERENCES products(tenant_id, id)
             ON DELETE CASCADE;
     END IF;
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'taxonomy_terms') THEN
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_product_tags_term_tenant') THEN
-            ALTER TABLE product_tags
-                ADD CONSTRAINT fk_product_tags_term_tenant
-                FOREIGN KEY (tenant_id, term_id)
-                REFERENCES taxonomy_terms(tenant_id, id)
-                ON DELETE CASCADE;
-        END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'taxonomy_terms')
+    AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_product_tags_term_tenant') THEN
+        ALTER TABLE product_tags
+            ADD CONSTRAINT fk_product_tags_term_tenant
+            FOREIGN KEY (tenant_id, term_id)
+            REFERENCES taxonomy_terms(tenant_id, id)
+            ON DELETE CASCADE;
     END IF;
 END $$;
 CREATE INDEX IF NOT EXISTS idx_product_tags_tenant_product

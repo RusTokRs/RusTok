@@ -283,9 +283,9 @@
       "category": "modules",
       "files": 51,
       "loc": 18760,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-12T12:45:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: exact consumption in postcard decoding for durable invalidations rejecting unconsumed trailing garbage bytes, deterministic FNV-1a TTL jitter with upper-bound caps, fail-closed degraded write and pending invalidation tracking, token-owned distributed leases with compare-and-delete/expire Lua scripts, bounded monotonic namespace generations with automatic catch-up healing, request coalescing anti-stampede loader with timeout bounds; unit tests added; verified with cargo check -p rustok-cache and cargo check -p rustok-cache --no-default-features"
     },
     "crates/modules/rustok-cart": {
       "name": "rustok-cart",
@@ -2005,9 +2005,9 @@
       "category": "modules",
       "files": 8,
       "loc": 1248,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-12T12:50:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation with pure-logic core.rs, strict non-nil UUID tenant scope matching and non-nil user_id validation in native_server_adapter, dual SETTINGS_READ/SETTINGS_MANAGE permission and host-authority checks, exact settings payload validation rejecting silent defaults, dual-path GraphQL and native server function transport parity; verified with cargo check -p rustok-cache-admin and cargo check -p rustok-cache-admin --features ssr"
     },
     "crates/modules/rustok-docs": {
       "name": "rustok-docs",

@@ -4,8 +4,8 @@
 
 **Status:** ACTIVE  
 **Active phase:** Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules  
-**Next pending component:** [`crates/modules/rustok-cache`](../../crates/modules/rustok-cache)  
-**Current main SHA:** `2ef0b35797`  
+**Next pending component:** [`crates/modules/rustok-channel`](../../crates/modules/rustok-channel)  
+**Current main SHA:** `c345e87a03`  
 **Active branch:** `main`
 
 **Purpose:** sequential, top-down root-to-leaf audit of the entire RusToK codebase across all **285 components** (~2.5M LOC) structured by architectural layer: Host -> Foundation Libraries -> Core Platform Modules -> Commerce -> Content & Social -> Catalog & Extensibility -> Search & AI -> Workers & Execution Fleet -> Platform Utilities -> Frontend Framework -> Client Applications.
@@ -34,7 +34,7 @@ The single canonical trigger to continue this audit sequence is:
 
 - [x] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (33/33 tracks completed)
 - [x] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (10/10 completed)
-- [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (8/24 completed)
+- [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (10/24 completed)
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (0/37 completed)
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (0/40 completed)
 - [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (0/26 completed)
@@ -111,7 +111,7 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules
-*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (8/24 completed)
+*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (10/24 completed)
 
 - [x] **[`crates/modules/rustok-tenant`](../../crates/modules/rustok-tenant)** (28 files, 4,305 LOC) — *(Done: verified across 6 Universal Logic Dimensions: RFC 1035 host and reserved slug validation via TenantIdentifierValidator, name length bounds (<= 255 chars), settings schema validation on tenant_module, nil UUID guards across service and port context, atomic locale policy CAS revisions and outbox event publishing; unit tests added; verified with `cargo check -p rustok-tenant`).*
 - [x] **[`crates/modules/rustok-tenant/admin`](../../crates/modules/rustok-tenant/admin)** (8 files, 835 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID tenant scope matching, dual read permissions (tenant + modules), effective policy resolution with manifest defaults and tenant overrides, and BCP 47 i18n copy; unit tests added; verified with `cargo check -p rustok-tenant-admin --features ssr`).*
@@ -121,8 +121,8 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[`crates/modules/rustok-rbac`](../../crates/modules/rustok-rbac)** (56 files, 13,518 LOC) — *(Done: verified across 6 Universal Logic Dimensions: policy-based user role mutations preventing demotion/removal of the last active super admin, request authority ceiling enforcement preventing privilege escalation, non-nil UUID guards in permission decision ports and role assignment mutations, early non-nil tenant guard in system-role repair, non-empty name validation in update_role, non-nil tenant guard in require_direct_control_plane_user, transactional multi-backend role seeding and permission invalidation generation; unit tests updated; verified with `cargo check -p rustok-rbac` and `cargo check -p rustok-rbac --features graphql`).*
 - [x] **[`crates/modules/rustok-rbac/admin`](../../crates/modules/rustok-rbac/admin)** (8 files, 952 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation with pure-logic core.rs, non-nil user_id guard in fetch_bootstrap_native, non-nil tenant ID validation via require_direct_control_plane_user, SETTINGS_READ permission gate, deduplicated and sorted permission/role listings, localized DataGrid integration; verified with `cargo check -p rustok-rbac-admin` and `cargo check -p rustok-rbac-admin --features ssr`).*
 - [x] **[`crates/modules/rustok-rbac/cli`](../../crates/modules/rustok-rbac/cli)** (1 files, 334 LOC) — *(Done: verified across 6 Universal Logic Dimensions: non-nil UUID tenant ID guard in repair-system-roles, mutually exclusive flag validation (--tenant-id vs --all-tenants), invalid UUID rejection, transactional execution with automatic rollback on error, durable invalidation generation reservation; unit tests added; verified with `cargo check -p rustok-rbac-cli`).*
-- [ ] **[`crates/modules/rustok-cache`](../../crates/modules/rustok-cache)** (46 files, 15,931 LOC)
-- [ ] **[`crates/modules/rustok-cache/admin`](../../crates/modules/rustok-cache/admin)** (7 files, 977 LOC)
+- [x] **[`crates/modules/rustok-cache`](../../crates/modules/rustok-cache)** (46 files, 15,931 LOC) — *(Done: verified across 6 Universal Logic Dimensions: exact consumption in postcard decoding for durable invalidations rejecting unconsumed trailing garbage bytes, deterministic FNV-1a TTL jitter with upper-bound caps, fail-closed degraded write and pending invalidation tracking, token-owned distributed leases with compare-and-delete/expire Lua scripts, bounded monotonic namespace generations with automatic catch-up healing, request coalescing anti-stampede loader with timeout bounds; unit tests added; verified with `cargo check -p rustok-cache` and `cargo check -p rustok-cache --no-default-features`).*
+- [x] **[`crates/modules/rustok-cache/admin`](../../crates/modules/rustok-cache/admin)** (7 files, 977 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation with pure-logic core.rs, strict non-nil UUID tenant scope matching and non-nil user_id validation in native_server_adapter, dual SETTINGS_READ/SETTINGS_MANAGE permission and host-authority checks, exact settings payload validation rejecting silent defaults, dual-path GraphQL and native server function transport parity; verified with `cargo check -p rustok-cache-admin` and `cargo check -p rustok-cache-admin --features ssr`).*
 - [ ] **[`crates/modules/rustok-channel`](../../crates/modules/rustok-channel)** (47 files, 11,443 LOC)
 - [ ] **[`crates/modules/rustok-channel/admin`](../../crates/modules/rustok-channel/admin)** (14 files, 5,212 LOC)
 - [ ] **[`crates/modules/rustok-outbox`](../../crates/modules/rustok-outbox)** (26 files, 4,834 LOC)

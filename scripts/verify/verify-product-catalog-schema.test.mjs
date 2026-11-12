@@ -316,13 +316,13 @@ const missingBatchPriceInsert = copyFixture();
 replaceAllInFixture(
   missingBatchPriceInsert,
   'crates/modules/rustok-product/src/services/catalog/commands.rs',
-  'PricingBootstrapService::create_initial_prices_in_tx(&txn, initial_prices)',
-  'PricingBootstrapService::create_initial_prices_one_by_one(&txn, initial_prices)',
+  'port.create_initial_prices_in_tx(&txn, initial_prices)',
+  'port.create_initial_prices_one_by_one(&txn, initial_prices)',
 );
 const missingBatchPriceInsertResult = run(missingBatchPriceInsert);
 assert(missingBatchPriceInsertResult.status !== 0, 'expected missing batch price insert to fail');
 assert(
-  missingBatchPriceInsertResult.stderr.includes('PricingBootstrapService::create_initial_prices_in_tx'),
+  missingBatchPriceInsertResult.stderr.includes('port.create_initial_prices_in_tx'),
   `expected batch price insert failure, got ${missingBatchPriceInsertResult.stderr}`,
 );
 
@@ -365,16 +365,16 @@ assert(
 );
 
 const missingCatalogTagComponent = copyFixture();
-replaceInFixture(
+replaceAllInFixture(
   missingCatalogTagComponent,
   'crates/modules/rustok-product/src/services/catalog/tags.rs',
-  'TaxonomyTermKind::Tag,',
-  'TaxonomyTermKind::TagDrift,',
+  'pub(crate) async fn sync_product_tags_in_tx',
+  'pub(crate) async fn drift_sync_product_tags_in_tx',
 );
 const missingCatalogTagComponentResult = run(missingCatalogTagComponent);
 assert(missingCatalogTagComponentResult.status !== 0, 'expected missing catalog tag component marker to fail');
 assert(
-  missingCatalogTagComponentResult.stderr.includes('TaxonomyTermKind::Tag,'),
+  missingCatalogTagComponentResult.stderr.includes('sync_product_tags_in_tx'),
   `expected catalog tag component failure, got ${missingCatalogTagComponentResult.stderr}`,
 );
 
@@ -541,7 +541,7 @@ for (const [file, marker] of [
   ['crates/modules/rustok-product/src/services/catalog/commands.rs',
     'validate_product_publish_requirements_in(&txn, tenant_id, product_id)'],
   ['crates/modules/rustok-product/src/services/catalog/projection.rs',
-    'BootstrapService::load_available_quantities(conn, &variant_ids)'],
+    'port.load_available_quantities(conn.as_inventory_connection(), &variant_ids)'],
   ['crates/modules/rustok-product/src/services/write_transaction.rs',
     'publish_in_tx_with_envelope_id(self.active_transaction()'],
   ['crates/modules/rustok-product/src/services/write_transaction.rs',

@@ -20,6 +20,8 @@ const productRuntime =
   read('crates/modules/rustok-product/src/module.rs');
 const catalog = read('crates/modules/rustok-product/src/services/catalog.rs');
 const commands = read('crates/modules/rustok-product/src/services/catalog/commands.rs');
+const inventoryPort = read('crates/modules/rustok-product/src/ports/inventory.rs');
+const inventoryAdapter = read('crates/modules/rustok-inventory/src/product_inventory_port.rs');
 const inventoryBootstrap = read('crates/modules/rustok-inventory/src/services/bootstrap.rs');
 const pricingPort = read('crates/modules/rustok-product/src/ports/pricing.rs');
 const pricingAdapter = read('crates/modules/rustok-pricing/src/integrations/product_pricing_port.rs');
@@ -123,15 +125,14 @@ for (const [source, value, label] of [
   [inventoryDependencySection, 'product = { version_req = ">=0.1.0" }', 'Inventory Product dependency'],
   [pricingDependencySection, 'product = { version_req = ">=0.1.0" }', 'Pricing Product dependency'],
   [productRuntime, '&["taxonomy"]', 'Product runtime dependency'],
-  [productCargo, 'rustok-inventory.workspace = true', 'Inventory owner crate dependency'],
-  [catalog, 'use rustok_inventory::{BootstrapService, InitialInventory};', 'Inventory bootstrap import'],
+  [inventoryPort, 'pub trait ProductInventoryPort: Send + Sync', 'Product inventory port contract'],
+  [inventoryAdapter, 'impl ProductInventoryPort for', 'Inventory adapter port implementation'],
   [catalog, 'pub fn with_pricing_port(', 'Product pricing port configuration'],
   [pricingPort, 'pub trait ProductPricingPort: Send + Sync', 'Product pricing port contract'],
   [pricingAdapter, 'impl ProductPricingPort for PricingProductPricingPortAdapter', 'Pricing adapter port implementation'],
-  [commands, 'BootstrapService::ensure_default_location_in_tx(&txn, tenant_id)', 'default inventory location collaboration'],
-  [commands, 'BootstrapService::create_initial_records_in_tx(', 'initial inventory collaboration'],
+  [commands, '.bootstrap_variants_in_tx(', 'initial inventory bootstrap collaboration'],
   [commands, 'port.create_initial_prices_in_tx(&txn, initial_prices)', 'initial price collaboration'],
-  [commands, 'BootstrapService::delete_records_for_variants_in_tx(', 'inventory cleanup collaboration'],
+  [commands, '.delete_records_for_variants_in_tx(', 'inventory cleanup collaboration'],
   [commands, 'port.delete_prices_for_variants_in_tx(&txn, &variant_ids)', 'price cleanup collaboration'],
   [inventoryBootstrap, 'Owner-owned, transaction-aware inventory bootstrap operations.', 'Inventory owner contract'],
 

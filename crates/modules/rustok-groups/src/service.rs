@@ -459,7 +459,7 @@ impl GroupsService {
             .iter()
             .filter_map(|model| model.category_id)
             .collect::<Vec<_>>();
-        let mut categories = if category_ids.is_empty() {
+        let categories = if category_ids.is_empty() {
             HashMap::new()
         } else {
             self.taxonomy_port
@@ -490,7 +490,7 @@ impl GroupsService {
         let items = models
             .into_iter()
             .map(|model| {
-                let category = model.category_id.and_then(|id| categories.remove(&id));
+                let category = model.category_id.and_then(|id| categories.get(&id).cloned());
                 self.map_summary(
                     context,
                     model,
