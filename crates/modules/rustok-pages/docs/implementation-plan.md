@@ -190,6 +190,19 @@ Translation has no direct Pages table access and no runtime-locale fallback in
 this target. Production enablement still requires retained PostgreSQL
 migration, concurrent CAS, and change-cursor recovery evidence.
 
+### Anonymous storefront dependency graph
+
+- The anonymous storefront dependency graph verifier reads the six published profiles
+  (`pages-storefront-default`, `-hydrate`, `-ssr`, and the host `csr`, `hydrate`, `ssr`) from
+  `cargo metadata`, so it needs a toolchain; the source half of it reads the manifests and the
+  Rust trees directly.
+- No authoring package is reachable from any of the six profiles, and the editor packages are
+  excluded by name rather than by feature.
+- The authenticated inline profiles are opt-in: no `csr`, `hydrate` or `ssr` profile enables
+  `pages-inline-edit`.
+- Compiled SSR/CSR/hydrate bundle artifact evidence remains open. The graph is checked; the
+  three bundles are not built by this slice.
+
 ### Public locale, route and cache authority
 
 - Native and unauthenticated GraphQL public detail and list reads use the same
@@ -198,6 +211,9 @@ migration, concurrent CAS, and change-cursor recovery evidence.
 - Localized canonical routes and host canonical/redirect/gone decisions remain Pages-owned.
 - Navigation and SEO owner payloads remain bound into the exact private revalidation ETag.
 - The selected immutable published artifact remains public render authority after draft mutation.
+- The selected immutable published artifact regression mutates the persisted draft body mutation
+  path and re-reads the public route afterwards.
+- After that mutation, current body content is not public render authority; the bound artifact is.
 - The anonymous public Pages route remains SSR-only and unchanged.
 - `NodeUpdated`, `NodePublished`, `NodeUnpublished` and `NodeDeleted` drive bounded generation rotation for route/page/artifact caches after commit.
 - Publish, rollback and repair activation reuse the same event-driven cache boundary; no repair path writes cache state inline.
