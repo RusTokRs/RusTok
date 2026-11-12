@@ -122,6 +122,15 @@ its own. The handler is the only layer that can hash the document it is serving;
 keeps the surfaces it can see honest (`X-Frame-Options`, cache, a policy for failure responses
 that carry no document).
 
+### Which document the frame runs
+
+`srcdoc` takes precedence over `src` in the HTML specification, so a frame that carries both runs
+the `srcdoc` document. The panel therefore leaves `srcdoc` empty when it names an address, and the
+host bootstrap — which fills the frame from a browser intent answer — writes `srcdoc` only when the
+frame has no `src`. Writing it unconditionally would replace the page's own document with one
+inheriting the console's policy: the defect the address exists to avoid, restored by the layer that
+was supposed to fill it.
+
 ## Sources of truth and ownership
 
 - Canonical owner of the preview render: `rustok-page-builder`

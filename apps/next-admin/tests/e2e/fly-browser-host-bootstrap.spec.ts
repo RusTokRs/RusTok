@@ -494,6 +494,32 @@ test('a preview answer renders into the panel frame and reveals it', async ({ pa
   expect(posted[0].body?.intent).toBe('render_server_preview');
 });
 
+test('a preview answer does not replace a document the frame loads by address', async ({
+  page
+}) => {
+  // `srcdoc` takes precedence over `src` in the HTML specification, so writing it into a frame
+  // that names a document would silently swap the host's own response — served under the page's
+  // policy — for a document inheriting this console's. The frame must keep the address, and the
+  // answer must still reveal it.
+  await mountHost(page, {
+    answer: {
+      persistence: {
+        capability: 'preview',
+        result: { page_id: 'home', html: '<!doctype html><html><body><p>inherited</p></body></html>' }
+      }
+    }
+  });
+  const frame = page.locator('#preview-frame');
+  await frame.evaluate((element) => element.setAttribute('src', '/api/admin/pages/home/preview'));
+
+  await page.locator('#preview-submit').click();
+
+  await expect.poll(async () => (await requests(page)).length).toBe(1);
+  expect(await frame.getAttribute('srcdoc')).toBeNull();
+  expect(await frame.getAttribute('src')).toBe('/api/admin/pages/home/preview');
+  await expect(frame).toBeVisible();
+});
+
 test('an answer that is not a preview leaves the panel frame alone', async ({ page }) => {
   await mountHost(page);
   await page.locator('#preview-submit').click();

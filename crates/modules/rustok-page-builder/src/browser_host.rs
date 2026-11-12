@@ -146,7 +146,12 @@ const __flyBindSsrAdapter = (adapter) => {
     if (typeof html !== "string" || !html) return;
     const frame = adapter.root.querySelector("[data-page-builder-server-preview-frame]");
     if (!(frame instanceof HTMLIFrameElement)) return;
-    frame.srcdoc = html;
+    // A frame that already names a document by address must not be given one here: `srcdoc`
+    // takes precedence over `src`, so writing it would replace the host's own document with an
+    // inherited one — the exact defect the address exists to avoid. The panel reveals itself as
+    // soon as the address answered, so there is nothing left to do.
+    const served = frame.hasAttribute("src");
+    if (!served) frame.srcdoc = html;
     frame.hidden = false;
   };
   adapter.root.addEventListener("fly:browser-intent-response", (event) => {
@@ -240,6 +245,28 @@ mod tests {
         assert_eq!(module.script_type, "module");
         assert_eq!(module.adapter, "fly_browser");
         assert_eq!(module.nonce.as_deref(), Some("csp-nonce"));
+    }
+
+    #[test]
+    fn the_bootstrap_never_overwrites_a_document_the_frame_loads_by_address() {
+        // `srcdoc` takes precedence over `src`, so a bootstrap that writes it unconditionally
+        // would replace a host-served preview — the page's own document under the page's own
+        // policy — with a document inheriting the console's. That is the defect the address
+        // exists to avoid, so the guard is part of the contract, not an optimisation.
+        let source = PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS;
+        let start = source
+            .find("const __flyApplyPreview")
+            .expect("preview binding");
+        let end = start + source[start..].find("adapter.root.addEventListener").expect("binding end");
+        let binding = &source[start..end];
+        assert!(
+            binding.contains("frame.hasAttribute(\"src\")"),
+            "the preview binding does not check the address before writing `srcdoc`: {binding}"
+        );
+        let guard = binding.find("if (!served)").expect("guarded write");
+        let write = binding.find("frame.srcdoc = html").expect("write");
+        assert!(guard < write, "{binding}");
+        assert!(binding.contains("frame.hidden = false"), "{binding}");
     }
 
     #[test]
