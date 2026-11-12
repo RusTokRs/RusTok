@@ -40,7 +40,15 @@ pub async fn admin_security_headers(mut request: Request, next: Next) -> Respons
         !is_production_environment(),
     );
     let headers = response.headers_mut();
-    headers.insert("content-security-policy", policy_header(policy.as_str()));
+    // A preview route derives its policy from the stylesheet the document it is answering with
+    // actually carries (`style-src 'sha256-…'`), which this layer cannot know. Overwriting it with
+    // the fallback would serve the document under a policy that names no style source at all, so
+    // the preview would render unstyled rather than wrong-but-visible. The fallback is installed
+    // only when the handler did not produce one — a response that failed before rendering, for
+    // which the fallback is the honest answer.
+    if !is_page_preview_surface(&path) || !headers.contains_key("content-security-policy") {
+        headers.insert("content-security-policy", policy_header(policy.as_str()));
+    }
     headers.insert(
         "x-content-type-options",
         HeaderValue::from_static("nosniff"),
@@ -295,6 +303,69 @@ mod tests {
         assert_eq!(
             richtext_cache_control("/richtext/frame/frame.0123456789abcdef.html"),
             "public, max-age=31536000, immutable"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_preview_response_keeps_the_policy_its_handler_derived() {
+        // The handler's policy names the hash of the stylesheet the document carries. The fallback
+        // this layer knows cannot: replacing the handler's header would serve the document under
+        // `PAGE_PREVIEW_CSP`, which names no style source, and the preview would render unstyled.
+        const DERIVED: &str = "default-src 'none'; style-src 'sha256-abc='; frame-ancestors 'self'";
+        let app = Router::new()
+            .route(
+                "/api/admin/pages/page-1/preview",
+                get(|_request: Request| async move {
+                    (
+                        [( "content-security-policy", DERIVED)],
+                        Body::empty(),
+                    )
+                }),
+            )
+            .layer(middleware::from_fn(admin_security_headers));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/admin/pages/page-1/preview")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(
+            response.headers().get("content-security-policy").unwrap(),
+            DERIVED
+        );
+        // The frame still has to be openable by this host, which is the layer's job.
+        assert_eq!(response.headers().get("x-frame-options").unwrap(), "SAMEORIGIN");
+        assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
+    }
+
+    #[tokio::test]
+    async fn a_preview_that_fails_before_rendering_still_gets_a_policy() {
+        // A failure response carries no document, so nothing derives a policy for it. Serving it
+        // with none at all would let the browser apply another layer's default.
+        let app = Router::new()
+            .route(
+                "/api/admin/pages/page-1/preview",
+                get(|_request: Request| async move { StatusCode::NOT_FOUND }),
+            )
+            .layer(middleware::from_fn(admin_security_headers));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/admin/pages/page-1/preview")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.headers().get("content-security-policy").unwrap(),
+            super::PAGE_PREVIEW_CSP
         );
     }
 

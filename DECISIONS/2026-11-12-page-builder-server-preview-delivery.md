@@ -106,11 +106,21 @@ the frame open. A host with no such route keeps the `srcdoc` shape.
   (`PreviewError::MissingEnvelope`) rather than policied from a guess.
 
 The middleware in `apps/admin/src/app/security.rs` classifies this path as a frame surface:
-`frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN`, `cache-control: no-store`, and a
-fallback policy that names no script and no style. Without that classification the middleware
-would overwrite the route's policy with `API_CSP` (no `style-src`, so the document renders blank)
-and set `X-Frame-Options: DENY` (so the frame never opens) — the route would be dead on arrival
-while every unit test of the route itself still passed.
+`X-Frame-Options: SAMEORIGIN`, `cache-control: no-store`, and a fallback policy that names no
+script and no style. Two things would otherwise be dead on arrival while every unit test of the
+route itself still passed:
+
+- `X-Frame-Options: DENY` from the API class, which the browser honours before the policy, so the
+  frame would never open;
+- `API_CSP`, which names no `style-src` at all, so the document would render unstyled — and the
+  same applies to the *handler's own* policy: this layer always emitted a policy, so a
+  `style-src 'sha256-…'` derived from the document's stylesheet would have been overwritten by the
+  fallback before it reached the browser.
+
+The layer therefore installs the fallback only when the handler did not answer with a policy of
+its own. The handler is the only layer that can hash the document it is serving; the middleware
+keeps the surfaces it can see honest (`X-Frame-Options`, cache, a policy for failure responses
+that carry no document).
 
 ## Sources of truth and ownership
 
@@ -223,6 +233,9 @@ so no build ships a form the endpoint does not know.
   stylesheet.
 - A policy test asserts the admin policy is byte-identical before and after this change, and that
   the preview policy carries the hash of the previewed document's own CSS.
+- A middleware test asserts that a policy a preview handler produced survives the layer unchanged
+  (the layer must not overwrite it), that a preview *failure* response still leaves with a policy,
+  and that the neighbouring `/api/admin/pages/...` routes are still scriptless and `DENY`.
 - A host test asserts the standalone admin resolves the page on the server or ships hydration; the
   current state (neither) fails it.
 
