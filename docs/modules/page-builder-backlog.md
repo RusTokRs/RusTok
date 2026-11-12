@@ -684,7 +684,14 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           embedded admin and runs Chromium against `apps/server` under the enforced policy,
           and its spec (`apps/next-admin/tests/rust-hosts/embedded-hosts.spec.ts`) stops at the
           admin mount. A test there that opens a page in the editor would cover the canvas and
-          the preview under the policy. Owner: Page Builder admin, repository tooling.
+          the preview under the policy. That job does not reach its spec today: it builds
+          `apps/server` with default features, and the server exits at startup because
+          `modules.toml` lists 14 modules (`billing`, `calendar`, `calls`, `deal`, `finance`,
+          `marketplace` and its six parts, `party`, `tasks`) whose `mod-*` features are not in
+          the default list of `apps/server/Cargo.toml` (read from CI on `c8141c9b` and
+          `a4d65ffe`; both files are unchanged from `main`). The distribution decision comes
+          first. Owner: Page Builder admin, repository tooling; the startup failure: platform,
+          `apps/server`.
     - [ ] **The server preview cannot be requested in the default runtime.** "Refresh preview"
           acts through `on:click`. No intent or SSR form requests a preview, and the draft
           session holds none, so a server-rendered editor shows the empty state of the panel.
