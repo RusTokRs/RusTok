@@ -195,6 +195,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (migration `m20261008_000031`). The field had no writer and always returned 0.
 
 ### Fixed
+- A default-feature build of `rustok-server` starts. Fifteen modules the `modules.toml` manifest
+  declares — with a package that declares a `[crate] entry_type`, which is what the registry
+  contract requires in the compiled registry — were absent from the server's `default` feature
+  list, so `cargo build -p rustok-server` produced a binary that exited during startup with
+  `MissingInRegistry`. CI compiled with `--all-features`, so the default list was never exercised;
+  the failure surfaced in the "Rust-hosted Browser Smoke" job, which uses the default build, and
+  killed it before its own spec. `scripts/ci/modules-manifest-features.mjs` now derives the
+  required features from the manifest (keyed on the package's own entry type and on manifest slugs,
+  so a compiled extension is consistent rather than unexpected) and both that job and CI run it
+  before their build.
+- The Page Builder server preview can be requested in the default `ssr + browser-js` runtime.
+  "Refresh preview" acted through `on:click`, which a server-rendered document cannot run, and no
+  intent or SSR form produced a `Preview` capability request, so the panel showed its empty state
+  forever. `render_server_preview` is now a protocol intent the endpoint admits with the edit
+  capability, the panel renders it as a form, `dispatch_named_intent` builds the one-page request
+  from the draft and the runtime context the form posts, and the host bootstrap fills the panel's
+  frame from the answer — which is now rendered before a document exists, since a frame created
+  only after a re-render is one the answer cannot reach. A preview answer no longer asks the client
+  to reload: a reload would replace the document the answer carries with a render of the server
+  state, which cannot contain it.
 - The immutable artifact integrity audit reads identifiers before payloads, as its packet and
   its contract already said. `PageService::audit_immutable_artifact_integrity` selected whole
   artifact rows and dropped the `max_records + 1` lookahead row only after it had been
