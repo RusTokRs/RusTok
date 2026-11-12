@@ -48,6 +48,33 @@ const between = (text, start, end, label) => {
   }
   return text.slice(from, to);
 };
+// Batching is "one query for the whole batch", which a count of `.all(` cannot tell from two
+// queries in different places. This slices the brace-balanced body of a `for` loop instead, so a
+// query added inside the loop is what fails, not a query that merely lives in the same function
+// before the loop.
+const loopBody = (text, header, label) => {
+  const start = text.indexOf(header);
+  if (start < 0) {
+    failures.push(`${label}: missing ${header}`);
+    return "";
+  }
+  const open = text.indexOf("{", start);
+  if (open < 0) {
+    failures.push(`${label}: ${header} has no body`);
+    return "";
+  }
+  let depth = 0;
+  for (let index = open; index < text.length; index += 1) {
+    if (text[index] === "{") depth += 1;
+    else if (text[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(open, index + 1);
+    }
+  }
+  failures.push(`${label}: ${header} body is unbalanced`);
+  return "";
+};
+const queriesIn = (body, needle) => body.split(needle).length - 1;
 
 if (evidence.format !== "pages_published_slug_route_alias_source_v1") {
   failures.push(`evidence format mismatch: ${evidence.format}`);
@@ -174,7 +201,9 @@ ordered(snapshotBatch, [
   "for translation in translations",
   "snapshots_by_route.get(&key)",
 ], "published snapshot batching");
-if (snapshotBatch.includes("page_route_publication::Entity::find()") && (snapshotBatch.match(/\.all\(txn\)/g) || []).length > 1) {
+// One read of the page's snapshots before the loop, then a map lookup per translation.
+const snapshotLoop = loopBody(snapshotBatch, "for translation in translations {", "route snapshot batching");
+if (queriesIn(snapshotLoop, "::Entity::find()") > 0 || queriesIn(snapshotLoop, ".all(txn)") > 0) {
   failures.push("route snapshot batching: retained per-translation snapshot queries");
 }
 
@@ -190,7 +219,9 @@ ordered(tombstoneBatch, [
   "for snapshot in snapshots",
   "aliases_by_route.get(&key)",
 ], "delete tombstone batching");
-if (tombstoneBatch.includes("page_route_alias::Entity::find()") && (tombstoneBatch.match(/\.all\(txn\)/g) || []).length > 1) {
+// One read of the candidate aliases for the whole batch, then a map lookup per snapshot.
+const tombstoneLoop = loopBody(tombstoneBatch, "for snapshot in snapshots {", "route tombstone batching");
+if (queriesIn(tombstoneLoop, "::Entity::find()") > 0 || queriesIn(tombstoneLoop, ".all(txn)") > 0) {
   failures.push("route tombstone batching: retained per-snapshot alias queries");
 }
 
@@ -287,7 +318,10 @@ ordered(aliasWriter, [
   "for (locale, old_slug) in pending",
   "aliases_by_route.get(&key)",
 ], "published-only alias ordering");
-if ((aliasWriter.match(/\.all\(txn\)/g) || []).length > 2) {
+// One read of the page's translations, one read of the candidate aliases; the loop over the
+// changed locales must not query.
+const renameLoop = loopBody(aliasWriter, "for (locale, old_slug) in pending {", "published rename writer");
+if (queriesIn(renameLoop, "::Entity::find()") > 0 || queriesIn(renameLoop, ".all(txn)") > 0) {
   failures.push("published rename writer: retained per-locale alias lookup pattern");
 }
 
@@ -296,7 +330,12 @@ for (const marker of [
   "page_route_for_slug(&effective_locale, translation.slug.as_deref())",
   "page_route_for_slug(&item.locale, Some(slug.as_str()))",
   'None => format!("/{locale}/modules/pages")',
-  "matches_module_path(&parsed, \"pages\")",
+  // The owner parses the route itself instead of reusing the Forum-style helper: the localized
+  // `/{locale}/modules/pages` form and the legacy unprefixed `/{locale}/pages/{slug}` form are
+  // two different shapes of the same claim.
+  'segments.as_slice() == ["modules", "pages"]',
+  'if segments.len() == 2 && segments[0] == "pages"',
+  '.find(|(key, _)| key == "slug")',
 ]) need(seo, marker, "localized canonical SEO route");
 
 for (const marker of [

@@ -16,7 +16,7 @@ Runtime/build/test evidence is maintainer-owned and remains unrun.
 # Implementation Plan for `rustok-pages`
 
 Date: 2026-08-08  
-Status: `in_progress / contribution-manifest-generation-source-ready / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / storefront-composition-etag-source-ready / artifact-repair-multilocale-recovery-source-ready / rollback-activated-artifact-loss-recovery-source-ready / rollback-activated-repair-rollback-continuity-source-ready / repeated-artifact-loss-recovery-source-ready / execution-rollout-pending`
+Status: `in_progress / contribution-manifest-generation-source-ready / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / storefront-composition-etag-source-ready / route-history-source-ready / artifact-repair-multilocale-recovery-source-ready / rollback-activated-artifact-loss-recovery-source-ready / rollback-activated-repair-rollback-continuity-source-ready / repeated-artifact-loss-recovery-source-ready / execution-rollout-pending`
 
 ## FFA/FBA status
 
@@ -200,6 +200,42 @@ migration, concurrent CAS, and change-cursor recovery evidence.
 - The anonymous public Pages route remains SSR-only and unchanged.
 - `NodeUpdated`, `NodePublished`, `NodeUnpublished` and `NodeDeleted` drive bounded generation rotation for route/page/artifact caches after commit.
 - Publish, rollback and repair activation reuse the same event-driven cache boundary; no repair path writes cache state inline.
+
+### Route history, aliases and tombstones: source-ready
+
+Route identity is Pages-owned end to end: the module decides the disposition, and the
+storefront host only renders the decision it is given.
+
+- A **registered Pages host route decision server function**
+  (`storefront_page_route_native`, `pages/route-decision`) admits the channel, resolves the
+  page, checks publication and channel visibility, and only then reads the generation
+  snapshot, so an unadmitted route never pays for a cache identity it cannot use.
+- **Exact localized canonical routes continue SSR.** A canonical decision renders; a legacy or
+  non-canonical address is answered with a private permanent redirect, and an alias, a
+  tombstone, a missing page or a conflict stops before the render with a private status
+  response.
+- **Delete tombstones retain every route.** Deleting a page records a gone alias for every
+  snapshot the page ever published, and `resolve` folds a redirect whose target page was
+  physically deleted to `Gone` by the target's retained tombstone rather than rewriting history.
+- **A published page keeps its old addresses:** immutable redirects for published slug renames,
+  so a bookmark, a search result and an inbound link keep working after the slug changes.
+- **Old published slug claims cannot be reused.** A rename reserves the previous slug, so a new
+  page cannot take an address the history still answers for; the claim check runs against the
+  current translations first and the historical aliases second, inside the same transaction.
+- **Delete tombstones and historical backfill remain open** — the pair of statements below is
+  what keeps this section honest:
+- The **historical route import owner** (`PageRouteHistoryImportService`) is the explicit,
+  bounded repair for route history that cannot be inferred safely: one provenance receipts row
+  per source record, at most `MAX_PAGE_ROUTE_HISTORY_IMPORT_ITEMS` items, and fail-closed on a
+  provenance payload drift, a route ownership drift, or redirect-only history for a missing
+  page.
+- **Automatic inference remains open by design.** Old non-builder publication and physically
+  deleted rows do not carry enough durable source data to reconstruct their routes, so no scan
+  guesses them; an operator imports them with a provenance key or leaves the addresses gone.
+
+This section records source only: the harness that exercises it was written without being
+compiled here (`storefront/tests/host_route_decision_sqlite.rs`,
+`tests/page_published_slug_route_alias_sqlite.rs`, `tests/page_route_history_import_sqlite.rs`).
 
 ### Canonical storefront composition ETag: source-ready
 
