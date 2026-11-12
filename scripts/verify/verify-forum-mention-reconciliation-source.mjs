@@ -2,6 +2,11 @@
 
 import fs from "node:fs";
 
+import {
+  RECONCILIATION_EXECUTOR_PATH,
+  assertReconciliationReport,
+} from "./lib/forum-reconciliation-executor.mjs";
+
 function read(path) {
   return fs.readFileSync(path, "utf8");
 }
@@ -20,6 +25,14 @@ const graphqlPath = "crates/modules/rustok-forum/src/graphql/mention_reconciliat
 const graphqlModPath = "crates/modules/rustok-forum/src/graphql/mod.rs";
 
 const service = read(servicePath);
+
+// The operator fence, the entry-point metrics and the page bound are the executor's; this report has
+// to reach them through its own `EXECUTOR` with its published metric labels.
+assertReconciliationReport({
+  executorSource: read(RECONCILIATION_EXECUTOR_PATH),
+  serviceSource: service,
+  name: "mention",
+});
 const servicesMod = read(servicesModPath);
 const graphql = read(graphqlPath);
 const graphqlMod = read(graphqlModPath);
@@ -34,9 +47,6 @@ for (const marker of [
   "LocaleInvalid",
   "ProjectionFingerprintInvalid",
   "security: &SecurityContext",
-  "enforce_operations_scope(security)",
-  "enforce_scope(security, Resource::ForumCategories, Action::Manage)?",
-  "enforce_scope(security, Resource::ForumTopics, Action::Manage)",
   "relation_after: Option<i64>",
   "revision_id > ?2",
   "revision_id > $2",

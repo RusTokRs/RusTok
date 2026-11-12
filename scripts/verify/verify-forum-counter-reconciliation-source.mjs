@@ -2,6 +2,11 @@
 
 import fs from "node:fs";
 
+import {
+  RECONCILIATION_EXECUTOR_PATH,
+  assertReconciliationReport,
+} from "./lib/forum-reconciliation-executor.mjs";
+
 function read(path) {
   return fs.readFileSync(path, "utf8");
 }
@@ -37,6 +42,18 @@ const mentionGql = read(mentionGqlPath);
 const graphqlMod = read(graphqlModPath);
 const lib = read(libPath);
 const plan = read(planPath);
+const executor = read(RECONCILIATION_EXECUTOR_PATH);
+
+// The operator fence, the entry-point metrics and the page bound are the executor's; every report
+// has to reach them through its own `EXECUTOR` with its published metric labels.
+for (const [name, serviceSource] of [
+  ["counter", service],
+  ["solution", solution],
+  ["subscription", subscription],
+  ["mention", mention],
+]) {
+  assertReconciliationReport({ executorSource: executor, serviceSource, name });
+}
 
 for (const marker of [
   "pub const DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT: u64 = 100",
@@ -44,9 +61,6 @@ for (const marker of [
   "pub struct ForumCounterReconciliationService",
   "pub struct ForumCounterReconciliationReport",
   "security: &SecurityContext",
-  "enforce_operations_scope(security)",
-  "enforce_scope(security, Resource::ForumCategories, Action::Manage)?",
-  "enforce_scope(security, Resource::ForumTopics, Action::Manage)",
   "pub async fn report_page(",
   "topic_after: Option<Uuid>",
   "category_after: Option<Uuid>",
@@ -81,9 +95,7 @@ for (const marker of [
   "report_in_transaction(",
   "transaction.commit().await?",
   "transaction.rollback().await",
-  "record_module_entrypoint_call(",
   '"counter_reconciliation_report"',
-  "record_span_duration(",
 ]) {
   requireText(service, marker, `Forum counter reconciliation service missing ${marker}`);
 }
@@ -107,9 +119,6 @@ for (const marker of [
   "pub struct ForumSolutionReconciliationReport",
   "pub struct ForumSolutionReconciliationService",
   "security: &SecurityContext",
-  "enforce_operations_scope(security)",
-  "enforce_scope(security, Resource::ForumCategories, Action::Manage)?",
-  "enforce_scope(security, Resource::ForumTopics, Action::Manage)",
   "solution_after: Option<Uuid>",
   "solution_stat_after: Option<Uuid>",
   "pub solution_cursor: Option<Uuid>",
@@ -193,7 +202,6 @@ for (const marker of [
   "pub struct ForumSubscriptionReconciliationReport",
   "pub topic_cursor: Option<ForumSubscriptionCursor>",
   "pub category_cursor: Option<ForumSubscriptionCursor>",
-  "enforce_operations_scope(security)",
 ]) {
   requireText(subscription, marker, `Forum subscription reconciliation service missing ${marker}`);
 }
@@ -212,7 +220,6 @@ for (const marker of [
   "pub struct ForumMentionReconciliationService",
   "pub struct ForumMentionReconciliationReport",
   "pub relation_cursor: Option<i64>",
-  "enforce_operations_scope(security)",
 ]) {
   requireText(mention, marker, `Forum mention reconciliation service missing ${marker}`);
 }

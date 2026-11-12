@@ -1,6 +1,5 @@
-use std::collections::HashSet; // Instant via executor
+use std::collections::HashSet;
 
-use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 use sea_orm::{
     AccessMode, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
@@ -9,16 +8,23 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::reconciliation_executor::ReconciliationExecutor;
-use super::{
-    counter_reconciliation::{
-        DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
-    },
-    rbac::enforce_scope,
+use super::counter_reconciliation::{
+    DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
 };
+use super::reconciliation_executor::ReconciliationExecutor;
 use crate::error::{ForumError, ForumResult};
 
 const FORUM_SOLUTION_RECONCILIATION_OPERATION: &str = "forum.solution_reconciliation_report";
+
+/// The operator fence and the page bounds of this report. `report_page` runs through it
+/// and the page query takes its size from it, so each rule has one definition.
+const EXECUTOR: ReconciliationExecutor = ReconciliationExecutor {
+    operation: FORUM_SOLUTION_RECONCILIATION_OPERATION,
+    entrypoint: "solution_reconciliation_report",
+    error_type: "solution_reconciliation",
+    default_limit: DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT,
+    max_limit: MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
+};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -96,21 +102,17 @@ impl ForumSolutionReconciliationService {
         solution_after: Option<Uuid>,
         solution_stat_after: Option<Uuid>,
     ) -> ForumResult<ForumSolutionReconciliationReport> {
-        ReconciliationExecutor::new(
-            FORUM_SOLUTION_RECONCILIATION_OPERATION,
-            DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT,
-            MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
-        )
-        .execute(security, || async {
-            self.report_inner(
-                tenant_id,
-                requested_limit,
-                solution_after,
-                solution_stat_after,
-            )
+        EXECUTOR
+            .execute(security, || async {
+                self.report_inner(
+                    tenant_id,
+                    requested_limit,
+                    solution_after,
+                    solution_stat_after,
+                )
+                .await
+            })
             .await
-        })
-        .await
     }
 
     async fn report_inner(
@@ -155,7 +157,10 @@ impl ForumSolutionReconciliationService {
             }
             Err(error) => {
                 if let Err(rollback_err) = transaction.rollback().await {
-                    tracing::warn!(error = %rollback_err, "forum reconciliation rollback failed; transaction will be dropped");
+                    tracing::warn!(
+                        error = %rollback_err,
+                        "forum reconciliation rollback failed; transaction will be dropped"
+                    );
                 }
                 Err(error)
             }
@@ -171,9 +176,7 @@ impl ForumSolutionReconciliationService {
         solution_after: Option<Uuid>,
         solution_stat_after: Option<Uuid>,
     ) -> ForumResult<ForumSolutionReconciliationReport> {
-        let effective_limit = requested_limit
-            .unwrap_or(DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT)
-            .clamp(1, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT);
+        let effective_limit = EXECUTOR.effective_limit(requested_limit);
         let fetch_limit = effective_limit.saturating_add(1);
 
         let solution_rows = transaction
@@ -255,11 +258,6 @@ impl ForumSolutionReconciliationService {
             drifts,
         })
     }
-}
-
-fn enforce_operations_scope(security: &SecurityContext) -> ForumResult<()> {
-    enforce_scope(security, Resource::ForumCategories, Action::Manage)?;
-    enforce_scope(security, Resource::ForumTopics, Action::Manage)
 }
 
 fn solution_statement(
@@ -572,13 +570,13 @@ mod tests {
                 Permission::FORUM_TOPICS_MANAGE,
             ],
         );
-        assert!(enforce_operations_scope(&both).is_ok());
+        assert!(EXECUTOR.enforce_operator(&both).is_ok());
 
         let topics_only = SecurityContext::from_permission_snapshot(
             Some(Uuid::new_v4()),
             &[Permission::FORUM_TOPICS_MANAGE],
         );
-        assert!(enforce_operations_scope(&topics_only).is_err());
+        assert!(EXECUTOR.enforce_operator(&topics_only).is_err());
     }
 
     #[test]

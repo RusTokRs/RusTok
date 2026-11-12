@@ -1,6 +1,3 @@
-// Instant moved to reconciliation_executor
-
-use rustok_api::{Action, Resource};
 use rustok_core::SecurityContext;
 use sea_orm::{
     AccessMode, ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
@@ -10,12 +7,21 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::reconciliation_executor::ReconciliationExecutor;
-use super::rbac::enforce_scope;
 use crate::error::{ForumError, ForumResult};
 
 pub const DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT: u64 = 100;
 pub const MAX_FORUM_COUNTER_RECONCILIATION_LIMIT: u64 = 500;
 const FORUM_COUNTER_RECONCILIATION_OPERATION: &str = "forum.counter_reconciliation_report";
+
+/// The operator fence and the page bounds of this report. `report_page` runs through it
+/// and the page query takes its size from it, so each rule has one definition.
+const EXECUTOR: ReconciliationExecutor = ReconciliationExecutor {
+    operation: FORUM_COUNTER_RECONCILIATION_OPERATION,
+    entrypoint: "counter_reconciliation_report",
+    error_type: "counter_reconciliation",
+    default_limit: DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT,
+    max_limit: MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
+};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -118,16 +124,12 @@ impl ForumCounterReconciliationService {
         topic_after: Option<Uuid>,
         category_after: Option<Uuid>,
     ) -> ForumResult<ForumCounterReconciliationReport> {
-        ReconciliationExecutor::new(
-            FORUM_COUNTER_RECONCILIATION_OPERATION,
-            DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT,
-            MAX_FORUM_COUNTER_RECONCILIATION_LIMIT,
-        )
-        .execute(security, || async {
-            self.report_inner(tenant_id, requested_limit, topic_after, category_after)
-                .await
-        })
-        .await
+        EXECUTOR
+            .execute(security, || async {
+                self.report_inner(tenant_id, requested_limit, topic_after, category_after)
+                    .await
+            })
+            .await
     }
 
     async fn report_inner(
@@ -171,7 +173,12 @@ impl ForumCounterReconciliationService {
                 Ok(report)
             }
             Err(error) => {
-                if let Err(rollback_err) = transaction.rollback().await { tracing::warn!(error = %rollback_err, "forum reconciliation rollback failed; transaction will be dropped"); }
+                if let Err(rollback_err) = transaction.rollback().await {
+                    tracing::warn!(
+                        error = %rollback_err,
+                        "forum reconciliation rollback failed; transaction will be dropped"
+                    );
+                }
                 Err(error)
             }
         }
@@ -186,9 +193,7 @@ impl ForumCounterReconciliationService {
         topic_after: Option<Uuid>,
         category_after: Option<Uuid>,
     ) -> ForumResult<ForumCounterReconciliationReport> {
-        let effective_limit = requested_limit
-            .unwrap_or(DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT)
-            .clamp(1, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT);
+        let effective_limit = EXECUTOR.effective_limit(requested_limit);
         let fetch_limit = effective_limit.saturating_add(1);
         let topic_rows = transaction
             .query_all_raw(counter_statement(
@@ -277,11 +282,6 @@ impl ForumCounterReconciliationService {
             drifts,
         })
     }
-}
-
-fn enforce_operations_scope(security: &SecurityContext) -> ForumResult<()> {
-    enforce_scope(security, Resource::ForumCategories, Action::Manage)?;
-    enforce_scope(security, Resource::ForumTopics, Action::Manage)
 }
 
 struct CounterQueryDialects<'a> {
@@ -504,15 +504,13 @@ mod tests {
 
     #[test]
     fn reconciliation_limit_is_bounded() {
-        fn resolve_limit(limit: Option<u64>) -> u64 {
-            limit.unwrap_or(DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT)
-        }
         assert_eq!(
-            resolve_limit(None),
+            EXECUTOR.effective_limit(None),
             DEFAULT_FORUM_COUNTER_RECONCILIATION_LIMIT
         );
+        assert_eq!(EXECUTOR.effective_limit(Some(0)), 1);
         assert_eq!(
-            resolve_limit(Some(10_000)).clamp(1, MAX_FORUM_COUNTER_RECONCILIATION_LIMIT),
+            EXECUTOR.effective_limit(Some(10_000)),
             MAX_FORUM_COUNTER_RECONCILIATION_LIMIT
         );
     }
@@ -542,13 +540,13 @@ mod tests {
                 Permission::FORUM_TOPICS_MANAGE,
             ],
         );
-        assert!(enforce_operations_scope(&both).is_ok());
+        assert!(EXECUTOR.enforce_operator(&both).is_ok());
 
         let topics_only = SecurityContext::from_permission_snapshot(
             Some(Uuid::new_v4()),
             &[Permission::FORUM_TOPICS_MANAGE],
         );
-        assert!(enforce_operations_scope(&topics_only).is_err());
+        assert!(EXECUTOR.enforce_operator(&topics_only).is_err());
     }
 
     #[test]
