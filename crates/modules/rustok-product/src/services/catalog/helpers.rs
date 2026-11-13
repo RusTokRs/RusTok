@@ -315,8 +315,9 @@ where
 
     let definitions = rows
         .into_iter()
-        .filter_map(product_field_definition_from_row)
-        .collect();
+        .map(product_field_definition_from_row)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(CommerceError::Validation)?;
 
     Ok(CustomFieldsSchema::new(definitions))
 }
@@ -325,7 +326,7 @@ flex::impl_field_definition_source!(product_field_definitions_storage::Model);
 
 pub fn product_field_definition_from_row(
     row: product_field_definitions_storage::Model,
-) -> Option<FieldDefinition> {
+) -> Result<FieldDefinition, String> {
     flex::field_definition_from_source(&row)
 }
 

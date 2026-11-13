@@ -264,6 +264,7 @@ async fn graphql_ws_handler(
             .into_response();
     };
 
+    let host_authority = crate::host_authority::current_host_authority();
     ws.on_upgrade(move |socket| {
         handle_graphql_ws(
             socket,
@@ -273,6 +274,7 @@ async fn graphql_ws_handler(
             registry,
             protocol,
             channel,
+            host_authority,
         )
     })
 }
@@ -285,6 +287,7 @@ async fn handle_graphql_ws(
     registry: ModuleRegistry,
     protocol: WebSocketProtocols,
     channel: Option<ChannelContext>,
+    host_authority: Option<rustok_api::HostAuthorityContext>,
 ) {
     let (mut sink, mut source) = socket.split();
     let (incoming_tx, incoming_rx) =
@@ -300,6 +303,7 @@ async fn handle_graphql_ws(
     let auth_runtime_for_init = auth_runtime.clone();
     let registry_for_init = registry.clone();
     let channel_for_init = channel.clone();
+    let host_authority_for_init = host_authority;
     let auth_lease_for_init = Arc::clone(&auth_lease);
     let connection_init_received_for_init = Arc::clone(&connection_init_received);
     let mut graphql_stream = async_graphql::http::WebSocket::new(
@@ -315,6 +319,7 @@ async fn handle_graphql_ws(
                 auth_runtime_for_init.clone(),
                 registry_for_init.clone(),
                 channel_for_init.clone(),
+                host_authority_for_init,
                 Arc::clone(&auth_lease_for_init),
                 payload,
             ),
@@ -672,6 +677,7 @@ async fn build_ws_connection_data(
     auth_runtime: ServerAuthRuntime,
     registry: ModuleRegistry,
     channel: Option<ChannelContext>,
+    host_authority: Option<rustok_api::HostAuthorityContext>,
     auth_lease: Arc<OnceLock<WebSocketAuthLease>>,
     payload: serde_json::Value,
 ) -> async_graphql::Result<Data> {
@@ -748,6 +754,9 @@ async fn build_ws_connection_data(
     data.insert(auth_ctx);
     data.insert(principal_context);
     data.insert(request_scope);
+    if let Some(host_authority) = host_authority {
+        data.insert(host_authority);
+    }
     if let Some(channel) = channel {
         data.insert(channel);
     }

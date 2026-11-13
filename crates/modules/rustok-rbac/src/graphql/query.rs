@@ -677,16 +677,19 @@ impl RbacQuery {
 
             let mut perms_by_role: HashMap<Uuid, Vec<String>> = HashMap::new();
             for row in perm_rows {
-                if let (Ok(role_id), Ok(res), Ok(act)) = (
-                    row.try_get::<Uuid>("", "role_id"),
-                    row.try_get::<String>("", "resource"),
-                    row.try_get::<String>("", "action"),
-                ) {
-                    perms_by_role
-                        .entry(role_id)
-                        .or_default()
-                        .push(format!("{res}:{act}"));
-                }
+                let role_id: Uuid = row
+                    .try_get("", "role_id")
+                    .map_err(|error| internal_db_error("read role permission row", error))?;
+                let resource: String = row
+                    .try_get("", "resource")
+                    .map_err(|error| internal_db_error("read role permission row", error))?;
+                let action: String = row
+                    .try_get("", "action")
+                    .map_err(|error| internal_db_error("read role permission row", error))?;
+                perms_by_role
+                    .entry(role_id)
+                    .or_default()
+                    .push(format!("{resource}:{action}"));
             }
 
             let mut roles = Vec::with_capacity(role_rows.len());
@@ -700,8 +703,12 @@ impl RbacQuery {
                 let slug: String = row
                     .try_get("", "slug")
                     .map_err(|e| internal_db_error("read role row", e))?;
-                let description: Option<String> = row.try_get("", "description").ok();
-                let is_system: bool = row.try_get("", "is_system").unwrap_or(false);
+                let description: Option<String> = row
+                    .try_get("", "description")
+                    .map_err(|error| internal_db_error("read role row", error))?;
+                let is_system: bool = row
+                    .try_get("", "is_system")
+                    .map_err(|error| internal_db_error("read role row", error))?;
 
                 let mut perms = perms_by_role.remove(&id).unwrap_or_default();
                 perms.sort();
@@ -822,28 +829,28 @@ impl RbacQuery {
             .map_err(|error| internal_db_error("list tenant permissions", error))?;
         {
             for row in rows {
-                if let (Ok(res), Ok(act)) = (
-                    row.try_get::<String>("", "resource"),
-                    row.try_get::<String>("", "action"),
-                ) {
-                    let desc = row
-                        .try_get::<Option<String>>("", "description")
-                        .ok()
-                        .flatten();
-                    let perm_id = format!("{res}:{act}");
-                    let (module_slug, module_status) = availability_fields(&perm_id);
-                    permissions_map.insert(
-                        perm_id.clone(),
-                        PlatformPermissionItem {
-                            id: perm_id,
-                            resource: res,
-                            action: act,
-                            description: desc,
-                            module_slug,
-                            module_status,
-                        },
-                    );
-                }
+                let resource: String = row
+                    .try_get("", "resource")
+                    .map_err(|error| internal_db_error("read tenant permission", error))?;
+                let action: String = row
+                    .try_get("", "action")
+                    .map_err(|error| internal_db_error("read tenant permission", error))?;
+                let description: Option<String> = row
+                    .try_get("", "description")
+                    .map_err(|error| internal_db_error("read tenant permission", error))?;
+                let permission_id = format!("{resource}:{action}");
+                let (module_slug, module_status) = availability_fields(&permission_id);
+                permissions_map.insert(
+                    permission_id.clone(),
+                    PlatformPermissionItem {
+                        id: permission_id,
+                        resource,
+                        action,
+                        description,
+                        module_slug,
+                        module_status,
+                    },
+                );
             }
         }
 

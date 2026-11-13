@@ -14,24 +14,49 @@ const CACHE_REDIS_STATUS_RESTART_DELAY: Duration = Duration::from_secs(1);
 const CACHE_REDIS_STATUS_MONITOR_CHANNEL: &str = "cache.redis.status";
 
 struct CacheRedisStatusMonitorRuntime {
-    task: Option<JoinHandle<()>>,
+    task: std::sync::Mutex<Option<JoinHandle<()>>>,
+    required: bool,
 }
 
 impl CacheRedisStatusMonitorRuntime {
     fn is_running(&self) -> bool {
-        self.task.as_ref().is_none_or(|task| !task.is_finished())
+        if !self.required {
+            return true;
+        }
+        self.task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map_or(false, |task| !task.is_finished())
     }
 
     fn abort(&self) {
-        if let Some(task) = &self.task {
+        if let Some(task) = self
+            .task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
             task.abort();
         }
+    }
+
+    fn take_task(&self) -> Option<JoinHandle<()>> {
+        self.task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 }
 
 impl Drop for CacheRedisStatusMonitorRuntime {
     fn drop(&mut self) {
-        if let Some(task) = &self.task {
+        if let Some(task) = self
+            .task
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
             task.abort();
         }
     }
@@ -42,11 +67,19 @@ pub struct CacheRedisStatusMonitorHandle(Arc<CacheRedisStatusMonitorRuntime>);
 
 impl CacheRedisStatusMonitorHandle {
     fn new(task: Option<JoinHandle<()>>) -> Self {
-        Self(Arc::new(CacheRedisStatusMonitorRuntime { task }))
+        let required = task.is_some();
+        Self(Arc::new(CacheRedisStatusMonitorRuntime {
+            task: std::sync::Mutex::new(task),
+            required,
+        }))
     }
 
     pub fn is_running(&self) -> bool {
         self.0.is_running()
+    }
+
+    pub(crate) fn take_task(&self) -> Option<JoinHandle<()>> {
+        self.0.take_task()
     }
 
     fn abort(&self) {
@@ -69,6 +102,12 @@ pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache:
         return;
     };
     let _start_guard = start_lock.0.lock().await;
+    if ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
+    {
+        return;
+    }
 
     if let Some(existing) = ctx.shared_get::<CacheRedisStatusMonitorHandle>() {
         if existing.is_running() {
@@ -76,10 +115,23 @@ pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache:
         }
         tracing::warn!("Cache Redis status monitor stopped; replacing runtime");
         existing.abort();
+        if let Some(task) = existing.take_task() {
+            if let Err(error) = task.await {
+                if !error.is_cancelled() {
+                    tracing::warn!(?error, "Old Cache Redis status monitor failed while being replaced");
+                }
+            }
+        }
     }
 
     let initial = cache.redis_status().await;
     log_transition(None, &initial);
+    if ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
+    {
+        return;
+    }
 
     let task = if cache.redis_configuration_present() {
         let first_previous = Arc::new(Mutex::new(Some(initial)));
@@ -109,6 +161,21 @@ pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache:
     };
 
     ctx.shared_insert(CacheRedisStatusMonitorHandle::new(task));
+}
+
+pub(crate) async fn take_task_for_shutdown(
+    ctx: &ServerRuntimeContext,
+) -> Option<JoinHandle<()>> {
+    let start_lock = ctx.shared_get_or_insert_with(CacheRedisStatusMonitorStartLock::default);
+    let _start_guard = match tokio::time::timeout(Duration::from_secs(5), start_lock.0.lock()).await {
+        Ok(guard) => guard,
+        Err(_) => {
+            tracing::warn!("Timed out waiting for Cache Redis status monitor startup during shutdown");
+            return None;
+        }
+    };
+    ctx.shared_take::<CacheRedisStatusMonitorHandle>()
+        .and_then(|worker| worker.take_task())
 }
 
 async fn run_cache_redis_status_monitor(cache: CacheService, mut previous: RedisCacheStatus) {

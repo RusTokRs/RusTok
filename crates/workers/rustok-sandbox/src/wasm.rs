@@ -838,6 +838,8 @@ mod tests {
         };
         let mut context = SandboxContext::new(ExecutionPhase::Test);
         context.execution_id = execution_id;
+        let idempotency_key = Uuid::new_v4();
+        context.idempotency_key = Some(idempotency_key);
         let mut state = super::WasmStoreState {
             limits: WasmStoreLimits::new(wasmtime::StoreLimitsBuilder::new().build()),
             host: crate::SandboxHost::new(
@@ -870,7 +872,10 @@ mod tests {
         )
         .expect("granted host import");
         assert_eq!(output, r#"{"accepted":true}"#);
-        assert_eq!(broker.0.lock().expect("calls lock").len(), 1);
+        let calls = broker.0.lock().expect("calls lock");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].context.idempotency_key, Some(idempotency_key));
+        drop(calls);
 
         let denied = <super::WasmStoreState as super::rustok::module::host::Host>::invoke(
             &mut state,

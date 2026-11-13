@@ -155,6 +155,10 @@ impl EventDlqDuplicateAlertObservabilityHandle {
     pub fn is_finished(&self) -> bool {
         self.task.as_ref().is_some_and(JoinHandle::is_finished)
     }
+
+    pub(crate) fn take_task(&mut self) -> Option<JoinHandle<()>> {
+        self.task.take()
+    }
 }
 
 /// Starts a read-only companion that projects the existing observer handle.

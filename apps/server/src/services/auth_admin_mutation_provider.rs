@@ -259,6 +259,7 @@ fn map_service_error(error: crate::error::Error) -> AuthAdminMutationError {
     match error {
         crate::error::Error::NotFound => AuthAdminMutationError::NotFound("oauth app".to_string()),
         crate::error::Error::BadRequest(message) => AuthAdminMutationError::Validation(message),
+        crate::error::Error::Conflict(message) => AuthAdminMutationError::Conflict(message),
         crate::error::Error::Unauthorized(_) => AuthAdminMutationError::Unauthorized,
         other => internal_admin_error(other),
     }
@@ -415,7 +416,7 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             .map_err(internal_admin_error)?
             .filter(|app| app.tenant_id == context.tenant_id)
             .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
-        let result = OAuthAppService::rotate_secret(&self.db, app.id)
+        let result = OAuthAppService::rotate_secret(&self.db, context.tenant_id, app.id)
             .await
             .map_err(map_service_error)?;
         Ok(OAuthAppSecretResult {
@@ -477,11 +478,23 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
 mod tests {
     use super::{
         ServerAuthAdminMutationProvider, clamp_auth_admin_list_limit, internal_admin_error,
+        map_service_error,
     };
     use rustok_auth::AuthAdminMutationError;
     use rustok_core::UserRole;
     use serde_json::json;
     use uuid::Uuid;
+
+    #[test]
+    fn oauth_service_conflicts_remain_retryable_admin_conflicts() {
+        let error = map_service_error(crate::error::Error::Conflict(
+            "secret changed concurrently".to_string(),
+        ));
+        assert_eq!(
+            error,
+            AuthAdminMutationError::Conflict("secret changed concurrently".to_string())
+        );
+    }
 
     #[test]
     fn internal_admin_errors_are_redacted() {

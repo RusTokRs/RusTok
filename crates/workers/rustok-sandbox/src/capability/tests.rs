@@ -26,6 +26,7 @@ fn call(operation: &str, input: serde_json::Value) -> CapabilityCall {
             tenant_id: None,
             actor_id: None,
             trace_id: None,
+            idempotency_key: None,
         },
         capability: CapabilityName::new("platform.secrets").expect("capability name"),
         operation: operation.to_string(),

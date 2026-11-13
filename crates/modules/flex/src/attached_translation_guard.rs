@@ -50,8 +50,11 @@ where
         .map_err(database_error)?;
     let definitions = rows
         .iter()
-        .filter_map(field_definition_from_source)
-        .collect();
+        .map(field_definition_from_source)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            FlexError::Database(format!("invalid persisted attached field definition: {error}"))
+        })?;
     Ok(CustomFieldsSchema::new(definitions))
 }
 

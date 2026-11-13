@@ -43,6 +43,20 @@ use rustok_modules::{
     ModuleControlPlane, SharedStaticModuleRegistryReader, StaticModuleRegistryQuery,
 };
 
+pub(crate) async fn ensure_platform_build_read_permission(ctx: &Context<'_>) -> Result<()> {
+    let authority = ctx
+        .data_opt::<rustok_api::HostAuthorityContext>()
+        .copied()
+        .or_else(crate::host_authority::current_host_authority);
+    if crate::services::platform_build_access::is_platform_build_operator(authority) {
+        return Ok(());
+    }
+
+    Err(<FieldError as GraphQLError>::permission_denied(
+        "Host-global read authority is required for platform build history and streams",
+    ))
+}
+
 async fn require_reporting_permission(
     ctx: &Context<'_>,
     permission: Permission,
@@ -825,7 +839,7 @@ impl RootQuery {
     }
 
     async fn active_build(&self, ctx: &Context<'_>) -> Result<Option<BuildJob>> {
-        ensure_modules_read_permission(ctx).await?;
+        ensure_platform_build_read_permission(ctx).await?;
 
         let build = build_control_from_context(ctx)?
             .0
@@ -842,7 +856,7 @@ impl RootQuery {
         #[graphql(default = 20)] limit: i32,
         #[graphql(default = 0)] offset: i32,
     ) -> Result<Vec<BuildJob>> {
-        ensure_modules_read_permission(ctx).await?;
+        ensure_platform_build_read_permission(ctx).await?;
 
         let requested_limit = limit.max(0) as u64;
         let limit = limit.clamp(1, 100) as u64;

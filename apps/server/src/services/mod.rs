@@ -630,6 +630,7 @@ pub mod paid_order_label_worker;
 pub mod payment_provider_event_worker;
 #[cfg(feature = "mod-payment")]
 pub mod payment_provider_runtime;
+pub mod platform_build_access;
 pub mod platform_composition;
 pub mod product_catalog_deployment;
 #[cfg(feature = "mod-product")]
@@ -685,6 +686,7 @@ pub mod user_field_service;
 mod worker_service_context;
 
 pub mod field_definition_cache;
+pub mod field_definition_event;
 pub mod field_definition_registry_bootstrap;
 #[cfg(all(feature = "mod-flex", feature = "mod-taxonomy"))]
 pub mod flex_attached_translation_owner;

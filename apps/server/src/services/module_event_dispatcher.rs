@@ -61,6 +61,10 @@ impl ModuleEventDispatcherHandle {
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self.running.join().await
     }
+
+    pub(crate) fn into_task(self) -> tokio::task::JoinHandle<()> {
+        self.running.into_join_handle()
+    }
 }
 
 fn module_event_dispatcher_enabled(settings: &RustokSettings) -> bool {
@@ -666,7 +670,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     #[cfg(feature = "mod-forum")]
     {
         let recipient_context = crate::services::forum_notification_recipient_context::ServerForumNotificationRecipientContextPort::shared(
-            db.clone(),
+            runtime_ctx.clone(),
         );
         extensions.insert(recipient_context);
     }

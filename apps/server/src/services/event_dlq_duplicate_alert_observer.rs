@@ -86,6 +86,10 @@ impl EventDlqDuplicateAlertObserverHandle {
     pub fn is_finished(&self) -> bool {
         self.handle.as_ref().is_some_and(JoinHandle::is_finished)
     }
+
+    pub(crate) fn take_task(&mut self) -> Option<JoinHandle<()>> {
+        self.handle.take()
+    }
 }
 
 struct EventDlqDuplicateAlertObserverConfig {

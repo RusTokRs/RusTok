@@ -1,13 +1,11 @@
 use async_graphql::{Context, FieldError, Result, Subscription};
 use futures_util::stream;
-use sea_orm::DatabaseConnection;
 use std::fmt::Display;
 
-use crate::context::{AuthContext, TenantContext};
+use rustok_api::HostAuthorityContext;
+
 use crate::graphql::types::BuildProgressEvent;
 use crate::services::build_event_hub::BuildEventHub;
-use crate::services::rbac_service::RbacService;
-use rustok_api::Permission;
 use rustok_api::graphql::GraphQLError;
 use rustok_core::EventConsumerRuntime;
 
@@ -19,35 +17,8 @@ fn graphql_internal_error(message: &'static str, error: impl Display) -> FieldEr
     <FieldError as GraphQLError>::internal_error(message)
 }
 
-async fn ensure_modules_read_permission(ctx: &Context<'_>) -> Result<()> {
-    let auth = ctx
-        .data::<AuthContext>()
-        .map_err(|_| <FieldError as GraphQLError>::unauthenticated())?;
-    let db = ctx.data::<DatabaseConnection>()?;
-    let tenant = ctx.data::<TenantContext>()?;
-
-    let can_read_modules = RbacService::has_any_permission(
-        db,
-        &tenant.id,
-        &auth.user_id,
-        &[
-            Permission::MODULES_READ,
-            Permission::MODULES_LIST,
-            Permission::MODULES_MANAGE,
-        ],
-    )
-    .await
-    .map_err(|err| {
-        graphql_internal_error("Unable to resolve build subscription permission", err)
-    })?;
-
-    if !can_read_modules {
-        return Err(<FieldError as GraphQLError>::permission_denied(
-            "Permission denied: modules:read, modules:list, or modules:manage required",
-        ));
-    }
-
-    Ok(())
+async fn ensure_platform_build_read_permission(ctx: &Context<'_>) -> Result<()> {
+    crate::graphql::queries::ensure_platform_build_read_permission(ctx).await
 }
 
 #[Subscription]
@@ -57,11 +28,15 @@ impl BuildSubscription {
         ctx: &Context<'_>,
         build_id: Option<String>,
     ) -> Result<impl futures_util::Stream<Item = BuildProgressEvent>> {
-        ensure_modules_read_permission(ctx).await?;
+        ensure_platform_build_read_permission(ctx).await?;
 
         let hub = ctx.data::<std::sync::Arc<BuildEventHub>>()?;
         let receiver = hub.subscribe();
         let build_filter = build_id.filter(|value| !value.trim().is_empty());
+        let host_authority = ctx
+            .data_opt::<HostAuthorityContext>()
+            .copied()
+            .or_else(crate::host_authority::current_host_authority);
         let consumer_runtime = EventConsumerRuntime::new("graphql_build_progress");
 
         Ok(stream::unfold(
@@ -75,9 +50,15 @@ impl BuildSubscription {
                                 Some(build_id) => payload.build_id == *build_id,
                                 None => true,
                             };
-                            if passes_filter {
-                                return Some((payload, (receiver, build_filter)));
+                            if !passes_filter {
+                                continue;
                             }
+                            if !crate::services::platform_build_access::is_platform_build_operator(
+                                host_authority,
+                            ) {
+                                return None;
+                            }
+                            return Some((payload, (receiver, build_filter)));
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                             consumer_runtime.lagged(skipped);

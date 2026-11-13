@@ -874,6 +874,20 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
                 settings: state.settings,
                 revision,
             };
+            rustok_outbox::TransactionalEventBus::publish_root_in_tx(
+                &transaction,
+                command.tenant_id,
+                Some(command.context.actor_id),
+                rustok_events::DomainEvent::TenantUpdated {
+                    tenant_id: command.tenant_id,
+                },
+            )
+            .await
+            .map_err(|error| {
+                ModuleLifecycleDbWriterError::Database(format!(
+                    "failed to persist tenant module settings event: {error}"
+                ))
+            })?;
             idempotency::complete(&transaction, lease, &result)
                 .await
                 .map_err(ModuleLifecycleDbWriterError::OperationReceipt)?;
@@ -2164,6 +2178,10 @@ mod tests {
             .up(&manager)
             .await
             .unwrap();
+        rustok_outbox::SysEventsMigration
+            .up(&manager)
+            .await
+            .unwrap();
         rustok_outbox::migration::create_owner_operation_receipts_table(&manager)
             .await
             .unwrap();
@@ -2224,6 +2242,17 @@ mod tests {
             assert_eq!(snapshot.revision, 2);
             assert!(snapshot.active_idempotency_key.is_none());
         }
+        let outbox_count: i64 = db
+            .query_one_raw(Statement::from_string(
+                sea_orm::DbBackend::Sqlite,
+                "SELECT COUNT(*) AS count FROM sys_events".to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "count")
+            .unwrap();
+        assert_eq!(outbox_count, 4, "one event per committed settings change");
     }
 
     #[tokio::test]

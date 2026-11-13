@@ -294,9 +294,12 @@ mod tests {
         async fn create_session(
             &self,
             _runtime: &(),
+            session_id: Uuid,
             _plan: &InstallPlan,
         ) -> Result<InstallSessionRecord, InstallExecutionError> {
-            Ok(session())
+            let mut session = session();
+            session.id = session_id;
+            Ok(session)
         }
 
         async fn acquire_lock(

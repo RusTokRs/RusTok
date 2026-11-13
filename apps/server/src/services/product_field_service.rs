@@ -10,7 +10,7 @@
 
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -42,8 +42,11 @@ impl ProductFieldService {
 
         let definitions = rows
             .into_iter()
-            .filter_map(|r| r.into_field_definition())
-            .collect();
+            .map(|row| row.into_field_definition())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                FlexError::Database(format!("invalid persisted product field definition: {error}"))
+            })?;
 
         Ok(CustomFieldsSchema::new(definitions))
     }
@@ -64,17 +67,32 @@ impl ProductFieldService {
         actor_id: Option<Uuid>,
         input: CreateFieldDefinitionInput,
     ) -> Result<(Model, EventEnvelope), FlexError> {
+        if !rustok_core::field_schema::is_valid_field_key(&input.field_key) {
+            return Err(FlexError::InvalidFieldKey(input.field_key));
+        }
+        let txn = db.begin().await.map_err(|error| FlexError::Database(error.to_string()))?;
+        // Serialize the count-and-insert guard on databases with row-level locks.
+        // SQLite has no SELECT FOR UPDATE; its write transaction remains the fallback.
+        let tenant_query = crate::models::tenants::Entity::find_by_id(tenant_id);
+        match db.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => {
+                tenant_query.lock_exclusive().one(&txn).await
+            }
+            _ => tenant_query.one(&txn).await,
+        }
+        .map_err(|error| FlexError::Database(error.to_string()))?
+        .ok_or(FlexError::NotFound(tenant_id))?;
         let existing = Entity::find()
             .filter(Column::TenantId.eq(tenant_id))
             .filter(Column::FieldKey.eq(&input.field_key))
-            .one(db)
+            .one(&txn)
             .await
             .map_err(|e| FlexError::Database(e.to_string()))?;
 
         let count = Entity::find()
             .filter(Column::TenantId.eq(tenant_id))
             .filter(Column::IsActive.eq(true))
-            .count(db)
+            .count(&txn)
             .await
             .map_err(|e| FlexError::Database(e.to_string()))?;
 
@@ -111,7 +129,7 @@ impl ProductFieldService {
             created_at: sea_orm::ActiveValue::NotSet,
             updated_at: sea_orm::ActiveValue::NotSet,
         }
-        .insert(db)
+        .insert(&txn)
         .await
         .map_err(|e| FlexError::Database(e.to_string()))?;
 
@@ -123,6 +141,10 @@ impl ProductFieldService {
             field_type_str,
         );
 
+        crate::services::field_definition_event::persist(&txn, event.clone()).await?;
+        txn.commit()
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
         Ok((model, event))
     }
 
@@ -136,12 +158,16 @@ impl ProductFieldService {
         id: Uuid,
         input: UpdateFieldDefinitionInput,
     ) -> Result<(Model, EventEnvelope), FlexError> {
-        let row = Entity::find_by_id(id)
-            .filter(Column::TenantId.eq(tenant_id))
-            .one(db)
-            .await
-            .map_err(|e| FlexError::Database(e.to_string()))?
-            .ok_or(FlexError::NotFound(id))?;
+        let txn = db.begin().await.map_err(|error| FlexError::Database(error.to_string()))?;
+        let query = Entity::find_by_id(id).filter(Column::TenantId.eq(tenant_id));
+        let row = match db.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => {
+                query.lock_exclusive().one(&txn).await
+            }
+            _ => query.one(&txn).await,
+        }
+        .map_err(|error| FlexError::Database(error.to_string()))?
+        .ok_or(FlexError::NotFound(id))?;
 
         let field_key = row.field_key.clone();
         let mut model: ActiveModel = row.into();
@@ -172,13 +198,17 @@ impl ProductFieldService {
         }
 
         let updated = model
-            .update(db)
+            .update(&txn)
             .await
             .map_err(|e| FlexError::Database(e.to_string()))?;
 
         let event =
             flex::field_definition_updated_event(tenant_id, actor_id, "product", field_key.clone());
 
+        crate::services::field_definition_event::persist(&txn, event.clone()).await?;
+        txn.commit()
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
         Ok((updated, event))
     }
 
@@ -191,23 +221,31 @@ impl ProductFieldService {
         actor_id: Option<Uuid>,
         id: Uuid,
     ) -> Result<EventEnvelope, FlexError> {
-        let row = Entity::find_by_id(id)
-            .filter(Column::TenantId.eq(tenant_id))
-            .one(db)
-            .await
-            .map_err(|e| FlexError::Database(e.to_string()))?
-            .ok_or(FlexError::NotFound(id))?;
+        let txn = db.begin().await.map_err(|error| FlexError::Database(error.to_string()))?;
+        let query = Entity::find_by_id(id).filter(Column::TenantId.eq(tenant_id));
+        let row = match db.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => {
+                query.lock_exclusive().one(&txn).await
+            }
+            _ => query.one(&txn).await,
+        }
+        .map_err(|error| FlexError::Database(error.to_string()))?
+        .ok_or(FlexError::NotFound(id))?;
 
         let field_key = row.field_key.clone();
         let mut model: ActiveModel = row.into();
         model.is_active = Set(false);
         model
-            .update(db)
+            .update(&txn)
             .await
             .map_err(|e| FlexError::Database(e.to_string()))?;
 
         let event = flex::field_definition_deleted_event(tenant_id, actor_id, "product", field_key);
 
+        crate::services::field_definition_event::persist(&txn, event.clone()).await?;
+        txn.commit()
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
         Ok(event)
     }
 
@@ -218,26 +256,62 @@ impl ProductFieldService {
         tenant_id: Uuid,
         ids: &[Uuid],
     ) -> Result<Vec<Model>, FlexError> {
+        let requested_ids = ids.iter().copied().collect::<std::collections::HashSet<_>>();
+        if requested_ids.len() != ids.len() {
+            return Err(FlexError::InvalidFieldKey(
+                "field-definition reorder contains duplicate ids".to_string(),
+            ));
+        }
+
+        let txn = db
+            .begin()
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
+        let query = Entity::find()
+            .filter(Column::TenantId.eq(tenant_id))
+            .order_by_asc(Column::Id);
+        let rows = match db.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => query
+                .lock_exclusive()
+                .all(&txn)
+                .await,
+            _ => query.all(&txn).await,
+        }
+        .map_err(|error| FlexError::Database(error.to_string()))?;
+        let existing_ids = rows
+            .iter()
+            .map(|row| row.id)
+            .collect::<std::collections::HashSet<_>>();
+        if let Some(missing_id) = requested_ids.difference(&existing_ids).next() {
+            return Err(FlexError::NotFound(*missing_id));
+        }
+        if requested_ids != existing_ids {
+            return Err(FlexError::InvalidFieldKey(
+                "field-definition reorder must include every definition exactly once".to_string(),
+            ));
+        }
+
+        let mut rows_by_id = rows
+            .into_iter()
+            .map(|row| (row.id, row))
+            .collect::<std::collections::HashMap<_, _>>();
         let mut result = Vec::with_capacity(ids.len());
-
-        for (pos, &id) in ids.iter().enumerate() {
-            let row = Entity::find_by_id(id)
-                .filter(Column::TenantId.eq(tenant_id))
-                .one(db)
-                .await
-                .map_err(|e| FlexError::Database(e.to_string()))?
-                .ok_or(FlexError::NotFound(id))?;
-
+        for (position, id) in ids.iter().copied().enumerate() {
+            let row = rows_by_id
+                .remove(&id)
+                .expect("requested ids were validated against the locked definition set");
             let mut model: ActiveModel = row.into();
-            model.position = Set(pos as i32);
+            model.position = Set(position as i32);
             let updated = model
-                .update(db)
+                .update(&txn)
                 .await
-                .map_err(|e| FlexError::Database(e.to_string()))?;
-
+                .map_err(|error| FlexError::Database(error.to_string()))?;
             result.push(updated);
         }
 
+        txn.commit()
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
         Ok(result)
     }
 
@@ -277,7 +351,7 @@ mod tests {
     use rustok_events::DomainEvent;
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
-    use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
+    use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, EntityTrait, Set};
     use serde_json::json;
     use std::collections::HashMap;
     use uuid::Uuid;
@@ -322,6 +396,18 @@ mod tests {
         setup_test_db_with_migrations::<Migrator>().await
     }
 
+    async fn insert_tenant(db: &DatabaseConnection, tenant_id: Uuid) {
+        let mut tenant = crate::models::tenants::ActiveModel::new(
+            "Field definitions test tenant",
+            &format!("field-definitions-{tenant_id}"),
+        );
+        tenant.id = Set(tenant_id);
+        tenant
+            .insert(db)
+            .await
+            .expect("insert field definition test tenant");
+    }
+
     async fn insert_row(db: &DatabaseConnection, model: Model) {
         crate::models::product_field_definitions::ActiveModel {
             id: Set(model.id),
@@ -342,6 +428,80 @@ mod tests {
         .insert(db)
         .await
         .expect("failed to insert product field definition");
+    }
+
+    #[tokio::test]
+    async fn reorder_requires_complete_unique_list_and_writes_the_requested_order() {
+        let tenant_id = Uuid::new_v4();
+        let db = test_db().await;
+        let mut first = row(tenant_id, "first");
+        first.position = 10;
+        let mut second = row(tenant_id, "second");
+        second.position = 20;
+        let mut third = row(tenant_id, "third");
+        third.position = 30;
+        let ids = [first.id, second.id, third.id];
+        insert_row(&db, first).await;
+        insert_row(&db, second).await;
+        insert_row(&db, third).await;
+
+        let partial = ProductFieldService::reorder(&db, tenant_id, &[ids[0]])
+            .await
+            .expect_err("partial reorder must not leave position collisions");
+        assert!(matches!(partial, FlexError::InvalidFieldKey(_)));
+
+        let duplicate = ProductFieldService::reorder(&db, tenant_id, &[ids[0], ids[0], ids[2]])
+            .await
+            .expect_err("duplicate reorder ids must be rejected");
+        assert!(matches!(duplicate, FlexError::InvalidFieldKey(_)));
+
+        let unchanged = ProductFieldService::list_all(&db, tenant_id)
+            .await
+            .expect("load definitions after rejected requests");
+        assert_eq!(
+            unchanged
+                .iter()
+                .map(|definition| (definition.id, definition.position))
+                .collect::<std::collections::HashMap<_, _>>(),
+            std::collections::HashMap::from([(ids[0], 10), (ids[1], 20), (ids[2], 30)])
+        );
+
+        let reordered = ProductFieldService::reorder(&db, tenant_id, &[ids[2], ids[0], ids[1]])
+            .await
+            .expect("reorder every field");
+        assert_eq!(
+            reordered
+                .iter()
+                .map(|definition| (definition.id, definition.position))
+                .collect::<Vec<_>>(),
+            vec![(ids[2], 0), (ids[0], 1), (ids[1], 2)]
+        );
+    }
+
+    #[tokio::test]
+    async fn create_rolls_back_definition_when_outbox_write_fails() {
+        let tenant_id = Uuid::new_v4();
+        let db = test_db().await;
+        insert_tenant(&db, tenant_id).await;
+        db.execute_unprepared("DROP TABLE sys_events")
+            .await
+            .expect("drop outbox table to inject event persistence failure");
+
+        let error = ProductFieldService::create(
+            &db,
+            tenant_id,
+            Some(Uuid::new_v4()),
+            create_input("phone"),
+        )
+        .await
+        .expect_err("failed event persistence must roll back the field write");
+        assert!(matches!(error, FlexError::Database(_)));
+        assert!(
+            ProductFieldService::list_all(&db, tenant_id)
+                .await
+                .expect("load definitions after rollback")
+                .is_empty()
+        );
     }
 
     #[tokio::test]
@@ -368,6 +528,7 @@ mod tests {
     async fn create_rejects_duplicate_field_key() {
         let tenant_id = Uuid::new_v4();
         let db = test_db().await;
+        insert_tenant(&db, tenant_id).await;
         insert_row(&db, row(tenant_id, "phone")).await;
 
         let err = ProductFieldService::create(
@@ -389,6 +550,7 @@ mod tests {
     async fn create_enforces_max_active_fields_guardrail() {
         let tenant_id = Uuid::new_v4();
         let db = test_db().await;
+        insert_tenant(&db, tenant_id).await;
         for idx in 0..MAX_FIELDS_PER_TENANT {
             insert_row(&db, row(tenant_id, &format!("field_{idx}"))).await;
         }
@@ -416,6 +578,7 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let actor_id = Uuid::new_v4();
         let db = test_db().await;
+        insert_tenant(&db, tenant_id).await;
 
         let (model, envelope) =
             ProductFieldService::create(&db, tenant_id, Some(actor_id), create_input("phone"))
@@ -423,6 +586,12 @@ mod tests {
                 .expect("create should succeed");
 
         assert_eq!(model.field_key, "phone");
+        let persisted_event = rustok_outbox::SysEvents::find_by_id(envelope.id)
+            .one(&db)
+            .await
+            .expect("load the canonical outbox envelope")
+            .expect("field definition event should be durable before return");
+        assert_eq!(persisted_event.event_type, envelope.event_type);
         assert_eq!(envelope.tenant_id, tenant_id);
         assert_eq!(envelope.actor_id, Some(actor_id));
         match envelope.event {

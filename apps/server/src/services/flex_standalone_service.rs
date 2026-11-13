@@ -162,7 +162,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         let schema_ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
         let translations = self.load_schema_translation_map(&schema_ids).await?;
 
-        Ok(rows
+        rows
             .into_iter()
             .map(|row| {
                 let translation = translations
@@ -170,7 +170,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
                     .and_then(|items| Self::select_schema_translation(items, &preferred_locale));
                 flex::standalone_schema_view_from_source(&row, translation)
             })
-            .collect())
+            .collect()
     }
 
     async fn find_schema(
@@ -199,7 +199,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         Ok(Some(flex::standalone_schema_view_from_source(
             &row,
             translation,
-        )))
+        )?))
     }
 
     async fn create_schema(
@@ -256,6 +256,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         )
         .await
         .map_err(journal_error)?;
+        let view = flex::standalone_schema_view_from_source(&row, Some(&translation))?;
         persist_event_in_tx(
             &txn,
             flex::flex_schema_created_event(tenant_id, actor_id, row.id, row.slug.clone()),
@@ -265,10 +266,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
 
-        Ok(flex::standalone_schema_view_from_source(
-            &row,
-            Some(&translation),
-        ))
+        Ok(view)
     }
 
     async fn update_schema(
@@ -341,6 +339,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         }
 
         let translation = select_schema_translation(&translations_after, &locale).cloned();
+        let view = flex::standalone_schema_view_from_source(&updated, translation.as_ref())?;
         persist_event_in_tx(
             &txn,
             flex::flex_schema_updated_event(tenant_id, actor_id, updated.id, updated.slug.clone()),
@@ -349,10 +348,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         txn.commit()
             .await
             .map_err(|error| FlexError::Database(error.to_string()))?;
-        Ok(flex::standalone_schema_view_from_source(
-            &updated,
-            translation.as_ref(),
-        ))
+        Ok(view)
     }
 
     async fn delete_schema(
@@ -697,8 +693,9 @@ async fn persist_event_in_tx(
     event: rustok_events::EventEnvelope,
 ) -> Result<(), FlexError> {
     let event_type = event.event_type.clone();
-    TransactionalEventBus::publish_root_in_tx(txn, event.tenant_id, event.actor_id, event.event)
+    TransactionalEventBus::publish_root_envelope_in_tx(txn, event)
         .await
+        .map(|_| ())
         .map_err(|error| {
             tracing::error!(%error, event_type, "Failed to persist Flex domain event");
             FlexError::Database(format!("failed to persist Flex domain event: {error}"))

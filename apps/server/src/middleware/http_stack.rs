@@ -116,10 +116,22 @@ pub async fn adaptive_timeout(request: Request, next: Next) -> Response {
         request_timeout
     };
 
-    match tokio::time::timeout(timeout, next.run(request)).await {
+    enforce_request_timeout(timeout, next.run(request)).await
+}
+
+async fn enforce_request_timeout(
+    timeout: Duration,
+    response: impl std::future::Future<Output = Response>,
+) -> Response {
+    match tokio::time::timeout(timeout, response).await {
         Ok(response) => response,
-        Err(_) => (StatusCode::REQUEST_TIMEOUT, "Request timed out").into_response(),
+        Err(_) => timeout_response(),
     }
+}
+
+fn timeout_response() -> Response {
+    rustok_web::HttpError::gateway_timeout("timeout", "Request timed out")
+        .into_response()
 }
 
 pub fn is_upload_request<B>(request: &axum::http::Request<B>) -> bool {
@@ -379,6 +391,30 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::routing::get;
     use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn request_timeout_uses_the_canonical_gateway_timeout_envelope() {
+        let response = enforce_request_timeout(
+            Duration::from_millis(1),
+            std::future::pending::<Response>(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/json")
+        );
+        let body = to_bytes(response.into_body(), 4096)
+            .await
+            .expect("read timeout body");
+        let body: rustok_web::ErrorBody =
+            serde_json::from_slice(&body).expect("JSON timeout envelope");
+        assert_eq!(body.code, "timeout");
+        assert_eq!(body.message, "Request timed out");
+    }
 
     #[test]
     fn unmatched_paths_use_a_bounded_label_vocabulary() {

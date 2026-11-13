@@ -10,7 +10,9 @@ mod reconciliation;
 pub use base::{
     FieldDefinitionCache, FieldDefinitionCacheInvalidationHandle, SharedFieldDefinitionCache,
 };
+pub(crate) use base::take_invalidation_task_for_shutdown;
 pub use reconciliation::FieldDefinitionCacheGenerationReconciliationHandle;
+pub(crate) use reconciliation::take_task_for_shutdown;
 
 pub fn field_definition_cache_from_context(
     ctx: &ServerRuntimeContext,

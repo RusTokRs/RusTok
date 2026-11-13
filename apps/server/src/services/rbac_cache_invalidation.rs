@@ -35,26 +35,53 @@ static RBAC_INVALIDATION_CACHE_SERVICE: Lazy<RwLock<Option<CacheService>>> =
     Lazy::new(|| RwLock::new(None));
 
 struct AbortOnDropInvalidationTask {
-    task: JoinHandle<()>,
+    task: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl AbortOnDropInvalidationTask {
     fn new(task: JoinHandle<()>) -> Self {
-        Self { task }
+        Self {
+            task: Mutex::new(Some(task)),
+        }
     }
 
     fn is_running(&self) -> bool {
-        !self.task.is_finished()
+        self.task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|task| !task.is_finished())
     }
 
     fn abort(&self) {
-        self.task.abort();
+        if let Some(task) = self
+            .task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            task.abort();
+        }
+    }
+
+    fn take_task(&self) -> Option<JoinHandle<()>> {
+        self.task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 }
 
 impl Drop for AbortOnDropInvalidationTask {
     fn drop(&mut self) {
-        self.task.abort();
+        if let Some(task) = self
+            .task
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            task.abort();
+        }
     }
 }
 
@@ -77,6 +104,20 @@ impl RbacCacheInvalidationRuntime {
             redis.abort();
         }
         self.reconcile.abort();
+    }
+
+    fn take_tasks(&self) -> Vec<JoinHandle<()>> {
+        let mut tasks = Vec::with_capacity(3);
+        if let Some(task) = self.local.take_task() {
+            tasks.push(task);
+        }
+        if let Some(task) = self.redis.as_ref().and_then(AbortOnDropInvalidationTask::take_task) {
+            tasks.push(task);
+        }
+        if let Some(task) = self.reconcile.take_task() {
+            tasks.push(task);
+        }
+        tasks
     }
 }
 
@@ -110,6 +151,10 @@ impl RbacCacheInvalidationListenerHandle {
 
     pub(crate) fn abort(&self) {
         self.0.abort();
+    }
+
+    pub(crate) fn take_tasks(&self) -> Vec<JoinHandle<()>> {
+        self.0.take_tasks()
     }
 
     #[cfg(test)]
@@ -536,6 +581,12 @@ pub async fn start_rbac_cache_invalidation_listener(
         .shared_get::<RbacCacheInvalidationListenerStartLock>()
         .ok_or_else(|| Error::Cache("RBAC invalidation start lock is unavailable".to_string()))?;
     let _start_guard = start_lock.0.lock().await;
+    if ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
+    {
+        return Ok(());
+    }
 
     if let Some(existing) = ctx.shared_get::<RbacCacheInvalidationListenerHandle>() {
         if existing.is_running() {
@@ -543,6 +594,17 @@ pub async fn start_rbac_cache_invalidation_listener(
         }
         tracing::warn!("RBAC cache invalidation runtime stopped; replacing workers");
         existing.abort();
+        let tasks = existing.take_tasks();
+        for task in &tasks {
+            task.abort();
+        }
+        for task in tasks {
+            if let Err(error) = task.await {
+                if !error.is_cancelled() {
+                    tracing::warn!(?error, "Old RBAC invalidation worker failed while being replaced");
+                }
+            }
+        }
     }
 
     let durable_state = ensure_rbac_invalidation_generation_state(ctx);
@@ -564,6 +626,12 @@ pub async fn start_rbac_cache_invalidation_listener(
             RBAC_PERMISSION_INVALIDATION_CHANNEL,
             "startup_recovery_deferred",
         );
+    }
+    if ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
+    {
+        return Ok(());
     }
 
     let first_local = Arc::new(Mutex::new(Some(initial_local)));
@@ -608,6 +676,22 @@ pub async fn start_rbac_cache_invalidation_listener(
         .write()
         .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(cache);
     Ok(())
+}
+
+pub(crate) async fn take_listener_tasks_for_shutdown(
+    ctx: &ServerRuntimeContext,
+) -> Vec<JoinHandle<()>> {
+    let start_lock = ctx.shared_get_or_insert_with(RbacCacheInvalidationListenerStartLock::default);
+    let _start_guard = match tokio::time::timeout(Duration::from_secs(5), start_lock.0.lock()).await {
+        Ok(guard) => guard,
+        Err(_) => {
+            tracing::warn!("Timed out waiting for RBAC invalidation startup during shutdown");
+            return Vec::new();
+        }
+    };
+    ctx.shared_take::<RbacCacheInvalidationListenerHandle>()
+        .map(|listener| listener.take_tasks())
+        .unwrap_or_default()
 }
 
 fn rbac_invalidation_key(tenant_id: Uuid, user_id: Uuid) -> String {

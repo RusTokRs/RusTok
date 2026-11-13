@@ -202,6 +202,17 @@ idempotency conflict record the contract at that time and are superseded by
 this rule. This paragraph records implementation state, not a new compile or
 test claim.
 
+Interactive artifact-binding receipts are not an exactly-once side-effect
+fence. Their 60-second pending lease can expire at the declared maximum
+binding execution timeout; an ambiguous execution error can also cause the host
+to delete the pending receipt before a same-key retry. The host now logs a
+failure to abandon, but no fenced executor or guest-visible reconciliation
+contract exists to establish whether side effects occurred. Keep this as an
+open recovery design gate: do not claim crash-safe replay or change pending
+claim reset/recovery semantics until the ambiguous-outcome boundary is
+reconciled. See the `Known limitation / pending implementation` note in the
+module README.
+
 ## Current verification evidence
 
 On 2026-11-03, the scoped `rustok-modules` library suite passed 423 tests

@@ -384,7 +384,9 @@ pub async fn plan_persisted_user_role_mutation_on(
     let permissions =
         crate::resolve_persisted_permissions_on(db, &request.tenant_id, &request.target_user_id)
             .await?;
-    let target_role = rustok_core::infer_user_role_from_permissions(&permissions);
+    let memberships =
+        load_tenant_role_memberships_on(db, request.tenant_id, request.target_user_id).await?;
+    let target_role = most_privileged_persisted_role(&memberships, &permissions);
     let resulting_status = request
         .resulting_status
         .unwrap_or_else(|| target_status.clone());
@@ -609,15 +611,30 @@ fn normalize_role_slug(slug: &str) -> String {
     slug.trim().to_lowercase()
 }
 
-async fn load_role_row_on<C: sea_orm::ConnectionTrait>(
-    db: &C,
+async fn lock_role_row_on(
+    db: &sea_orm::DatabaseTransaction,
     tenant_id: Uuid,
     slug: &str,
 ) -> Result<Option<Uuid>, RbacRolePersistenceError> {
+    use sea_orm::ConnectionTrait;
+    let sql = match db.get_database_backend() {
+        sea_orm::DbBackend::Postgres => {
+            "SELECT id FROM roles WHERE tenant_id = ? AND slug = ? LIMIT 1 FOR UPDATE"
+        }
+        sea_orm::DbBackend::Sqlite => {
+            "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND slug = ? RETURNING id"
+        }
+        _ => {
+            return Err(sea_orm::DbErr::Custom(
+                "RBAC role mutation requires PostgreSQL or SQLite".to_string(),
+            )
+            .into());
+        }
+    };
     let row = db
         .query_one_raw(role_statement(
             db,
-            "SELECT id FROM roles WHERE tenant_id = ? AND slug = ? LIMIT 1",
+            sql,
             vec![tenant_id.into(), slug.to_string().into()],
         )?)
         .await?;
@@ -646,6 +663,42 @@ async fn load_tenant_role_memberships_on<C: sea_orm::ConnectionTrait>(
     Ok(memberships)
 }
 
+pub async fn resolve_role_hierarchy_on<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> Result<UserRole, RbacRolePersistenceError> {
+    validate_identity("tenant_id", tenant_id)?;
+    validate_identity("target_user_id", user_id)?;
+    let memberships = load_tenant_role_memberships_on(db, tenant_id, user_id).await?;
+    let permissions = crate::resolve_persisted_permissions_on(db, &tenant_id, &user_id).await?;
+    Ok(most_privileged_persisted_role(&memberships, &permissions))
+}
+
+fn most_privileged_persisted_role(
+    memberships: &[(Uuid, String)],
+    permissions: &[rustok_api::Permission],
+) -> UserRole {
+    fn rank(role: &UserRole) -> u8 {
+        match role {
+            UserRole::Customer => 0,
+            UserRole::Manager => 1,
+            UserRole::Admin => 2,
+            UserRole::SuperAdmin => 3,
+        }
+    }
+
+    let mut effective = rustok_core::infer_user_role_from_permissions(permissions);
+    for (_, slug) in memberships {
+        if let Ok(persisted) = slug.parse::<UserRole>()
+            && rank(&persisted) > rank(&effective)
+        {
+            effective = persisted;
+        }
+    }
+    effective
+}
+
 async fn load_role_permissions_on<C: sea_orm::ConnectionTrait>(
     db: &C,
     tenant_id: Uuid,
@@ -670,6 +723,61 @@ async fn load_role_permissions_on<C: sea_orm::ConnectionTrait>(
     Ok(permissions)
 }
 
+/// Validate a persisted role's current grants against the request authority
+/// before assigning or delegating it. Built-in roles are tenant records too:
+/// their grant set may have been edited, so checking only the canonical seed
+/// permissions would let an actor assign persisted grants it does not hold.
+/// Missing built-in rows use their canonical seed set, matching the bootstrap
+/// writer; missing custom roles fail closed.
+pub async fn validate_persisted_role_grant_on(
+    db: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    actor_permissions: &[rustok_api::Permission],
+    requested_role_slug: &str,
+) -> Result<String, RbacRolePersistenceError> {
+    validate_identity("tenant_id", tenant_id)?;
+    let slug = normalize_role_slug(requested_role_slug);
+    let builtin_role = slug.parse::<UserRole>().ok();
+    let permissions = match lock_role_row_on(db, tenant_id, &slug).await? {
+        Some(role_id) => load_role_permissions_on(db, tenant_id, role_id).await?,
+        None => match builtin_role.as_ref() {
+            Some(role) => rustok_core::Rbac::permissions_for_role(role)
+                .iter()
+                .copied()
+                .collect(),
+            None => return Err(RbacRolePersistenceError::RoleNotFound(slug)),
+        },
+    };
+
+    for permission in permissions {
+        // Customer is the baseline role granted by users:create. Preserve that
+        // exception for its canonical seed grants, but never let an edited
+        // customer role smuggle in additional permissions.
+        if builtin_role.as_ref() == Some(&UserRole::Customer)
+            && rustok_core::Rbac::permissions_for_role(&UserRole::Customer)
+                .contains(&permission)
+        {
+            continue;
+        }
+        if !crate::has_effective_permission_in_set(actor_permissions, &permission) {
+            return match builtin_role {
+                Some(role) => Err(RbacRoleMutationPolicyError::RequestAuthorityCeiling {
+                    role,
+                    permission,
+                }
+                .into()),
+                None => Err(RbacRoleMutationPolicyError::CustomRequestAuthorityCeiling {
+                    role_slug: slug.clone(),
+                    permission,
+                }
+                .into()),
+            };
+        }
+    }
+
+    Ok(slug)
+}
+
 /// Validate that an actor may grant a custom role in the future (invite
 /// issuance, where no target user exists yet): the role must exist in
 /// the tenant and every permission it carries must be inside the
@@ -690,22 +798,7 @@ pub async fn validate_custom_role_grant_on(
     if *actor_role == UserRole::Customer {
         return Err(RbacRoleMutationPolicyError::CannotAssignPeerOrHigherRole.into());
     }
-
-    let role_id = load_role_row_on(db, tenant_id, &slug)
-        .await?
-        .ok_or_else(|| RbacRolePersistenceError::RoleNotFound(slug.clone()))?;
-
-    for permission in load_role_permissions_on(db, tenant_id, role_id).await? {
-        if !crate::has_effective_permission_in_set(actor_permissions, &permission) {
-            return Err(RbacRoleMutationPolicyError::CustomRequestAuthorityCeiling {
-                role_slug: slug.clone(),
-                permission,
-            }
-            .into());
-        }
-    }
-
-    Ok(slug)
+    validate_persisted_role_grant_on(db, tenant_id, actor_permissions, &slug).await
 }
 
 /// Build the custom-role assignment plan from owner-read facts under the
@@ -733,7 +826,7 @@ pub async fn plan_persisted_custom_role_assignment_on(
 
     let target_status =
         lock_target_authority_on(db, request.tenant_id, request.target_user_id).await?;
-    let role_id = load_role_row_on(db, request.tenant_id, &slug)
+    let role_id = lock_role_row_on(db, request.tenant_id, &slug)
         .await?
         .ok_or_else(|| RbacRolePersistenceError::RoleNotFound(slug.clone()))?;
 
@@ -753,7 +846,9 @@ pub async fn plan_persisted_custom_role_assignment_on(
     let target_permissions =
         crate::resolve_persisted_permissions_on(db, &request.tenant_id, &request.target_user_id)
             .await?;
-    let target_role = rustok_core::infer_user_role_from_permissions(&target_permissions);
+    let memberships =
+        load_tenant_role_memberships_on(db, request.tenant_id, request.target_user_id).await?;
+    let target_role = most_privileged_persisted_role(&memberships, &target_permissions);
     require_user_management(
         request.actor_id,
         request.target_user_id,
@@ -761,8 +856,6 @@ pub async fn plan_persisted_custom_role_assignment_on(
         &target_role,
     )?;
 
-    let memberships =
-        load_tenant_role_memberships_on(db, request.tenant_id, request.target_user_id).await?;
     if memberships.len() == 1 && memberships[0].0 == role_id {
         return Ok(None);
     }
@@ -817,7 +910,7 @@ pub async fn replace_persisted_user_role_by_slug_on(
     validate_identity("target_user_id", user_id)?;
     let slug = normalize_role_slug(role_slug);
     let target_status = lock_target_authority_on(db, tenant_id, user_id).await?;
-    let role_id = load_role_row_on(db, tenant_id, &slug)
+    let role_id = lock_role_row_on(db, tenant_id, &slug)
         .await?
         .ok_or_else(|| RbacRolePersistenceError::RoleNotFound(slug.clone()))?;
     let memberships = load_tenant_role_memberships_on(db, tenant_id, user_id).await?;
@@ -1181,6 +1274,19 @@ mod tests {
     }
 
     #[test]
+    fn persisted_builtin_role_rank_survives_restricted_permission_edits() {
+        let memberships = [(Uuid::new_v4(), "manager".to_string())];
+        assert_eq!(
+            most_privileged_persisted_role(&memberships, &[]),
+            UserRole::Manager
+        );
+        assert_eq!(
+            most_privileged_persisted_role(&memberships, &[rustok_api::Permission::USERS_MANAGE]),
+            UserRole::Manager
+        );
+    }
+
+    #[test]
     fn self_demotion_still_requires_assignable_target_role() {
         let mut self_demotion = facts();
         self_demotion.target_user_id = self_demotion.actor_id;
@@ -1221,11 +1327,22 @@ mod tests {
             .unwrap();
         }
         let role_id = Uuid::new_v4();
+        let manager_role_id = Uuid::new_v4();
         db.execute_raw(
             role_statement(
                 &db,
                 "INSERT INTO roles (id, tenant_id, name, slug, is_system) VALUES (?, ?, 'Content Editor', 'content_editor', FALSE)",
                 vec![role_id.into(), tenant.into()],
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+        db.execute_raw(
+            role_statement(
+                &db,
+                "INSERT INTO roles (id, tenant_id, name, slug, is_system) VALUES (?, ?, 'Manager', 'manager', TRUE)",
+                vec![manager_role_id.into(), tenant.into()],
             )
             .unwrap(),
         )
@@ -1261,6 +1378,18 @@ mod tests {
             )
             .await
             .unwrap();
+            if permission == rustok_api::Permission::POSTS_DELETE {
+                db.execute_raw(
+                    role_statement(
+                        &db,
+                        "INSERT INTO role_permissions (id, role_id, permission_id) VALUES (?, ?, ?)",
+                        vec![Uuid::new_v4().into(), manager_role_id.into(), permission_id.into()],
+                    )
+                    .unwrap(),
+                )
+                .await
+                .unwrap();
+            }
         }
 
         let request =
@@ -1336,5 +1465,62 @@ mod tests {
             .is_none()
         );
         tx.commit().await.unwrap();
+
+        // Built-in slugs are tenant records too: an edited persisted Manager
+        // role must not be assignable by an actor who lacks its added grant.
+        let tx = db.begin().await.unwrap();
+        let error = validate_persisted_role_grant_on(
+            &tx,
+            tenant,
+            &[rustok_api::Permission::POSTS_READ],
+            "manager",
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            RbacRolePersistenceError::Policy(
+                RbacRoleMutationPolicyError::RequestAuthorityCeiling {
+                    role: UserRole::Manager,
+                    permission: rustok_api::Permission::POSTS_DELETE,
+                }
+            )
+        ));
+        tx.rollback().await.unwrap();
+
+        // Permission edits must not demote the target's management rank: a
+        // restricted Manager role still protects its holder from peer edits.
+        db.execute_raw(
+            role_statement(
+                &db,
+                "INSERT INTO user_roles (id, user_id, role_id) VALUES (?, ?, ?)",
+                vec![Uuid::new_v4().into(), target.into(), manager_role_id.into()],
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+        let tx = db.begin().await.unwrap();
+        let error = plan_persisted_user_role_mutation_on(
+            &tx,
+            RbacUserRoleMutationRequest {
+                tenant_id: tenant,
+                actor_id: actor,
+                actor_tenant_id: tenant,
+                actor_role: UserRole::Manager,
+                target_user_id: target,
+                requested_role: UserRole::Customer,
+                resulting_status: None,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            RbacRolePersistenceError::Policy(
+                RbacRoleMutationPolicyError::CannotManagePeerOrHigherUser
+            )
+        ));
+        tx.rollback().await.unwrap();
     }
 }

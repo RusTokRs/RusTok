@@ -43,11 +43,10 @@ pub async fn resolve_optional(
     if parts.headers.get_all(AUTHORIZATION).iter().count() > 1 {
         tracing::warn!("Multiple Authorization headers detected; failing closed");
         return pages_inline_authoring_response(
-            (
+            auth_error_response(
                 StatusCode::BAD_REQUEST,
                 "Multiple Authorization headers are not allowed",
-            )
-                .into_response(),
+            ),
             pages_inline_authoring,
             pages_inline_authoring_surface,
         );
@@ -58,14 +57,14 @@ pub async fn resolve_optional(
         Ok(authority) => authority,
         Err(crate::error::Error::Unauthorized(_)) => {
             return pages_inline_authoring_response(
-                (StatusCode::FORBIDDEN, HOST_AUTHORITY_REQUIRED).into_response(),
+                auth_error_response(StatusCode::FORBIDDEN, HOST_AUTHORITY_REQUIRED),
                 pages_inline_authoring,
                 pages_inline_authoring_surface,
             );
         }
         Err(crate::error::Error::BadRequest(message)) => {
             return pages_inline_authoring_response(
-                (StatusCode::BAD_REQUEST, message).into_response(),
+                auth_error_response(StatusCode::BAD_REQUEST, &message),
                 pages_inline_authoring,
                 pages_inline_authoring_surface,
             );
@@ -77,11 +76,10 @@ pub async fn resolve_optional(
                 "host authority credential configuration is invalid"
             );
             return pages_inline_authoring_response(
-                (
+                auth_error_response(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Host authority configuration is invalid",
-                )
-                    .into_response(),
+                ),
                 pages_inline_authoring,
                 pages_inline_authoring_surface,
             );
@@ -119,22 +117,20 @@ pub async fn resolve_optional(
                 && !is_direct_user_self_service_principal(current_user.principal_kind)
             {
                 return pages_inline_authoring_response(
-                    (
+                    auth_error_response(
                         StatusCode::FORBIDDEN,
                         "Direct authenticated user sessions are required for auth self-service endpoints",
-                    )
-                        .into_response(),
+                    ),
                     pages_inline_authoring,
                     pages_inline_authoring_surface,
                 );
             }
             if human_user_only && current_user.actor_kind != SecurityActorKind::User {
                 return pages_inline_authoring_response(
-                    (
+                    auth_error_response(
                         StatusCode::FORBIDDEN,
                         "Human-user, storefront, and interactive admin endpoints do not accept service credentials",
-                    )
-                        .into_response(),
+                    ),
                     pages_inline_authoring,
                     pages_inline_authoring_surface,
                 );
@@ -142,33 +138,30 @@ pub async fn resolve_optional(
             if pages_inline_authoring {
                 if !current_user.principal_kind.is_direct_user() {
                     return pages_inline_authoring_response(
-                        (
+                        auth_error_response(
                             StatusCode::FORBIDDEN,
                             "Pages inline authoring requires a direct authenticated user session",
-                        )
-                            .into_response(),
+                        ),
                         true,
                         pages_inline_authoring_surface,
                     );
                 }
                 if current_user.session_id.is_nil() {
                     return pages_inline_authoring_response(
-                        (
+                        auth_error_response(
                             StatusCode::UNAUTHORIZED,
                             "Pages inline authoring requires a non-empty authenticated session",
-                        )
-                            .into_response(),
+                        ),
                         true,
                         pages_inline_authoring_surface,
                     );
                 }
                 if !has_effective_permission(&current_user.permissions, &Permission::PAGES_UPDATE) {
                     return pages_inline_authoring_response(
-                        (
+                        auth_error_response(
                             StatusCode::FORBIDDEN,
                             "pages:update is required for Pages inline authoring",
-                        )
-                            .into_response(),
+                        ),
                         true,
                         pages_inline_authoring_surface,
                     );
@@ -181,7 +174,7 @@ pub async fn resolve_optional(
                     &current_user.permissions,
                 )
             {
-                return (StatusCode::FORBIDDEN, message).into_response();
+                return auth_error_response(StatusCode::FORBIDDEN, message);
             }
 
             rbac_scope = Some(RbacRequestScope::new(
@@ -206,7 +199,7 @@ pub async fn resolve_optional(
         }
         Err((status, message)) if presented_credentials || pages_inline_authoring => {
             return pages_inline_authoring_response(
-                (status, message).into_response(),
+                auth_error_response(status, message),
                 pages_inline_authoring,
                 pages_inline_authoring_surface,
             );
@@ -262,6 +255,19 @@ fn verified_tenant_id_from_access_token(
         return Err((StatusCode::UNAUTHORIZED, "Token tenant claim is invalid"));
     }
     Ok(claims.tenant_id)
+}
+
+fn auth_error_response(status: StatusCode, message: &str) -> Response {
+    let (code, public_message) = match status {
+        StatusCode::BAD_REQUEST => ("bad_request", message),
+        StatusCode::UNAUTHORIZED => ("unauthorized", message),
+        StatusCode::FORBIDDEN => ("forbidden", message),
+        _ => {
+            tracing::error!(status = %status, "authentication middleware failed internally");
+            ("internal_error", "Internal server error")
+        }
+    };
+    rustok_web::HttpError::new(status, code, public_message).into_response()
 }
 
 fn pages_inline_authoring_response(
@@ -410,7 +416,7 @@ fn service_forum_boundary_violation(
 #[cfg(test)]
 mod tests {
     use super::{
-        PAGES_AUTHORING_CACHE_CONTROL, PAGES_AUTHORING_ROBOTS_POLICY,
+        PAGES_AUTHORING_CACHE_CONTROL, PAGES_AUTHORING_ROBOTS_POLICY, auth_error_response,
         auth_can_resolve_without_tenant_context, is_direct_user_self_service_path,
         is_direct_user_self_service_principal, is_human_user_self_service_path,
         is_observability_auth_path, is_pages_inline_authoring_server_fn,
@@ -586,6 +592,57 @@ mod tests {
         assert!(!is_pages_inline_authoring_server_fn(
             "/api/fn/pages/inline-edit/other"
         ));
+    }
+
+    #[tokio::test]
+    async fn auth_middleware_errors_use_the_shared_json_envelope_and_redact_internal_details() {
+        use axum::body::to_bytes;
+        use rustok_web::ErrorBody;
+
+        for (status, message, expected_code, expected_message) in [
+            (
+                StatusCode::BAD_REQUEST,
+                "Multiple Authorization headers are not allowed",
+                "bad_request",
+                "Multiple Authorization headers are not allowed",
+            ),
+            (
+                StatusCode::UNAUTHORIZED,
+                "Invalid token signature",
+                "unauthorized",
+                "Invalid token signature",
+            ),
+            (
+                StatusCode::FORBIDDEN,
+                "Access denied",
+                "forbidden",
+                "Access denied",
+            ),
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "secret key configuration details",
+                "internal_error",
+                "Internal server error",
+            ),
+        ] {
+            let response = auth_error_response(status, message);
+            assert_eq!(response.status(), status);
+            assert_eq!(
+                response
+                    .headers()
+                    .get(axum::http::header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok()),
+                Some("application/json")
+            );
+            let bytes = to_bytes(response.into_body(), 4096)
+                .await
+                .expect("read error body");
+            let body: ErrorBody =
+                serde_json::from_slice(&bytes).expect("JSON error envelope");
+            assert_eq!(body.code, expected_code);
+            assert_eq!(body.message, expected_message);
+            assert!(!body.message.contains("secret key"));
+        }
     }
 
     #[test]

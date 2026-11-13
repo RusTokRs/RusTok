@@ -255,26 +255,53 @@ fn acknowledge_locale_recovery(
 }
 
 struct AbortOnDropTenantLocaleTask {
-    task: JoinHandle<()>,
+    task: std::sync::Mutex<Option<JoinHandle<()>>>,
 }
 
 impl AbortOnDropTenantLocaleTask {
     fn new(task: JoinHandle<()>) -> Self {
-        Self { task }
+        Self {
+            task: std::sync::Mutex::new(Some(task)),
+        }
     }
 
     fn is_running(&self) -> bool {
-        !self.task.is_finished()
+        self.task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|task| !task.is_finished())
     }
 
     fn abort(&self) {
-        self.task.abort();
+        if let Some(task) = self
+            .task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            task.abort();
+        }
+    }
+
+    fn take_task(&self) -> Option<JoinHandle<()>> {
+        self.task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 }
 
 impl Drop for AbortOnDropTenantLocaleTask {
     fn drop(&mut self) {
-        self.task.abort();
+        if let Some(task) = self
+            .task
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            task.abort();
+        }
     }
 }
 
@@ -289,7 +316,7 @@ struct TenantLocaleGenerationRuntime {
 impl TenantLocaleGenerationRuntime {
     fn is_running(&self) -> bool {
         self.local.is_running()
-            && (!self.redis_required || self.redis.as_ref().is_some_and(|task| task.is_running()))
+            && self.redis.as_ref().is_none_or(|task| task.is_running())
             && (!self.redis_required
                 || self
                     .reconcile
@@ -310,6 +337,25 @@ impl TenantLocaleGenerationRuntime {
             reconcile.abort();
         }
         self.health.mark_failed();
+    }
+
+    fn take_tasks(&self) -> Vec<JoinHandle<()>> {
+        let mut tasks = Vec::with_capacity(3);
+        if let Some(task) = self.local.take_task() {
+            tasks.push(task);
+        }
+        if let Some(task) = self.redis.as_ref().and_then(AbortOnDropTenantLocaleTask::take_task) {
+            tasks.push(task);
+        }
+        if let Some(task) = self
+            .reconcile
+            .as_ref()
+            .and_then(AbortOnDropTenantLocaleTask::take_task)
+        {
+            tasks.push(task);
+        }
+        self.health.mark_failed();
+        tasks
     }
 }
 
@@ -341,6 +387,10 @@ impl TenantLocaleGenerationListenerHandle {
         self.0.is_ready()
     }
 
+    pub(crate) fn take_tasks(&self) -> Vec<JoinHandle<()>> {
+        self.0.take_tasks()
+    }
+
     fn abort(&self) {
         self.0.abort();
     }
@@ -359,6 +409,12 @@ pub async fn start_tenant_locale_generation_listener(
         .shared_get::<TenantLocaleGenerationStartLock>()
         .unwrap_or(candidate);
     let _start_guard = start_lock.0.lock().await;
+    if ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
+    {
+        return;
+    }
 
     if let Some(existing) = ctx.shared_get::<TenantLocaleGenerationListenerHandle>() {
         if existing.is_running() {
@@ -366,6 +422,17 @@ pub async fn start_tenant_locale_generation_listener(
         }
         tracing::warn!("Tenant locale generation listener stopped; replacing runtime");
         existing.abort();
+        let tasks = existing.take_tasks();
+        for task in &tasks {
+            task.abort();
+        }
+        for task in tasks {
+            if let Err(error) = task.await {
+                if !error.is_cancelled() {
+                    tracing::warn!(?error, "Old tenant locale generation task failed while being replaced");
+                }
+            }
+        }
     }
 
     let health = Arc::new(TenantLocaleGenerationHealth::default());
@@ -380,6 +447,12 @@ pub async fn start_tenant_locale_generation_listener(
             "tenant.locale.generation",
             "startup_recovery",
         );
+    }
+    if ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
+    {
+        return;
     }
 
     let local_task = tokio::spawn(supervise_local_listener(listener.clone(), initial_local));
@@ -397,6 +470,22 @@ pub async fn start_tenant_locale_generation_listener(
         redis_required,
         health,
     ));
+}
+
+pub(crate) async fn take_listener_tasks_for_shutdown(
+    ctx: &ServerRuntimeContext,
+) -> Vec<JoinHandle<()>> {
+    let start_lock = ctx.shared_get_or_insert_with(TenantLocaleGenerationStartLock::default);
+    let _start_guard = match tokio::time::timeout(Duration::from_secs(5), start_lock.0.lock()).await {
+        Ok(guard) => guard,
+        Err(_) => {
+            tracing::warn!("Timed out waiting for tenant locale generation startup during shutdown");
+            return Vec::new();
+        }
+    };
+    ctx.shared_take::<TenantLocaleGenerationListenerHandle>()
+        .map(|listener| listener.take_tasks())
+        .unwrap_or_default()
 }
 
 async fn supervise_local_listener(

@@ -428,6 +428,7 @@ fn parse_apply_options(args: &serde_json::Value) -> Result<InstallApplyOptions, 
         ));
     }
     Ok(InstallApplyOptions {
+        session_id: None,
         lock_owner: option(options, "lock_owner")
             .unwrap_or_else(|| "rustok-cli install apply".to_string()),
         lock_ttl_secs,

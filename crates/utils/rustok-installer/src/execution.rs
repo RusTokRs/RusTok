@@ -12,6 +12,10 @@ use crate::{InstallPlan, InstallReceipt, InstallState};
 /// Host-selected execution options for one install apply operation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstallApplyOptions {
+    /// Host-issued stable session identity. HTTP jobs bind this before the
+    /// worker starts so the session remains discoverable across process loss.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<Uuid>,
     pub lock_owner: String,
     pub lock_ttl_secs: i64,
     pub pg_admin_url: Option<String>,
@@ -26,6 +30,7 @@ pub struct InstallApplyOptions {
 impl Default for InstallApplyOptions {
     fn default() -> Self {
         Self {
+            session_id: None,
             lock_owner: "installer".to_string(),
             lock_ttl_secs: 900,
             pg_admin_url: None,
@@ -166,6 +171,7 @@ pub trait InstallPersistencePort<R>: Send + Sync {
     async fn create_session(
         &self,
         runtime: &R,
+        session_id: Uuid,
         plan: &InstallPlan,
     ) -> Result<InstallSessionRecord, InstallExecutionError>;
     async fn acquire_lock(
@@ -259,6 +265,12 @@ where
         .map_err(|error| InstallExecutionError::new(error.to_string()))?;
     let layout_preparation = crate::prepare_instance_layout(&layout)
         .map_err(|error| InstallExecutionError::new(error.to_string()))?;
+    let session_id = options.session_id.unwrap_or_else(Uuid::new_v4);
+    if session_id.is_nil() {
+        return Err(InstallExecutionError::new(
+            "installer session ID must not be nil",
+        ));
+    }
     let database_url = crate::resolve_local_secret_value(&plan.database.url, "database URL")
         .map_err(|error| InstallExecutionError::new(error.to_string()))?;
     let database = ports
@@ -266,7 +278,9 @@ where
         .await?;
     ports.apply_owner_schema(&database.runtime).await?;
     let snapshot = crate::redact_install_plan(&plan);
-    let mut session = ports.create_session(&database.runtime, &plan).await?;
+    let mut session = ports
+        .create_session(&database.runtime, session_id, &plan)
+        .await?;
     session = ports
         .acquire_lock(
             &database.runtime,

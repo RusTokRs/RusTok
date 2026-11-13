@@ -30,6 +30,7 @@ pub enum ArtifactBindingIdempotencyClaim {
     Execute { operation_id: Uuid },
     Replay { response: Value },
     InProgress,
+    ReconciliationRequired,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -44,7 +45,8 @@ pub enum ArtifactBindingIdempotencyError {
     Storage(String),
 }
 
-/// Owner service for replaying completed binding outputs and leasing one live execution.
+/// Owner service for replaying completed outputs and reserving unresolved executions.
+/// Lease expiry is advisory; it never grants a second attempt.
 #[derive(Clone)]
 pub struct SeaOrmArtifactBindingIdempotencyStore {
     db: DatabaseConnection,
@@ -121,29 +123,31 @@ impl SeaOrmArtifactBindingIdempotencyStore {
                 return Ok(ArtifactBindingIdempotencyClaim::Replay { response });
             }
 
-            let operation_id = self.infrastructure.new_id();
-            let recovered = transaction
-                .execute_raw(Statement::from_sql_and_values(
-                    backend.db_backend(),
-                    recover_operation_sql(backend),
-                    vec![
-                        backend.uuid_value(operation_id),
-                        lease_value(self.infrastructure.now(), backend),
-                        backend.uuid_value(tenant_id),
-                        backend.uuid_value(request.context.actor_id),
-                        backend.uuid_value(request.installation_id),
-                        request.binding_id.clone().into(),
-                        backend.uuid_value(request.context.idempotency_key),
-                    ],
-                ))
-                .await
-                .map_err(storage_error)?;
+            if status == "reconciliation_required" {
+                transaction.commit().await.map_err(storage_error)?;
+                return Ok(ArtifactBindingIdempotencyClaim::ReconciliationRequired);
+            }
+            if status == "pending" {
+                // Expiry only changes the receipt to an operator/reconciliation
+                // state. It never authorizes another execution attempt.
+                let expired = transaction
+                    .execute_raw(Statement::from_sql_and_values(
+                        backend.db_backend(),
+                        expire_operation_sql(backend),
+                        request_values(request, tenant_id, backend),
+                    ))
+                    .await
+                    .map_err(storage_error)?;
+                transaction.commit().await.map_err(storage_error)?;
+                return Ok(if expired.rows_affected() == 1 {
+                    ArtifactBindingIdempotencyClaim::ReconciliationRequired
+                } else {
+                    ArtifactBindingIdempotencyClaim::InProgress
+                });
+            }
+
             transaction.commit().await.map_err(storage_error)?;
-            return Ok(if recovered.rows_affected() == 1 {
-                ArtifactBindingIdempotencyClaim::Execute { operation_id }
-            } else {
-                ArtifactBindingIdempotencyClaim::InProgress
-            });
+            return Ok(ArtifactBindingIdempotencyClaim::ReconciliationRequired);
         }
 
         let operation_id = self.infrastructure.new_id();
@@ -218,7 +222,10 @@ impl SeaOrmArtifactBindingIdempotencyStore {
         Ok(())
     }
 
-    pub async fn abandon(
+    /// Marks an operation as requiring reconciliation after an execution path
+    /// fails without a durable proof that no side effect occurred. This state
+    /// intentionally continues to reserve the idempotency key.
+    pub async fn require_reconciliation(
         &self,
         request: &ArtifactBindingIdempotencyRequest,
         operation_id: Uuid,
@@ -236,7 +243,7 @@ impl SeaOrmArtifactBindingIdempotencyStore {
         transaction
             .execute_raw(Statement::from_sql_and_values(
                 backend.db_backend(),
-                abandon_operation_sql(backend),
+                reconciliation_required_sql(backend),
                 vec![
                     backend.uuid_value(operation_id),
                     backend.uuid_value(tenant_id),
@@ -298,14 +305,14 @@ fn select_operation_sql(backend: SupportedBackend) -> String {
     )
 }
 
-fn recover_operation_sql(backend: SupportedBackend) -> String {
+fn expire_operation_sql(backend: SupportedBackend) -> String {
     let prefix = backend.placeholder_prefix();
     let expired = match backend {
         SupportedBackend::Postgres => "lease_expires_at <= CURRENT_TIMESTAMP",
         SupportedBackend::Sqlite => "datetime(lease_expires_at) <= CURRENT_TIMESTAMP",
     };
     format!(
-        "UPDATE module_artifact_binding_operations SET operation_id = {prefix}1, lease_expires_at = {prefix}2 WHERE tenant_id = {prefix}3 AND actor_id = {prefix}4 AND installation_id = {prefix}5 AND binding_id = {prefix}6 AND idempotency_key = {prefix}7 AND status = 'pending' AND {expired}"
+        "UPDATE module_artifact_binding_operations SET status = 'reconciliation_required' WHERE tenant_id = {prefix}1 AND actor_id = {prefix}2 AND installation_id = {prefix}3 AND binding_id = {prefix}4 AND idempotency_key = {prefix}5 AND status = 'pending' AND {expired}"
     )
 }
 
@@ -324,10 +331,10 @@ fn complete_operation_sql(backend: SupportedBackend) -> String {
     )
 }
 
-fn abandon_operation_sql(backend: SupportedBackend) -> String {
+fn reconciliation_required_sql(backend: SupportedBackend) -> String {
     let prefix = backend.placeholder_prefix();
     format!(
-        "DELETE FROM module_artifact_binding_operations WHERE operation_id = {prefix}1 AND tenant_id = {prefix}2 AND actor_id = {prefix}3 AND installation_id = {prefix}4 AND binding_id = {prefix}5 AND idempotency_key = {prefix}6 AND request_digest = {prefix}7 AND status = 'pending'"
+        "UPDATE module_artifact_binding_operations SET status = 'reconciliation_required' WHERE operation_id = {prefix}1 AND tenant_id = {prefix}2 AND actor_id = {prefix}3 AND installation_id = {prefix}4 AND binding_id = {prefix}5 AND idempotency_key = {prefix}6 AND request_digest = {prefix}7 AND status = 'pending'"
     )
 }
 
@@ -447,6 +454,75 @@ mod tests {
             store.claim(&second).await.expect("second tenant claim"),
             ArtifactBindingIdempotencyClaim::Execute { .. }
         ));
+    }
+
+    #[tokio::test]
+    async fn expired_lease_does_not_authorize_a_second_execution() {
+        let store = store().await;
+        let expired_request = request(Uuid::new_v4(), "ambiguous");
+        let operation_id = match store.claim(&expired_request).await.expect("initial claim") {
+            ArtifactBindingIdempotencyClaim::Execute { operation_id } => operation_id,
+            other => panic!("expected execution claim, got {other:?}"),
+        };
+        store
+            .db
+            .execute_unprepared(
+                "UPDATE module_artifact_binding_operations \
+                 SET lease_expires_at = '2000-01-01 00:00:00'",
+            )
+            .await
+            .expect("expire advisory lease");
+
+        assert_eq!(
+            store.claim(&expired_request).await.expect("expired retry blocked"),
+            ArtifactBindingIdempotencyClaim::ReconciliationRequired
+        );
+        let row = store
+            .db
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT operation_id, status FROM module_artifact_binding_operations".to_string(),
+            ))
+            .await
+            .expect("read original operation")
+            .expect("operation row");
+        assert_eq!(
+            row.try_get::<String>("", "operation_id")
+                .expect("operation id"),
+            operation_id.to_string()
+        );
+        assert_eq!(
+            row.try_get::<String>("", "status").expect("status"),
+            "reconciliation_required"
+        );
+        assert_eq!(
+            store
+                .claim(&expired_request)
+                .await
+                .expect("reconciliation remains blocked"),
+            ArtifactBindingIdempotencyClaim::ReconciliationRequired
+        );
+
+        let failed_request = request(Uuid::new_v4(), "execution-error");
+        let failed_operation_id = match store
+            .claim(&failed_request)
+            .await
+            .expect("failed attempt claim")
+        {
+            ArtifactBindingIdempotencyClaim::Execute { operation_id } => operation_id,
+            other => panic!("expected execution claim, got {other:?}"),
+        };
+        store
+            .require_reconciliation(&failed_request, failed_operation_id)
+            .await
+            .expect("mark failed execution for reconciliation");
+        assert_eq!(
+            store
+                .claim(&failed_request)
+                .await
+                .expect("failed execution stays blocked"),
+            ArtifactBindingIdempotencyClaim::ReconciliationRequired
+        );
     }
 
     #[tokio::test]
