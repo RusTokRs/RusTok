@@ -43,7 +43,11 @@ use crate::model::{
 };
 use crate::transport;
 
-fn local_resource<S, Fut, T>(
+// The loaded state below is read through `.get()` inside render closures, so the resources that
+// cross a component boundary keep their concrete type. `LocalResource` is `Copy` and `Resource` is
+// not, and the props are read in more than one closure, so changing the type here would mean
+// cloning at every read site in the children. Those surfaces are recorded in the backlog instead.
+fn loaded_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
     fetcher: impl Fn(S) -> Fut + 'static,
 ) -> LocalResource<T>
@@ -260,14 +264,14 @@ fn ProductCatalogReference() -> impl IntoView {
     let effective_locale_for_attribute_values = effective_locale.clone();
     let effective_locale_for_selected_pricing = effective_locale.clone();
 
-    let bootstrap = local_resource(
+    let bootstrap = loaded_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             transport::fetch_bootstrap(token_value, tenant_value).await
         },
     );
 
-    let products = local_resource(
+    let products = loaded_resource(
         move || {
             (
                 token.get(),
@@ -293,7 +297,7 @@ fn ProductCatalogReference() -> impl IntoView {
         },
     );
 
-    let shipping_profiles = local_resource(
+    let shipping_profiles = loaded_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             let bootstrap =
@@ -306,7 +310,7 @@ fn ProductCatalogReference() -> impl IntoView {
             .await
         },
     );
-    let catalog_categories = local_resource(
+    let catalog_categories = loaded_resource(
         move || {
             (
                 token.get(),
@@ -328,7 +332,7 @@ fn ProductCatalogReference() -> impl IntoView {
             .await
         },
     );
-    let effective_form = local_resource(
+    let effective_form = loaded_resource(
         move || {
             let category_id = text_or_none(primary_category_id.get());
             let selected_product = selected.get();
@@ -362,7 +366,7 @@ fn ProductCatalogReference() -> impl IntoView {
             .await
         },
     );
-    let attribute_values = local_resource(
+    let attribute_values = loaded_resource(
         move || {
             (
                 token.get(),
@@ -399,7 +403,7 @@ fn ProductCatalogReference() -> impl IntoView {
             attribute_editor_state.update(|state| state.refresh_values(values));
         }
     });
-    let selected_pricing = local_resource(
+    let selected_pricing = loaded_resource(
         move || {
             (
                 token.get(),
@@ -2763,12 +2767,16 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
     let (category_axis_policy, set_category_axis_policy) = signal("keep".to_string());
     let (category_default_axis, set_category_default_axis) = signal("keep".to_string());
 
-    let categories_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let loc = locale_store.get_value().unwrap_or_default();
-        refresh_nonce.track();
-        async move {
+    let categories_resource = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                locale_store.get_value().unwrap_or_default(),
+                refresh_nonce.get(),
+            )
+        },
+        move |(tok, ten, loc, _generation)| async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|failure| failure.to_string())?;
@@ -2776,15 +2784,19 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                 .await
                 .map(|list| list.items)
                 .map_err(|failure| failure.to_string())
-        }
-    });
+        },
+    );
 
-    let schemas_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let loc = locale_store.get_value().unwrap_or_default();
-        refresh_nonce.track();
-        async move {
+    let schemas_resource = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                locale_store.get_value().unwrap_or_default(),
+                refresh_nonce.get(),
+            )
+        },
+        move |(tok, ten, loc, _generation)| async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|failure| failure.to_string())?;
@@ -2792,15 +2804,19 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                 .await
                 .map(|list| list.items)
                 .map_err(|failure| failure.to_string())
-        }
-    });
+        },
+    );
 
-    let attributes_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let loc = locale_store.get_value().unwrap_or_default();
-        refresh_nonce.track();
-        async move {
+    let attributes_resource = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                locale_store.get_value().unwrap_or_default(),
+                refresh_nonce.get(),
+            )
+        },
+        move |(tok, ten, loc, _generation)| async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|failure| failure.to_string())?;
@@ -2808,27 +2824,29 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                 .await
                 .map(|list| list.items)
                 .map_err(|failure| failure.to_string())
-        }
-    });
+        },
+    );
 
-    let categories = move || -> Vec<CatalogCategorySummary> {
+    // `Resource` is not `Copy`, so these views are `Signal`s over it: the closures then stay
+    // `Copy` and can be read from every place the view renders them.
+    let categories = Signal::derive(move || -> Vec<CatalogCategorySummary> {
         categories_resource
             .get()
             .and_then(Result::ok)
             .unwrap_or_default()
-    };
-    let schemas = move || -> Vec<ProductAttributeSchemaSummary> {
+    });
+    let schemas = Signal::derive(move || -> Vec<ProductAttributeSchemaSummary> {
         schemas_resource
             .get()
             .and_then(Result::ok)
             .unwrap_or_default()
-    };
-    let attributes = move || -> Vec<ProductAttributeSummary> {
+    });
+    let attributes = Signal::derive(move || -> Vec<ProductAttributeSummary> {
         attributes_resource
             .get()
             .and_then(Result::ok)
             .unwrap_or_default()
-    };
+    });
 
     let apply_mode = move |_| {
         let category_id = mode_category.get_untracked();
@@ -2889,13 +2907,19 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
     };
 
     let preview_locale = locale_store.get_value().unwrap_or_else(|| "en".into());
-    let preview_form = LocalResource::new(move || {
-        let category_id = category_target.get();
-        let tok = token.get();
-        let ten = tenant.get();
-        let loc = preview_locale.clone();
-        refresh_nonce.track();
-        async move {
+    // Resolved by the request: the schema editor is served from an `Async` admin route, so a
+    // `LocalResource` here would leave the reader with the `Suspense` fallback.
+    let preview_form = Resource::new(
+        move || {
+            (
+                category_target.get(),
+                token.get(),
+                tenant.get(),
+                preview_locale.clone(),
+                refresh_nonce.get(),
+            )
+        },
+        move |(category_id, tok, ten, loc, _generation)| async move {
             if category_id.is_empty() {
                 return Ok::<_, String>(None);
             }
@@ -2912,8 +2936,8 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
             )
             .await
             .map_err(|failure| failure.to_string())
-        }
-    });
+        },
+    );
 
     let create_schema_group = move |_| {
         let schema_id = schema_target.get_untracked();
@@ -3219,7 +3243,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                             on:change=move |ev| set_mode_category.set(event_target_value(&ev))
                         >
                             <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
-                            {move || categories().into_iter().map(|category| view! {
+                            {move || categories.get().into_iter().map(|category| view! {
                                 <option value=category.id.clone()>{category.name.clone()}</option>
                             }).collect_view()}
                         </select>
@@ -3245,7 +3269,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                             on:change=move |ev| set_mode_schema.set(event_target_value(&ev))
                         >
                             <option value="">{if is_ru { "— не выбрана —" } else { "— none —" }}</option>
-                            {move || schemas().into_iter().map(|schema| view! {
+                            {move || schemas.get().into_iter().map(|schema| view! {
                                 <option value=schema.id.clone()>{schema.name.clone()}</option>
                             }).collect_view()}
                         </select>
@@ -3258,7 +3282,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                             on:change=move |ev| set_clone_category.set(event_target_value(&ev))
                         >
                             <option value="">{if is_ru { "— не выбрана —" } else { "— none —" }}</option>
-                            {move || categories().into_iter().map(|category| view! {
+                            {move || categories.get().into_iter().map(|category| view! {
                                 <option value=category.id.clone()>{category.name.clone()}</option>
                             }).collect_view()}
                         </select>
@@ -3288,7 +3312,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                             on:change=move |ev| set_schema_target.set(event_target_value(&ev))
                         >
                             <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
-                            {move || schemas().into_iter().map(|schema| view! {
+                            {move || schemas.get().into_iter().map(|schema| view! {
                                 <option value=schema.id.clone()>{schema.name.clone()}</option>
                             }).collect_view()}
                         </select>
@@ -3341,7 +3365,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                             on:change=move |ev| set_schema_attribute.set(event_target_value(&ev))
                         >
                             <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
-                            {move || attributes().into_iter().map(|attribute| view! {
+                            {move || attributes.get().into_iter().map(|attribute| view! {
                                 <option value=attribute.id.clone()>{attribute.label.clone()}</option>
                             }).collect_view()}
                         </select>
@@ -3385,7 +3409,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                     </div>
                 </div>
                 <AxisPolicyFields
-                    eligible=Signal::derive(move || attributes().into_iter().find(|attribute| attribute.id == schema_attribute.get()).is_some_and(|attribute| crate::core::is_axis_attribute(&attribute.value_type, &attribute.scope)))
+                    eligible=Signal::derive(move || attributes.get().into_iter().find(|attribute| attribute.id == schema_attribute.get()).is_some_and(|attribute| crate::core::is_axis_attribute(&attribute.value_type, &attribute.scope)))
                     policy=schema_axis_policy set_policy=set_schema_axis_policy
                     default_axis=schema_default_axis set_default_axis=set_schema_default_axis
                 />
@@ -3413,7 +3437,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                             on:change=move |ev| set_category_target.set(event_target_value(&ev))
                         >
                             <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
-                            {move || categories().into_iter().map(|category| view! {
+                            {move || categories.get().into_iter().map(|category| view! {
                                 <option value=category.id.clone()>{category.name.clone()}</option>
                             }).collect_view()}
                         </select>
@@ -3466,7 +3490,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                             on:change=move |ev| set_category_attribute.set(event_target_value(&ev))
                         >
                             <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
-                            {move || attributes().into_iter().map(|attribute| view! {
+                            {move || attributes.get().into_iter().map(|attribute| view! {
                                 <option value=attribute.id.clone()>{attribute.label.clone()}</option>
                             }).collect_view()}
                         </select>
@@ -3514,7 +3538,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                     </div>
                 </div>
                 <AxisPolicyFields
-                    eligible=Signal::derive(move || attributes().into_iter().find(|attribute| attribute.id == category_attribute.get()).is_some_and(|attribute| crate::core::is_axis_attribute(&attribute.value_type, &attribute.scope)))
+                    eligible=Signal::derive(move || attributes.get().into_iter().find(|attribute| attribute.id == category_attribute.get()).is_some_and(|attribute| crate::core::is_axis_attribute(&attribute.value_type, &attribute.scope)))
                     policy=category_axis_policy set_policy=set_category_axis_policy
                     default_axis=category_default_axis set_default_axis=set_category_default_axis
                 />

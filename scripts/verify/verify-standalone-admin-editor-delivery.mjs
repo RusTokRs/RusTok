@@ -235,6 +235,11 @@ const movedModuleSurfaces = [
     marker: "let catalog_options = Resource::new(",
     description: "the catalog filter controls resolve their options during the render",
   },
+  {
+    file: "crates/modules/rustok-product/admin/src/ui/leptos.rs",
+    marker: "let categories_resource = Resource::new(",
+    description: "the schema editor resolves its categories during the render",
+  },
 ];
 for (const surface of movedModuleSurfaces) {
   const source = read(surface.file);
