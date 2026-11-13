@@ -5723,6 +5723,7 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-events",
+ "rustok-outbox",
  "rustok-translation-targets",
  "sea-orm",
  "sea-orm-migration",
@@ -16982,6 +16983,8 @@ name = "rustok-pages-admin"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "axum",
+ "base64 0.23.1",
  "fly",
  "fly-browser",
  "fly-ui",
@@ -16997,6 +17000,7 @@ dependencies = [
  "rustok-ui-i18n",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "thiserror 2.0.21",
  "tokio",
  "toml 1.1.6+spec-1.1.0",
