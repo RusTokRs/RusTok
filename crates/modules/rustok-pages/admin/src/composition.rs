@@ -38,7 +38,7 @@ const FLY_DRAFT_QUERY_KEY: &str = "fly_draft";
 /// the render that reads them ([`PagesWorkspaceData::provider_status`]). That keeps the resource
 /// payload serialisable without inventing a second provider-status type for the wire, and without
 /// letting a consumer fabricate an observed snapshot: an absent health value stays absent.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 struct PagesWorkspaceData {
     page: PageDetail,
     baseline: Option<RuntimeScenarioReleaseBaseline>,
@@ -90,6 +90,8 @@ pub fn PagesAdmin() -> impl IntoView {
         move |(token, tenant, _generation)| async move { transport::fetch_pages(token, tenant).await },
     );
 
+    let workspace_token = token;
+    let workspace_tenant = tenant;
     let workspace_resource = Resource::new(
         move || {
             (
@@ -1481,6 +1483,80 @@ mod tests {
             }),
         )
         .expect("controller")
+    }
+
+    #[test]
+    fn workspace_resource_payload_round_trips_without_inventing_provider_health() {
+        use crate::model::PageBody;
+        use rustok_page_builder::health::{ProviderHealthSnapshot, ProviderSloObservations};
+        use rustok_page_builder::rollout::BuilderCapabilityFlags;
+        use rustok_page_builder_admin::PageBuilderAdminProviderState;
+
+        let mut data = PagesWorkspaceData {
+            page: PageDetail {
+                id: "home".to_string(),
+                version: 2,
+                status: "draft".to_string(),
+                template: "default".to_string(),
+                updated_at: "2026-11-13T00:00:00Z".to_string(),
+                available_locales: vec!["en".to_string()],
+                channel_slugs: vec!["web".to_string()],
+                translation: None,
+                body: Some(PageBody {
+                    locale: "en".to_string(),
+                    content: String::new(),
+                    format: "grapesjs".to_string(),
+                    content_json: Some(json!({"pages": [{"id": "home"}]})),
+                    updated_at: "2026-11-13T00:00:00Z".to_string(),
+                    state: "draft".to_string(),
+                }),
+                document_readable: true,
+            },
+            baseline: None,
+            release_status: PageBuilderScenarioReleaseStatus {
+                page_id: "home".to_string(),
+                baseline_present: false,
+                allowed: false,
+                status: "pending".to_string(),
+                baseline_id: None,
+                baseline_hash: None,
+                previous_baseline_hash: None,
+                promoted_by: None,
+                promotion_note: None,
+                promoted_at: None,
+                visual_changes: 0,
+                breaking_changes: 0,
+                diagnostics: json!([]),
+            },
+            provider_flags: BuilderCapabilityFlags::default(),
+            provider_health: None,
+        };
+        let unavailable = ProviderHealthSnapshot::evaluate(ProviderSloObservations {
+            preview_p95_ms: 1_000,
+            publish_p95_ms: 1_000,
+            sanitize_failure_rate: 0.0,
+            runtime_error_rate: 0.03,
+        });
+        for (health, state) in [
+            (None, PageBuilderAdminProviderState::Unobserved),
+            (
+                Some(unavailable),
+                PageBuilderAdminProviderState::Unavailable,
+            ),
+        ] {
+            data.provider_health = health.clone();
+            let encoded = serde_json::to_vec(&data).expect("serialize resource payload");
+            let restored: PagesWorkspaceData =
+                serde_json::from_slice(&encoded).expect("deserialize resource payload");
+            assert_eq!(
+                serde_json::to_value(&restored.page).unwrap(),
+                serde_json::to_value(&data.page).unwrap()
+            );
+            assert_eq!(restored.release_status, data.release_status);
+            assert_eq!(restored.provider_flags, data.provider_flags);
+            assert_eq!(restored.provider_health, health);
+            assert_eq!(restored.provider_status().state(), state);
+        }
     }
 
     #[test]
