@@ -34,8 +34,8 @@ The single canonical trigger to continue this audit sequence is:
 
 - [x] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (33/33 tracks completed)
 - [x] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (10/10 completed)
-- [ ] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (10/24 completed)
-- [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (0/37 completed)
+- [x] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (24/24 completed)
+- [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (4/37 completed)
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (0/40 completed)
 - [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (0/26 completed)
 - [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (0/26 completed)
@@ -141,12 +141,12 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-04 — Commerce, Financial & Marketplace Domain Modules
-*Cart, checkout pipeline, orders, payments, pricing, inventory reservations, fulfillment, marketplace multi-vendor economics, seller balances, and commissions.* (1/37 completed)
+*Cart, checkout pipeline, orders, payments, pricing, inventory reservations, fulfillment, marketplace multi-vendor economics, seller balances, and commissions.* (4/37 completed)
 
 - [x] **[`crates/modules/rustok-commerce-foundation`](../../crates/modules/rustok-commerce-foundation)** (17 files, 2,126 LOC) — *(Done: verified across 6 Universal Logic Dimensions: SQL LIKE wildcard escaping (`escape_like_pattern` for `%`, `_`, `\`) in product translation title search conditions, query length truncation (MAX_SEARCH_QUERY_LEN = 255), decimal price non-negativity and ISO-4217 3-letter currency code validation, non-nil channel_id/variant_id UUID guards, inventory quantity non-negativity and non-zero adjustment validation; unit tests added; verified with `cargo check -p rustok-commerce-foundation`).*
-- [ ] **[`crates/modules/rustok-commerce`](../../crates/modules/rustok-commerce)** (297 files, 132,631 LOC)
-- [ ] **[`crates/modules/rustok-commerce/admin`](../../crates/modules/rustok-commerce/admin)** (21 files, 5,889 LOC)
-- [ ] **[`crates/modules/rustok-commerce/storefront`](../../crates/modules/rustok-commerce/storefront)** (16 files, 2,022 LOC)
+- [x] **[`crates/modules/rustok-commerce`](../../crates/modules/rustok-commerce)** (297 files, 132,631 LOC) — *(Done: verified across 6 Universal Logic Dimensions: non-nil UUID guards in StagedCheckoutService, RecoveringStagedCheckoutService, PaymentOrchestrationService, OrderChangeOrchestrationService, ReturnCompletionOrchestrationService, and FulfillmentOrchestrationService; strict CheckedTransition state machine in checkout_operation.rs with terminal parking state ReconciliationRequired; bounded compensation attempts (MAX_CHECKOUT_COMPENSATION_ATTEMPTS = 8) and lease seconds; checked integer math on fulfillment line items; verified with `cargo check -p rustok-commerce`).*
+- [x] **[`crates/modules/rustok-commerce/admin`](../../crates/modules/rustok-commerce/admin)** (21 files, 5,889 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID guards in parse_uuid, parse_cart_id, and parse_optional_line_item_id, RBAC permission verification in ensure_permission, promotion context extraction and decimal validation; verified with `cargo check -p rustok-commerce-admin` and `cargo check -p rustok-commerce-admin --features ssr`).*
+- [x] **[`crates/modules/rustok-commerce/storefront`](../../crates/modules/rustok-commerce/storefront)** (16 files, 2,022 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in shared_adapter::parse_cart_id, robust error mapping in native server functions, locale resolution and fallback; verified with `cargo check -p rustok-commerce-storefront` and `cargo check -p rustok-commerce-storefront --features ssr`).*
 - [ ] **[`crates/modules/rustok-cart`](../../crates/modules/rustok-cart)** (73 files, 19,638 LOC)
 - [ ] **[`crates/modules/rustok-cart/storefront`](../../crates/modules/rustok-cart/storefront)** (18 files, 4,545 LOC)
 - [ ] **[`crates/modules/rustok-order`](../../crates/modules/rustok-order)** (85 files, 22,532 LOC)
@@ -500,10 +500,10 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 46 | 11,514 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 9 | 1,891 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-comments/storefront) | `modules` | 4 | 382 | None |  |
-| [ ] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 323 | 155,694 | None |  |
+| [x] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 323 | 155,694 | 2026-11-13 | Phase FS-04 in progress |
 | [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 17 | 2,126 | 2026-11-13 | Phase FS-04 started |
-| [ ] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 22 | 6,412 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 17 | 2,983 | None |  |
+| [x] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 22 | 6,412 | 2026-11-13 | Phase FS-04 in progress |
+| [x] | [storefront](../../crates/modules/rustok-commerce/storefront) | `modules` | 17 | 2,983 | 2026-11-13 | Phase FS-04 in progress |
 | [ ] | [rustok-content](../../crates/modules/rustok-content) | `modules` | 46 | 6,465 | None |  |
 | [ ] | [rustok-content-orchestration](../../crates/modules/rustok-content-orchestration) | `modules` | 19 | 3,412 | None |  |
 | [ ] | [rustok-customer](../../crates/modules/rustok-customer) | `modules` | 29 | 6,207 | None |  |

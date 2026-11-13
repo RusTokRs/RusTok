@@ -20,7 +20,7 @@ export const files = {
   migration:
     'crates/modules/rustok-product/src/migrations/m20261018_000037_create_product_media_releases.rs',
   migrations: 'crates/modules/rustok-product/src/migrations/mod.rs',
-  media: 'crates/modules/rustok-media/src/ports.rs',
+  media: 'crates/modules/rustok-media/ports/src/ports.rs',
   operator:
     'crates/modules/rustok-commerce/src/controllers/admin/product_media.rs',
   routes: 'crates/modules/rustok-commerce/src/controllers/admin/mod.rs',

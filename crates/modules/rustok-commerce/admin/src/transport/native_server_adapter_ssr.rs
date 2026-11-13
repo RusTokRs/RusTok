@@ -128,8 +128,12 @@ fn parse_metadata_json(value: &str) -> Result<serde_json::Value, ServerFnError> 
 }
 
 fn parse_uuid(value: &str, field: &str) -> Result<uuid::Uuid, ServerFnError> {
-    uuid::Uuid::parse_str(value.trim())
-        .map_err(|_| ServerFnError::new(format!("{field} must be a valid UUID")))
+    let parsed = uuid::Uuid::parse_str(value.trim())
+        .map_err(|_| ServerFnError::new(format!("{field} must be a valid UUID")))?;
+    if parsed.is_nil() {
+        return Err(ServerFnError::new(format!("{field} must not be nil UUID")));
+    }
+    Ok(parsed)
 }
 
 fn parse_optional_uuid(
@@ -189,7 +193,11 @@ fn promotion_request_context_facts(
 }
 
 fn parse_cart_id(value: &str) -> Result<uuid::Uuid, ServerFnError> {
-    uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new("Invalid cart_id"))
+    let parsed = uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new("Invalid cart_id"))?;
+    if parsed.is_nil() {
+        return Err(ServerFnError::new("cart_id must not be nil UUID"));
+    }
+    Ok(parsed)
 }
 
 fn parse_optional_line_item_id(
@@ -213,9 +221,12 @@ fn parse_optional_line_item_id(
                     "line_item_id is required for line_item scope",
                 ));
             }
-            uuid::Uuid::parse_str(trimmed)
-                .map(Some)
-                .map_err(|_| ServerFnError::new("Invalid line_item_id"))
+            let parsed = uuid::Uuid::parse_str(trimmed)
+                .map_err(|_| ServerFnError::new("Invalid line_item_id"))?;
+            if parsed.is_nil() {
+                return Err(ServerFnError::new("line_item_id must not be nil UUID"));
+            }
+            Ok(Some(parsed))
         }
     }
 }

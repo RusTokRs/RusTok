@@ -6,26 +6,26 @@
 
 ## FBA deployment scope
 
-Media remains one domain module. Today `rustok-media-transport` supplies client/server
-adapters for declared metadata/control and public-image descriptor operations. Under the
-[canonical FBA layout](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout),
-Media moves its published contracts and adapters to the nested `rustok-media-ports` package.
-Whole-module isolated deployment is proposed, with coverage and operational gates in the owner plan.
+Media maintains a single domain module identity (`crates/modules/rustok-media`). Under the [canonical FBA owner-ports contract](../../../DECISIONS/2026-11-11-canonical-fba-owner-ports.md) and [canonical backend layout](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout):
+- Contract and client/server adapters are defined in the nested `crates/modules/rustok-media/ports` package (`rustok-media-ports`, Cargo workspace member, zero database/ORM/storage driver dependencies).
+- Out-of-process standalone service execution is provided by `src/bin/service.rs` behind feature `service` (`rustok-media-service`), with database sovereignty running against its own PostgreSQL schema without requiring foreign tables or `apps/server`.
+- Modular monolith remains the default deployment mode; the host application selects between in-process local calls or authenticated loopback/TLS gRPC at runtime.
+- Pure binary data transfers remain on dedicated HTTP streaming endpoints; binary bodies never enter the gRPC framing plane.
 
-## Known Limitations / Pending Implementation
+## Standalone Service Execution
 
-There is no standalone `rustok-media-service` package or whole-module
-`RUSTOK_MEDIA_PROVIDER=grpc` selector in the current implementation. The actual
-`RUSTOK_PROFILE_MEDIA_PROVIDER=grpc` selector changes only Profiles' public-image
-descriptor provider. Its endpoint is `RUSTOK_PROFILE_MEDIA_GRPC_ENDPOINT`; optional
-`RUSTOK_PROFILE_MEDIA_PUBLIC_ORIGIN` routes root-relative owner descriptors to a
-reachable Media HTTP origin. It does not select remote Media writes or transfer bytes.
+To run Media as an isolated out-of-process service:
 
-The descriptor adapter source exists; provider authentication/authorization, production
-mTLS, HTTP ingress/byte/cache behavior, actual isolated storage/process and restart/
-recovery evidence remain open. Metadata and loopback sources do not certify complete
-whole-module extraction. See the [owner plan](docs/implementation-plan.md#ffafba-boundary)
-and the [Proposed pilot](../../../DECISIONS/2026-07-16-media-search-extraction-boundaries.md).
+```bash
+# Run migrations and launch standalone gRPC daemon on loopback (local development)
+RUSTOK_MEDIA_SERVICE_BIND=127.0.0.1:7444 \
+RUSTOK_MEDIA_DATABASE_URL=postgres://media_user:password@localhost:5432/media_db \
+RUSTOK_MEDIA_GRPC_BEARER_TOKEN=secret-token \
+RUSTOK_MEDIA_SERVICE_ALLOW_INSECURE_LOOPBACK=true \
+cargo run -p rustok-media --bin rustok-media-service --features service
+```
+
+For production deployments, TLS certificates (`RUSTOK_MEDIA_SERVICE_TLS_CERT_PATH` and `RUSTOK_MEDIA_SERVICE_TLS_KEY_PATH`) must be supplied; non-loopback plaintext bindings are rejected.
 
 ## Responsibilities
 

@@ -95,6 +95,24 @@ impl StagedCheckoutService {
         idempotency_key: impl Into<String>,
         input: CompleteCheckoutInput,
     ) -> StagedCheckoutResult<CompleteCheckoutResponse> {
+        if tenant_id.is_nil() {
+            return Err(CheckoutOperationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            )
+            .into());
+        }
+        if actor_id.is_nil() {
+            return Err(CheckoutOperationError::Validation(
+                "actor_id must not be nil".to_string(),
+            )
+            .into());
+        }
+        if input.cart_id.is_nil() {
+            return Err(CheckoutOperationError::Validation(
+                "cart_id must not be nil".to_string(),
+            )
+            .into());
+        }
         if self.atomic_cart_checkout.cart_id() != input.cart_id {
             return Err(CheckoutOperationError::Validation(format!(
                 "atomic cart checkout is bound to cart {}, not {}",

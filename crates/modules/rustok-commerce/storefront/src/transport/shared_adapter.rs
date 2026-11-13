@@ -74,6 +74,11 @@ pub(super) fn parse_cart_id(value: Option<String>) -> Result<Option<(String, Uui
         Some(cart_id) => {
             let parsed = Uuid::parse_str(cart_id.as_str())
                 .map_err(|_| ApiError::Validation("cart_id must be a valid UUID".to_string()))?;
+            if parsed.is_nil() {
+                return Err(ApiError::Validation(
+                    "cart_id must not be nil UUID".to_string(),
+                ));
+            }
             Ok(Some((cart_id, parsed)))
         }
         None => Ok(None),

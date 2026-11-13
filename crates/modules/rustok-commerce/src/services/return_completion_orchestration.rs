@@ -111,6 +111,11 @@ impl ReturnCompletionOrchestrationService {
                 "tenant_id must not be nil".to_string(),
             ));
         }
+        if actor_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "actor_id must not be nil".to_string(),
+            ));
+        }
         if return_id.is_nil() {
             return Err(PostOrderOrchestrationError::Validation(
                 "return_id must not be nil".to_string(),

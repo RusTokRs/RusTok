@@ -247,6 +247,21 @@ impl OrderChangeOrchestrationService {
         difference_refund: Option<ExchangeDifferenceRefundInput>,
         metadata: Value,
     ) -> PostOrderOrchestrationResult<ApplyOrderChangeResult> {
+        if tenant_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if actor_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "actor_id must not be nil".to_string(),
+            ));
+        }
+        if change_id.is_nil() {
+            return Err(PostOrderOrchestrationError::Validation(
+                "change_id must not be nil".to_string(),
+            ));
+        }
         let order_service = OrderService::new(self.db.clone(), self.event_bus.clone());
         let order_change = order_service.get_order_change(tenant_id, change_id).await?;
         let idempotency_key = idempotency_key.into();
@@ -308,6 +323,14 @@ impl OrderChangeOrchestrationService {
         difference_refund: Option<ExchangeDifferenceRefundInput>,
         metadata: Value,
     ) -> OrderChangeOrchestrationResult<ApplyOrderChangeResult> {
+        if tenant_id.is_nil() || change_id.is_nil() {
+            return Err(OrderChangeOrchestrationError::OrderRead(
+                PortError::validation(
+                    "commerce.order_change_owner_context_invalid",
+                    "tenant_id and change_id must not be nil",
+                ),
+            ));
+        }
         let tenant_identity = tenant_id.to_string();
         if order_read_context.tenant_id != tenant_identity {
             return Err(OrderChangeOrchestrationError::OrderRead(
