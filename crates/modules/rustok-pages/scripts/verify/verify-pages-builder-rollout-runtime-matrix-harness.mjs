@@ -172,14 +172,15 @@ for (const marker of [
   "rolloutSnapshotQuery",
   "pagesReadsQuery",
   "withProfile(original.settings, profile.flags)",
-  "writePagesSettings(apiContext, profileSettings)",
-  "readRolloutSnapshot(apiContext, tenantSlug, profile)",
+  // Prettier wraps these calls, so pin the opening line of each one.
+  "await writePagesSettings(\n        apiContext,\n        profileSettings\n      );",
+  "await readRolloutSnapshot(\n        apiContext,\n        tenantSlug,\n        profile\n      );",
   "assertPagesReads(apiContext, pageId)",
   "const page = await adminContext.newPage()",
   "assertUiProfile(page, profile)",
   "allowedPreview(page, profile.id === \"all_on\")",
   "deniedPreview(adminContext, previewTemplate)",
-  'deniedBrowserIntent(\n            adminContext,\n            pageId,\n            "save",\n            "publish",',
+  "await deniedBrowserIntent(\n            adminContext,\n            pageId,\n            'save',\n            'publish'\n          );",
   '"rename_page"',
   '"properties"',
   "finally {",
@@ -225,7 +226,8 @@ for (const marker of [
 ]) need(owner, marker, "Pages rollout owner");
 for (const marker of [
   "fetch_pages_builder_rollout_snapshot(",
-  "pages_editor_capabilities_for_rollout(",
+  "pages_editor_capability_policy_from_effective(&verified_user.permissions).evaluate()",
+  "pages_editor_capabilities_for_snapshot(role_capabilities, &rollout)",
   "dispatch_pages_browser_intent_with_capabilities(snapshot, envelope, editor_capabilities)",
 ]) need(adminMain, marker, "standalone browser-intent rollout binding");
 

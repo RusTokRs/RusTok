@@ -184,7 +184,9 @@ if (count(owner, ".lock_shared()") < 3) {
   failures.push("audit owner must retain at least three shared-lock calls for page/id/record scans");
 }
 requireOrder(owner, [
-  "let page_query = ||",
+  // Rustfmt splits the page query closure across two lines, so the pin names the binding, not
+  // the whole closure header.
+  "let page_query =",
   "DbBackend::Postgres | DbBackend::MySql =>",
   "page_query().lock_shared().one(&txn).await?",
   "let artifact_id_query = ||",

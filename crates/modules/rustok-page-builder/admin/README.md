@@ -47,7 +47,9 @@ and no control works. Under a host Content Security Policy with a nonce, the hos
 from the `nonce` property of a script of its own document. The editor writes it on the adapter
 `<script>`, on the `<style>` and `<script>` of the canvas `srcdoc` document, and on the
 stylesheet of the server preview document (`fly::document_html_with_style_nonce`). Both
-documents inherit the host policy.
+documents inherit the host policy. The adapter workspace reaches the same nonce from the same
+context: `AdapterWorkspacePanel` passes it to `fly_leptos::FlyEditorWorkspace`, whose canvas
+renders the project stylesheet as an inline `<style>` that the policy would otherwise drop.
 
 The current canvas supports rendering, geometry, hover, selection, overlays and persistence. It
 also provides the block palette, drag-and-drop insertion, resize handles, keyboard editing,
@@ -97,22 +99,31 @@ Pages of a document in the default runtime (`src/editor/ssr_inspector.rs`):
 
 SSR draft session storage (`src/draft_session.rs`):
 
-- **Nothing schedules `prune`.** An expired session is dropped when it is read (the file store
-  deletes the file under the token lock, the key-value backend deletes the key only while it still
-  holds the generation that was read), and the per-owner cap is enforced when a session is
-  created. Everything else waits for a host to call `SsrDraftSessionStore::prune`, and no host
-  does yet: a session nobody reads again stays in storage, and the global cap (`maximum_entries`)
-  of the file and key-value backends is not enforced.
+- **`prune` has one host caller, and it is the standalone admin.** Expired sessions are also
+  dropped when they are read (the file store deletes the file under the token lock, the key-value
+  backend deletes the key only while it still holds the generation that was read), and the
+  per-owner cap is enforced when a session is created. Both are lazy: a session nobody reads again
+  would never be collected, and the global cap (`maximum_entries`) would never apply. The
+  standalone admin now runs `apps/admin/src/app/draft_retention.rs`
+  (`DRAFT_SESSION_PRUNE_INTERVAL`, five minutes) over the store the intent endpoint resolves, so
+  a store installed through `set_pages_browser_draft_store` is pruned too. A host that embeds the
+  editor but not that binary still owes the same call.
 - **Drafts of the pre-partition file layout are not migrated.** Files written directly into the
   storage root by earlier builds are no longer read; `prune` deletes them once they are older than
   one TTL.
-- **A record that does not parse fails its session for up to one TTL.** The file store cannot tell
-  a damaged record from the live session of a build with another record shape (records carry no
-  format version), so it reports `Serialization` for that token until the file has not been
-  written for a whole TTL; from then on the session counts as expired and `prune` deletes the
-  file. An editor that holds such a token gets an error for every action until then or until it
-  opens the page in a new tab. The key-value backend reports `Serialization` the same way and
-  never deletes such a record itself: it is gone when the TTL the driver stored it with runs out.
+- **A damaged record fails its session for up to one TTL.** Records carry a format version
+  (`PersistentDraftSessionRecord::format`, now `1`) and both stores read them through
+  `PersistentDraftSessionRecord::decode`, so the two causes are distinguishable:
+  - A record of a **newer** format than this build understands parses, and is answered with
+    `UnsupportedFormat` — a deployment that has to be finished (or rolled back), not damage. The
+    record is not aged out and not deleted: it belongs to a build that is still writing the store.
+  - A record that does not parse at all is damage: the file store reports `Serialization` for that
+    token until the file has not been written for a whole TTL, then treats it as expired and
+    deletes it; the key-value backend reports `Serialization` and leaves the record to the TTL the
+    driver stored it with.
+  Records written before the field existed have format `0` and are read as-is; the next commit
+  rewrites them with the current format. An editor that holds the token of a damaged session
+  still gets an error for every action until the TTL passes or it opens the page in a new tab.
 - **Ownership and mode checks are Unix-only.** On other platforms the storage root is not checked
   for a foreign owner and files get no private mode; access control is whatever the operator set on
   the parent directory.

@@ -11,6 +11,12 @@ bound to a `FlyEditor` and the shared `FlyUiStateMachine`, on the shared `fly-ui
 view-models, with host-resolved `EditorMessages` panel labels. With `on_intent` the workspace instead emits typed `BrowserIntentEnvelope`s
 (insert/select/undo/redo) for the host's SSR intent endpoint.
 
+`FlyCanvasPreview` renders the project stylesheet as an inline `<style>` element, as does the
+workspace around it. Both accept `csp_nonce`; a host that serves the editor under a nonce policy
+(`style-src 'self' {nonce}`) must pass its request nonce, otherwise the browser drops the
+stylesheet and the authoring canvas renders unstyled while the published page looks right.
+`AdapterWorkspacePanel` in `rustok-page-builder-admin` reads it from the `UiCspNonce` context.
+
 `FlyPalette` and `FlyLayerTree` are the producer side of the SSR control contract: on a
 server-rendered page their Leptos handlers do not exist, and `fly-browser.js` drives them
 through the `data-fly-*` attributes they render. Renaming one of those attributes disables

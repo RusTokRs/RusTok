@@ -24,6 +24,7 @@ const files = {
   cargo: "apps/storefront/Cargo.toml",
   host: "apps/storefront/src/lib.rs",
   authoringCore: "apps/storefront/src/modules/core.rs",
+  entryPoint: "apps/storefront/src/main.rs",
   regression: "apps/storefront/tests/pages_anonymous_ssr_delivery.rs",
 };
 
@@ -157,9 +158,11 @@ for (const marker of [
 ]) {
   need(renderDocument, marker, "gated Blog comment island bootstrap");
 }
+// The shell names the modules the host enabled in its own head meta, so the document is not
+// rendered with an empty head string.
 need(
   host,
-  'render_document(locale, "RusToK Storefront", "", app_html, None)',
+  'render_document(locale, "RusToK Storefront", &modules_meta, app_html, None)',
   "anonymous SSR shell invocation",
 );
 
@@ -190,9 +193,12 @@ function rustFiles(root) {
   }
   return result;
 }
+// `main.rs` carries both entry points: the SSR binary (`ssr`, not `csr`) and the browser bundle
+// (`csr`), and only the second may mount. The file is checked by the rule below rather than by
+// this scan, so the ban stays about the library the SSR host renders.
 for (const file of rustFiles("apps/storefront/src")) {
   const label = path.relative(repoRoot, file);
-  if (label === files.authoringCore) continue;
+  if (label === files.authoringCore || label === files.entryPoint) continue;
   const source = readFileSync(file, "utf8");
   for (const marker of [
     "#[wasm_bindgen(start)]",

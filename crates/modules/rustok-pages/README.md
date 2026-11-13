@@ -91,6 +91,7 @@ compatibility or drop migration is retained.
 - `PagesModule`
 - `PageService`
 - `PagePublishScheduler`
+- `PageScheduledPublishWorkAdapter` / `PageScheduledPublishWorkRegistration` (`runtime` feature)
 - `PageBuilderArtifactService`
 - `PageBuilderScenarioBaselineService`
 - `graphql::PagesQuery`
@@ -123,10 +124,18 @@ These are gaps in what the runtime actually does, not accepted design:
   (`sweep_due_publish_jobs_as_of` / `reap_expired_publish_jobs_as_of`;
   `PagePublishScheduler::metrics()` exposes `requeued_total` / `reaped_failed_total`
   counters for stranded-state monitoring). Scheduling needs `pages:publish`; execution is a
-  system-actor publish whose job row keeps `created_by` attribution. **Hosts must run
-  `PagePublishScheduler` (or `process_due_publish_jobs`) for schedules to fire.** Runtime
-  coverage lives in `tests/page_publish_scheduler_sqlite.rs` (SQLite); the Postgres suites
-  and the full cargo verification matrix remain CI's authority for this change.
+  system-actor publish whose job row keeps `created_by` attribution.
+  **The queue is driven by the host scheduler.** With the `runtime` feature (enabled by
+  `mod-pages` in `apps/server`) the module publishes `PageScheduledPublishWorkRegistration`
+  through `rustok_runtime::ModuleWorkRegistrations`, and the server's module-work scheduler
+  executes it. The adapter claims a tenant when its queue holds a due `scheduled` job **or**
+  an `executing` job whose lease expired, so a stranded claim is reachable without waiting for
+  unrelated work; executions are paced by `PAGE_PUBLISH_SWEEP_INTERVAL_SECS` (30s) because the
+  host polls every second and an unpaced sweep would spend a transiently failing job's whole
+  attempt budget within seconds. Without the feature, a host must call `PagePublishScheduler`
+  (or `process_due_publish_jobs`) itself; nothing fires otherwise. Runtime coverage lives in
+  `tests/page_publish_scheduler_sqlite.rs` (SQLite, including the adapter claim/execute path);
+  the Postgres suites and the full cargo verification matrix remain CI's authority.
 - **Wave 1 of the 2026-10-09 audit is implemented** (draft saving on published pages,
   the append-only body revision journal with restore, and page duplication; see
   [`DECISIONS/2026-10-09-page-body-draft-and-revision-history.md`](../../../DECISIONS/2026-10-09-page-body-draft-and-revision-history.md)).

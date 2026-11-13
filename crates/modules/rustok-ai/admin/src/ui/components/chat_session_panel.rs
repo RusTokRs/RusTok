@@ -14,7 +14,7 @@ use rustok_ui_core::AdminQueryKey;
 pub fn AiChatSessionPanel(
     ui_locale: Option<String>,
     bootstrap: AiAdminBootstrap,
-    session_detail: LocalResource<
+    session_detail: Resource<
         Result<Option<AiChatSessionDetailPayload>, crate::transport::ApiError>,
     >,
     live_stream: Signal<Option<AiLiveStreamStatePayload>>,

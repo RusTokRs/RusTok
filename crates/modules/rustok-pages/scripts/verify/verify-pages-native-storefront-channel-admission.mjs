@@ -163,7 +163,8 @@ for (const marker of [
   ".bind_module(",
   "PageService::new(db.clone(), event_bus)",
   ".publish_non_builder_if_current(",
-  "PageCacheGenerationSnapshot::new(3, 5, 7)",
+  "PageCacheGenerationSnapshot::new(",
+  "3, 5, 7,",
   "Duration::from_secs(PAGES_STOREFRONT_CACHE_TTL_SECS)",
 ]) {
   requireText(harness, marker, "registered channel admission harness");
@@ -214,7 +215,7 @@ const nativeBody = sliceBetween(
 requireOrder(
   nativeBody,
   [
-    "if let Some(channel_id) = request_context.channel_id",
+    "let channel_id = request_context",
     "ChannelService::new(runtime_ctx.db_clone())",
     "is_module_enabled(channel_id, MODULE_SLUG)",
     "if !enabled",

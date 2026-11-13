@@ -93,32 +93,46 @@ pub fn ForumTopicSplitAdmin() -> impl IntoView {
         "Split committed",
     );
 
-    let candidates = LocalResource::new(move || {
-        refresh_nonce.track();
-        let token = token.get();
-        let tenant = tenant.get();
-        let locale = requested_locale.clone();
-        async move { transport::fetch_topic_split_candidates(token, tenant, locale).await }
-    });
+    // Resolved by the request: the split panel is served from an `Async` admin route, so a
+    // `LocalResource` here leaves the reader with the `Suspense` fallback. Each reader below
+    // names the handle it reads, so the swap does not depend on capture order.
+    let candidates = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                requested_locale.clone(),
+                refresh_nonce.get(),
+            )
+        },
+        move |(token, tenant, locale, _generation)| async move {
+            transport::fetch_topic_split_candidates(token, tenant, locale).await
+        },
+    );
 
-    let replies = LocalResource::new(move || {
-        let source_topic_id = source_topic_id.get();
-        let token = token.get();
-        let tenant = tenant.get();
-        let locale = target_locale.get();
-        async move {
+    let replies = Resource::new(
+        move || {
+            (
+                source_topic_id.get(),
+                token.get(),
+                tenant.get(),
+                target_locale.get(),
+            )
+        },
+        move |(source_topic_id, token, tenant, locale)| async move {
             if source_topic_id.trim().is_empty() {
                 Ok(ForumTopicSplitReplyPage { items: Vec::new() })
             } else {
                 transport::fetch_topic_split_replies(token, tenant, source_topic_id, locale).await
             }
-        }
-    });
+        },
+    );
 
+    let submit_replies = replies;
     let submit = move |event: SubmitEvent| {
         event.prevent_default();
         set_error.set(None);
-        let Some(Ok(reply_page)) = replies.get_untracked() else {
+        let Some(Ok(reply_page)) = submit_replies.get_untracked() else {
             set_error.set(Some("Source replies are not available".to_string()));
             return;
         };
@@ -187,7 +201,8 @@ pub fn ForumTopicSplitAdmin() -> impl IntoView {
             <form class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]" on:submit=submit>
                 <section class="space-y-6 rounded-[1.75rem] border border-border bg-card p-6 shadow-sm">
                     <Suspense fallback=move || view! { <div class="h-20 animate-pulse rounded-2xl bg-muted"></div> }>
-                        {move || candidates.get().map(|result| match result {
+                        {let view_candidates = candidates;
+                        move || view_candidates.get().map(|result| match result {
                             Ok(items) => view! {
                                 <label class="block space-y-2 text-sm font-medium text-foreground">
                                     <span class="block">{source_label.clone()}</span>
@@ -221,7 +236,8 @@ pub fn ForumTopicSplitAdmin() -> impl IntoView {
                     <section class="space-y-3">
                         <h2 class="text-sm font-semibold text-foreground">{replies_label}</h2>
                         <Suspense fallback=move || view! { <div class="h-36 animate-pulse rounded-2xl bg-muted"></div> }>
-                            {move || replies.get().map(|result| match result {
+                            {let view_replies = replies;
+                            move || view_replies.get().map(|result| match result {
                                 Ok(page) if !page.items.is_empty() => view! {
                                     <div class="max-h-96 space-y-2 overflow-y-auto rounded-2xl border border-border p-3">
                                         {page.items.into_iter().map(|reply| {

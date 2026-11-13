@@ -35,6 +35,9 @@ const files = {
   deploymentBuilder: "scripts/build/build-pages-inline-edit-deployment.sh",
   serverBuilder: "scripts/build/build-pages-inline-edit-server.sh",
   clientBuilder: "apps/storefront/scripts/build-pages-inline-edit-client.mjs",
+  // The Pages client builder is a configuration of the shared storefront WASM builder, which is
+  // where the locked graph, the pinned CLI version and the atomic publish are implemented.
+  wasmClientBuilder: "apps/storefront/scripts/build-wasm-client.mjs",
   release: ".github/workflows/release.yml",
   infrastructure: ".github/workflows/release-infrastructure.yml",
   hardening: ".github/workflows/hardening-gates.yml",
@@ -58,6 +61,7 @@ if (failures.length > 0) {
 }
 
 const evidence = JSON.parse(read(files.evidence));
+const wasmClientBuilder = read(files.wasmClientBuilder);
 const adminBuilder = read(files.adminBuilder);
 const deploymentBuilder = read(files.deploymentBuilder);
 const serverBuilder = read(files.serverBuilder);
@@ -166,7 +170,7 @@ for (const marker of [
 for (const marker of ["|| true", "eval "]) forbid(deploymentBuilder, marker, "deployment orchestrator");
 
 for (const marker of [
-  '"--print-wasm-bindgen-version"',
+  'node "$client_builder" --print-wasm-bindgen-version',
   'cargo install wasm-bindgen-cli',
   '--version "=$wasm_bindgen_version"',
   "--locked",
@@ -177,13 +181,17 @@ for (const marker of [
   "--features pages-inline-edit-assets",
 ]) need(serverBuilder, marker, "authoring client/server builder");
 for (const marker of [
+  "buildStorefrontWasmClient({",
+  'defaultAssetDir: "target/site/assets/pages-inline-edit"',
+]) need(clientBuilder, marker, "dedicated client builder");
+for (const marker of [
   'readFileSync(path.join(repoRoot, "Cargo.lock"), "utf8")',
   '"--print-wasm-bindgen-version"',
   '"--locked"',
   "RUSTOK_WASM_BINDGEN_BIN",
   'run(wasmBindgen, ["--version"], true)',
   "renameSync(stagingRoot, targetRoot)",
-]) need(clientBuilder, marker, "dedicated client builder");
+]) need(wasmClientBuilder, marker, "shared storefront WASM client builder");
 
 for (const marker of [
   "Build same-origin Pages inline edit release composition",

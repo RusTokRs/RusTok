@@ -26,7 +26,15 @@ pub fn Input(
     #[prop(into, default = false.into())] invalid: Signal<bool>,
     #[prop(optional, into)] placeholder: String,
     #[prop(optional)] value: Option<ReadSignal<String>>,
-    #[prop(optional)] set_value: Option<WriteSignal<String>>,
+    /// A value derived from other signals, for a field whose text is the resolved response with the
+    /// operator's edits laid over it. `value` stays `ReadSignal` because that is what an owned cell
+    /// is; a derived value has no cell to hand over, and a `ReadSignal` cannot be built from a
+    /// closure.
+    #[prop(optional)] derived_value: Option<Signal<String>>,
+    /// The setter for the field. A form owns a `WriteSignal`; a caller writing into a projection
+    /// passes `SignalSetter::map(..)`, which is the type Leptos has for "any setter" — the write
+    /// face of a value that is not an owned cell.
+    #[prop(optional, into)] set_value: Option<SignalSetter<String>>,
     #[prop(optional, into)] prefix: Option<AnyView>,
     #[prop(optional, into)] suffix: Option<AnyView>,
     #[prop(optional, into)] class: String,
@@ -35,6 +43,14 @@ pub fn Input(
     #[prop(optional, into)] described_by: String,
     #[prop(optional, into)] input_mode: String,
 ) -> impl IntoView {
+    // A field is either an owned cell or a value derived from the response; the derived one wins
+    // when given, so a caller migrating a form off an `Effect` does not have to invent a cell.
+    let current_value = move || {
+        derived_value
+            .map(|derived| derived.get())
+            .or_else(|| value.map(|cell| cell.get()))
+            .unwrap_or_default()
+    };
     let id = (!id.is_empty()).then_some(id);
     let name = (!name.is_empty()).then_some(name);
     let described_by = (!described_by.is_empty()).then_some(described_by);
@@ -62,7 +78,7 @@ pub fn Input(
                 inputmode=input_mode
                 placeholder=placeholder
                 name=name
-                prop:value=move || value.map(|v| v.get()).unwrap_or_default()
+                prop:value=move || current_value()
                 on:input=move |ev| {
                     if let Some(set) = set_value {
                         set.set(event_target_value(&ev));
@@ -106,7 +122,7 @@ pub fn Input(
                 inputmode=input_mode
                     placeholder=placeholder
                     name=name
-                    prop:value=move || value.map(|v| v.get()).unwrap_or_default()
+                    prop:value=move || current_value()
                     on:input=move |ev| {
                         if let Some(set) = set_value {
                             set.set(event_target_value(&ev));

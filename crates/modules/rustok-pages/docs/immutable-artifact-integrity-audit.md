@@ -51,7 +51,9 @@ The first query projects artifact identifiers only and requests `max_records + 1
 truncated = true
 ```
 
-Each selected full artifact payload is then loaded and verified one record at a time under the same transaction. The command never retains hundreds of HTML/CSS/runtime payloads in one in-memory result set.
+Each selected full artifact payload is then loaded and verified one record at a time, through `find_by_id` fenced by tenant and page, under the same transaction and the same shared-lock rule. The command never retains hundreds of HTML/CSS/runtime payloads in one in-memory result set, and the lookahead row of the identifier pass is discarded before any payload is read.
+
+A selected payload that is no longer readable fails the audit with `ArtifactIntegrity` rather than being skipped: the result must not report fewer records than it selected and call that a complete slice. A page whose artifacts are all gone is a different case — no identifier is selected, so the slice is complete and empty.
 
 A truncated result is not a complete page audit. The caller must request another bounded operational slice or use a future cursor-based command; this source slice does not pretend otherwise.
 

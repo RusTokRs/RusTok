@@ -223,6 +223,11 @@ impl PreviewPageBuilderInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PreviewPageBuilderResult {
     pub page_id: String,
+    /// The rendered document, as one composed string.
+    ///
+    /// A host that serves it as its own response derives the policy of that response from the
+    /// envelope the renderer owns ([`fly::document_html_stylesheet`]), so the stylesheet is not
+    /// duplicated into this contract: it is one fact, in one place.
     pub html: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_scenario_id: Option<String>,

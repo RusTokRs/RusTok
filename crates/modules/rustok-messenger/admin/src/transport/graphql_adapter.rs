@@ -3,7 +3,7 @@ use serde::Deserialize;
 
 use crate::model::*;
 
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error, serde::Serialize, serde::Deserialize)]
 pub enum ApiError {
     #[error("GraphQL error: {0}")]
     Graphql(String),

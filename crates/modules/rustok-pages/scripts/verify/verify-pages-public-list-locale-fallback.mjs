@@ -159,9 +159,7 @@ ordered(
   listMapper,
   [
     "fallback_locale: Option<String>",
-    "resolve_translation_record(",
-    "&locale",
-    "fallback_locale.as_deref()",
+    "resolve_translation_record(&translations, locale, fallback_locale)",
     "title: resolved.translation.map",
     "slug: resolved.translation.map"
   ],

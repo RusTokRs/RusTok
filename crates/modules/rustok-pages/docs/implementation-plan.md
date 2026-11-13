@@ -16,7 +16,7 @@ Runtime/build/test evidence is maintainer-owned and remains unrun.
 # Implementation Plan for `rustok-pages`
 
 Date: 2026-08-08  
-Status: `in_progress / contribution-manifest-generation-source-ready / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / artifact-repair-multilocale-recovery-source-ready / rollback-activated-artifact-loss-recovery-source-ready / rollback-activated-repair-rollback-continuity-source-ready / repeated-artifact-loss-recovery-source-ready / execution-rollout-pending`
+Status: `in_progress / contribution-manifest-generation-source-ready / authenticated-authoring-route-source-ready / inline-edit-asset-delivery-source-ready / admin-launch-source-ready / release-composition-source-ready / storefront-composition-etag-source-ready / route-history-source-ready / artifact-repair-multilocale-recovery-source-ready / rollback-activated-artifact-loss-recovery-source-ready / rollback-activated-repair-rollback-continuity-source-ready / repeated-artifact-loss-recovery-source-ready / execution-rollout-pending`
 
 ## FFA/FBA status
 
@@ -190,16 +190,95 @@ Translation has no direct Pages table access and no runtime-locale fallback in
 this target. Production enablement still requires retained PostgreSQL
 migration, concurrent CAS, and change-cursor recovery evidence.
 
+### Anonymous storefront dependency graph
+
+- The anonymous storefront dependency graph verifier reads the six published profiles
+  (`pages-storefront-default`, `-hydrate`, `-ssr`, and the host `csr`, `hydrate`, `ssr`) from
+  `cargo metadata`, so it needs a toolchain; the source half of it reads the manifests and the
+  Rust trees directly.
+- No authoring package is reachable from any of the six profiles, and the editor packages are
+  excluded by name rather than by feature.
+- The authenticated inline profiles are opt-in: no `csr`, `hydrate` or `ssr` profile enables
+  `pages-inline-edit`.
+- Compiled SSR/CSR/hydrate bundle artifact evidence remains open. The graph is checked; the
+  three bundles are not built by this slice.
+
 ### Public locale, route and cache authority
 
-- Public detail/list use requested locale → tenant default → platform fallback.
+- Native and unauthenticated GraphQL public detail and list reads use the same
+  tenant fallback chain: requested locale → tenant default → platform fallback.
 - Published slug aliases, delete tombstones and explicit historical import remain source-ready.
 - Localized canonical routes and host canonical/redirect/gone decisions remain Pages-owned.
 - Navigation and SEO owner payloads remain bound into the exact private revalidation ETag.
 - The selected immutable published artifact remains public render authority after draft mutation.
+- The selected immutable published artifact regression mutates the persisted draft body mutation
+  path and re-reads the public route afterwards.
+- After that mutation, current body content is not public render authority; the bound artifact is.
 - The anonymous public Pages route remains SSR-only and unchanged.
 - `NodeUpdated`, `NodePublished`, `NodeUnpublished` and `NodeDeleted` drive bounded generation rotation for route/page/artifact caches after commit.
 - Publish, rollback and repair activation reuse the same event-driven cache boundary; no repair path writes cache state inline.
+
+### Route history, aliases and tombstones: source-ready
+
+Route identity is Pages-owned end to end: the module decides the disposition, and the
+storefront host only renders the decision it is given.
+
+- A **registered Pages host route decision server function**
+  (`storefront_page_route_native`, `pages/route-decision`) admits the channel, resolves the
+  page, checks publication and channel visibility, and only then reads the generation
+  snapshot, so an unadmitted route never pays for a cache identity it cannot use.
+- **Exact localized canonical routes continue SSR.** A canonical decision renders; a legacy or
+  non-canonical address is answered with a private permanent redirect, and an alias, a
+  tombstone, a missing page or a conflict stops before the render with a private status
+  response.
+- **Delete tombstones retain every route.** Deleting a page records a gone alias for every
+  snapshot the page ever published, and `resolve` folds a redirect whose target page was
+  physically deleted to `Gone` by the target's retained tombstone rather than rewriting history.
+- **A published page keeps its old addresses:** immutable redirects for published slug renames,
+  so a bookmark, a search result and an inbound link keep working after the slug changes.
+- **Old published slug claims cannot be reused.** A rename reserves the previous slug, so a new
+  page cannot take an address the history still answers for; the claim check runs against the
+  current translations first and the historical aliases second, inside the same transaction.
+- **Delete tombstones and historical backfill remain open** — the pair of statements below is
+  what keeps this section honest:
+- The **historical route import owner** (`PageRouteHistoryImportService`) is the explicit,
+  bounded repair for route history that cannot be inferred safely: one provenance receipts row
+  per source record, at most `MAX_PAGE_ROUTE_HISTORY_IMPORT_ITEMS` items, and fail-closed on a
+  provenance payload drift, a route ownership drift, or redirect-only history for a missing
+  page.
+- **Automatic inference remains open by design.** Old non-builder publication and physically
+  deleted rows do not carry enough durable source data to reconstruct their routes, so no scan
+  guesses them; an operator imports them with a provenance key or leaves the addresses gone.
+
+This section records source only: the harness that exercises it was written without being
+compiled here (`storefront/tests/host_route_decision_sqlite.rs`,
+`tests/page_published_slug_route_alias_sqlite.rs`, `tests/page_route_history_import_sqlite.rs`).
+
+### Canonical storefront composition ETag: source-ready
+
+`storefront-composition-etag-source-ready` — the canonical page response of the anonymous
+storefront host is the one response that may carry a revalidation identity
+(`apps/storefront/src/shared/context/pages_composition.rs`,
+`apps/storefront/src/lib.rs`).
+
+- Navigation-owned header/footer menus are loaded once by the host
+  (`fetch_pages_navigation_snapshot` joins the two owner calls), the Navigation owner transport
+  is reused rather than re-entered, and the snapshot is preloaded into the SSR components
+  through `NavigationSnapshotProvider`.
+- The SEO owner context is resolved before the Pages render, and its host-side redirect
+  decision ends the response before any composition work.
+- The identity binds the route, page and artifact generations from the canonical route
+  decision, the channel identity, the canonical page id, locale and slug, the SEO payload, the
+  navigation payload and the exact rendered HTML — the digest of the document the host is
+  about to send, not of its inputs alone.
+- The identity is a deterministic SHA-256 ETag over the serialized payload. It is claimed by
+  canonical routes only: a terminal route (redirect, gone) or a nonce-bearing document never
+  claims it, so a per-request nonce cannot be cached.
+- Matching strong, weak or comma-separated `If-None-Match` returns `304`; both the `200` and
+  the `304` use `private, no-cache`, while terminal routes remain `private, no-store`.
+
+This remains source-ready: no Cargo, storefront, navigation, HTTP or browser execution is
+recorded for it.
 
 ### Authenticated real-DOM adapter: source-ready
 
@@ -273,6 +352,29 @@ It reloads the selected page through the existing Pages admin transport, hides m
 
 Tokens, sessions, grants, proofs, arbitrary origins and signing material are absent from the href and DOM. Backend admission remains authoritative.
 
+### Production gate delivery and relay restart: source-ready
+
+`apps/server/tests/pages_production_gate_postgres_restart.rs` owns the production gate PostgreSQL publish/rollback restart harness.
+It drives the real outbox module and Pages migrations in an isolated schema per run, commits a
+publish receipt and a rollback receipt with their events, and delivers both through the
+production tenant-generation delivery gate and the production server Pages cache port rather
+than a test double.
+
+The harness pins the delivery order the gate owns: rotation precedes outbox acknowledgement,
+route, page and artifact generations rotate exactly once, new keys miss and then refill, and
+old-generation values stay physically present. The rollback delivery fails on purpose as a
+post-invalidation downstream failure, so the row stays pending with an incremented retry count
+and no `dispatched_at`; a second relay instance with a distinct worker identity then reclaims
+the same pending event under the same event and correlation identity. There the
+process-bounded dedupe prevents a second rotation when a new relay instance retries, and the
+successful retry marks the row dispatched and clears its error and claim. The ordinary Pages
+listener treats the same event as a rotation no-op.
+
+The historical owner packet and the historical pre-handler-failure restart packet stay
+separate and are not replaced by this harness. Nothing above was executed: no Cargo build, no
+PostgreSQL run, no relay restart observation and no storefront request, so the packet remains
+source-ready with runtime evidence pending.
+
 ### Release composition: source-ready
 
 The single source owner is:
@@ -311,6 +413,12 @@ Admin WASM and dedicated authoring WASM do not inherit native linker flags. Nati
 Release, infrastructure and hardening workflows use the allow-listed full action SHAs. The `release-infra-approved` policy protects the common orchestrator, both downstream builders and the dedicated client builder. Release readiness requires hashes, sizes, HTTP and browser evidence rather than source inspection alone.
 
 No release workflow, reproducibility job, Docker build or artifact was executed in this source slice.
+
+This slice is the release composition, not its execution: the label
+`release-composition-source-ready / execution-browser-rollout-pending` names the two halves —
+the composition is owned and pinned, and the release workflow, the Docker build and the browser
+rollout have not run. Execution remains pending for all three, and the source packets say so
+rather than inferring a pass from the source review.
 
 ### Anonymous storefront boundary: source-ready
 

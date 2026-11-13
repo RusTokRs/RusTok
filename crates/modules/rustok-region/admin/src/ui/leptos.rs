@@ -17,16 +17,21 @@ use crate::core::{
 use crate::i18n::t;
 use crate::model::RegionDetail;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -52,12 +57,12 @@ pub fn RegionAdmin() -> impl IntoView {
     let (busy, set_busy) = signal(false);
     let (error, set_error) = signal(Option::<String>::None);
 
-    let bootstrap = local_resource(
+    let bootstrap = loaded_resource(
         move || refresh_nonce.get(),
         move |_| async move { crate::transport::fetch_bootstrap().await },
     );
 
-    let regions = local_resource(
+    let regions = loaded_resource(
         move || refresh_nonce.get(),
         move |_| async move { crate::transport::fetch_regions().await },
     );
@@ -461,8 +466,9 @@ pub fn RegionAdmin() -> impl IntoView {
                                 {list_header_title.clone()}
                             </h3>
                             <p class="text-sm text-muted-foreground">
-                                {move || {
-                                    let payload = bootstrap.get().and_then(Result::ok);
+                                {let header_bootstrap = bootstrap;
+                                move || {
+                                    let payload = header_bootstrap.get().and_then(Result::ok);
                                     crate::core::build_region_admin_list_header_view_model(
                                         payload.as_ref(),
                                         &list_header_labels_for_subtitle,
@@ -481,8 +487,9 @@ pub fn RegionAdmin() -> impl IntoView {
                     </div>
 
                     <div class="mt-5 space-y-3">
-                        {move || {
-                            let regions_state = regions.get();
+                        {let view_regions = regions;
+                        move || {
+                            let regions_state = view_regions.get();
                             let list_state = crate::core::build_region_admin_list_state_view_model(
                                 regions_state.as_ref().map(|result| {
                                     result.as_ref().map_err(|err| err.to_string())

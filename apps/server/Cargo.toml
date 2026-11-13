@@ -37,6 +37,13 @@ default = [
     "mod-payment",
     "mod-fulfillment",
     "mod-commerce",
+    "mod-marketplace",
+    "mod-marketplace_seller",
+    "mod-marketplace_listing",
+    "mod-marketplace_allocation",
+    "mod-marketplace_commission",
+    "mod-marketplace_balance",
+    "mod-marketplace_payout",
     "mod-accounting",
     "mod-moderation",
     "mod-content",
@@ -52,6 +59,14 @@ default = [
     "mod-navigation",
     "mod-page_builder",
     "mod-taxonomy",
+    "mod-translation",
+    "mod-party",
+    "mod-deal",
+    "mod-billing",
+    "mod-finance",
+    "mod-calls",
+    "mod-calendar",
+    "mod-tasks",
     "mod-alloy",
     "mod-flex",
     "mod-media",
@@ -110,7 +125,7 @@ mod-forum     = ["dep:rustok-forum", "mod-content", "mod-media", "mod-taxonomy",
 mod-reactions = ["dep:rustok-reactions", "rustok-reactions/graphql", "rustok-distribution/mod-reactions"]
 mod-notifications = ["dep:rustok-notifications", "rustok-notifications/server", "rustok-distribution/mod-notifications"]
 mod-comments  = ["dep:rustok-comments", "rustok-comments/server", "rustok-content-orchestration/mod-comments", "rustok-distribution/mod-comments"]
-mod-pages     = ["dep:rustok-pages", "dep:rustok-translation-targets", "mod-content", "mod-page_builder", "rustok-distribution/mod-pages"]
+mod-pages     = ["dep:rustok-pages", "dep:rustok-translation-targets", "mod-content", "mod-page_builder", "rustok-distribution/mod-pages", "rustok-pages/runtime"]
 mod-navigation = ["dep:rustok-navigation", "dep:rustok-translation-targets", "rustok-distribution/mod-navigation"]
 mod-forms     = ["dep:rustok-forms", "rustok-distribution/mod-forms"]
 mod-newsletter = ["dep:rustok-newsletter", "rustok-newsletter/server", "rustok-distribution/mod-newsletter"]

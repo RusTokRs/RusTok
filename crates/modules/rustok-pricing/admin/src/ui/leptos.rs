@@ -17,16 +17,21 @@ use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -71,14 +76,14 @@ pub fn PricingAdmin() -> impl IntoView {
     let effective_locale_for_products = effective_locale.clone();
     let effective_locale_for_open = effective_locale.clone();
 
-    let bootstrap = local_resource(
+    let bootstrap = loaded_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             transport::fetch_bootstrap(token_value, tenant_value).await
         },
     );
 
-    let products = local_resource(
+    let products = loaded_resource(
         move || {
             (
                 token.get(),
@@ -104,7 +109,7 @@ pub fn PricingAdmin() -> impl IntoView {
         },
     );
 
-    let context_active_price_lists = local_resource(
+    let context_active_price_lists = loaded_resource(
         move || {
             (
                 token.get(),
