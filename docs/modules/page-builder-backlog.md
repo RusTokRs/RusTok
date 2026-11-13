@@ -810,8 +810,9 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           the panel's frame from the answer. The consumer no longer reports a preview answer as
           a reason to reload — a reload would have discarded the document it carries. Owner:
           Page Builder admin, `rustok-pages-admin`.
-    - [ ] **The preview is shown under the policy of the admin, not of the storefront.** Decided
-          2026-11-12 (`DECISIONS/2026-11-12-page-builder-server-preview-delivery.md`):
+    - [x] **The preview is shown under the policy of the admin, not of the storefront.** Decided
+          2026-11-12 (`DECISIONS/2026-11-12-page-builder-server-preview-delivery.md`);
+          landed 2026-11-12:
           the faithful shape is the preview delivered as its own response with the artifact
           policy, and `srcdoc` is the interim shape a host without that route uses, labelled as
           such. The admin policy is not widened for it; what remains is the route and the panel's
@@ -823,8 +824,21 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           (`default-src 'self'` covers frames), and so is a font or a media file from another
           origin. The canvas document has the same limits. A preview that is faithful to the
           published page is a document with its own response and its own policy, as
-          `/richtext/frame` is. Needs a decision. Owner: Page Builder admin, `apps/admin`,
-          `apps/server`.
+          `/richtext/frame` is.
+          Delivered: `GET /api/admin/pages/{page_id}/preview` in `apps/admin` reads the snapshot
+          of the request's single verified exchange, loads the draft session the editor names
+          through the owner-checked store (`?draft=…`; without it the saved page), renders it with
+          `rustok_pages_admin::render_server_preview`, and answers under the artifact policy
+          derived from the stylesheet the document carries
+          (`pages_server_preview_response`, `default-src 'none'` + `style-src 'sha256-…'`). A
+          document without the Fly envelope is refused rather than policied from a guess.
+          `ServerPreviewPanel` loads that address by `src` when the host configures one and keeps
+          `srcdoc` otherwise, and the host bootstrap no longer writes `srcdoc` over a frame that
+          has a `src` — `srcdoc` wins over `src`, so that write would have replaced the page's
+          own document with an inherited one. The admin policy itself is unchanged; the middleware
+          classifies only this path (`SAMEORIGIN`, `no-store`) and leaves a policy the handler
+          derived intact, since the fallback it would otherwise apply names no style source.
+          Owner: Page Builder admin, `rustok-pages-admin`, `apps/admin`.
     - [x] `fly-leptos` `FlyCanvasPreview` renders an inline `<style>` and a `style` attribute,
           and `fly-dioxus` renders `style` attributes. The admin editor uses neither; a host
           that composes them under a nonce policy loses those styles. Owner: `fly-leptos`,
