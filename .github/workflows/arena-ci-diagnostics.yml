@@ -52,7 +52,8 @@ jobs:
           import os
           from pathlib import Path
           text = Path(os.environ['RUNNER_TEMP'], 'arena-diagnostic.log').read_text(errors='replace')
-          excerpt = text[-5500:]
+          # GitHub check annotations truncate messages above 4096 characters.
+          excerpt = text[-2800:]
           escaped = excerpt.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
           print(f'::error title=Scoped Cargo diagnostics::{escaped}')
           PY
@@ -87,7 +88,7 @@ jobs:
               print('Focused rustfmt produced no changes')
               raise SystemExit(0)
           encoded = base64.b64encode(zlib.compress(patch, 9)).decode('ascii')
-          chunks = [encoded[i:i+6000] for i in range(0, len(encoded), 6000)]
+          chunks = [encoded[i:i+3000] for i in range(0, len(encoded), 3000)]
           if len(chunks) > 9:
               print(f'::error::Formatting patch is too large to transfer safely: {len(chunks)} chunks')
               raise SystemExit(1)
