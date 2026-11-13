@@ -953,9 +953,9 @@
       "category": "modules",
       "files": 91,
       "loc": 24533,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T01:05:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: validate_non_nil checks across all ports and PaymentService methods; idempotency via PaymentProviderOperationJournal; positive amount validation (amount > 0) and ISO-4217 currency normalization; atomic refund creation with replay protection; state transitions enforced across payment collections and refunds; verified with cargo check -p rustok-payment"
     },
     "crates/modules/rustok-payment/storefront": {
       "name": "storefront",
@@ -963,9 +963,9 @@
       "category": "modules",
       "files": 12,
       "loc": 1397,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T01:05:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation (order_id, cart_id) across server functions, context extraction and error mapping; verified with cargo check -p rustok-payment-storefront and cargo check -p rustok-payment-storefront --features ssr"
     },
     "crates/modules/rustok-pricing": {
       "name": "rustok-pricing",

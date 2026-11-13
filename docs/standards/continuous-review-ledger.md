@@ -35,7 +35,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (33/33 tracks completed)
 - [x] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (10/10 completed)
 - [x] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (24/24 completed)
-- [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (9/37 completed)
+- [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (11/37 completed)
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (0/40 completed)
 - [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (0/26 completed)
 - [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (0/26 completed)
@@ -152,8 +152,8 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[`crates/modules/rustok-order`](../../crates/modules/rustok-order)** (85 files, 22,532 LOC) — *(Done: verified across 6 Universal Logic Dimensions: non-nil UUID guards in create_order_with_channel_internal, find_order_for_update_in_tx, find_order_change_for_update_in_tx, and find_order_return_for_update_in_tx; dialect-specific pessimistic row locking for TOCTOU prevention; financial bounds checking on adjustments, subtotal, shipping, and tax lines; post-order work refused on cancelled orders; verified with `cargo check -p rustok-order`).*
 - [x] **[`crates/modules/rustok-order/admin`](../../crates/modules/rustok-order/admin)** (14 files, 2,813 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in server functions, RBAC permission verification, robust error mapping; verified with `cargo check -p rustok-order-admin` and `cargo check -p rustok-order-admin --features ssr`).*
 - [x] **[`crates/modules/rustok-order/storefront`](../../crates/modules/rustok-order/storefront)** (12 files, 2,171 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation, tenant and buyer session isolation; verified with `cargo check -p rustok-order-storefront` and `cargo check -p rustok-order-storefront --features ssr`).*
-- [ ] **[`crates/modules/rustok-payment`](../../crates/modules/rustok-payment)** (88 files, 24,276 LOC)
-- [ ] **[`crates/modules/rustok-payment/storefront`](../../crates/modules/rustok-payment/storefront)** (11 files, 1,315 LOC)
+- [x] **[`crates/modules/rustok-payment`](../../crates/modules/rustok-payment)** (88 files, 24,276 LOC) — *(Done: verified across 6 Universal Logic Dimensions: validate_non_nil checks across all ports and PaymentService methods; idempotency via PaymentProviderOperationJournal; positive amount validation (amount > 0) and ISO-4217 currency normalization; atomic refund creation with replay protection; state transitions enforced across payment collections and refunds; verified with `cargo check -p rustok-payment`).*
+- [x] **[`crates/modules/rustok-payment/storefront`](../../crates/modules/rustok-payment/storefront)** (11 files, 1,315 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation (order_id, cart_id) across server functions, context extraction and error mapping; verified with `cargo check -p rustok-payment-storefront` and `cargo check -p rustok-payment-storefront --features ssr`).*
 - [ ] **[`crates/modules/rustok-pricing`](../../crates/modules/rustok-pricing)** (48 files, 19,495 LOC)
 - [ ] **[`crates/modules/rustok-pricing/admin`](../../crates/modules/rustok-pricing/admin)** (14 files, 7,971 LOC)
 - [ ] **[`crates/modules/rustok-pricing/storefront`](../../crates/modules/rustok-pricing/storefront)** (10 files, 2,487 LOC)
@@ -575,8 +575,8 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [storefront](../../crates/modules/rustok-pages/storefront) | `modules` | 18 | 5,076 | None |  |
 | [ ] | [rustok-party](../../crates/modules/rustok-party) | `modules` | 22 | 1,734 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-party/admin) | `modules` | 6 | 325 | None |  |
-| [ ] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 91 | 24,533 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 12 | 1,397 | None |  |
+| [x] | [rustok-payment](../../crates/modules/rustok-payment) | `modules` | 91 | 24,533 | 2026-11-14 | Phase FS-04 in progress |
+| [x] | [storefront](../../crates/modules/rustok-payment/storefront) | `modules` | 12 | 1,397 | 2026-11-14 | Phase FS-04 in progress |
 | [ ] | [rustok-pricing](../../crates/modules/rustok-pricing) | `modules` | 89 | 24,188 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-pricing/admin) | `modules` | 27 | 8,619 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-pricing/storefront) | `modules` | 12 | 2,777 | None |  |
