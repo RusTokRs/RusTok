@@ -195,6 +195,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (migration `m20261008_000031`). The field had no writer and always returned 0.
 
 ### Fixed
+- A default-feature build of `rustok-server` starts. Fifteen modules the `modules.toml` manifest
+  declares — with a package that declares a `[crate] entry_type`, which is what the registry
+  contract requires in the compiled registry — were absent from the server's `default` feature
+  list, so `cargo build -p rustok-server` produced a binary that exited during startup with
+  `MissingInRegistry`. CI compiled with `--all-features`, so the default list was never exercised;
+  the failure surfaced in the "Rust-hosted Browser Smoke" job, which uses the default build, and
+  killed it before its own spec. `scripts/ci/modules-manifest-features.mjs` now derives the
+  required features from the manifest (keyed on the package's own entry type and on manifest slugs,
+  so a compiled extension is consistent rather than unexpected) and both that job and CI run it
+  before their build.
+- The Page Builder server preview can be requested in the default `ssr + browser-js` runtime.
+  "Refresh preview" acted through `on:click`, which a server-rendered document cannot run, and no
+  intent or SSR form produced a `Preview` capability request, so the panel showed its empty state
+  forever. `render_server_preview` is now a protocol intent the endpoint admits with the edit
+  capability, the panel renders it as a form, `dispatch_named_intent` builds the one-page request
+  from the draft and the runtime context the form posts, and the host bootstrap fills the panel's
+  frame from the answer — which is now rendered before a document exists, since a frame created
+  only after a re-render is one the answer cannot reach. A preview answer no longer asks the client
+  to reload: a reload would replace the document the answer carries with a render of the server
+  state, which cannot contain it.
+- The immutable artifact integrity audit reads identifiers before payloads, as its packet and
+  its contract already said. `PageService::audit_immutable_artifact_integrity` selected whole
+  artifact rows and dropped the `max_records + 1` lookahead row only after it had been
+  hydrated, so an audit of one page materialised every document HTML, body HTML, CSS and
+  runtime snapshot of the requested slice — up to 513 of them — just to discard one. The
+  identifier query now projects `Id` (`select_only` + `into_tuple::<Uuid>`) with the same
+  `created_at, id` order and limit, and each retained artifact is loaded and verified through
+  `find_by_id` fenced by tenant and page. The result shape, ordering, truncation flags and
+  audit hash are unchanged.
+- Six workflows no longer list deleted documents in their `paths:` filters
+  (`fly-page-builder.yml`, `pages-page-builder-parity.yml`,
+  `pages-page-builder-provider-health.yml` and the three Pages evidence workflows of the
+  2026-11-10 series). The entries could never match; they read as live triggers for documents
+  that `111d6dd4bf` and DAR-04 removed.
+- The Pages artifact HTTP cache entry now follows page and route events. The key already
+  carried the page and route generations, but nothing pinned that, and the evidence packet of
+  the endpoint predated the change: `pages-artifact-http-cache-source.json` is re-issued with
+  the second harness test (`artifact_http_entry_does_not_outlive_a_page_update`) and its
+  verifier pins that test, so a cached document and its conditional `304` cannot outlive a page
+  update, and a missing artifact is never cached.
+- Page Builder draft sessions are pruned by the standalone admin
+  (`apps/admin/src/app/draft_retention.rs`, every `DRAFT_SESSION_PRUNE_INTERVAL`), so the TTL and
+  the global session cap of the persistent backends actually apply to a session no browser reads
+  again. The loop prunes the store the intent endpoint resolves, including one installed through
+  `set_pages_browser_draft_store`, and a failed pass is logged and retried rather than stopping.
+- Persisted draft session records carry a format version
+  (`PersistentDraftSessionRecord::format`, `DRAFT_SESSION_RECORD_FORMAT = 1`). Without one the
+  stores could not tell a damaged record from the live session of another build: both failed to
+  parse, stayed in storage, and failed their token for up to one TTL. A record of a newer format
+  now parses and is answered with `SsrDraftSessionError::UnsupportedFormat` (HTTP 503) and is never
+  aged out or deleted by an older build; records written before the field existed are format `0`
+  and are upgraded by the next commit.
+- Pages scheduled publishing never fired in a deployed host: `PagePublishScheduler` had no
+  caller and `rustok-pages` published no module work, so a scheduled publication stayed
+  `scheduled` until an operator ran a sweep by hand. The module now publishes
+  `PageScheduledPublishWorkRegistration` through `rustok_runtime::ModuleWorkRegistrations`
+  (feature `runtime`, enabled by `mod-pages` in `apps/server`), and the host module-work
+  scheduler executes `page_scheduled_publish`. Discovery claims a tenant for a due `scheduled`
+  job or for an `executing` job whose lease expired, so a publication stranded by a crashed
+  worker is reachable while no other work exists, and executions are paced by
+  `PAGE_PUBLISH_SWEEP_INTERVAL_SECS` so a per-second poll cannot spend a transiently failing
+  job's attempt budget in seconds. `PagePublishScheduler` remains as the manual facade for
+  hosts that compile the module without the feature. See
+  `DECISIONS/2026-10-09-scheduled-page-publishing.md`.
 - Blog `featured_image_url` is validated on create and update: only absolute `http`/`https` URLs or
   root-relative paths, at most 2048 characters. Other schemes were previously stored and reached SEO
   and JSON-LD output.

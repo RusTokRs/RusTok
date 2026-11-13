@@ -73,13 +73,30 @@ for (const marker of ["HostRuntimeContext", "tenant_module_settings(", "leptos_a
   forbid(sources.adapter, marker, "admin rollout adapter must stay stateless");
 
 need(sources.builder, "fetch_pages_builder_rollout_snapshot(", "SSR rollout binding");
-need(sources.builder, "compose_fly_page_builder_handlers(store, renderer, trusted_rollout.flags)", "SSR rollout binding");
+// The Pages host needs its own store, renderer, port policies and permission mapping, so it
+// composes through the configured entry point; the flags it passes are still the trusted rollout
+// flags, which is the property this pin is about.
+for (const marker of [
+  "let effective_flags = trusted_rollout.effective_runtime_flags();",
+  "compose_configured_fly_page_builder_handlers(",
+  "effective_flags,",
+  "PageBuilderCapabilityPortPolicies::default(),",
+  "PageBuilderCapabilityAuthorizer::new(PageBuilderCapabilityPermissions {",
+]) need(sources.builder, marker, "SSR rollout binding");
 need(sources.composition, "fetch_pages_builder_rollout_snapshot(", "workspace rollout binding");
+// The host evaluates the role policy and narrows it with the trusted rollout snapshot; the
+// rollout adapter owns the narrowing, the host only supplies both inputs.
 for (const marker of [
   "fetch_pages_builder_rollout_snapshot(",
-  "pages_editor_capabilities_for_rollout(",
+  "pages_editor_capability_policy_from_effective(&verified_user.permissions).evaluate()",
+  "pages_editor_capabilities_for_snapshot(role_capabilities, &rollout)",
   "dispatch_pages_browser_intent_with_capabilities(snapshot, envelope, editor_capabilities)",
 ]) need(sources.adminMain, marker, "browser-intent rollout preflight");
+need(
+  sources.adapter,
+  "pub fn pages_editor_capabilities_for_snapshot(",
+  "stateless admin rollout adapter",
+);
 
 if (evidence.format !== "pages_tenant_rollout_settings_runtime_source_v1") failures.push(`evidence format drifted: ${evidence.format}`);
 if (evidence.status !== "platform_read_seam_server_owner_graphql_and_all_pages_bindings_source_ready_runtime_evidence_pending") failures.push(`evidence status drifted: ${evidence.status}`);

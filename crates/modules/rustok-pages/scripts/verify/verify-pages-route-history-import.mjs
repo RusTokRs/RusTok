@@ -181,7 +181,7 @@ ordered(owner, [
   "prepare_input(tenant_id, input)?",
   "self.db.begin().await?",
   "page_route_history_import::Entity::find()",
-  "load_page_for_import(&txn, item.page_id).await?",
+  "load_page_for_import(&txn, tenant_id, item.page_id).await?",
   "verify_receipt(receipt, tenant_id, &source, item)?",
   "ensure_route_in_tx(&txn, tenant_id, item, terminal).await?",
   "page_route_history_import::ActiveModel",

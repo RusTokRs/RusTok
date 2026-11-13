@@ -34,7 +34,7 @@ The mutation:
 - delegates to the owner service;
 - returns only the bounded owner result.
 
-The service remains authoritative for tenant-wide `PermissionScope::All`. Under the current request permission bridge, Pages Manage resolves to `All` when effective `pages:manage` is present and to `None` when absent; there is no current Pages Manage `Own` request state. The service-level `All` check remains defense in depth.
+The service remains authoritative for tenant-wide `PermissionScope::All`. Under the current request permission bridge, Pages Manage resolves to `PermissionScope::All` when effective `pages:manage` is present and to `PermissionScope::None` when absent; there is no current Pages Manage `Own` request state. The service-level `All` check remains defense in depth.
 
 ## HTTP
 

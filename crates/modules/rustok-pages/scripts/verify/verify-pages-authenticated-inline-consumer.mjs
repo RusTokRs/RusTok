@@ -52,6 +52,9 @@ const document = read("crates/modules/rustok-pages/src/services/page/document.rs
 const pageServices = read("crates/modules/rustok-pages/src/services/page/mod.rs");
 const services = read("crates/modules/rustok-pages/src/services/mod.rs");
 const pagesLib = read("crates/modules/rustok-pages/src/lib.rs");
+// `b0a4c97c93` moved the `RusToKModule` impl out of `lib.rs`; the runtime-extension registration
+// lives in `module.rs`, and `lib.rs` keeps the service re-exports.
+const pagesModule = read("crates/modules/rustok-pages/src/module.rs");
 const storefrontCargo = read("crates/modules/rustok-pages/storefront/Cargo.toml");
 const storefrontLib = read("crates/modules/rustok-pages/storefront/src/lib.rs");
 const storefront = read("crates/modules/rustok-pages/storefront/src/inline_edit.rs");
@@ -141,7 +144,13 @@ for (const marker of [
   "enforce_owned_scope(",
   "Resource::Pages",
   "Action::Update",
-  "ensure_document_is_mutable(&page)?",
+  // Inline edit reads the working copy, not the published body: the draft body of the locale
+  // wins, and the current body is the fallback, under the same revision identity the save path
+  // compares. There is no separate mutability gate to bind here — the published rows are never
+  // the mutation target of this path.
+  "let drafts = self.load_drafts(tenant_id, page_id).await?;",
+  "super::helpers::body_for_locale_draft(&drafts, locale.as_str())",
+  "page_document_revision(page_id, Some(&body))",
   "PAGE_BUILDER_DOCUMENT_FORMAT",
 ]) need(grant, marker, "Pages inline grant owner");
 forbid(grant, "default-secret", "Pages inline grant owner");
@@ -159,7 +168,11 @@ for (const marker of [
 ]) need(runtime, marker, "host keyring composition");
 forbid(runtime, "unwrap_or_else", "host keyring composition");
 
-need(document, "pub(super) fn ensure_document_is_mutable", "shared document owner");
+need(
+  document,
+  "pub(crate) fn page_document_revision(page_id: Uuid, working: Option<&WorkingBody>)",
+  "shared document revision owner",
+);
 for (const marker of [
   "mod inline_edit;",
   "mod inline_edit_feature;",
@@ -176,7 +189,7 @@ for (const marker of [
   "page_inline_edit_keyring_from_environment()",
   "extensions.insert(keyring)",
   "Pages inline edit signing runtime registered",
-]) need(pagesLib, marker, "Pages module runtime registration");
+]) need(pagesModule, marker, "Pages module runtime registration");
 
 for (const marker of [
   "inline-edit = [",

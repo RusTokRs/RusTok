@@ -10,18 +10,25 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
   : path.resolve(__dirname, "..", "..", "..", "..", "..");
 
-const arg = process.argv[2];
-if (!arg) {
-  console.error("[verify-page-builder-consumer-readiness] FAIL");
-  console.error("usage: node scripts/verify/verify-page-builder-consumer-readiness.mjs <module-slug>");
-  process.exit(1);
-}
-
 const moduleToCrate = {
   pages: "rustok-pages",
   forum: "rustok-forum",
   blog: "rustok-blog",
 };
+
+const arg = process.argv[2];
+if (!arg) {
+  // A bare run has no consumer to check. The gate is parameterised, and the consumers are run by
+  // name (`verify:page-builder:consumer:pages` / `:forum`), so report the supported set instead of
+  // failing with a usage error that reads like a defect.
+  console.log(
+    `[verify-page-builder-consumer-readiness] skipped (needs a module slug: ${Object.keys(
+      moduleToCrate,
+    ).join(", ")})`,
+  );
+  process.exit(0);
+}
+
 const crateName = moduleToCrate[arg];
 if (!crateName) {
   console.error("[verify-page-builder-consumer-readiness] FAIL");

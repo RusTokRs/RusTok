@@ -326,18 +326,25 @@ pub fn FlyThemeTokenEditor(
 }
 
 /// Canvas preview container rendering SSR-generated markup and stylesheet.
+///
+/// The stylesheet is an inline `style` element, so a host that serves the editor under a nonce
+/// policy drops it unless the element carries the nonce: the canvas then renders unstyled while
+/// the published page looks right. Pass `csp_nonce` from the document's policy; a host without a
+/// nonce policy passes nothing and renders as before.
 #[component]
 pub fn FlyCanvasPreview(
     rendered: Result<fly::RenderedPage, fly::FlyError>,
     preview_failed_label: Option<String>,
+    csp_nonce: Option<String>,
 ) -> Element {
     let failed_label = preview_failed_label.unwrap_or_else(|| "Preview failed".to_string());
+    let style_nonce = csp_nonce.filter(|nonce| !nonce.trim().is_empty());
 
     rsx! {
         div { class: "fly-canvas", "data-fly-canvas": "true",
             match &rendered {
                 Ok(page) => rsx! {
-                    style { "{page.css}" }
+                    style { nonce: style_nonce.clone(), "{page.css}" }
                     div { dangerous_inner_html: "{page.html}" }
                 },
                 Err(error) => rsx! {
@@ -367,6 +374,8 @@ pub fn FlyEditorWorkspace(
     messages: Option<EditorMessages>,
     initial_page: Option<usize>,
     capabilities: Option<CapabilityState>,
+    /// CSP nonce for the inline styles the workspace renders; see [`FlyCanvasPreview`].
+    csp_nonce: Option<String>,
 ) -> Element {
     let messages = messages.unwrap_or_default();
     let workspace_title = messages.workspace_title.clone();
@@ -374,6 +383,7 @@ pub fn FlyEditorWorkspace(
     let undo_label = messages.undo.clone();
     let redo_label = messages.redo.clone();
     let preview_failed_label = messages.preview_failed.clone();
+    let workspace_csp_nonce = csp_nonce.filter(|nonce| !nonce.trim().is_empty());
 
     let intent_mode = on_intent.is_some();
     let intent_instance = instance_id.unwrap_or_else(|| "fly-workspace".to_string());
@@ -642,6 +652,7 @@ pub fn FlyEditorWorkspace(
                 FlyCanvasPreview {
                     rendered,
                     preview_failed_label: Some(preview_failed_label),
+                    csp_nonce: workspace_csp_nonce.clone(),
                 }
             }
             span { hidden: true, "data-fly-components": "{current_document.project.pages.len()}" }

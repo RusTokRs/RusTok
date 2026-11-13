@@ -121,7 +121,10 @@ pub struct PagesBrowserIntentResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub save_failure: Option<PagesBrowserIntentProblem>,
     /// `true` when the server render the browser holds is out of date: the document, the
-    /// preview context or the page the editor is on changed, or a save was answered.
+    /// preview context or the page the editor is on changed, or a write was answered.
+    ///
+    /// A preview answer does not reload: it is the document the caller asked for, and a reload
+    /// would replace it with a render of the server state, which does not contain it.
     pub reload: bool,
     pub draft_token: String,
     pub draft_generation: u64,
@@ -409,11 +412,13 @@ pub async fn dispatch_pages_browser_intent_with_store(
     };
 
     Ok(PagesBrowserIntentResponse {
-        reload: context_update
-            || page_switched
-            || envelope.is_mutating()
-            || persistence.is_some()
-            || save_failure.is_some(),
+        reload: reloads_render(
+            context_update,
+            page_switched,
+            envelope.is_mutating(),
+            persistence.as_ref(),
+            save_failure.is_some(),
+        ),
         result,
         persistence,
         save_failure,
@@ -432,7 +437,7 @@ fn open_page(controller: &AdminCanvasController) -> (usize, Option<String>) {
     )
 }
 
-fn controller_from_page(
+pub(crate) fn controller_from_page(
     page: &crate::model::PageDetail,
     revision_id: &str,
     default_locale: &str,
@@ -595,6 +600,22 @@ fn failed_save_hash(controller: &AdminCanvasController) -> Option<fly::ProjectHa
     revision.save_failed.then_some(revision.project_hash)
 }
 
+/// Whether the dispatch invalidated the server render the browser holds.
+///
+/// A capability answer is not a reason to re-render: a preview carries the document the client
+/// asked for, and a reload would replace it with a render of a server state that cannot contain
+/// it. Only an answer that changed what the server holds — a write — makes the held render stale.
+fn reloads_render(
+    context_update: bool,
+    page_switched: bool,
+    intent_mutated: bool,
+    persistence: Option<&PageBuilderCapabilityResponse>,
+    save_failed: bool,
+) -> bool {
+    let persisted_a_write = matches!(persistence, Some(PageBuilderCapabilityResponse::Publish(_)));
+    context_update || page_switched || intent_mutated || persisted_a_write || save_failed
+}
+
 /// The one consumer request a dispatch may produce (audit §6.3).
 ///
 /// Every intent yields at most one request today, and the response has room
@@ -649,6 +670,8 @@ pub enum PagesBrowserIntentError {
     PageMismatch { expected: String, actual: String },
     #[error("invalid runtime preview context: {0}")]
     RuntimeContext(String),
+    #[error("server preview failed: {0}")]
+    Preview(String),
     #[error(
         "Page Builder browser intent produced {count} consumer requests, but one dispatch executes at most one"
     )]
@@ -803,6 +826,38 @@ mod tests {
         let created = form_envelope("create_page", json!({ "page_id": "contact", "name": "" }));
         dispatch_browser_intent(&mut controller, created).expect("create page form");
         assert_eq!(open_page(&controller), (2, Some("contact".to_string())));
+    }
+
+    #[test]
+    fn a_preview_answer_is_not_a_reason_to_reload() {
+        // `reload` is derived from what the answer did to the server, not from whether an answer
+        // exists. A preview is a read: a reload would replace the document the caller just asked
+        // for with a render of the state the server already held.
+        let preview = PageBuilderCapabilityResponse::Preview(
+            rustok_page_builder::dto::PreviewPageBuilderResult {
+                page_id: "home".to_string(),
+                html: "<p>preview</p>".to_string(),
+                runtime_scenario_id: None,
+            },
+        );
+        assert!(
+            !reloads_render(false, false, false, Some(&preview), false),
+            "a preview answer must not reload: it would discard the document it carries"
+        );
+        assert!(!reloads_render(false, false, false, None, false));
+        // The rule still reports every write and every mutation.
+        let publish = PageBuilderCapabilityResponse::Publish(
+            rustok_page_builder::dto::PublishPageBuilderResult {
+                page_id: "home".to_string(),
+                revision_id: "rev-2".to_string(),
+                published: true,
+            },
+        );
+        assert!(reloads_render(false, false, false, Some(&publish), false));
+        assert!(reloads_render(false, false, true, Some(&preview), false));
+        assert!(reloads_render(true, false, false, Some(&preview), false));
+        assert!(reloads_render(false, true, false, Some(&preview), false));
+        assert!(reloads_render(false, false, false, Some(&preview), true));
     }
 
     #[test]

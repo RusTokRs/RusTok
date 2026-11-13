@@ -149,6 +149,15 @@ impl RusToKModule for PagesModule {
                 );
             }
         }
+
+        #[cfg(feature = "runtime")]
+        {
+            let registrations = extensions
+                .get_or_insert_with::<rustok_runtime::ModuleWorkRegistrations, _>(Default::default);
+            registrations.register(std::sync::Arc::new(
+                crate::services::PageScheduledPublishWorkRegistration,
+            ));
+        }
         Ok(())
     }
 }
@@ -186,5 +195,34 @@ mod tests {
         assert_eq!(module.permissions().len(), 7);
         assert!(!module.migrations().is_empty());
         assert!(!module.migration_dependencies().is_empty());
+    }
+
+    /// Scheduled publishing only fires if the deployed host learns about the queue. This pins the
+    /// registration to `register_runtime_extensions`, which is the single place the host reads
+    /// module work from: dropping it would leave schedules inert while every other Pages surface
+    /// kept working.
+    #[cfg(feature = "runtime")]
+    #[test]
+    fn pages_registers_scheduled_publishing_module_work() {
+        let module = PagesModule::new();
+        let mut extensions = ModuleRuntimeExtensions::default();
+        module
+            .register_runtime_extensions(&mut extensions)
+            .expect("pages runtime extension registration");
+        let registrations = extensions
+            .get::<rustok_runtime::ModuleWorkRegistrations>()
+            .expect("pages must publish module work registrations");
+        assert!(!registrations.is_empty());
+    }
+
+    /// The registered worker slug is a contract, not an internal detail: it names the durable
+    /// queue in scheduler logs and metrics, so a rename has to be a deliberate migration.
+    #[cfg(feature = "runtime")]
+    #[test]
+    fn scheduled_publishing_worker_slug_is_stable() {
+        assert_eq!(
+            crate::services::PAGE_SCHEDULED_PUBLISH_WORKER,
+            "page_scheduled_publish"
+        );
     }
 }

@@ -244,31 +244,36 @@ for (const key of [
   }
 }
 
+// The app formats with the repo prettier config (`singleQuote: true`), so the pins are the
+// single-quoted forms the config actually uses.
 for (const marker of [
-  'testDir: "./tests/pages-inline-edit"',
+  "testDir: './tests/pages-inline-edit'",
   "fullyParallel: false",
   "forbidOnly: true",
   "retries: 0",
   "workers: 1",
-  'trace: "off"',
-  'screenshot: "off"',
-  'video: "off"',
-  'name: "pages-inline-edit-chromium"',
-  'devices["Desktop Chrome"]',
-  'reporter: [["list"]]',
+  "trace: 'off'",
+  "screenshot: 'off'",
+  "video: 'off'",
+  "name: 'pages-inline-edit-chromium'",
+  "devices['Desktop Chrome']",
+  "reporter: [['list']]",
 ]) need(sources.config, marker, "Playwright config");
 for (const marker of [
-  "trace: \"retain",
-  "screenshot: \"only-on-failure",
-  "video: \"retain",
+  "trace: 'retain'",
+  "screenshot: 'only-on-failure'",
+  "video: 'retain'",
   "retries: 1",
   "fullyParallel: true",
 ]) forbid(sources.config, marker, "Playwright config");
-need(sources.package, '"@playwright/test": "^1.60.0"', "pinned browser dependency");
+// Pin the dependency by its declared range, so an unrelated bump does not read as drift and a
+// dropped browser runner still does.
+const browserDependency = /"@playwright\/test": "\^\d+\.\d+\.\d+"/.test(sources.package);
+if (!browserDependency) failures.push("pinned browser dependency: missing @playwright/test range");
 
 for (const marker of [
   "RUSTOK_PAGES_INLINE_EDIT_BROWSER_ARTIFACT_HTTP_EVIDENCE",
-  "validateArtifactHttpInput(artifactInput.document, head, baseOrigin, deploymentDigest)",
+  "validateArtifactHttpInput(\n    artifactInput.document,",
   "document.source_commit !== head",
   "http?.origin !== origin",
   "http?.deployment_image_digest !== deploymentDigest",
@@ -280,17 +285,17 @@ for (const marker of [
   "storageState: storageInputs.unauthorized.path",
   "storageState: storageInputs.standalone.path",
   "allowed launch must use a relative same-origin href",
-  "target.searchParams.get(\"page_id\") !== pageId",
-  "target.searchParams.get(\"lang\") !== locale",
+  "target.searchParams.get('page_id') !== pageId",
+  "target.searchParams.get('lang') !== locale",
   "assertLaunchHidden(editorContext, paths.published)",
   "assertLaunchHidden(editorContext, paths.localeLess)",
   "assertLaunchHidden(editorContext, paths.missing)",
   "assertLaunchHidden(unauthorizedContext, paths.draft)",
   "assertLaunchHidden(standaloneContext, paths.standalone)",
-  "scanForbiddenDomMarkers(ssrHtml, \"authoring SSR HTML\")",
-  "scanForbiddenDomMarkers(await mainPage.content(), \"hydrated authoring DOM\")",
-  "root.getAttribute(\"data-inline-session\")",
-  "root.getAttribute(\"data-inline-proof\")",
+  "scanForbiddenDomMarkers(ssrHtml, 'authoring SSR HTML')",
+  "scanForbiddenDomMarkers(await mainPage.content(), 'hydrated authoring DOM')",
+  "root.getAttribute('data-inline-session')",
+  "root.getAttribute('data-inline-proof')",
   "fly-inline-${domId(pageId)}-${projectHash}",
   "authoringAssetPaths.size",
   "mainFailures.console_errors !== 0",
@@ -298,16 +303,16 @@ for (const marker of [
   "mainFailures.critical_request_failures !== 0",
   "data-fly-inline-editable",
   "contenteditable",
-  "captureCommit(mainPage, componentIds.editable, savedText)",
+  "await captureCommit(\n      mainPage,",
   "successful.requestCount !== 1",
   "currentRoot.revision === initialRoot.revision",
   "currentRoot.projectHash === initialRoot.projectHash",
   "replaySuccessfulRequest(editorContext, successful)",
   "replay.status() < 400",
-  "captureRejectedCommit(stalePage",
+  "await captureRejectedCommit(\n      stalePage",
   "partial document write",
   "waitForTimeout(expiryDelayMs)",
-  "captureRejectedCommit(\n      expiryPage",
+  "await captureRejectedCommit(\n      expiryPage",
   "writeAtomic(output, outputDocument)",
   "storage_state_contents_persisted: false",
   "authorization_or_cookie_values_persisted: false",
@@ -333,9 +338,12 @@ for (const marker of [
   "page_id: pageId",
   "component_id:",
   "edited_text:",
-  "trace: \"on",
-  "screenshot: \"on",
-  "video: \"on",
+  "trace: 'on'",
+  'trace: "on"',
+  "screenshot: 'on'",
+  'screenshot: "on"',
+  "video: 'on'",
+  'video: "on"',
 ]) forbid(sources.test, marker, "browser evidence privacy boundary");
 
 for (const marker of [

@@ -114,58 +114,86 @@ impl PageService {
             return Err(PagesError::PageNotFound(page_id));
         }
 
-        let artifact_query = || {
+        // Only the identifier leaves this query: the full payloads are hydrated one record at
+        // a time below, after truncation has discarded the lookahead row.
+        let artifact_id_query = || {
             page_static_landing_artifact::Entity::find()
+                .select_only()
+                .column(page_static_landing_artifact::Column::Id)
                 .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
                 .filter(page_static_landing_artifact::Column::PageId.eq(page_id))
                 .order_by_asc(page_static_landing_artifact::Column::CreatedAt)
                 .order_by_asc(page_static_landing_artifact::Column::Id)
                 .limit(fetch_limit)
         };
-        let mut records = match txn.get_database_backend() {
-            DbBackend::Sqlite => artifact_query().all(&txn).await?,
+        let mut artifact_ids = match txn.get_database_backend() {
+            DbBackend::Sqlite => artifact_id_query().into_tuple::<Uuid>().all(&txn).await?,
             DbBackend::Postgres | DbBackend::MySql => {
-                artifact_query().lock_shared().all(&txn).await?
+                artifact_id_query()
+                    .lock_shared()
+                    .into_tuple::<Uuid>()
+                    .all(&txn)
+                    .await?
             }
             _ => unreachable!("unsupported SeaORM database backend"),
         };
-        let truncated = records.len() > max_records as usize;
+        let truncated = artifact_ids.len() > max_records as usize;
         if truncated {
-            records.pop();
+            artifact_ids.pop();
         }
 
         let mut valid_artifact_count = 0_u32;
         let mut invalid_artifact_count = 0_u32;
         let mut findings = Vec::new();
         let mut findings_truncated = false;
-        let mut entries = Vec::with_capacity(records.len());
+        let mut entries = Vec::with_capacity(artifact_ids.len());
 
-        for record in &records {
-            let locale_hash = hex_sha256(record.locale.as_bytes());
-            let record_identity_hash = artifact_record_identity_hash(record)?;
-            let (status, diagnostic_hash) = match verify_artifact_record(record, tenant_id, page_id)
-            {
-                Ok(()) => {
-                    valid_artifact_count = valid_artifact_count.saturating_add(1);
-                    ("valid", None)
-                }
-                Err(error) => {
-                    invalid_artifact_count = invalid_artifact_count.saturating_add(1);
-                    let diagnostic_hash = hex_sha256(error.to_string().as_bytes());
-                    if findings.len() < MAX_PAGE_ARTIFACT_AUDIT_FINDINGS {
-                        findings.push(PageArtifactIntegrityFinding {
-                            artifact_id: record.id,
-                            locale_hash: locale_hash.clone(),
-                            record_identity_hash: record_identity_hash.clone(),
-                            code: PAGE_ARTIFACT_INTEGRITY_INVALID.to_string(),
-                            diagnostic_hash: diagnostic_hash.clone(),
-                        });
-                    } else {
-                        findings_truncated = true;
-                    }
-                    ("invalid", Some(diagnostic_hash))
-                }
+        // The identifier pass above keeps the bounded scan cheap; the payload pass below loads
+        // one full artifact at a time, so a page with large documents never materialises every
+        // HTML/CSS/runtime payload of the slice in one result set.
+        for artifact_id in &artifact_ids {
+            let record_query = || {
+                page_static_landing_artifact::Entity::find_by_id(*artifact_id)
+                    .filter(page_static_landing_artifact::Column::TenantId.eq(tenant_id))
+                    .filter(page_static_landing_artifact::Column::PageId.eq(page_id))
             };
+            let record = match txn.get_database_backend() {
+                DbBackend::Sqlite => record_query().one(&txn).await?,
+                DbBackend::Postgres | DbBackend::MySql => {
+                    record_query().lock_shared().one(&txn).await?
+                }
+                _ => unreachable!("unsupported SeaORM database backend"),
+            };
+            let Some(record) = record else {
+                return Err(PagesError::artifact_integrity(
+                    "An immutable artifact selected for audit is no longer readable",
+                ));
+            };
+            let locale_hash = hex_sha256(record.locale.as_bytes());
+            let record_identity_hash = artifact_record_identity_hash(&record)?;
+            let (status, diagnostic_hash) =
+                match verify_artifact_record(&record, tenant_id, page_id) {
+                    Ok(()) => {
+                        valid_artifact_count = valid_artifact_count.saturating_add(1);
+                        ("valid", None)
+                    }
+                    Err(error) => {
+                        invalid_artifact_count = invalid_artifact_count.saturating_add(1);
+                        let diagnostic_hash = hex_sha256(error.to_string().as_bytes());
+                        if findings.len() < MAX_PAGE_ARTIFACT_AUDIT_FINDINGS {
+                            findings.push(PageArtifactIntegrityFinding {
+                                artifact_id: record.id,
+                                locale_hash: locale_hash.clone(),
+                                record_identity_hash: record_identity_hash.clone(),
+                                code: PAGE_ARTIFACT_INTEGRITY_INVALID.to_string(),
+                                diagnostic_hash: diagnostic_hash.clone(),
+                            });
+                        } else {
+                            findings_truncated = true;
+                        }
+                        ("invalid", Some(diagnostic_hash))
+                    }
+                };
             entries.push(ArtifactAuditEntry {
                 artifact_id: record.id,
                 locale_hash,
@@ -183,7 +211,7 @@ impl PageService {
             truncated,
             &entries,
         ))?;
-        let scanned_artifact_count = u32::try_from(records.len()).map_err(|_| {
+        let scanned_artifact_count = u32::try_from(artifact_ids.len()).map_err(|_| {
             PagesError::artifact_integrity("Immutable artifact audit record count overflow")
         })?;
         txn.commit().await?;

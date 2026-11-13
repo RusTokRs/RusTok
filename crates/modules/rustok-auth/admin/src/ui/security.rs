@@ -91,12 +91,14 @@ pub fn Security() -> impl IntoView {
     });
 
     let (refresh_trigger, set_refresh_trigger) = signal(0usize);
-    let sessions = LocalResource::new(move || {
-        let _ = refresh_trigger.get();
-        let tok = token.get();
-        let ten = tenant.get();
-        async move { crate::transport::list_sessions(tok, ten, Some(50)).await }
-    });
+    // Resolved by the request: the page mounts inside the `Async` admin layout, so a
+    // `LocalResource` here leaves the reader with the `Suspense` fallback.
+    let sessions = Resource::new(
+        move || (token.get(), tenant.get(), refresh_trigger.get()),
+        move |(tok, ten, _generation)| async move {
+            crate::transport::list_sessions(tok, ten, Some(50)).await
+        },
+    );
 
     let on_revoke_session = Callback::new(move |session_id: String| {
         let tok = token.get();
@@ -195,8 +197,9 @@ pub fn Security() -> impl IntoView {
                     </div>
 
                     <Suspense fallback=move || view! { <div class="h-24 animate-pulse rounded-lg bg-muted" /> }>
-                        {move || {
-                            sessions.get().map(|res| match res {
+                        {let view_sessions = sessions;
+                        move || {
+                            view_sessions.get().map(|res| match res {
                                 Ok(items) if items.is_empty() => view! {
                                     <div class="rounded-lg bg-muted px-4 py-8 text-center text-sm text-muted-foreground">
                                         "No active sessions found."

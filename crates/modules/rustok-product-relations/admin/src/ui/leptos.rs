@@ -16,16 +16,21 @@ use crate::transport::{
     ProductRelationsTransportContext, execute_product_relations_command, load_product_relations,
 };
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -72,7 +77,7 @@ pub fn ProductRelationsPanel(
 
     let p_id = product_id.clone();
     let transport_for_loader = transport.clone();
-    let relations_resource = local_resource(
+    let relations_resource = loaded_resource(
         move || (selected_type.get(), reload_seq.get()),
         move |(rel_type, _)| {
             let context = transport_for_loader.clone();

@@ -276,6 +276,24 @@ pub fn compose_document_html(head: &PageHead, css: &str, body_html: &str) -> Str
     html
 }
 
+/// The stylesheet of a document [`compose_document_html`] wrote, exactly as the document carries
+/// it.
+///
+/// A host that serves a composed document as its own response has to name the stylesheet's hash in
+/// the policy of that response. The document travels as one string and the caller cannot re-derive
+/// the CSS from the page model — the envelope escaped style-element text on the way in — so the
+/// policy is derived from the rendered bytes instead: one fact, one place.
+///
+/// Returns `None` for markup that is not this envelope. The caller then has no stylesheet to
+/// name and must not guess one.
+pub fn document_html_stylesheet(document_html: &str) -> Option<&str> {
+    let after_open = document_html.strip_prefix(DOCUMENT_ENVELOPE_OPEN)?;
+    let style_at = after_open.find(DOCUMENT_STYLE_OPEN)? + DOCUMENT_STYLE_OPEN.len();
+    let rest = &after_open[style_at..];
+    let close = rest.find("</style>")?;
+    Some(&rest[..close])
+}
+
 /// Return a composed document with `nonce` on the stylesheet element of its envelope.
 ///
 /// A document shown through `srcdoc` inherits the Content Security Policy of the document that
@@ -2041,6 +2059,43 @@ mod tests {
                 None,
                 "{markup}"
             );
+        }
+    }
+
+    #[test]
+    fn the_stylesheet_is_read_back_from_the_document_it_travels_in() {
+        let css = "[data-fly-style-id=\"hero\"]{margin-top:12px}";
+        let html = compose_document_html(&PageHead::default(), css, "<p>x</p>");
+        assert_eq!(document_html_stylesheet(&html), Some(css));
+        // A policy hashes the text of the element, so the value is the one the browser sees.
+        assert_eq!(
+            document_html_stylesheet(&compose_document_html(&PageHead::default(), "", "")),
+            Some("")
+        );
+    }
+
+    #[test]
+    fn the_stylesheet_is_the_escaped_text_and_not_the_page_model_css() {
+        // The envelope rewrites `<` inside CSS, so hashing the page model's CSS would name a hash
+        // the browser never computes for the element. Reading the document back is the only way
+        // to get the text the browser hashes.
+        let css = "a::after{content:'<'}";
+        let html = compose_document_html(&PageHead::default(), css, "");
+        let read_back = document_html_stylesheet(&html).expect("envelope");
+        assert_ne!(read_back, css);
+        assert!(read_back.contains("\\00003c "), "{read_back}");
+        assert!(html.contains(&format!("<style>{read_back}</style>")), "{html}");
+    }
+
+    #[test]
+    fn the_stylesheet_is_absent_for_markup_that_is_not_the_envelope() {
+        for markup in [
+            String::new(),
+            "<html><head><style>a{b:c}</style></head><body></body></html>".to_string(),
+            format!("{DOCUMENT_ENVELOPE_OPEN}</head><body></body></html>"),
+            format!("{DOCUMENT_ENVELOPE_OPEN}<style>a{{b:c}}</style></head>"),
+        ] {
+            assert_eq!(document_html_stylesheet(&markup), None, "{markup}");
         }
     }
 

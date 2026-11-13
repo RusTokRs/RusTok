@@ -287,6 +287,8 @@ jobs:
         with:
           toolchain: "1.96.0"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+      - name: Verify the default build matches modules.toml
+        run: node scripts/ci/modules-manifest-features.mjs --check
       - run: cargo build -p rustok-server --all-features
       - name: Upload rustok-server binary
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

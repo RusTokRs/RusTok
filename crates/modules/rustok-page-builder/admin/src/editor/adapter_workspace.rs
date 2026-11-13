@@ -16,7 +16,7 @@ use fly_browser::BrowserIntentEnvelope;
 use fly_leptos::FlyEditorWorkspace;
 use fly_ui::{ContributionAssemblyResult, EditorMessages};
 use leptos::prelude::*;
-use rustok_ui_core::UiRouteContext;
+use rustok_ui_core::{UiCspNonce, UiRouteContext};
 use std::sync::Arc;
 
 #[component]
@@ -26,6 +26,10 @@ pub fn AdapterWorkspacePanel(
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
+    // The workspace renders the project stylesheet as an inline `<style>`; under the host's
+    // nonce policy it is dropped unless it carries the request nonce, and the canvas then
+    // renders unstyled.
+    let csp_nonce = use_context::<UiCspNonce>().map(|nonce| nonce.as_str().to_string());
     let messages = adapter_editor_messages(locale.as_deref());
     let document = runtime
         .controller
@@ -68,6 +72,7 @@ pub fn AdapterWorkspacePanel(
             messages=messages
             initial_page=initial_page
             capabilities=capabilities
+            csp_nonce=csp_nonce
         />
     }
 }

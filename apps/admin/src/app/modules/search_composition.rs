@@ -14,22 +14,27 @@ pub fn SearchAdminComposition() -> impl IntoView {
     let locale = use_context::<UiRouteContext>()
         .and_then(|context| context.locale)
         .unwrap_or_default();
-    let catalog_options = LocalResource::new({
-        let locale = locale.clone();
+    // A `Resource`, not a `LocalResource`: this renders inside the module route, which is served
+    // `Async`, and a `LocalResource` is `pending()` on the server, so the search surface received
+    // empty filter options instead of the catalog's.
+    let catalog_options = Resource::new(
         move || {
-            let product_enabled = product_enabled.get();
-            let token = token.get();
-            let tenant_slug = tenant_slug.get();
-            let locale = locale.clone();
-            async move {
-                if !product_enabled || locale.trim().is_empty() {
-                    return Ok(Default::default());
-                }
-
-                fetch_catalog_search_options(token, tenant_slug, locale).await
+            (
+                (product_enabled.get(), token.get(), tenant_slug.get()),
+                locale.clone(),
+            )
+        },
+        move |((product_enabled, token, tenant_slug), locale): (
+            (bool, Option<String>, Option<String>),
+            String,
+        )| async move {
+            if !product_enabled || locale.trim().is_empty() {
+                return Ok(Default::default());
             }
-        }
-    });
+
+            fetch_catalog_search_options(token, tenant_slug, locale).await
+        },
+    );
 
     view! {
         {move || {

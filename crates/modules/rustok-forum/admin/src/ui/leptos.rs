@@ -40,16 +40,21 @@ use crate::transport;
 use crate::ui::category_dnd::CategoryDndGrid;
 use crate::ui::richtext::ForumRichTextEditor;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 fn forum_admin_content_lang(locale: &str) -> String {
@@ -300,7 +305,7 @@ pub fn ForumAdmin() -> impl IntoView {
     let (topic_filter_category_id, set_topic_filter_category_id) = signal(String::new());
     let (reply_body, set_reply_body) = signal(RichTextDocument::empty());
 
-    let categories = local_resource(
+    let categories = loaded_resource(
         move || {
             let locale = if is_categories_page {
                 category_locale.get()
@@ -314,7 +319,7 @@ pub fn ForumAdmin() -> impl IntoView {
         },
     );
 
-    let topics = local_resource(
+    let topics = loaded_resource(
         move || {
             (
                 token.get(),
@@ -335,7 +340,7 @@ pub fn ForumAdmin() -> impl IntoView {
         },
     );
 
-    let replies = local_resource(
+    let replies = loaded_resource(
         move || {
             (
                 token.get(),
@@ -1446,7 +1451,7 @@ fn StaticChip(label: String) -> impl IntoView {
 
 #[component]
 fn CategoriesPage(
-    categories: LocalResource<Result<Vec<CategoryListItem>, String>>,
+    categories: Resource<Result<Vec<CategoryListItem>, String>>,
     set_refresh_nonce: WriteSignal<u64>,
     busy_key: ReadSignal<Option<String>>,
     editing_id: ReadSignal<Option<String>>,
@@ -1865,9 +1870,9 @@ fn CategoriesPage(
 
 #[component]
 fn TopicsPage(
-    categories: LocalResource<Result<Vec<CategoryListItem>, String>>,
-    topics: LocalResource<Result<Vec<TopicListItem>, String>>,
-    replies: LocalResource<Result<Vec<ReplyListItem>, String>>,
+    categories: Resource<Result<Vec<CategoryListItem>, String>>,
+    topics: Resource<Result<Vec<TopicListItem>, String>>,
+    replies: Resource<Result<Vec<ReplyListItem>, String>>,
     reply_body: ReadSignal<RichTextDocument>,
     set_reply_body: WriteSignal<RichTextDocument>,
     busy_key: ReadSignal<Option<String>>,

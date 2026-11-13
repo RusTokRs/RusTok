@@ -10,18 +10,6 @@ use crate::shared::ui::{
 use crate::use_admin_locale;
 use crate::widgets::stats_card::StatsCard;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
-where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
-{
-    LocalResource::new(move || fetcher(source()))
-}
-
 #[component]
 pub fn Dashboard() -> impl IntoView {
     let i18n = use_admin_locale();
@@ -29,14 +17,14 @@ pub fn Dashboard() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
 
-    let dashboard_stats = local_resource(
+    let dashboard_stats = Resource::new(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             transport::fetch_dashboard_stats(token_value, tenant_value).await
         },
     );
 
-    let recent_activity = local_resource(
+    let recent_activity = Resource::new(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             transport::fetch_recent_activity(token_value, tenant_value, 10).await

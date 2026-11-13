@@ -181,19 +181,22 @@ ordered(publish, [
   "assert_eq!(binding.artifact_id, artifact.id)"
 ], "reviewed publish and binding ordering");
 
+// The owner splits the decision from the selection: the status and channel gate and the locale
+// candidates live in one helper, the binding and the artifact in the loaders it calls.
 const publicRead = between(
   artifactService,
-  "pub async fn load_public_bound_artifact_with_fallback(",
-  "async fn find_artifact_in_tx(",
+  "async fn public_landing_locale_candidates_in_tx(",
+  "async fn find_canonical_artifact_in_tx(",
   "public selected artifact owner",
 );
 ordered(publicRead, [
-  'page.status == "published"',
+  'page.is_some_and(|page| page.status == "published")',
   "page_is_visible_for_channel_in_tx",
   "build_locale_candidates",
-  "load_bound_artifact_in_tx",
+  "async fn find_landing_binding_in_tx(",
   "page_body::Entity::find()",
   "page_published_landing_artifact::Entity::find_by_id(body.id)",
+  "async fn load_bound_artifact_in_tx(",
   "page_static_landing_artifact::Entity::find_by_id(binding.artifact_id)",
   "published_record(record).map(Some)"
 ], "binding selected artifact ordering");
@@ -210,7 +213,7 @@ ordered(nativeRead, [
   "get_by_slug_with_locale_fallback(",
   "PageBuilderArtifactService::new(runtime_ctx.db_clone())",
   ".load_public_bound_artifact_with_fallback(",
-  "published_artifact_page_body("
+  ".map(published_landing)"
 ], "native storefront delegates immutable selection");
 
 for (const marker of [

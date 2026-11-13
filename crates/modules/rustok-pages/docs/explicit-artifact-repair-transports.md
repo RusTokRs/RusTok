@@ -31,7 +31,7 @@ Both mutations:
 - return only bounded receipt fields;
 - map every owner failure to a static public code and static message.
 
-The owner commands remain authoritative and independently require tenant-wide `PermissionScope::All`. In the current request permission model Pages Manage does not have an `Own` scope: effective `pages:manage` resolves to `All`, while its absence resolves to `None`. Request evidence therefore covers Manage present/absent rather than inventing an owner-scoped Pages Manage grant. The owner `All` check remains defense in depth for direct/internal callers and any future authorization model that could introduce a narrower Pages Manage scope.
+The owner commands remain authoritative and independently require tenant-wide `PermissionScope::All`. In the current request permission model Pages Manage does not have an `Own` scope: effective `pages:manage` resolves to `PermissionScope::All`, while its absence resolves to `PermissionScope::None`. Request evidence therefore covers Manage present/absent rather than inventing an owner-scoped Pages Manage grant. The owner `All` check remains defense in depth for direct/internal callers and any future authorization model that could introduce a narrower Pages Manage scope.
 
 ## HTTP
 

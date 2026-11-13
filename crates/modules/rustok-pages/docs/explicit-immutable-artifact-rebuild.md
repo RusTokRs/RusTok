@@ -22,7 +22,7 @@ idempotency key
 reviewed runtime context
 ```
 
-It requires tenant-wide `pages:manage` (`PermissionScope::All`). Under the current request permission bridge effective Pages Manage resolves to `All` when present and `None` when absent; there is no current Pages Manage `Own` request state. The owner service still checks `PermissionScope::All` before input validation or writes as defense in depth.
+It requires tenant-wide `pages:manage` (`PermissionScope::All`). Under the current request permission bridge effective Pages Manage resolves to `PermissionScope::All` when present and `PermissionScope::None` when absent; there is no current Pages Manage `Own` request state. The owner service still checks `PermissionScope::All` before input validation or writes as defense in depth.
 
 The mutable current Pages body is never read. The retained sanitized project is re-sanitized through the canonical Page Builder policy and its sanitized hash and provenance hash are recomputed before compilation.
 

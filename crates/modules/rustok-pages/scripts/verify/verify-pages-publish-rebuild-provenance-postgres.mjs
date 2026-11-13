@@ -121,12 +121,12 @@ for (const marker of [
   'expected_revision: format!("page:{}:initial", draft.id)',
 ]) requireText(harness, marker, "provenance PostgreSQL harness foundation");
 requireOrder(documentOwner, [
-  "pub(crate) fn page_document_revision(page_id: Uuid, body: Option<&page_body::Model>) -> String",
-  "body.map(|body| body.updated_at.to_string())",
+  "pub(crate) fn page_document_revision(page_id: Uuid, working: Option<&WorkingBody>) -> String",
+  ".map(|working| working.updated_at.to_string())",
   'unwrap_or_else(|| format!("page:{page_id}:initial"))',
 ], "save-document owner revision fence");
 requireOrder(documentOwner, [
-  "let actual_revision = page_document_revision(page_id, existing.as_ref());",
+  "let actual_revision = page_document_revision(page_id, working.as_ref());",
   "if input.expected_revision != actual_revision",
   "document_revision_conflict(",
 ], "save-document revision comparison");

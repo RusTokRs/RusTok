@@ -633,15 +633,17 @@ pub fn ModulesList(
             }
         });
     };
-    let enabled_modules_for_orchestration = enabled_modules;
     let (orchestration_request, set_orchestration_request) = signal(0_u64);
+    // `EnabledModulesContext` is `Clone`, not `Copy`: it carries memos and a signal rather than
+    // plain cells. The refresh below is called from several handlers, so it clones the handle
+    // instead of taking the captured one, which would make this closure `FnOnce`.
     let refresh_orchestration_state =
         move |token_value: Option<String>,
               tenant_value: Option<String>,
               filters: CatalogFilters| {
             let request = orchestration_request.get_untracked().wrapping_add(1);
             set_orchestration_request.set(request);
-            let enabled_modules_for_refresh = enabled_modules_for_orchestration;
+            let enabled_modules_for_refresh = enabled_modules.clone();
             spawn_local(async move {
                 enabled_modules_for_refresh.refresh();
                 if let Ok(modules) =

@@ -150,6 +150,11 @@ fn status_for_error(error: &PagesBrowserIntentAccessError) -> u16 {
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
             SsrDraftSessionError::LockTimeout(_) | SsrDraftSessionError::Io(_),
         )) => HTTP_SERVICE_UNAVAILABLE,
+        // A record written by a newer build is a deployment condition, not a bad request: the
+        // browser cannot fix it by retrying, and answering 422 would read as a client error.
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::UnsupportedFormat { .. },
+        )) => HTTP_SERVICE_UNAVAILABLE,
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Facade(error))
             if error.stable_code.as_deref() == Some(BROWSER_REVISION_CONFLICT_CODE) =>
         {
@@ -378,6 +383,21 @@ mod tests {
             problem.code.as_deref(),
             Some(BROWSER_DRAFT_GENERATION_CONFLICT_CODE)
         );
+    }
+
+    /// A record of a newer build parses, so it must not be reported as a damaged request (422);
+    /// it is a deployment condition the browser cannot fix.
+    #[test]
+    fn a_draft_record_of_a_newer_build_is_service_unavailable() {
+        let error = PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::Draft(
+            SsrDraftSessionError::UnsupportedFormat {
+                found: 2,
+                supported: 1,
+            },
+        ));
+        let problem = PagesBrowserIntentProblem::from(&error);
+        assert_eq!(problem.status, HTTP_SERVICE_UNAVAILABLE);
+        assert_eq!(problem.code, None);
     }
 
     #[test]

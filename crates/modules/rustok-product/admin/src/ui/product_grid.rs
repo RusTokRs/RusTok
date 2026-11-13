@@ -55,24 +55,31 @@ pub fn ProductGridPage() -> impl IntoView {
         .clone()
         .unwrap_or_else(|| "desc".to_string());
 
+    // The grid is served from an `Async` admin route, so its data has to be resolved during the
+    // render: a `LocalResource` is `pending()` on the server and the reader gets the fallback.
+    // See DECISIONS/2026-11-13-standalone-admin-editor-delivery.md.
     let options_locale = locale.clone();
-    let catalog_options_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let loc = options_locale.clone().unwrap_or_default();
-        async move { catalog_transport::fetch_catalog_search_options(tok, ten, loc).await }
-    });
+    let catalog_options_resource = Resource::new(
+        move || (token.get(), tenant.get(), options_locale.clone().unwrap_or_default()),
+        move |(tok, ten, loc)| async move {
+            catalog_transport::fetch_catalog_search_options(tok, ten, loc).await
+        },
+    );
 
     // Load products resource
     let res_locale = locale.clone();
     let res_controls = catalog_controls.clone();
-    let products_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let loc = res_locale.clone();
-        let controls = res_controls.clone();
-        refresh_nonce.track();
-        async move {
+    let products_resource = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                res_locale.clone(),
+                res_controls.clone(),
+                refresh_nonce.get(),
+            )
+        },
+        move |(tok, ten, loc, controls, _generation)| async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
@@ -86,21 +93,25 @@ pub fn ProductGridPage() -> impl IntoView {
             .await
             .map_err(|e| e.to_string())?;
             Ok::<Vec<ProductListItem>, String>(res.items)
-        }
-    });
+        },
+    );
 
     // Owner-counted facet buckets for the same URL-driven controls. Counting is optional: no
     // facet capability, no transport, or no countable attribute all degrade to "no panel" instead
     // of an error, because the grid itself must keep working.
     let facets_locale = locale.clone();
     let facets_controls = catalog_controls.clone();
-    let facets_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let loc = facets_locale.clone();
-        let controls = facets_controls.clone();
-        refresh_nonce.track();
-        async move {
+    let facets_resource = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                facets_locale.clone(),
+                facets_controls.clone(),
+                refresh_nonce.get(),
+            )
+        },
+        move |(tok, ten, loc, controls, _generation)| async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .ok()?;
@@ -124,8 +135,8 @@ pub fn ProductGridPage() -> impl IntoView {
                 facet_codes,
             )
             .await
-        }
-    });
+        },
+    );
 
     // The panel is a pure view over the owner answer and the controls, so it is rebuilt from the
     // resource instead of being cached: a selection change navigates, and the new render shows the

@@ -23,15 +23,17 @@ async fn main() {
     use leptos_auth::{ServerAuthSnapshot, provide_server_auth_snapshot};
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use rustok_admin::app::{
-        App, admin_security_headers, auth_ssr::verify_auth_snapshot, request_auth_snapshot,
-        request_csp_nonce, shell, validate_admin_security_profile,
+        App, DRAFT_SESSION_PRUNE_INTERVAL, admin_security_headers,
+        auth_ssr::verify_auth_snapshot, request_auth_snapshot, request_csp_nonce, shell,
+        spawn_draft_session_prune, validate_admin_security_profile,
     };
     use rustok_pages_admin::{
         BrowserIntentEnvelope, DraftSessionOwner, FLY_CSRF_HEADER_NAME,
         PagesBrowserIntentAccessError, PagesBrowserIntentProblem, PagesBrowserIntentResponse,
-        PagesBuilderSaveSnapshot, dispatch_pages_browser_intent_with_capabilities,
-        fetch_pages_builder_rollout_snapshot, pages_editor_capabilities_for_snapshot,
-        pages_editor_capability_policy_from_effective, verify_csrf_token,
+        PagesBuilderSaveSnapshot, csrf_secret_from_access_token,
+        dispatch_pages_browser_intent_with_capabilities, fetch_pages_builder_rollout_snapshot,
+        pages_editor_capabilities_for_snapshot, pages_editor_capability_policy_from_effective,
+        verify_csrf_token,
     };
     use rustok_ui_auth::AuthError;
     use serde_json::{Value, json};
@@ -68,12 +70,16 @@ async fn main() {
                     )
                 })?;
                 let csrf_header = header_value(&headers, FLY_CSRF_HEADER_NAME);
-                // The CSRF secret is the session id: stable across
-                // refresh-token rotation (unlike the access token),
-                // unguessable, and only ever embedded into pages this
-                // host renders for the authenticated browser.
-                let csrf_secret =
-                    leptos_auth::session_id_from_access_token(&session.token).unwrap_or_default();
+                // The CSRF secret is the session id: stable across refresh-token rotation
+                // (unlike the access token), unguessable, and only ever embedded into pages this
+                // host renders for the authenticated browser. The page that embeds it derives it
+                // with the same helper, so the two sides cannot drift apart.
+                let csrf_secret = csrf_secret_from_access_token(&session.token).ok_or_else(|| {
+                    auth_error(
+                        StatusCode::FORBIDDEN,
+                        "Page Builder session has no session id to verify a CSRF token against",
+                    )
+                })?;
                 match csrf_header {
                     Some(client_csrf) if verify_csrf_token(&csrf_secret, &client_csrf) => {
                         (session.token.clone(), session.tenant.clone())
@@ -177,6 +183,76 @@ async fn main() {
         )
     }
 
+    /// The parameters of a preview address.
+    struct PreviewQuery {
+        draft: Option<String>,
+        runtime_context: Value,
+        runtime_scenario: Option<String>,
+    }
+
+    /// Parses `?draft=…&runtime_context=…&runtime_scenario=…` without a serde extractor, because a
+    /// malformed runtime context is a 400 with a message rather than a rejection the browser cannot
+    /// read.
+    ///
+    /// A context that cannot be parsed is refused rather than replaced: the preview would otherwise
+    /// render under a context the caller did not ask for, which is a preview of a different page
+    /// than the editor is showing.
+    fn preview_query(query: Option<&str>) -> Result<PreviewQuery, (StatusCode, Json<Value>)> {
+        let mut draft = None;
+        let mut runtime_scenario = None;
+        let mut runtime_context = Value::Object(serde_json::Map::new());
+        let pairs: Vec<(String, String)> = serde_urlencoded::from_str(query.unwrap_or_default())
+            .map_err(|error| {
+                auth_error(
+                    StatusCode::BAD_REQUEST,
+                    format!("The preview address could not be read: {error}"),
+                )
+            })?;
+        for (key, value) in pairs {
+            match key.as_str() {
+                "draft" if !value.is_empty() => draft = Some(value),
+                "runtime_scenario" if !value.is_empty() => runtime_scenario = Some(value),
+                "runtime_context" if !value.is_empty() => {
+                    runtime_context = serde_json::from_str(&value).map_err(|error| {
+                        auth_error(
+                            StatusCode::BAD_REQUEST,
+                            format!("The preview runtime context is not valid JSON: {error}"),
+                        )
+                    })?;
+                }
+                _ => {}
+            }
+        }
+        Ok(PreviewQuery {
+            draft,
+            runtime_context,
+            runtime_scenario,
+        })
+    }
+
+    fn page_builder_preview_error(
+        error: rustok_pages_admin::PagesBrowserIntentError,
+    ) -> (StatusCode, Json<Value>) {
+        use rustok_pages_admin::PagesBrowserIntentError as Error;
+        let (status, message) = match &error {
+            Error::PageNotFound => (StatusCode::NOT_FOUND, "The page to preview was not found"),
+            Error::DocumentUnavailable => (
+                StatusCode::FORBIDDEN,
+                "The document of this page is not available to this principal",
+            ),
+            Error::Draft(rustok_page_builder_admin::SsrDraftSessionError::OwnerMismatch) => (
+                StatusCode::FORBIDDEN,
+                "The draft belongs to another caller",
+            ),
+            Error::Draft(rustok_page_builder_admin::SsrDraftSessionError::PageMismatch { .. }) => (
+                StatusCode::NOT_FOUND,
+                "The draft does not belong to this page",
+            ),
+            _ => (StatusCode::BAD_REQUEST, "The preview could not be rendered"),
+        };
+        auth_error(status, message)
+    }
+
     fn page_builder_error(error: PagesBrowserIntentAccessError) -> (StatusCode, Json<Value>) {
         let problem = PagesBrowserIntentProblem::from(&error);
         let status =
@@ -188,6 +264,68 @@ async fn main() {
                 format!("Page Builder problem serialization failed: {serialization_error}"),
             ),
         }
+    }
+
+    /// Serves the server preview of a Page Builder draft as its own document.
+    ///
+    /// The editor's frame loads this instead of an inherited `srcdoc` document: a `srcdoc` frame is
+    /// governed by the policy of the console that embeds it, and that policy names no script source
+    /// and forbids style attributes, so an embed block's aspect ratio, a provider frame and a remote
+    /// font would be dropped silently. Serving the preview as its own response lets it carry the
+    /// published artifact's policy, derived from the stylesheet the document itself holds.
+    ///
+    /// The caller is the verified browser session. A frame cannot send a request header, so this
+    /// read cannot require the CSRF header the intent endpoint requires of a write — and it does
+    /// not need one: it changes nothing, and the session cookie is `HttpOnly; SameSite=Lax`, so a
+    /// cross-site frame does not carry it and a cross-site link that does bring it can only cause a
+    /// read the browser renders in a frame the other site cannot see into.
+    async fn page_builder_preview(
+        Path(page_id): Path<String>,
+        Extension(auth): Extension<ServerAuthSnapshot>,
+        headers: HeaderMap,
+        axum::extract::RawQuery(query): axum::extract::RawQuery,
+    ) -> Result<axum::response::Response, (StatusCode, Json<Value>)> {
+        let session = auth.session.as_ref().ok_or_else(|| {
+            auth_error(StatusCode::UNAUTHORIZED, "Page Builder access token is missing")
+        })?;
+        let query = preview_query(query.as_deref())?;
+        // The principal is the one this request's single verified exchange produced. The intent
+        // endpoint re-reads the profile because it creates or commits a draft session; a read
+        // does not need a second round trip to know who is asking, and the draft session the
+        // editor minted carries the id of this same exchange, so the owner check still matches.
+        let verified_user = auth.user.clone().ok_or_else(|| {
+            auth_error(StatusCode::UNAUTHORIZED, "Authenticated user was not found")
+        })?;
+        let default_locale = header_value(&headers, "accept-language")
+            .and_then(|header| {
+                rustok_ui_i18n::preferred_catalog_locale_from_accept_language(Some(header.as_str()))
+            })
+            .unwrap_or_else(|| "en".to_string());
+
+        let preview = rustok_pages_admin::render_server_preview(
+            PagesBuilderSaveSnapshot {
+                token: Some(session.token.clone()),
+                tenant_slug: Some(session.tenant.clone()),
+                page_id,
+                default_locale,
+                // The owner is the caller this host verified. Without it the store would return a
+                // session to whoever holds its token.
+                owner: Some(DraftSessionOwner {
+                    tenant_id: session.tenant.clone(),
+                    user_id: verified_user.id,
+                }),
+            },
+            rustok_pages_admin::pages_server_preview_store(),
+            query.draft.as_deref(),
+            query.runtime_context,
+            query.runtime_scenario,
+        )
+        .await
+        .map_err(page_builder_preview_error)?;
+
+        rustok_pages_admin::pages_server_preview_response(&preview.html).map_err(|error| {
+            auth_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+        })
     }
 
     validate_admin_security_profile().expect("valid standalone admin security profile");
@@ -212,6 +350,12 @@ async fn main() {
         .route(
             "/api/admin/pages/{page_id}/builder/intents",
             post(page_builder_intent),
+        )
+        // A preview is its own document with its own policy, so it is a route and not a value
+        // embedded into the console's document.
+        .route(
+            "/api/admin/pages/{page_id}/preview",
+            get(page_builder_preview),
         )
         .leptos_routes_with_context(
             &options,
@@ -239,6 +383,11 @@ async fn main() {
         .with_state(options)
         .layer(middleware::from_fn(verify_auth_snapshot))
         .layer(middleware::from_fn(admin_security_headers));
+
+    // Draft sessions expire and are capped only when something calls `prune`; the intent
+    // endpoint touches a session only for a browser that asks. Without this loop an abandoned
+    // draft outlives its TTL until the process restarts.
+    spawn_draft_session_prune(DRAFT_SESSION_PRUNE_INTERVAL);
 
     log!("RusTok admin SSR listening on http://{address}");
     let listener = tokio::net::TcpListener::bind(address)

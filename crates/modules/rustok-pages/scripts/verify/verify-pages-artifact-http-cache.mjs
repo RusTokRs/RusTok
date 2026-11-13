@@ -113,6 +113,11 @@ for (const [key, expected] of Object.entries({
   conditional_304_body_empty: true,
   etag_stable_across_generation_change: true,
   cache_ttl_contract_retained: true,
+  page_update_rotates_a_generation_the_entry_binds: true,
+  page_and_route_generation_changes_age_the_entry_out: true,
+  cache_hit_entry_does_not_survive_a_page_update: true,
+  stale_entry_answers_404_instead_of_the_cached_document: true,
+  missing_artifact_is_never_cached: true,
   test_only_tower_dependency_added: true,
   production_artifact_behavior_changed: false,
   production_cache_behavior_changed: false,
@@ -134,7 +139,10 @@ if (
   evidence.harness?.test !==
     "artifact_http_misses_refills_hits_and_returns_conditional_304_across_generation_change" ||
   evidence.harness?.backend !== "sqlite_in_memory" ||
-  evidence.harness?.route !== "/api/pages/{id}/artifact?locale=en"
+  evidence.harness?.route !== "/api/pages/{id}/artifact?locale=en" ||
+  !Array.isArray(evidence.harness?.tests) ||
+  evidence.harness.tests[0] !== evidence.harness.test ||
+  !evidence.harness.tests.includes("artifact_http_entry_does_not_outlive_a_page_update")
 ) {
   failures.push("artifact HTTP harness registration is invalid");
 }
@@ -209,6 +217,35 @@ for (const marker of [
 ]) {
   requireText(testBody, marker, "conditional artifact response evidence");
 }
+
+// A page or route event replaces no artifact, so it can only be honoured through the cache key:
+// the second test pins that a hit and its conditional `304` do not outlive such an event.
+const pageUpdateTest = sliceBetween(
+  harness,
+  "async fn artifact_http_entry_does_not_outlive_a_page_update(",
+  "async fn setup_db()",
+  "artifact HTTP page update test",
+);
+requireOrder(
+  pageUpdateTest,
+  [
+    "let filled =",
+    "assert_eq!(filled.status(), StatusCode::OK)",
+    "delete_binding(&db, fixture.body_id).await?",
+    "assert_eq!(hit.status(), StatusCode::NOT_MODIFIED)",
+    "for scope in [PageCacheScope::Page, PageCacheScope::Route]",
+    "cache.set_generation(scope, next)",
+    "assert_eq!(after_update.status(), StatusCode::NOT_FOUND)",
+    "assert_eq!(after.generations.artifact, 7)",
+    "assert_eq!(after.put_keys.len(), 1)",
+  ],
+  "page update invalidates the artifact entry",
+);
+requireText(
+  pageUpdateTest,
+  "// \"No artifact\" is never stored.",
+  "missing artifact is not cached",
+);
 
 const artifactHandler = sliceBetween(
   controller,

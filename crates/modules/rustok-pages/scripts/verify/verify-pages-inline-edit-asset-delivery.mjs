@@ -30,6 +30,12 @@ const files = {
   assets: "crates/modules/rustok-pages/src/http/inline_edit_assets.rs",
   serverCargo: "apps/server/Cargo.toml",
   clientBuilder: "apps/storefront/scripts/build-pages-inline-edit-client.mjs",
+  // The Pages client builder is a thin configuration of the storefront WASM client builder, which
+  // is where the locked graph, the pinned CLI version and the atomic publish actually live.
+  wasmClientBuilder: "apps/storefront/scripts/build-wasm-client.mjs",
+  // The asset response shape (content ETag, conditional 304, same-origin policy) is owned by the
+  // shared embedded-asset helper so every module's static assets answer identically.
+  assetHelper: "crates/libs/rustok-web/src/lib.rs",
   serverBuilder: "scripts/build/build-pages-inline-edit-server.sh",
   localPlan: "crates/modules/rustok-pages/docs/implementation-plan.md",
 };
@@ -48,6 +54,8 @@ const pagesHttp = read(files.pagesHttp);
 const assets = read(files.assets);
 const serverCargo = read(files.serverCargo);
 const clientBuilder = read(files.clientBuilder);
+const wasmClientBuilder = read(files.wasmClientBuilder);
+const assetHelper = read(files.assetHelper);
 const serverBuilder = read(files.serverBuilder);
 const localPlan = read(files.localPlan);
 
@@ -139,13 +147,19 @@ for (const marker of [
   '"text/javascript; charset=utf-8"',
   '"application/wasm"',
   '"public, max-age=0, must-revalidate"',
-  '"cross-origin-resource-policy"',
-  '"same-origin"',
+  "use rustok_web::embedded_asset_response;",
+  "embedded_asset_response(",
+]) need(assets, marker, "embedded Pages asset router");
+// The router must not grow a private copy of the response logic: the shared helper is what
+// supplies the same-origin policy, the content ETag and the conditional 304 checked below.
+for (const marker of [
+  "cross-origin-resource-policy",
+  "same-origin",
   "Sha256::digest(bytes)",
   "IF_NONE_MATCH",
   "StatusCode::NOT_MODIFIED",
   'candidate.strip_prefix("W/")',
-]) need(assets, marker, "embedded Pages asset router");
+]) need(assetHelper, marker, "shared embedded asset response");
 for (const marker of ["authorization_proof", "PageInlineEditGrant", "PAGES_INLINE_EDIT_HMAC_KEY"]) {
   forbid(assets, marker, "embedded Pages asset router");
 }
@@ -161,18 +175,32 @@ forbid(
   "server default feature",
 );
 
+// The Pages builder only names its own artifact directory and feature; the locked graph, the
+// exact wasm-bindgen version and the atomic publish belong to the shared storefront builder.
+for (const marker of [
+  'label: "Pages inline edit"',
+  'feature: "pages-inline-edit-hydrate"',
+  'profileEnv: "RUSTOK_PAGES_INLINE_EDIT_PROFILE"',
+  'assetDirEnv: "RUSTOK_PAGES_INLINE_EDIT_ASSET_DIR"',
+  'defaultAssetDir: "target/site/assets/pages-inline-edit"',
+  'bootstrapSource: "apps/storefront/public/assets/pages-inline-edit-bootstrap.js"',
+  "--print-wasm-bindgen-version",
+  "buildStorefrontWasmClient({",
+]) need(clientBuilder, marker, "Pages client artifact builder");
 for (const marker of [
   'readFileSync(path.join(repoRoot, "Cargo.lock"), "utf8")',
   '"--print-wasm-bindgen-version"',
   '"--locked"',
-  'process.env.CARGO_TARGET_DIR?.trim()',
-  'RUSTOK_WASM_BINDGEN_BIN',
-  'wasm-bindgen ${lockedWasmBindgenVersion}',
-  '`${targetRoot}.tmp-${process.pid}`',
+  "process.env.CARGO_TARGET_DIR?.trim()",
+  "RUSTOK_WASM_BINDGEN_BIN",
+  "wasm-bindgen ${lockedWasmBindgenVersion}",
+  "`${targetRoot}.tmp-${process.pid}`",
   "renameSync(stagingRoot, targetRoot)",
-  'requireNonEmptyFile(path.join(stagingRoot, file)',
-]) need(clientBuilder, marker, "client artifact builder");
-forbid(clientBuilder, 'path.join(repoRoot, "target", "wasm32-unknown-unknown"', "client artifact builder");
+  "requireNonEmptyFile(path.join(stagingRoot, file)",
+]) need(wasmClientBuilder, marker, "shared storefront WASM client builder");
+for (const text of [clientBuilder, wasmClientBuilder]) {
+  forbid(text, 'path.join(repoRoot, "target", "wasm32-unknown-unknown"', "client artifact builder");
+}
 
 for (const marker of [
   "set -euo pipefail",

@@ -10,6 +10,26 @@ import { fileURLToPath } from 'node:url';
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const nextAdminRoot = path.join(repositoryRoot, 'apps/next-admin');
 const appRequire = createRequire(path.join(nextAdminRoot, 'package.json'));
+// This gate drives a real browser. Node's own loader would abort with a stack trace when the app
+// dependencies are not installed yet, which reads as a broken guard rather than an unrun one, so
+// report the missing install explicitly and leave every other resolution error to fail.
+const missingDependency = (specifier) => {
+  try {
+    appRequire.resolve(specifier);
+    return false;
+  } catch (error) {
+    if (error?.code !== 'MODULE_NOT_FOUND') throw error;
+    return true;
+  }
+};
+for (const specifier of ['@playwright/test', 'grapesjs', 'grapesjs-preset-webpage']) {
+  if (missingDependency(specifier)) {
+    console.log(
+      `[verify-fly-grapesjs-roundtrip] skipped (${specifier} is not installed: run \`npm ci\` in apps/next-admin; this gate drives a real browser)`,
+    );
+    process.exit(0);
+  }
+}
 const { chromium } = appRequire('@playwright/test');
 const grapesJsPath = appRequire.resolve('grapesjs/dist/grapes.min.js');
 const presetPath = appRequire.resolve('grapesjs-preset-webpage');

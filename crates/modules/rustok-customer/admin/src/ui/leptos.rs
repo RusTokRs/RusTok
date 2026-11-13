@@ -23,16 +23,21 @@ use crate::i18n::t;
 use crate::model::{CustomerAdminBootstrap, CustomerDetail, CustomerListItem};
 use crate::transport;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -64,12 +69,12 @@ pub fn CustomerAdmin() -> impl IntoView {
         phone: set_phone,
     };
 
-    let bootstrap = local_resource(
+    let bootstrap = loaded_resource(
         move || refresh_nonce.get(),
         move |_| async move { transport::fetch_bootstrap().await },
     );
 
-    let customers = local_resource(
+    let customers = loaded_resource(
         move || (refresh_nonce.get(), search.get()),
         move |(_, search_value)| async move {
             let request = customer_list_request(search_value);
@@ -212,14 +217,16 @@ pub fn CustomerAdmin() -> impl IntoView {
     let selection = RwSignal::new(RowSelection::new());
     let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
 
+    let filtered_customers_resource = customers;
+    let loading_customers = customers;
     let filtered_customers = Memo::new(move |_| {
-        let raw = customers
+        let loaded_items = filtered_customers_resource
             .get()
             .and_then(Result::ok)
             .map(|l| l.items)
             .unwrap_or_default();
         let current_filters = filters.get();
-        filter_customers(&raw, &current_filters)
+        filter_customers(&loaded_items, &current_filters)
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
@@ -372,8 +379,9 @@ pub fn CustomerAdmin() -> impl IntoView {
                                 </span>
                             </div>
                             <p class="text-sm text-muted-foreground">
-                                {move || customer_admin_list_header_view_model(
-                                    bootstrap
+                                {let header_bootstrap = bootstrap;
+                                move || customer_admin_list_header_view_model(
+                                    header_bootstrap
                                         .get()
                                         .and_then(Result::ok)
                                         .map(|payload: CustomerAdminBootstrap| payload.current_tenant.name)
@@ -433,7 +441,7 @@ pub fn CustomerAdmin() -> impl IntoView {
                         data=Signal::derive(move || filtered_customers.get())
                         key_fn=|item: &CustomerListItem| item.id.clone()
                         cell_renderer=cell_renderer
-                        is_loading=Signal::derive(move || busy.get() || customers.get().is_none())
+                        is_loading=Signal::derive(move || busy.get() || loading_customers.get().is_none())
                         empty_message=empty_label.clone()
                         selection=selection
                         pagination=pagination

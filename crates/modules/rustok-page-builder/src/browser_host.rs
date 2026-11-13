@@ -134,12 +134,37 @@ const __flyBindSsrAdapter = (adapter) => {
     if (!payload.component_id && adapter.selectedId) payload.component_id = adapter.selectedId;
     void adapter.emitIntent(intent, payload);
   }, __flyLifecycleOptions);
+  // A preview answer carries the document the server rendered. The panel's frame shows it as its
+  // own document: `srcdoc` is a separate browsing context, but it is not a separate policy — it
+  // inherits this document's, which is why the panel labels the result. A host that serves the
+  // preview as its own response points the frame at it instead, and this binding does nothing.
+  const __flyApplyPreview = (adapter, detail) => {
+    if (detail.current === false) return;
+    const persistence = detail.result?.persistence;
+    if (!__flyObject(persistence) || persistence.capability !== "preview") return;
+    const html = persistence.result?.html;
+    if (typeof html !== "string" || !html) return;
+    const frame = adapter.root.querySelector("[data-page-builder-server-preview-frame]");
+    if (!(frame instanceof HTMLIFrameElement)) return;
+    // A frame that already names a document by address must not be given one here: `srcdoc`
+    // takes precedence over `src`, so writing it would replace the host's own document with an
+    // inherited one — the exact defect the address exists to avoid. The panel reveals itself as
+    // soon as the address answered, so there is nothing left to do.
+    const served = frame.hasAttribute("src");
+    if (!served) frame.srcdoc = html;
+    frame.hidden = false;
+  };
   adapter.root.addEventListener("fly:browser-intent-response", (event) => {
     const detail = event.detail;
     if (!detail?.ok || !__flyObject(detail.result)) return;
     const token = detail.result.draft_token;
     if (typeof token === "string" && token) __flyWriteDraftRoute(token);
   }, __flyLifecycleOptions);
+  adapter.root.addEventListener(
+    "fly:browser-intent-response",
+    (event) => __flyApplyPreview(adapter, event.detail ?? {}),
+    __flyLifecycleOptions,
+  );
   __flySsrControlState.adapters.add(adapter);
   return adapter;
 };
@@ -220,6 +245,28 @@ mod tests {
         assert_eq!(module.script_type, "module");
         assert_eq!(module.adapter, "fly_browser");
         assert_eq!(module.nonce.as_deref(), Some("csp-nonce"));
+    }
+
+    #[test]
+    fn the_bootstrap_never_overwrites_a_document_the_frame_loads_by_address() {
+        // `srcdoc` takes precedence over `src`, so a bootstrap that writes it unconditionally
+        // would replace a host-served preview — the page's own document under the page's own
+        // policy — with a document inheriting the console's. That is the defect the address
+        // exists to avoid, so the guard is part of the contract, not an optimisation.
+        let source = PAGE_BUILDER_BROWSER_HOST_BOOTSTRAP_JS;
+        let start = source
+            .find("const __flyApplyPreview")
+            .expect("preview binding");
+        let end = start + source[start..].find("adapter.root.addEventListener").expect("binding end");
+        let binding = &source[start..end];
+        assert!(
+            binding.contains("frame.hasAttribute(\"src\")"),
+            "the preview binding does not check the address before writing `srcdoc`: {binding}"
+        );
+        let guard = binding.find("if (!served)").expect("guarded write");
+        let write = binding.find("frame.srcdoc = html").expect("write");
+        assert!(guard < write, "{binding}");
+        assert!(binding.contains("frame.hidden = false"), "{binding}");
     }
 
     #[test]

@@ -18,6 +18,9 @@ const files = {
   anonymousInspector:
     "crates/modules/rustok-pages/scripts/verify/inspect-pages-anonymous-storefront-ssr-artifact.mjs",
   assetRoute: "crates/modules/rustok-pages/src/http/inline_edit_assets.rs",
+  // The conditional-GET and same-origin behaviour the packet captures is implemented by the shared
+  // embedded-asset helper; the Pages router supplies the cache policy and the fixed paths.
+  assetHelper: "crates/libs/rustok-web/src/lib.rs",
   auth: "apps/server/src/middleware/auth_context.rs",
   localPlan: "crates/modules/rustok-pages/docs/implementation-plan.md",
 };
@@ -301,8 +304,12 @@ const requiredMarkers = {
     "PAGES_INLINE_EDIT_MODULE_PATH",
     "PAGES_INLINE_EDIT_WASM_PATH",
     '"public, max-age=0, must-revalidate"',
-    '"same-origin"',
+    "embedded_asset_response(",
+  ],
+  assetHelper: [
+    '"cross-origin-resource-policy", "same-origin"',
     "IF_NONE_MATCH",
+    "StatusCode::NOT_MODIFIED",
   ],
   auth: [
     'PAGES_AUTHORING_CACHE_CONTROL: &str = "private, no-store"',

@@ -78,7 +78,13 @@ pub use hooks::{
 pub use storage::{ServerAuthSnapshot, provide_server_auth_snapshot};
 
 /// Extract the stable session id (`session_id` claim) from an access
-/// token WITHOUT verifying it. The value identifies the refresh
+/// token WITHOUT verifying it.
+///
+/// The Fly browser-intent CSRF protocol no longer reads this helper: it derives its secret with
+/// `fly_browser::csrf_secret_from_access_token`, so the page renderer and the verifying endpoint
+/// share one implementation instead of one caller using this and the other falling back to an
+/// empty secret. Keep this helper for host code that needs the id itself; do not build a second
+/// CSRF rule on it. The value identifies the refresh
 /// lineage and therefore survives token rotation, which makes it the
 /// right CSRF-derivation secret for same-origin browser adapters:
 /// unguessable (122-bit UUID), embedded by the server into pages it

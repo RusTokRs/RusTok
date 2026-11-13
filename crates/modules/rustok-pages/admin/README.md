@@ -60,3 +60,12 @@
 - **The save-failure message ages out.** It stays on screen, and across reloads, until a save
   succeeds, but the browser keeps it for at most 10 minutes; after that only the toolbar's unsaved
   state says that the draft is not stored.
+- **The facade save path carries no draft owner, by design.** `PagesBuilderFacade` is built with
+  `PagesBuilderSaveSnapshot { owner: None, .. }` (`src/composition.rs`). Attribution belongs to the
+  intent endpoint: `dispatch_pages_browser_intent` takes the owner from the verified caller, and
+  that is the only path that creates, commits or removes a draft session. The facade's snapshot
+  serves the capability and preview calls, which read no session. The editor's route draft is
+  loaded separately with an owner built from the current user and the tenant
+  (`load_route_draft(..., draft_owner.as_ref())`), so a session that belongs to another caller is
+  not restored. Do not thread the facade's snapshot owner into the store: it would add a second,
+  unverified attribution without changing which sessions can be read or committed.

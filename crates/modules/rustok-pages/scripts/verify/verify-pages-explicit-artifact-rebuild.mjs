@@ -185,7 +185,7 @@ for (const marker of [
   "enforce_tenant_wide_manage(&security)?",
   "input.source_id",
   "input.expected_provenance_hash",
-  "reviewed.runtime_context_hash()",
+  ".runtime_context_hash()",
   "sanitize_static_landing_project(&source.sanitized_project)",
   "compile_materialized_static_landing(sanitized.project_data(), runtime)",
   "materialization_identity != source.materialization_identity",

@@ -84,7 +84,10 @@ async function importHostModule(page: Page) {
   }, source);
 }
 
-async function mountHost(page: Page, options: { reload?: boolean } = {}) {
+async function mountHost(
+  page: Page,
+  options: { reload?: boolean; answer?: Record<string, unknown> } = {}
+) {
   await page.setContent(`
     <div
       id="fly-root"
@@ -178,6 +181,20 @@ async function mountHost(page: Page, options: { reload?: boolean } = {}) {
           <button id="field-submit" type="submit">Save</button>
         </form>
       </section>
+      <section
+        data-page-builder-server-preview="true"
+        data-page-builder-provider-preview="true"
+      >
+        <form id="preview-form" data-fly-intent-form="render_server_preview">
+          <button id="preview-submit" type="submit">Render preview</button>
+        </form>
+        <iframe
+          id="preview-frame"
+          data-page-builder-server-preview-frame="true"
+          hidden
+          sandbox
+        ></iframe>
+      </section>
       <iframe
         data-fly-iframe-canvas
         srcdoc="<!doctype html><html><body>canvas</body></html>"
@@ -185,7 +202,7 @@ async function mountHost(page: Page, options: { reload?: boolean } = {}) {
     </div>
   `);
 
-  await page.evaluate((reload) => {
+  await page.evaluate(({ reload, answer }) => {
     const root = document.querySelector('#fly-root');
     if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
 
@@ -206,7 +223,8 @@ async function mountHost(page: Page, options: { reload?: boolean } = {}) {
           result: { revision_id: 'rev-2', project_hash: 'hash-2' },
           reload,
           draft_token: 'draft-1',
-          draft_generation: 1
+          draft_generation: 1,
+          ...answer
         }),
         { status: 200, headers: { 'content-type': 'application/json' } }
       );
@@ -217,7 +235,7 @@ async function mountHost(page: Page, options: { reload?: boolean } = {}) {
     root.addEventListener('fly:select', (event) => {
       selections.push((event as CustomEvent).detail);
     });
-  }, options.reload === true);
+  }, { reload: options.reload === true, answer: options.answer ?? {} });
 
   await importHostModule(page);
   await expect(page.locator('#fly-root')).toHaveAttribute(
@@ -448,6 +466,68 @@ test('the draft token of the route is sent with the first intent', async ({
   await expect.poll(async () => (await requests(page)).length).toBe(1);
   const [request] = await requests(page);
   expect(request.body?.draft_token).toBe('route-draft');
+});
+
+test('a preview answer renders into the panel frame and reveals it', async ({ page }) => {
+  // The panel renders the frame before a document exists and hides it; the answer is what fills
+  // it. A frame created only after a re-render would be one this binding cannot reach.
+  await mountHost(page, {
+    answer: {
+      persistence: {
+        capability: 'preview',
+        result: { page_id: 'home', html: '<!doctype html><html><body><p>preview</p></body></html>' }
+      }
+    }
+  });
+
+  const frame = page.locator('#preview-frame');
+  await expect(frame).toBeHidden();
+  await page.locator('#preview-submit').click();
+
+  await expect
+    .poll(async () => frame.getAttribute('srcdoc'))
+    .toContain('<p>preview</p>');
+  await expect(frame).toBeVisible();
+  // The frame is what the answer names, not a second request.
+  const posted = await requests(page);
+  expect(posted).toHaveLength(1);
+  expect(posted[0].body?.intent).toBe('render_server_preview');
+});
+
+test('a preview answer does not replace a document the frame loads by address', async ({
+  page
+}) => {
+  // `srcdoc` takes precedence over `src` in the HTML specification, so writing it into a frame
+  // that names a document would silently swap the host's own response — served under the page's
+  // policy — for a document inheriting this console's. The frame must keep the address, and the
+  // answer must still reveal it.
+  await mountHost(page, {
+    answer: {
+      persistence: {
+        capability: 'preview',
+        result: { page_id: 'home', html: '<!doctype html><html><body><p>inherited</p></body></html>' }
+      }
+    }
+  });
+  const frame = page.locator('#preview-frame');
+  await frame.evaluate((element) => element.setAttribute('src', '/api/admin/pages/home/preview'));
+
+  await page.locator('#preview-submit').click();
+
+  await expect.poll(async () => (await requests(page)).length).toBe(1);
+  expect(await frame.getAttribute('srcdoc')).toBeNull();
+  expect(await frame.getAttribute('src')).toBe('/api/admin/pages/home/preview');
+  await expect(frame).toBeVisible();
+});
+
+test('an answer that is not a preview leaves the panel frame alone', async ({ page }) => {
+  await mountHost(page);
+  await page.locator('#preview-submit').click();
+  await expect.poll(async () => (await requests(page)).length).toBe(1);
+
+  const frame = page.locator('#preview-frame');
+  expect(await frame.getAttribute('srcdoc')).toBeNull();
+  await expect(frame).toBeHidden();
 });
 
 test('the draft token of a response is written into the route without a navigation', async ({

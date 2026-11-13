@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos_auth::components::ProtectedRoute;
 use leptos_auth::context::AuthProvider;
 use leptos_router::components::{ParentRoute, Redirect, Route, Router, Routes};
+use leptos_router::SsrMode;
 use leptos_router::path;
 
 use crate::AdminLocaleProvider;
@@ -31,7 +32,15 @@ pub fn App() -> impl IntoView {
                         <Route path=path!("/install") view=InstallerPage />
 
                         <ParentRoute path=path!("") view=ProtectedRoute>
-                            <ParentRoute path=path!("") view=AppLayout>
+                            // The layout resolves module availability for every surface it wraps:
+                            // the sidebar renders the module navigation and `ModuleGuard` reads the
+                            // same decision. The default mode (`OutOfOrder`) streams that
+                            // `Suspense` as a fallback plus a `<template>` that a script swaps in,
+                            // and this host serves no script, so the decision has to be in the
+                            // document. Declaring the mode on the layout route covers every child:
+                            // a route listing takes the most restrictive mode of its ancestors.
+                            // See DECISIONS/2026-11-13-standalone-admin-editor-delivery.md.
+                            <ParentRoute path=path!("") view=AppLayout ssr=SsrMode::Async>
                                 <Route path=path!("/dashboard") view=Dashboard />
                                 <Route path=path!("/profile") view=|| view! { <Profile language_toggle=|| view! { <LanguageToggle /> } /> } />
                                 <Route path=path!("/security") view=Security />

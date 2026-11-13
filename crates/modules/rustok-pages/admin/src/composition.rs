@@ -31,6 +31,31 @@ use std::sync::Arc;
 
 const FLY_DRAFT_QUERY_KEY: &str = "fly_draft";
 
+/// The server state of one open page, as a `Resource` can carry.
+///
+/// `PageBuilderAdminProviderStatus` is a runtime view of two values — rollout flags and an optional
+/// health snapshot — and only the values cross a resource boundary; the status is derived again by
+/// the render that reads them ([`PagesWorkspaceData::provider_status`]). That keeps the resource
+/// payload serialisable without inventing a second provider-status type for the wire, and without
+/// letting a consumer fabricate an observed snapshot: an absent health value stays absent.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+struct PagesWorkspaceData {
+    page: PageDetail,
+    baseline: Option<RuntimeScenarioReleaseBaseline>,
+    release_status: PageBuilderScenarioReleaseStatus,
+    provider_flags: rustok_page_builder::rollout::BuilderCapabilityFlags,
+    provider_health: Option<rustok_page_builder::health::ProviderHealthSnapshot>,
+}
+
+impl PagesWorkspaceData {
+    fn provider_status(&self) -> PageBuilderAdminProviderStatus {
+        match self.provider_health.clone() {
+            Some(health) => PageBuilderAdminProviderStatus::observed(self.provider_flags.clone(), health),
+            None => PageBuilderAdminProviderStatus::unobserved(self.provider_flags.clone()),
+        }
+    }
+}
+
 #[component]
 pub fn PagesAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -48,21 +73,33 @@ pub fn PagesAdmin() -> impl IntoView {
 
     let list_token = token;
     let list_tenant = tenant;
-    let pages_resource = LocalResource::new(move || {
-        let token = list_token.get();
-        let tenant = list_tenant.get();
-        let _generation = refresh_generation.get();
-        async move { transport::fetch_pages(token, tenant).await }
-    });
+    // A `Resource`, not a `LocalResource`: under `ssr` a `LocalResource` is `pending().await` by
+    // construction, so the standalone host answered with the `Suspense` fallback and never with
+    // the page list. A `Resource` is awaited during the render, and its `JsonSerdeCodec` default
+    // also means the same values hydrate instead of being fetched twice.
+    let pages_resource = Resource::new(
+        move || {
+            (
+                list_token.get(),
+                list_tenant.get(),
+                refresh_generation.get(),
+            )
+        },
+        move |(token, tenant, _generation)| async move {
+            transport::fetch_pages(token, tenant).await
+        },
+    );
 
-    let workspace_token = token;
-    let workspace_tenant = tenant;
-    let workspace_resource = LocalResource::new(move || {
-        let page_id = selected_page_query.get();
-        let token = workspace_token.get();
-        let tenant = workspace_tenant.get();
-        let _generation = refresh_generation.get();
-        async move {
+    let workspace_resource = Resource::new(
+        move || {
+            (
+                selected_page_query.get(),
+                workspace_token.get(),
+                workspace_tenant.get(),
+                refresh_generation.get(),
+            )
+        },
+        move |(page_id, token, tenant, _generation)| async move {
             let Some(page_id) = page_id.filter(|page_id| core::optional_ui_text(page_id).is_some())
             else {
                 return Ok::<_, String>(None);
@@ -87,16 +124,20 @@ pub fn PagesAdmin() -> impl IntoView {
             )
             .await
             .map_err(|error| error.to_string())?;
-            let provider_status =
-                crate::builder_rollout_settings::fetch_pages_builder_rollout_snapshot(
-                    token, tenant,
-                )
-                .await
-                .map_err(|error| error.to_string())?
-                .provider_status();
-            Ok(Some((page, baseline, release_status, provider_status)))
-        }
-    });
+            let rollout = crate::builder_rollout_settings::fetch_pages_builder_rollout_snapshot(
+                token, tenant,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            Ok(Some(PagesWorkspaceData {
+                page,
+                baseline,
+                release_status,
+                provider_flags: rollout.flags.clone(),
+                provider_health: rollout.provider_health.clone(),
+            }))
+        },
+    );
 
     let select_writer = query_writer.clone();
     let clear_writer = query_writer.clone();
@@ -216,19 +257,25 @@ pub fn PagesAdmin() -> impl IntoView {
                     }>
                         {move || {
                             workspace_resource.get().map(|result| match result {
-                                Ok(Some((page, baseline, release_status, provider_status))) => view! {
+                                Ok(Some(data)) => {
+                                    // The status is derived before the fields move into the view:
+                                    // it reads them, and a partially moved value cannot be read.
+                                    let provider_status = data.provider_status();
+                                    view! {
                                     <PageWorkspace
-                                        page
-                                        baseline
-                                        release_status
-                                        provider_status
+                                        page=data.page
+                                        baseline=data.baseline
+                                        release_status=data.release_status
+                                        provider_status=provider_status
                                         token
                                         tenant
                                         default_locale=default_locale.clone()
                                         draft_token=draft_query.get()
                                         refresh_generation
                                     />
-                                }.into_any(),
+                                    }
+                                    .into_any()
+                                }
                                 Ok(None) => view! { <WorkspaceEmptyState /> }.into_any(),
                                 Err(error) => view! {
                                     <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-5 py-5 text-sm text-destructive" role="alert">
@@ -266,16 +313,14 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
     let template_token = token;
     let template_tenant = tenant;
     let template_locale = locale;
-    let template_keys = LocalResource::new(move || {
-        let token = template_token.get();
-        let tenant = template_tenant.get();
-        let locale = template_locale.get();
-        async move {
+    let template_keys = Resource::new(
+        move || (template_token.get(), template_tenant.get(), template_locale.get()),
+        move |(token, tenant, locale)| async move {
             transport::fetch_template_keys(token, tenant, locale)
                 .await
                 .unwrap_or_else(|_| vec!["default".to_string()])
-        }
-    });
+        },
+    );
 
     let submit = move |event: SubmitEvent| {
         event.prevent_default();
@@ -829,18 +874,24 @@ fn BodyRevisionHistory(
     let history_tenant = tenant;
     let history_page_id = page_id.clone();
     let history_locale = locale.clone();
-    let history = LocalResource::new(move || {
-        let page_id = history_page_id.clone();
-        let locale = history_locale.clone();
-        let token = history_token.get();
-        let tenant = history_tenant.get();
-        let _generation = refresh_generation.get();
-        async move {
+    // The page and locale are part of the source so the resource refetches when the editor moves to
+    // another page, exactly as the closure it replaces did when it read them.
+    let history = Resource::new(
+        move || {
+            (
+                history_page_id.clone(),
+                history_locale.clone(),
+                history_token.get(),
+                history_tenant.get(),
+                refresh_generation.get(),
+            )
+        },
+        move |(page_id, locale, token, tenant, _generation)| async move {
             transport::fetch_page_body_revision_history(token, tenant, page_id, locale)
                 .await
                 .map_err(|error| error.to_string())
-        }
-    });
+        },
+    );
 
     let restore_page_id = page_id;
     let restore_expected = expected_revision;
@@ -959,17 +1010,21 @@ fn PublishSchedulePanel(
     let schedule_token = token;
     let schedule_tenant = tenant;
     let fetch_page_id = page_id.clone();
-    let schedule = LocalResource::new(move || {
-        let page_id = fetch_page_id.clone();
-        let token = schedule_token.get();
-        let tenant = schedule_tenant.get();
-        let _generation = refresh_generation.get();
-        async move {
+    let schedule = Resource::new(
+        move || {
+            (
+                fetch_page_id.clone(),
+                schedule_token.get(),
+                schedule_tenant.get(),
+                refresh_generation.get(),
+            )
+        },
+        move |(page_id, token, tenant, _generation)| async move {
             transport::fetch_page_publish_schedule(token, tenant, page_id)
                 .await
                 .map_err(|error| error.to_string())
-        }
-    });
+        },
+    );
 
     let schedule_page_id = page_id.clone();
     let schedule_action = Callback::new(move |_| {
@@ -1180,6 +1235,18 @@ fn PagesFlyBuilder(
         Ok(controller) => {
             let page_id = page.id.clone();
             let browser_endpoint = format!("/api/admin/pages/{page_id}/builder/intents");
+            // The preview is served by the host as its own document, so its policy is the policy
+            // of the page rather than the policy of this console. The address names the session
+            // the editor is showing, so a preview of an edited draft is a preview of that draft.
+            // The token is the one the route already put in the address: it is the editor's own
+            // session, and the route refuses it unless its owner is the verified caller.
+            // A draft token is `[A-Za-z0-9_-]` by construction (`SsrDraftSessionStore` refuses
+            // anything else), so it needs no escaping to travel in the address, and the route
+            // hands it back to the same owner-checked load the editor used.
+            let preview_endpoint = match draft_token.as_deref() {
+                Some(token) => format!("/api/admin/pages/{page_id}/preview?draft={token}"),
+                None => format!("/api/admin/pages/{page_id}/preview"),
+            };
             let snapshot_default_locale = default_locale.clone();
             let facade_token = token;
             let facade_tenant = tenant;
@@ -1190,6 +1257,14 @@ fn PagesFlyBuilder(
                         tenant_slug: facade_tenant.get_untracked(),
                         page_id: page_id.clone(),
                         default_locale: snapshot_default_locale.clone(),
+                        // The facade save path is a legacy unattributed write, not a draft
+                        // owner: the owner of a draft session is the verified caller of the
+                        // intent endpoint (`dispatch_named_intent`), which is the only path
+                        // that creates or commits a session. Threading this snapshot's owner
+                        // into the facade would add a second, unverified attribution without
+                        // changing which sessions can be read or committed. The route draft
+                        // above is loaded with the owner built from the current user and the
+                        // tenant, so a session belonging to another caller is not restored.
                         owner: None,
                     },
                     move |_page, _project_data| {
@@ -1273,15 +1348,16 @@ fn PagesFlyBuilder(
                 .with_runtime_context(runtime_context)
                 .with_runtime_scenarios(scenarios)
                 .with_browser_intent_endpoint(browser_endpoint)
+                .with_preview_endpoint(preview_endpoint)
                 .on_runtime_scenario_baseline(on_baseline);
+            // Derive from the session id, not the access token: the id is stable across
+            // refresh rotation, so the embedded CSRF token stays valid for the session. The
+            // endpoint that verifies the header uses this same helper, so a token without a
+            // session id embeds nothing instead of embedding a value the endpoint would reject.
             if let Some(csrf) = token
                 .get_untracked()
                 .as_deref()
-                .filter(|s| !s.trim().is_empty())
-                // Derive from the session id, not the access token:
-                // the id is stable across refresh rotation, so the
-                // embedded CSRF token stays valid for the session.
-                .and_then(leptos_auth::session_id_from_access_token)
+                .and_then(fly_browser::csrf_secret_from_access_token)
                 .map(|session_id| fly_browser::derive_csrf_token(&session_id))
             {
                 host = host.with_browser_csrf_token(csrf);

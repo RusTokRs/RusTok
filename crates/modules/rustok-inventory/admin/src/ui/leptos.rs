@@ -17,16 +17,21 @@ use crate::model::{
     InventoryAdminBootstrap, InventoryProductDetail, InventoryProductListItem, InventoryVariant,
 };
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -47,12 +52,12 @@ pub fn InventoryAdmin() -> impl IntoView {
     let effective_locale_for_products = effective_locale.clone();
     let effective_locale_for_open = effective_locale.clone();
 
-    let bootstrap = local_resource(
+    let bootstrap = loaded_resource(
         move || (),
         move |()| async move { crate::transport::fetch_bootstrap().await },
     );
 
-    let products = local_resource(
+    let products = loaded_resource(
         move || {
             (
                 refresh_nonce.get(),
@@ -97,9 +102,10 @@ pub fn InventoryAdmin() -> impl IntoView {
     let open_bootstrap_loading_label = bootstrap_loading_label.clone();
     let open_load_product_error_label = load_product_error_label.clone();
     let open_product_not_found_label = product_not_found_label.clone();
+    let open_product_bootstrap = bootstrap;
     let open_product = Callback::new(move |product_id: String| {
         let Some(InventoryAdminBootstrap { current_tenant }) =
-            bootstrap.get_untracked().and_then(Result::ok)
+            open_product_bootstrap.get_untracked().and_then(Result::ok)
         else {
             set_error.set(Some(open_bootstrap_loading_label.clone()));
             return;
@@ -193,9 +199,10 @@ pub fn InventoryAdmin() -> impl IntoView {
     let effective_locale_for_detail = effective_locale.clone();
     let initial_open_product = open_product;
     let list_query_writer = query_writer.clone();
+    let effect_bootstrap = bootstrap;
     Effect::new(move |_| match selected_product_query.get() {
         Some(product_id) if !product_id.trim().is_empty() => {
-            if bootstrap.get().and_then(Result::ok).is_none() {
+            if effect_bootstrap.get().and_then(Result::ok).is_none() {
                 return;
             }
             initial_open_product.run(product_id);
@@ -205,20 +212,28 @@ pub fn InventoryAdmin() -> impl IntoView {
             set_selected.set(None);
         }
     });
+    let qty_bootstrap_0 = bootstrap;
+    let qty_bootstrap_1 = bootstrap;
+    let qty_bootstrap_2 = bootstrap;
+    let qty_bootstrap_3 = bootstrap;
+    let qty_bootstrap_4 = bootstrap;
+    let qty_bootstrap_5 = bootstrap;
     let is_ru = ui_locale.as_deref() == Some("ru");
     let columns = inventory_grid_columns(ui_locale.as_deref());
     let filters = RwSignal::new(ColumnFilters::new());
     let selection = RwSignal::new(RowSelection::new());
     let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
 
+    let filtered_products_resource = products;
+    let loading_products = products;
     let filtered_products = Memo::new(move |_| {
-        let raw = products
+        let loaded_items = filtered_products_resource
             .get()
             .and_then(Result::ok)
             .map(|l| l.items)
             .unwrap_or_default();
         let current_filters = filters.get();
-        filter_inventory_products(&raw, &current_filters)
+        filter_inventory_products(&loaded_items, &current_filters)
     });
 
     let on_filters_change = Callback::new(move |new_filters: ColumnFilters| {
@@ -426,7 +441,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                             data=Signal::derive(move || filtered_products.get())
                             key_fn=|item: &InventoryProductListItem| item.id.clone()
                             cell_renderer=cell_renderer
-                            is_loading=Signal::derive(move || busy.get() || products.get().is_none())
+                            is_loading=Signal::derive(move || busy.get() || loading_products.get().is_none())
                             empty_message=t(ui_locale_for_list.as_deref(), "inventory.list.empty", "No products match the current filters.")
                             selection=selection
                             pagination=pagination
@@ -625,7 +640,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                     title=t(variant_locale.as_deref(), "inventory.action.decreaseOne", "Decrease by 1")
                                                                     disabled=move || busy.get()
                                                                     on:click=move |_| {
-                                                                        let Some(InventoryAdminBootstrap { current_tenant }) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                                                        let Some(InventoryAdminBootstrap { current_tenant }) = qty_bootstrap_0.get_untracked().and_then(Result::ok) else {
                                                                             set_error.set(Some(decrease_bootstrap_loading_label.clone()));
                                                                             return;
                                                                         };
@@ -663,7 +678,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                     title=t(variant_locale.as_deref(), "inventory.action.increaseOne", "Increase by 1")
                                                                     disabled=move || busy.get()
                                                                     on:click=move |_| {
-                                                                        let Some(InventoryAdminBootstrap { current_tenant }) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                                                        let Some(InventoryAdminBootstrap { current_tenant }) = qty_bootstrap_1.get_untracked().and_then(Result::ok) else {
                                                                             set_error.set(Some(increase_bootstrap_loading_label.clone()));
                                                                             return;
                                                                         };
@@ -700,7 +715,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                     class="inline-flex rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition hover:bg-accent disabled:opacity-50"
                                                                     disabled=move || busy.get()
                                                                     on:click=move |_| {
-                                                                        let Some(InventoryAdminBootstrap { current_tenant }) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                                                        let Some(InventoryAdminBootstrap { current_tenant }) = qty_bootstrap_2.get_untracked().and_then(Result::ok) else {
                                                                             set_error.set(Some(save_bootstrap_loading_label.clone()));
                                                                             return;
                                                                         };
@@ -745,7 +760,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                     title=t(variant_locale.as_deref(), "inventory.action.checkAvailability", "Check availability")
                                                                     disabled=move || busy.get()
                                                                     on:click=move |_| {
-                                                                        let Some(InventoryAdminBootstrap { current_tenant }) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                                                        let Some(InventoryAdminBootstrap { current_tenant }) = qty_bootstrap_3.get_untracked().and_then(Result::ok) else {
                                                                             set_error.set(Some(availability_bootstrap_loading_label.clone()));
                                                                             set_notice.set(None);
                                                                             return;
@@ -789,7 +804,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                     title=t(variant_locale.as_deref(), "inventory.action.releaseReservation", "Release anonymous reservation")
                                                                     disabled=move || busy.get()
                                                                     on:click=move |_| {
-                                                                        let Some(InventoryAdminBootstrap { current_tenant }) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                                                        let Some(InventoryAdminBootstrap { current_tenant }) = qty_bootstrap_4.get_untracked().and_then(Result::ok) else {
                                                                             set_error.set(Some(release_bootstrap_loading_label.clone()));
                                                                             set_notice.set(None);
                                                                             return;
@@ -841,7 +856,7 @@ pub fn InventoryAdmin() -> impl IntoView {
                                                                     title=t(variant_locale.as_deref(), "inventory.action.reserveQuantity", "Reserve anonymous quantity")
                                                                     disabled=move || busy.get()
                                                                     on:click=move |_| {
-                                                                        let Some(InventoryAdminBootstrap { current_tenant }) = bootstrap.get_untracked().and_then(Result::ok) else {
+                                                                        let Some(InventoryAdminBootstrap { current_tenant }) = qty_bootstrap_5.get_untracked().and_then(Result::ok) else {
                                                                             set_error.set(Some(reserve_bootstrap_loading_label.clone()));
                                                                             return;
                                                                         };

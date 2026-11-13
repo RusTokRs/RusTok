@@ -429,8 +429,18 @@ pub fn FlyCanvasPreview(
     #[prop(optional_no_strip)] interactive: Option<bool>,
     #[prop(optional_no_strip)] viewport_width: Option<u32>,
     #[prop(optional_no_strip)] messages: Option<EditorMessages>,
+    /// CSP nonce of the document this canvas is rendered into.
+    ///
+    /// The canvas carries the project stylesheet as an inline `<style>`, and every host that
+    /// serves the editor under a nonce policy (`style-src 'self' {nonce}`) drops it otherwise:
+    /// the authoring canvas renders unstyled while the published page looks right, which reads
+    /// as a builder bug rather than a policy rejection. A host without a nonce policy passes
+    /// nothing and the attribute is omitted.
+    #[prop(optional_no_strip)]
+    csp_nonce: Option<String>,
 ) -> impl IntoView {
     let is_interactive = interactive.unwrap_or(on_select.is_some());
+    let style_nonce = csp_nonce.filter(|nonce| !nonce.trim().is_empty());
     let canvas_style =
         viewport_width.map(|width| format!("max-width: {width}px; margin-inline: auto"));
     let preview_failed_label = messages.unwrap_or_default().preview_failed;
@@ -630,7 +640,7 @@ pub fn FlyCanvasPreview(
                 on:focusout=on_canvas_focusout
                 on:keydown=on_canvas_keydown
             >
-                <style>{format!("{}\n{}", page.css, interactive_css)}</style>
+                <style nonce=style_nonce.clone()>{format!("{}\n{}", page.css, interactive_css)}</style>
                 <div inner_html=page.html></div>
             </div>
         }
@@ -1795,9 +1805,13 @@ pub fn FlyEditorWorkspace(
     #[prop(optional)] messages: Option<EditorMessages>,
     #[prop(optional)] initial_page: Option<usize>,
     #[prop(optional)] capabilities: Option<CapabilityState>,
+    /// CSP nonce for the inline styles the workspace renders; see [`FlyCanvasPreview`].
+    #[prop(optional_no_strip)]
+    csp_nonce: Option<String>,
 ) -> impl IntoView {
     let messages = messages.unwrap_or_default();
     let workspace_title = messages.workspace_title.clone();
+    let workspace_csp_nonce = csp_nonce.filter(|nonce| !nonce.trim().is_empty());
     let toolbar_label = messages.toolbar.clone();
     let undo_label = messages.undo.clone();
     let redo_label = messages.redo.clone();
@@ -2907,6 +2921,7 @@ pub fn FlyEditorWorkspace(
                             interactive=Some(interactive_mode.get())
                             viewport_width=preview_width.get()
                             messages=Some(panel_messages.clone())
+                            csp_nonce=workspace_csp_nonce.clone()
                         />
                     }
                 }}
@@ -3262,6 +3277,68 @@ mod tests {
             "{ outline: 2px solid #2563eb !important;"
         )));
         assert!(interactive_html.contains(".fly-canvas--interactive [contenteditable=\"true\"]"));
+    }
+
+    /// Under a nonce policy the browser drops an inline `<style>` that carries no nonce, and the
+    /// authoring canvas then renders unstyled while the published page looks right — which reads
+    /// as a builder defect rather than a policy rejection. The attribute must appear only when a
+    /// host supplied a nonce.
+    #[test]
+    fn canvas_stylesheet_carries_the_host_nonce_only_when_asked() {
+        let document: ProjectDocument = serde_json::from_value(serde_json::json!({
+            "project": {
+                "pages": [{
+                    "id": "home",
+                    "name": "Home",
+                    "component": { "type": "wrapper", "id": "root" }
+                }]
+            }
+        }))
+        .expect("document");
+
+        let without_nonce = view! {
+            <FlyCanvasPreview
+                document=document.clone()
+                page_index=Some(0)
+                interactive=Some(true)
+            />
+        }
+        .to_html();
+        assert!(without_nonce.contains("<style"));
+        assert!(
+            !without_nonce.contains("nonce="),
+            "a host without a nonce policy must not receive an empty nonce attribute"
+        );
+
+        let with_nonce = view! {
+            <FlyCanvasPreview
+                document=document
+                page_index=Some(0)
+                interactive=Some(true)
+                csp_nonce=Some("0f3a9c".to_string())
+            />
+        }
+        .to_html();
+        assert!(
+            with_nonce.contains("nonce=\"0f3a9c\""),
+            "the stylesheet must carry the nonce of the document it is rendered into"
+        );
+
+        // A blank nonce is the same as none: the policy would reject the element anyway.
+        let blank_nonce = view! {
+            <FlyCanvasPreview
+                document=serde_json::from_value(serde_json::json!({
+                    "project": { "pages": [{ "id": "home", "name": "Home",
+                        "component": { "type": "wrapper", "id": "root" } }] }
+                }))
+                .expect("document")
+                page_index=Some(0)
+                interactive=Some(true)
+                csp_nonce=Some("   ".to_string())
+            />
+        }
+        .to_html();
+        assert!(!blank_nonce.contains("nonce="));
     }
 
     #[test]
