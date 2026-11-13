@@ -1384,7 +1384,7 @@ fn ensure_regular_directory(path: &Path) -> CliCoreResult<()> {
 
 fn parse_uuid_option(args: &NormalizedArgs<'_>, name: &str) -> CliCoreResult<Uuid> {
     let raw = args.required_option(name)?;
-    let parsed = Uuid::parse_str(raw)
+    let parsed = Uuid::parse_str(raw.trim())
         .map_err(|_| invalid_input(format!("--{} must be a UUID", name.replace('_', "-"))))?;
     if parsed.is_nil() {
         return Err(invalid_input(format!(
@@ -1654,6 +1654,7 @@ impl<'a> NormalizedArgs<'a> {
 
     fn required_option(&self, name: &str) -> CliCoreResult<&str> {
         self.option(name)
+            .map(str::trim)
             .filter(|value| !value.is_empty())
             .ok_or_else(|| invalid_input(format!("--{} is required", name.replace('_', "-"))))
     }
@@ -1666,6 +1667,7 @@ impl<'a> NormalizedArgs<'a> {
         }
         self.positionals[0]
             .as_str()
+            .map(str::trim)
             .filter(|value| !value.is_empty())
             .ok_or_else(|| invalid_input(format!("{command} path is invalid")))
     }

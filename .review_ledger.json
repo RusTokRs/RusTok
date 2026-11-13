@@ -783,9 +783,9 @@
       "category": "modules",
       "files": 284,
       "loc": 159027,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-13T05:15:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: module control plane with strict ModuleCommandContext validation (non-nil actor_id, non-empty trace_id <= 512 chars, non-nil correlation_id/idempotency_key, and non-nil tenant_id when scoped), non-nil snapshot tenant_id guards in translation adapter (validated_sorted_snapshot_fields, prepare_apply_plan), artifact CAS, and tenant policy revisions; verified with cargo check -p rustok-modules."
     },
     "crates/modules/rustok-modules/cli": {
       "name": "cli",
@@ -793,9 +793,9 @@
       "category": "modules",
       "files": 2,
       "loc": 1905,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-13T05:15:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: whitespace-trimmed input validation and non-empty checks in NormalizedArgs required_option and one_positional, strict non-nil UUID parsing in parse_uuid_option, deterministic source archive builder with length-framed limits, and remote build/publish command contracts; verified with cargo check -p rustok-modules-cli."
     },
     "crates/modules/rustok-navigation": {
       "name": "rustok-navigation",

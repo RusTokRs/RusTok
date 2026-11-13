@@ -278,6 +278,11 @@ impl StaticSettingsTranslationIdentity {
         context.validate().map_err(|error| {
             StaticSettingsTranslationIdentityError::InvalidCommandContext(error.to_string())
         })?;
+        if snapshot.tenant_id.is_nil() {
+            return Err(StaticSettingsTranslationIdentityError::InvalidSnapshot(
+                "snapshot tenant_id must not be nil".to_string(),
+            ));
+        }
         if context.tenant_id != Some(snapshot.tenant_id) {
             return Err(
                 StaticSettingsTranslationIdentityError::InvalidCommandContext(
@@ -359,6 +364,11 @@ impl StaticSettingsTranslationIdentity {
         snapshot: &'a StaticSettingsExactLocaleSnapshot,
     ) -> Result<Vec<&'a StaticSettingsExactLocaleField>, StaticSettingsTranslationIdentityError>
     {
+        if snapshot.tenant_id.is_nil() {
+            return Err(StaticSettingsTranslationIdentityError::InvalidSnapshot(
+                "snapshot tenant_id must not be nil".to_string(),
+            ));
+        }
         if snapshot.module_slug != self.resource.resource_id.as_str() {
             return Err(StaticSettingsTranslationIdentityError::SnapshotIdentityMismatch);
         }
