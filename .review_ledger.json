@@ -443,9 +443,9 @@
       "category": "modules",
       "files": 8,
       "loc": 1131,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-13T14:40:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: non-empty tenant_id validation in require_email_delivery_policy, length bounds in validate_delivery_request (template_id <= 128, locale <= 35, to <= 320), control character injection guards (\\r, \\n), Lettre mailbox parsing, JSON object vars validation, html escaping in password reset and SMTP relay configuration; verified with cargo check -p rustok-email"
     },
     "crates/modules/rustok-events-module": {
       "name": "rustok-events-module",
@@ -1313,9 +1313,9 @@
       "category": "modules",
       "files": 55,
       "loc": 7817,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-13T14:30:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID tenant_id and workflow_id checks across read/write ports, services (create, get, list, update, delete, add_step, update_step, delete_step, load_steps, trigger_manual, record_failure, list_executions, get_execution, trigger_by_webhook, list_versions, get_version, restore_version, create_from_template, reset_failure_count), workflow name bounds (1..=255 chars), exclusive row locking with dialect-specific statements, webhook secret length validation (32..=128 bytes) and constant-time HMAC-SHA256 signature verification; verified with cargo check -p rustok-workflow"
     },
     "crates/modules/rustok-workflow/admin": {
       "name": "admin",
@@ -1323,9 +1323,9 @@
       "category": "modules",
       "files": 15,
       "loc": 1533,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-13T14:30:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, strict non-nil tenant scope matching (auth.tenant_id == tenant.id && !auth.tenant_id.is_nil()) and non-nil user_id validation across native server functions, RBAC permission gates (workflows:list, workflows:create, workflows:read), sanitized template_id (1..=128 chars) and name bounds (1..=255 chars); verified with cargo check -p rustok-workflow-admin and cargo check -p rustok-workflow-admin --features ssr"
     },
     "crates/ui/fly": {
       "name": "fly",
@@ -1995,9 +1995,9 @@
       "category": "modules",
       "files": 15,
       "loc": 1809,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-13T14:57:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: strict float-free integer arithmetic (#![deny(clippy::float_arithmetic)]), balanced double-entry validation (validate_transaction_balance) with checked integer math for debits and credits per currency, line count bounds (2..=1000), non-nil UUID guards on party_id, contract_id, item_id, warehouse_id, and document_id across posting items and transactions, closing balance calculations with turnover checks, and canonical Chart of Accounts; verified with cargo check -p rustok-accounting"
     },
     "crates/modules/rustok-cache/admin": {
       "name": "admin",

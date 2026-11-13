@@ -111,7 +111,7 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules
-*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (20/24 completed)
+*Multi-tenant routing, JWT/session authentication, role-based access control, distributed cache invalidation, channels, outbox dispatch, and workflow automation.* (24/24 completed)
 
 - [x] **[`crates/modules/rustok-tenant`](../../crates/modules/rustok-tenant)** (28 files, 4,305 LOC) — *(Done: verified across 6 Universal Logic Dimensions: RFC 1035 host and reserved slug validation via TenantIdentifierValidator, name length bounds (<= 255 chars), settings schema validation on tenant_module, nil UUID guards across service and port context, atomic locale policy CAS revisions and outbox event publishing; unit tests added; verified with `cargo check -p rustok-tenant`).*
 - [x] **[`crates/modules/rustok-tenant/admin`](../../crates/modules/rustok-tenant/admin)** (8 files, 835 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID tenant scope matching, dual read permissions (tenant + modules), effective policy resolution with manifest defaults and tenant overrides, and BCP 47 i18n copy; unit tests added; verified with `cargo check -p rustok-tenant-admin --features ssr`).*
@@ -133,12 +133,10 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[`crates/modules/rustok-events-module`](../../crates/modules/rustok-events-module)** (9 files, 580 LOC) — *(Done: verified across 6 Universal Logic Dimensions: runtime registration adapter for platform event capability, cycle-free dependency decoupling, module health lifecycle delegation, and contract validation; verified with `cargo check -p rustok-events-module`).*
 - [x] **[`crates/modules/rustok-events-module/admin`](../../crates/modules/rustok-events-module/admin)** (8 files, 515 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation with pure-logic core.rs (0 UI framework imports), HostAuthority permissions gate with non-nil actor_id validation in native_server_adapter, input validation of event delivery profiles via is_known_profile across native server functions and GraphQL adapters, dual-transport parity, and localized summary view model; verified with `cargo check -p rustok-events-admin` and `cargo check -p rustok-events-admin --features ssr`).*
 - [x] **[`apps/next-admin/packages/events`](../../apps/next-admin/packages/events)** (8 files, 450 LOC) — *(Done: verified across 6 Universal Logic Dimensions: dual Next.js and Leptos admin client parity, profile validation in saveEventDeliveryProfile matching known profiles ('outbox', 'outbox_iggy'), evaluateProfileSelection decision flow with Iggy unconfigured handling and restart requirements; verified).*
-- [ ] **[`crates/modules/rustok-workflow`](../../crates/modules/rustok-workflow)** (52 files, 7,328 LOC)
-- [ ] **[`crates/modules/rustok-workflow/admin`](../../crates/modules/rustok-workflow/admin)** (14 files, 1,434 LOC)
-- [ ] **[`crates/modules/rustok-workflow`](../../crates/modules/rustok-workflow)** (52 files, 7,328 LOC)
-- [ ] **[`crates/modules/rustok-workflow/admin`](../../crates/modules/rustok-workflow/admin)** (14 files, 1,434 LOC)
-- [ ] **[`crates/modules/rustok-email`](../../crates/modules/rustok-email)** (6 files, 784 LOC)
-- [ ] **[`crates/modules/rustok-accounting`](../../crates/modules/rustok-accounting)** (13 files, 417 LOC)
+- [x] **[`crates/modules/rustok-workflow`](../../crates/modules/rustok-workflow)** (55 files, 7,817 LOC) — *(Done: verified across 6 Universal Logic Dimensions: non-nil UUID tenant_id and workflow_id checks across read/write ports, services (create, get, list, update, delete, add_step, update_step, delete_step, load_steps, trigger_manual, record_failure, list_executions, get_execution, trigger_by_webhook, list_versions, get_version, restore_version, create_from_template, reset_failure_count), workflow name bounds (1..=255 chars), exclusive row locking with dialect-specific statements, webhook secret length validation (32..=128 bytes) and constant-time HMAC-SHA256 signature verification; verified with `cargo check -p rustok-workflow`).*
+- [x] **[`crates/modules/rustok-workflow/admin`](../../crates/modules/rustok-workflow/admin)** (15 files, 1,533 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, strict non-nil tenant scope matching (auth.tenant_id == tenant.id && !auth.tenant_id.is_nil()) and non-nil user_id validation across native server functions, RBAC permission gates (workflows:list, workflows:create, workflows:read), sanitized template_id (1..=128 chars) and name bounds (1..=255 chars); verified with `cargo check -p rustok-workflow-admin` and `cargo check -p rustok-workflow-admin --features ssr`).*
+- [x] **[`crates/modules/rustok-email`](../../crates/modules/rustok-email)** (8 files, 1,131 LOC) — *(Done: verified across 6 Universal Logic Dimensions: non-empty tenant_id validation in require_email_delivery_policy, length bounds in validate_delivery_request (template_id <= 128, locale <= 35, to <= 320), control character injection guards (\r, \n), Lettre mailbox parsing, JSON object vars validation, html escaping in password reset and SMTP relay configuration; verified with `cargo check -p rustok-email`).*
+- [x] **[`crates/modules/rustok-accounting`](../../crates/modules/rustok-accounting)** (15 files, 1,809 LOC) — *(Done: verified across 6 Universal Logic Dimensions: strict float-free integer arithmetic (#![deny(clippy::float_arithmetic)]), balanced double-entry validation (validate_transaction_balance) with checked integer math for debits and credits per currency, line count bounds (2..=1000), non-nil UUID guards on party_id, contract_id, item_id, warehouse_id, and document_id across posting items and transactions, closing balance calculations with turnover checks, and canonical Chart of Accounts; verified with `cargo check -p rustok-accounting`).*
 
 ---
 
@@ -466,7 +464,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-web](../../crates/libs/rustok-web) | `libs` | 3 | 1,023 | None |  |
 | [ ] | [alloy](../../crates/modules/alloy) | `modules` | 79 | 25,285 | None |  |
 | [ ] | [flex](../../crates/modules/flex) | `modules` | 53 | 17,299 | None |  |
-| [ ] | [rustok-accounting](../../crates/modules/rustok-accounting) | `modules` | 15 | 1,809 | None |  |
+| [x] | [rustok-accounting](../../crates/modules/rustok-accounting) | `modules` | 15 | 1,809 | 2026-11-13 | Phase FS-03 completed |
 | [ ] | [rustok-ai](../../crates/modules/rustok-ai) | `modules` | 77 | 43,059 | None |  |
 | [ ] | [rustok-ai-alloy](../../crates/modules/rustok-ai-alloy) | `modules` | 2 | 423 | None |  |
 | [ ] | [rustok-ai-athanor](../../crates/modules/rustok-ai-athanor) | `modules` | 3 | 595 | None |  |
@@ -514,7 +512,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [admin](../../crates/modules/rustok-deal/admin) | `modules` | 6 | 312 | None |  |
 | [ ] | [rustok-distribution](../../crates/modules/rustok-distribution) | `modules` | 40 | 16,364 | None |  |
 | [ ] | [rustok-docs](../../crates/modules/rustok-docs) | `modules` | 23 | 3,821 | None |  |
-| [ ] | [rustok-email](../../crates/modules/rustok-email) | `modules` | 8 | 1,131 | None |  |
+| [x] | [rustok-email](../../crates/modules/rustok-email) | `modules` | 8 | 1,131 | 2026-11-13 | Phase FS-03 completed |
 | [ ] | [rustok-events-module](../../crates/modules/rustok-events-module) | `modules` | 13 | 883 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-events-module/admin) | `modules` | 9 | 781 | None |  |
 | [ ] | [rustok-finance](../../crates/modules/rustok-finance) | `modules` | 18 | 978 | None |  |
@@ -621,8 +619,8 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [admin](../../crates/modules/rustok-tenant/admin) | `modules` | 9 | 867 | None |  |
 | [ ] | [rustok-translation](../../crates/modules/rustok-translation) | `modules` | 86 | 46,706 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-translation/admin) | `modules` | 10 | 14,268 | None |  |
-| [ ] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 55 | 7,817 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 15 | 1,533 | None |  |
+| [x] | [rustok-workflow](../../crates/modules/rustok-workflow) | `modules` | 55 | 7,817 | 2026-11-13 | Phase FS-03 completed |
+| [x] | [admin](../../crates/modules/rustok-workflow/admin) | `modules` | 15 | 1,533 | 2026-11-13 | Phase FS-03 completed |
 | [ ] | [fly](../../crates/ui/fly) | `ui` | 117 | 45,535 | None |  |
 | [ ] | [browser](../../crates/ui/fly/browser) | `ui` | 13 | 1,707 | None |  |
 | [ ] | [dioxus](../../crates/ui/fly/dioxus) | `ui` | 3 | 739 | None |  |

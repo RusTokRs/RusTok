@@ -599,6 +599,9 @@ impl WorkflowService {
         tenant_id: Uuid,
         workflow_id: Uuid,
     ) -> WorkflowResult<Vec<WorkflowVersionSummary>> {
+        if tenant_id.is_nil() || workflow_id.is_nil() {
+            return Err(WorkflowError::NotFound(workflow_id));
+        }
         // Verify ownership
         WorkflowEntity::find_by_id(workflow_id)
             .filter(workflow::Column::TenantId.eq(tenant_id))
@@ -631,6 +634,9 @@ impl WorkflowService {
         workflow_id: Uuid,
         version: i32,
     ) -> WorkflowResult<WorkflowVersionDetail> {
+        if tenant_id.is_nil() || workflow_id.is_nil() {
+            return Err(WorkflowError::NotFound(workflow_id));
+        }
         // Verify ownership
         WorkflowEntity::find_by_id(workflow_id)
             .filter(workflow::Column::TenantId.eq(tenant_id))
@@ -664,6 +670,9 @@ impl WorkflowService {
         version: i32,
         actor_id: Option<Uuid>,
     ) -> WorkflowResult<()> {
+        if tenant_id.is_nil() || workflow_id.is_nil() {
+            return Err(WorkflowError::NotFound(workflow_id));
+        }
         let transaction = self.db.begin().await?;
         let existing = lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
 
@@ -757,6 +766,21 @@ impl WorkflowService {
         template_id: &str,
         name: String,
     ) -> WorkflowResult<Uuid> {
+        if tenant_id.is_nil() {
+            return Err(WorkflowError::InvalidTriggerConfig(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        let template_id = template_id.trim();
+        if template_id.is_empty() || template_id.len() > 128 {
+            return Err(WorkflowError::TemplateNotFound(template_id.to_string()));
+        }
+        let name = name.trim().to_string();
+        if name.is_empty() || name.len() > 255 {
+            return Err(WorkflowError::InvalidTriggerConfig(
+                "workflow name must contain 1 to 255 characters".to_string(),
+            ));
+        }
         let template = crate::templates::BUILTIN_TEMPLATES
             .iter()
             .find(|t| t.id == template_id)
@@ -795,6 +819,9 @@ impl WorkflowService {
     }
 
     pub async fn reset_failure_count(&self, workflow_id: Uuid) -> WorkflowResult<()> {
+        if workflow_id.is_nil() {
+            return Ok(());
+        }
         use sea_orm::sea_query::Expr;
 
         workflow::Entity::update_many()
@@ -902,6 +929,9 @@ async fn lock_workflow_for_update(
     tenant_id: Uuid,
     workflow_id: Uuid,
 ) -> WorkflowResult<crate::entities::Workflow> {
+    if tenant_id.is_nil() || workflow_id.is_nil() {
+        return Err(WorkflowError::NotFound(workflow_id));
+    }
     let query =
         WorkflowEntity::find_by_id(workflow_id).filter(workflow::Column::TenantId.eq(tenant_id));
 

@@ -6,6 +6,12 @@ use crate::{EmailError, TransactionalEmailSender};
 
 /// Require shared write semantics for transactional email delivery calls.
 pub fn require_email_delivery_policy(context: &PortContext) -> Result<(), PortError> {
+    if context.tenant_id.trim().is_empty() {
+        return Err(PortError::validation(
+            "email.tenant_id_empty",
+            "email delivery port calls require a non-empty tenant id",
+        ));
+    }
     context
         .require_policy(PortCallPolicy::write())
         .map_err(|error| match error.kind {
@@ -83,31 +89,34 @@ impl EmailDeliveryPort for crate::EmailService {
 }
 
 fn validate_delivery_request(request: &EmailDeliveryRequest) -> Result<(), PortError> {
-    if request.template_id.trim().is_empty() {
+    let template_id = request.template_id.trim();
+    if template_id.is_empty() || template_id.len() > 128 {
         return Err(PortError::validation(
             "email.template_id_empty",
-            "email delivery requires a non-empty template id",
+            "email delivery requires a template id between 1 and 128 characters",
         ));
     }
-    if request.locale.trim().is_empty() {
+    let locale = request.locale.trim();
+    if locale.is_empty() || locale.len() > 35 {
         return Err(PortError::validation(
             "email.locale_empty",
-            "email delivery requires a non-empty locale",
+            "email delivery requires a locale between 1 and 35 characters",
         ));
     }
-    if request.to.trim().is_empty() {
+    let to = request.to.trim();
+    if to.is_empty() || to.len() > 320 {
         return Err(PortError::validation(
             "email.recipient_empty",
-            "email delivery requires a non-empty recipient",
+            "email delivery requires a recipient between 1 and 320 characters",
         ));
     }
-    if request.to.contains('\r') || request.to.contains('\n') {
+    if to.contains('\r') || to.contains('\n') {
         return Err(PortError::validation(
             "email.recipient_invalid",
             "email delivery recipient contains invalid control characters",
         ));
     }
-    if request.to.parse::<lettre::message::Mailbox>().is_err() {
+    if to.parse::<lettre::message::Mailbox>().is_err() {
         return Err(PortError::validation(
             "email.recipient_invalid",
             "email delivery recipient is not a valid email address",

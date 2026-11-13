@@ -21,7 +21,7 @@ pub async fn fetch_workflows_native() -> Result<Vec<WorkflowSummary>, ServerFnEr
             .await
             .map_err(ServerFnError::new)?;
 
-        if auth.tenant_id != tenant.id {
+        if auth.tenant_id.is_nil() || tenant.id.is_nil() || auth.tenant_id != tenant.id || auth.user_id.is_nil() {
             return Err(ServerFnError::new("Permission denied: tenant mismatch"));
         }
 
@@ -53,6 +53,9 @@ pub async fn fetch_templates_native() -> Result<Vec<WorkflowTemplateDto>, Server
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
+        if auth.tenant_id.is_nil() || auth.user_id.is_nil() {
+            return Err(ServerFnError::new("Unauthorized: missing user or tenant context"));
+        }
         if !has_any_effective_permission(
             &auth.permissions,
             &[
@@ -105,7 +108,7 @@ pub async fn create_from_template_native(
             .await
             .map_err(ServerFnError::new)?;
 
-        if auth.tenant_id != tenant.id {
+        if auth.tenant_id.is_nil() || tenant.id.is_nil() || auth.tenant_id != tenant.id || auth.user_id.is_nil() {
             return Err(ServerFnError::new("Permission denied: tenant mismatch"));
         }
 
@@ -113,9 +116,18 @@ pub async fn create_from_template_native(
             return Err(ServerFnError::new("workflows:create required"));
         }
 
+        let template_id = template_id.trim();
+        if template_id.is_empty() || template_id.len() > 128 {
+            return Err(ServerFnError::new("Invalid template_id"));
+        }
+        let name = name.trim();
+        if name.is_empty() || name.len() > 255 {
+            return Err(ServerFnError::new("Workflow name must contain 1 to 255 characters"));
+        }
+
         let runtime_ctx = expect_context::<HostRuntimeContext>();
         rustok_workflow::WorkflowService::new(runtime_ctx.db_clone())
-            .create_from_template(tenant.id, auth.human_user_id(), &template_id, name)
+            .create_from_template(tenant.id, auth.human_user_id(), template_id, name.to_string())
             .await
             .map(|id| id.to_string())
             .map_err(map_workflow_error)

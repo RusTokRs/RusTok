@@ -114,6 +114,20 @@ impl TrialBalanceQuery {
                 )));
             }
         }
+        if let Some(id) = self.party_id {
+            if id.is_nil() {
+                return Err(AccountingError::Validation(
+                    "party_id must not be nil UUID".to_string(),
+                ));
+            }
+        }
+        if let Some(id) = self.warehouse_id {
+            if id.is_nil() {
+                return Err(AccountingError::Validation(
+                    "warehouse_id must not be nil UUID".to_string(),
+                ));
+            }
+        }
         Ok(())
     }
 }

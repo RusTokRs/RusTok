@@ -77,6 +77,35 @@ impl JournalPostingItem {
             ));
         }
 
+        if let Some(id) = self.party_id {
+            if id.is_nil() {
+                return Err(AccountingError::Validation(
+                    "party_id must not be nil UUID".to_string(),
+                ));
+            }
+        }
+        if let Some(id) = self.contract_id {
+            if id.is_nil() {
+                return Err(AccountingError::Validation(
+                    "contract_id must not be nil UUID".to_string(),
+                ));
+            }
+        }
+        if let Some(id) = self.item_id {
+            if id.is_nil() {
+                return Err(AccountingError::Validation(
+                    "item_id must not be nil UUID".to_string(),
+                ));
+            }
+        }
+        if let Some(id) = self.warehouse_id {
+            if id.is_nil() {
+                return Err(AccountingError::Validation(
+                    "warehouse_id must not be nil UUID".to_string(),
+                ));
+            }
+        }
+
         Ok(())
     }
 }
@@ -103,6 +132,14 @@ impl PostJournalTransactionInput {
             return Err(AccountingError::Validation(
                 "document_type exceeds maximum length of 64 characters".to_string(),
             ));
+        }
+
+        if let Some(id) = self.document_id {
+            if id.is_nil() {
+                return Err(AccountingError::Validation(
+                    "document_id must not be nil UUID".to_string(),
+                ));
+            }
         }
 
         if let Some(ref num) = self.transaction_number {
