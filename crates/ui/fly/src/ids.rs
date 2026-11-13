@@ -95,7 +95,7 @@ impl IdGenerator for UniqueIdGenerator {
             .map(|duration| duration.as_nanos())
             .unwrap_or_default();
         let counter = self.next;
-        self.next += 1;
+        self.next = self.next.wrapping_add(1);
         format!(
             "{}-{}-{}-{}-{}",
             self.prefix,
@@ -131,7 +131,7 @@ impl Default for SequentialIdGenerator {
 impl IdGenerator for SequentialIdGenerator {
     fn next_id(&mut self, hint: &str) -> String {
         let id = format!("{}-{}-{}", self.prefix, normalize_hint(hint), self.next);
-        self.next += 1;
+        self.next = self.next.wrapping_add(1);
         id
     }
 }

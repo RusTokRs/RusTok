@@ -36,35 +36,111 @@
     try {
       var parsed = JSON.parse(raw);
       return parsed && typeof parsed === "object" ? parsed : null;
-    } catch (error) {
+    } catch {
       return null;
     }
   }
 
-  function findTarget(action, element) {
-    var targetId =
-      action.target_id ||
-      action.panel_id ||
-      element.getAttribute("data-fly-action-target") ||
-      "";
-    if (!targetId) return null;
-    var root = element.ownerDocument || document;
-    if (root.getElementById) {
-      var byId = root.getElementById(targetId);
-      if (byId) return byId;
+  // A landing is embedded into a host document by both storefronts. Do not let an
+  // author-controlled target select the host shell, or a different landing on the page.
+  // Standalone previews have no wrapper and are bounded by their own <body> instead.
+  var PAGE_ROOT = "[data-fly-page-body], .fly-page-body";
+  var SLIDER_ROOT = "[data-fly-slider], [aria-roledescription='carousel']";
+  var ACCORDION_ROOT = "[data-fly-accordion], .fly-accordion";
+  var visibilityState = new WeakMap();
+
+  function pageRoot(element) {
+    return element.closest(PAGE_ROOT) || element.ownerDocument.body;
+  }
+
+  // Group discovery and traversal must obey the same boundary as ID lookup. In particular,
+  // closest() may otherwise find a host group outside the landing, while querySelectorAll()
+  // may find controls in a nested landing owned by a different instance.
+  function belongsToPage(element, root) {
+    return !!element && !!root && root.contains(element) && pageRoot(element) === root;
+  }
+
+  function closestInPage(element, selector, root) {
+    var match = element.closest(selector);
+    return belongsToPage(match, root) ? match : null;
+  }
+
+  function targetId(action, element) {
+    return action.target_id || action.panel_id || action.slider_id ||
+      element.getAttribute("data-fly-action-target") || "";
+  }
+
+  // Component identity takes precedence over an unrelated authored HTML id with the same text.
+  // The latter is still the fallback for existing templates whose actions use HTML ids.
+  var TARGET_ATTRIBUTES = ["data-fly-target-id", "data-fly-component-id", "data-fly-style-id", "id"];
+
+  function findIn(scope, id, root, attribute, accept) {
+    if (scope.nodeType === 1 && scope.getAttribute(attribute) === id &&
+        (scope.closest(PAGE_ROOT) || scope.ownerDocument.body) === root &&
+        (!accept || accept(scope))) return scope;
+    // Only the fixed attribute name enters the selector; author input is compared as a value.
+    var candidates = scope.querySelectorAll("[" + attribute + "]");
+    for (var i = 0; i < candidates.length; i++) {
+      var candidate = candidates[i];
+      if (candidate.getAttribute(attribute) === id &&
+          (candidate.closest(PAGE_ROOT) || candidate.ownerDocument.body) === root &&
+          (!accept || accept(candidate))) return candidate;
     }
-    // Instrumented renders (editor canvas, previews) address components by their Fly id
-    // attribute instead of a plain `id`; published renders emit `id` for action targets.
-    if (root.querySelector) {
-      try {
-        return root.querySelector(
-          '[data-fly-component-id="' + targetId.replace(/["\\]/g, "\\$&") + '"]'
-        );
-      } catch (error) {
-        return null;
+    return null;
+  }
+
+  function findTarget(action, element, boundary, accept) {
+    var id = targetId(action, element);
+    if (!id) return null;
+    var root = pageRoot(element);
+    if (!root) return null;
+    var limit = boundary && root.contains(boundary) ? boundary : root;
+    // Prefer the nearest common ancestor: existing pages may contain multiple instances of
+    // a pre-fix built-in block with the same HTML ids. Do not cross the landing boundary.
+    for (var i = 0; i < TARGET_ATTRIBUTES.length; i++) {
+      var scope = element;
+      while (scope && limit.contains(scope)) {
+        var target = findIn(scope, id, root, TARGET_ATTRIBUTES[i], accept);
+        if (target) return target;
+        if (scope === limit) break;
+        scope = scope.parentElement;
       }
     }
     return null;
+  }
+
+  // The renderer can emit `display: none` as a stylesheet rule, not an inline style;
+  // simply removing `hidden` or clearing style.display does not make such a node visible.
+  // Conversely, an authored display rule can override the UA's [hidden] rule. Track and
+  // restore the original inline style, and use an inline override only when necessary.
+  function setVisible(element, visible, displayHint) {
+    var state = visibilityState.get(element);
+    if (!state) {
+      state = {
+        inlineDisplay: element.style.getPropertyValue("display"),
+        inlinePriority: element.style.getPropertyPriority("display"),
+        lastDisplay: "",
+      };
+      visibilityState.set(element, state);
+    }
+    if (!visible) {
+      var current = element.ownerDocument.defaultView.getComputedStyle(element).display;
+      if (current !== "none") state.lastDisplay = current;
+      element.hidden = true;
+      element.style.setProperty("display", "none", "important");
+    } else {
+      element.hidden = false;
+      if (state.inlineDisplay && state.inlineDisplay !== "none") {
+        element.style.setProperty("display", state.inlineDisplay, state.inlinePriority);
+      } else {
+        element.style.removeProperty("display");
+      }
+      if (element.ownerDocument.defaultView.getComputedStyle(element).display === "none") {
+        // `revert` recovers the native display for the element when no visible sibling or
+        // previously displayed value is available (e.g. an initially collapsed FAQ).
+        element.style.setProperty("display", state.lastDisplay || displayHint || "revert", "important");
+      }
+    }
   }
 
   function dispatchCustom(element, action) {
@@ -90,129 +166,188 @@
     var target = findTarget(action, element);
     if (!target) return;
     var mode = action.mode || "toggle";
-    var willShow =
-      mode === "show" ? true : mode === "hide" ? false : target.hidden;
-    target.hidden = !willShow;
+    var isHidden = target.hidden ||
+      target.ownerDocument.defaultView.getComputedStyle(target).display === "none";
+    var willShow = mode === "show" ? true : mode === "hide" ? false : isHidden;
+    setVisible(target, willShow);
     target.setAttribute("aria-hidden", willShow ? "false" : "true");
     element.setAttribute("aria-expanded", willShow ? "true" : "false");
   }
 
-  function switchTab(element, action) {
-    var target = findTarget(action, element);
+  var TABLIST = '[role="tablist"]';
+  var TAB_GROUP = "[data-fly-tabs]";
+  var TAB_PANEL = '[role="tabpanel"]';
 
-    // 1. Update tab triggers in the tablist or common parent
-    var tablist = element.closest('[role="tablist"]') || element.parentElement;
-    if (tablist) {
-      var tabs = tablist.querySelectorAll('[role="tab"], [data-fly-tab-target], [data-fly-action*="switch_tab"]');
-      for (var i = 0; i < tabs.length; i++) {
-        var tab = tabs[i];
-        var isCurrent = tab === element;
-        tab.setAttribute("aria-selected", isCurrent ? "true" : "false");
-        if (isCurrent) {
-          tab.classList.add("is-active");
-        } else {
-          tab.classList.remove("is-active");
-        }
-      }
-    } else {
-      element.setAttribute("aria-selected", "true");
-      element.classList.add("is-active");
+  function tabOwner(element, root) {
+    return closestInPage(element, TABLIST, root) || element.parentElement;
+  }
+
+  // Do not target an enclosing group, a nested panel, another tablist, or an explicit
+  // neighboring tab group. Component hooks still take precedence over authored HTML ids.
+  function ownsTabPanel(candidate, tablist, root) {
+    if (candidate.contains(tablist)) return false;
+    var candidateList = closestInPage(candidate, TABLIST, root);
+    if (candidateList && candidateList !== tablist) return false;
+    if (candidateList === tablist && tablist !== root) return false;
+    var parentPanel = candidate.parentElement && closestInPage(candidate.parentElement, TAB_PANEL, root);
+    if (parentPanel && !parentPanel.contains(tablist)) return false;
+    var explicitGroup = closestInPage(candidate, TAB_GROUP, root);
+    return !explicitGroup || explicitGroup.contains(tablist);
+  }
+
+  function hasForeignTablist(scope, tablist, panels, root) {
+    function insideOwnPanel(element) {
+      return panels.some(function (panel) { return panel.contains(element); });
     }
+    var lists = scope.querySelectorAll(TABLIST);
+    for (var i = 0; i < lists.length; i++) {
+      var list = lists[i];
+      if (list !== tablist && !list.contains(tablist) && belongsToPage(list, root) &&
+          !insideOwnPanel(list)) return true;
+    }
+    // Older authored blocks may omit role=tablist. Their switch_tab controls still form a
+    // boundary; a nested control inside an owned panel belongs to a separate inner group.
+    var controls = scope.querySelectorAll("[data-fly-action]");
+    for (var j = 0; j < controls.length; j++) {
+      var control = controls[j];
+      if (!belongsToPage(control, root) || tabOwner(control, root) === tablist ||
+          insideOwnPanel(control)) continue;
+      var other = parseAction(control);
+      if (other && other.kind === "switch_tab") return true;
+    }
+    return false;
+  }
 
-    // 2. Update target panel and sibling panels
-    if (target) {
-      var panelsContainer = target.parentElement;
-      if (panelsContainer) {
-        var panels = panelsContainer.children;
-        for (var j = 0; j < panels.length; j++) {
-          var panel = panels[j];
-          var isTarget = panel === target;
-          panel.hidden = !isTarget;
-          panel.setAttribute("aria-hidden", isTarget ? "false" : "true");
-          if (isTarget) {
-            panel.classList.add("is-active");
-            if (panel.style.display === "none") panel.style.display = "";
-          } else {
-            panel.classList.remove("is-active");
-            panel.style.display = "none";
-          }
-        }
-      } else {
-        target.hidden = false;
-        target.setAttribute("aria-hidden", "false");
-        target.classList.add("is-active");
-        if (target.style.display === "none") target.style.display = "";
+  function switchTab(element, action) {
+    var root = pageRoot(element);
+    var tablist = tabOwner(element, root);
+    if (!belongsToPage(tablist, root)) return;
+    var tabs = Array.prototype.filter.call(
+      tablist.querySelectorAll('[role="tab"], [data-fly-tab-target], [data-fly-action]'),
+      function (tab) {
+        var tabAction = parseAction(tab);
+        return belongsToPage(tab, root) && tabOwner(tab, root) === tablist &&
+          tabAction && tabAction.kind === "switch_tab";
       }
+    );
+    if (tabs.indexOf(element) === -1) return;
+
+    // A header may wrap the list while panels are siblings of that header. Walk up until
+    // an owned panel is found, but stop at the landing, explicit group, enclosing panel,
+    // or a competing tablist. Missing targets must never borrow a neighbor's panel.
+    var boundary = root;
+    var explicitGroup = closestInPage(tablist, TAB_GROUP, root);
+    var parentPanel = tablist.parentElement && closestInPage(tablist.parentElement, TAB_PANEL, root);
+    if (explicitGroup) boundary = explicitGroup;
+    if (parentPanel && boundary.contains(parentPanel)) boundary = parentPanel;
+    var scope = tablist === boundary ? boundary : tablist.parentElement;
+    var resolved = null;
+    while (belongsToPage(scope, root) && boundary.contains(scope)) {
+      var candidates = tabs.map(function (tab) {
+        return findTarget(parseAction(tab), tab, scope, function (candidate) {
+          return ownsTabPanel(candidate, tablist, root);
+        });
+      });
+      // A target inside another owned panel is an inner group's content, even if that
+      // outer panel has no explicit role. It must not be treated as a sibling panel.
+      var panels = candidates.filter(function (panel) {
+        return panel && !candidates.some(function (other) {
+          return other && other !== panel && other.contains(panel);
+        });
+      });
+      if (hasForeignTablist(scope, tablist, panels, root)) return;
+      if (panels.length) {
+        resolved = candidates.map(function (panel) {
+          return panels.indexOf(panel) === -1 ? null : panel;
+        });
+        break;
+      }
+      if (scope === boundary) break;
+      scope = scope.parentElement;
+    }
+    var target = resolved && resolved[tabs.indexOf(element)];
+    // A stale/missing reference must not change selection or hide any content.
+    if (!target) return;
+
+    for (var i = 0; i < tabs.length; i++) {
+      var tab = tabs[i];
+      var panel = resolved[i];
+      if (!panel) continue;
+      var isCurrent = tab === element;
+      tab.setAttribute("aria-selected", isCurrent ? "true" : "false");
+      tab.classList.toggle("is-active", isCurrent);
+      var isTarget = panel === target;
+      panel.classList.toggle("is-active", isTarget);
+      setVisible(panel, isTarget);
+      panel.setAttribute("aria-hidden", isTarget ? "false" : "true");
     }
   }
 
   function toggleAccordion(element, action) {
-    var target = findTarget(action, element);
+    var root = pageRoot(element);
+    var accordionRoot = closestInPage(element, ACCORDION_ROOT, root);
+    var target = findTarget(action, element, accordionRoot);
+    if (!target) return;
     var isExpanded = element.getAttribute("aria-expanded") === "true";
     var willExpand = !isExpanded;
 
-    var isExclusive = action.exclusive !== false;
-    if (isExclusive && willExpand) {
-      var accordionRoot =
-        element.closest("[data-fly-accordion]") ||
-        element.closest(".fly-accordion");
-      if (accordionRoot) {
-        var activeTriggers = accordionRoot.querySelectorAll('[aria-expanded="true"]');
-        for (var i = 0; i < activeTriggers.length; i++) {
-          var otherTrigger = activeTriggers[i];
-          if (otherTrigger !== element) {
-            otherTrigger.setAttribute("aria-expanded", "false");
-            otherTrigger.classList.remove("is-expanded");
-            var otherAction = parseAction(otherTrigger);
-            if (otherAction) {
-              var otherTarget = findTarget(otherAction, otherTrigger);
-              if (otherTarget) {
-                otherTarget.hidden = true;
-                otherTarget.setAttribute("aria-hidden", "true");
-                otherTarget.classList.remove("is-expanded");
-                otherTarget.style.display = "none";
-              }
-            }
-          }
-        }
+    // The typed contract defaults `exclusive` to false. Only other accordion actions
+    // owned by this group participate; nested accordions and unrelated expanded controls
+    // are independent.
+    if (action.exclusive === true && willExpand && accordionRoot) {
+      var activeTriggers = accordionRoot.querySelectorAll('[aria-expanded="true"][data-fly-action]');
+      for (var i = 0; i < activeTriggers.length; i++) {
+        var otherTrigger = activeTriggers[i];
+        var otherAction = parseAction(otherTrigger);
+        if (otherTrigger === element || !belongsToPage(otherTrigger, root) ||
+            closestInPage(otherTrigger, ACCORDION_ROOT, root) !== accordionRoot ||
+            !otherAction || otherAction.kind !== "toggle_accordion") continue;
+        var otherTarget = findTarget(otherAction, otherTrigger, accordionRoot);
+        if (!otherTarget) continue;
+        otherTrigger.setAttribute("aria-expanded", "false");
+        otherTrigger.classList.remove("is-expanded");
+        otherTarget.classList.remove("is-expanded");
+        setVisible(otherTarget, false);
+        otherTarget.setAttribute("aria-hidden", "true");
       }
     }
 
     element.setAttribute("aria-expanded", willExpand ? "true" : "false");
-    if (willExpand) {
-      element.classList.add("is-expanded");
-    } else {
-      element.classList.remove("is-expanded");
-    }
+    element.classList.toggle("is-expanded", willExpand);
+    target.classList.toggle("is-expanded", willExpand);
+    setVisible(target, willExpand);
+    target.setAttribute("aria-hidden", willExpand ? "false" : "true");
+  }
 
-    if (target) {
-      target.hidden = !willExpand;
-      target.setAttribute("aria-hidden", willExpand ? "false" : "true");
-      if (willExpand) {
-        target.classList.add("is-expanded");
-        if (target.style.display === "none") target.style.display = "";
-      } else {
-        target.classList.remove("is-expanded");
-        target.style.display = "none";
-      }
-    }
+  function resolveSlider(element, action) {
+    var id = targetId(action, element);
+    if (id && id !== "self") return findTarget(action, element);
+    return closestInPage(element, SLIDER_ROOT, pageRoot(element));
+  }
+
+  function belongsToSlider(element, slider) {
+    var root = pageRoot(slider);
+    if (!belongsToPage(element, root)) return false;
+    var nearest = closestInPage(element, SLIDER_ROOT, root);
+    return nearest === slider || (!nearest && slider.contains(element));
   }
 
   function switchSlide(element, action) {
-    var slider =
-      findTarget(action, element) ||
-      (element && typeof element.closest === "function"
-        ? element.closest("[data-fly-slider]") || element.closest('[aria-roledescription="carousel"]')
-        : null);
+    var slider = resolveSlider(element, action);
     if (!slider) return;
 
-    var slides = slider.querySelectorAll('[data-fly-slide], [aria-roledescription="slide"]');
+    var candidates = slider.querySelectorAll('[data-fly-slide], [aria-roledescription="slide"]');
+    var slides = [];
+    for (var i = 0; i < candidates.length; i++) {
+      if (belongsToSlider(candidates[i], slider)) slides.push(candidates[i]);
+    }
     if (slides.length === 0) return;
 
     var currentIndex = -1;
-    for (var i = 0; i < slides.length; i++) {
-      if (slides[i].classList.contains("is-active") || (!slides[i].hidden && slides[i].style.display !== "none")) {
-        currentIndex = i;
+    for (var j = 0; j < slides.length; j++) {
+      if (slides[j].classList.contains("is-active") ||
+          (!slides[j].hidden && slides[j].ownerDocument.defaultView.getComputedStyle(slides[j]).display !== "none")) {
+        currentIndex = j;
         break;
       }
     }
@@ -223,47 +358,58 @@
       nextIndex = (currentIndex + 1) % slides.length;
     } else if (action.direction === "prev") {
       nextIndex = (currentIndex - 1 + slides.length) % slides.length;
-    } else if (typeof action.index === "number") {
+    } else if (typeof action.index === "number" && Number.isInteger(action.index)) {
       nextIndex = Math.max(0, Math.min(action.index, slides.length - 1));
     } else if (action.target_slide) {
-      for (var s = 0; s < slides.length; s++) {
-        if (slides[s].id === action.target_slide || slides[s].getAttribute("data-fly-component-id") === action.target_slide) {
-          nextIndex = s;
-          break;
+      var found = false;
+      for (var a = 0; a < TARGET_ATTRIBUTES.length && !found; a++) {
+        for (var s = 0; s < slides.length; s++) {
+          if (slides[s].getAttribute(TARGET_ATTRIBUTES[a]) === action.target_slide) {
+            nextIndex = s;
+            found = true;
+            break;
+          }
         }
       }
+      if (!found) return;
     }
 
+    var displayHint = slides[currentIndex].ownerDocument.defaultView.getComputedStyle(slides[currentIndex]).display;
+    if (displayHint === "none") displayHint = "";
     slider.setAttribute("data-fly-slider-active", String(nextIndex));
-
     for (var k = 0; k < slides.length; k++) {
       var slide = slides[k];
       var isCurrent = k === nextIndex;
-      slide.hidden = !isCurrent;
+      slide.classList.toggle("is-active", isCurrent);
+      setVisible(slide, isCurrent, displayHint);
       slide.setAttribute("aria-hidden", isCurrent ? "false" : "true");
-      if (isCurrent) {
-        slide.classList.add("is-active");
-        if (slide.style.display === "none") slide.style.display = "";
-      } else {
-        slide.classList.remove("is-active");
-        slide.style.display = "none";
-      }
     }
 
-    var dots = slider.querySelectorAll(".fly-slider__dot, [data-fly-action*='switch_slide']");
+    var dots = slider.querySelectorAll(".fly-slider__dot, [data-fly-action]");
+    var indicators = [];
+    var activeColor = "";
+    var inactiveColor = "";
     for (var d = 0; d < dots.length; d++) {
       var dot = dots[d];
       var dotAction = parseAction(dot);
-      if (dotAction && typeof dotAction.index === "number") {
-        var isDotCurrent = dotAction.index === nextIndex;
-        dot.setAttribute("aria-selected", isDotCurrent ? "true" : "false");
-        if (isDotCurrent) {
-          dot.classList.add("is-active");
-          dot.style.background = "#ffffff";
-        } else {
-          dot.classList.remove("is-active");
-          dot.style.background = "rgba(255,255,255,0.4)";
-        }
+      if (!belongsToSlider(dot, slider) || !dotAction || dotAction.kind !== "switch_slide" ||
+          typeof dotAction.index !== "number" || resolveSlider(dot, dotAction) !== slider) continue;
+      var color = dot.ownerDocument.defaultView.getComputedStyle(dot).backgroundColor;
+      indicators.push({ element: dot, index: dotAction.index, color: color });
+      if (dotAction.index === currentIndex) activeColor = color;
+      else if (!inactiveColor) inactiveColor = color;
+    }
+    for (var n = 0; n < indicators.length; n++) {
+      var indicator = indicators[n];
+      var isDotCurrent = indicator.index === nextIndex;
+      indicator.element.setAttribute("aria-selected", isDotCurrent ? "true" : "false");
+      indicator.element.classList.toggle("is-active", isDotCurrent);
+      // Existing built-in dots encode selected/unselected colors in individual style hooks,
+      // not a class rule. Preserve those author colors instead of hard-coding white/grey.
+      // If the author has a class rule that already changed the color, it wins.
+      if (isDotCurrent !== (indicator.index === currentIndex) && activeColor && inactiveColor && activeColor !== inactiveColor &&
+          indicator.element.ownerDocument.defaultView.getComputedStyle(indicator.element).backgroundColor === indicator.color) {
+        indicator.element.style.backgroundColor = isDotCurrent ? activeColor : inactiveColor;
       }
     }
   }
@@ -365,30 +511,48 @@
     var origin = event.target;
     if (!origin || typeof origin.closest !== "function") return;
     var element = origin.closest("[data-fly-action]");
-    if (!element) return;
+    if (!belongsToPage(element, pageRoot(origin))) return;
     var action = parseAction(element);
     if (action && handleAction(action, element)) {
-      // Custom actions are buttons, not links; never let a stray href navigate.
-      if (element.tagName === "A") event.preventDefault();
+      // A custom action owns the click. The native control may be a descendant OR ancestor
+      // of the action element, so inspect the actual click target instead of only the action.
+      // Preserve the native checked state of checkbox/radio inputs used as triggers.
+      var nativeControl = origin.closest("a, button, input");
+      var tag = nativeControl && nativeControl.tagName;
+      var type = (nativeControl && nativeControl.type || "").toLowerCase();
+      if (tag === "A" || (tag === "BUTTON" && type !== "button") ||
+          (tag === "INPUT" && (type === "submit" || type === "image" || type === "reset"))) {
+        event.preventDefault();
+      }
     }
   }
 
   var touchStartX = 0;
   var touchStartY = 0;
   var touchSlider = null;
+  var touchPageRoot = null;
 
   function onTouchStart(event) {
+    touchSlider = null;
+    touchPageRoot = null;
     if (!event.touches || event.touches.length !== 1) return;
     var target = event.target;
     if (!target || typeof target.closest !== "function") return;
-    touchSlider = target.closest("[data-fly-slider], [aria-roledescription='carousel']");
+    touchPageRoot = pageRoot(target);
+    touchSlider = closestInPage(target, SLIDER_ROOT, touchPageRoot);
     touchStartX = event.touches[0].clientX;
     touchStartY = event.touches[0].clientY;
   }
 
+  function cancelTouch() {
+    touchSlider = null;
+    touchPageRoot = null;
+  }
+
   function onTouchEnd(event) {
-    if (!touchSlider || !event.changedTouches || event.changedTouches.length !== 1) {
-      touchSlider = null;
+    if (!belongsToPage(touchSlider, touchPageRoot) ||
+        !event.changedTouches || event.changedTouches.length !== 1) {
+      cancelTouch();
       return;
     }
     var deltaX = event.changedTouches[0].clientX - touchStartX;
@@ -397,7 +561,7 @@
       var direction = deltaX < 0 ? "next" : "prev";
       switchSlide(touchSlider, { direction: direction });
     }
-    touchSlider = null;
+    cancelTouch();
   }
 
   function start(doc) {
@@ -406,11 +570,14 @@
     documentRef.addEventListener("click", onClick);
     documentRef.addEventListener("touchstart", onTouchStart, { passive: true });
     documentRef.addEventListener("touchend", onTouchEnd, { passive: true });
+    documentRef.addEventListener("touchcancel", cancelTouch, { passive: true });
     var adapter = {
       stop: function () {
         documentRef.removeEventListener("click", onClick);
         documentRef.removeEventListener("touchstart", onTouchStart);
         documentRef.removeEventListener("touchend", onTouchEnd);
+        documentRef.removeEventListener("touchcancel", cancelTouch);
+        cancelTouch();
         delete documentRef[ADAPTER_KEY];
       },
       handleAction: handleAction,

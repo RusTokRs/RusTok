@@ -20,12 +20,12 @@ Canonical public contract and domain architecture specification for `rustok-page
 - `SharedRichTextRenderer`: Thread-safe shared handle to host rich-text renderer.
 
 ### Output Models
-- `StorefrontPageOutput`: Contains rendered HTML, scoped CSS, and `PageHead` metadata.
+- `StorefrontPageOutput`: Wraps Fly's rendered page HTML, CSS and `PageHead` metadata. The Leptos surface scopes the CSS when it renders; the core output is not itself a scoped stylesheet.
 - `StorefrontRuntimePageOutput`: Contains runtime render results including diagnostics and repetition counters.
 - `PageBuilderStorefrontViewModel`: Framework-agnostic view-model for page rendering states and titles.
 
 ### Browser Bridges & Assets
-- `FLY_STOREFRONT_BRIDGE_JS`: JavaScript bridge forwarding `fly:action` custom events to RusToK commerce events.
+- `FLY_STOREFRONT_BRIDGE_JS`: JavaScript bridge for landing-local navigation, validated Product buyer handoff and acknowledged Cart open/close/toggle requests. See the [README](README.md#purchase-and-cart-bridge) for the shared payload and host event protocol.
 - `fly_browser`: Re-export of Fly browser utilities and interactive action scripts.
 
 ---
@@ -44,7 +44,7 @@ Canonical public contract and domain architecture specification for `rustok-page
 
 - **`rustok-page-builder`**: Consumes core document representations, static landing compilation, and runtime render pipelines.
 - **`rustok-pages`**: Serves as the primary content source for published page builder pages.
-- **`rustok-cart`**: Target for shopping cart actions bridged via `FLY_STOREFRONT_BRIDGE_JS`.
+- **`rustok-product` / `rustok-cart`**: Product validates and quotes a handoff; Cart owns cart actions and observations. The Leptos host does not yet connect the bridge's Cart event protocol.
 
 ---
 
@@ -59,12 +59,13 @@ Canonical public contract and domain architecture specification for `rustok-page
 - **Fluid Frontend Architecture (FFA)**: Strict separation between pure Rust view-models in `core.rs` and Leptos UI rendering components in `ui.rs` and `lib.rs`.
 - **CSS Isolation & Containment**: Every surface that emits project CSS scopes it with `scope_landing_css` to `LANDING_SCOPE_SELECTOR`; no surface emits it unscoped, and the scope root does not depend on the host-supplied `class`. At-rules that define document-wide names (`@keyframes`, `@font-face`, `@property`) are not confined by `@scope`.
 - **Storefront parity**: `scope_landing_css` and `scopeLandingCss` (`apps/next-frontend/packages/rustok-pages/src/components/css-scope.ts`) return the same text for the same input and selector. `contracts/landing-css-scope-parity.json` holds the shared vectors; both test suites assert it. The Next.js storefront also renders the vectors in a browser (`apps/next-frontend/tests/e2e/landing-css-scope.spec.ts`); that check reaches this crate only through the parity of the two functions.
-- **HTML Sanitization**: All rendered markup passes through Fly's strict sanitizer, stripping raw scripts, invalid URLs, and unauthorized event handlers.
-- **Deterministic Action Forwarding**: Storefront action buttons emit standard custom events without bypassing platform cart or navigation pipelines.
+- **HTML ownership**: Document rendering uses Fly's sanitizer. `StaticLandingStorefront` trusts the pre-compiled published artifact passed by the host and performs no second sanitization of its `html` prop; arbitrary untrusted HTML must not be supplied there.
+- **Action ownership**: Only `emit_event` host events are interpreted; provider actions remain provider-owned. The shared `buyerHref` points to `/[locale]/products/[handle]`; Leptos translates it to `/[locale]/modules/products?handle=…`. SKU and quantity are validated, conflicting selectors are rejected and Product owns the quote and purchase confirmation.
+- **CSP**: All four surfaces read `UiCspNonce` for their trusted inline style and scripts. `apps/storefront` does not revalidate/cache a nonce-bearing canonical Pages composition. Neither this nor the synthetic CSP test grants a nonce to tenant-authored markup.
 
 ### Events / Outbox Side Effects
 - Storefront rendering is read-only and does not emit transactional outbox events.
-- Interactive user actions are bridged to client-side DOM events (`rustok:cart:add`, in-page anchors).
+- Cart controls dispatch cancelable `rustok:cart:{open,close,toggle}` requests. A consumer must acknowledge them with `preventDefault()`; no consumer is currently mounted in the Leptos host. A `rustok:cart:updated` observation updates counters and `{status: "unknown"}` invalidates them. The purchase handoff is navigation, not a Cart add event.
 
 ### Errors / Failure Codes
 - `fly::FlyError`: Document parsing, validation, or sanitization failures.

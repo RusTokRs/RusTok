@@ -409,7 +409,7 @@ fn history_respects_its_memory_budget_but_always_keeps_one_entry() {
 }
 
 #[test]
-fn retained_bytes_returns_to_zero_after_undoing_everything() {
+fn retained_bytes_include_redo_after_undoing_everything() {
     let mut editor = editor();
     editor
         .apply(EditorCommand::Patch {
@@ -421,10 +421,89 @@ fn retained_bytes_returns_to_zero_after_undoing_everything() {
         })
         .expect("patch");
 
-    assert!(editor.history().retained_bytes() > 0);
+    let retained = editor.history().retained_bytes();
+    assert!(retained > 0);
     editor.undo().expect("undo");
-    assert_eq!(editor.history().retained_bytes(), 0);
+    assert_eq!(editor.history().retained_bytes(), retained);
     assert_eq!(editor.history().undo_len(), 0);
+    assert_eq!(editor.history().redo_len(), 1);
+    editor.redo().expect("redo");
+    assert_eq!(editor.history().retained_bytes(), retained);
+}
+
+#[test]
+fn history_budget_counts_snapshots_even_for_a_small_invertible_patch() {
+    let mut document = editor().document().clone();
+    document
+        .project
+        .extensions
+        .insert("large".to_string(), json!("x".repeat(50_000)));
+    let serialized_size = serde_json::to_vec(&document).expect("document json").len();
+    let mut editor = FlyEditor::new(document, RegistrySet::with_builtins())
+        .with_history_memory_budget(serialized_size * 5);
+    for index in 0..5 {
+        editor
+            .apply(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch {
+                    attributes: Map::from_iter([("data-step".to_string(), json!(index))]),
+                    ..ComponentPatch::default()
+                },
+            })
+            .expect("patch");
+    }
+    // Five tiny deltas would fit, but five before/after document pairs cannot.
+    assert_eq!(editor.history().undo_len(), 2);
+    assert!(editor.history().retained_bytes() >= serialized_size * 4);
+    assert!(editor.history().retained_bytes() <= editor.history().memory_budget_bytes());
+    assert!(
+        editor
+            .history()
+            .undo_entries()
+            .all(|entry| entry.inverse().is_some())
+    );
+    let retained = editor.history().retained_bytes();
+    editor.undo().expect("undo");
+    editor.undo().expect("undo");
+    assert_eq!(editor.history().retained_bytes(), retained);
+    assert_eq!(editor.history().redo_len(), 2);
+    editor.redo().expect("redo");
+    assert_eq!(editor.history().retained_bytes(), retained);
+}
+
+#[test]
+fn loading_legacy_history_recalculates_untrusted_sizes_and_keeps_a_contiguous_redo() {
+    let mut editor = editor();
+    for index in 0..4 {
+        editor
+            .apply(EditorCommand::Patch {
+                component_id: "hero".to_string(),
+                patch: ComponentPatch {
+                    attributes: Map::from_iter([("data-step".to_string(), json!(index))]),
+                    ..ComponentPatch::default()
+                },
+            })
+            .expect("patch");
+    }
+    for _ in 0..4 {
+        editor.undo().expect("undo");
+    }
+    let mut stored = serde_json::to_value(&editor).expect("serialize editor");
+    stored["history"]["retained_bytes"] = json!(1);
+    stored["history"]["undo_sizes"] = json!([]);
+    stored["history"]["redo_sizes"] = json!([1, 1, 1, 1]);
+    stored["history"]["memory_budget_bytes"] = json!(1);
+    let mut restored: FlyEditor = serde_json::from_value(stored).expect("restore editor");
+    // Always preserve the nearest available entry, even above a tiny budget.
+    assert_eq!(restored.history().undo_len(), 0);
+    assert_eq!(restored.history().redo_len(), 1);
+    assert!(restored.history().retained_bytes() > 1);
+    restored.redo().expect("nearest redo survives");
+    assert_eq!(
+        restored.document().component("hero").unwrap().attributes["data-step"],
+        json!(0)
+    );
+    assert!(!restored.history().can_redo());
 }
 
 #[test]
@@ -717,4 +796,328 @@ fn edit_after_save_conflict_keeps_the_conflict_and_failure_signals() {
         .expect("edit after conflict");
     assert!(editor.revision().save_conflict);
     assert!(editor.revision().save_failed);
+}
+
+#[test]
+fn repeated_builtin_interactive_blocks_have_disjoint_html_ids_and_local_actions() {
+    for block_id in ["tabs", "accordion", "slider"] {
+        let mut editor = editor();
+        let template = editor
+            .registries()
+            .blocks
+            .get(block_id)
+            .expect("built-in")
+            .component
+            .clone();
+        for index in 1..=2 {
+            editor
+                .apply(EditorCommand::Insert {
+                    parent_id: Some("root".to_string()),
+                    index,
+                    component: template.clone(),
+                })
+                .expect("insert");
+        }
+        let root = editor.document().component("root").expect("root");
+        let mut sets = Vec::new();
+        for block in &root.children()[1..=2] {
+            let mut ids = Vec::new();
+            block.collect_dom_ids(&mut ids);
+            let ids = ids.into_iter().collect::<std::collections::BTreeSet<_>>();
+            block.visit(0, "block", &mut |node, _, _| {
+                let Some(action) = node.extensions.get(crate::FLY_ACTION_FIELD) else {
+                    return;
+                };
+                match action["kind"].as_str() {
+                    Some("switch_tab") => {
+                        assert!(ids.contains(action["panel_id"].as_str().unwrap()));
+                        assert_eq!(node.attributes["data-fly-tab-target"], action["panel_id"]);
+                    }
+                    Some("toggle_accordion") => {
+                        assert!(ids.contains(action["target_id"].as_str().unwrap()))
+                    }
+                    Some("switch_slide") => assert_eq!(action["slider_id"], "self"),
+                    _ => {}
+                }
+            });
+            sets.push(ids);
+        }
+        assert!(!sets[0].is_empty(), "{block_id}");
+        assert!(sets[0].is_disjoint(&sets[1]), "{block_id}: {sets:?}");
+        let snapshot = editor.document().clone();
+        editor.undo().expect("undo insertion");
+        editor.redo().expect("redo insertion");
+        assert_eq!(editor.document(), &snapshot);
+    }
+}
+
+#[test]
+fn direct_insert_reidentifies_a_colliding_subtree_and_its_local_wiring() {
+    let mut editor = editor();
+    let node: ComponentNode = serde_json::from_value(json!({
+        "id": "group", "type": "container", "components": [
+            {"id": "trigger", "type": "button", "attributes": {"aria-controls": "panel-dom", "placeholder": "panel"},
+             "flyAction": {"kind": "toggle_visibility", "target_id": "panel"}},
+            {"id": "panel", "type": "section", "attributes": {"id": "panel-dom", "href": "#panel-dom"}, "content": "panel"},
+            {"id": "external", "type": "button", "flyAction": {"kind": "scroll_to", "target_id": "hero"}}
+        ]
+    })).expect("node");
+    for index in 1..=2 {
+        editor
+            .apply(EditorCommand::Insert {
+                parent_id: Some("root".to_string()),
+                index,
+                component: node.clone(),
+            })
+            .expect("insert");
+    }
+    let root = editor.document().component("root").unwrap();
+    let first = root.children()[1].as_object().unwrap();
+    let second = root.children()[2].as_object().unwrap();
+    let second_id = second.id.as_ref().unwrap().clone();
+    assert_eq!(first.id.as_deref(), Some("group"));
+    assert_ne!(second.id.as_deref(), Some("group"));
+    let trigger = second.children()[0].as_object().unwrap();
+    let panel = second.children()[1].as_object().unwrap();
+    let dom_id = panel.attributes["id"].as_str().unwrap();
+    assert_ne!(dom_id, "panel-dom");
+    assert_eq!(trigger.attributes["aria-controls"], dom_id);
+    assert_eq!(panel.attributes["href"], format!("#{dom_id}"));
+    assert_eq!(
+        trigger.extensions["flyAction"]["target_id"],
+        panel.id.as_deref().unwrap()
+    );
+    assert_eq!(trigger.attributes["placeholder"], "panel");
+    assert_eq!(panel.extensions["content"], "panel");
+    assert_eq!(
+        second.children()[2].as_object().unwrap().extensions["flyAction"]["target_id"],
+        "hero"
+    );
+    let entry = editor.history().undo_entries().last().unwrap();
+    assert_eq!(
+        entry.inverse(),
+        Some(&EditorCommand::Remove {
+            component_id: second_id.clone()
+        })
+    );
+    editor.undo().expect("undo");
+    assert!(!editor.document().contains_component(&second_id));
+    editor.redo().expect("redo");
+    assert!(editor.document().contains_component(&second_id));
+}
+
+#[test]
+fn ambiguous_component_collision_inside_batch_is_rejected_atomically() {
+    let mut editor = editor();
+    let original_editor = editor.clone();
+    let original = editor.document().clone();
+    let duplicate = ComponentNode::Object(Box::new(original.component("hero").unwrap().clone()));
+    let result = editor.apply(EditorCommand::batch([
+        EditorCommand::Insert {
+            parent_id: Some("root".to_string()),
+            index: 1,
+            component: duplicate,
+        },
+        EditorCommand::Patch {
+            component_id: "hero".to_string(),
+            patch: ComponentPatch::default(),
+        },
+    ]));
+    assert!(result.is_err());
+    assert_eq!(editor.document(), &original);
+    assert_eq!(editor, original_editor);
+    assert_eq!(editor.history().undo_len(), 0);
+}
+
+#[test]
+fn batch_does_not_silently_rewire_a_colliding_html_id() {
+    let mut editor = editor();
+    let before = editor.clone();
+    let first: ComponentNode =
+        serde_json::from_value(json!({"id": "a", "type": "text", "attributes": {"id": "shared"}}))
+            .unwrap();
+    let second: ComponentNode =
+        serde_json::from_value(json!({"id": "b", "type": "text", "attributes": {"id": "shared"}}))
+            .unwrap();
+    let error = editor
+        .apply(EditorCommand::batch([
+            EditorCommand::Insert {
+                parent_id: Some("root".to_string()),
+                index: 1,
+                component: first,
+            },
+            EditorCommand::Insert {
+                parent_id: Some("root".to_string()),
+                index: 2,
+                component: second,
+            },
+        ]))
+        .expect_err("ambiguous batch");
+    assert!(error.to_string().contains("HTML id `shared`"));
+    assert_eq!(editor, before);
+}
+
+#[test]
+fn inserted_anonymous_root_is_recorded_with_its_undo_identity() {
+    let mut editor = editor();
+    editor
+        .apply(EditorCommand::Insert {
+            parent_id: Some("root".to_string()),
+            index: 1,
+            component: ComponentNode::object("section"),
+        })
+        .expect("insert");
+    let inserted_id = editor.document().component("root").unwrap().children()[1]
+        .id()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        editor.history().undo_entries().last().unwrap().inverse(),
+        Some(&EditorCommand::Remove {
+            component_id: inserted_id.clone()
+        })
+    );
+    editor.undo().expect("undo");
+    assert!(!editor.document().contains_component(&inserted_id));
+    editor.redo().expect("redo");
+    assert!(editor.document().contains_component(&inserted_id));
+}
+
+#[test]
+fn form_and_another_nodes_html_identity_are_rejected_atomically() {
+    let mut editor = editor();
+    let before = editor.clone();
+    let node: ComponentNode = serde_json::from_value(json!({
+        "id": "group", "type": "container", "components": [
+            {"id": "form-node", "type": "form", "flyForm": {"id": "contact", "provider": "forms", "action": "submit"}},
+            {"id": "other", "type": "section", "attributes": {"id": "contact"}}
+        ]
+    })).unwrap();
+    let error = editor
+        .apply(EditorCommand::Insert {
+            parent_id: Some("root".into()),
+            index: 1,
+            component: node,
+        })
+        .expect_err("a form and an unrelated HTML element cannot share an id");
+    assert!(error.to_string().contains("contact"), "{error}");
+    assert_eq!(editor, before);
+
+    // An authored HTML id on the form itself is not a second owner.
+    let form: ComponentNode = serde_json::from_value(json!({
+        "id": "form-node", "type": "form", "attributes": {"id": "contact"},
+        "flyForm": {"id": "contact", "provider": "forms", "action": "submit"}
+    }))
+    .unwrap();
+    editor
+        .apply(EditorCommand::Insert {
+            parent_id: Some("root".into()),
+            index: 1,
+            component: form,
+        })
+        .expect("form owns both identity slots");
+}
+
+#[test]
+fn form_insert_distinguishes_component_ids_from_html_and_form_ids() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "pages": [{"component": {"id": "root", "type": "wrapper", "components": [
+            {"id": "contact", "type": "section"}
+        ]}}]
+    }))
+    .unwrap();
+    let mut editor = FlyEditor::new(document, RegistrySet::with_builtins());
+    let form: ComponentNode = serde_json::from_value(json!({
+        "id": "incoming", "type": "form", "flyForm": {"id": "contact", "action_url": "/contact"}
+    }))
+    .unwrap();
+    editor
+        .apply(EditorCommand::Insert {
+            parent_id: Some("root".into()),
+            index: 1,
+            component: form,
+        })
+        .expect("a different component id is not a DOM/form collision");
+    let result = crate::materialize_project_with_runtime_context(editor.document(), &json!({}));
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .all(|d| d.severity != crate::ValidationSeverity::Error),
+        "{:?}",
+        result.diagnostics
+    );
+    let html = crate::render_page(
+        &result.document,
+        &crate::PageSelection::First,
+        &crate::RenderPolicy::default(),
+    )
+    .unwrap()
+    .html;
+    assert_eq!(html.matches(" id=\"contact\"").count(), 1, "{html}");
+    editor.undo().expect("undo");
+    editor.redo().expect("redo");
+    assert!(editor.document().contains_component("incoming"));
+}
+
+#[test]
+fn form_insert_checks_dom_collisions_on_the_destination_page() {
+    let make_document = |same_page: bool| {
+        GrapesJsCodec::decode_value(json!({
+            "pages": [
+                {"component": {"id": "first-root", "type": "wrapper", "components": if same_page {
+                    json!([{"id": "own", "type": "section", "attributes": {"id": "contact"}}])
+                } else { json!([]) }}},
+                {"component": {"id": "second-root", "type": "wrapper", "components": [
+                    {"id": "other", "type": "section", "attributes": {"id": "contact"}}
+                ]}}
+            ]
+        }))
+        .unwrap()
+    };
+    let form: ComponentNode = serde_json::from_value(json!({
+        "id": "incoming", "type": "form", "flyForm": {"id": "contact", "action_url": "/contact"}
+    }))
+    .unwrap();
+    let insert = |form: ComponentNode| EditorCommand::Insert {
+        parent_id: Some("first-root".into()),
+        index: 0,
+        component: form,
+    };
+    let mut separate = FlyEditor::new(make_document(false), RegistrySet::with_builtins());
+    separate
+        .apply(insert(form.clone()))
+        .expect("HTML ids on separate pages are independent");
+    let mut same = FlyEditor::new(make_document(true), RegistrySet::with_builtins());
+    let before = same.clone();
+    let error = same
+        .apply(insert(form))
+        .expect_err("same-page HTML conflict");
+    assert!(error.to_string().contains("form id `contact`"), "{error}");
+    assert_eq!(same, before);
+}
+
+#[test]
+fn duplicate_form_identity_is_refused_without_redirecting_provider_submission() {
+    let mut editor = editor();
+    let form: ComponentNode = serde_json::from_value(json!({
+        "type": "form", "flyForm": {"id": "contact", "method": "post", "provider": "forms", "action": "submit"}
+    })).unwrap();
+    editor
+        .apply(EditorCommand::Insert {
+            parent_id: Some("root".to_string()),
+            index: 1,
+            component: form.clone(),
+        })
+        .expect("first form");
+    let before = editor.clone();
+    let error = editor
+        .apply(EditorCommand::Insert {
+            parent_id: Some("root".to_string()),
+            index: 2,
+            component: form,
+        })
+        .expect_err("duplicate form");
+    assert!(error.to_string().contains("form id `contact`"), "{error}");
+    assert_eq!(editor, before);
 }

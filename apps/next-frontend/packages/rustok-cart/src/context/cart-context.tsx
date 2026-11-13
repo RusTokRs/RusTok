@@ -15,7 +15,7 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
+  useInsertionEffect,
   useMemo,
   useRef,
   useState,
@@ -48,6 +48,8 @@ export type CartActionError =
   | "invalid"
   | "unconfirmed";
 export interface CartContextValue {
+  /** Whether the host enabled the Cart module for this tenant. */
+  enabled: boolean;
   cart: Cart | null;
   reference: string | null;
   isOpen: boolean;
@@ -82,7 +84,16 @@ export interface CartProviderProps {
   enabled?: boolean;
 }
 
-type Scope = { tenant: string | null; token: string | null; locale: string };
+// Availability and capability transitions create new scopes even if the same actor returns.
+// An old operation must not continue after an auth or capability A → B → A cycle.
+type Scope = {
+  tenant: string | null;
+  token: string | null;
+  locale: string;
+  enabled: boolean;
+  authReady: boolean;
+  authRefused: boolean;
+};
 type Session = {
   scope: Scope;
   cart: Cart | null;
@@ -90,6 +101,61 @@ type Session = {
   storedId: string | null;
   loading: boolean;
 };
+
+// Coordinate known in-flight mutations across CartProvider remounts in this JavaScript realm.
+// Storage markers survive reloads, but are not locks or server receipts; they are handled
+// separately and never make a cross-tab or post-reload outcome certain.
+type MutationBarrier = {
+  revision: object;
+  pending: Promise<void> | null;
+  observers: number;
+};
+const mutationBarriers = new Map<string, MutationBarrier>();
+
+function mutationBarrier(key: string): MutationBarrier {
+  let barrier = mutationBarriers.get(key);
+  if (!barrier) {
+    barrier = { revision: {}, pending: null, observers: 0 };
+    mutationBarriers.set(key, barrier);
+  }
+  return barrier;
+}
+
+function pruneMutationBarrier(key: string, barrier: MutationBarrier) {
+  if (!barrier.pending && barrier.observers === 0 && mutationBarriers.get(key) === barrier) {
+    mutationBarriers.delete(key);
+  }
+}
+
+function observeMutations(key: string) {
+  const barrier = mutationBarrier(key);
+  barrier.observers += 1;
+  let released = false;
+  return {
+    barrier,
+    release() {
+      if (released) return;
+      released = true;
+      barrier.observers -= 1;
+      pruneMutationBarrier(key, barrier);
+    },
+  };
+}
+
+function beginMutation(key: string): (() => void) | null {
+  const barrier = mutationBarrier(key);
+  if (barrier.pending) return null;
+  let settle: () => void = () => {};
+  const pending = new Promise<void>((resolve) => { settle = resolve; });
+  barrier.revision = {};
+  barrier.pending = pending;
+  return () => {
+    if (barrier.pending !== pending) return;
+    barrier.pending = null;
+    settle();
+    pruneMutationBarrier(key, barrier);
+  };
+}
 
 export function CartProvider({
   children,
@@ -102,8 +168,8 @@ export function CartProvider({
   enabled = true,
 }: CartProviderProps) {
   const scope = useMemo<Scope>(
-    () => ({ tenant: tenantSlug, token: authToken, locale }),
-    [tenantSlug, authToken, locale],
+    () => ({ tenant: tenantSlug, token: authToken, locale, enabled, authReady, authRefused }),
+    [tenantSlug, authToken, locale, enabled, authReady, authRefused],
   );
   const [session, setSession] = useState<Session>({
     scope,
@@ -119,14 +185,25 @@ export function CartProvider({
   const [isOpen, setIsOpen] = useState(false);
   const [operation, setOperation] = useState<{ scope: Scope } | null>(null);
   const inFlight = useRef<{ scope: Scope } | null>(null);
-  const liveScope = useRef(scope);
+  const liveScope = useRef<Scope | null>(null);
   const liveAuthCheck = useRef(authScopeIsCurrent);
-  useLayoutEffect(() => {
+  // Commit the fence before any descendant layout effect can invoke a captured callback. A
+  // render-time ref write would incorrectly invalidate the current scope on an aborted render;
+  // a parent layout effect runs too late because descendant layout effects run first.
+  useInsertionEffect(() => {
     liveScope.current = scope;
     liveAuthCheck.current = authScopeIsCurrent;
+    return () => {
+      if (liveScope.current === scope) liveScope.current = null;
+    };
   }, [scope, authScopeIsCurrent]);
   const scopeCurrent = useCallback(
-    () => liveScope.current === scope && liveAuthCheck.current(),
+    () =>
+      scope.enabled &&
+      scope.authReady &&
+      !scope.authRefused &&
+      liveScope.current === scope &&
+      liveAuthCheck.current(),
     [scope],
   );
   const blockedScope = useRef<Scope | null>(null);
@@ -143,7 +220,12 @@ export function CartProvider({
     [scope, scopeCurrent],
   );
   const current = session.scope === scope ? session : null;
-  const cart = enabled ? (current?.cart ?? null) : null;
+  // A restore must not clear an in-flight mutation's marker using a read made before that
+  // mutation settles. The storage key is shared across locales and capability generations.
+  const waitingForPreviousOperation = operation !== null && operation.scope !== scope &&
+    (operation.scope.tenant ?? "host") === (scope.tenant ?? "host") &&
+    operation.scope.token === scope.token;
+  const cart = enabled && !waitingForPreviousOperation ? (current?.cart ?? null) : null;
   const actionError = !enabled
     ? null
     : authRefused
@@ -151,19 +233,28 @@ export function CartProvider({
       : error?.scope === scope
         ? error.code
         : null;
-  const isLoading = enabled ? (!authReady || (current?.loading ?? true)) : false;
+  const isLoading = enabled
+    ? (!authReady || authRefused || waitingForPreviousOperation || (current?.loading ?? true))
+    : false;
   const isUpdating = enabled && operation !== null;
 
   useEffect(() => {
-    if (!enabled || !authReady || !scopeCurrent()) return;
+    if (!enabled || !authReady || waitingForPreviousOperation || !scopeCurrent()) return;
     let cancelled = false;
     async function restore() {
       let key: string | null = null;
       let storedId: string | null = null;
       let uncertain = false;
+      let observation: ReturnType<typeof observeMutations> | null = null;
       try {
         key = await cartStorageKey(scope.tenant, scope.token);
         if (cancelled || !scopeCurrent()) return;
+        observation = observeMutations(key);
+        while (observation.barrier.pending) {
+          await observation.barrier.pending;
+          if (cancelled || !scopeCurrent()) return;
+        }
+        const revision = observation.barrier.revision;
         const explicit = adoptedInitialUrl.current
           ? null
           : cartReferenceFromSearch(window.location.search);
@@ -178,9 +269,11 @@ export function CartProvider({
             : scoped || null);
         const markerKey = cartMutationMarkerKey(key);
         const marker = window.localStorage.getItem(markerKey);
-        if (marker !== null && !storedId) {
+        if (marker !== null) {
+          // A remount, reload or another tab can leave a transmitted mutation running. One
+          // automatic owner read cannot prove it has settled, even when an ID is available.
           uncertain = true;
-          throw new Error("An earlier create is unconfirmed");
+          throw new Error("An earlier Cart mutation is unconfirmed");
         }
         const restored = storedId
           ? await fetchStorefrontCart(
@@ -192,13 +285,12 @@ export function CartProvider({
           : null;
         if (cancelled || !scopeCurrent()) return;
         const active = storedId ? adoptBuyerCart(restored, storedId) : null;
-        // A successful owner read validates a persisted old ID in this tenant/actor/capability.
-        window.localStorage.setItem(key, active?.id ?? "");
-        if (window.localStorage.getItem(markerKey) !== marker) {
+        if (observation.barrier.revision !== revision || window.localStorage.getItem(markerKey) !== marker) {
           uncertain = true;
           throw new Error("Cart changed during restore");
         }
-        window.localStorage.removeItem(markerKey);
+        // A successful, uncontested owner read validates the reference in this scope.
+        window.localStorage.setItem(key, active?.id ?? "");
         setSession({
           scope,
           cart: active,
@@ -218,21 +310,27 @@ export function CartProvider({
           loading: false,
         });
         setError({ scope, code: uncertain ? "unconfirmed" : "restore" });
+      } finally {
+        observation?.release();
       }
     }
     void restore();
     return () => {
       cancelled = true;
     };
-  }, [scope, authReady, scopeCurrent, setError]);
+  }, [scope, enabled, authReady, waitingForPreviousOperation, scopeCurrent, setError]);
 
+  // A control captured by an old landing must not affect the current Cart UI. Opening during
+  // an auth/restore wait remains allowed so the drawer can show its explicit pending state.
   const openCart = useCallback(() => {
-    if (enabled) setIsOpen(true);
-  }, [enabled]);
-  const closeCart = useCallback(() => setIsOpen(false), []);
+    if (scope.enabled && liveScope.current === scope) setIsOpen(true);
+  }, [scope]);
+  const closeCart = useCallback(() => {
+    if (liveScope.current === scope) setIsOpen(false);
+  }, [scope]);
   const toggleCart = useCallback(() => {
-    if (enabled) setIsOpen((value) => !value);
-  }, [enabled]);
+    if (scope.enabled && liveScope.current === scope) setIsOpen((value) => !value);
+  }, [scope]);
 
   const commit = useCallback(
     (value: Cart) => {
@@ -253,9 +351,17 @@ export function CartProvider({
     const op = { scope };
     inFlight.current = op;
     setOperation(op);
+    let observation: ReturnType<typeof observeMutations> | null = null;
+    let uncertain = false;
     try {
       if (!current?.storageKey)
         throw new Error("Cart reference storage is unavailable");
+      observation = observeMutations(current.storageKey);
+      while (observation.barrier.pending) {
+        await observation.barrier.pending;
+        if (!scopeCurrent()) return;
+      }
+      const revision = observation.barrier.revision;
       const markerKey = cartMutationMarkerKey(current.storageKey);
       const marker = window.localStorage.getItem(markerKey);
       const refreshed = await fetchStorefrontCart(
@@ -266,9 +372,11 @@ export function CartProvider({
       );
       if (!scopeCurrent()) return;
       const active = adoptBuyerCart(refreshed, id);
-      window.localStorage.setItem(current.storageKey, active?.id ?? "");
-      if (window.localStorage.getItem(markerKey) !== marker)
+      if (observation.barrier.revision !== revision || window.localStorage.getItem(markerKey) !== marker) {
+        uncertain = true;
         throw new Error("Cart changed during inspection");
+      }
+      window.localStorage.setItem(current.storageKey, active?.id ?? "");
       window.localStorage.removeItem(markerKey);
       setSession({
         ...current,
@@ -278,14 +386,15 @@ export function CartProvider({
       });
       setError(null);
     } catch {
-      if (scopeCurrent()) setError({ scope, code: "restore" });
+      if (scopeCurrent()) setError({ scope, code: uncertain ? "unconfirmed" : "restore" });
     } finally {
+      observation?.release();
       if (inFlight.current === op) {
         inFlight.current = null;
         setOperation(null);
       }
     }
-  }, [current, scope, scopeCurrent, setError]);
+  }, [current, scope, enabled, scopeCurrent, setError]);
 
   const addItem = useCallback(
     async (
@@ -317,8 +426,8 @@ export function CartProvider({
       inFlight.current = op;
       setOperation(op);
       setError(null);
-      let marker: { key: string; id: string } | null = null;
       let transmitted = false;
+      let finishMutation: (() => void) | null = null;
       try {
         if (!current.storageKey) {
           setError({ scope, code: "restore" });
@@ -329,7 +438,12 @@ export function CartProvider({
           setError({ scope, code: "unconfirmed" });
           return false;
         }
-        marker = { key, id: globalThis.crypto.randomUUID() };
+        finishMutation = beginMutation(current.storageKey);
+        if (!finishMutation) {
+          setError({ scope, code: "unconfirmed" });
+          return false;
+        }
+        const marker = { key, id: globalThis.crypto.randomUUID() };
         window.localStorage.setItem(key, marker.id);
         let active = current.cart;
         if (!active) {
@@ -363,7 +477,13 @@ export function CartProvider({
             if (scopeCurrent()) setError({ scope, code: "unconfirmed" });
             return false;
           }
-          if (!scopeCurrent()) return false;
+          if (!scopeCurrent()) {
+            // Creation returned a validated reference and no add was transmitted. This operation
+            // is settled; leave a marker only when that fact or the reference is uncertain.
+            if (window.localStorage.getItem(marker.key) === marker.id)
+              window.localStorage.removeItem(marker.key);
+            return false;
+          }
         }
         if (!cartMatchesPricingExpectation(active, expectation)) {
           if (window.localStorage.getItem(marker.key) === marker.id)
@@ -396,13 +516,14 @@ export function CartProvider({
           setError({ scope, code: transmitted ? "unconfirmed" : "restore" });
         return false;
       } finally {
+        finishMutation?.();
         if (inFlight.current === op) {
           inFlight.current = null;
           setOperation(null);
         }
       }
     },
-    [current, scope, commit, scopeCurrent, setError],
+    [current, scope, enabled, commit, scopeCurrent, setError],
   );
 
   const mutate = useCallback(
@@ -420,8 +541,8 @@ export function CartProvider({
       inFlight.current = op;
       setOperation(op);
       setError(null);
-      let marker: { key: string; id: string } | null = null;
       let transmitted = false;
+      let finishMutation: (() => void) | null = null;
       try {
         if (!current?.storageKey)
           throw new Error("Cart reference storage is unavailable");
@@ -430,7 +551,12 @@ export function CartProvider({
           setError({ scope, code: "unconfirmed" });
           return false;
         }
-        marker = { key, id: globalThis.crypto.randomUUID() };
+        finishMutation = beginMutation(current.storageKey);
+        if (!finishMutation) {
+          setError({ scope, code: "unconfirmed" });
+          return false;
+        }
+        const marker = { key, id: globalThis.crypto.randomUUID() };
         window.localStorage.setItem(key, marker.id);
         transmitted = true;
         const updated = await run(cart);
@@ -449,13 +575,14 @@ export function CartProvider({
           setError({ scope, code: transmitted ? "unconfirmed" : "restore" });
         return false;
       } finally {
+        finishMutation?.();
         if (inFlight.current === op) {
           inFlight.current = null;
           setOperation(null);
         }
       }
     },
-    [cart, current, isLoading, scope, commit, scopeCurrent, setError],
+    [cart, current, isLoading, scope, enabled, commit, scopeCurrent, setError],
   );
 
   const updateQuantity = useCallback(
@@ -518,7 +645,7 @@ export function CartProvider({
     } catch {
       setError({ scope, code: "restore" });
     }
-  }, [current, scope, scopeCurrent, setError]);
+  }, [current, scope, enabled, scopeCurrent, setError]);
 
   const itemCount = useMemo(
     () => cart?.lineItems.reduce((sum, line) => sum + line.quantity, 0) ?? 0,
@@ -527,6 +654,7 @@ export function CartProvider({
   const reference = current?.cart?.id ?? current?.storedId ?? null;
   const value = useMemo<CartContextValue>(
     () => ({
+      enabled,
       cart,
       reference,
       isOpen,
@@ -545,6 +673,7 @@ export function CartProvider({
       clearCart,
     }),
     [
+      enabled,
       cart,
       reference,
       isOpen,

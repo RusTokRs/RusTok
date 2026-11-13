@@ -220,12 +220,36 @@ pub async fn render_shell(
     locale: &str,
     query_params: std::collections::HashMap<String, String>,
 ) -> String {
-    let locale_owned = locale.to_string();
+    render_shell_with_nonce(locale, query_params, None).await
+}
+
+#[cfg(feature = "ssr")]
+async fn render_shell_with_nonce(
+    locale: &str,
+    query_params: std::collections::HashMap<String, String>,
+    csp_nonce: Option<&CspNonce>,
+) -> String {
     let enabled_modules = enabled_modules_or_empty().await;
+    render_shell_with_modules(locale, query_params, enabled_modules, csp_nonce).await
+}
+
+#[cfg(feature = "ssr")]
+async fn render_shell_with_modules(
+    locale: &str,
+    query_params: std::collections::HashMap<String, String>,
+    enabled_modules: Vec<String>,
+    csp_nonce: Option<&CspNonce>,
+) -> String {
+    let locale_owned = locale.to_string();
+    // Pages can render a published landing in the home slot as well as on a module route.
+    let surface_nonce = csp_nonce.and_then(|nonce| rustok_ui_core::UiCspNonce::new(nonce.as_str()));
 
     let owner = Owner::new();
     let app_html = owner
         .with(|| {
+            if let Some(nonce) = surface_nonce {
+                provide_context(nonce);
+            }
             let locale = locale_owned.clone();
             let stream = view! {
                 <StorefrontShell
@@ -244,15 +268,34 @@ pub async fn render_shell(
         r#"<meta name="rustok-enabled-modules" content="{}" />"#,
         enabled_modules.join(",")
     );
-    render_document(locale, "RusToK Storefront", &modules_meta, app_html, None)
+    render_document(
+        locale,
+        "RusToK Storefront",
+        &modules_meta,
+        app_html,
+        csp_nonce,
+    )
+}
+
+#[cfg(feature = "ssr")]
+fn storefront_html_response(html: String, has_nonce: bool) -> Response {
+    let mut response = Html(html).into_response();
+    if has_nonce {
+        response
+            .headers_mut()
+            .insert(CACHE_CONTROL, HeaderValue::from_static(PRIVATE_NO_STORE));
+    }
+    response
 }
 
 #[cfg(feature = "ssr")]
 async fn render_shell_response(
     locale: &str,
     query_params: std::collections::HashMap<String, String>,
+    csp_nonce: Option<&CspNonce>,
 ) -> Response {
-    Html(render_shell(locale, query_params).await).into_response()
+    let html = render_shell_with_nonce(locale, query_params, csp_nonce).await;
+    storefront_html_response(html, csp_nonce.is_some())
 }
 
 #[cfg(feature = "ssr")]
@@ -275,13 +318,40 @@ async fn render_module_page_with_nonce(
     csp_nonce: Option<&CspNonce>,
     navigation_snapshot: Option<StorefrontNavigationSnapshot>,
 ) -> String {
+    let enabled_modules = enabled_modules_or_empty().await;
+    render_module_page_with_modules(
+        locale,
+        route_segment,
+        query_params,
+        seo_context,
+        csp_nonce,
+        navigation_snapshot,
+        enabled_modules,
+    )
+    .await
+}
+
+#[cfg(feature = "ssr")]
+async fn render_module_page_with_modules(
+    locale: &str,
+    route_segment: &str,
+    query_params: std::collections::HashMap<String, String>,
+    seo_context: Option<&ResolvedSeoPageContext>,
+    csp_nonce: Option<&CspNonce>,
+    navigation_snapshot: Option<StorefrontNavigationSnapshot>,
+    enabled_modules: Vec<String>,
+) -> String {
     let locale_owned = locale.to_string();
     let route_segment_owned = route_segment.to_string();
-    let enabled_modules = enabled_modules_or_empty().await;
+    // The trusted per-response nonce must reach module-owned inline styles and scripts.
+    let surface_nonce = csp_nonce.and_then(|nonce| rustok_ui_core::UiCspNonce::new(nonce.as_str()));
 
     let owner = Owner::new();
     let app_html = owner
         .with(|| {
+            if let Some(nonce) = surface_nonce {
+                provide_context(nonce);
+            }
             if let Some(snapshot) = navigation_snapshot {
                 provide_context(snapshot);
             }
@@ -490,13 +560,24 @@ async fn render_canonical_pages_response(
         Some(navigation.clone()),
     )
     .await;
-    let etag = pages_storefront_composition_etag(
-        locale,
-        &decision,
-        &seo_context,
-        &navigation,
-        html.as_str(),
-    );
+    let etag = if csp_nonce.is_some() {
+        None
+    } else {
+        pages_storefront_composition_etag(locale, &decision, &seo_context, &navigation, &html)
+    };
+    canonical_composition_response(html, etag, if_none_match, csp_nonce.is_some())
+}
+
+#[cfg(feature = "ssr")]
+fn canonical_composition_response(
+    html: String,
+    etag: Option<String>,
+    if_none_match: Option<&str>,
+    has_nonce: bool,
+) -> Response {
+    // A nonce-bearing response must never reuse a cached document, even if a caller supplied
+    // an ETag or the nonce happened not to appear in the body we rendered this time.
+    let etag = if has_nonce { None } else { etag };
     if let Some(etag) = etag.as_deref()
         && if_none_match_matches(if_none_match, etag)
     {
@@ -506,6 +587,10 @@ async fn render_canonical_pages_response(
     let mut response = Html(html).into_response();
     if let Some(etag) = etag {
         apply_composition_headers(&mut response, etag.as_str());
+    } else {
+        response
+            .headers_mut()
+            .insert(CACHE_CONTROL, HeaderValue::from_static(PRIVATE_NO_STORE));
     }
     response
 }
@@ -588,7 +673,7 @@ async fn render_module_page_response(
                 .expect("checked is_some above");
             redirect_response(redirect.target_url.as_str(), Some(redirect.status_code))
         }
-        Ok(seo_context) => Html(
+        Ok(seo_context) => storefront_html_response(
             render_module_page_with_nonce(
                 locale,
                 route_segment,
@@ -598,8 +683,8 @@ async fn render_module_page_response(
                 None,
             )
             .await,
-        )
-        .into_response(),
+            csp_nonce.is_some(),
+        ),
         Err(err) => {
             tracing::warn!("failed to resolve SEO page context for storefront SSR: {err}");
             match fetch_canonical_route(locale, route_segment, &query_params).await {
@@ -607,7 +692,7 @@ async fn render_module_page_response(
                     build_redirect_location(&resolved, locale_path_prefix, &query_params).as_str(),
                 )
                 .into_response(),
-                _ => Html(
+                _ => storefront_html_response(
                     render_module_page_with_nonce(
                         locale,
                         route_segment,
@@ -617,8 +702,8 @@ async fn render_module_page_response(
                         None,
                     )
                     .await,
-                )
-                .into_response(),
+                    csp_nonce.is_some(),
+                ),
             }
         }
     }
@@ -782,11 +867,13 @@ pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
         .route(
             "/",
             get(
-                |axum::extract::Query(params): axum::extract::Query<
+                |nonce: Option<Extension<CspNonce>>,
+                 axum::extract::Query(params): axum::extract::Query<
                     std::collections::HashMap<String, String>,
                 >| async move {
                     let locale = resolve_storefront_locale(None, &params);
-                    render_shell_response(locale.as_str(), params).await
+                    let nonce = nonce.as_ref().map(|Extension(value)| value);
+                    render_shell_response(locale.as_str(), params, nonce).await
                 },
             ),
         )
@@ -794,12 +881,14 @@ pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
             "/{locale}",
             get(
                 |Path(locale_path_prefix): Path<String>,
+                 nonce: Option<Extension<CspNonce>>,
                  axum::extract::Query(params): axum::extract::Query<
                     std::collections::HashMap<String, String>,
                 >| async move {
                     let locale =
                         resolve_storefront_locale(Some(locale_path_prefix.as_str()), &params);
-                    render_shell_response(locale.as_str(), params).await
+                    let nonce = nonce.as_ref().map(|Extension(value)| value);
+                    render_shell_response(locale.as_str(), params, nonce).await
                 },
             ),
         )
@@ -971,8 +1060,10 @@ mod contract_tests;
 mod tests {
     use super::{
         ResolvedSeoPageContext, apply_composition_headers, build_seo_head,
-        normalize_storefront_locale, not_modified_composition_response,
-        pages_route_response_from_decision, resolve_storefront_locale,
+        canonical_composition_response, normalize_storefront_locale,
+        not_modified_composition_response, pages_route_response_from_decision,
+        render_module_page_with_modules, render_shell_with_modules, resolve_storefront_locale,
+        storefront_html_response,
     };
     use axum::http::{
         StatusCode,
@@ -1122,6 +1213,141 @@ mod tests {
                 .and_then(|value| value.to_str().ok()),
             Some(etag)
         );
+    }
+
+    fn opening_tag<'a>(html: &'a str, marker: &str) -> &'a str {
+        let at = html.find(marker).expect("element marker");
+        let start = html[..at].rfind('<').expect("element start");
+        let end = at + html[at..].find('>').expect("element end");
+        &html[start..=end]
+    }
+
+    fn assert_landing_nonce(html: &str, nonce: &CspNonce) {
+        let expected = format!("nonce=\"{}\"", nonce.as_str());
+        for marker in [
+            "data-fly-project-styles=\"true\"",
+            "data-fly-actions=\"true\"",
+            "data-fly-storefront-bridge=\"true\"",
+        ] {
+            assert!(opening_tag(html, marker).contains(&expected), "{marker}");
+        }
+    }
+
+    #[tokio::test]
+    async fn home_slot_receives_the_request_nonce_and_is_not_cached() {
+        use crate::modules::{StorefrontComponentRegistration, StorefrontSlot, register_component};
+        use leptos::prelude::*;
+
+        fn render_landing() -> AnyView {
+            leptos::view! {
+                <rustok_page_builder_storefront::StaticLandingStorefront
+                    html="<button data-fly-action='{}'>Go</button><script data-untrusted=\"true\">window.bad=true</script>".to_string()
+                    css=".card { color: red; }".to_string()
+                />
+            }
+            .into_any()
+        }
+        // This test-only registration is visible only to its unique, explicitly enabled slug.
+        register_component(StorefrontComponentRegistration {
+            id: "nonce-test-landing",
+            module_slug: Some("nonce-test-landing"),
+            slot: StorefrontSlot::HomeBeforeFooter,
+            order: 1,
+            render: render_landing,
+        });
+        let nonce = CspNonce::generate();
+        let html = render_shell_with_modules(
+            "en",
+            HashMap::new(),
+            vec!["nonce-test-landing".to_string()],
+            Some(&nonce),
+        )
+        .await;
+        assert_landing_nonce(&html, &nonce);
+        assert!(!opening_tag(&html, "data-untrusted=\"true\"").contains("nonce="));
+        let response = storefront_html_response(html, true);
+        assert_eq!(response.headers()[CACHE_CONTROL], "private, no-store");
+        assert!(response.headers().get(ETAG).is_none());
+    }
+
+    #[tokio::test]
+    async fn module_landing_receives_the_request_nonce_and_is_not_cached() {
+        use crate::modules::{StorefrontPageRegistration, register_page};
+        use leptos::prelude::*;
+        use serde_json::json;
+
+        fn render_landing() -> AnyView {
+            let project = json!({
+                "pages": [{
+                    "id": "home",
+                    "component": {
+                        "id": "root",
+                        "type": "wrapper",
+                        "components": [{
+                            "id": "btn",
+                            "type": "button",
+                            "content": "Toggle",
+                            "flyAction": {"kind": "toggle_visibility", "target_id": "panel"}
+                        }, {
+                            "id": "panel",
+                            "type": "section",
+                            "content": "Panel"
+                        }]
+                    }
+                }]
+            });
+            leptos::view! {
+                <rustok_page_builder_storefront::PageBuilderStorefront project_data=project />
+            }
+            .into_any()
+        }
+        register_page(StorefrontPageRegistration {
+            module_slug: "nonce-test-module",
+            route_segment: "nonce-test-module",
+            title: "Nonce test",
+            full_width: true,
+            render: render_landing,
+        });
+        let nonce = CspNonce::generate();
+        let html = render_module_page_with_modules(
+            "ru",
+            "nonce-test-module",
+            HashMap::new(),
+            None,
+            Some(&nonce),
+            None,
+            vec!["nonce-test-module".to_string()],
+        )
+        .await;
+        assert!(!html.contains("data-render-error=\"true\""));
+        assert_landing_nonce(&html, &nonce);
+        assert!(html.contains("Ссылка для покупки неполна"));
+        let response = storefront_html_response(html, true);
+        assert_eq!(response.headers()[CACHE_CONTROL], "private, no-store");
+        assert!(response.headers().get(ETAG).is_none());
+    }
+
+    #[test]
+    fn nonce_bearing_compositions_cannot_revalidate_or_be_cached() {
+        let etag = "\"pages_storefront_composition_v1-deadbeef\"";
+        let response = canonical_composition_response(
+            "<html><script nonce=\"new-request\"></script></html>".to_string(),
+            Some(etag.to_string()),
+            Some(etag),
+            true,
+        );
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get(ETAG).is_none());
+        assert_eq!(response.headers()[CACHE_CONTROL], "private, no-store");
+
+        let response = canonical_composition_response(
+            "<html>static</html>".to_string(),
+            Some(etag.to_string()),
+            Some(etag),
+            false,
+        );
+        assert_eq!(response.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(response.headers()[ETAG], etag);
     }
 
     #[test]

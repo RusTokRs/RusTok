@@ -291,6 +291,79 @@ fn network_paths_and_backslash_urls_are_blocking_validation() {
 }
 
 #[test]
+fn form_html_id_collisions_are_reported_per_page() {
+    let document = GrapesJsCodec::decode_value(json!({
+        "pages": [{"component": {"id": "root", "type": "wrapper", "components": [
+            {"id": "form-node", "type": "form", "attributes": {"id": "contact"}, "flyForm": {"id": "contact", "provider": "forms", "action": "submit"}},
+            {"id": "other", "type": "text", "attributes": {"id": "contact"}}
+        ]}}]
+    })).unwrap();
+    let diagnostics = validate_component_actions(&document);
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == "form_html_id_conflict"
+                && diagnostic.severity == crate::ValidationSeverity::Error),
+        "{diagnostics:?}"
+    );
+
+    let separate_pages = GrapesJsCodec::decode_value(json!({
+        "pages": [
+            {"component": {"id": "form-node", "type": "form", "attributes": {"id": "contact"}, "flyForm": {"id": "contact", "provider": "forms", "action": "submit"}}},
+            {"component": {"id": "other", "type": "text", "attributes": {"id": "contact"}}}
+        ]
+    })).unwrap();
+    assert!(
+        !validate_component_actions(&separate_pages)
+            .iter()
+            .any(|diagnostic| diagnostic.code == "form_html_id_conflict")
+    );
+}
+
+#[test]
+fn form_conflicts_use_the_ids_actually_emitted_by_materialization() {
+    for attribute_name in ["id", "ID"] {
+        let mut value = json!({
+            "pages": [{"component": {"id": "root", "type": "wrapper", "components": [
+                {"id": "first", "type": "form", "flyForm": {"id": "signup", "action_url": "/signup"}},
+                {"id": "second", "type": "form", "flyForm": {"id": "lead", "action_url": "/lead"}}
+            ]}}]
+        });
+        value["pages"][0]["component"]["components"][0]["attributes"] =
+            json!({attribute_name: "lead"});
+        let document = GrapesJsCodec::decode_value(value).unwrap();
+        let result = crate::materialize_project_with_runtime_context(&document, &json!({}));
+        assert!(
+            !result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "form_html_id_conflict"),
+            "{:?}",
+            result.diagnostics
+        );
+        let first = result.document.component("first").unwrap();
+        assert_eq!(first.attributes["id"], "signup");
+        assert_eq!(
+            first
+                .attributes
+                .keys()
+                .filter(|name| name.eq_ignore_ascii_case("id"))
+                .count(),
+            1
+        );
+        let html = crate::render_page(
+            &result.document,
+            &crate::PageSelection::First,
+            &crate::RenderPolicy::default(),
+        )
+        .unwrap()
+        .html;
+        assert_eq!(html.matches(" id=\"signup\"").count(), 1, "{html}");
+        assert_eq!(html.matches(" id=\"lead\"").count(), 1, "{html}");
+    }
+}
+
+#[test]
 fn duplicate_forms_and_interaction_conflicts_are_rejected() {
     let document = GrapesJsCodec::decode_value(json!({
         "pages": [{

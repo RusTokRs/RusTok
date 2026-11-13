@@ -13,6 +13,92 @@ could not distinguish release blockers from "someday". Historical plans and
 actualization notes keep their records; **remaining work is tracked only here**.
 Status source of truth per item: the phase ADRs in `DECISIONS/`.
 
+## Storefront and identity continuation (2026-11-13) — OPEN
+
+This continuation supersedes historical claims below about direct landing-to-Cart adds,
+compact delta-only history accounting, and automatic commerce bindings. Fly now remaps owned
+component/HTML references with collision checks, reserves runtime identity hooks, scopes action
+targets to the landing and budgets undo **and** redo snapshots using a serialized-size proxy.
+`clone_as_page` and fragment remapping are fallible on ambiguous source identity; Pages starter
+callers propagate the error. Both landing hosts accept the same validated Product handoff instead
+of submitting an unquoted Cart add. See the [Fly contract](../../crates/ui/fly/CRATE_API.md),
+[Next handoff](../../apps/next-frontend/packages/rustok-pages/README.md#shared-purchase-handoff),
+and [Leptos bridge](../../crates/modules/rustok-page-builder/storefront/README.md#purchase-and-cart-bridge).
+
+Remaining release work, with owners:
+
+1. **Mount the Leptos Cart boundary** (Cart + Product owners + `apps/storefront`). Implement and
+   verify the cancelable open/close/toggle consumer and scope-aware count/invalidation publisher;
+   without an acknowledging consumer the bridge reports unavailable, and an unknown count is not
+   zero. The independently mounted Leptos Product buyer currently does **not** receive the host's
+   Cart-enabled state: `BuyerCartController::can_write` checks auth/session/busy state, not module
+   availability. Do not treat the handoff as capability-safe until the host supplies a reactive,
+   fail-closed capability to the island and Cart fences reads/writes and quote generations across
+   disable/re-enable and tenant/auth changes. Verify the owner-side Commerce/Cart admission policy
+   independently; a UI flag is not authorization. Exercise real mounted capability, tenant, auth,
+   in-flight create/add and navigation transitions, not just synthetic events.
+2. **Verify actual hosts, SSR and CSP** (Page Builder storefront + both hosts). Compile and run
+   the new Leptos SSR/nonce and canonical Pages response tests in the real workspace, including
+   default platform i18n and consumer builds. Test Leptos mounted hydration and navigation, both
+   hosts with real Product/Pricing/Cart services, accessibility and enforced CSP. Leptos passes
+   the host nonce to trusted landing styles/scripts on module routes and in the home slot, marks
+   nonce-bearing HTML `private, no-store`, and refuses ETag/304 caching of nonce-bearing Pages
+   responses; this remains unverified in the actual host. The Next landing currently emits
+   an inline style element and style attributes without a request nonce; a strict CSP deployment
+   needs host integration. The Next production-host smoke uses a fake API, and synthetic Chromium
+   CSP tests are not deployment evidence.
+3. **Complete Cart/checkout recovery** (Cart + Commerce + Next host). Owner-backed shipping
+   choices, exact-money presentation, signed-in checkout authorization, durable idempotency and
+   fencing/recovery of uncertain completion remain open. A fresh key on every retry is not an
+   exactly-once guarantee. Local Cart markers are hints, not receipts, cross-tab locks or rollback;
+   inspection and local reset do not prove that a transmitted operation was cancelled. The Next
+   in-memory barrier coordinates known writes and reads only in the same JavaScript realm; other
+   tabs and already-rendered provider projections can still race and display stale observations.
+4. **Provide an authorable live-commerce binding** (Fly/Page Builder + Product/Pricing). The
+   built-in product card and price are static sample content and its button has no default purchase
+   action. An author must replace the sample and configure the explicit handoff; neither bridge
+   selects a SKU, fabricates a price or bypasses Product confirmation.
+
+Evidence in this continuation: isolated tests using the real Fly and platform i18n sources passed
+Fly 356/356 with default platform i18n and 353/353 without it, `fly-browser` 39/39, `fly-ui` 81/81,
+`fly-web` 34/34, `fly-leptos` 16/16, Page Builder core 128/128, and Page Builder storefront
+`ssr,inline-edit` 37/37. An extracted host smoke passed 10/10. These used simplified manifests,
+substituted test dependencies and modified upstream Leptos manifests; the host smoke also used
+stand-ins for discovery, UI, nonce generation and conditional matching. They are not the locked
+workspace builds. A separate Chromium probe used its exported SSR with test-supplied CSP policies;
+the checked-in simulated-shell CSP tests read the server's actual policy template, but neither
+exercises the deployed middleware.
+
+Follow-up regression fixes block ambiguous repeated provider forms, preserve scoped interpolated
+HTML IDs, distinguish form/DOM/component identities, and keep nested tab groups independent.
+Materialized documents also invalidate their component index after structural changes. The latest
+isolated runs passed Fly 375/375 with platform i18n and 372/372 without, Page Builder core 133/133,
+and Fly Browser 39/39; the Fly run now includes its root property tests using `proptest` with only
+the `std` feature. The browser action suite passed 62/62 and the production Next host smoke 1/1
+against a fake API. Isolated manifests and dependency substitutions still differ from the locked
+workspace; a root `cargo test --locked -p fly --lib` using the available vendor source could not
+resolve the locked `anyhow` version. Real services and deployed CSP remain unverified.
+
+Fly source guards passed 20/20. Next Pages 17/17, Product 10/10, Cart 4/4, buyer 42/42 and the
+GraphQL adapter 3/3 passed, as did generated i18n/typecheck and action-asset parity. The checked-in
+`npm --prefix apps/next-frontend run test:e2e:fly` ran 57/57 Chromium tests of shipped assets and
+real React components with fake transport/router/translation boundaries, including nested host and
+landing groups, same-actor auth and capability A→B→A, commit-time module refreshes, Cart
+unmount/remount, unresolved markers and overlapping same-realm reads. The separate
+`npm --prefix apps/next-frontend run test:e2e:fly-host` builds the production Next host against a
+fake local API and covers SSR/hydration, landing actions, Cart controls, Product handoff, buyer
+confirmation and back navigation. It reproduced a browser hydration failure caused by resolving
+`react/jsx-runtime` to a declaration file; the runtime import is now unaliased while a type-only
+bridge serves out-of-app workspace packages. This smoke is not backend or deployed CSP evidence.
+Targeted lint/rustfmt, documentation verification and the three i18n gates passed. Scoped Fly
+clippy needed the two existing `too_many_arguments` exceptions. The remediation gate's diff
+invariants passed, but its
+architecture guard is blocked by the
+pre-existing `rustok-server -> flex` dependency, which is absent from its unchanged allow-list.
+Real workspace Rust builds and mounted/deployed acceptance remain outstanding; none of this
+promotes the module or checkout to production-ready. Draft KV driver, retention scaling and CSS
+`@scope`/global-at-rule policy remain open in item 10 below.
+
 ## Done (2026-10-14 remediation, Phases 1–6)
 
 - Style states and class rules end to end; completed page head metadata (SEO).
@@ -142,7 +228,7 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
    - Rebound generic accessibility browser harness (`scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs`) to the canonical Leptos workspace owner; harness passing clean.
    - Closed P0-5 storefront action runtime wiring: `rustok-page-builder::render` and `rustok-page-builder-storefront` now materialize internal page links (`flyPageLink`), component actions (`flyAction`), and provider form endpoints (`HostFormProviderEndpoints`) on static and storefront renders; `PageBuilderStorefront` conditionally attaches `<script data-fly-actions="true" inner_html=fly_browser::FLY_ACTIONS_JS></script>` when `data-fly-action` attributes are present. Verified via scoped unit tests (`rustok-page-builder-storefront`, `rustok-page-builder`, `rustok-pages-storefront`).
    - Eliminated storefront `<iframe>` presentation in favor of direct SSR HTML + CSS injection and Islands Architecture across both storefront hosts:
-     - Rust storefront (`rustok-pages-storefront` & `rustok-page-builder-storefront`): `PublishedLandingArtifact` carries pre-compiled `body_html` and `css`, rendered directly by `StaticLandingStorefront` and `PageBuilderStorefront` (transported at the time as a synthetic `fly_artifact_payload` body; since item 10 as the typed `landing` field). CSS containment uses native `@scope` rooted at the landing body element (`LANDING_SCOPE_SELECTOR`, `[data-fly-page-body]`; the earlier `.rustok-page-builder-storefront` root did not exist when a host passed its own `class`, see item 10), root selector remapping (`body`, `html`, `:root` -> `:scope`), CSS `contain: style layout; isolation: isolate;`, and the inlined `FLY_STOREFRONT_BRIDGE_JS` bridging `fly:action` (`add_to_cart`, `buy_now`, `navigate`) to `rustok:cart:add` and internal hash anchors to smooth-scrolling.
+     - Rust storefront (`rustok-pages-storefront` & `rustok-page-builder-storefront`): `PublishedLandingArtifact` carries pre-compiled `body_html` and `css`, rendered directly by `StaticLandingStorefront` and `PageBuilderStorefront` (transported at the time as a synthetic `fly_artifact_payload` body; since item 10 as the typed `landing` field). CSS containment uses native `@scope` rooted at the landing body element (`LANDING_SCOPE_SELECTOR`, `[data-fly-page-body]`; the earlier `.rustok-page-builder-storefront` root did not exist when a host passed its own `class`, see item 10), root selector remapping (`body`, `html`, `:root` -> `:scope`), CSS `contain: style layout; isolation: isolate;`, and the inlined `FLY_STOREFRONT_BRIDGE_JS`. Its original direct `rustok:cart:add` forwarding was replaced by the validated Product handoff and acknowledged Cart controls in the 2026-11-13 continuation above; internal hash anchors remain landing-local.
      - Next.js storefront (`apps/next-frontend/packages/rustok-pages`): `@rustok/pages-frontend` (`PageBuilderContent`) parses static landing artifacts into `@scope (.fly-page-container)` scoped `<style>` with root remapping via `scopeLandingCss` (`css-scope.ts`), CSS `contain: style layout; isolation: isolate;`, and sanitized markup. On-demand ISR invalidation (`/api/revalidate`) and Next.js Draft Mode (`/api/draft`, `/api/disable-draft`, `DraftPreviewBanner`) were added here and removed again with the Next page cache (see item 10); dynamic storefront island sync (`data-fly-island="cart_count"` and `cart_trigger`), and client bridge to `@rustok/cart-frontend` and Next.js client routing.
      - Next.js admin (`apps/next-admin/packages/pages`): Wired deep links to visual editing (`builderUrlForPage`), live storefront viewing of published pages (`storefrontUrlForPage`; the draft-preview link was removed, see item 10), and styled status badges.
      - Iframe isolation is strictly retained for authoring (`IsolatedAuthoringCanvas` in `apps/admin`) where CSS isolation and viewport resizing are required.
@@ -158,14 +244,14 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
 5. **Performance, second half (P1-6) — DONE (2026-10-15).** Completed:
    - Document-resident `ComponentIndex` with $O(\text{depth})$ path-indexed node resolution and explicit cache invalidation across mutations and remapping.
    - Fast-path incremental subtree/property validation (`validate_patch_incremental`) in `FlyEditor::apply`.
-   - Invertible editor commands (`invert_command`) and delta-based compact history memory estimation in `HistoryEntry`.
+   - Invertible editor commands (`invert_command`); history memory accounting was subsequently corrected to include undo/redo snapshots and commands, using a serialized-size estimate (see the 2026-11-13 continuation above).
    Benchmark results (`fly_core_bench` release mode):
    - 100 nodes: `apply_patch` dropped from 3.99ms to 995µs (~4× speedup).
    - 1 000 nodes: `apply_patch` dropped from 39.9ms to 4.69ms (~8.5× speedup).
    - 10 000 nodes: `apply_patch` dropped from 399.31ms to 68.01ms (~6× speedup, below the 100ms interactive UI budget).
    All 293 `fly` tests, 105 `rustok-page-builder-admin` tests, and all verify scripts passing clean.
 6. **Contributions (rest of P1-12) — COMPLETE (2026-10-15).**
-   - Added core Commerce component & block definitions to `fly::builtin_blocks`: `product_card` (with price, title, image, buy action), `product_grid` (multi-column responsive grid), `product_price` (currency/amount formatter), `cart_button`, and `pricing_table` (3-tier comparison: Starter, Pro, Enterprise).
+   - Added core Commerce-shaped component and block templates to `fly::builtin_blocks`: `product_card`, `product_grid`, `product_price`, `cart_button`, and `pricing_table`. Their product/price content is sample authoring text, not a live catalog or currency formatter, and the product-card button has no default purchase action (see the 2026-11-13 continuation above).
    - Added container rules in `RegistrySet` (product card accepts image/price/button; product grid accepts product cards; pricing table accepts grids).
    - Updated `render.rs` with safe semantic HTML tags (`article`, `section`, `a`, `div`).
    - Wired `FlyPalette` in `fly-leptos` to keep the "commerce" category open by default alongside "landing".

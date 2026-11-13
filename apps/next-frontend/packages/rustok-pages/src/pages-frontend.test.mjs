@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { STOREFRONT_PAGE_QUERY, readStorefrontPage } from "./api/page-query.ts";
 import { scopeLandingCss } from "./components/css-scope.ts";
+import { buyerHandoffHref, safeNavigationHref } from "./components/landing-bridge.ts";
 
 /**
  * Asserts that `css` is exactly one top-level `{}` block, as a CSS parser sees it: nothing may
@@ -409,3 +410,44 @@ test("fly-actions runtime is the canonical asset and handles every non-native ac
 
 
 
+
+test("buyer handoff preserves explicit selectors and never guesses a product SKU or price", () => {
+  const sku = "11111111-1111-4111-8111-111111111111";
+  const origin = "https://store.example";
+  assert.equal(
+    buyerHandoffHref({ buyerHref: "/ru/products/cup?currency=AED#buy", variantId: sku.toUpperCase(), quantity: "2" }, origin),
+    `/ru/products/cup?currency=AED&variant_id=${sku}&quantity=2#buy`,
+  );
+  assert.equal(buyerHandoffHref({ buyerHref: "/ru/products/cup", variantId: sku }, origin),
+    `/ru/products/cup?variant_id=${sku}&quantity=1`);
+  assert.equal(buyerHandoffHref({ buyerHref: "/zh-Hant/products/cup", variantId: sku }, origin),
+    `/zh-Hant/products/cup?variant_id=${sku}&quantity=1`);
+  assert.equal(buyerHandoffHref({ buyerHref: "/fil/products/cup", variantId: sku }, origin),
+    `/fil/products/cup?variant_id=${sku}&quantity=1`);
+  for (const bad of [
+    { buyerHref: "/ru/products/cup", productId: sku },
+    { buyerHref: "/ru/products/cup", id: sku },
+    { buyerHref: "https://evil.example", variantId: sku },
+    { buyerHref: "//evil.example", variantId: sku },
+    { buyerHref: "/ru/pages/not-a-product", variantId: sku },
+    { buyerHref: "/ru/modules/products?handle=cup", variantId: sku },
+    { buyerHref: "/ru/products", variantId: sku },
+    { buyerHref: "/ru/products/cup/other", variantId: sku },
+    { buyerHref: "/ru/PRODUCTS/cup", variantId: sku },
+    { buyerHref: "/ru/products/%ZZ", variantId: sku },
+    { buyerHref: "/ru/products/cup%2Fother", variantId: sku },
+    { buyerHref: "/en%2Ffr/products/cup", variantId: sku },
+    { buyerHref: "/ru/products/cup?handle=other", variantId: sku },
+    { buyerHref: "/ru/products/cup?variant_id=other", variantId: sku },
+    { buyerHref: "/ru/products/cup?cart_id=other", variantId: sku },
+    { buyerHref: "/ru/products/cup?axis.x=y", variantId: sku },
+    { buyerHref: "/ru/products/cup?currency=AED&currency=USD", variantId: sku },
+    ...[0, -1, 0.5, NaN, Infinity, 2147483648, null, true, "-1", "1e2", " 1"].map(quantity => ({
+      buyerHref: "/ru/products/cup", variantId: sku, quantity,
+    })),
+  ]) assert.equal(buyerHandoffHref(bad, origin), null, JSON.stringify(bad));
+  assert.equal(buyerHandoffHref({ buyerHref: "/ru/products/cup", variantId: sku, quantity: 2147483647 }, origin),
+    `/ru/products/cup?variant_id=${sku}&quantity=2147483647`);
+  assert.equal(safeNavigationHref("javascript:alert(1)"), null);
+  assert.equal(safeNavigationHref("/\\evil.example"), null);
+});

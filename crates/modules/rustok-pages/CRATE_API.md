@@ -93,7 +93,8 @@ transaction as the domain mutation.
   expanded documents and the promoted baseline it read under its locks are the
   ones the result was computed from, and otherwise runs both steps itself.
 - Missing providers or invalid projects fail visibly; no fallback model is
-  synthesized.
+  synthesized. Starter instantiation propagates Fly's ambiguous-identity remap failure as a
+  Pages validation error.
 
 ## Adapter obligations
 

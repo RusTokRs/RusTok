@@ -164,6 +164,8 @@ export type AppMessageKey =
   | 'Blog.share.copy'
   | 'Blog-share-title'
   | 'Blog.share.title'
+  | 'Cart-authError'
+  | 'Cart.authError'
   | 'Cart-browseCatalog'
   | 'Cart.browseCatalog'
   | 'Cart-calculatedAtCheckout'
@@ -172,12 +174,20 @@ export type AppMessageKey =
   | 'Cart.continueShopping'
   | 'Cart-currentlyEmpty'
   | 'Cart.currentlyEmpty'
+  | 'Cart-disabledError'
+  | 'Cart.disabledError'
   | 'Cart-discount'
   | 'Cart.discount'
   | 'Cart-empty'
   | 'Cart.empty'
   | 'Cart-emptySubtitle'
   | 'Cart.emptySubtitle'
+  | 'Cart-forgetReference'
+  | 'Cart.forgetReference'
+  | 'Cart-forgetWarning'
+  | 'Cart.forgetWarning'
+  | 'Cart-inspect'
+  | 'Cart.inspect'
   | 'Cart-itemsCount'
   | 'Cart.itemsCount'
   | 'Cart-loading'
@@ -188,14 +198,20 @@ export type AppMessageKey =
   | 'Cart.proceedToCheckout'
   | 'Cart-remove'
   | 'Cart.remove'
+  | 'Cart-restoreError'
+  | 'Cart.restoreError'
   | 'Cart-shipping'
   | 'Cart.shipping'
+  | 'Cart-stateUnknown'
+  | 'Cart.stateUnknown'
   | 'Cart-subtotal'
   | 'Cart.subtotal'
   | 'Cart-title'
   | 'Cart.title'
   | 'Cart-total'
   | 'Cart.total'
+  | 'Cart-unconfirmedError'
+  | 'Cart.unconfirmedError'
   | 'Cart-unitPrice'
   | 'Cart.unitPrice'
   | 'Catalog-allCategories'
@@ -654,6 +670,10 @@ export type AppMessageKey =
   | 'Order.total'
   | 'Order-tracking'
   | 'Order.tracking'
+  | 'PageBuilder-buyerHandoffError'
+  | 'PageBuilder.buyerHandoffError'
+  | 'PageBuilder-cartUnavailable'
+  | 'PageBuilder.cartUnavailable'
   | 'Pricing-badge'
   | 'Pricing.badge'
   | 'Pricing-clearSelection'
@@ -998,6 +1018,8 @@ export interface AppMessageArgs {
   'Blog.share.copy'?: Record<string, never>;
   'Blog-share-title'?: Record<string, never>;
   'Blog.share.title'?: Record<string, never>;
+  'Cart-authError'?: Record<string, never>;
+  'Cart.authError'?: Record<string, never>;
   'Cart-browseCatalog'?: Record<string, never>;
   'Cart.browseCatalog'?: Record<string, never>;
   'Cart-calculatedAtCheckout'?: Record<string, never>;
@@ -1006,12 +1028,20 @@ export interface AppMessageArgs {
   'Cart.continueShopping'?: Record<string, never>;
   'Cart-currentlyEmpty'?: Record<string, never>;
   'Cart.currentlyEmpty'?: Record<string, never>;
+  'Cart-disabledError'?: Record<string, never>;
+  'Cart.disabledError'?: Record<string, never>;
   'Cart-discount'?: Record<string, never>;
   'Cart.discount'?: Record<string, never>;
   'Cart-empty'?: Record<string, never>;
   'Cart.empty'?: Record<string, never>;
   'Cart-emptySubtitle'?: Record<string, never>;
   'Cart.emptySubtitle'?: Record<string, never>;
+  'Cart-forgetReference'?: Record<string, never>;
+  'Cart.forgetReference'?: Record<string, never>;
+  'Cart-forgetWarning'?: Record<string, never>;
+  'Cart.forgetWarning'?: Record<string, never>;
+  'Cart-inspect'?: Record<string, never>;
+  'Cart.inspect'?: Record<string, never>;
   'Cart-itemsCount': { 'count': string | number | Date };
   'Cart.itemsCount': { 'count': string | number | Date };
   'Cart-loading'?: Record<string, never>;
@@ -1022,14 +1052,20 @@ export interface AppMessageArgs {
   'Cart.proceedToCheckout'?: Record<string, never>;
   'Cart-remove'?: Record<string, never>;
   'Cart.remove'?: Record<string, never>;
+  'Cart-restoreError'?: Record<string, never>;
+  'Cart.restoreError'?: Record<string, never>;
   'Cart-shipping'?: Record<string, never>;
   'Cart.shipping'?: Record<string, never>;
+  'Cart-stateUnknown'?: Record<string, never>;
+  'Cart.stateUnknown'?: Record<string, never>;
   'Cart-subtotal'?: Record<string, never>;
   'Cart.subtotal'?: Record<string, never>;
   'Cart-title'?: Record<string, never>;
   'Cart.title'?: Record<string, never>;
   'Cart-total'?: Record<string, never>;
   'Cart.total'?: Record<string, never>;
+  'Cart-unconfirmedError'?: Record<string, never>;
+  'Cart.unconfirmedError'?: Record<string, never>;
   'Cart-unitPrice'?: Record<string, never>;
   'Cart.unitPrice'?: Record<string, never>;
   'Catalog-allCategories'?: Record<string, never>;
@@ -1488,6 +1524,10 @@ export interface AppMessageArgs {
   'Order.total'?: Record<string, never>;
   'Order-tracking'?: Record<string, never>;
   'Order.tracking'?: Record<string, never>;
+  'PageBuilder-buyerHandoffError'?: Record<string, never>;
+  'PageBuilder.buyerHandoffError'?: Record<string, never>;
+  'PageBuilder-cartUnavailable'?: Record<string, never>;
+  'PageBuilder.cartUnavailable'?: Record<string, never>;
   'Pricing-badge'?: Record<string, never>;
   'Pricing.badge'?: Record<string, never>;
   'Pricing-clearSelection'?: Record<string, never>;
@@ -1833,6 +1873,8 @@ export interface AppMessages {
   'Blog.share.copy': Record<string, never>;
   'Blog-share-title': Record<string, never>;
   'Blog.share.title': Record<string, never>;
+  'Cart-authError': Record<string, never>;
+  'Cart.authError': Record<string, never>;
   'Cart-browseCatalog': Record<string, never>;
   'Cart.browseCatalog': Record<string, never>;
   'Cart-calculatedAtCheckout': Record<string, never>;
@@ -1841,12 +1883,20 @@ export interface AppMessages {
   'Cart.continueShopping': Record<string, never>;
   'Cart-currentlyEmpty': Record<string, never>;
   'Cart.currentlyEmpty': Record<string, never>;
+  'Cart-disabledError': Record<string, never>;
+  'Cart.disabledError': Record<string, never>;
   'Cart-discount': Record<string, never>;
   'Cart.discount': Record<string, never>;
   'Cart-empty': Record<string, never>;
   'Cart.empty': Record<string, never>;
   'Cart-emptySubtitle': Record<string, never>;
   'Cart.emptySubtitle': Record<string, never>;
+  'Cart-forgetReference': Record<string, never>;
+  'Cart.forgetReference': Record<string, never>;
+  'Cart-forgetWarning': Record<string, never>;
+  'Cart.forgetWarning': Record<string, never>;
+  'Cart-inspect': Record<string, never>;
+  'Cart.inspect': Record<string, never>;
   'Cart-itemsCount': { 'count': string | number | Date };
   'Cart.itemsCount': { 'count': string | number | Date };
   'Cart-loading': Record<string, never>;
@@ -1857,14 +1907,20 @@ export interface AppMessages {
   'Cart.proceedToCheckout': Record<string, never>;
   'Cart-remove': Record<string, never>;
   'Cart.remove': Record<string, never>;
+  'Cart-restoreError': Record<string, never>;
+  'Cart.restoreError': Record<string, never>;
   'Cart-shipping': Record<string, never>;
   'Cart.shipping': Record<string, never>;
+  'Cart-stateUnknown': Record<string, never>;
+  'Cart.stateUnknown': Record<string, never>;
   'Cart-subtotal': Record<string, never>;
   'Cart.subtotal': Record<string, never>;
   'Cart-title': Record<string, never>;
   'Cart.title': Record<string, never>;
   'Cart-total': Record<string, never>;
   'Cart.total': Record<string, never>;
+  'Cart-unconfirmedError': Record<string, never>;
+  'Cart.unconfirmedError': Record<string, never>;
   'Cart-unitPrice': Record<string, never>;
   'Cart.unitPrice': Record<string, never>;
   'Catalog-allCategories': Record<string, never>;
@@ -2323,6 +2379,10 @@ export interface AppMessages {
   'Order.total': Record<string, never>;
   'Order-tracking': Record<string, never>;
   'Order.tracking': Record<string, never>;
+  'PageBuilder-buyerHandoffError': Record<string, never>;
+  'PageBuilder.buyerHandoffError': Record<string, never>;
+  'PageBuilder-cartUnavailable': Record<string, never>;
+  'PageBuilder.cartUnavailable': Record<string, never>;
   'Pricing-badge': Record<string, never>;
   'Pricing.badge': Record<string, never>;
   'Pricing-clearSelection': Record<string, never>;

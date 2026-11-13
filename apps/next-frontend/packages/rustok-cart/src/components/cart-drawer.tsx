@@ -12,6 +12,7 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
+import { useTranslations } from "@rustok/next-fluent";
 import {
   ArrowRight,
   Loader2,
@@ -34,12 +35,19 @@ export function CartDrawer({ locale = "ru" }: CartDrawerProps) {
     isOpen,
     isLoading,
     isUpdating,
+    enabled,
     itemCount,
+    reference,
+    actionError,
     closeCart,
     updateQuantity,
     removeItem,
+    refreshCart,
+    clearCart,
   } = useCart();
 
+  const messages = useTranslations("Cart");
+  const uncertain = !enabled || actionError === "auth" || actionError === "restore" || actionError === "unconfirmed";
   const isRu = locale === "ru";
   const drawerRef = useRef<HTMLDivElement>(null);
 
@@ -98,13 +106,17 @@ export function CartDrawer({ locale = "ru" }: CartDrawerProps) {
                   {isRu ? "Корзина покупок" : "Shopping Cart"}
                 </h2>
                 <p className="text-xs text-muted-foreground">
-                  {itemCount > 0
-                    ? isRu
-                      ? `${itemCount} шт. в заказе`
-                      : `${itemCount} items in order`
-                    : isRu
-                    ? "Пока пусто"
-                    : "Currently empty"}
+                  {uncertain
+                    ? messages("stateUnknown")
+                    : isLoading || isUpdating
+                      ? messages("loading")
+                      : itemCount > 0
+                        ? isRu
+                          ? `${itemCount} шт. в заказе`
+                          : `${itemCount} items in order`
+                        : isRu
+                          ? "Пока пусто"
+                          : "Currently empty"}
                 </p>
               </div>
             </div>
@@ -121,12 +133,32 @@ export function CartDrawer({ locale = "ru" }: CartDrawerProps) {
 
           {/* Body Content */}
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
-            {isLoading && !cart ? (
-              <div className="flex h-full flex-col items-center justify-center space-y-3 py-16 text-muted-foreground">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <p className="text-xs font-medium">
-                  {isRu ? "Загрузка корзины..." : "Loading cart..."}
+            {uncertain ? (
+              <div className="space-y-3 rounded-lg border border-destructive p-4 text-sm">
+                <p role="alert">
+                  {messages(!enabled ? "disabledError" : actionError === "auth" ? "authError" :
+                    actionError === "restore" ? "restoreError" : "unconfirmedError")}
                 </p>
+                {enabled && reference && actionError !== "auth" && (
+                  <button type="button" disabled={isUpdating} onClick={() => void refreshCart()}
+                    className="rounded-lg border border-border px-3 py-2 disabled:opacity-50">
+                    {messages("inspect")}
+                  </button>
+                )}
+                {enabled && ((!!reference && actionError === "restore") || actionError === "unconfirmed") && (
+                  <>
+                    <p className="text-xs text-muted-foreground">{messages("forgetWarning")}</p>
+                    <button type="button" disabled={isUpdating} onClick={clearCart}
+                      className="rounded-lg border border-border px-3 py-2 disabled:opacity-50">
+                      {messages("forgetReference")}
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : isLoading || isUpdating ? (
+              <div role="status" className="flex h-full flex-col items-center justify-center space-y-3 py-16 text-muted-foreground">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-xs font-medium">{messages("loading")}</p>
               </div>
             ) : lineItems.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center space-y-4 py-16">
@@ -238,7 +270,7 @@ export function CartDrawer({ locale = "ru" }: CartDrawerProps) {
           </div>
 
           {/* Footer with Totals and CTA */}
-          {lineItems.length > 0 && cart && (
+          {!isLoading && !isUpdating && !uncertain && lineItems.length > 0 && cart && (
             <div className="border-t border-border bg-muted/20 p-6 space-y-4">
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between text-muted-foreground">

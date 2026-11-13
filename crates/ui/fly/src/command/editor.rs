@@ -7,6 +7,7 @@ use crate::{
     validate_project,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -110,7 +111,7 @@ impl FlyEditor {
         self.apply(EditorCommand::restore_snapshot(snapshot.clone()))
     }
 
-    pub fn apply(&mut self, command: EditorCommand) -> FlyResult<ValidationReport> {
+    pub fn apply(&mut self, mut command: EditorCommand) -> FlyResult<ValidationReport> {
         if let EditorCommand::Select { component_id } = &command {
             if let Some(id) = component_id.as_deref()
                 && !self.document.contains_component(id)
@@ -126,7 +127,8 @@ impl FlyEditor {
             return Ok(report);
         }
 
-        let inverse = invert_command(&self.document, &command);
+        // Keep even ID allocation transactional: a refused edit must not advance editor state.
+        let mut generator = self.id_generator.clone();
 
         // Fast path: incremental validation for non-structural patch commands when last_report is valid.
         // When incremental validation declines, the already-applied working copy is handed to the
@@ -136,11 +138,12 @@ impl FlyEditor {
             && let Some(prev_report) = &self.last_report
             && prev_report.is_valid()
         {
+            let component_id = component_id.clone();
             let mut after = (*self.document).clone();
-            self.apply_to_document(&mut after, &command)?;
+            Self::apply_to_document(&mut after, &mut command, &mut generator, false)?;
             if let Some(inc_report) = crate::validate_patch_incremental(
                 &after,
-                component_id,
+                &component_id,
                 prev_report,
                 &self.registries,
                 self.validation_limits,
@@ -149,6 +152,8 @@ impl FlyEditor {
                 if !errors.is_empty() {
                     return Err(FlyError::Validation(errors));
                 }
+                let inverse = invert_command(&self.document, &command);
+                self.id_generator = generator;
                 let after = Arc::new(after);
                 let history_after = Arc::clone(&after);
                 let before = std::mem::replace(&mut self.document, after);
@@ -176,11 +181,11 @@ impl FlyEditor {
             Some(after) => after,
             None => {
                 let mut after = (*self.document).clone();
-                self.apply_to_document(&mut after, &command)?;
+                Self::apply_to_document(&mut after, &mut command, &mut generator, false)?;
                 after
             }
         };
-        after.ensure_stable_ids(&mut self.id_generator);
+        after.ensure_stable_ids(&mut generator);
         let report = extend_with_runtime_validation(
             &after,
             validate_project(&after, &self.registries, self.validation_limits),
@@ -189,6 +194,11 @@ impl FlyEditor {
         if !errors.is_empty() {
             return Err(FlyError::Validation(errors));
         }
+
+        // The command now carries any IDs reissued during insertion, so its inverse names the
+        // inserted component rather than a pre-existing component with the same original id.
+        let inverse = invert_command(&self.document, &command);
+        self.id_generator = generator;
 
         // Install the new document and reuse the same allocation for the history entry. The
         // displaced document becomes the entry's `before`, which the previous entry already
@@ -212,9 +222,9 @@ impl FlyEditor {
     }
 
     pub fn undo(&mut self) -> FlyResult<&ProjectDocument> {
-        let entry = self.history.pop_undo()?;
+        let (entry, size) = self.history.pop_undo()?;
         self.document = Arc::clone(&entry.before);
-        self.history.push_redo(entry);
+        self.history.push_redo(entry, size);
         self.selection = self
             .selection
             .take()
@@ -225,9 +235,9 @@ impl FlyEditor {
     }
 
     pub fn redo(&mut self) -> FlyResult<&ProjectDocument> {
-        let entry = self.history.pop_redo()?;
+        let (entry, size) = self.history.pop_redo()?;
         self.document = Arc::clone(&entry.after);
-        self.history.push_undo(entry);
+        self.history.push_undo(entry, size);
         self.selection = self
             .selection
             .take()
@@ -238,9 +248,10 @@ impl FlyEditor {
     }
 
     fn apply_to_document(
-        &self,
         document: &mut ProjectDocument,
-        command: &EditorCommand,
+        command: &mut EditorCommand,
+        generator: &mut UniqueIdGenerator,
+        in_batch: bool,
     ) -> FlyResult<()> {
         document.invalidate_caches();
         let result = match command {
@@ -251,9 +262,18 @@ impl FlyEditor {
                 parent_id,
                 index,
                 component,
-            } => document
-                .project
-                .insert_component(parent_id.as_deref(), *index, component.clone()),
+            } => {
+                prepare_insert_ids(
+                    document,
+                    parent_id.as_deref(),
+                    component,
+                    generator,
+                    in_batch,
+                )?;
+                document
+                    .project
+                    .insert_component(parent_id.as_deref(), *index, component.clone())
+            }
             EditorCommand::Remove { component_id } => {
                 document.project.remove_component(component_id)?;
                 Ok(())
@@ -319,7 +339,7 @@ impl FlyEditor {
             }
             EditorCommand::Batch { commands } => {
                 for command in commands {
-                    self.apply_to_document(document, command)?;
+                    Self::apply_to_document(document, command, generator, true)?;
                 }
                 Ok(())
             }
@@ -327,6 +347,120 @@ impl FlyEditor {
         document.invalidate_caches();
         result
     }
+}
+
+/// Prepare a newly inserted subtree before the document-wide stable-id pass. That later pass can
+/// repair duplicate component ids but cannot know which of two identical ids an action refers to;
+/// rewrite the subtree and its internal references while the insertion boundary is still known.
+fn prepare_insert_ids(
+    document: &ProjectDocument,
+    parent_id: Option<&str>,
+    component: &mut crate::ComponentNode,
+    generator: &mut UniqueIdGenerator,
+    in_batch: bool,
+) -> FlyResult<()> {
+    let existing = crate::id_reference::project_identity_ids(document);
+    let mut component_ids = Vec::new();
+    let mut dom_ids = Vec::new();
+    let mut form_ids = Vec::new();
+    let mut matching_ids = BTreeSet::new();
+    component.collect_ids(&mut component_ids);
+    component.collect_dom_ids(&mut dom_ids);
+    component.collect_form_ids(&mut form_ids);
+    component.collect_matching_dom_ids(&mut matching_ids);
+    let component_set = component_ids.iter().cloned().collect::<BTreeSet<_>>();
+    let dom_set = dom_ids.iter().cloned().collect::<BTreeSet<_>>();
+    let form_set = form_ids.iter().cloned().collect::<BTreeSet<_>>();
+    if component_set.len() != component_ids.len()
+        || dom_set.len() != dom_ids.len()
+        || form_set.len() != form_ids.len()
+    {
+        return Err(FlyError::Decode(
+            "inserted subtree contains duplicate component, HTML or form IDs; its references are ambiguous".to_string(),
+        ));
+    }
+    if let Some(id) = crate::id_reference::conflicting_form_dom_id(std::iter::once(&*component)) {
+        return Err(FlyError::Decode(format!(
+            "form id `{id}` belongs to a different HTML element in the inserted subtree"
+        )));
+    }
+    if !form_ids.is_empty() {
+        // Form IDs are provider resources across the document. HTML IDs only collide on the
+        // destination page, and an unrelated Fly component ID is not an HTML/form owner.
+        let existing_forms = crate::id_reference::project_form_ids(document);
+        let page_root = match parent_id {
+            Some(parent_id) => document
+                .component_location(parent_id)
+                .and_then(|location| document.project.pages.get(location.page_index))
+                .and_then(|page| page.component.as_ref()),
+            None => document
+                .project
+                .pages
+                .iter()
+                .find_map(|page| page.component.as_ref()),
+        };
+        let page_dom = crate::id_reference::materialized_dom_ids(page_root);
+        if let Some(id) = form_ids
+            .iter()
+            .find(|id| existing_forms.contains(*id) || page_dom.contains(*id))
+        {
+            return Err(FlyError::Decode(format!(
+                "form id `{id}` already exists; choose another form identity before inserting it"
+            )));
+        }
+    }
+    let mut reserved = existing.clone();
+    reserved.extend(component_set.iter().cloned());
+    reserved.extend(dom_set.iter().cloned());
+    reserved.extend(form_set.iter().cloned());
+    let mut component_mapping = BTreeMap::new();
+    for id in &component_ids {
+        if existing.contains(id) || crate::validate_identifier(id).is_err() {
+            if in_batch {
+                // Subsequent commands could refer either to the existing node or to the newly
+                // inserted one. Refuse that ambiguous transaction rather than rewrite the wrong
+                // style/binding/patch; callers can use ProjectFragment to mint ids first.
+                return Err(FlyError::Decode(format!(
+                    "batch insert component id `{id}` collides or is invalid; remap the fragment before batching"
+                )));
+            }
+            let replacement =
+                crate::id_reference::allocate_generated_id(generator, "insert", &mut reserved);
+            component_mapping.insert(id.clone(), replacement);
+        }
+    }
+    let mut dom_mapping = form_set
+        .iter()
+        .map(|id| (id.clone(), id.clone()))
+        .collect::<BTreeMap<_, _>>();
+    for id in &dom_ids {
+        if form_set.contains(id) {
+            continue;
+        }
+        if existing.contains(id) || component_mapping.contains_key(id) {
+            if in_batch {
+                return Err(FlyError::Decode(format!(
+                    "batch insert HTML id `{id}` collides; remap the fragment before batching"
+                )));
+            }
+            let replacement = if matching_ids.contains(id) {
+                component_mapping.get(id).cloned()
+            } else {
+                None
+            }
+            .unwrap_or_else(|| {
+                crate::id_reference::allocate_generated_id(generator, "dom", &mut reserved)
+            });
+            dom_mapping.insert(id.clone(), replacement);
+        }
+    }
+    if !component_mapping.is_empty() || !dom_mapping.is_empty() {
+        component.remap_ids_with_dom(&component_mapping, &dom_mapping);
+    }
+    // Assign missing ids before recording the command so its inverse can name the inserted root.
+    let mut seen = existing;
+    component.ensure_stable_ids(generator, &mut reserved, &mut seen);
+    Ok(())
 }
 
 fn apply_asset_command(document: &mut ProjectDocument, command: &AssetCommand) -> FlyResult<()> {

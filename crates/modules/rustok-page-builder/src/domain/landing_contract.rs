@@ -1,6 +1,9 @@
 use crate::{
     LandingPropertyValidationReport, LandingReadinessPolicy, LandingReadinessReport,
-    domain::landing_readiness::materialize_landing_structural_document, evaluate_landing_readiness,
+    domain::landing_readiness::{
+        evaluate_materialized_landing_readiness, materialize_landing_structural_document,
+    },
+    evaluate_landing_readiness,
 };
 use fly::{
     ComponentNode, ComponentObject, FlyError, FlyResult, PageHead, PageSelection, ProjectDocument,
@@ -585,11 +588,56 @@ pub fn build_static_landing_artifact_with_renderer<R>(
 where
     R: LandingRenderer + ?Sized,
 {
+    build_static_landing_artifact_impl(
+        document,
+        registries,
+        readiness_policy,
+        render_policy,
+        renderer,
+        false,
+    )
+}
+
+pub(crate) fn build_materialized_static_landing_artifact_with_renderer<R>(
+    document: &ProjectDocument,
+    registries: &RegistrySet,
+    readiness_policy: LandingReadinessPolicy,
+    render_policy: &RenderPolicy,
+    renderer: &R,
+) -> FlyResult<StaticLandingBuildResult>
+where
+    R: LandingRenderer + ?Sized,
+{
+    build_static_landing_artifact_impl(
+        document,
+        registries,
+        readiness_policy,
+        render_policy,
+        renderer,
+        true,
+    )
+}
+
+fn build_static_landing_artifact_impl<R>(
+    document: &ProjectDocument,
+    registries: &RegistrySet,
+    readiness_policy: LandingReadinessPolicy,
+    render_policy: &RenderPolicy,
+    renderer: &R,
+    already_materialized: bool,
+) -> FlyResult<StaticLandingBuildResult>
+where
+    R: LandingRenderer + ?Sized,
+{
     let registry = ComponentRegistryManifest::for_document(document, registries);
     let registry_compatibility = registry.compatibility_with(registries);
     let landing_sections = LandingSectionValidationReport::for_document(document)?;
     let landing_properties = LandingPropertyValidationReport::for_document(document);
-    let readiness = evaluate_landing_readiness(document, readiness_policy);
+    let readiness = if already_materialized {
+        evaluate_materialized_landing_readiness(document, readiness_policy)
+    } else {
+        evaluate_landing_readiness(document, readiness_policy)
+    };
     let ready = readiness.ready
         && registry_compatibility.compatible
         && landing_sections.valid
@@ -617,8 +665,15 @@ where
         &render_policy_hash,
     ))?;
 
-    let mut structural_issues = Vec::new();
-    let render_document = materialize_landing_structural_document(document, &mut structural_issues);
+    let render_document = if already_materialized {
+        std::borrow::Cow::Borrowed(document)
+    } else {
+        let mut structural_issues = Vec::new();
+        std::borrow::Cow::Owned(materialize_landing_structural_document(
+            document,
+            &mut structural_issues,
+        ))
+    };
     let mut pages = Vec::with_capacity(render_document.project.pages.len());
     for page_index in 0..render_document.project.pages.len() {
         let rendered = renderer.render_page(&render_document, page_index, render_policy)?;

@@ -84,7 +84,7 @@ fn clipboard_remaps_internal_references() {
     let document = baseline();
     let mut fragment = ProjectFragment::from_component(&document, "hero").expect("fragment");
     let mut generator = SequentialIdGenerator::new("copy");
-    let mapping = fragment.remap_ids(&mut generator);
+    let mapping = fragment.remap_ids(&mut generator).expect("remap");
     assert_eq!(mapping.get("hero"), Some(&"copy-paste-1".to_string()));
     assert_eq!(fragment.components[0].id(), Some("copy-paste-1"));
 }

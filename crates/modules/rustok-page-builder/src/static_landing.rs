@@ -128,6 +128,21 @@ where
         &self,
         document: &ProjectDocument,
     ) -> LandingProjectResult<StaticLandingArtifact> {
+        self.compile_document(document, false)
+    }
+
+    pub(crate) fn compile_materialized_document(
+        &self,
+        document: &ProjectDocument,
+    ) -> LandingProjectResult<StaticLandingArtifact> {
+        self.compile_document(document, true)
+    }
+
+    fn compile_document(
+        &self,
+        document: &ProjectDocument,
+        already_materialized: bool,
+    ) -> LandingProjectResult<StaticLandingArtifact> {
         // Runtime bindings can materialize new components, attributes, CSS and URLs after the
         // authoring document was prepared. Re-run every public-artifact policy on the exact
         // document being built, with bounded shape checks before recursive policy traversal.
@@ -136,13 +151,23 @@ where
             require_secure_resource_urls(document)?;
         }
         require_static_publish_policy(document)?;
-        let build = build_static_landing_artifact_with_renderer(
-            document,
-            &self.registries,
-            self.readiness_policy,
-            &self.render_policy,
-            &self.renderer,
-        )
+        let build = if already_materialized {
+            crate::domain::build_materialized_static_landing_artifact_with_renderer(
+                document,
+                &self.registries,
+                self.readiness_policy,
+                &self.render_policy,
+                &self.renderer,
+            )
+        } else {
+            build_static_landing_artifact_with_renderer(
+                document,
+                &self.registries,
+                self.readiness_policy,
+                &self.render_policy,
+                &self.renderer,
+            )
+        }
         .map_err(LandingProjectError::Fly)?;
         match (build.ready, build.artifact) {
             (true, Some(artifact)) => Ok(artifact),

@@ -10,150 +10,96 @@
 
 "use client";
 
-// The canonical fly-actions runtime, byte-exact with the asset the Rust
-// storefront inlines (`crates/ui/fly/browser/assets/fly-actions.js`). It is a
-// self-starting, idempotent IIFE: importing it installs the document-level
-// click/touch listeners and exposes `globalThis.FlyActions`. Guarded against
-// SSR by its own `typeof document` checks, so it is safe to import at module
-// scope. Parity is enforced by `npm run verify:fly-actions-parity`.
+// Byte-exact copy of the canonical Rust asset; its document listener is idempotent.
 import "./fly-actions.js";
 
-import { useEffect } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  useCart,
-  pricingExpectationFromCart,
-  type CartPricingExpectation,
-} from "@rustok/cart-frontend";
+import { useTranslations } from "@rustok/next-fluent";
+import { useCart } from "@rustok/cart-frontend";
+import { installLandingBridge, type LandingBridgeError } from "./landing-bridge";
 
-export interface FlyActionDetail {
-  kind: string;
-  source?: HTMLElement;
-  sourceId?: string | null;
-  event?: string;
-  payload?: Record<string, unknown>;
-  provider?: string;
-  action?: string;
-  input?: Record<string, unknown>;
-}
+export type { FlyActionDetail } from "./landing-bridge";
 
 export function FlyActionBridge() {
   const router = useRouter();
   const cart = useCart();
+  const messages = useTranslations("PageBuilder");
+  const [error, setError] = useState<LandingBridgeError | null>(null);
+  const marker = useRef<HTMLSpanElement>(null);
 
-  useEffect(() => {
-    // 1. Handle CustomEvents dispatched by fly actions
-    const handleFlyAction = (e: Event) => {
-      const customEvent = e as CustomEvent<FlyActionDetail>;
-      const detail = customEvent.detail;
-      if (!detail) return;
-
-      const eventName = detail.event || detail.action || "";
-      const data = detail.payload || detail.input || {};
-
-      if (
-        eventName === "add_to_cart" ||
-        eventName === "cart:add" ||
-        eventName === "buy_now"
-      ) {
-        const variantId = (data.variantId || data.productId || data.id) as string | undefined;
-        const quantity = Number(data.quantity) || 1;
-        if (variantId) {
-          const expectation: CartPricingExpectation = cart.cart
-            ? pricingExpectationFromCart(cart.cart, quantity)
-            : {
-                locale: "en",
-                currencyCode: "USD",
-                regionId: null,
-                priceListId: null,
-                channelId: null,
-                channelSlug: null,
-                quantity,
-              };
-          cart.addItem(variantId, quantity, expectation).then((success) => {
-            if (success) {
-              cart.openCart();
-            }
-          });
-        }
-      } else if (eventName === "cart:open" || eventName === "open_cart") {
-        cart.openCart();
-      } else if (eventName === "cart:close" || eventName === "close_cart") {
-        cart.closeCart();
-      } else if (eventName === "cart:toggle" || eventName === "toggle_cart") {
-        cart.toggleCart();
-      } else if (eventName === "navigate") {
-        const href = (data.href || data.url) as string | undefined;
-        if (href && typeof href === "string") {
-          router.push(href);
-        }
+  // Refresh handlers and counters before a committed capability change can be observed by
+  // the browser or another host layout effect; the previous closure must not handle that scope.
+  useLayoutEffect(() => {
+    // The island is the landing body's sibling. Binding to that body avoids processing host
+    // navigation and prevents multiple landing instances from handling the same event twice.
+    const root = marker.current?.parentElement?.querySelector<HTMLElement>(":scope > .fly-page-body");
+    if (!root) return;
+    const uncertain = !cart.enabled || cart.actionError === "auth" ||
+      cart.actionError === "restore" || cart.actionError === "unconfirmed";
+    const selector = "[data-fly-island='cart_count']";
+    const syncCounters = () => {
+      for (const counter of root.querySelectorAll(selector)) {
+        if (counter.closest("[data-fly-page-body], .fly-page-body") !== root) continue;
+        const text = uncertain ? "—" : cart.isLoading || cart.isUpdating ? "…" : String(cart.itemCount);
+        if (counter.textContent !== text) counter.textContent = text;
+        counter.setAttribute("aria-busy", cart.isLoading || cart.isUpdating ? "true" : "false");
       }
     };
-
-    // 2. Sync cart count islands with live cart state
-    const counters = document.querySelectorAll("[data-fly-island='cart_count']");
-    for (const counter of counters) {
-      counter.textContent = String(cart.itemCount);
-    }
-
-    // 3. Progressive enhancement: intercept internal <a> clicks for client-side navigation
-    const handleLinkClick = (e: MouseEvent) => {
-      const target = e.target as Element | null;
-      if (!target || typeof target.closest !== "function") return;
-
-      // Handle cart trigger islands
-      if (target.closest("[data-fly-island='cart_trigger']")) {
-        e.preventDefault();
-        cart.toggleCart();
-        return;
-      }
-
-      const anchor = target.closest("a");
-      if (!anchor) return;
-
-      // Don't intercept target="_blank", downloads, or action triggers
-      if (
-        anchor.target === "_blank" ||
-        anchor.hasAttribute("download") ||
-        anchor.hasAttribute("data-fly-action")
-      ) {
-        return;
-      }
-
-      const href = anchor.getAttribute("href");
-      if (!href) return;
-
-      // Intercept in-page hash links for smooth scrolling (safely ignore bare "#" or invalid selectors)
-      if (href.startsWith("#")) {
-        if (href.length > 1) {
-          try {
-            const el = document.querySelector(href);
-            if (el) {
-              e.preventDefault();
-              el.scrollIntoView({ behavior: "smooth" });
+    syncCounters();
+    // React can replace the injected landing HTML while preserving this island. Synchronize new
+    // counters even if the Cart context itself did not change; disconnect on every cleanup.
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node.nodeType === 1) {
+            const element = node as Element;
+            if (element.matches(selector) || element.querySelector(selector)) {
+              syncCounters();
+              return;
             }
-          } catch {
-            // Ignore invalid selector syntax
           }
         }
+      }
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    const runCartAction = (action: () => void) => {
+      if (!cart.enabled) {
+        setError("cart_unavailable");
         return;
       }
-
-      // Only intercept same-origin relative URLs
-      if (href.startsWith("/") && !href.startsWith("//")) {
-        e.preventDefault();
-        router.push(href);
-      }
+      setError(null);
+      action();
     };
-
-    window.addEventListener("fly:action", handleFlyAction as EventListener);
-    document.addEventListener("click", handleLinkClick, { capture: false });
-
+    const removeBridge = installLandingBridge(root, {
+      openCart: () => runCartAction(cart.openCart),
+      closeCart: () => runCartAction(cart.closeCart),
+      toggleCart: () => runCartAction(cart.toggleCart),
+      reportError: setError,
+      clearError: () => setError(null),
+      navigate(href) {
+        const url = new URL(href, window.location.href);
+        if ((url.protocol === "http:" || url.protocol === "https:") && url.origin === window.location.origin) {
+          router.push(`${url.pathname}${url.search}${url.hash}`);
+        } else {
+          window.location.assign(href);
+        }
+      },
+    });
     return () => {
-      window.removeEventListener("fly:action", handleFlyAction as EventListener);
-      document.removeEventListener("click", handleLinkClick);
+      observer.disconnect();
+      removeBridge();
     };
   }, [cart, router]);
 
-  return null;
+  return (
+    <>
+      <span ref={marker} hidden aria-hidden="true" />
+      {error && (
+        <p role="alert" data-fly-bridge-error={error}>
+          {messages(error === "buyer_handoff_invalid" ? "buyerHandoffError" : "cartUnavailable")}
+        </p>
+      )}
+    </>
+  );
 }

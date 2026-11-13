@@ -43,6 +43,19 @@ pub fn validate_component_actions(document: &ProjectDocument) -> Vec<ValidationD
             &mut diagnostics,
         );
     });
+    for (page_index, page) in document.project.pages.iter().enumerate() {
+        if let Some(root) = page.component.as_ref()
+            && let Some(id) = crate::id_reference::conflicting_form_dom_id(std::iter::once(root))
+        {
+            diagnostics.push(action_diagnostic(
+                ValidationSeverity::Error,
+                "form_html_id_conflict",
+                &format!("project.pages[{page_index}].component"),
+                None,
+                format!("form id `{id}` is also used by a different HTML element"),
+            ));
+        }
+    }
     diagnostics
 }
 
@@ -157,7 +170,7 @@ fn validate_component(
     }
 }
 
-pub(super) fn decode_form(raw: Value) -> Result<ComponentForm, String> {
+pub(crate) fn decode_form(raw: Value) -> Result<ComponentForm, String> {
     let form = serde_json::from_value::<ComponentForm>(raw)
         .map_err(|error| format!("form definition cannot be decoded: {error}"))?;
     validate_form(&form)?;

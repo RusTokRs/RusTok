@@ -28,16 +28,12 @@
       "*": [
         "./*"
       ],
-      "react/jsx-runtime": [
-        "./node_modules/@types/react/jsx-runtime.d.ts"
-      ],
       "react": [
         "./node_modules/@types/react",
         "./node_modules/react"
       ],
-      "react/*": [
-        "./node_modules/@types/react/*",
-        "./node_modules/react/*"
+      "@rustok/react-jsx-runtime-types": [
+        "./node_modules/@types/react/jsx-runtime.d.ts"
       ],
       "clsx": [
         "./node_modules/clsx"

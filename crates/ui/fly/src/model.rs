@@ -1,4 +1,4 @@
-use crate::id_reference::{remap_attribute_ids, remap_map_ids, remap_value_ids};
+use crate::id_reference::{remap_action_ids, remap_attribute_ids, remap_runtime_catalogs};
 use crate::{ComponentIndex, FlyError, FlyResult, IdGenerator, ProjectHash, validate_identifier};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -87,36 +87,76 @@ impl ProjectDocument {
         );
     }
 
-    /// Deeply clones a template or preset into an independent Page document,
-    /// remapping all component, style, and asset identifiers with the provided ID generator.
-    pub fn clone_as_page(&self, generator: &mut impl IdGenerator) -> Self {
-        let mut cloned = self.clone();
+    /// Clone a template or preset into an independent Page, reissuing component/HTML IDs and
+    /// their owned references. Provider form and asset identities remain owned by their providers.
+    /// Ambiguous source identities are rejected before the generator is consumed.
+    pub fn clone_as_page(&self, generator: &mut impl IdGenerator) -> FlyResult<Self> {
         let mut source_ids = Vec::new();
-        for page in &cloned.project.pages {
+        let mut dom_ids = Vec::new();
+        let mut form_ids = Vec::new();
+        for page in &self.project.pages {
             if let Some(component) = &page.component {
+                if let Some(reason) =
+                    crate::id_reference::ambiguous_tree_identity(std::iter::once(component))
+                {
+                    return Err(FlyError::Decode(format!(
+                        "cannot clone an ambiguous document: {reason}"
+                    )));
+                }
                 component.collect_ids(&mut source_ids);
+                component.collect_dom_ids(&mut dom_ids);
+                component.collect_form_ids(&mut form_ids);
             }
         }
-        let mapping = source_ids
-            .into_iter()
-            .map(|id| (id, generator.next_id("comp")))
-            .collect::<BTreeMap<_, _>>();
+        // Component and provider-form identities are document-wide, but authored HTML ids live
+        // in separate rendered pages and may legitimately repeat between them.
+        for (kind, ids) in [("component", &source_ids), ("form", &form_ids)] {
+            let mut seen = BTreeSet::new();
+            if let Some(id) = ids.iter().find(|id| !seen.insert(*id)) {
+                return Err(FlyError::Decode(format!(
+                    "cannot clone an ambiguous document: duplicate {kind} id `{id}`"
+                )));
+            }
+        }
+        let mut cloned = self.clone();
+        let mut reserved = source_ids
+            .iter()
+            .chain(&dom_ids)
+            .chain(&form_ids)
+            .cloned()
+            .collect();
+        let mapping = crate::id_reference::fresh_component_id_mapping(
+            source_ids,
+            "comp",
+            &mut reserved,
+            generator,
+        );
         for page in &mut cloned.project.pages {
             if let Some(component) = &mut page.component {
-                component.remap_ids(&mapping);
+                let mut page_dom_ids = Vec::new();
+                let mut page_form_ids = Vec::new();
+                let mut matching_ids = BTreeSet::new();
+                component.collect_dom_ids(&mut page_dom_ids);
+                component.collect_form_ids(&mut page_form_ids);
+                component.collect_matching_dom_ids(&mut matching_ids);
+                let dom_mapping = crate::id_reference::fresh_dom_id_mapping(
+                    page_dom_ids,
+                    &matching_ids,
+                    &page_form_ids.into_iter().collect(),
+                    &mapping,
+                    &mut reserved,
+                    generator,
+                );
+                component.remap_ids_with_dom(&mapping, &dom_mapping);
             }
         }
         for style in &mut cloned.project.styles {
-            crate::id_reference::remap_value_ids(style, &mapping);
-            crate::fragment::reset_remapped_style_rule_identity(style, &mapping);
+            crate::style_rule::remap_component_style_rule(style, &mapping);
         }
-        for asset in &mut cloned.project.assets {
-            crate::id_reference::remap_value_ids(asset, &mapping);
-        }
-        crate::id_reference::remap_map_ids(&mut cloned.project.extensions, &mapping);
+        remap_runtime_catalogs(&mut cloned.project.extensions, &mapping);
         cloned.set_document_kind(DocumentKind::Page);
         cloned.invalidate_caches();
-        cloned
+        Ok(cloned)
     }
 
     /// Give every component a unique, syntactically valid id, minting new ones where needed.
@@ -135,14 +175,9 @@ impl ProjectDocument {
             return;
         }
         self.invalidate_caches();
-        let mut reserved = BTreeSet::new();
-        self.project.visit_components(|component, _, _| {
-            if let Some(id) = component.id()
-                && validate_identifier(id).is_ok()
-            {
-                reserved.insert(id.to_string());
-            }
-        });
+        // Opaque component subtrees also participate in validation, so generated ids must not
+        // collide with them (or with authored/provider DOM identities).
+        let mut reserved = crate::id_reference::project_identity_ids(self);
         let mut seen = BTreeSet::new();
         self.project
             .ensure_stable_ids(generator, &mut reserved, &mut seen);
@@ -307,6 +342,91 @@ pub enum ComponentNode {
     Opaque(Value),
 }
 
+// Opaque component objects can still contain the well-defined `id`, `attributes`, `flyForm`,
+// and `components` slots. Visit only that structural path, not arbitrary provider payloads.
+fn visit_opaque_node(value: &Value, visitor: &mut impl FnMut(&Map<String, Value>)) {
+    let Some(object) = value.as_object() else {
+        return;
+    };
+    visitor(object);
+    if let Some(children) = object.get("components").and_then(Value::as_array) {
+        for child in children {
+            visit_opaque_node(child, visitor);
+        }
+    }
+}
+
+fn visit_opaque_children(value: &Value, visitor: &mut impl FnMut(&Map<String, Value>)) {
+    if let Some(children) = value.as_array() {
+        for child in children {
+            visit_opaque_node(child, visitor);
+        }
+    } else {
+        visit_opaque_node(value, visitor);
+    }
+}
+
+fn remap_opaque_node(
+    value: &mut Value,
+    components: &BTreeMap<String, String>,
+    dom: &BTreeMap<String, String>,
+    attribute_ids: &BTreeMap<String, String>,
+    action_ids: &BTreeMap<String, String>,
+) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    for (key, value) in object {
+        match key.as_str() {
+            "id" => {
+                if let Value::String(id) = value
+                    && let Some(replacement) = components.get(id)
+                {
+                    *id = replacement.clone();
+                }
+            }
+            "attributes" => {
+                if let Value::Object(attributes) = value {
+                    for (name, value) in attributes.iter_mut() {
+                        if name.eq_ignore_ascii_case("id")
+                            && let Value::String(id) = value
+                            && let Some(replacement) = dom.get(id)
+                        {
+                            *id = replacement.clone();
+                        }
+                    }
+                    remap_attribute_ids(attributes, attribute_ids);
+                }
+            }
+            "components" => {
+                if let Value::Array(children) = value {
+                    for child in children {
+                        remap_opaque_node(child, components, dom, attribute_ids, action_ids);
+                    }
+                }
+            }
+            crate::FLY_ACTION_FIELD => remap_action_ids(value, action_ids),
+            _ => {}
+        }
+    }
+}
+
+fn remap_opaque_children(
+    value: &mut Value,
+    components: &BTreeMap<String, String>,
+    dom: &BTreeMap<String, String>,
+    attribute_ids: &BTreeMap<String, String>,
+    action_ids: &BTreeMap<String, String>,
+) {
+    if let Value::Array(children) = value {
+        for child in children {
+            remap_opaque_node(child, components, dom, attribute_ids, action_ids);
+        }
+    } else {
+        remap_opaque_node(value, components, dom, attribute_ids, action_ids);
+    }
+}
+
 impl ComponentNode {
     pub fn object(component_type: impl Into<String>) -> Self {
         Self::Object(Box::new(ComponentObject {
@@ -367,7 +487,7 @@ impl ComponentNode {
         }
     }
 
-    fn ensure_stable_ids(
+    pub(crate) fn ensure_stable_ids(
         &mut self,
         generator: &mut impl IdGenerator,
         reserved: &mut BTreeSet<String>,
@@ -383,12 +503,8 @@ impl ComponentNode {
         let needs_new_id = current_id.is_none_or(|id| !seen.insert(id.to_string()));
         if needs_new_id {
             let hint = object.component_type.as_deref().unwrap_or("node");
-            let id = loop {
-                let candidate = generator.next_id(hint);
-                if reserved.insert(candidate.clone()) && seen.insert(candidate.clone()) {
-                    break candidate;
-                }
-            };
+            let id = crate::id_reference::allocate_generated_id(generator, hint, reserved);
+            seen.insert(id.clone());
             object.id = Some(id);
         }
         if let Some(children) = object.children_mut() {
@@ -410,36 +526,283 @@ impl ComponentNode {
     }
 
     pub(crate) fn collect_ids(&self, ids: &mut Vec<String>) {
-        if let Some(object) = self.as_object() {
-            if let Some(id) = object.id.clone() {
-                ids.push(id);
+        match self {
+            Self::Object(object) => {
+                if let Some(id) = &object.id {
+                    ids.push(id.clone());
+                }
+                match &object.components {
+                    ComponentChildren::Nodes(children) => {
+                        for child in children {
+                            child.collect_ids(ids);
+                        }
+                    }
+                    ComponentChildren::Opaque(value) => {
+                        visit_opaque_children(value, &mut |child| {
+                            if let Some(id) = child.get("id").and_then(Value::as_str) {
+                                ids.push(id.to_string());
+                            }
+                        })
+                    }
+                }
             }
-            for child in object.children() {
-                child.collect_ids(ids);
-            }
+            Self::Opaque(value) => visit_opaque_node(value, &mut |object| {
+                if let Some(id) = object.get("id").and_then(Value::as_str) {
+                    ids.push(id.to_string());
+                }
+            }),
         }
     }
 
-    pub(crate) fn remap_ids(&mut self, mapping: &BTreeMap<String, String>) {
+    /// Collect authored HTML ids separately from Fly component ids. They are distinct namespaces:
+    /// an action may reference either, and an author may supply a DOM id different from its node.
+    pub(crate) fn collect_dom_ids(&self, ids: &mut Vec<String>) {
+        fn collect(attributes: &Map<String, Value>, ids: &mut Vec<String>) {
+            for (name, value) in attributes {
+                if name.eq_ignore_ascii_case("id")
+                    && let Some(id) = value.as_str().filter(|id| !id.is_empty())
+                {
+                    ids.push(id.to_string());
+                }
+            }
+        }
         match self {
-            Self::Opaque(value) => remap_value_ids(value, mapping),
+            Self::Object(object) => {
+                collect(&object.attributes, ids);
+                match &object.components {
+                    ComponentChildren::Nodes(children) => {
+                        for child in children {
+                            child.collect_dom_ids(ids);
+                        }
+                    }
+                    ComponentChildren::Opaque(value) => {
+                        visit_opaque_children(value, &mut |child| {
+                            if let Some(attributes) =
+                                child.get("attributes").and_then(Value::as_object)
+                            {
+                                collect(attributes, ids);
+                            }
+                        })
+                    }
+                }
+            }
+            Self::Opaque(value) => visit_opaque_node(value, &mut |object| {
+                if let Some(attributes) = object.get("attributes").and_then(Value::as_object) {
+                    collect(attributes, ids);
+                }
+            }),
+        }
+    }
+
+    /// HTML ids that belong to the very component with the same Fly id. Merely sharing the
+    /// string with a different component does not make them the same identity.
+    pub(crate) fn collect_matching_dom_ids(&self, ids: &mut BTreeSet<String>) {
+        fn collect(
+            id: Option<&str>,
+            attributes: Option<&Map<String, Value>>,
+            ids: &mut BTreeSet<String>,
+        ) {
+            if let (Some(id), Some(attributes)) = (id, attributes)
+                && attributes.iter().any(|(name, value)| {
+                    name.eq_ignore_ascii_case("id") && value.as_str() == Some(id)
+                })
+            {
+                ids.insert(id.to_string());
+            }
+        }
+        match self {
+            Self::Object(object) => {
+                collect(object.id.as_deref(), Some(&object.attributes), ids);
+                match &object.components {
+                    ComponentChildren::Nodes(children) => {
+                        for child in children {
+                            child.collect_matching_dom_ids(ids);
+                        }
+                    }
+                    ComponentChildren::Opaque(value) => {
+                        visit_opaque_children(value, &mut |child| {
+                            collect(
+                                child.get("id").and_then(Value::as_str),
+                                child.get("attributes").and_then(Value::as_object),
+                                ids,
+                            );
+                        })
+                    }
+                }
+            }
+            Self::Opaque(value) => visit_opaque_node(value, &mut |object| {
+                collect(
+                    object.get("id").and_then(Value::as_str),
+                    object.get("attributes").and_then(Value::as_object),
+                    ids,
+                );
+            }),
+        }
+    }
+
+    /// Collect authored DOM and form identities by node. Rendering an unmaterialized draft
+    /// conservatively reserves both; opaque children use only structural paths.
+    pub(crate) fn collect_form_dom_owners(&self, owners: &mut Vec<(Option<String>, Vec<String>)>) {
+        self.collect_form_dom_owners_inner(owners, false);
+    }
+
+    /// Collect the identities that a materialized page will emit. A valid, non-conflicting
+    /// `flyForm` replaces its authored HTML id with its own form id; invalid or opaque nodes
+    /// remain conservative because Fly cannot lower their form contracts.
+    pub(crate) fn collect_materialized_form_dom_owners(
+        &self,
+        owners: &mut Vec<(Option<String>, Vec<String>)>,
+    ) {
+        self.collect_form_dom_owners_inner(owners, true);
+    }
+
+    fn collect_form_dom_owners_inner(
+        &self,
+        owners: &mut Vec<(Option<String>, Vec<String>)>,
+        materialized: bool,
+    ) {
+        fn record(
+            form: Option<&Value>,
+            attributes: Option<&Map<String, Value>>,
+            replaces_dom_id: bool,
+            owners: &mut Vec<(Option<String>, Vec<String>)>,
+        ) {
+            let form = form
+                .and_then(|form| form.get("id"))
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty())
+                .map(ToString::to_string);
+            let dom = attributes
+                .filter(|_| !replaces_dom_id)
+                .into_iter()
+                .flat_map(|attributes| attributes.iter())
+                .filter(|(name, _)| name.eq_ignore_ascii_case("id"))
+                .filter_map(|(_, value)| value.as_str().filter(|id| !id.is_empty()))
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
+            if form.is_some() || !dom.is_empty() {
+                owners.push((form, dom));
+            }
+        }
+        match self {
+            Self::Object(object) => {
+                let form = object.extensions.get(crate::FLY_FORM_FIELD);
+                let replaces_dom_id =
+                    materialized && crate::action::materializable_form(object).is_some();
+                record(form, Some(&object.attributes), replaces_dom_id, owners);
+                match &object.components {
+                    ComponentChildren::Nodes(children) => {
+                        for child in children {
+                            child.collect_form_dom_owners_inner(owners, materialized);
+                        }
+                    }
+                    ComponentChildren::Opaque(value) => {
+                        visit_opaque_children(value, &mut |child| {
+                            record(
+                                child.get(crate::FLY_FORM_FIELD),
+                                child.get("attributes").and_then(Value::as_object),
+                                false,
+                                owners,
+                            );
+                        })
+                    }
+                }
+            }
+            Self::Opaque(value) => visit_opaque_node(value, &mut |object| {
+                record(
+                    object.get(crate::FLY_FORM_FIELD),
+                    object.get("attributes").and_then(Value::as_object),
+                    false,
+                    owners,
+                );
+            }),
+        }
+    }
+
+    /// Form IDs also name the provider endpoint and cannot be silently minted on copy.
+    pub(crate) fn collect_form_ids(&self, ids: &mut Vec<String>) {
+        fn collect(form: Option<&Value>, ids: &mut Vec<String>) {
+            if let Some(id) = form
+                .and_then(|form| form.get("id"))
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty())
+            {
+                ids.push(id.to_string());
+            }
+        }
+        match self {
+            Self::Object(object) => {
+                collect(object.extensions.get(crate::FLY_FORM_FIELD), ids);
+                match &object.components {
+                    ComponentChildren::Nodes(children) => {
+                        for child in children {
+                            child.collect_form_ids(ids);
+                        }
+                    }
+                    ComponentChildren::Opaque(value) => {
+                        visit_opaque_children(value, &mut |child| {
+                            collect(child.get(crate::FLY_FORM_FIELD), ids);
+                        })
+                    }
+                }
+            }
+            Self::Opaque(value) => visit_opaque_node(value, &mut |object| {
+                collect(object.get(crate::FLY_FORM_FIELD), ids);
+            }),
+        }
+    }
+
+    pub(crate) fn remap_ids_with_dom(
+        &mut self,
+        components: &BTreeMap<String, String>,
+        dom: &BTreeMap<String, String>,
+    ) {
+        // HTML relationships point to HTML ids, with component ids as a legacy fallback.
+        let mut attribute_ids = components.clone();
+        attribute_ids.extend(dom.clone());
+        // Typed actions address component ids, but built-in blocks historically used HTML ids.
+        let mut action_ids = dom.clone();
+        action_ids.extend(components.clone());
+        self.remap_ids_inner(components, dom, &attribute_ids, &action_ids);
+    }
+
+    fn remap_ids_inner(
+        &mut self,
+        components: &BTreeMap<String, String>,
+        dom: &BTreeMap<String, String>,
+        attribute_ids: &BTreeMap<String, String>,
+        action_ids: &BTreeMap<String, String>,
+    ) {
+        match self {
+            Self::Opaque(value) => {
+                remap_opaque_node(value, components, dom, attribute_ids, action_ids)
+            }
             Self::Object(object) => {
                 if let Some(id) = object.id.as_mut()
-                    && let Some(replacement) = mapping.get(id)
+                    && let Some(replacement) = components.get(id)
                 {
                     *id = replacement.clone();
                 }
-                remap_attribute_ids(&mut object.attributes, mapping);
-                if let Some(style) = object.style.as_mut() {
-                    remap_value_ids(style, mapping);
+                for (name, value) in &mut object.attributes {
+                    if name.eq_ignore_ascii_case("id")
+                        && let Value::String(id) = value
+                        && let Some(replacement) = dom.get(id)
+                    {
+                        *id = replacement.clone();
+                    }
                 }
-                for trait_value in &mut object.traits {
-                    remap_value_ids(trait_value, mapping);
+                remap_attribute_ids(&mut object.attributes, attribute_ids);
+                if let Some(action) = object.extensions.get_mut(crate::FLY_ACTION_FIELD) {
+                    remap_action_ids(action, action_ids);
                 }
-                remap_map_ids(&mut object.extensions, mapping);
-                if let Some(children) = object.children_mut() {
-                    for child in children {
-                        child.remap_ids(mapping);
+                match &mut object.components {
+                    ComponentChildren::Nodes(children) => {
+                        for child in children {
+                            child.remap_ids_inner(components, dom, attribute_ids, action_ids);
+                        }
+                    }
+                    ComponentChildren::Opaque(value) => {
+                        remap_opaque_children(value, components, dom, attribute_ids, action_ids);
                     }
                 }
             }
@@ -644,6 +1007,193 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn cloning_keeps_component_html_and_form_identities_distinct() {
+        let doc = GrapesJsCodec::decode_value(json!({
+            "pages": [{"component": {"id": "root", "type": "wrapper", "components": [
+                {"id": "trigger", "type": "button", "attributes": {"aria-controls": "panel", "form": "contact"},
+                 "flyAction": {"kind": "scroll_to", "target_id": "panel"}},
+                {"id": "panel", "type": "section"},
+                {"id": "other", "type": "section", "attributes": {"id": "panel"}},
+                {"id": "contact", "type": "form", "flyForm": {"id": "contact", "method": "post", "provider": "forms", "action": "submit"}}
+            ]}}]
+        })).expect("document");
+        let cloned = doc
+            .clone_as_page(&mut crate::SequentialIdGenerator::new("copy"))
+            .expect("clone");
+        let root = cloned.project.pages[0]
+            .component
+            .as_ref()
+            .unwrap()
+            .as_object()
+            .unwrap();
+        let trigger = root.children()[0].as_object().unwrap();
+        let component_panel = root.children()[1].as_object().unwrap();
+        let html_panel = root.children()[2].as_object().unwrap();
+        let form = root.children()[3].as_object().unwrap();
+        assert_eq!(
+            trigger.extensions["flyAction"]["target_id"],
+            component_panel.id.as_deref().unwrap()
+        );
+        assert_eq!(
+            trigger.attributes["aria-controls"],
+            html_panel.attributes["id"]
+        );
+        assert_ne!(
+            component_panel.id.as_deref().unwrap(),
+            html_panel.attributes["id"].as_str().unwrap()
+        );
+        assert_eq!(form.extensions["flyForm"]["id"], "contact");
+        assert_eq!(trigger.attributes["form"], "contact");
+    }
+
+    #[test]
+    fn clone_remaps_only_owned_reference_slots_and_preserves_provider_payloads() {
+        let doc = GrapesJsCodec::decode_value(json!({
+            "pages": [{"component": {"id": "root", "type": "wrapper", "components": [
+                {"id": "hero", "type": "section", "attributes": {
+                    "data-config": {"component_id": "hero"}
+                }, "providerData": {"component_id": "hero", "flyComponentId": "hero"},
+                "flyForm": {"id": "form", "input": {"component_id": "hero"}}}
+            ]}}],
+            "styles": [{"selectors": [{"name": "hero", "type": 2}], "style": {"color": "red"},
+                "providerData": {"component_id": "hero"}}],
+            "assets": [{"id": "asset", "src": "/hero.png", "providerData": {"component_id": "hero"}}],
+            "flyRuntimeBindings": [{"id": "b", "component_id": "hero", "path": "title", "target": "field", "name": "content", "fallback": {"component_id": "hero"}},
+                {"component_id": "hero", "unknownProvider": true}],
+            "flyRuntimeConditions": [{"id": "c", "component_id": "hero", "path": "value", "operator": "equals", "expected": {"component_id": "hero"}},
+                {"component_id": "hero", "operator": "unrecognized"}],
+            "flyRuntimeRepeaters": [{"id": "r", "component_id": "hero", "path": "items", "providerData": {"component_id": "hero"}},
+                {"component_id": "hero", "unknownProvider": true}],
+            "ownerPayload": {"component_id": "hero"},
+            "flySymbols": [{"id": "sym", "components": [{"id": "hero", "type": "text"}],
+                "styles": [{"flyComponentId": "hero", "style": {"color": "blue"}}]}]
+        })).expect("document");
+        let cloned = doc
+            .clone_as_page(&mut crate::SequentialIdGenerator::new("copy"))
+            .expect("clone");
+        let hero = cloned.project.pages[0]
+            .component
+            .as_ref()
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .children()[0]
+            .as_object()
+            .unwrap();
+        let new_id = hero.id.as_deref().unwrap();
+        assert_ne!(new_id, "hero");
+        assert_eq!(hero.attributes["data-config"]["component_id"], "hero");
+        assert_eq!(hero.extensions["providerData"]["component_id"], "hero");
+        assert_eq!(hero.extensions["providerData"]["flyComponentId"], "hero");
+        assert_eq!(hero.extensions["flyForm"]["input"]["component_id"], "hero");
+        assert_eq!(cloned.project.styles[0]["flyComponentId"], new_id);
+        assert_eq!(cloned.project.styles[0]["selectors"][0]["name"], new_id);
+        assert_eq!(
+            cloned.project.styles[0]["providerData"]["component_id"],
+            "hero"
+        );
+        assert_eq!(
+            cloned.project.assets[0]["providerData"]["component_id"],
+            "hero"
+        );
+        assert_eq!(
+            cloned.project.extensions["flyRuntimeBindings"][0]["component_id"],
+            new_id
+        );
+        assert_eq!(
+            cloned.project.extensions["flyRuntimeBindings"][0]["fallback"]["component_id"],
+            "hero"
+        );
+        assert_eq!(
+            cloned.project.extensions["flyRuntimeBindings"][1]["component_id"],
+            "hero"
+        );
+        assert_eq!(
+            cloned.project.extensions["flyRuntimeConditions"][0]["component_id"],
+            new_id
+        );
+        assert_eq!(
+            cloned.project.extensions["flyRuntimeConditions"][0]["expected"]["component_id"],
+            "hero"
+        );
+        assert_eq!(
+            cloned.project.extensions["flyRuntimeConditions"][1]["component_id"],
+            "hero"
+        );
+        assert_eq!(
+            cloned.project.extensions["flyRuntimeRepeaters"][0]["component_id"],
+            new_id
+        );
+        assert_eq!(
+            cloned.project.extensions["flyRuntimeRepeaters"][0]["providerData"]["component_id"],
+            "hero"
+        );
+        assert_eq!(
+            cloned.project.extensions["flyRuntimeRepeaters"][1]["component_id"],
+            "hero"
+        );
+        assert_eq!(
+            cloned.project.extensions["ownerPayload"]["component_id"],
+            "hero"
+        );
+        assert_eq!(
+            cloned.project.extensions["flySymbols"],
+            doc.project.extensions["flySymbols"]
+        );
+    }
+
+    #[test]
+    fn cloning_multi_page_preset_allows_separate_pages_to_reuse_html_ids() {
+        let doc = GrapesJsCodec::decode_value(json!({
+            "pages": [
+                {"id": "first", "component": {"id": "first-root", "type": "wrapper", "components": [
+                    {"id": "first-trigger", "type": "button", "attributes": {"aria-controls": "details"}},
+                    {"id": "first-panel", "type": "section", "attributes": {"id": "details"}}
+                ]}},
+                {"id": "second", "component": {"id": "second-root", "type": "wrapper", "components": [
+                    {"id": "second-trigger", "type": "button", "attributes": {"aria-controls": "details"}},
+                    {"id": "second-panel", "type": "section", "attributes": {"id": "details"}}
+                ]}}
+            ]
+        })).unwrap();
+        let cloned = doc
+            .clone_as_page(&mut crate::SequentialIdGenerator::new("copy"))
+            .expect("independent pages");
+        let mut ids = Vec::new();
+        for page in &cloned.project.pages {
+            let root = page.component.as_ref().unwrap().as_object().unwrap();
+            let target = root.children()[1].as_object().unwrap().attributes["id"]
+                .as_str()
+                .unwrap();
+            assert_eq!(
+                root.children()[0].as_object().unwrap().attributes["aria-controls"],
+                target
+            );
+            assert_ne!(target, "details");
+            ids.push(target.to_string());
+        }
+        assert_ne!(ids[0], ids[1]);
+    }
+
+    #[test]
+    fn cloning_ambiguous_preset_fails_before_consuming_ids() {
+        for components in [
+            json!([{"id": "same", "type": "text"}, {"id": "same", "type": "text"}]),
+            json!([{"id": "form-node", "type": "form", "flyForm": {"id": "contact"}},
+                   {"id": "other", "type": "text", "attributes": {"id": "contact"}}]),
+        ] {
+            let doc = GrapesJsCodec::decode_value(json!({"pages": [{"component": {"id": "root", "type": "wrapper", "components": components}}]})).unwrap();
+            let mut generator = crate::SequentialIdGenerator::new("copy");
+            let before = generator.clone();
+            let error = doc
+                .clone_as_page(&mut generator)
+                .expect_err("ambiguous preset");
+            assert!(error.to_string().contains("id"), "{error}");
+            assert_eq!(generator, before);
+        }
+    }
+
+    #[test]
     fn clone_as_page_remaps_all_ids_and_sets_kind() {
         let doc = GrapesJsCodec::decode_value(json!({
             "flyDocumentKind": "starter_preset",
@@ -671,7 +1221,7 @@ mod tests {
         assert_eq!(doc.document_kind(), DocumentKind::StarterPreset);
 
         let mut generator = crate::SequentialIdGenerator::default();
-        let cloned = doc.clone_as_page(&mut generator);
+        let cloned = doc.clone_as_page(&mut generator).expect("clone");
 
         assert_eq!(cloned.document_kind(), DocumentKind::Page);
         let orig_root = cloned.component("orig-root");
