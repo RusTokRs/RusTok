@@ -30,8 +30,8 @@
   - Fetches paginated storefront catalog products matching search text, category, attributes, and currency. Propagates GraphQL errors.
 - `fetchStorefrontProduct(graphql, handle, locale?, tenantSlug?): Promise<StorefrontProductDetail | null>`:
   - Fetches detailed product information by handle. Propagates GraphQL errors.
-- `fetchStorefrontProductPricing(graphql, handle, locale?, options?, tenantSlug?): Promise<{ variants: StorefrontProductPricing[] } | null>`:
-  - Resolves dynamic pricing overlays from the pricing module for a given handle.
+- `fetchStorefrontProductPricing(graphql, handle, locale?, options?, tenantSlug?, token?): Promise<StorefrontProductPricingDetail | null>`:
+  - Resolves and validates a correlated Pricing observation (context, timestamp and variants) for the requested handle.
 - `fetchStorefrontCatalogFacets(graphql, locale, filter?, facetCodes, tenantSlug?): Promise<ProductCatalogFacet[]>`:
   - Loads owner-counted attribute bucket counts for faceted navigation.
 - `fetchCatalogSearchOptions(requestOrGraphql, locale?, tenantSlug?): Promise<ProductCatalogSearchOptions>`:
@@ -80,21 +80,21 @@
 - Input handles, categories, and attribute codes are trimmed; empty or whitespace-only inputs return safe default envelopes.
 - Pagination bounds: `page` clamped to `>= 1`, `perPage` defaults to 12.
 - Total pages calculated safely: `Math.max(1, Math.ceil(total / perPage))`.
-- Quantity steppers in `ProductDetailView` enforce minimum bounds (`>= 1`) and clamp against available stock.
+- The buyer accepts only whole quantities from 1 through 2,147,483,647 and checks the selected SKU's stock policy; invalid input is shown as invalid, not clamped into a different purchase.
 
 ### 2. Branch Completeness & Anti-Swallowing
 - `fetchStorefrontProducts`, `fetchStorefrontProduct`, `fetchStorefrontCatalogFacets`, and `fetchCatalogSearchOptions` inspect `response.errors?.length` and propagate typed domain errors instead of masking failures with empty data envelopes.
 
 ### 3. State Transition Integrity
 - Variant switching in `ProductDetailView` re-evaluates active price, compare-at amounts, inventory availability, and image gallery.
-- `isAdding` state protects cart submissions against double-click race conditions.
+- The Product buyer consults the Cart provider's `enabled`, loading, mutation and uncertainty state before enabling or starting an add. Capability changes invalidate its quote scope; Cart independently fences asynchronous writes.
 
 ### 4. Side-Effect Completeness
-- Cart item addition opens the cart drawer upon success and resets visual confirmation timers.
+- An explicitly confirmed, successful Cart add opens the drawer; an unconfirmed write is not reported as success. The landing handoff only navigates to Product and performs no Cart mutation.
 - Search filter updates leverage React 19 `useTransition` for non-blocking concurrent URL transitions.
 
 ### 5. Calculation & Algorithmic Correctness
-- Prices are formatted as exact decimal strings without JavaScript IEEE 754 floating-point coercion (`toFixed`).
+- The Product buyer displays the owner's decimal price strings without JavaScript money arithmetic. Cart and checkout have separate presentation limitations documented by their owner.
 - Boolean attributes are localized via vocabulary mapping (`true` -> `Yes`/`Да`, `false` -> `No`/`Нет`).
 - Attribute filter toggling preserves stable element order across repeated modifications.
 
@@ -106,16 +106,15 @@
 
 ## 5. Verification & Testing
 
-- **Contract Unit Tests**:
-  - `apps/next-frontend/packages/rustok-product/src/catalog/pricing.test.mjs` (4 tests)
-  - `apps/next-frontend/packages/rustok-product/src/product-frontend.test.mjs` (3 tests)
-  - Combined suite: 7/7 passed.
+- **Contract Unit Tests**: `apps/next-frontend/packages/rustok-product/src/catalog/pricing.test.mjs` and `src/product-frontend.test.mjs`.
 - **Execution Command**:
   ```bash
   npm --prefix apps/next-frontend run test:product
   ```
+- **Buyer and Cart unit contracts**: `npm --prefix apps/next-frontend run test:storefront-buyer`.
+- **Targeted React/browser harness**: `npm --prefix apps/next-frontend run test:e2e:fly` exercises the Product buyer, Cart provider and landing handoff with fake router, translations and GraphQL; it is not a live host or checkout test.
 - **Type Checking**:
   ```bash
-  npm run typecheck:next-frontend
+  npm --prefix apps/next-frontend run typecheck
   ```
 

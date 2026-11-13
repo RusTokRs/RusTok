@@ -219,6 +219,12 @@ fn apply_form(
     providers: Option<&dyn FormProviderEndpointResolver>,
 ) {
     component.tag_name = Some("form".to_string());
+    // HTML attribute names are case-insensitive. Remove every authored spelling before
+    // installing the form's provider identity, otherwise `ID` and `id` render as two
+    // competing attributes and the browser may keep the discarded authored value.
+    component
+        .attributes
+        .retain(|name, _| !name.eq_ignore_ascii_case("id"));
     component
         .attributes
         .insert("id".to_string(), Value::String(form.id.clone()));

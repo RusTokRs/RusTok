@@ -42,22 +42,24 @@ fn action_runtime_dispatches_bubbling_fly_action_events() {
 fn action_runtime_keeps_aria_state_in_sync_for_toggles() {
     assert_contains("element.setAttribute(\"aria-expanded\", willShow ? \"true\" : \"false\")");
     assert_contains("target.setAttribute(\"aria-hidden\", willShow ? \"false\" : \"true\")");
-    assert_contains("target.hidden = !willShow");
+    assert_contains("setVisible(target, willShow)");
+    assert_contains("element.hidden = true");
+    assert_contains("element.hidden = false");
 }
 
 #[test]
 fn action_runtime_handles_tab_switching_and_aria_selected() {
     assert_contains("switchTab");
     assert_contains("tab.setAttribute(\"aria-selected\", isCurrent ? \"true\" : \"false\")");
-    assert_contains("tab.classList.add(\"is-active\")");
-    assert_contains("panel.hidden = !isTarget");
+    assert_contains("tab.classList.toggle(\"is-active\", isCurrent)");
+    assert_contains("setVisible(panel, isTarget)");
     assert_contains("panel.setAttribute(\"aria-hidden\", isTarget ? \"false\" : \"true\")");
 }
 
 #[test]
 fn action_runtime_handles_accordion_toggling_and_exclusive_mode() {
     assert_contains("toggleAccordion");
-    assert_contains("action.exclusive !== false");
+    assert_contains("action.exclusive === true");
     assert_contains("element.setAttribute(\"aria-expanded\", willExpand ? \"true\" : \"false\")");
     assert_contains("otherTrigger.setAttribute(\"aria-expanded\", \"false\")");
 }
@@ -91,6 +93,22 @@ fn runtime_implements_allow_listed_animations_without_author_css() {
 
 #[test]
 fn runtime_finds_targets_in_published_and_instrumented_renders() {
-    assert_contains("root.getElementById(targetId)");
-    assert_contains("[data-fly-component-id=\"");
+    assert_contains("data-fly-component-id");
+    assert_contains("data-fly-style-id");
+    assert_contains("data-fly-target-id");
+    assert_contains("candidate.getAttribute(attribute) === id");
+    assert_contains("candidate.closest(PAGE_ROOT)");
+}
+
+#[test]
+fn action_groups_and_swipes_respect_landing_boundaries() {
+    assert_contains("function belongsToPage(element, root)");
+    assert_contains("root.contains(element) && pageRoot(element) === root");
+    assert_contains("closestInPage(element, SLIDER_ROOT, pageRoot(element))");
+    assert_contains("!belongsToPage(otherTrigger, root)");
+    assert_contains("belongsToPage(tab, root) && tabOwner(tab, root) === tablist");
+    assert_contains("hasForeignTablist(scope, tablist, panels, root)");
+    assert_contains("!parentPanel.contains(tablist)");
+    assert_contains("documentRef.addEventListener(\"touchcancel\", cancelTouch");
+    assert_contains("!belongsToPage(touchSlider, touchPageRoot)");
 }

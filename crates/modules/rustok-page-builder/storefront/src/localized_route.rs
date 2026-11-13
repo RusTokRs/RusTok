@@ -1,3 +1,4 @@
+use crate::LandingBridgeFeedback;
 use fly::{
     GrapesJsCodec, LocalizedPageRouteResolution, RenderPolicy, RuntimeRenderResult,
     render_page_with_runtime_context_with_providers, resolve_localized_page_route,
@@ -84,8 +85,12 @@ pub fn LocalizedPageBuilderStorefront(
             let canonical_redirect = output.route.canonical_redirect_needed();
             let matched_locale = output.route.matched_locale.unwrap_or_default();
             let canonical_slug = output.route.canonical_slug;
-            let scoped_css = crate::scope_landing_css(&page.css, crate::LANDING_SCOPE_SELECTOR);
+            let scoped_css = crate::storefront_scoped_css(&page.css);
             let html = page.html;
+            let has_actions = html.contains("data-fly-action");
+            let style_nonce = crate::storefront_csp_nonce();
+            let runtime_nonce = style_nonce.clone();
+            let bridge_nonce = style_nonce.clone();
             view! {
                 <section
                     class=class
@@ -98,8 +103,13 @@ pub fn LocalizedPageBuilderStorefront(
                     data-runtime-diagnostics=diagnostic_count
                     data-repeated-nodes=repeated_nodes
                 >
-                    <style data-fly-project-styles="true">{scoped_css}</style>
+                    <style data-fly-project-styles="true" nonce=style_nonce>{scoped_css}</style>
                     <div data-fly-page-body="true" inner_html=html></div>
+                    <LandingBridgeFeedback />
+                    {has_actions.then(|| view! {
+                        <script data-fly-actions="true" nonce=runtime_nonce inner_html=fly_browser::FLY_ACTIONS_JS></script>
+                    })}
+                    <script data-fly-storefront-bridge="true" nonce=bridge_nonce inner_html=crate::FLY_STOREFRONT_BRIDGE_JS></script>
                 </section>
             }
             .into_any()

@@ -5,7 +5,7 @@
 ## Responsibilities
 
 - Render published Page Builder landing pages directly via SSR without an `<iframe>`.
-- Provide an Islands Architecture bridge (`FlyActionBridge`) that listens for `fly:action` CustomEvents dispatched by interactive elements and hooks into platform capabilities (e.g. `@rustok/cart-frontend` `addItem` / `openCart`, Next.js client-side link interception).
+- Provide an Islands Architecture bridge (`FlyActionBridge`) that confines `fly:action` events to their landing, requests Cart controls, and hands purchases to Product for SKU validation, pricing and confirmation.
 - Read a published page together with its published landing in one GraphQL request (`fetchPublishedPage`: id, status, locale, SEO fields and `landing { locale html css artifactHash }`).
 
 ## Architecture & Rendering Model
@@ -26,15 +26,33 @@ Rather than isolating the public storefront within a sandboxed `<iframe>`, `@rus
 
 2. **Client Island (`FlyActionBridge` + canonical `fly-actions.js`):**
    - Side-effect imports `components/fly-actions.js` — a byte-exact copy of the canonical runtime asset the Rust storefront inlines (`crates/ui/fly/browser/assets/fly-actions.js`); it self-starts idempotently (SSR-safe) and exposes `globalThis.FlyActions`.
-   - Natively handles DOM actions: `toggle_visibility`, `switch_tab`, `toggle_accordion`, `switch_slide` (incl. touch/swipe), `scroll_to`, `animate`.
-   - Bridges `emit_event` and `provider_action` events (`add_to_cart`, `buy_now`, `navigate`) to React context and Next.js router.
-   - Intercepts internal same-origin link clicks for SPA client routing.
+   - Natively handles DOM actions: `toggle_visibility`, `switch_tab`, `toggle_accordion`, `switch_slide` (incl. touch/swipe), `scroll_to`, `animate`. Targets and group traversal stay within the nearest landing, including when the host or another landing nests a group.
+   - Handles host `emit_event` actions only; provider actions stay with their provider. Cart open/close/toggle use the actual Cart capability; a disabled Cart reports localized feedback and its count is unknown, not zero. Handler and counter updates occur in a layout effect so they reflect a committed capability change before subsequent host layout effects.
+   - `add_to_cart`, `cart:add` and `buy_now` navigate to the Product buyer rather than mutating Cart from unpriced landing data. Hash targets stay inside their landing, and safe root-relative links use Next client routing.
 
 - `PageBuilderContent` — React Component rendering scoped HTML + CSS + client action bridge.
 - `FlyActionBridge` — Client Component handling interactive actions, cart integration, and dynamic island sync.
 - `scopeLandingCss` — Utility wrapping styles with `@scope (.fly-page-container)` and remapping root selectors.
 - `fly-actions.js` — Vendored byte-exact copy of the canonical action runtime asset (`crates/ui/fly/browser/assets/fly-actions.js`); imported for side effects only, typed by the sibling `fly-actions.d.ts` (`tsc` resolves `.js` → `.d.ts`; `allowJs` stays `false`). Never edit the copy by hand — re-copy it from the crate and keep `npm run verify:fly-actions-parity` green.
 - `fetchPublishedPage` — One GraphQL read of the published page and its landing; returns `null` when no published page matches the slug and throws on any GraphQL error. `PageDetail`, `PageTranslation` and `PublishedLanding` are its types.
+
+### Shared purchase handoff
+
+A landing `emit_event` for `add_to_cart`, `cart:add` or `buy_now` supplies a non-nil UUID
+`variantId`, optional positive i32 `quantity` (default 1 only if omitted), and a same-origin,
+root-relative `buyerHref` in the canonical shape `/[locale]/products/[handle]` or
+`/products/[handle]`. Example:
+
+```json
+{"buyerHref":"/ru/products/cup?currency=AED","variantId":"11111111-1111-4111-8111-111111111111","quantity":2}
+```
+
+The Next host passes this to its Product page with `variant_id` and `quantity`; Leptos maps the
+same payload to its `/[locale]/modules/products?handle=…` route. Duplicate query keys or supplied
+`handle`, `variant_id`, `quantity`, `cart_id` or `axis.*` are refused. Product validates the SKU
+and price context and asks for confirmation. A landing is not an authoritative price quote, and
+the bridge does not call `addItem` or infer a locale, currency or product variant. See the
+[Leptos bridge contract](../../../../crates/modules/rustok-page-builder/storefront/README.md#purchase-and-cart-bridge).
 
 ## Caching
 
@@ -48,7 +66,7 @@ The storefront renders published content only and holds no author credential, so
 
 ## Storefront Parity
 
-Both storefronts render the published landing and nothing else, and both receive it in the same shape (`locale`, `html`, `css`, `artifactHash`): this package and the headless Leptos build from `pageBySlug.landing`, the Leptos monolith build from its server adapter, which calls the same artifact owner. For a published page without a landing, the Leptos storefront shows an empty-state notice inside its page card, while this package answers 404.
+Both storefronts render the published landing and nothing else, and both receive it in the same shape (`locale`, `html`, `css`, `artifactHash`): this package and the headless Leptos build from `pageBySlug.landing`, the Leptos monolith build from its server adapter, which calls the same artifact owner. The canonical Leptos host route decides `not_found` for a published page without a landing, as Next does; the separately embedded Leptos page card can still render an empty-state notice.
 
 `scopeLandingCss` has a Rust twin, `scope_landing_css` in `crates/modules/rustok-page-builder/storefront/src/css_scope.rs`, used by the Leptos storefront. Both must return the same text for the same stylesheet and selector. The shared vectors live in `crates/modules/rustok-page-builder/contracts/landing-css-scope-parity.json` and are asserted by `src/pages-frontend.test.mjs` and by the Rust unit tests; change the two implementations together and add a vector for every behaviour change. `apps/next-frontend/tests/e2e/landing-css-scope.spec.ts` gives the same vectors and a list of unbalanced and hostile stylesheets to a browser: for each one the CSS object model must hold exactly one `@scope` rule, the `<style>` element must hold all of the text, and a host element outside the landing must keep its style.
 
@@ -58,5 +76,7 @@ Both storefronts render the published landing and nothing else, and both receive
 - **At-rules that define document-wide names are not confined.** `@keyframes`, `@font-face`, `@property` and similar keep their names global where a browser accepts them inside `@scope`.
 - **No channel scoping.** The page request carries the tenant and the locale; the Next storefront has no channel selection, so the server applies its default channel resolution to both the page and its landing.
 - **Landing markup is injected as received.** The package trusts the sanitized landing markup and adds no second sanitization pass before `dangerouslySetInnerHTML`.
+- **Strict Next CSP is not wired here.** `PageBuilderContent` emits an inline `<style>` and wrapper style attributes without a request nonce. A deployment enforcing a nonce-only style policy needs host integration and real browser verification; the synthetic nonce test exercises the Leptos asset contract, not this Next surface.
 - **Every page view costs one GraphQL request.** The Next storefront keeps no cache of its own; the server answers the landing part of that request from the Pages cache. The page record (status, translation, channel list) is read from the database on every request.
+- **Mounted acceptance remains open.** `npm --prefix apps/next-frontend run test:e2e:fly` exercises the shipped browser assets and real React bridge, Product buyer and Cart components with fake router/translation/GraphQL boundaries, not a deployed Next host, live Product/Pricing services, or full accessibility/CSP/navigation behavior. It requires Playwright's Chromium (`npm --prefix apps/next-frontend run test:e2e:install`) or `PLAYWRIGHT_CHROMIUM_EXECUTABLE`. The Leptos Cart event consumer and the Leptos Product buyer's host-capability guard remain unwired.
 

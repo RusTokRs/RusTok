@@ -166,8 +166,15 @@ test("client adapter fences auth before IO, persists uncertainty first and retai
     "localStorage.setItem(current.storageKey, active.id)",
     received,
   );
-  const fenced = add.indexOf("if (!scopeCurrent()) return false", stored);
-  assert.ok(received >= 0 && stored > received && fenced > stored);
+  const fenced = add.indexOf("if (!scopeCurrent()) {", stored);
+  const nextBranch = add.indexOf("if (!cartMatchesPricingExpectation(active, expectation))", fenced);
+  const addRequest = add.indexOf("await addStorefrontCartLineItem(", stored);
+  assert.ok(received >= 0 && stored > received && fenced > stored && nextBranch > fenced && addRequest > nextBranch);
+  assert.ok(add.slice(fenced, nextBranch).includes("return false;"));
   assert.ok(source.includes("liveAuthCheck.current()"));
-  assert.ok(source.includes("marker !== null && !storedId"));
+  const restore = source.slice(source.indexOf("async function restore()"), source.indexOf("void restore();"));
+  const markerCheck = restore.indexOf("if (marker !== null)");
+  const read = restore.indexOf("fetchStorefrontCart(");
+  assert.ok(markerCheck >= 0 && read > markerCheck);
+  assert.ok(restore.slice(markerCheck, read).includes("uncertain = true;"));
 });

@@ -8,7 +8,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -288,9 +288,22 @@ pub fn compose_document_html(head: &PageHead, css: &str, body_html: &str) -> Str
 /// name and must not guess one.
 pub fn document_html_stylesheet(document_html: &str) -> Option<&str> {
     let after_open = document_html.strip_prefix(DOCUMENT_ENVELOPE_OPEN)?;
-    let style_at = after_open.find(DOCUMENT_STYLE_OPEN)? + DOCUMENT_STYLE_OPEN.len();
-    let rest = &after_open[style_at..];
+    let style_open = after_open.find(DOCUMENT_STYLE_OPEN)?;
+    // A style in the body is not the envelope's head stylesheet. Head data emitted by
+    // PageHead cannot contain a literal closing head tag, so reject premature termination.
+    if after_open.as_bytes()[..style_open]
+        .windows(b"</head".len())
+        .any(|window| window.eq_ignore_ascii_case(b"</head"))
+    {
+        return None;
+    }
+    let rest = &after_open[style_open + DOCUMENT_STYLE_OPEN.len()..];
     let close = rest.find("</style>")?;
+    if !rest[close..].starts_with("</style></head><body>")
+        || !document_html.ends_with("</body></html>")
+    {
+        return None;
+    }
     Some(&rest[..close])
 }
 
@@ -309,6 +322,7 @@ pub fn document_html_stylesheet(document_html: &str) -> Option<&str> {
 ///
 /// Returns `None` for markup that is not this envelope. The caller then embeds it unchanged.
 pub fn document_html_with_style_nonce(document_html: &str, nonce: &str) -> Option<String> {
+    document_html_stylesheet(document_html)?;
     let after_open = document_html.strip_prefix(DOCUMENT_ENVELOPE_OPEN)?;
     let style_at = DOCUMENT_ENVELOPE_OPEN.len() + after_open.find(DOCUMENT_STYLE_OPEN)?;
     // `<style` without the closing `>`: the attribute is written between the two.
@@ -367,12 +381,11 @@ pub fn render_page_with_rich_text(
         .component
         .as_ref()
         .ok_or_else(|| FlyError::MissingPageRoot(page_index.to_string()))?;
-    // Components targeted by toggle/scroll/animate actions must be addressable in the
-    // published DOM. Instrumentation attributes are off in storefront renders, so targeted
-    // components additionally get a plain `id` attribute (see `render_component`).
-    let action_targets = action_target_ids(document);
+    // Action targets get an unforgeable hook. A plain HTML id is added only when it would not
+    // collide with an authored id or the HTML id a form will receive at materialization.
+    let identities = RenderIdentities::new(root, action_target_ids(document));
     let mut html = String::new();
-    render_node(root, None, 0, policy, rich_text, &action_targets, &mut html);
+    render_node(root, None, 0, policy, rich_text, &identities, &mut html);
     let metadata = PageMetadata::from_page(page);
     let head = PageHead::from_metadata(&metadata);
     let css = if policy.emit_style_hooks {
@@ -475,24 +488,55 @@ fn collect_action_targets(node: &ComponentNode, targets: &mut std::collections::
     }
 }
 
+struct RenderIdentities {
+    action_targets: BTreeSet<String>,
+    dom_owners: BTreeMap<String, usize>,
+}
+
+impl RenderIdentities {
+    fn new(root: &ComponentNode, action_targets: BTreeSet<String>) -> Self {
+        let mut owners = Vec::new();
+        root.collect_form_dom_owners(&mut owners);
+        let mut dom_owners = BTreeMap::new();
+        for (form, dom) in owners {
+            // A form may explicitly carry its own form id; that is still one owner.
+            for id in form.into_iter().chain(dom).collect::<BTreeSet<_>>() {
+                *dom_owners.entry(id).or_insert(0) += 1;
+            }
+        }
+        Self {
+            action_targets,
+            dom_owners,
+        }
+    }
+
+    fn id_available_to(&self, component: &ComponentObject, id: &str) -> bool {
+        let owned = component
+            .attributes
+            .iter()
+            .any(|(name, value)| name.eq_ignore_ascii_case("id") && value.as_str() == Some(id))
+            || component
+                .extensions
+                .get(crate::FLY_FORM_FIELD)
+                .and_then(|form| form.get("id"))
+                .and_then(Value::as_str)
+                == Some(id);
+        self.dom_owners.get(id).copied().unwrap_or(0) <= usize::from(owned)
+    }
+}
+
 fn render_node(
     node: &ComponentNode,
     parent_id: Option<&str>,
     index: usize,
     policy: &RenderPolicy,
     rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
-    action_targets: &std::collections::BTreeSet<String>,
+    identities: &RenderIdentities,
     output: &mut String,
 ) {
     match node {
         ComponentNode::Object(component) => render_component(
-            component,
-            parent_id,
-            index,
-            policy,
-            rich_text,
-            action_targets,
-            output,
+            component, parent_id, index, policy, rich_text, identities, output,
         ),
         ComponentNode::Opaque(value) if policy.include_opaque_text_nodes => {
             render_opaque(value, output)
@@ -507,19 +551,13 @@ fn render_component(
     index: usize,
     policy: &RenderPolicy,
     rich_text: Option<&dyn crate::RichTextHtmlRenderer>,
-    action_targets: &std::collections::BTreeSet<String>,
+    identities: &RenderIdentities,
     output: &mut String,
 ) {
     let component_id = component.id.as_deref();
     if let Some(raw_embed) = component.extensions.get(crate::FLY_EMBED_FIELD) {
         render_embed(
-            component,
-            raw_embed,
-            parent_id,
-            index,
-            policy,
-            action_targets,
-            output,
+            component, raw_embed, parent_id, index, policy, identities, output,
         );
         return;
     }
@@ -542,23 +580,27 @@ fn render_component(
             write_attribute(output, "data-fly-parent-id", parent_id);
         }
     }
-    // Action targets get a real `id` so the published-page runtime can find them without
-    // editor instrumentation (which storefront renders disable). An author-supplied `id`
-    // attribute always wins; this only fills the gap.
+    // Keep the component identity addressable even when the author has supplied a different
+    // HTML id and both editor instrumentation and style hooks are disabled. The real HTML id
+    // still belongs to the author; the runtime-owned hook cannot be forged by an attribute.
     if let Some(component_id) = component_id
-        && action_targets.contains(component_id)
-        && !component
+        && identities.action_targets.contains(component_id)
+    {
+        write_attribute(output, "data-fly-target-id", component_id);
+        if !component
             .attributes
             .keys()
             .any(|name| name.eq_ignore_ascii_case("id"))
-    {
-        write_attribute(output, "id", component_id);
+            && identities.id_available_to(component, component_id)
+        {
+            write_attribute(output, "id", component_id);
+        }
     }
 
     for (name, value) in &component.attributes {
         let name = name.to_ascii_lowercase();
         if !safe_attribute_name(&name)
-            || renderer_manages_attribute(&name, policy)
+            || renderer_manages_attribute(&name)
             || matches!(
                 name.as_str(),
                 "style" | "srcdoc" | "xlink:href" | "ping" | "background"
@@ -642,7 +684,7 @@ fn render_component(
                 child_index,
                 policy,
                 rich_text,
-                action_targets,
+                identities,
                 output,
             );
         }
@@ -661,7 +703,7 @@ fn render_embed(
     parent_id: Option<&str>,
     index: usize,
     policy: &RenderPolicy,
-    action_targets: &std::collections::BTreeSet<String>,
+    identities: &RenderIdentities,
     output: &mut String,
 ) {
     output.push_str("<div");
@@ -680,9 +722,12 @@ fn render_embed(
         }
     }
     if let Some(component_id) = component.id.as_deref()
-        && action_targets.contains(component_id)
+        && identities.action_targets.contains(component_id)
     {
-        write_attribute(output, "id", component_id);
+        write_attribute(output, "data-fly-target-id", component_id);
+        if identities.id_available_to(component, component_id) {
+            write_attribute(output, "id", component_id);
+        }
     }
     write_attribute(output, "class", "fly-embed");
     match crate::decode_embed_spec(raw_spec) {
@@ -965,13 +1010,17 @@ fn safe_tag(component: &ComponentObject) -> &'static str {
     }
 }
 
-fn renderer_manages_attribute(name: &str, policy: &RenderPolicy) -> bool {
-    (policy.emit_style_hooks && name == "data-fly-style-id")
-        || (policy.instrument_components
-            && matches!(
-                name,
-                "data-fly-component-id" | "data-fly-index" | "data-fly-parent-id"
-            ))
+fn renderer_manages_attribute(name: &str) -> bool {
+    // These hooks are runtime identity, never author-controlled attributes. Reserve them even
+    // in policies that do not emit them, otherwise an authored hook can impersonate a target.
+    matches!(
+        name,
+        "data-fly-target-id"
+            | "data-fly-style-id"
+            | "data-fly-component-id"
+            | "data-fly-index"
+            | "data-fly-parent-id"
+    )
 }
 
 fn safe_attribute_name(name: &str) -> bool {
@@ -1408,6 +1457,77 @@ mod tests {
             "test must run without instrumentation: {}",
             page.html
         );
+    }
+
+    #[test]
+    fn action_target_does_not_duplicate_another_elements_html_or_form_id() {
+        for other in [
+            json!({"id": "other", "type": "section", "attributes": {"id": "panel"}}),
+            json!({"id": "form", "type": "form", "flyForm": {"id": "panel"}}),
+        ] {
+            let document = GrapesJsCodec::decode_value(json!({
+                "pages": [{"component": {"id": "root", "type": "wrapper", "components": [
+                    {"id": "trigger", "type": "button", "flyAction": {"kind": "toggle_visibility", "target_id": "panel"}},
+                    {"id": "panel", "type": "section"}, other
+                ]}}]
+            })).unwrap();
+            // Form IDs materialize to HTML ids before public rendering.
+            let materialized = crate::materialize_component_actions(&document, &json!({}));
+            let page = render_page(
+                &materialized.document,
+                &PageSelection::First,
+                &RenderPolicy::default(),
+            )
+            .unwrap();
+            assert_eq!(
+                page.html.matches(" id=\"panel\"").count(),
+                1,
+                "{}",
+                page.html
+            );
+            assert!(
+                page.html.contains("data-fly-target-id=\"panel\""),
+                "{}",
+                page.html
+            );
+        }
+    }
+
+    #[test]
+    fn action_target_hook_survives_an_authored_id_without_style_hooks_or_instrumentation() {
+        let document = GrapesJsCodec::decode_value(json!({
+            "pages": [{"component": {
+                "id": "root", "type": "wrapper", "components": [
+                    {"id": "trigger", "type": "button",
+                     "flyAction": {"kind": "toggle_visibility", "target_id": "panel"}},
+                    {"id": "panel", "type": "section",
+                     "attributes": {"id": "authored-id", "data-fly-target-id": "forged"}},
+                    {"id": "plain", "type": "section",
+                     "attributes": {"data-fly-target-id": "panel", "data-fly-style-id": "spoofed", "data-fly-component-id": "spoofed"}}
+                ]
+            }}]
+        }))
+        .expect("document");
+        let page = render_page(
+            &document,
+            &PageSelection::First,
+            &RenderPolicy {
+                instrument_components: false,
+                emit_style_hooks: false,
+                ..RenderPolicy::default()
+            },
+        )
+        .expect("rendered");
+        assert!(page.html.contains("id=\"authored-id\""), "{}", page.html);
+        assert!(
+            page.html.contains("data-fly-target-id=\"panel\""),
+            "{}",
+            page.html
+        );
+        assert_eq!(page.html.matches("data-fly-target-id").count(), 1);
+        assert!(!page.html.contains("forged"));
+        assert!(!page.html.contains("data-fly-style-id"));
+        assert!(!page.html.contains("data-fly-component-id"));
     }
 
     #[test]
@@ -2084,7 +2204,10 @@ mod tests {
         let read_back = document_html_stylesheet(&html).expect("envelope");
         assert_ne!(read_back, css);
         assert!(read_back.contains("\\00003c "), "{read_back}");
-        assert!(html.contains(&format!("<style>{read_back}</style>")), "{html}");
+        assert!(
+            html.contains(&format!("<style>{read_back}</style>")),
+            "{html}"
+        );
     }
 
     #[test]
@@ -2094,8 +2217,16 @@ mod tests {
             "<html><head><style>a{b:c}</style></head><body></body></html>".to_string(),
             format!("{DOCUMENT_ENVELOPE_OPEN}</head><body></body></html>"),
             format!("{DOCUMENT_ENVELOPE_OPEN}<style>a{{b:c}}</style></head>"),
+            format!(
+                "{DOCUMENT_ENVELOPE_OPEN}</HEAD ><body><style>a{{b:c}}</style></head><body></body></html>"
+            ),
         ] {
             assert_eq!(document_html_stylesheet(&markup), None, "{markup}");
+            assert_eq!(
+                document_html_with_style_nonce(&markup, "nonce"),
+                None,
+                "{markup}"
+            );
         }
     }
 

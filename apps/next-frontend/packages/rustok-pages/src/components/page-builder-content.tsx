@@ -35,6 +35,7 @@ export function PageBuilderContent({
       {scopedCss ? <style dangerouslySetInnerHTML={{ __html: scopedCss }} /> : null}
       <div
         className="fly-page-body"
+        data-fly-page-body="true"
         dangerouslySetInnerHTML={{ __html: html }}
       />
       <FlyActionBridge />

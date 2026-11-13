@@ -75,7 +75,8 @@ compatibility or drop migration is retained.
 - `rustok-content` supplies shared content status and locale helpers.
 - `rustok-page-builder` supplies capability contracts and rollout policy.
 - `fly` supplies the current project model, validation and deterministic
-  rendering.
+  rendering. Starter instantiation handles the fallible `clone_as_page` identity remap: an
+  ambiguous starter returns a validation error rather than a partially remapped page.
 - `rustok-channel` supplies channel module gating; Pages owns page-level channel
   visibility.
 - `rustok-api` supplies tenant/auth/request contracts.

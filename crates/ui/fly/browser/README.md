@@ -13,6 +13,13 @@ SSR-first browser adapter assets and protocol contracts for Fly editors.
   selection, toolbar intents, and route view state such as the previewed viewport. The
   attributes are a two-sided contract with the views that render them; see
   [the decision](../../../../DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md).
+- Provide `FLY_ACTIONS_JS` for published actions. Target resolution and tab, accordion and slider
+  group traversal are confined to the nearest landing body (or standalone document body), with
+  renderer-owned hooks preferred to authored IDs. Tab panels may sit outside a nested tablist
+  header; discovery stops at landing, explicit group, enclosing panel or competing-group
+  boundaries, and a missing target leaves selection unchanged. Clicks and swipes cannot inherit a
+  group from the host or change a nested landing. It emits host events but does not implement
+  Cart, Product or Pricing rules.
 
 ## Interactions
 

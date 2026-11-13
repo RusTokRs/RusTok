@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use axum::http::StatusCode;
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::Response;
 use rustok_forum_storefront::{
     StorefrontForumCategoryRouteDisposition, StorefrontForumCategoryRouteResolution,
 };
@@ -9,7 +9,10 @@ use rustok_web::CspNonce;
 
 use crate::shared::context::seo_page_context::fetch_seo_page_context;
 
-use super::{private_permanent_redirect, private_status_response, render_module_page_with_nonce};
+use super::{
+    private_permanent_redirect, private_status_response, render_module_page_with_nonce,
+    storefront_html_response,
+};
 
 const FORUM_ROUTE_SEGMENT: &str = "forum";
 
@@ -72,7 +75,7 @@ pub(crate) async fn render_forum_category_route_response(
                     None
                 }
             };
-            Html(
+            storefront_html_response(
                 render_module_page_with_nonce(
                     effective_locale.as_str(),
                     FORUM_ROUTE_SEGMENT,
@@ -82,8 +85,8 @@ pub(crate) async fn render_forum_category_route_response(
                     None,
                 )
                 .await,
+                csp_nonce.is_some(),
             )
-            .into_response()
         }
     }
 }

@@ -26,6 +26,14 @@
 - delegates canonical project semantics to `fly`, presentation state to `fly-ui`, and browser/Leptos lifecycle to `fly-leptos`;
 - remaining work is tracked in the one owned backlog, `docs/modules/page-builder-backlog.md`.
 
+## Static runtime publication
+
+`compile_materialized_static_landing` materializes the reviewed runtime context and host form
+endpoints once, rejects blocking diagnostics, then validates and renders that exact lowered tree.
+The source identity retains the authoring runtime definitions, even when conditions or repeaters
+remove their original targets. Artifact snapshots are checked against the published HTML. An exact
+rebuild still checks retained hashes and fails closed if a corrected materialization changes them.
+
 ## Known Limitations
 - The browser editor now has a Site symbols panel: convert a selected component
   into a shared definition and insert references through `EditorCommand`.

@@ -93,7 +93,15 @@ function ProductBuyerInteraction({
   localePaths = {},
 }: ProductBuyerPanelProps & { initialRoute: BuyerRoute }) {
   const messages = useTranslations("Product");
+  const cartMessages = useTranslations("Cart");
   const cartState = useCart();
+  const cartCanStartPurchase =
+    cartState.enabled &&
+    !cartState.isLoading &&
+    !cartState.isUpdating &&
+    cartState.actionError !== "auth" &&
+    cartState.actionError !== "restore" &&
+    cartState.actionError !== "unconfirmed";
   const scope = useMemo(
     () => ({ product, handle, locale, tenantSlug }),
     [product, handle, locale, tenantSlug],
@@ -125,7 +133,7 @@ function ProductBuyerInteraction({
     buyerQuoteKey(product.id, selection.variant?.id ?? null, query),
     input.revision,
   ]);
-  // A Cart restore, inspection, mutation or refusal creates a new quote scope, without
+  // Cart capability, restore, projection or refusal changes create a new quote scope without
   // erasing the user's selected tuple or quantity. Only product/route scope resets the input.
   const quoteScope = useMemo(
     () => ({
@@ -133,6 +141,7 @@ function ProductBuyerInteraction({
       token,
       graphql,
       cart: cartState.cart,
+      enabled: cartState.enabled,
       loading: cartState.isLoading,
       error: cartState.actionError,
     }),
@@ -141,6 +150,7 @@ function ProductBuyerInteraction({
       token,
       graphql,
       cartState.cart,
+      cartState.enabled,
       cartState.isLoading,
       cartState.actionError,
     ],
@@ -310,6 +320,7 @@ function ProductBuyerInteraction({
     quoteScope,
     readKey,
     retry,
+    input.revision,
     query,
     quantity,
     selection.status,
@@ -325,6 +336,7 @@ function ProductBuyerInteraction({
   async function add() {
     if (
       !linkReady ||
+      !cartCanStartPurchase ||
       !view.canPurchase ||
       !selection.variant ||
       view.quantity === null ||
@@ -499,6 +511,9 @@ function ProductBuyerInteraction({
         )}
       </div>
       {linkFailed && <p role="alert">{messages("buyerLinkError")}</p>}
+      {!cartState.enabled && (
+        <p role="status">{cartMessages("disabledError")}</p>
+      )}
       {cartState.actionError && (
         <div
           role="alert"
@@ -525,14 +540,7 @@ function ProductBuyerInteraction({
       <div className="flex flex-wrap gap-2">
         <Button
           onClick={() => void add()}
-          disabled={
-            !linkReady ||
-            !view.canPurchase ||
-            cartState.isUpdating ||
-            cartState.isLoading ||
-            cartState.actionError === "restore" ||
-            cartState.actionError === "unconfirmed"
-          }
+          disabled={!linkReady || !cartCanStartPurchase || !view.canPurchase}
         >
           {cartState.isUpdating
             ? messages("buyerAdding")

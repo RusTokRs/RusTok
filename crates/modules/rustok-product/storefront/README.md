@@ -97,3 +97,9 @@ The buyer source now selects real axis tuples, binds SKU/quantity to fresh autho
 and hands exact ordinary context to Commerce/Cart. The historical pending description above is
 superseded at the source level, not by runtime certification. See the [current Product plan](../docs/implementation-plan.md#buyer-source-implementation-and-handoff-2026-10-30)
 for contracts, bounds, recovery semantics, build instructions and unexecuted release gates.
+
+**Open capability blocker:** the independently mounted Product buyer does not receive the host's
+Cart-enabled state. Its Cart controller checks auth, session and busy state, but may enable an add
+when the host considers Cart disabled. The Cart, Product and host owners must connect a reactive,
+fail-closed capability and verify scope transitions and server admission before releasing this
+purchase flow. See the [shared storefront continuation](../../../../docs/modules/page-builder-backlog.md#storefront-and-identity-continuation-2026-11-13--open).

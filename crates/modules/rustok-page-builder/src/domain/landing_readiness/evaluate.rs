@@ -28,6 +28,36 @@ pub fn evaluate_landing_readiness_with_context(
     runtime_context: Option<&Value>,
     policy: LandingReadinessPolicy,
 ) -> LandingReadinessReport {
+    evaluate_landing_readiness_impl(document, runtime_context, policy, false)
+}
+
+/// The runtime compiler has already validated and lowered this exact document. Validate and
+/// audit it as-is instead of reapplying bindings, routes or provider forms with a new context.
+pub(crate) fn evaluate_materialized_landing_readiness(
+    document: &ProjectDocument,
+    policy: LandingReadinessPolicy,
+) -> LandingReadinessReport {
+    // Authoring definitions were validated against the prepared source and have already run.
+    // Their targets can deliberately disappear after conditions/repeaters; keep the definitions
+    // in the build's source identity, but do not validate them against the lowered tree again.
+    let mut validation_document = document.clone();
+    for field in [
+        fly::FLY_RUNTIME_BINDINGS_FIELD,
+        fly::FLY_RUNTIME_CONDITIONS_FIELD,
+        fly::FLY_RUNTIME_REPEATERS_FIELD,
+    ] {
+        validation_document.project.extensions.remove(field);
+    }
+    validation_document.invalidate_caches();
+    evaluate_landing_readiness_impl(&validation_document, None, policy, true)
+}
+
+fn evaluate_landing_readiness_impl(
+    document: &ProjectDocument,
+    runtime_context: Option<&Value>,
+    policy: LandingReadinessPolicy,
+    already_materialized: bool,
+) -> LandingReadinessReport {
     let mut issues = validate_project(
         document,
         &RegistrySet::with_builtins(),
@@ -39,6 +69,7 @@ pub fn evaluate_landing_readiness_with_context(
     .collect::<Vec<_>>();
 
     let audit_document = match runtime_context {
+        _ if already_materialized => document.clone(),
         Some(context) => {
             // A publish gate may provide the exact runtime context that will be rendered. In that
             // case readiness must audit the fully materialized output, including translations,

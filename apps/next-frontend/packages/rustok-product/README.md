@@ -15,7 +15,11 @@ Next.js storefront client package for the `rustok-product` module (`crates/modul
 
 `@rustok/product-frontend` implements Fluid Frontend Architecture (FFA) principles:
 - Framework-agnostic view-model helpers in `catalog/pricing.ts`, `catalog/facets.ts`, and `catalog/specifications.ts`.
-- Direct integration with `@rustok/cart-frontend` for "Add to Cart" state management with quantity steppers and inventory limits.
+- The Product buyer validates a real SKU and quantity, obtains a correlated Pricing observation,
+  and requires a separate buyer confirmation before calling `@rustok/cart-frontend`. The add
+  control is unavailable while Cart is disabled, restoring, mutating or unconfirmed; a disabled
+  Cart is explained rather than leaving an enabled, ineffective button. A capability change
+  creates a new quote scope.
 - SEO-ready metadata generation and responsive media gallery with aspect-ratio containment.
 
 ## Verification
@@ -23,10 +27,15 @@ Next.js storefront client package for the `rustok-product` module (`crates/modul
 Run scoped tests:
 ```bash
 npm --prefix apps/next-frontend run test:product
+npm --prefix apps/next-frontend run test:storefront-buyer
 ```
 
 Run host type check:
 ```bash
-npm run typecheck:next-frontend
+npm --prefix apps/next-frontend run typecheck
 ```
+
+`npm --prefix apps/next-frontend run test:e2e:fly` includes a targeted test of the actual Product
+buyer, Cart provider and Page Builder bridge with fake routing, translations and GraphQL. It does
+not replace mounted-host, live Pricing/Cart or deployed checkout verification.
 
