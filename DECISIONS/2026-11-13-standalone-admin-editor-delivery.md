@@ -107,7 +107,14 @@ Because that mode now governs every admin page, the layout's own pages had to st
 component that can only resolve in the browser: under `Async` there is no stream left to fill a
 `Suspense` later, and a `LocalResource` is `pending()` on the server, so the dashboard, the modules
 index, the search composition and the email settings form arrived empty. They load through `Resource`
-now. The installer is the one page outside the layout — it declares no mode of its own and keeps its
+now.
+
+The email form needed more than the swap, because its fields were cells an `Effect` filled from the
+response: a `Resource` behind an `Effect` still renders an empty form, which is the ADR's second
+invariant. The form is now the resolved settings with the user's edits layered over them — a field
+shows the edit if there is one and the backend's value otherwise — so the response contains the
+form, and a field nobody touched never carries a value nobody set. The revision sent with a save is
+read from the same resolved response. The installer is the one page outside the layout — it declares no mode of its own and keeps its
 browser-side loader, because the default stream degrades there to the page's own fallback rather than
 to a server render that waits.
 

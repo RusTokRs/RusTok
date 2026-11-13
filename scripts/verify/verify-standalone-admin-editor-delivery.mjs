@@ -188,11 +188,25 @@ const adminSources = [
   "apps/admin/src/app/page_builder_contributions.rs",
 ];
 for (const file of adminSources) {
-  if (/LocalResource::new\(/.test(read(file))) {
+  const source = read(file);
+  if (/LocalResource::new\(/.test(source)) {
     failures.push(
       `${file}: creates a \`LocalResource\` inside the \`Async\` admin layout, where nothing fills ` +
         "the fallback on the server. Load this state through `Resource` so it is in the response.",
     );
+  }
+  // An `Effect` runs on a later tick and is never driven before the response. Using one to turn a
+  // resolved value into what the page renders keeps the whole page out of the HTML, which is the
+  // ADR's second invariant, so the page's data path must be the render's.
+  if (/Effect::new\(/.test(source)) {
+    const isInstaller = file.endsWith("installer.rs");
+    if (!isInstaller) {
+      failures.push(
+        `${file}: turns fetched data into rendered output with an \`Effect\`, which is not driven ` +
+          "before the response. Derive the rendered value from the resource instead, and keep only " +
+          "user edits in signals.",
+      );
+    }
   }
 }
 
