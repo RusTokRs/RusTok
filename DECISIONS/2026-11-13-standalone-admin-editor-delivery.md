@@ -118,6 +118,13 @@ read from the same resolved response. The installer is the one page outside the 
 browser-side loader, because the default stream degrades there to the page's own fallback rather than
 to a server render that waits.
 
+That scope includes every `/modules/<slug>` surface, because module admins are mounted inside the
+same layout. The first of them to move is the product attributes page
+(`rustok-product/admin/src/ui/attributes.rs`), which now resolves its directory and schemas through
+`Resource`; 66 `LocalResource` call sites remain across the module admin packages. Each is the same
+defect — a `Suspense` fallback served where the response should hold the surface — so they are worked
+through one page at a time, and the count is recorded in the backlog rather than left implicit.
+
 Module availability itself was the second half of the same defect: `EnabledModulesProvider` resolved
 the effective policy through `LocalResource` and copied the result into signals from an `Effect`. On
 the server that effect never ran, so `is_loading` stayed `true` and the module route rendered its

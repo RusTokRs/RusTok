@@ -810,6 +810,13 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           render test that asserts the workspace is in the SSR HTML and the fallback is not.
           `LocalResource` appears in 72 files across `apps/admin` and the module admin packages, so
           the rest stay where they are until a host is expected to show them.
+
+          Scope note, because the layout mode covers more than the Pages editor: the layout route
+          declares `ssr=SsrMode::Async`, so every page inside it — including every `/modules/<slug>`
+          surface — is rendered to completion with no stream left to fill a `Suspense`. A
+          `LocalResource` on any of those pages is therefore `pending()` in the response and its
+          `Suspense` fallback is what a reader gets. Module admin surfaces still on `LocalResource`: 66. The landed one is the product attributes page, which loads its directory and schemas
+          through `Resource` now; the rest are the same defect, one page at a time.
           Owner: `rustok-pages-admin`, `apps/admin`.
     - [ ] Load the editor in a browser under the policy of `apps/admin/src/app/security.rs`.
           The two Playwright suites serve their pages without a policy, and `apps/admin` does

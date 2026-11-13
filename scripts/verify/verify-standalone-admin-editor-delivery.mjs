@@ -210,6 +210,36 @@ for (const file of adminSources) {
   }
 }
 
+// Module admin surfaces are mounted at `/modules/:module_slug/*module_path`, inside the same `Async`
+// layout, so the same rule applies to them. The list is the worked set: a surface is added here when
+// it moves. `crates/modules/*/admin` still holds dozens of `LocalResource`s; they are reported by
+// count so the backlog is visible rather than silently accepted.
+const movedModuleSurfaces = [
+  {
+    file: "crates/modules/rustok-product/admin/src/ui/attributes.rs",
+    marker: "let attributes_resource = Resource::new(",
+    description: "the attributes page loads its directory and schemas during the render",
+  },
+];
+for (const surface of movedModuleSurfaces) {
+  const source = read(surface.file);
+  if (!source.includes(surface.marker)) {
+    failures.push(`${surface.file}: ${surface.description}, so it must create \`${surface.marker.slice(0, -1)}\``);
+  }
+}
+
+const remainingModuleLocalResources = (
+  read("docs/modules/page-builder-backlog.md").match(
+    /module admin surfaces still on `LocalResource`: *\n? *(\d+)/i,
+  ) ?? []
+)[1];
+if (!remainingModuleLocalResources) {
+  failures.push(
+    "docs/modules/page-builder-backlog.md: the count of module admin surfaces still on " +
+      "`LocalResource` is not recorded, so the remaining work is invisible",
+  );
+}
+
 // The rest of the workspace is not yet moved. Report it, do not fail it: the ADR moves surfaces one
 // at a time, and a gate that failed on the whole backlog would be turned off instead of worked
 // through.
