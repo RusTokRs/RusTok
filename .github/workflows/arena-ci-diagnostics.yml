@@ -1,4 +1,4 @@
-name: Arena lockfile diagnostics (temporary)
+name: Arena focused CI retest (temporary)
 
 on:
   push:
@@ -13,12 +13,38 @@ permissions:
 env:
   CARGO_TERM_COLOR: never
   CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
 
 jobs:
-  lockfile:
-    name: Diagnose and retest the Cargo lockfile
+  rust-tests:
+    name: Retest ${{ matrix.label }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Page Builder admin
+            command: cargo test --locked -p rustok-page-builder-admin --lib
+          - label: Pages admin
+            command: cargo test --locked -p rustok-pages-admin --lib
+          - label: static sanitization
+            command: |
+              cargo test --locked -p rustok-page-builder --lib -- --list > "$RUNNER_TEMP/static-list.txt"
+              for marker in \
+                'publish_sanitization::tests::sanitization_assigns_stable_ids_and_hashes_policy_bound_project' \
+                'publish_sanitization::tests::sanitization_rejects_excess_global_resources' \
+                'publish_sanitization::tests::sanitization_rejects_insecure_public_resources' \
+                'publish_sanitization::tests::sanitization_rejects_renderer_dropped_attributes_and_css' \
+                'static_publish_policy::tests::' \
+                'static_publish_resource_limits::tests::'
+              do
+                grep -F "$marker" "$RUNNER_TEMP/static-list.txt" > /dev/null
+              done
+              echo 'All static inventory markers found'
+              for filter in publish_sanitization::tests:: static_publish_policy::tests:: static_publish_resource_limits::tests::; do
+                cargo test --locked -p rustok-page-builder --lib "$filter" -- --nocapture
+              done
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -26,64 +52,96 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
           toolchain: "1.96.0"
+          components: clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           shared-key: fly-page-builder
-      - name: Resolve the workspace with a scoped Fly check
-        id: resolve
+      - name: Prepare bounded diagnostics
         shell: bash
         run: |
+          cat > "$RUNNER_TEMP/check.sh" <<'SH'
+          #!/usr/bin/env bash
           set -o pipefail
+          label="$1"
+          shift
           status=0
-          cargo check -p fly --no-default-features --lib 2>&1 | tee "$RUNNER_TEMP/resolve.log" || status=$?
-          if (( status != 0 )); then
-            python3 - <<'PY'
-          import os
-          from pathlib import Path
-          text = Path(os.environ['RUNNER_TEMP'], 'resolve.log').read_text(errors='replace')[-2800:]
-          escaped = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-          print(f'::error title=Cargo resolve diagnostics::{escaped}')
-          PY
-          fi
-          exit "$status"
-      - name: Publish the exact lockfile delta
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          git diff --no-ext-diff --binary -- Cargo.lock > "$RUNNER_TEMP/arena-lock.patch"
+          "$@" 2>&1 | tee "$RUNNER_TEMP/arena-output.log" || status=$?
+          export ARENA_LABEL="$label" ARENA_STATUS="$status"
           python3 - <<'PY'
-          import base64
-          import os
-          import zlib
+          import base64, os, re, zlib
           from pathlib import Path
-          patch = Path(os.environ['RUNNER_TEMP'], 'arena-lock.patch').read_bytes()
-          if not patch:
-              print('::error::Cargo did not update the lockfile')
-              raise SystemExit(1)
-          encoded = base64.b64encode(zlib.compress(patch, 9)).decode('ascii')
-          chunks = [encoded[i:i+3000] for i in range(0, len(encoded), 3000)]
-          if len(chunks) > 9:
-              print(f'::error::Lockfile patch is too large to transfer: {len(chunks)} chunks')
-              raise SystemExit(1)
-          for index, chunk in enumerate(chunks, 1):
-              print(f'::notice title=lockfile patch {index} of {len(chunks)}::{chunk}')
-          print(f'Lockfile delta: {len(patch)} bytes')
+          text = Path(os.environ['RUNNER_TEMP'], 'arena-output.log').read_text(errors='replace')
+          label = os.environ['ARENA_LABEL']
+          def escape(s):
+              return s.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          if os.environ['ARENA_STATUS'] == '0':
+              lines = [line for line in text.splitlines() if line.startswith('test result:') or 'All static inventory markers found' in line]
+              print(f'::notice title={label} results::{escape(chr(10).join(lines) or "Command succeeded")}')
+          else:
+              excerpt = text[-2200:]
+              print(f'::error title={label} diagnostics::{escape(excerpt)}')
+              # Preserve more than the last error without exceeding annotation message limits.
+              encoded = base64.b64encode(zlib.compress(text[-100000:].encode(), 9)).decode()
+              if len(encoded) > 24000:
+                  encoded = base64.b64encode(zlib.compress(text[-20000:].encode(), 9)).decode()
+              chunks = [encoded[i:i+3000] for i in range(0, len(encoded), 3000)]
+              if len(chunks) <= 8:
+                  for i, chunk in enumerate(chunks, 1):
+                      print(f'::notice title={label} log {i} of {len(chunks)}::{chunk}')
           PY
-      - name: Retest static sanitization inventory with the resolved lockfile
-        if: always() && steps.resolve.outcome == 'success'
+          exit "$status"
+          SH
+      - name: Run focused tests
+        shell: bash
+        env:
+          COMMAND: ${{ matrix.command }}
+          LABEL: ${{ matrix.label }}
+        run: bash "$RUNNER_TEMP/check.sh" "$LABEL" bash -euo pipefail -c "$COMMAND"
+      - name: Lint Fly browser and Page Builder integrations
+        if: ${{ success() && matrix.label == 'Pages admin' }}
+        shell: bash
+        run: |
+          bash "$RUNNER_TEMP/check.sh" 'Focused integration clippy' \
+            cargo clippy --locked -p fly-browser -p rustok-page-builder-admin -p rustok-pages -p rustok-pages-admin -p rustok-pages-storefront --lib -- -D warnings
+
+  formatting:
+    name: Retest Rust formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - name: Check focused, i18n and workspace formatting
         shell: bash
         run: |
           set -o pipefail
-          status=0
-          cargo test --locked -p rustok-page-builder --lib -- --list 2>&1 | tee "$RUNNER_TEMP/static.log" || status=$?
-          if (( status != 0 )); then
-            python3 - <<'PY'
+          overall=0
+          check_format() {
+            local label="$1"
+            shift
+            local status=0
+            "$@" > "$RUNNER_TEMP/fmt.log" 2>&1 || status=$?
+            if (( status == 0 )); then
+              echo "::notice title=$label::Passed"
+            else
+              overall=1
+              LABEL="$label" python3 - <<'PY'
           import os
           from pathlib import Path
-          text = Path(os.environ['RUNNER_TEMP'], 'static.log').read_text(errors='replace')[-2800:]
+          text = Path(os.environ['RUNNER_TEMP'], 'fmt.log').read_text(errors='replace')[:2200]
           escaped = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-          print(f'::error title=Static inventory diagnostics::{escaped}')
+          print(f'::error title={os.environ["LABEL"]}::{escaped}')
           PY
-          fi
-          exit "$status"
+            fi
+          }
+          check_format 'Focused formatting' cargo fmt -p fly -p fly-ui -p fly-web -p fly-browser -p fly-leptos -p fly-dioxus -p rustok-page-builder-admin -p rustok-pages -p rustok-pages-admin -p rustok-pages-storefront -p rustok-admin -- --check
+          check_format 'UI i18n package formatting' cargo fmt -p rustok-ui-i18n -- --check
+          check_format 'UI i18n referenced files formatting' rustfmt --edition 2024 --check apps/admin/src/i18n.rs apps/admin/src/main.rs crates/libs/rustok-api/src/locale.rs crates/modules/rustok-page-builder/src/locale.rs
+          check_format 'Media adapter formatting' rustfmt --edition 2024 --check crates/modules/rustok-media/admin/src/ui/leptos.rs
+          check_format 'Workspace formatting' cargo fmt --all -- --check
+          exit "$overall"
