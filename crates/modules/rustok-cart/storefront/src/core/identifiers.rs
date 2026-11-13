@@ -14,6 +14,11 @@ pub fn parse_cart_id(value: Option<String>) -> Result<Option<(String, Uuid)>, Ca
             let parsed = Uuid::parse_str(cart_id.as_str()).map_err(|_| {
                 CartCoreError::Validation("cart_id must be a valid UUID".to_string())
             })?;
+            if parsed.is_nil() {
+                return Err(CartCoreError::Validation(
+                    "cart_id must not be a nil UUID".to_string(),
+                ));
+            }
             Ok(Some((cart_id, parsed)))
         }
         None => Ok(None),
@@ -30,6 +35,11 @@ pub fn parse_line_item_id(value: String) -> Result<(String, Uuid), CartCoreError
 
     let parsed = Uuid::parse_str(normalized.as_str())
         .map_err(|_| CartCoreError::Validation("line_item_id must be a valid UUID".to_string()))?;
+    if parsed.is_nil() {
+        return Err(CartCoreError::Validation(
+            "line_item_id must not be a nil UUID".to_string(),
+        ));
+    }
     Ok((normalized, parsed))
 }
 

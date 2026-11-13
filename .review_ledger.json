@@ -293,9 +293,9 @@
       "category": "modules",
       "files": 67,
       "loc": 20185,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-13T23:25:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards in create_cart_with_channel, load_cart_in_tx, load_cart_for_update_in_tx; pessimistic row locking (load_cart_for_update_in_tx) for TOCTOU prevention; checked integer math (checked_mul, saturating_sub) for marketplace and line item pricing; ISO-4217 currency validation; verified with cargo check -p rustok-cart"
     },
     "crates/modules/rustok-cart/storefront": {
       "name": "storefront",
@@ -303,9 +303,9 @@
       "category": "modules",
       "files": 23,
       "loc": 4922,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-13T23:25:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID guards in parse_cart_id and parse_line_item_id, robust error mapping in native server functions, customer session resolution; verified with cargo check -p rustok-cart-storefront and cargo check -p rustok-cart-storefront --features ssr"
     },
     "crates/modules/rustok-channel": {
       "name": "rustok-channel",
