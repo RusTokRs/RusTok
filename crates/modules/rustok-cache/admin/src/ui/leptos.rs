@@ -167,7 +167,7 @@ pub fn CacheAdmin() -> impl IntoView {
                 <CardContent>
                     {
                         let lh = Arc::clone(&l_health);
-                        let health_view = health_resource.clone();
+                        let health_view = health_resource;
                         move || match health_view.get() {
                             None => view! {
                                 <div class="text-sm text-muted-foreground animate-pulse">

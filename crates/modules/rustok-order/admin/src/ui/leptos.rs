@@ -19,16 +19,21 @@ use crate::i18n::t;
 use crate::model::{OrderAdminBootstrap, OrderDetailEnvelope, OrderListItem};
 use crate::transport;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -58,14 +63,14 @@ pub fn OrderAdmin() -> impl IntoView {
     let selection = RwSignal::new(RowSelection::new());
     let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
 
-    let bootstrap = local_resource(
+    let bootstrap = loaded_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             transport::fetch_bootstrap(token_value, tenant_value).await
         },
     );
 
-    let orders = local_resource(
+    let orders = loaded_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             let bootstrap =
@@ -180,9 +185,10 @@ pub fn OrderAdmin() -> impl IntoView {
     let open_bootstrap_loading_label = bootstrap_loading_label.clone();
     let open_load_order_error_label = load_order_error_label.clone();
     let open_order_not_found_label = order_not_found_label.clone();
+    let open_order_bootstrap = bootstrap;
     let open_order = Callback::new(move |order_id: String| {
         let Some(OrderAdminBootstrap { current_tenant, .. }) =
-            bootstrap.get_untracked().and_then(Result::ok)
+            open_order_bootstrap.get_untracked().and_then(Result::ok)
         else {
             set_error.set(Some(open_bootstrap_loading_label.clone()));
             return;
@@ -250,10 +256,11 @@ pub fn OrderAdmin() -> impl IntoView {
     let mark_paid_submit_error_label = mark_paid_error_label.clone();
     let mark_paid_order_not_found_label = order_not_found_label.clone();
     let mark_paid_load_order_error_label = load_order_error_label.clone();
+    let mark_paid_bootstrap = bootstrap;
     let mark_paid_order = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
         let Some(OrderAdminBootstrap { current_tenant, me }) =
-            bootstrap.get_untracked().and_then(Result::ok)
+            mark_paid_bootstrap.get_untracked().and_then(Result::ok)
         else {
             set_error.set(Some(mark_paid_bootstrap_loading_label.clone()));
             return;
@@ -324,10 +331,11 @@ pub fn OrderAdmin() -> impl IntoView {
     let ship_submit_error_label = ship_error_label.clone();
     let ship_order_not_found_label = order_not_found_label.clone();
     let ship_load_order_error_label = load_order_error_label.clone();
+    let ship_order_bootstrap = bootstrap;
     let ship_order = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
         let Some(OrderAdminBootstrap { current_tenant, me }) =
-            bootstrap.get_untracked().and_then(Result::ok)
+            ship_order_bootstrap.get_untracked().and_then(Result::ok)
         else {
             set_error.set(Some(ship_bootstrap_loading_label.clone()));
             return;
@@ -397,10 +405,11 @@ pub fn OrderAdmin() -> impl IntoView {
     let deliver_submit_error_label = deliver_error_label.clone();
     let deliver_order_not_found_label = order_not_found_label.clone();
     let deliver_load_order_error_label = load_order_error_label.clone();
+    let deliver_order_bootstrap = bootstrap;
     let deliver_order = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
         let Some(OrderAdminBootstrap { current_tenant, me }) =
-            bootstrap.get_untracked().and_then(Result::ok)
+            deliver_order_bootstrap.get_untracked().and_then(Result::ok)
         else {
             set_error.set(Some(deliver_bootstrap_loading_label.clone()));
             return;
@@ -466,10 +475,11 @@ pub fn OrderAdmin() -> impl IntoView {
     let cancel_submit_error_label = cancel_error_label.clone();
     let cancel_order_not_found_label = order_not_found_label.clone();
     let cancel_load_order_error_label = load_order_error_label.clone();
+    let cancel_order_bootstrap = bootstrap;
     let cancel_order = Callback::new(move |ev: SubmitEvent| {
         ev.prevent_default();
         let Some(OrderAdminBootstrap { current_tenant, me }) =
-            bootstrap.get_untracked().and_then(Result::ok)
+            cancel_order_bootstrap.get_untracked().and_then(Result::ok)
         else {
             set_error.set(Some(cancel_bootstrap_loading_label.clone()));
             return;
@@ -534,9 +544,10 @@ pub fn OrderAdmin() -> impl IntoView {
     let ui_locale_for_fulfillment = ui_locale.clone();
     let ui_locale_for_actions = ui_locale.clone();
     let initial_open_order = open_order;
+    let effect_bootstrap = bootstrap;
     Effect::new(move |_| match selected_order_query.get() {
         Some(order_id) if !order_id.trim().is_empty() => {
-            if bootstrap.get().and_then(Result::ok).is_none() {
+            if effect_bootstrap.get().and_then(Result::ok).is_none() {
                 return;
             }
             initial_open_order.run(order_id);
@@ -555,15 +566,17 @@ pub fn OrderAdmin() -> impl IntoView {
         }
     });
 
+    let filtered_orders_resource = orders;
+    let loading_orders = orders;
     let filtered_orders = Memo::new(move |_| {
-        let raw = orders
+        let loaded_items = filtered_orders_resource
             .get()
             .and_then(Result::ok)
             .map(|l| l.items)
             .unwrap_or_default();
         let query = search_query.get().trim().to_lowercase();
         let current_filters = filters.get();
-        let filtered = filter_orders(&raw, &current_filters);
+        let filtered = filter_orders(&loaded_items, &current_filters);
         if query.is_empty() {
             filtered
         } else {
@@ -767,7 +780,7 @@ pub fn OrderAdmin() -> impl IntoView {
                         data=Signal::derive(move || filtered_orders.get())
                         key_fn=|item: &OrderListItem| item.id.clone()
                         cell_renderer=cell_renderer
-                        is_loading=Signal::derive(move || busy.get() || orders.get().is_none())
+                        is_loading=Signal::derive(move || busy.get() || loading_orders.get().is_none())
                         empty_message=no_orders_label.clone()
                         selection=selection
                         pagination=pagination

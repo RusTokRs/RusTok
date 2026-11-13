@@ -125,7 +125,7 @@ same layout. The product admin package leads: its attributes page
 resolve their state through `Resource` now, and the forum split, merge, rename and fork panels, the
 auth invites and security pages, the blog moderation queue, the forms inbox, the brand directory, the
 cache diagnostics card, the comments admin, the commerce admin and the customer directory followed;
-42 `LocalResource` call sites remain across the module admin packages. Each is the
+29 `LocalResource` call sites remain across the module admin packages. Each is the
 same defect — a `Suspense` fallback served where the response should hold the surface — so they are
 worked through one page at a time, and the count is recorded in the backlog rather than left
 implicit.
@@ -137,12 +137,12 @@ so the response would carry an empty form. It needs the arrangement the email se
 uses — the response resolves into a rendered value and the operator's edits are an overlay on it.
 The attribute lifecycle panel's loader returns a `LoadedScope` holding a `WriteJournal`, which is not
 serialisable and not the payload a `Resource` can carry; it needs a projection to the fields the panel
-renders, as the Pages workspace needed. The third is a shape rather than a payload: a `LocalResource`
-is `Copy` and a `Resource` is not, so a resource passed down as a prop and read through `.get()` in
-several closures does not compile after the swap — the reads have to move behind a value that is
-`Copy`, as the schema editor's category, schema and attribute views now do. None of the three is a
-reason to leave the surfaces on `LocalResource`; they are work the conversion schedules rather than a
-target it misses.
+renders, as the Pages workspace needed. The third is a type on the boundary rather than a payload: a surface that
+takes a resource as a prop declares its type, so the caller and the callee have to move together. The
+search admin's preview and analytics views and the product editor's attribute-values section both
+declared `LocalResource<…>` while their callers had already moved to `Resource<…>`; both now declare
+`Resource<…>`. None of the three is a reason to leave the surfaces on `LocalResource`; they are work
+the conversion schedules rather than a target it misses.
 
 Module availability itself was the second half of the same defect: `EnabledModulesProvider` resolved
 the effective policy through `LocalResource` and copied the result into signals from an `Effect`. On

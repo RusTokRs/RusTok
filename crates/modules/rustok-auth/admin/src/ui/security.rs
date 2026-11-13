@@ -197,7 +197,7 @@ pub fn Security() -> impl IntoView {
                     </div>
 
                     <Suspense fallback=move || view! { <div class="h-24 animate-pulse rounded-lg bg-muted" /> }>
-                        {let view_sessions = sessions.clone();
+                        {let view_sessions = sessions;
                         move || {
                             view_sessions.get().map(|res| match res {
                                 Ok(items) if items.is_empty() => view! {

@@ -161,7 +161,7 @@ pub fn UserInvites() -> impl IntoView {
             <Suspense fallback=move || {
                 view! { <div class="h-10 animate-pulse rounded-lg bg-muted"></div> }
             }>
-                {let view_invites = invites_resource.clone();
+                {let view_invites = invites_resource;
                 move || match view_invites.get() {
                     None => {
                         view! { <div class="h-10 animate-pulse rounded-lg bg-muted"></div> }

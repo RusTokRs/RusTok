@@ -176,7 +176,7 @@ pub fn ForumTopicReplyRangeAdmin() -> impl IntoView {
             <form class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]" on:submit=submit>
                 <section class="space-y-6 rounded-[1.75rem] border border-border bg-card p-6 shadow-sm">
                     <Suspense fallback=move || view! { <div class="h-20 animate-pulse rounded-2xl bg-muted"></div> }>
-                        {let view_candidates = candidates.clone();
+                        {let view_candidates = candidates;
                         move || view_candidates.get().map(|result| match result {
                             Ok(items) => {
                                 let source_items = items.clone();

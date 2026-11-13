@@ -257,7 +257,7 @@ pub fn BrandAdmin() -> impl IntoView {
     let selection = RwSignal::new(RowSelection::new());
     let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
 
-    let filtered_directory = directory.clone();
+    let filtered_directory = directory;
     let filtered_brands = Memo::new(move |_| {
         let loaded_items = filtered_directory
             .get()
@@ -287,7 +287,7 @@ pub fn BrandAdmin() -> impl IntoView {
         edit_brand.run(item);
     });
 
-    let directory_loading = directory.clone();
+    let directory_loading = directory;
     let cell_locale = locale;
     let cell_edit_brand = edit_brand;
     let cell_on_delete = on_delete.clone();
@@ -733,7 +733,7 @@ pub fn BrandAdmin() -> impl IntoView {
                         {t(Some(locale), "brand.loadingList", "Loading brands...")}
                     </div>
                 }>
-                    {let view_directory = directory.clone();
+                    {let view_directory = directory;
                     move || match view_directory.get() {
                         None => view! {
                             <div class="p-8 text-center text-muted-foreground">

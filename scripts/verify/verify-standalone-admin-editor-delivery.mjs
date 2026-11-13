@@ -334,6 +334,113 @@ for (const match of compositionLocalResources) {
   pending.push(`${compositionFile} (${match[1]})`);
 }
 
+// A surface that takes a resource as a prop declares its type. When the caller moves to `Resource`
+// and the callee still says `LocalResource`, the two do not unify and the crate does not build — and
+// the served output is wrong even before that, because the callee would read a pending local
+// resource. The declaration and the call often sit in different files, so this builds one registry
+// of declarations across the modules that moved, then checks every call site against it.
+const resourcePropFiles = [
+  "crates/modules/rustok-search/admin/src/ui/leptos.rs",
+  "crates/modules/rustok-product/admin/src/ui/leptos.rs",
+  "crates/modules/rustok-product/admin/src/ui/product_editor.rs",
+  "crates/modules/rustok-blog/admin/src/ui/leptos.rs",
+  "crates/modules/rustok-blog/admin/src/ui/leptos/page.rs",
+  "crates/modules/rustok-comments/admin/src/ui/leptos.rs",
+  "crates/modules/rustok-commerce/admin/src/ui/leptos.rs",
+];
+
+// Splits an argument list on top-level commas.
+function splitArguments(list) {
+  const parts = [];
+  let depth = 0;
+  let current = "";
+  for (const character of list) {
+    if ("([{<".includes(character)) depth += 1;
+    if (")]}>".includes(character)) depth -= 1;
+    if (character === "," && depth === 0) {
+      parts.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
+
+// Reads a balanced parenthesised list starting at the `(` at `open`.
+function readArguments(source, open) {
+  let depth = 0;
+  for (let i = open; i < source.length; i += 1) {
+    if ("([{<".includes(source[i])) depth += 1;
+    if (")]}>".includes(source[i])) {
+      depth -= 1;
+      if (depth === 0) return splitArguments(source.slice(open + 1, i));
+    }
+  }
+  return null;
+}
+
+// name -> parameter names that are declared `LocalResource<…>`, across every listed file.
+const localResourceProps = new Map();
+const sources = new Map();
+for (const file of resourcePropFiles) {
+  const source = read(file);
+  sources.set(file, source);
+  for (const match of source.matchAll(/fn\s+(\w+)\s*\(/g)) {
+    const parameters = readArguments(source, match.index + match[0].length - 1);
+    if (!parameters) continue;
+    const local = parameters
+      .map((parameter) => parameter.split(":")[0].trim())
+      .filter((_, index) => /LocalResource\s*</.test(parameters[index]))
+      .filter((name) => /^\w+$/.test(name));
+    if (local.length > 0) localResourceProps.set(match[1], local);
+  }
+}
+
+// Reports a mismatch for one call site: `attributes` is a list of `prop=value` strings.
+function checkCallSite(file, source, name, attributes, at) {
+  const props = localResourceProps.get(name);
+  if (!props) return;
+  const resourceBindings = new Set(
+    [...source.matchAll(/let\s+(\w+)\s*=\s*(?:Resource::new|loaded_resource)\(/g)].map(
+      (match) => match[1],
+    ),
+  );
+  for (const attribute of attributes) {
+    const [prop, rawValue] = attribute.split("=");
+    const value = (rawValue ?? "").trim();
+    if (!props.includes(prop.trim())) continue;
+    if (!resourceBindings.has(value)) continue;
+    const line = source.slice(0, at).split("\n").length;
+    failures.push(
+      `${file}:${line}: \`${name}\` declares \`${prop.trim()}\` as \`LocalResource<…>\` but ` +
+        `is handed \`${value}\`, a \`Resource\`; the prop and its callers move together`,
+    );
+  }
+}
+
+for (const [file, source] of sources) {
+  for (const name of localResourceProps.keys()) {
+    // Plain function calls: `name(a, b)`.
+    for (const call of source.matchAll(new RegExp(`(?<!fn\\s)\\b${name}\\s*\\(`, "g"))) {
+      const arguments_ = readArguments(source, call.index + call[0].length - 1);
+      if (!arguments_) continue;
+      checkCallSite(file, source, name, arguments_.filter((a) => a.includes("=")), call.index);
+    }
+
+    // Component calls in `view!`: `<Name prop=value prop2=value2 />`, attributes one per line.
+    const component = new RegExp(`<${name}\\b([^>]*)>`, "g");
+    for (const call of source.matchAll(component)) {
+      const attributes = call[1]
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.includes("=") && !line.startsWith("//"));
+      checkCallSite(file, source, name, attributes, call.index);
+    }
+  }
+}
+
 if (failures.length > 0) {
   console.error("Standalone admin editor delivery verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);

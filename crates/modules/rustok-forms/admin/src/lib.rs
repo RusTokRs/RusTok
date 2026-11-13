@@ -47,7 +47,7 @@ pub fn FormsAdmin() -> impl IntoView {
 
     let action_token = token;
     let action_tenant = tenant;
-    let transition_submissions = submissions.clone();
+    let transition_submissions = submissions;
     let transition = Callback::new(move |(id, state): (Uuid, String)| {
         let token = action_token.get_untracked();
         let tenant = action_tenant.get_untracked();
@@ -83,7 +83,7 @@ pub fn FormsAdmin() -> impl IntoView {
             }>
                 {
                     let empty_text = labels.empty.clone();
-                    let view_submissions = submissions.clone();
+                    let view_submissions = submissions;
                     move || {
                         let empty_text = empty_text.clone();
                         view_submissions.get().map(|result| match result {

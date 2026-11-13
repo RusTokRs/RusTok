@@ -94,8 +94,8 @@ pub fn ForumTopicSplitAdmin() -> impl IntoView {
     );
 
     // Resolved by the request: the split panel is served from an `Async` admin route, so a
-    // `LocalResource` here leaves the reader with the `Suspense` fallback. `Resource` is not
-    // `Copy`, so each reader below takes its own clone.
+    // `LocalResource` here leaves the reader with the `Suspense` fallback. Each reader below
+    // names the handle it reads, so the swap does not depend on capture order.
     let candidates = Resource::new(
         move || {
             (
@@ -128,7 +128,7 @@ pub fn ForumTopicSplitAdmin() -> impl IntoView {
         },
     );
 
-    let submit_replies = replies.clone();
+    let submit_replies = replies;
     let submit = move |event: SubmitEvent| {
         event.prevent_default();
         set_error.set(None);
@@ -201,7 +201,7 @@ pub fn ForumTopicSplitAdmin() -> impl IntoView {
             <form class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]" on:submit=submit>
                 <section class="space-y-6 rounded-[1.75rem] border border-border bg-card p-6 shadow-sm">
                     <Suspense fallback=move || view! { <div class="h-20 animate-pulse rounded-2xl bg-muted"></div> }>
-                        {let view_candidates = candidates.clone();
+                        {let view_candidates = candidates;
                         move || view_candidates.get().map(|result| match result {
                             Ok(items) => view! {
                                 <label class="block space-y-2 text-sm font-medium text-foreground">
@@ -236,7 +236,7 @@ pub fn ForumTopicSplitAdmin() -> impl IntoView {
                     <section class="space-y-3">
                         <h2 class="text-sm font-semibold text-foreground">{replies_label}</h2>
                         <Suspense fallback=move || view! { <div class="h-36 animate-pulse rounded-2xl bg-muted"></div> }>
-                            {let view_replies = replies.clone();
+                            {let view_replies = replies;
                             move || view_replies.get().map(|result| match result {
                                 Ok(page) if !page.items.is_empty() => view! {
                                     <div class="max-h-96 space-y-2 overflow-y-auto rounded-2xl border border-border p-3">

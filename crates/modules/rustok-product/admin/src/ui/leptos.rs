@@ -43,11 +43,11 @@ use crate::model::{
 };
 use crate::transport;
 
-// The loaded state below is read through `.get()` inside render closures, so the resources that
-// cross a component boundary keep their concrete type. `LocalResource` is `Copy` and `Resource` is
-// not, and the props are read in more than one closure, so changing the type here would mean
-// cloning at every read site in the children. Those surfaces are recorded in the backlog instead.
-fn loaded_resource<S, Fut, T>(
+// The resources below still load on the client. Several of them are handed to child components as
+// props, and those children read them through `.get()` in more than one closure, so the prop type
+// is part of each child's contract; the swap has to move the prop and its callers together. They
+// are recorded in the backlog rather than left implicit.
+fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
     fetcher: impl Fn(S) -> Fut + 'static,
 ) -> LocalResource<T>
@@ -264,14 +264,14 @@ fn ProductCatalogReference() -> impl IntoView {
     let effective_locale_for_attribute_values = effective_locale.clone();
     let effective_locale_for_selected_pricing = effective_locale.clone();
 
-    let bootstrap = loaded_resource(
+    let bootstrap = local_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             transport::fetch_bootstrap(token_value, tenant_value).await
         },
     );
 
-    let products = loaded_resource(
+    let products = local_resource(
         move || {
             (
                 token.get(),
@@ -297,7 +297,7 @@ fn ProductCatalogReference() -> impl IntoView {
         },
     );
 
-    let shipping_profiles = loaded_resource(
+    let shipping_profiles = local_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             let bootstrap =
@@ -310,7 +310,7 @@ fn ProductCatalogReference() -> impl IntoView {
             .await
         },
     );
-    let catalog_categories = loaded_resource(
+    let catalog_categories = local_resource(
         move || {
             (
                 token.get(),
@@ -332,7 +332,7 @@ fn ProductCatalogReference() -> impl IntoView {
             .await
         },
     );
-    let effective_form = loaded_resource(
+    let effective_form = local_resource(
         move || {
             let category_id = text_or_none(primary_category_id.get());
             let selected_product = selected.get();
@@ -366,7 +366,7 @@ fn ProductCatalogReference() -> impl IntoView {
             .await
         },
     );
-    let attribute_values = loaded_resource(
+    let attribute_values = local_resource(
         move || {
             (
                 token.get(),
@@ -403,7 +403,7 @@ fn ProductCatalogReference() -> impl IntoView {
             attribute_editor_state.update(|state| state.refresh_values(values));
         }
     });
-    let selected_pricing = loaded_resource(
+    let selected_pricing = local_resource(
         move || {
             (
                 token.get(),
@@ -2363,7 +2363,7 @@ fn ProductMediaPanel(
 pub(crate) fn ProductAttributeValuesSection(
     product_id: Option<String>,
     locale: Option<String>,
-    effective_form: LocalResource<Result<Option<ProductEffectiveForm>, String>>,
+    effective_form: Resource<Result<Option<ProductEffectiveForm>, String>>,
     editor_state: RwSignal<ProductAttributeEditorState>,
     #[prop(into)] owner_busy: Signal<bool>,
     owner_refresh_nonce: ReadSignal<u64>,
@@ -2827,8 +2827,8 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
         },
     );
 
-    // `Resource` is not `Copy`, so these views are `Signal`s over it: the closures then stay
-    // `Copy` and can be read from every place the view renders them.
+    // These views are `Signal`s so the editor reads one named handle per render site rather than
+    // threading the resource itself through a dozen closures.
     let categories = Signal::derive(move || -> Vec<CatalogCategorySummary> {
         categories_resource
             .get()

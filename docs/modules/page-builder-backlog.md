@@ -815,19 +815,22 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           declares `ssr=SsrMode::Async`, so every page inside it — including every `/modules/<slug>`
           surface — is rendered to completion with no stream left to fill a `Suspense`. A
           `LocalResource` on any of those pages is therefore `pending()` in the response and its
-          `Suspense` fallback is what a reader gets. Module admin surfaces still on `LocalResource`: 42. The product
+          `Suspense` fallback is what a reader gets. Module admin surfaces still on `LocalResource`: 29. The product
           module leads — attributes page, product grid, categories page, catalog filter controls and
           schema editor — and the forum split/merge/rename/fork panels, the auth invites and security
           pages, the blog moderation queue, the forms inbox, the brand directory, the cache diagnostics card,
-          the comments admin, the commerce admin and the customer directory followed, each resolving
-          its state through `Resource`.
+          the comments admin, the commerce admin, the customer directory, the schema editor, the
+          channel, fulfillment, index, inventory, media, messenger, order, outbox, rbac, region,
+          search and tenant admins followed, each resolving its state through `Resource`.
           The rest are the same defect, one page at a time. Three surfaces in that module are not a swap. The product editor loads
           about twenty form fields from its response, so it needs the edit-overlay treatment the email
           settings form got. The attribute lifecycle panel's loader returns a `LoadedScope` holding a
           `WriteJournal`, which is not serialisable and so is not a `Resource` payload without a
-          projection first, as the Pages workspace needed. The value panels in `ui/leptos.rs` take a
-          resource as a prop and read it through `.get()` in more than one closure; `LocalResource` is
-          `Copy` and `Resource` is not, so those props need `Clone` at every read site.
+          projection first, as the Pages workspace needed. A surface that takes a resource as a prop
+          declares its type, so the caller and the callee move together: the search admin's preview
+          and analytics views and the product editor's attribute-values section declared
+          `LocalResource<…>` after their callers had moved to `Resource<…>`, and were updated with
+          them.
           Owner: `rustok-pages-admin`, `apps/admin`.
     - [ ] Load the editor in a browser under the policy of `apps/admin/src/app/security.rs`.
           The two Playwright suites serve their pages without a policy, and `apps/admin` does

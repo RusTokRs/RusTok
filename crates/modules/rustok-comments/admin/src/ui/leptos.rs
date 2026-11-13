@@ -314,9 +314,9 @@ pub fn CommentsAdmin() -> impl IntoView {
                 </div>
             </section>
 
-            {let paging_threads = threads.clone();
-            let view_threads = threads.clone();
-            let view_detail = detail.clone();
+            {let paging_threads = threads;
+            let view_threads = threads;
+            let view_detail = detail;
             view! { <div class="grid gap-6 xl:grid-cols-[1.1fr_1.3fr]">
                 <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                     <div class="mb-4 flex items-center justify-between gap-4">

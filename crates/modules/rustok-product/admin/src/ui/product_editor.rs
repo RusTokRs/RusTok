@@ -203,17 +203,23 @@ pub fn ProductEditorPage(
     // Effective Category Form resource
     let form_locale = locale.clone();
     let form_pid = product_id.clone();
-    let effective_form_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let loc = form_locale.clone().unwrap_or_default();
-        let cat_id = primary_category_id.get();
-        let pid = form_pid.clone().filter(|_| {
-            loaded_product.get().is_some_and(|product| {
-                product.primary_category_id.as_deref() == Some(cat_id.as_str())
-            })
-        });
-        async move {
+    let effective_form_resource = Resource::new(
+        move || {
+            let cat_id = primary_category_id.get();
+            let pid = form_pid.clone().filter(|_| {
+                loaded_product.get().is_some_and(|product| {
+                    product.primary_category_id.as_deref() == Some(cat_id.as_str())
+                })
+            });
+            (
+                token.get(),
+                tenant.get(),
+                form_locale.clone().unwrap_or_default(),
+                cat_id,
+                pid,
+            )
+        },
+        move |(tok, ten, loc, cat_id, pid)| async move {
             if cat_id.is_empty() {
                 return Ok(None);
             }
@@ -231,8 +237,8 @@ pub fn ProductEditorPage(
             .await
             .map_err(|e| e.to_string())?;
             Ok::<Option<ProductEffectiveForm>, String>(form)
-        }
-    });
+        },
+    );
 
     // Load existing product if in Edit mode
     let target_id = product_id.clone();

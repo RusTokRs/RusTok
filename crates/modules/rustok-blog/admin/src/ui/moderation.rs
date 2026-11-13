@@ -132,7 +132,7 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
                         <div class="h-20 animate-pulse rounded-xl bg-muted"></div>
                     </div>
                 }>
-                    {let view_comments = comments_resource.clone();
+                    {let view_comments = comments_resource;
                     move || {
                         view_comments.get().map(|result| {
                             match result {

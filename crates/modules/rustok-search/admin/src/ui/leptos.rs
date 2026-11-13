@@ -22,16 +22,21 @@ pub struct SearchCatalogFilterOption {
     pub label: String,
 }
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -143,31 +148,31 @@ pub fn SearchAdmin(
     let (settings_feedback, set_settings_feedback) = signal(Option::<String>::None);
     let preview_query_writer = query_writer.clone();
 
-    let bootstrap = local_resource(
+    let bootstrap = loaded_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             transport::fetch_bootstrap(token_value, tenant_value).await
         },
     );
-    let lagging_documents = local_resource(
+    let lagging_documents = loaded_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             transport::fetch_lagging_documents(token_value, tenant_value, Some(25)).await
         },
     );
-    let consistency_issues = local_resource(
+    let consistency_issues = loaded_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             transport::fetch_consistency_issues(token_value, tenant_value, Some(25)).await
         },
     );
-    let search_analytics = local_resource(
+    let search_analytics = loaded_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             transport::fetch_search_analytics(token_value, tenant_value, Some(7), Some(10)).await
         },
     );
-    let filter_presets = local_resource(
+    let filter_presets = loaded_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             transport::fetch_filter_presets(token_value, tenant_value, "search_preview").await
@@ -178,8 +183,9 @@ pub fn SearchAdmin(
         set_query.set(route_query_value.get().unwrap_or_default());
     });
 
+    let settings_bootstrap = bootstrap;
     Effect::new(move |_| {
-        if let Some(Ok(bootstrap)) = bootstrap.get() {
+        if let Some(Ok(bootstrap)) = settings_bootstrap.get() {
             set_settings_active_engine.set(bootstrap.search_settings_preview.active_engine.clone());
             set_settings_fallback_engine
                 .set(bootstrap.search_settings_preview.fallback_engine.clone());
@@ -343,8 +349,9 @@ pub fn SearchAdmin(
             </header>
 
             <Suspense fallback=move || view! { <div class="h-32 animate-pulse rounded-2xl bg-muted"></div> }>
-                {move || {
-                    bootstrap.get().map(|result| match result {
+                {let view_bootstrap = bootstrap;
+                move || {
+                    view_bootstrap.get().map(|result| match result {
                         Ok(bootstrap) => {
                             if on_playground {
                                 playground_view(
@@ -832,9 +839,7 @@ fn playground_view(
     set_ranking_profile: WriteSignal<String>,
     preset_key: ReadSignal<String>,
     set_preset_key: WriteSignal<String>,
-    filter_presets: LocalResource<
-        Result<Vec<SearchFilterPresetPayload>, transport::TransportError>,
-    >,
+    filter_presets: Resource<Result<Vec<SearchFilterPresetPayload>, transport::TransportError>>,
     preview: ReadSignal<Option<SearchPreviewPayload>>,
     preview_error: ReadSignal<Option<String>>,
     busy: ReadSignal<bool>,
@@ -1019,13 +1024,10 @@ fn CatalogFilterOptions(
 fn analytics_view(
     ui_locale: Option<String>,
     diagnostics: SearchDiagnosticsPayload,
-    lagging_documents: LocalResource<
-        Result<Vec<LaggingSearchDocumentPayload>, transport::TransportError>,
-    >,
-    consistency_issues: LocalResource<
-        Result<Vec<SearchConsistencyIssuePayload>, transport::TransportError>,
-    >,
-    search_analytics: LocalResource<Result<SearchAnalyticsPayload, transport::TransportError>>,
+    lagging_documents: Resource<Result<Vec<LaggingSearchDocumentPayload>, transport::TransportError>>,
+    consistency_issues:
+        Resource<Result<Vec<SearchConsistencyIssuePayload>, transport::TransportError>>,
+    search_analytics: Resource<Result<SearchAnalyticsPayload, transport::TransportError>>,
 ) -> impl IntoView {
     let locale = ui_locale.clone();
     let locale_ref = locale.as_deref();
@@ -1779,7 +1781,7 @@ fn DictionariesView() -> impl IntoView {
         "Failed to load search dictionaries",
     );
 
-    let snapshot = local_resource(
+    let snapshot = loaded_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             transport::fetch_dictionary_snapshot(token_value, tenant_value).await

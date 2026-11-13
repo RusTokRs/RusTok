@@ -362,8 +362,8 @@ pub fn CommerceAdmin() -> impl IntoView {
     );
 
     // Resolved by the request: the page mounts inside the `Async` admin layout, so a
-    // `LocalResource` here leaves the reader with the `Suspense` fallback. `Resource` is not
-    // `Copy`, so each reader below takes its own clone.
+    // `LocalResource` here leaves the reader with the `Suspense` fallback. Each reader below
+    // names the handle it reads, so the swap does not depend on how a reader captures it.
     let shipping_profiles = Resource::new(
         move || (token.get(), tenant.get(), refresh_nonce.get(), search.get()),
         move |(token_value, tenant_value, _, search_value)| async move {
@@ -425,7 +425,7 @@ pub fn CommerceAdmin() -> impl IntoView {
         }
     });
 
-    let edit_profile_bootstrap = bootstrap.clone();
+    let edit_profile_bootstrap = bootstrap;
     let edit_profile = Callback::new(move |profile_id: String| {
         let Some(CommerceAdminBootstrap { current_tenant }) =
             edit_profile_bootstrap.get_untracked().and_then(Result::ok)
@@ -486,7 +486,7 @@ pub fn CommerceAdmin() -> impl IntoView {
 
     let submit_ui_locale = ui_locale.clone();
     let submit_query_writer = query_writer.clone();
-    let submit_profile_bootstrap = bootstrap.clone();
+    let submit_profile_bootstrap = bootstrap;
     let submit_profile = move |ev: SubmitEvent| {
         ev.prevent_default();
         let submit_query_writer = submit_query_writer.clone();
@@ -561,7 +561,7 @@ pub fn CommerceAdmin() -> impl IntoView {
         });
     };
 
-    let toggle_profile_bootstrap = bootstrap.clone();
+    let toggle_profile_bootstrap = bootstrap;
     let toggle_profile = Callback::new(move |profile: ShippingProfile| {
         let Some(CommerceAdminBootstrap { current_tenant }) =
             toggle_profile_bootstrap.get_untracked().and_then(Result::ok)
@@ -622,7 +622,7 @@ pub fn CommerceAdmin() -> impl IntoView {
         reset_query_writer.clear_key(AdminQueryKey::ShippingProfileId.as_str());
         reset_form();
     });
-    let effect_bootstrap = bootstrap.clone();
+    let effect_bootstrap = bootstrap;
     Effect::new(move |_| match selected_profile_query.get() {
         Some(profile_id) if !profile_id.trim().is_empty() => {
             if effect_bootstrap.get().and_then(Result::ok).is_none() {
@@ -754,7 +754,7 @@ pub fn CommerceAdmin() -> impl IntoView {
         set_order_change_refresh_nonce.update(|value| *value += 1);
     });
     let clear_order_query_writer = query_writer.clone();
-    let order_change_action_bootstrap = bootstrap.clone();
+    let order_change_action_bootstrap = bootstrap;
     let order_change_action = Callback::new(move |(change_id, apply): (String, bool)| {
         let Some(command) = core::prepare_order_change_action_command(
             change_id.as_str(),
@@ -828,7 +828,7 @@ pub fn CommerceAdmin() -> impl IntoView {
                         </div>
                     </div>
                     <div class="mt-5 space-y-3">
-                        {let view_shipping_profiles = shipping_profiles.clone();
+                        {let view_shipping_profiles = shipping_profiles;
                         move || match view_shipping_profiles.get() {
                             None => view! { <div class="space-y-3"><div class="h-24 animate-pulse rounded-2xl bg-muted"></div><div class="h-24 animate-pulse rounded-2xl bg-muted"></div></div> }.into_any(),
                             Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{no_shipping_profiles_label.clone()}</div> }.into_any(),
@@ -934,7 +934,7 @@ pub fn CommerceAdmin() -> impl IntoView {
                         <button type="button" class="inline-flex rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || order_change_busy.get() on:click=move |_| sync_order_query.run(())>{refresh_order_changes_label.clone()}</button>
                     </div>
                     <div class="space-y-3">
-                        {let view_order_changes = order_changes.clone();
+                        {let view_order_changes = order_changes;
                         move || match view_order_changes.get() {
                             None => view! { <div class="h-32 animate-pulse rounded-2xl bg-muted"></div> }.into_any(),
                             Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{order_changes_empty_label.clone()}</div> }.into_any(),

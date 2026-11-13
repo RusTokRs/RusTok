@@ -217,8 +217,8 @@ pub fn CustomerAdmin() -> impl IntoView {
     let selection = RwSignal::new(RowSelection::new());
     let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
 
-    let filtered_customers_resource = customers.clone();
-    let loading_customers = customers.clone();
+    let filtered_customers_resource = customers;
+    let loading_customers = customers;
     let filtered_customers = Memo::new(move |_| {
         let loaded_items = filtered_customers_resource
             .get()
@@ -379,7 +379,7 @@ pub fn CustomerAdmin() -> impl IntoView {
                                 </span>
                             </div>
                             <p class="text-sm text-muted-foreground">
-                                {let header_bootstrap = bootstrap.clone();
+                                {let header_bootstrap = bootstrap;
                                 move || customer_admin_list_header_view_model(
                                     header_bootstrap
                                         .get()
