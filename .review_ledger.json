@@ -973,9 +973,10 @@
       "category": "modules",
       "files": 89,
       "loc": 24188,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T02:45:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards on tenant_id, actor_id, variant_id, price_list_id, channel_id in set_price_list_percentage_rule, set_price_list_scope, apply_percentage_discount_with_channel, apply_price_list_percentage_discount_with_channel, set_scoped_price_tier, set_prices, resolve_price_snapshot, list_active_price_lists_for_channel, and find_canonical_price_row; non-negative price amount and discount percentage validation; ISO-4217 currency normalization; row locking for update in tx",
+      "last_audited": "2026-11-14"
     },
     "crates/modules/rustok-pricing/admin": {
       "name": "admin",
@@ -983,9 +984,10 @@
       "category": "modules",
       "files": 27,
       "loc": 8619,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T02:45:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in parse_optional_uuid_string, normalized_region_id, normalized_price_list_id, RBAC permission verification in ensure_permission, server functions for discount rules and price list scoping",
+      "last_audited": "2026-11-14"
     },
     "crates/modules/rustok-pricing/storefront": {
       "name": "storefront",
@@ -993,9 +995,10 @@
       "category": "modules",
       "files": 12,
       "loc": 2777,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T02:45:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in parse_optional_uuid_string and StorefrontPricingQuery, channel slug sanitization, currency validation, locale fallback",
+      "last_audited": "2026-11-14"
     },
     "crates/modules/rustok-product": {
       "name": "rustok-product",

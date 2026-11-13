@@ -224,6 +224,12 @@ impl PricingService {
         variant_ids: Vec<Uuid>,
         context: PriceResolutionContext,
     ) -> Result<PriceResolutionBatch, ResolutionError> {
+        if tenant_id.is_nil() {
+            return Err(CommerceError::Validation(
+                "tenant_id must not be a nil UUID".to_string(),
+            )
+            .into());
+        }
         let context = context.normalized()?;
         let txn = match self.db.get_database_backend() {
             DatabaseBackend::Postgres | DatabaseBackend::MySql => {
@@ -369,6 +375,18 @@ impl PricingService {
         requested_locale: Option<&str>,
         tenant_default_locale: Option<&str>,
     ) -> CommerceResult<Vec<ActivePriceListOption>> {
+        if tenant_id.is_nil() {
+            return Err(CommerceError::Validation(
+                "tenant_id must not be a nil UUID".to_string(),
+            ));
+        }
+        if let Some(channel_id) = channel_id
+            && channel_id.is_nil()
+        {
+            return Err(CommerceError::Validation(
+                "channel_id must not be a nil UUID".to_string(),
+            ));
+        }
         let now = chrono::Utc::now();
         let channel_slug = normalize_channel_slug(channel_slug);
         let price_lists = price_list::Entity::find()
@@ -481,6 +499,25 @@ impl PricingService {
         channel_id: Option<Uuid>,
         channel_slug: Option<&str>,
     ) -> CommerceResult<price::Model> {
+        if variant_id.is_nil() {
+            return Err(CommerceError::Validation(
+                "variant_id must not be a nil UUID".to_string(),
+            ));
+        }
+        if let Some(price_list_id) = price_list_id
+            && price_list_id.is_nil()
+        {
+            return Err(CommerceError::Validation(
+                "price_list_id must not be a nil UUID".to_string(),
+            ));
+        }
+        if let Some(channel_id) = channel_id
+            && channel_id.is_nil()
+        {
+            return Err(CommerceError::Validation(
+                "channel_id must not be a nil UUID".to_string(),
+            ));
+        }
         let currency_code = normalize_resolution_currency(currency_code)?;
         price::Entity::find()
             .filter(price::Column::VariantId.eq(variant_id))

@@ -28,6 +28,11 @@ impl PricingService {
         price_list_id: Uuid,
         adjustment_percent: Option<Decimal>,
     ) -> CommerceResult<Option<PriceListRule>> {
+        if tenant_id.is_nil() || _actor_id.is_nil() || price_list_id.is_nil() {
+            return Err(CommerceError::Validation(
+                "tenant_id, actor_id, and price_list_id must not be nil UUIDs".to_string(),
+            ));
+        }
         let txn = self.db.begin().await?;
         let price_list = resolve_active_price_list_tx(&txn, tenant_id, price_list_id).await?;
 
@@ -78,6 +83,11 @@ impl PricingService {
         channel_id: Option<Uuid>,
         channel_slug: Option<String>,
     ) -> CommerceResult<ActivePriceListOption> {
+        if tenant_id.is_nil() || _actor_id.is_nil() || price_list_id.is_nil() {
+            return Err(CommerceError::Validation(
+                "tenant_id, actor_id, and price_list_id must not be nil UUIDs".to_string(),
+            ));
+        }
         let txn = self.db.begin().await?;
         let price_list = resolve_active_price_list_tx(&txn, tenant_id, price_list_id).await?;
         let channel_slug = normalize_channel_slug(channel_slug.as_deref());
@@ -152,6 +162,11 @@ impl PricingService {
         channel_id: Option<Uuid>,
         channel_slug: Option<String>,
     ) -> CommerceResult<PriceAdjustmentPreview> {
+        if tenant_id.is_nil() || actor_id.is_nil() || variant_id.is_nil() {
+            return Err(CommerceError::Validation(
+                "tenant_id, actor_id, and variant_id must not be nil UUIDs".to_string(),
+            ));
+        }
         self.ensure_variant_tenant(tenant_id, variant_id).await?;
         let preview = self
             .preview_percentage_discount_with_channel(
@@ -216,6 +231,11 @@ impl PricingService {
         channel_id: Option<Uuid>,
         channel_slug: Option<String>,
     ) -> CommerceResult<PriceAdjustmentPreview> {
+        if tenant_id.is_nil() || actor_id.is_nil() || variant_id.is_nil() || price_list_id.is_nil() {
+            return Err(CommerceError::Validation(
+                "tenant_id, actor_id, variant_id, and price_list_id must not be nil UUIDs".to_string(),
+            ));
+        }
         self.ensure_variant_tenant(tenant_id, variant_id).await?;
         let preview = self
             .preview_price_list_percentage_discount_with_channel(
@@ -488,6 +508,18 @@ impl PricingService {
         max_quantity: Option<i32>,
     ) -> CommerceResult<()> {
         self.require_embedded_variant_service_state()?;
+        if tenant_id.is_nil() || actor_id.is_nil() || variant_id.is_nil() {
+            return Err(CommerceError::Validation(
+                "tenant_id, actor_id, and variant_id must not be nil UUIDs".to_string(),
+            ));
+        }
+        if let Some(price_list_id) = price_list_id
+            && price_list_id.is_nil()
+        {
+            return Err(CommerceError::Validation(
+                "price_list_id must not be a nil UUID".to_string(),
+            ));
+        }
         let currency_code = normalize_resolution_currency(currency_code)?;
         let txn = self.db.begin().await?;
         let variant = load_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
@@ -643,6 +675,11 @@ impl PricingService {
         prices: Vec<PriceInput>,
     ) -> CommerceResult<()> {
         self.require_embedded_variant_service_state()?;
+        if tenant_id.is_nil() || actor_id.is_nil() || variant_id.is_nil() {
+            return Err(CommerceError::Validation(
+                "tenant_id, actor_id, and variant_id must not be nil UUIDs".to_string(),
+            ));
+        }
         let txn = self.db.begin().await?;
         let variant = load_variant_for_update_in_tx(&txn, tenant_id, variant_id).await?;
 
