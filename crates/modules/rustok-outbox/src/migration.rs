@@ -322,6 +322,7 @@ pub async fn drop_owner_operation_receipts_table(manager: &SchemaManager<'_>) ->
         .drop_table(
             Table::drop()
                 .table(OwnerOperationReceipts::Table)
+                .if_exists()
                 .to_owned(),
         )
         .await

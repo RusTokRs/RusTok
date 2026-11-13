@@ -77,6 +77,13 @@ impl OutboxTransport {
         C: ConnectionTrait,
     {
         let envelope_id = envelope.id();
+        if envelope_id.is_nil() {
+            return Err(write_once_unavailable(
+                envelope_id,
+                envelope.event_type(),
+                "write-once envelope id must not be nil",
+            ));
+        }
         let event_type = envelope.event_type().to_string();
         let active_model = Self::model_from_contract_envelope(envelope.clone())
             .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
@@ -189,6 +196,14 @@ impl OutboxTransport {
         schema_version: u16,
         payload: serde_json::Value,
     ) -> Result<entity::ActiveModel> {
+        if id.is_nil() {
+            return Err(Error::Validation("outbox event id must not be nil".to_string()));
+        }
+        if event_type.trim().is_empty() || event_type.len() > 255 {
+            return Err(Error::Validation(
+                "outbox event_type must contain 1 to 255 bytes".to_string(),
+            ));
+        }
         let schema_version = i16::try_from(schema_version).map_err(|_| {
             Error::Validation(format!(
                 "outbox schema_version {schema_version} exceeds database SMALLINT range"
@@ -274,6 +289,9 @@ impl EventTransport for OutboxTransport {
     }
 
     async fn acknowledge(&self, event_id: uuid::Uuid) -> Result<()> {
+        if event_id.is_nil() {
+            return Err(Error::Validation("outbox event_id must not be nil".to_string()));
+        }
         let mut model: entity::ActiveModel = entity::Entity::find_by_id(event_id)
             .one(&self.db)
             .await?

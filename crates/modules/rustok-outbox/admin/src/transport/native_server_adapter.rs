@@ -13,7 +13,7 @@ fn require_outbox_admin_tenant_scope(
     auth_tenant_id: uuid::Uuid,
     resolved_tenant_id: uuid::Uuid,
 ) -> Result<(), ServerFnError> {
-    if auth_tenant_id == resolved_tenant_id {
+    if auth_tenant_id == resolved_tenant_id && !auth_tenant_id.is_nil() && !resolved_tenant_id.is_nil() {
         return Ok(());
     }
 
@@ -41,6 +41,11 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
         let auth = leptos_axum::extract::<AuthContext>()
             .await
             .map_err(ServerFnError::new)?;
+        if auth.user_id.is_nil() {
+            return Err(ServerFnError::new(
+                "authenticated user is required for outbox inspection",
+            ));
+        }
         let tenant = leptos_axum::extract::<OptionalTenant>()
             .await
             .map_err(ServerFnError::new)?
@@ -48,6 +53,11 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
             .ok_or_else(|| {
                 ServerFnError::new("tenant context is required for outbox inspection")
             })?;
+        if tenant.id.is_nil() {
+            return Err(ServerFnError::new(
+                "tenant context is required for outbox inspection",
+            ));
+        }
         require_outbox_admin_tenant_scope(auth.tenant_id, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::LOGS_READ) {
@@ -121,6 +131,10 @@ async fn query_status_count(
     status: &str,
 ) -> Result<u64, sea_orm::DbErr> {
     use sea_orm::{ConnectionTrait, QueryResult, Statement};
+
+    if !matches!(status, "pending" | "dispatched" | "failed") {
+        return Ok(0);
+    }
 
     let sql = tenant_scoped_status_sql(backend);
     let row = db

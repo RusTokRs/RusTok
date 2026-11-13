@@ -206,9 +206,19 @@ impl OutboxRelay {
                 "outbox relay claim_ttl must be greater than zero".to_string(),
             ));
         }
-        if self.config.worker_id.trim().is_empty() {
+        if self.config.worker_id.trim().is_empty() || self.config.worker_id.len() > 128 {
             return Err(Error::Validation(
-                "outbox relay worker_id must not be empty".to_string(),
+                "outbox relay worker_id must contain 1 to 128 characters".to_string(),
+            ));
+        }
+        if self.config.backoff_base.is_zero() {
+            return Err(Error::Validation(
+                "outbox relay backoff_base must be greater than zero".to_string(),
+            ));
+        }
+        if self.config.backoff_max < self.config.backoff_base {
+            return Err(Error::Validation(
+                "outbox relay backoff_max must be greater than or equal to backoff_base".to_string(),
             ));
         }
         Ok(())
@@ -434,6 +444,13 @@ impl OutboxRelay {
             )
         };
 
+        let error_str = error.to_string();
+        let last_error = if error_str.chars().count() > 2048 {
+            error_str.chars().take(2048).collect::<String>()
+        } else {
+            error_str
+        };
+
         let result = entity::Entity::update_many()
             .filter(entity::Column::Id.eq(model.id))
             .filter(entity::Column::Status.eq(SysEventStatus::Pending))
@@ -441,7 +458,7 @@ impl OutboxRelay {
             .filter(entity::Column::ClaimedAt.eq(model.claimed_at))
             .set(entity::ActiveModel {
                 retry_count: Set(retry_count),
-                last_error: Set(Some(error.to_string())),
+                last_error: Set(Some(last_error)),
                 claimed_by: Set(None),
                 claimed_at: Set(None),
                 status: Set(status),

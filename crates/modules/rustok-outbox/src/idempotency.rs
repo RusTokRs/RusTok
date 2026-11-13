@@ -139,6 +139,14 @@ pub async fn admit<T: Serialize>(
     operation: &str,
     request: &T,
 ) -> Result<Admission, PortError> {
+    if let OwnerOperationScope::Tenant(tenant_id) = scope {
+        if tenant_id.is_nil() {
+            return Err(PortError::validation(
+                "outbox.operation_receipt_tenant_invalid",
+                "tenant_id cannot be nil",
+            ));
+        }
+    }
     let owner_slug = validate_identity(owner_slug, "owner_slug")?;
     let idempotency_key = validate_identity(idempotency_key, "idempotency_key")?;
     let operation = validate_identity(operation, "operation")?;
@@ -192,6 +200,12 @@ where
     C: ConnectionTrait,
     T: Serialize,
 {
+    if lease.operation_id.is_nil() || lease.token.is_nil() {
+        return Err(PortError::validation(
+            "outbox.operation_receipt_lease_invalid",
+            "lease operation_id and token must not be nil",
+        ));
+    }
     let response = serde_json::to_value(response).map_err(|error| {
         PortError::invariant_violation("outbox.operation_receipt_encode", error.to_string())
     })?;
@@ -243,6 +257,12 @@ pub async fn fail<C>(connection: &C, lease: Lease, error: &PortError) -> Result<
 where
     C: ConnectionTrait,
 {
+    if lease.operation_id.is_nil() || lease.token.is_nil() {
+        return Err(PortError::validation(
+            "outbox.operation_receipt_lease_invalid",
+            "lease operation_id and token must not be nil",
+        ));
+    }
     let error_json = serde_json::to_value(error).map_err(|encoding_error| {
         PortError::invariant_violation(
             "outbox.operation_receipt_encode",
@@ -304,6 +324,12 @@ pub async fn release_retryable<C>(
 where
     C: ConnectionTrait,
 {
+    if lease.operation_id.is_nil() || lease.token.is_nil() {
+        return Err(PortError::validation(
+            "outbox.operation_receipt_lease_invalid",
+            "lease operation_id and token must not be nil",
+        ));
+    }
     if !error.retryable {
         return Err(PortError::validation(
             "outbox.operation_receipt_release_terminal",

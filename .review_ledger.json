@@ -883,9 +883,9 @@
       "category": "modules",
       "files": 29,
       "loc": 5559,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-13T04:42:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: non-nil tenant and lease UUID guards in durable idempotency receipts (admit, complete, fail, release_retryable), idempotent drop in drop_owner_operation_receipts_table via if_exists, relay worker config bounds (worker_id length <= 128, backoff_base > 0, backoff_max >= backoff_base), 2048-char safe truncation on last_error preventing DB VARCHAR overflow, non-nil UUID guards in write_contract_envelope_once_in_tx, acknowledge, and TransactionalEventBus; verified with cargo check -p rustok-outbox."
     },
     "crates/modules/rustok-outbox/admin": {
       "name": "admin",
@@ -893,9 +893,9 @@
       "category": "modules",
       "files": 9,
       "loc": 580,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-13T04:42:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation with pure-logic core.rs (0 UI framework imports), strict non-nil UUID tenant scope matching and non-nil user_id validation in native_server_adapter (auth_tenant_id == resolved_tenant_id && !auth_tenant_id.is_nil() && !resolved_tenant_id.is_nil()), defensive validation of status filter in query_status_count, and dual-backend (Postgres/Sqlite) tenant isolation; verified with cargo check -p rustok-outbox-admin and cargo check -p rustok-outbox-admin --features ssr."
     },
     "crates/modules/rustok-page-builder": {
       "name": "rustok-page-builder",

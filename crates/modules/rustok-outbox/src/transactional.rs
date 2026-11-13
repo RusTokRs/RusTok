@@ -49,6 +49,11 @@ impl TransactionalEventBus {
     where
         C: ConnectionTrait,
     {
+        if tenant_id.is_nil() {
+            return Err(rustok_core::Error::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
         validate_event(&event)?;
         let envelope = EventEnvelope::new(tenant_id, actor_id, event);
         let envelope_id = envelope.id;
@@ -68,6 +73,11 @@ impl TransactionalEventBus {
         C: ConnectionTrait,
         E: EventContract,
     {
+        if tenant_id.is_nil() {
+            return Err(rustok_core::Error::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
         let envelope = build_contract_envelope(tenant_id, actor_id, None, event)?;
         OutboxTransport::write_contract_envelope_in_tx(txn, envelope).await
     }
@@ -89,6 +99,16 @@ impl TransactionalEventBus {
         C: ConnectionTrait,
         E: EventContract,
     {
+        if tenant_id.is_nil() {
+            return Err(rustok_core::Error::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if causation_id.is_nil() {
+            return Err(rustok_core::Error::Validation(
+                "causation_id must not be nil".to_string(),
+            ));
+        }
         let envelope = build_contract_envelope(tenant_id, actor_id, Some(causation_id), event)?;
         let envelope_id = envelope.id();
         OutboxTransport::write_contract_envelope_in_tx(txn, envelope).await?;
@@ -113,6 +133,9 @@ impl TransactionalEventBus {
         C: ConnectionTrait,
         E: EventContract,
     {
+        if envelope_id.is_nil() || tenant_id.is_nil() {
+            return Err(ContractEventWriteOnceError::Unavailable);
+        }
         let event_type = event.event_type();
         let actor_id = actor_id.filter(|id| !id.is_nil());
         let envelope =
@@ -149,6 +172,9 @@ impl TransactionalEventBus {
         C: ConnectionTrait,
         E: EventContract,
     {
+        if envelope_id.is_nil() || tenant_id.is_nil() || causation_id.is_nil() {
+            return Err(ContractEventWriteOnceError::Unavailable);
+        }
         let event_type = event.event_type();
         let actor_id = actor_id.filter(|id| !id.is_nil());
         let envelope = ContractEventEnvelope::new_with_envelope_id_and_causation(
@@ -325,6 +351,11 @@ impl TransactionalEventBus {
         actor_id: Option<Uuid>,
         event: DomainEvent,
     ) -> Result<EventEnvelope> {
+        if tenant_id.is_nil() {
+            return Err(rustok_core::Error::Validation(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
         validate_event(&event)?;
         let actor_id = actor_id.filter(|id| !id.is_nil());
         Ok(EventEnvelope::new(tenant_id, actor_id, event))
@@ -364,6 +395,18 @@ fn build_contract_envelope<E>(
 where
     E: EventContract,
 {
+    if tenant_id.is_nil() {
+        return Err(rustok_core::Error::Validation(
+            "tenant_id must not be nil".to_string(),
+        ));
+    }
+    if let Some(causation_id) = causation_id {
+        if causation_id.is_nil() {
+            return Err(rustok_core::Error::Validation(
+                "causation_id must not be nil".to_string(),
+            ));
+        }
+    }
     let event_type = event.event_type();
     let actor_id = actor_id.filter(|id| !id.is_nil());
     let envelope = match causation_id {
