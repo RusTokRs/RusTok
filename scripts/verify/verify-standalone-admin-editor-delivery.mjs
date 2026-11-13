@@ -240,6 +240,21 @@ const movedModuleSurfaces = [
     marker: "let categories_resource = Resource::new(",
     description: "the schema editor resolves its categories during the render",
   },
+  {
+    file: "crates/modules/rustok-forum/admin/src/ui/topic_split.rs",
+    marker: "let candidates = Resource::new(",
+    description: "the split panel resolves its topic candidates during the render",
+  },
+  {
+    file: "crates/modules/rustok-auth/admin/src/ui/invites.rs",
+    marker: "let invites_resource = Resource::new(",
+    description: "the invites page resolves its invitations during the render",
+  },
+  {
+    file: "crates/modules/rustok-blog/admin/src/ui/moderation.rs",
+    marker: "let comments_resource = Resource::new(",
+    description: "the moderation queue resolves its comments during the render",
+  },
 ];
 for (const surface of movedModuleSurfaces) {
   const source = read(surface.file);

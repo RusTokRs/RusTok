@@ -122,8 +122,9 @@ That scope includes every `/modules/<slug>` surface, because module admins are m
 same layout. The product admin package leads: its attributes page
 (`rustok-product/admin/src/ui/attributes.rs`), product grid (`product_grid.rs`), categories page
 (`categories.rs`), catalog filter controls (`catalog_admin.rs`) and schema editor (`ui/leptos.rs`)
-resolve their state through `Resource` now; 57 `LocalResource` call sites remain across the module
-admin packages. Each is the
+resolve their state through `Resource` now, and the forum split, merge, rename and fork panels, the
+auth invites and security pages and the blog moderation queue followed; 47 `LocalResource` call sites
+remain across the module admin packages. Each is the
 same defect — a `Suspense` fallback served where the response should hold the surface — so they are
 worked through one page at a time, and the count is recorded in the backlog rather than left
 implicit.

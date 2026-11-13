@@ -92,13 +92,21 @@ pub fn ForumTopicReplyRangeAdmin() -> impl IntoView {
         "Move committed",
     );
 
-    let candidates = LocalResource::new(move || {
-        refresh_nonce.track();
-        let token = token.get();
-        let tenant = tenant.get();
-        let locale = requested_locale.clone();
-        async move { transport::fetch_reply_range_move_candidates(token, tenant, locale).await }
-    });
+    // Resolved by the request: the move panel is served from an `Async` admin route, so a
+    // `LocalResource` here leaves the reader with the `Suspense` fallback.
+    let candidates = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                requested_locale.clone(),
+                refresh_nonce.get(),
+            )
+        },
+        move |(token, tenant, locale, _generation)| async move {
+            transport::fetch_reply_range_move_candidates(token, tenant, locale).await
+        },
+    );
 
     let submit = move |event: SubmitEvent| {
         event.prevent_default();
@@ -168,7 +176,8 @@ pub fn ForumTopicReplyRangeAdmin() -> impl IntoView {
             <form class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]" on:submit=submit>
                 <section class="space-y-6 rounded-[1.75rem] border border-border bg-card p-6 shadow-sm">
                     <Suspense fallback=move || view! { <div class="h-20 animate-pulse rounded-2xl bg-muted"></div> }>
-                        {move || candidates.get().map(|result| match result {
+                        {let view_candidates = candidates.clone();
+                        move || view_candidates.get().map(|result| match result {
                             Ok(items) => {
                                 let source_items = items.clone();
                                 let target_items = items.clone();
