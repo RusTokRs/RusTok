@@ -41,24 +41,38 @@ pub fn TemplatesAdmin(default_locale: String) -> impl IntoView {
     let templates_token = token;
     let templates_tenant = tenant;
     let templates_locale = selected_locale;
-    let templates_resource = LocalResource::new(move || {
-        let token = templates_token.get();
-        let tenant = templates_tenant.get();
-        let locale = templates_locale.get();
-        let _generation = refresh_generation.get();
-        async move { transport::fetch_page_templates(token, tenant, locale).await }
-    });
+    // Both catalogs are resolved by the request: a `LocalResource` is `pending()` under `ssr`, so
+    // the tabs it feeds would render their skeleton in every response.
+    let templates_resource = Resource::new(
+        move || {
+            (
+                templates_token.get(),
+                templates_tenant.get(),
+                templates_locale.get(),
+                refresh_generation.get(),
+            )
+        },
+        move |(token, tenant, locale, _generation)| async move {
+            transport::fetch_page_templates(token, tenant, locale).await
+        },
+    );
 
     let symbols_token = token;
     let symbols_tenant = tenant;
     let symbols_locale = selected_locale;
-    let symbols_resource = LocalResource::new(move || {
-        let token = symbols_token.get();
-        let tenant = symbols_tenant.get();
-        let locale = symbols_locale.get();
-        let _generation = refresh_generation.get();
-        async move { transport::fetch_site_symbols(token, tenant, locale).await }
-    });
+    let symbols_resource = Resource::new(
+        move || {
+            (
+                symbols_token.get(),
+                symbols_tenant.get(),
+                symbols_locale.get(),
+                refresh_generation.get(),
+            )
+        },
+        move |(token, tenant, locale, _generation)| async move {
+            transport::fetch_site_symbols(token, tenant, locale).await
+        },
+    );
 
     let reset_template_form = move || {
         template_key.set(String::new());

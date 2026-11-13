@@ -22,6 +22,12 @@ pub fn ConsumerPropertiesPanel(
         return error_view(&error.to_string());
     }
 
+    // This panel cannot move to `Resource` yet, and the reason is a type, not a preference:
+    // `Resource::new` requires a `Send` future and a `PartialEq + Send + Sync` source, while
+    // `ConsumerPropertyEditorPort::load` returns a `Send` future only on native targets
+    // (`ConsumerPropertyLoadFuture` is `Pin<Box<dyn Future>>` on wasm, and the runtime handle is not
+    // `PartialEq`). Moving it means changing that port — the boundary every consumer property
+    // editor shares — so it is a separate change, not part of moving the Pages surfaces.
     let load_runtime = Arc::clone(&runtime);
     let snapshot = LocalResource::new(move || {
         let runtime = Arc::clone(&load_runtime);

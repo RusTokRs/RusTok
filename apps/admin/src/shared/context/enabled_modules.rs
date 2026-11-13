@@ -5,41 +5,34 @@ use leptos_auth::hooks::{use_tenant, use_token};
 
 use crate::features::modules::transport;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
-where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
-{
-    LocalResource::new(move || fetcher(source()))
-}
-
-#[derive(Clone, Copy)]
+/// The module-availability decision, derived from the request that resolved it.
+///
+/// The signals are memos over the resource, not cells written by an effect: an effect is a task for
+/// a later tick and is not driven before the server produces the response, so a cell it wrote reads
+/// as "nothing is enabled" in every SSR document. A memo is a pure function of a value the render is
+/// waiting on, so the response and the browser see the same decision without a second fetch.
+#[derive(Clone)]
 pub struct EnabledModulesContext {
-    pub modules: RwSignal<HashSet<String>>,
-    pub is_loading: RwSignal<bool>,
-    pub error: RwSignal<Option<String>>,
+    pub modules: Memo<HashSet<String>>,
+    pub is_loading: Memo<bool>,
+    pub error: Memo<Option<String>>,
     refresh_generation: RwSignal<u64>,
 }
 
 impl EnabledModulesContext {
-    pub fn new() -> Self {
+    pub fn new(resource: Resource<Result<Vec<String>, String>>) -> Self {
         Self {
-            modules: RwSignal::new(HashSet::new()),
-            is_loading: RwSignal::new(true),
-            error: RwSignal::new(None),
+            modules: Memo::new(move |_| {
+                resource
+                    .get()
+                    .and_then(|result| result.ok())
+                    .map(|modules| modules.into_iter().collect())
+                    .unwrap_or_default()
+            }),
+            is_loading: Memo::new(move |_| resource.get().is_none()),
+            error: Memo::new(move |_| resource.get().and_then(|result| result.err())),
             refresh_generation: RwSignal::new(0),
         }
-    }
-
-    pub fn replace_modules<I>(&self, modules: I)
-    where
-        I: IntoIterator<Item = String>,
-    {
-        self.modules.set(modules.into_iter().collect());
     }
 
     /// Re-resolves the exact owner-issued availability decision after a
@@ -50,58 +43,66 @@ impl EnabledModulesContext {
     }
 }
 
-impl Default for EnabledModulesContext {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[component]
 pub fn EnabledModulesProvider(children: Children) -> impl IntoView {
-    let context = EnabledModulesContext::new();
-    provide_context(context);
-
     let token = use_token();
     let tenant = use_tenant();
+    let refresh_generation = RwSignal::new(0_u64);
 
-    let context_for_resource = context;
-    let resource = local_resource(
-        move || {
-            (
-                token.get(),
-                tenant.get(),
-                context_for_resource.refresh_generation.get(),
-            )
-        },
-        move |(token_value, tenant_value, _refresh_generation)| async move {
+    // A `Resource` awaited by the render, not a `LocalResource` fed into an `Effect`. A
+    // `LocalResource` is `pending().await` under `ssr`, and an `Effect` is a task spawned for a
+    // later tick that is not driven before the response is produced. Either one leaves every route
+    // reading `is_loading`, which is how `ModuleGuard` came to report "module unavailable" for every
+    // module on the standalone host.
+    let resource = Resource::new(
+        move || (token.get(), tenant.get(), refresh_generation.get()),
+        move |(token_value, tenant_value, _refresh_generation): (
+            Option<String>,
+            Option<String>,
+            u64,
+        )| async move {
             if token_value.is_none() || tenant_value.is_none() {
-                return Ok(Vec::new());
+                return Ok::<_, String>(Vec::new());
             }
 
             transport::fetch_module_effective_policy(token_value, tenant_value)
                 .await
                 .map(|policy| policy.enabled_module_slugs())
+                .map_err(|error| error.to_string())
         },
     );
 
-    let context_for_effect = context;
-    Effect::new(move |_| match resource.get() {
-        Some(Ok(modules)) => {
-            context_for_effect.replace_modules(modules);
-            context_for_effect.error.set(None);
-            context_for_effect.is_loading.set(false);
-        }
-        Some(Err(err)) => {
-            context_for_effect.replace_modules(std::iter::empty());
-            context_for_effect.error.set(Some(format!("{}", err)));
-            context_for_effect.is_loading.set(false);
-        }
-        None => {
-            context_for_effect.is_loading.set(true);
-        }
-    });
+    let context = EnabledModulesContext {
+        refresh_generation,
+        ..EnabledModulesContext::new(resource)
+    };
+    provide_context(context);
 
     children()
+}
+
+#[derive(Clone)]
+pub struct EnabledModulesResource(EnabledModulesContext);
+
+impl EnabledModulesResource {
+    /// The enabled slugs once the request resolved them; `None` while it has not.
+    pub fn modules(self) -> Option<HashSet<String>> {
+        (!self.0.is_loading.get()).then(|| self.0.modules.get())
+    }
+
+    /// The failure the request reported, if it failed.
+    pub fn error(self) -> Option<String> {
+        self.0.error.get()
+    }
+}
+
+/// Reads the availability decision of the current request.
+///
+/// A view that renders this decision reads it inside a `Suspense`, so the response carries the
+/// decision instead of an empty set. Reading the decision outside a `Suspense` is what the
+/// standalone host did before: an effect that had not run yet, and therefore "no modules".
+pub fn use_enabled_modules_resource() -> EnabledModulesResource {
+    EnabledModulesResource(use_enabled_modules_context())
 }
 
 pub fn use_enabled_modules_context() -> EnabledModulesContext {
@@ -122,21 +123,38 @@ pub fn use_is_module_enabled(slug: &'static str) -> Signal<bool> {
 
 #[component]
 pub fn ModuleGuard(slug: &'static str, children: ChildrenFn) -> impl IntoView {
-    let is_enabled = use_is_module_enabled(slug);
+    let enabled_modules = use_enabled_modules_resource();
 
     view! {
-        <Show
-            when=move || is_enabled.get()
-            fallback=|| view! {
-                <div class="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
-                    <h3 class="text-lg font-semibold">"Module unavailable"</h3>
-                    <p class="mt-2 text-sm text-muted-foreground">
-                        "This module is disabled for the current tenant."
-                    </p>
-                </div>
-            }
-        >
-            {children()}
-        </Show>
+        // The guard asserts a decision, so it says which decision. "Unavailable" while the request
+        // is still resolving is a different statement from "disabled for this tenant", and only one
+        // of them is a reason to hide a surface.
+        <Suspense fallback=|| view! {
+            <div class="rounded-xl border border-border bg-card p-6 shadow-sm" aria-busy="true">
+                <div class="h-6 w-48 animate-pulse rounded-lg bg-muted"></div>
+                <div class="mt-3 h-4 w-64 animate-pulse rounded-lg bg-muted"></div>
+            </div>
+        }>
+            {move || match enabled_modules.modules() {
+                None => view! {
+                    <div class="rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-sm text-destructive" role="alert">
+                        {enabled_modules
+                            .error()
+                            .unwrap_or_else(|| "Module availability was not resolved".to_string())}
+                    </div>
+                }
+                .into_any(),
+                Some(modules) if modules.contains(slug) => children().into_any(),
+                Some(_) => view! {
+                    <div class="rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
+                        <h3 class="text-lg font-semibold">"Module unavailable"</h3>
+                        <p class="mt-2 text-sm text-muted-foreground">
+                            "This module is disabled for the current tenant."
+                        </p>
+                    </div>
+                }
+                .into_any(),
+            }}
+        </Suspense>
     }
 }

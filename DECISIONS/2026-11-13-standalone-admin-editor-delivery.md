@@ -29,7 +29,19 @@ fix:
    an effect to `EnabledModulesProvider` would not make the module registry resolve either, and the
    route view already waits on that registry's `is_loading`.
 
-3. **Leptos' own nonce is not this host's nonce.** `leptos_axum` calls
+3. **A `Resource` is not enough on its own: the route's SSR mode decides whether it is awaited.**
+   `SsrMode::default()` is `OutOfOrder` (`leptos_router::ssr_mode`). In that mode a suspended
+   fragment is written as `<!--s-N-o-->fallback<!--s-N-c-->` followed by a `<template>` chunk that a
+   script swaps in, so an out-of-order route whose resources *are* on the server still puts the
+   skeleton in the document and the workspace in a template nothing executes. `SsrMode::Async` is
+   the mode that runs the render to completion and emits one document (`to_html_stream_in_order`
+   collected before responding). `SsrMode::PartiallyBlocked`, the mode that would block only on
+   resources without giving up streaming, is a TODO in the axum integration in 0.8.21
+   (`_ = replace_blocks; // TODO`), so it is not an option. The route listing inherits the mode from
+   the route definition (`GeneratedRouteData.ssr_mode` → `RouteListing`), which is why the mode is
+   declared per route rather than per host.
+
+4. **Leptos' own nonce is not this host's nonce.** `leptos_axum` calls
    `leptos::nonce::provide_nonce()` for every request, generating a fresh `leptos::nonce::Nonce`.
    `HydrationScripts` writes that value on its `<script>`/`<link>` elements. `apps/admin` enforces
    its own nonce, generated per request in `admin_security_headers` and written into the CSP
@@ -46,11 +58,13 @@ editor is reachable without Leptos hydration at all, once its data is in the res
 ## Decision
 
 1. **The standalone admin keeps the no-hydration profile, and the editor loads its server state
-   through `Resource`, not `LocalResource`.** A surface that must appear in SSR HTML reads its data
-   from an awaitable resource whose future is driven during rendering, so the response contains the
-   workspace instead of its fallback. This is the ADR-2026-11-12 outcome "resolves the page before it
-   renders", now with the mechanism named: `Resource` (or an equivalent awaited loader), never
-   `LocalResource` plus an `Effect`.
+   through `Resource`, not `LocalResource`, on a route that declares `ssr=SsrMode::Async`.** A
+   surface that must appear in SSR HTML reads its data from an awaitable resource whose future is
+   driven during rendering, *and* the route it renders under waits for that future. The two are one
+   decision: a `Resource` under `OutOfOrder` still ships its fallback, so "moved to `Resource`" is
+   only the first half. This is the ADR-2026-11-12 outcome "resolves the page before it renders",
+   with the mechanism named: `Resource` plus an awaiting route mode, never `LocalResource` plus an
+   `Effect`.
 
 2. **Hydration is not the delivery mechanism for the editor, and it is still a supported profile.**
    `apps/admin` keeps `csr` and `hydrate` features for hosts that build a hydration bundle. The
@@ -77,10 +91,36 @@ values cross the boundary, and the render derives the status again. That keeps t
 serialisable without a second wire type and without letting a consumer fabricate an observed
 snapshot — an absent health value stays absent.
 
+The two module routes (`/modules/:module_slug` and `/modules/:module_slug/*module_path`) declare
+`ssr=SsrMode::Async` (`apps/admin/src/app/router.rs`), so the resources the module surfaces load are
+resolved into the document rather than streamed as a fallback plus a template no script replaces.
+
+Module availability itself was the second half of the same defect: `EnabledModulesProvider` resolved
+the effective policy through `LocalResource` and copied the result into signals from an `Effect`. On
+the server that effect never ran, so `is_loading` stayed `true` and the module route rendered its
+loading branch — the editor was never reached regardless of the page workspace. The provider now
+resolves the policy through `Resource` and derives `modules`, `is_loading` and `error` as `Memo`s over
+it; `ModuleAdminPage` and `ModuleGuard` read the decision inside a `Suspense` and distinguish "not
+resolved" from "disabled for this tenant".
+
+The remaining `rustok-pages-admin` surfaces then moved the same way: the inline edit launch, the
+rollback control, the published metadata admission, and both layout template catalogs
+(`inline_edit_launch.rs`, `rollback_control.rs`, `standalone_metadata.rs`, `templates_admin.rs`). Each
+was a `LocalResource` read under a `Suspense` that the server could never fill, so each rendered as
+nothing or as a skeleton in every response.
+
+One surface did not move and is not scheduled to: `consumer_properties.rs` cannot. `Resource::new`
+requires `S: PartialEq + Clone + Send + Sync`, `T: Send + Sync` and `Fut: Future + Send`, while
+`ConsumerPropertyEditorPort::load` returns `ConsumerPropertyLoadFuture`, which is `Send` only on
+native targets, and the runtime handle it would use as the source is not `PartialEq`. Moving that
+panel means changing the port every consumer property editor shares, so it is a separate change with
+its own contract, and the gate keeps it listed as pending rather than pretending otherwise.
+
 `scripts/verify/verify-standalone-admin-editor-delivery.mjs` holds the moved list: it fails if a
-listed surface creates a `LocalResource` again, and it *reports* the surfaces not yet moved (the
-templates tab keys, the history and schedule panels, and the five other files that still load that
-way) instead of failing on them, so the backlog is worked through rather than turned off.
+listed surface creates a `LocalResource` again, if a module route loses `ssr=SsrMode::Async`, or if
+module availability goes back to a `LocalResource`/`Effect`. It also fails when a file listed as
+pending stops being pending, so the list cannot go stale, and it *reports* the one remaining surface
+instead of failing on it.
 
 ## Sources of truth and ownership
 
@@ -97,6 +137,8 @@ way) instead of failing on them, so the backlog is worked through rather than tu
 
 - A surface that a host is expected to display in SSR HTML does not load its data through
   `LocalResource`.
+- A route whose surface is expected in the response declares an SSR mode that awaits its resources;
+  `OutOfOrder` is not used for such a route while the host serves no script.
 - An `Effect` is never the only path from fetched data to rendered output.
 - The nonce on any script of an admin response is a nonce the response's own
   `content-security-policy` names.
@@ -115,6 +157,8 @@ way) instead of failing on them, so the backlog is worked through rather than tu
 - An admin response whose HTML contains an editor skeleton and no editor, presented as working.
 - A hydration script whose nonce differs from the one in the enforcing policy.
 - `LocalResource` plus an `Effect` used as if it were server-side loading.
+- A `Resource` under `OutOfOrder` counted as delivered, because its value reaches the browser only
+  through a script the host does not serve.
 
 ## Non-goals
 

@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos_auth::components::ProtectedRoute;
 use leptos_auth::context::AuthProvider;
 use leptos_router::components::{ParentRoute, Redirect, Route, Router, Routes};
+use leptos_router::SsrMode;
 use leptos_router::path;
 
 use crate::AdminLocaleProvider;
@@ -35,10 +36,21 @@ pub fn App() -> impl IntoView {
                                 <Route path=path!("/dashboard") view=Dashboard />
                                 <Route path=path!("/profile") view=|| view! { <Profile language_toggle=|| view! { <LanguageToggle /> } /> } />
                                 <Route path=path!("/security") view=Security />
-                                <Route path=path!("/modules/:module_slug") view=ModuleAdminPage />
+                                // The module surfaces are the ones that render editor state loaded
+                                // during the request. The default SSR mode streams a shell with a
+                                // `Suspense` fallback and fills it from a `<template>` through a
+                                // script, which a host that serves no script never runs; `Async`
+                                // waits for the resources and renders one complete document.
+                                // See DECISIONS/2026-11-13-standalone-admin-editor-delivery.md.
+                                <Route
+                                    path=path!("/modules/:module_slug")
+                                    view=ModuleAdminPage
+                                    ssr=SsrMode::Async
+                                />
                                 <Route
                                     path=path!("/modules/:module_slug/*module_path")
                                     view=ModuleAdminPage
+                                    ssr=SsrMode::Async
                                 />
                                 <Route path=path!("/modules") view=Modules />
                                 <Route path=path!("/users") view=Users />

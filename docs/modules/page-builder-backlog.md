@@ -763,11 +763,19 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           probe did not use the built admin.
     - [ ] **The standalone SSR admin does not render the editor.** Decided 2026-11-13
           (`DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`), in progress: `PagesAdmin`
-          now loads its page list and open page through `Resource` (2026-11-13), so the workspace is
-          in the SSR response; `scripts/verify/verify-standalone-admin-editor-delivery.mjs` holds
-          that and lists the seven surfaces still on `LocalResource`. The mechanism
-          is now named from `leptos` 0.8.21 source rather than inferred, and two of the three
-          obvious fixes are ruled out by it:
+          now loads its page list and open page through `Resource` (2026-11-13), and the two module
+          routes declare `ssr=SsrMode::Async` so the render waits for those resources instead of
+          streaming a fallback plus a template no script replaces;
+          `scripts/verify/verify-standalone-admin-editor-delivery.mjs` holds both. The inline edit
+          launch, the rollback control, the published metadata admission and both layout template
+          catalogs moved the same way (2026-11-13), so the Pages admin no longer gates a host that
+          must show it on a `LocalResource`. The consumer properties panel
+          (`rustok-page-builder/admin/src/editor/consumer_properties.rs`) cannot move without
+          changing `ConsumerPropertyEditorPort`: `Resource::new` needs a `Send` future and a
+          `PartialEq + Send + Sync` source, and that port's `load` future is `Send` only on native
+          targets. It stays listed as pending, and the gate fails if a listing goes stale. The mechanism
+          is now named from `leptos` 0.8.21 source rather than inferred, and three of the obvious
+          fixes are ruled out by it:
           - a `LocalResource` *never* resolves on the server — `ArcLocalResource::new` wraps the
             fetcher in `if cfg!(feature = "ssr") { pending().await }` — so `PagesAdmin`
             (`crates/modules/rustok-pages/admin/src/composition.rs`), which loads the page list and
@@ -779,7 +787,18 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           - `leptos_axum` calls `leptos::nonce::provide_nonce()` and generates its *own* nonce for
             `HydrationScripts`, while `admin_security_headers` enforces a different per-request
             nonce, so shipping the hydration bundle as-is would be blocked by this host's own
-            policy and fail silently.
+            policy and fail silently;
+          - a `Resource` is not sufficient by itself, because `SsrMode::default()` is `OutOfOrder`:
+            the suspended value is written as `<!--s-N-o-->fallback<!--s-N-c-->` plus a `<template>`
+            that a script swaps in, so even resolved data stays out of the document.
+            `SsrMode::Async` is the mode that emits one complete document, `SsrMode::PartiallyBlocked`
+            is a TODO in the axum integration in 0.8.21, and the route listing inherits the mode from
+            the route definition, so the mode is declared per route. The module routes now do.
+          Module availability was the other half: `EnabledModulesProvider` resolved it through
+          `LocalResource` and copied it into signals from an `Effect`, so `is_loading` was still
+          `true` in the response and the module route rendered its loading branch before the editor
+          was ever reached. It now derives the decision from a `Resource` and reads it under
+          `Suspense`, distinguishing "not resolved" from "disabled for this tenant".
           The decision: the default SSR profile keeps no hydration bundle (it is a supported
           profile for hosts that build one, under a stated nonce contract), and the editor's server
           state is loaded through an awaitable `Resource` rather than `LocalResource` plus an

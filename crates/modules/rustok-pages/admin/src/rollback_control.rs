@@ -18,18 +18,24 @@ pub(crate) fn PagesRollbackControl(on_rolled_back: Callback<()>) -> impl IntoVie
 
     let page_token = token;
     let page_tenant = tenant;
-    let page_resource = LocalResource::new(move || {
-        let page_id = selected_page_query.get();
-        let token = page_token.get();
-        let tenant = page_tenant.get();
-        let _generation = refresh_generation.get();
-        async move {
+    // The rollback control is part of the published-page surface, so its page has to be resolved
+    // by the request rather than left to a `LocalResource`, which is `pending()` under `ssr`.
+    let page_resource = Resource::new(
+        move || {
+            (
+                selected_page_query.get(),
+                page_token.get(),
+                page_tenant.get(),
+                refresh_generation.get(),
+            )
+        },
+        move |(page_id, token, tenant, _generation)| async move {
             let Some(page_id) = page_id.filter(|value| !value.trim().is_empty()) else {
                 return Ok::<_, transport::TransportError>(None);
             };
             transport::fetch_page(token, tenant, page_id).await
-        }
-    });
+        },
+    );
 
     view! {
         <Suspense fallback=|| ()>

@@ -39,18 +39,25 @@ pub(crate) fn PagesPublishedMetadataSurface(refresh_generation: RwSignal<u64>) -
 
     let page_token = token;
     let page_tenant = tenant;
-    let page_resource = LocalResource::new(move || {
-        let page_id = selected_page_query.get();
-        let token = page_token.get();
-        let tenant = page_tenant.get();
-        let _generation = refresh_generation.get();
-        async move {
+    // Published metadata is admitted on the status of the page, so the page is resolved by the
+    // request: a `LocalResource` is `pending()` under `ssr` and would hide the surface from every
+    // response regardless of the status.
+    let page_resource = Resource::new(
+        move || {
+            (
+                selected_page_query.get(),
+                page_token.get(),
+                page_tenant.get(),
+                refresh_generation.get(),
+            )
+        },
+        move |(page_id, token, tenant, _generation)| async move {
             let Some(page_id) = page_id.filter(|value| !value.trim().is_empty()) else {
                 return Ok::<_, transport::TransportError>(None);
             };
             transport::fetch_page(token, tenant, page_id).await
-        }
-    });
+        },
+    );
 
     view! {
         <Suspense fallback=|| ()>

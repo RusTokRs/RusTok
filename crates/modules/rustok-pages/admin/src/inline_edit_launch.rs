@@ -42,12 +42,11 @@ pub(crate) fn PagesInlineEditLaunch(selected_page: Signal<Option<String>>) -> im
     let current_user = use_current_user();
     let token = use_token();
     let tenant = use_tenant();
-    let launch_resource = LocalResource::new(move || {
-        let selected_page = selected_page.get();
-        let user = current_user.get();
-        let token = token.get();
-        let tenant = tenant.get();
-        async move {
+    // The launch control is part of the open page's chrome, so the request resolves it: a
+    // `LocalResource` is `pending()` under `ssr` and the control would never reach a response.
+    let launch_resource = Resource::new(
+        move || (selected_page.get(), current_user.get(), token.get(), tenant.get()),
+        move |(selected_page, user, token, tenant)| async move {
             if !same_origin_launch_enabled(SAME_ORIGIN_BUILD_FLAG) {
                 return Ok::<Option<String>, transport::TransportError>(None);
             }
@@ -89,10 +88,11 @@ pub(crate) fn PagesInlineEditLaunch(selected_page: Signal<Option<String>>) -> im
                 return Ok(None);
             };
             Ok(authoring_href(page.id.as_str(), locale))
-        }
-    });
+        },
+    );
 
     view! {
+        <Suspense fallback=|| ()>
         {move || {
             launch_resource.get().and_then(|result| match result {
                 Ok(Some(href)) => Some(view! {
@@ -124,6 +124,7 @@ pub(crate) fn PagesInlineEditLaunch(selected_page: Signal<Option<String>>) -> im
                 Ok(None) | Err(_) => None,
             })
         }}
+        </Suspense>
     }
 }
 

@@ -313,16 +313,14 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
     let template_token = token;
     let template_tenant = tenant;
     let template_locale = locale;
-    let template_keys = LocalResource::new(move || {
-        let token = template_token.get();
-        let tenant = template_tenant.get();
-        let locale = template_locale.get();
-        async move {
+    let template_keys = Resource::new(
+        move || (template_token.get(), template_tenant.get(), template_locale.get()),
+        move |(token, tenant, locale)| async move {
             transport::fetch_template_keys(token, tenant, locale)
                 .await
                 .unwrap_or_else(|_| vec!["default".to_string()])
-        }
-    });
+        },
+    );
 
     let submit = move |event: SubmitEvent| {
         event.prevent_default();
@@ -876,18 +874,24 @@ fn BodyRevisionHistory(
     let history_tenant = tenant;
     let history_page_id = page_id.clone();
     let history_locale = locale.clone();
-    let history = LocalResource::new(move || {
-        let page_id = history_page_id.clone();
-        let locale = history_locale.clone();
-        let token = history_token.get();
-        let tenant = history_tenant.get();
-        let _generation = refresh_generation.get();
-        async move {
+    // The page and locale are part of the source so the resource refetches when the editor moves to
+    // another page, exactly as the closure it replaces did when it read them.
+    let history = Resource::new(
+        move || {
+            (
+                history_page_id.clone(),
+                history_locale.clone(),
+                history_token.get(),
+                history_tenant.get(),
+                refresh_generation.get(),
+            )
+        },
+        move |(page_id, locale, token, tenant, _generation)| async move {
             transport::fetch_page_body_revision_history(token, tenant, page_id, locale)
                 .await
                 .map_err(|error| error.to_string())
-        }
-    });
+        },
+    );
 
     let restore_page_id = page_id;
     let restore_expected = expected_revision;
@@ -1006,17 +1010,21 @@ fn PublishSchedulePanel(
     let schedule_token = token;
     let schedule_tenant = tenant;
     let fetch_page_id = page_id.clone();
-    let schedule = LocalResource::new(move || {
-        let page_id = fetch_page_id.clone();
-        let token = schedule_token.get();
-        let tenant = schedule_tenant.get();
-        let _generation = refresh_generation.get();
-        async move {
+    let schedule = Resource::new(
+        move || {
+            (
+                fetch_page_id.clone(),
+                schedule_token.get(),
+                schedule_tenant.get(),
+                refresh_generation.get(),
+            )
+        },
+        move |(page_id, token, tenant, _generation)| async move {
             transport::fetch_page_publish_schedule(token, tenant, page_id)
                 .await
                 .map_err(|error| error.to_string())
-        }
-    });
+        },
+    );
 
     let schedule_page_id = page_id.clone();
     let schedule_action = Callback::new(move |_| {

@@ -48,6 +48,34 @@ const movedSurfaces = [
     forbidden: "LocalResource::new(",
     description: "the Pages workspace loads its page list and open page during the render",
   },
+  {
+    file: "crates/modules/rustok-pages/admin/src/inline_edit_launch.rs",
+    component: "PagesInlineEditLaunch",
+    resource: "Resource::new(",
+    forbidden: "LocalResource::new(",
+    description: "the inline edit launch resolves the page it links to during the render",
+  },
+  {
+    file: "crates/modules/rustok-pages/admin/src/rollback_control.rs",
+    component: "PagesRollbackControl",
+    resource: "Resource::new(",
+    forbidden: "LocalResource::new(",
+    description: "the rollback control resolves the published page during the render",
+  },
+  {
+    file: "crates/modules/rustok-pages/admin/src/standalone_metadata.rs",
+    component: "PagesPublishedMetadataSurface",
+    resource: "Resource::new(",
+    forbidden: "LocalResource::new(",
+    description: "published metadata is admitted on a page status the render resolves",
+  },
+  {
+    file: "crates/modules/rustok-pages/admin/src/templates_admin.rs",
+    component: "TemplatesAdmin",
+    resource: "Resource::new(",
+    forbidden: "LocalResource::new(",
+    description: "both layout template catalogs load during the render",
+  },
 ];
 
 for (const surface of movedSurfaces) {
@@ -73,14 +101,72 @@ for (const surface of movedSurfaces) {
   }
 }
 
+// Module availability is the decision every module surface branches on. A `LocalResource` fed into
+// an `Effect` never runs before the response, so the decision it produces is "no modules", which is
+// the failure that hid every standalone editor. The request has to resolve it.
+const providerFile = "apps/admin/src/shared/context/enabled_modules.rs";
+const providerSource = read(providerFile);
+if (!providerSource.includes("Resource::new(")) {
+  failures.push(
+    `${providerFile}: module availability is not resolved by a \`Resource\`, so the decision is ` +
+      "not part of the response and every module surface is gated on an empty set.",
+  );
+}
+if (/LocalResource::new\(/.test(providerSource)) {
+  failures.push(
+    `${providerFile}: module availability is loaded through a \`LocalResource\`, which is ` +
+      "`pending()` on the server; the decision must come from the request.",
+  );
+}
+// The decision is derived, not written. A cell (`RwSignal`) needs a writer, and the only writer the
+// component has is an `Effect`, which is a task for a later tick that the server does not run.
+for (const field of ["modules", "is_loading", "error"]) {
+  if (!new RegExp(`pub ${field}: Memo<`).test(providerSource)) {
+    failures.push(
+      `${providerFile}: \`${field}\` is not a \`Memo\` over the resolved decision, so something ` +
+        "has to write it, and a write from an `Effect` never reaches the response.",
+    );
+  }
+}
+if (/Effect::new\(/.test(providerSource)) {
+  failures.push(
+    `${providerFile}: the decision still depends on an \`Effect\`, which is not driven before the ` +
+      "response is produced; derive it from the resource instead.",
+  );
+}
+
+// A `Resource` alone is not enough: under the default out-of-order streaming mode a suspended
+// fragment is written as the `Suspense` fallback plus a `<template>` that a script swaps in, and the
+// admin shell serves no script. `SsrMode::Async` is the mode that waits for the resources of the
+// route and renders one complete document, so every route that renders a moved surface has to
+// declare it.
+const routerSource = read("apps/admin/src/app/router.rs");
+const moduleRoutes = [
+  ...routerSource.matchAll(
+    /<Route[\s\S]*?path=path!\(\s*"(\/modules[^"]*)"[\s\S]*?view=ModuleAdminPage[\s\S]*?\/>/g,
+  ),
+];
+if (moduleRoutes.length === 0) {
+  failures.push("apps/admin/src/app/router.rs: no module route was found to check");
+}
+for (const match of moduleRoutes) {
+  const route = match[0];
+  if (!route.includes("ssr=SsrMode::Async")) {
+    failures.push(
+      `apps/admin/src/app/router.rs: the route for \`${match[1]}\` does not declare ` +
+        "`ssr=SsrMode::Async`, so its resources are written as a fallback and a `<template>` that " +
+        "this shell never runs. A host with no hydration script cannot show the surface.",
+    );
+  }
+}
+
 // The rest of the workspace is not yet moved. Report it, do not fail it: the ADR moves surfaces one
 // at a time, and a gate that failed on the whole backlog would be turned off instead of worked
 // through.
+// `consumer_properties.rs` is not a scheduling problem: `Resource::new` requires a `Send` future and
+// a `PartialEq + Send + Sync` source, and `ConsumerPropertyEditorPort::load` only returns a `Send`
+// future on native targets. Moving it changes that shared port, so it is a separate change.
 const notYetMoved = [
-  "crates/modules/rustok-pages/admin/src/inline_edit_launch.rs",
-  "crates/modules/rustok-pages/admin/src/rollback_control.rs",
-  "crates/modules/rustok-pages/admin/src/standalone_metadata.rs",
-  "crates/modules/rustok-pages/admin/src/templates_admin.rs",
   "crates/modules/rustok-page-builder/admin/src/editor/consumer_properties.rs",
 ];
 for (const file of notYetMoved) {
@@ -95,12 +181,15 @@ for (const file of notYetMoved) {
     );
   }
 }
-// Within the moved surface, the remaining `LocalResource`s are the tabs and panels it renders.
-for (const name of ["template_keys", "history", "schedule"]) {
-  const source = read("crates/modules/rustok-pages/admin/src/composition.rs");
-  if (source.includes(`let ${name} = LocalResource::new(`)) {
-    pending.push(`crates/modules/rustok-pages/admin/src/composition.rs (${name})`);
-  }
+// The rest of the composition file belongs to panels rendered inside the moved surface. They are
+// not counted as separate surfaces here, but a `LocalResource` left in that file must still be
+// reported, because a panel that a host shows is a surface it shows.
+const compositionFile = "crates/modules/rustok-pages/admin/src/composition.rs";
+const compositionLocalResources = [...read(compositionFile).matchAll(
+  /let\s+(\w+)\s*=\s*LocalResource::new\(/g,
+)];
+for (const match of compositionLocalResources) {
+  pending.push(`${compositionFile} (${match[1]})`);
 }
 
 if (failures.length > 0) {
