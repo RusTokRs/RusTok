@@ -124,11 +124,17 @@ same layout. The product admin package leads: its attributes page
 (`categories.rs`), catalog filter controls (`catalog_admin.rs`) and schema editor (`ui/leptos.rs`)
 resolve their state through `Resource` now, and the forum split, merge, rename and fork panels, the
 auth invites and security pages, the blog moderation queue, the forms inbox, the brand directory, the
-cache diagnostics card, the comments admin, the commerce admin and the customer directory followed;
-29 `LocalResource` call sites remain across the module admin packages. Each is the
-same defect — a `Suspense` fallback served where the response should hold the surface — so they are
-worked through one page at a time, and the count is recorded in the backlog rather than left
-implicit.
+cache diagnostics card, the comments admin, the commerce admin and the customer directory followed,
+then the pricing, product bundle, product relation, marketplace listing and seller, translation,
+workflow, group, AI, auth, blog and forum surfaces. 8 `LocalResource` call sites remain across the
+module admin packages, and none of them is a swap: three panels read the browser write journal, which
+`write_journal::load` only serves under `wasm32`, so their payload is a recovery projection rather than
+a serialisable response; the events and iggy configuration surfaces copy the resolved configuration
+into the form from an `Effect` and need the overlay arrangement the email settings form uses; the
+cache settings form is deliberately left where it is, because the diagnostics card beside it is the
+surface that was moved. The rest of the backlog is the same defect — a `Suspense` fallback served
+where the response should hold the surface — so it is worked through one page at a time, and the
+count is recorded in the backlog rather than left implicit.
 
 Two of the product surfaces are not a swap, and they are the shape the rest will meet. The product
 editor fills about twenty form fields from its response, so pointing the loader at `Resource` would

@@ -164,11 +164,15 @@ pub fn ProductEditorPage(
 
     // Categories list resource
     let cat_locale = locale.clone();
-    let categories_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let loc = cat_locale.clone().unwrap_or_default();
-        async move {
+    let categories_resource = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                cat_locale.clone().unwrap_or_default(),
+            )
+        },
+        move |(tok, ten, loc)| async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
@@ -181,14 +185,13 @@ pub fn ProductEditorPage(
             .await
             .map_err(|e| e.to_string())?;
             Ok::<Vec<CatalogCategorySummary>, String>(res.items)
-        }
-    });
+        },
+    );
 
     // Shipping profiles resource
-    let shipping_profiles_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        async move {
+    let shipping_profiles_resource = Resource::new(
+        move || (token.get(), tenant.get()),
+        move |(tok, ten)| async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
@@ -197,8 +200,8 @@ pub fn ProductEditorPage(
                     .await
                     .map_err(|e| e.to_string())?;
             Ok::<Vec<crate::model::ShippingProfile>, String>(res.items)
-        }
-    });
+        },
+    );
 
     // Effective Category Form resource
     let form_locale = locale.clone();
@@ -465,11 +468,10 @@ pub fn ProductEditorPage(
         }
     };
 
-    let variant_bootstrap = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        async move { catalog_transport::fetch_bootstrap(tok, ten).await }
-    });
+    let variant_bootstrap = Resource::new(
+        move || (token.get(), tenant.get()),
+        move |(tok, ten)| async move { catalog_transport::fetch_bootstrap(tok, ten).await },
+    );
     let variant_reload_locale = locale.clone();
     let refresh_variant_projection = Callback::new(move |product_id: String| {
         let tok = token.get_untracked();

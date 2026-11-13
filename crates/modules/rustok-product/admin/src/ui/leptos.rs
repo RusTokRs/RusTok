@@ -47,16 +47,21 @@ use crate::transport;
 // props, and those children read them through `.get()` in more than one closure, so the prop type
 // is part of each child's contract; the swap has to move the prop and its callers together. They
 // are recorded in the backlog rather than left implicit.
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -264,14 +269,14 @@ fn ProductCatalogReference() -> impl IntoView {
     let effective_locale_for_attribute_values = effective_locale.clone();
     let effective_locale_for_selected_pricing = effective_locale.clone();
 
-    let bootstrap = local_resource(
+    let bootstrap = loaded_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             transport::fetch_bootstrap(token_value, tenant_value).await
         },
     );
 
-    let products = local_resource(
+    let products = loaded_resource(
         move || {
             (
                 token.get(),
@@ -297,7 +302,7 @@ fn ProductCatalogReference() -> impl IntoView {
         },
     );
 
-    let shipping_profiles = local_resource(
+    let shipping_profiles = loaded_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             let bootstrap =
@@ -310,7 +315,7 @@ fn ProductCatalogReference() -> impl IntoView {
             .await
         },
     );
-    let catalog_categories = local_resource(
+    let catalog_categories = loaded_resource(
         move || {
             (
                 token.get(),
@@ -332,7 +337,7 @@ fn ProductCatalogReference() -> impl IntoView {
             .await
         },
     );
-    let effective_form = local_resource(
+    let effective_form = loaded_resource(
         move || {
             let category_id = text_or_none(primary_category_id.get());
             let selected_product = selected.get();
@@ -366,7 +371,7 @@ fn ProductCatalogReference() -> impl IntoView {
             .await
         },
     );
-    let attribute_values = local_resource(
+    let attribute_values = loaded_resource(
         move || {
             (
                 token.get(),
@@ -403,7 +408,7 @@ fn ProductCatalogReference() -> impl IntoView {
             attribute_editor_state.update(|state| state.refresh_values(values));
         }
     });
-    let selected_pricing = local_resource(
+    let selected_pricing = loaded_resource(
         move || {
             (
                 token.get(),
@@ -1685,7 +1690,7 @@ pub(super) fn ProductVariantsPanel(
     product: Option<ProductDetail>,
     token: Signal<Option<String>>,
     tenant: Signal<Option<String>>,
-    bootstrap: LocalResource<Result<ProductAdminBootstrap, rustok_graphql::GraphqlHttpError>>,
+    bootstrap: Resource<Result<ProductAdminBootstrap, rustok_graphql::GraphqlHttpError>>,
     busy: ReadSignal<bool>,
     set_busy: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
@@ -1962,7 +1967,7 @@ fn ProductMediaPanel(
     product: Option<ProductDetail>,
     token: Signal<Option<String>>,
     tenant: Signal<Option<String>>,
-    bootstrap: LocalResource<Result<ProductAdminBootstrap, rustok_graphql::GraphqlHttpError>>,
+    bootstrap: Resource<Result<ProductAdminBootstrap, rustok_graphql::GraphqlHttpError>>,
     busy: ReadSignal<bool>,
     set_busy: WriteSignal<bool>,
     set_error: WriteSignal<Option<String>>,
@@ -2398,14 +2403,18 @@ pub(crate) fn ProductAttributeValuesSection(
     let loaded_product_id = product_id.clone();
     let loaded_locale = locale.clone();
     let detached_locale = locale.clone();
-    let values_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let pid = loaded_product_id.clone();
-        let loc = loaded_locale.clone().unwrap_or_default();
-        refresh_nonce.track();
-        owner_refresh_nonce.track();
-        async move {
+    let values_resource = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                loaded_product_id.clone(),
+                loaded_locale.clone().unwrap_or_default(),
+                refresh_nonce.get(),
+                owner_refresh_nonce.get(),
+            )
+        },
+        move |(tok, ten, pid, loc, _, _)| async move {
             let Some(pid) = pid else {
                 return Ok(Vec::new());
             };
@@ -2421,8 +2430,8 @@ pub(crate) fn ProductAttributeValuesSection(
             )
             .await
             .map_err(|failure| failure.to_string())
-        }
-    });
+        },
+    );
     Effect::new(move |_| {
         if let Some(Ok(values)) = values_resource.get() {
             editor_state.update(|state| state.refresh_values(values));

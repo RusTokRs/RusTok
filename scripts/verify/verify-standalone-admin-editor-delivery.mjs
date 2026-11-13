@@ -9,7 +9,7 @@
 //
 // The list is the ratchet: adding a surface to it is the act of moving it, and this script reports
 // which listed surfaces are not done yet rather than failing on the whole migration.
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -285,6 +285,86 @@ const movedModuleSurfaces = [
     marker: "let customers = loaded_resource(",
     description: "the customer directory resolves its rows during the render",
   },
+  {
+    file: "crates/modules/rustok-pricing/admin/src/ui/leptos.rs",
+    marker: "let bootstrap = loaded_resource(",
+    description: "the pricing admin resolves its tenant and feed during the render",
+  },
+  {
+    file: "crates/modules/rustok-product-bundles/admin/src/ui/leptos.rs",
+    marker: "let directory = loaded_resource(",
+    description: "the bundle directory resolves its rows during the render",
+  },
+  {
+    file: "crates/modules/rustok-product-relations/admin/src/ui/leptos.rs",
+    marker: "let relations_resource = loaded_resource(",
+    description: "the product relation editor resolves its rows during the render",
+  },
+  {
+    file: "crates/modules/rustok-marketplace-listing/admin/src/ui/leptos.rs",
+    marker: "let directory = loaded_resource(",
+    description: "the marketplace listing admin resolves its directory during the render",
+  },
+  {
+    file: "crates/modules/rustok-marketplace-seller/admin/src/ui/leptos.rs",
+    marker: "let directory = loaded_resource(",
+    description: "the marketplace seller admin resolves its directory during the render",
+  },
+  {
+    file: "crates/modules/rustok-marketplace-seller/admin/src/ui/event_history_panel.rs",
+    marker: "let history = Resource::new(",
+    description: "the seller event timeline resolves its history during the render",
+  },
+  {
+    file: "crates/modules/rustok-translation/admin/src/ui/leptos.rs",
+    marker: "let bootstrap = Resource::new(",
+    description: "the translation admin resolves its glossaries and memory during the render",
+  },
+  {
+    file: "crates/modules/rustok-workflow/admin/src/ui/leptos.rs",
+    marker: "let workflows_resource = loaded_resource(",
+    description: "the workflow admin resolves its workflows and templates during the render",
+  },
+  {
+    file: "crates/modules/rustok-groups/admin/src/ui/leptos.rs",
+    marker: "let directory = Resource::new(",
+    description: "the groups admin resolves its directory during the render",
+  },
+  {
+    file: "crates/modules/rustok-ai/admin/src/ui/leptos.rs",
+    marker: "let bootstrap = loaded_resource(",
+    description: "the AI control plane resolves its bootstrap during the render",
+  },
+  {
+    file: "crates/modules/rustok-auth/admin/src/ui/users.rs",
+    marker: "let users_resource = loaded_resource(",
+    description: "the user directory resolves its rows during the render",
+  },
+  {
+    file: "crates/modules/rustok-auth/admin/src/ui/user_details.rs",
+    marker: "let user_resource = loaded_resource(",
+    description: "the user details page resolves its user during the render",
+  },
+  {
+    file: "crates/modules/rustok-blog/admin/src/ui/leptos.rs",
+    marker: "let posts_resource = loaded_resource(",
+    description: "the blog admin resolves its posts and categories during the render",
+  },
+  {
+    file: "crates/modules/rustok-blog/admin/src/ui/categories.rs",
+    marker: "let categories = loaded_resource(",
+    description: "the blog categories page resolves its rows during the render",
+  },
+  {
+    file: "crates/modules/rustok-forum/admin/src/ui/leptos.rs",
+    marker: "let categories = loaded_resource(",
+    description: "the forum admin resolves its tree, topics and replies during the render",
+  },
+  {
+    file: "crates/modules/rustok-product/admin/src/ui/product_editor.rs",
+    marker: "let categories_resource = Resource::new(",
+    description: "the product editor resolves its categories and shipping profiles during the render",
+  },
 ];
 for (const surface of movedModuleSurfaces) {
   const source = read(surface.file);
@@ -339,15 +419,38 @@ for (const match of compositionLocalResources) {
 // the served output is wrong even before that, because the callee would read a pending local
 // resource. The declaration and the call often sit in different files, so this builds one registry
 // of declarations across the modules that moved, then checks every call site against it.
-const resourcePropFiles = [
-  "crates/modules/rustok-search/admin/src/ui/leptos.rs",
-  "crates/modules/rustok-product/admin/src/ui/leptos.rs",
-  "crates/modules/rustok-product/admin/src/ui/product_editor.rs",
-  "crates/modules/rustok-blog/admin/src/ui/leptos.rs",
-  "crates/modules/rustok-blog/admin/src/ui/leptos/page.rs",
-  "crates/modules/rustok-comments/admin/src/ui/leptos.rs",
-  "crates/modules/rustok-commerce/admin/src/ui/leptos.rs",
-];
+// Every Rust file under a module admin package is a candidate declaration site. Listing files by
+// hand let a module that moved later declare its props in a file nobody added; the walk keeps the
+// check proportional to the tree instead of to the list.
+function moduleAdminSources() {
+  const found = [];
+  const modules = readdirSync(join(root, "crates/modules"), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+  for (const module of modules) {
+    const walk = (relative) => {
+      let entries;
+      try {
+        entries = readdirSync(join(root, relative), { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const path = `${relative}/${entry.name}`;
+        if (entry.isDirectory()) {
+          if (entry.name === "tests" || entry.name === "target") continue;
+          walk(path);
+        } else if (entry.name.endsWith(".rs")) {
+          found.push(path);
+        }
+      }
+    };
+    walk(`crates/modules/${module}/admin/src`);
+  }
+  return found;
+}
+const resourcePropFiles = moduleAdminSources();
 
 // Splits an argument list on top-level commas.
 function splitArguments(list) {

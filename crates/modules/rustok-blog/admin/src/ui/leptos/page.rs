@@ -20,7 +20,7 @@ pub(super) struct BlogAdminPageState {
     pub(super) list_locale: ReadSignal<String>,
     pub(super) set_list_locale: WriteSignal<String>,
     pub(super) posts_resource:
-        LocalResource<Result<crate::model::BlogPostList, transport::ApiError>>,
+        Resource<Result<crate::model::BlogPostList, transport::ApiError>>,
     pub(super) posts_rows: RwSignal<Vec<crate::model::BlogPostListItem>>,
     pub(super) posts_next_cursor: RwSignal<Option<String>>,
     pub(super) posts_load_more_error: RwSignal<Option<String>>,
@@ -38,7 +38,7 @@ pub(super) struct BlogAdminPageState {
     pub(super) preview_token: ReadSignal<Option<crate::model::BlogPreviewToken>>,
     pub(super) close_preview_banner: Callback<()>,
     pub(super) categories_resource:
-        LocalResource<Result<Vec<crate::model::BlogCategoryOption>, transport::ApiError>>,
+        Resource<Result<Vec<crate::model::BlogCategoryOption>, transport::ApiError>>,
     pub(super) categories_unavailable_label: String,
     pub(super) retry_categories: Callback<()>,
     pub(super) form_setters: BlogPostFormSetters,
