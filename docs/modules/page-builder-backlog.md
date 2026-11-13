@@ -762,7 +762,10 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           the Fly envelope applies its stylesheet with the nonce and drops it without. The
           probe did not use the built admin.
     - [ ] **The standalone SSR admin does not render the editor.** Decided 2026-11-13
-          (`DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`), not started. The mechanism
+          (`DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`), in progress: `PagesAdmin`
+          now loads its page list and open page through `Resource` (2026-11-13), so the workspace is
+          in the SSR response; `scripts/verify/verify-standalone-admin-editor-delivery.mjs` holds
+          that and lists the seven surfaces still on `LocalResource`. The mechanism
           is now named from `leptos` 0.8.21 source rather than inferred, and two of the three
           obvious fixes are ruled out by it:
           - a `LocalResource` *never* resolves on the server — `ArcLocalResource::new` wraps the

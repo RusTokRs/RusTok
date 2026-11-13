@@ -31,6 +31,31 @@ use std::sync::Arc;
 
 const FLY_DRAFT_QUERY_KEY: &str = "fly_draft";
 
+/// The server state of one open page, as a `Resource` can carry.
+///
+/// `PageBuilderAdminProviderStatus` is a runtime view of two values — rollout flags and an optional
+/// health snapshot — and only the values cross a resource boundary; the status is derived again by
+/// the render that reads them ([`PagesWorkspaceData::provider_status`]). That keeps the resource
+/// payload serialisable without inventing a second provider-status type for the wire, and without
+/// letting a consumer fabricate an observed snapshot: an absent health value stays absent.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+struct PagesWorkspaceData {
+    page: PageDetail,
+    baseline: Option<RuntimeScenarioReleaseBaseline>,
+    release_status: PageBuilderScenarioReleaseStatus,
+    provider_flags: rustok_page_builder::rollout::BuilderCapabilityFlags,
+    provider_health: Option<rustok_page_builder::health::ProviderHealthSnapshot>,
+}
+
+impl PagesWorkspaceData {
+    fn provider_status(&self) -> PageBuilderAdminProviderStatus {
+        match self.provider_health.clone() {
+            Some(health) => PageBuilderAdminProviderStatus::observed(self.provider_flags.clone(), health),
+            None => PageBuilderAdminProviderStatus::unobserved(self.provider_flags.clone()),
+        }
+    }
+}
+
 #[component]
 pub fn PagesAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
@@ -48,21 +73,33 @@ pub fn PagesAdmin() -> impl IntoView {
 
     let list_token = token;
     let list_tenant = tenant;
-    let pages_resource = LocalResource::new(move || {
-        let token = list_token.get();
-        let tenant = list_tenant.get();
-        let _generation = refresh_generation.get();
-        async move { transport::fetch_pages(token, tenant).await }
-    });
+    // A `Resource`, not a `LocalResource`: under `ssr` a `LocalResource` is `pending().await` by
+    // construction, so the standalone host answered with the `Suspense` fallback and never with
+    // the page list. A `Resource` is awaited during the render, and its `JsonSerdeCodec` default
+    // also means the same values hydrate instead of being fetched twice.
+    let pages_resource = Resource::new(
+        move || {
+            (
+                list_token.get(),
+                list_tenant.get(),
+                refresh_generation.get(),
+            )
+        },
+        move |(token, tenant, _generation)| async move {
+            transport::fetch_pages(token, tenant).await
+        },
+    );
 
-    let workspace_token = token;
-    let workspace_tenant = tenant;
-    let workspace_resource = LocalResource::new(move || {
-        let page_id = selected_page_query.get();
-        let token = workspace_token.get();
-        let tenant = workspace_tenant.get();
-        let _generation = refresh_generation.get();
-        async move {
+    let workspace_resource = Resource::new(
+        move || {
+            (
+                selected_page_query.get(),
+                workspace_token.get(),
+                workspace_tenant.get(),
+                refresh_generation.get(),
+            )
+        },
+        move |(page_id, token, tenant, _generation)| async move {
             let Some(page_id) = page_id.filter(|page_id| core::optional_ui_text(page_id).is_some())
             else {
                 return Ok::<_, String>(None);
@@ -87,16 +124,20 @@ pub fn PagesAdmin() -> impl IntoView {
             )
             .await
             .map_err(|error| error.to_string())?;
-            let provider_status =
-                crate::builder_rollout_settings::fetch_pages_builder_rollout_snapshot(
-                    token, tenant,
-                )
-                .await
-                .map_err(|error| error.to_string())?
-                .provider_status();
-            Ok(Some((page, baseline, release_status, provider_status)))
-        }
-    });
+            let rollout = crate::builder_rollout_settings::fetch_pages_builder_rollout_snapshot(
+                token, tenant,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            Ok(Some(PagesWorkspaceData {
+                page,
+                baseline,
+                release_status,
+                provider_flags: rollout.flags.clone(),
+                provider_health: rollout.provider_health.clone(),
+            }))
+        },
+    );
 
     let select_writer = query_writer.clone();
     let clear_writer = query_writer.clone();
@@ -216,19 +257,25 @@ pub fn PagesAdmin() -> impl IntoView {
                     }>
                         {move || {
                             workspace_resource.get().map(|result| match result {
-                                Ok(Some((page, baseline, release_status, provider_status))) => view! {
+                                Ok(Some(data)) => {
+                                    // The status is derived before the fields move into the view:
+                                    // it reads them, and a partially moved value cannot be read.
+                                    let provider_status = data.provider_status();
+                                    view! {
                                     <PageWorkspace
-                                        page
-                                        baseline
-                                        release_status
-                                        provider_status
+                                        page=data.page
+                                        baseline=data.baseline
+                                        release_status=data.release_status
+                                        provider_status=provider_status
                                         token
                                         tenant
                                         default_locale=default_locale.clone()
                                         draft_token=draft_query.get()
                                         refresh_generation
                                     />
-                                }.into_any(),
+                                    }
+                                    .into_any()
+                                }
                                 Ok(None) => view! { <WorkspaceEmptyState /> }.into_any(),
                                 Err(error) => view! {
                                     <div class="rounded-2xl border border-destructive/30 bg-destructive/10 px-5 py-5 text-sm text-destructive" role="alert">

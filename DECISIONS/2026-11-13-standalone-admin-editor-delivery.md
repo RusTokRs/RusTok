@@ -2,7 +2,7 @@
 
 - Date: 2026-11-13
 - Decision status: Accepted
-- Implementation status: Not started
+- Implementation status: In progress
 - Owners: `apps/admin`, `rustok-pages-admin`, `rustok-page-builder-admin`, `fly-browser`
 - Extends: [Page Builder server preview delivery](./2026-11-12-page-builder-server-preview-delivery.md), [Fly SSR control contract and route-carried view state](./2026-11-11-fly-ssr-control-contract-and-route-view-state.md), [Fly SSR-first browser runtime](./2026-07-16-fly-ssr-first-browser-runtime.md)
 - Supersedes: None
@@ -66,6 +66,21 @@ editor is reachable without Leptos hydration at all, once its data is in the res
 4. **A host that can do neither renders the reason.** The backlog's rule stands: no host mounts a
    control that cannot act. Where a surface still depends on `LocalResource`, the host renders an
    explicit unavailable state rather than an editor whose buttons do nothing.
+
+## Delivered so far
+
+`PagesAdmin` (`crates/modules/rustok-pages/admin/src/composition.rs`) loads the page list and the
+open page through `Resource` as of 2026-11-13, so a standalone SSR render contains them instead of
+the `Suspense` fallback. The resource payload is a serialisable projection (`PagesWorkspaceData`):
+the provider status is a view of rollout flags and an optional health snapshot, only those two
+values cross the boundary, and the render derives the status again. That keeps the payload
+serialisable without a second wire type and without letting a consumer fabricate an observed
+snapshot — an absent health value stays absent.
+
+`scripts/verify/verify-standalone-admin-editor-delivery.mjs` holds the moved list: it fails if a
+listed surface creates a `LocalResource` again, and it *reports* the surfaces not yet moved (the
+templates tab keys, the history and schedule panels, and the five other files that still load that
+way) instead of failing on them, so the backlog is worked through rather than turned off.
 
 ## Sources of truth and ownership
 
