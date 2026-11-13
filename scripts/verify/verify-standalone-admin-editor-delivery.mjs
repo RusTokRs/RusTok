@@ -365,6 +365,21 @@ const movedModuleSurfaces = [
     marker: "let categories_resource = Resource::new(",
     description: "the product editor resolves its categories and shipping profiles during the render",
   },
+  {
+    file: "crates/modules/rustok-events-module/admin/src/ui.rs",
+    marker: "let configuration = loaded_resource(",
+    description: "the events admin renders the resolved delivery profile during the render",
+  },
+  {
+    file: "crates/modules/rustok-iggy-connector/admin/src/ui.rs",
+    marker: "let configuration = loaded_resource(",
+    description: "the Iggy connector form renders the resolved configuration during the render",
+  },
+  {
+    file: "crates/modules/rustok-cache/admin/src/ui/leptos.rs",
+    marker: "let settings_resource = loaded_resource(",
+    description: "the cache settings form renders the resolved settings during the render",
+  },
 ];
 for (const surface of movedModuleSurfaces) {
   const source = read(surface.file);

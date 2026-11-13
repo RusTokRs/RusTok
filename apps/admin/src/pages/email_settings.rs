@@ -192,7 +192,7 @@ pub fn EmailSettingsPage() -> impl IntoView {
                                         )
                                         .unwrap_or_default()
                                     })
-                                    set_value=WriteSignal::derive(move |value: String| {
+                                    set_value=SignalSetter::map(move |value: String| {
                                         edits.update(|edits| edits.smtp_host = Some(value));
                                     })
                                     placeholder="smtp.example.com"
@@ -206,7 +206,7 @@ pub fn EmailSettingsPage() -> impl IntoView {
                                         )
                                         .unwrap_or_default()
                                     })
-                                    set_value=WriteSignal::derive(move |value: String| {
+                                    set_value=SignalSetter::map(move |value: String| {
                                         edits.update(|edits| edits.smtp_port = Some(value));
                                     })
                                     placeholder="587"
@@ -220,7 +220,7 @@ pub fn EmailSettingsPage() -> impl IntoView {
                                         )
                                         .unwrap_or_default()
                                     })
-                                    set_value=WriteSignal::derive(move |value: String| {
+                                    set_value=SignalSetter::map(move |value: String| {
                                         edits.update(|edits| edits.smtp_username = Some(value));
                                     })
                                     placeholder="noreply@example.com"
@@ -234,7 +234,7 @@ pub fn EmailSettingsPage() -> impl IntoView {
                                         )
                                         .unwrap_or_default()
                                     })
-                                    set_value=WriteSignal::derive(move |value: String| {
+                                    set_value=SignalSetter::map(move |value: String| {
                                         edits.update(|edits| edits.from_address = Some(value));
                                     })
                                     placeholder="noreply@example.com"

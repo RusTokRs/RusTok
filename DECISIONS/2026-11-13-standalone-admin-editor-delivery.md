@@ -126,24 +126,36 @@ resolve their state through `Resource` now, and the forum split, merge, rename a
 auth invites and security pages, the blog moderation queue, the forms inbox, the brand directory, the
 cache diagnostics card, the comments admin, the commerce admin and the customer directory followed,
 then the pricing, product bundle, product relation, marketplace listing and seller, translation,
-workflow, group, AI, auth, blog and forum surfaces. 8 `LocalResource` call sites remain across the
-module admin packages, and none of them is a swap: three panels read the browser write journal, which
-`write_journal::load` only serves under `wasm32`, so their payload is a recovery projection rather than
-a serialisable response; the events and iggy configuration surfaces copy the resolved configuration
-into the form from an `Effect` and need the overlay arrangement the email settings form uses; the
-cache settings form is deliberately left where it is, because the diagnostics card beside it is the
-surface that was moved. The rest of the backlog is the same defect — a `Suspense` fallback served
-where the response should hold the surface — so it is worked through one page at a time, and the
-count is recorded in the backlog rather than left implicit.
+workflow, group, AI, auth, blog, forum, pricing, cache, events and iggy surfaces. The events and iggy
+configuration surfaces were the overlay arrangement, not a swap: both copied the resolved
+configuration into their form from an `Effect`, so pointing the loader at `Resource` alone would have
+served an empty form. Both now render the resolved configuration with the operator's edits laid over
+it, and the cache settings form was moved the same way. The forms needed two component changes, both
+on the read/write faces of a field rather than on its layout. `rustok_ui::Input` took
+`value: Option<ReadSignal<String>>`, which is the cell a form owns, and a derived value has no cell to
+hand over — a `ReadSignal` cannot be built from a closure — so it gained
+`derived_value: Option<Signal<String>>`; the `apps/admin` `Input` already took `Signal<String>`. Both
+took `set_value: WriteSignal<String>`, but the write face of a projection is a closure, and Leptos has
+a type for exactly that: `SignalSetter<String>`, with `From<WriteSignal>` so every existing caller is
+unchanged. Neither component invents a cell to hold the projection.
+
+5 `LocalResource` call sites remain across the module admin packages, and all five read the browser
+write journal. The journal *is* serialisable (`WriteJournal<S>` derives `Serialize`/`Deserialize`
+over `S: JournalState`), so the payload was never the obstacle: the record is per-tab state in
+`session_storage`, keyed by document marker, and the server has no tab. Serving it from the render
+would mean rendering another tab's recovery record, so these panels keep a browser loader until the
+recovery read is separated from the mount path. The rest of the backlog is the same defect — a
+`Suspense` fallback served where the response should hold the surface — so it is worked through one
+page at a time, and the count is recorded in the backlog rather than left implicit.
 
 Two of the product surfaces are not a swap, and they are the shape the rest will meet. The product
 editor fills about twenty form fields from its response, so pointing the loader at `Resource` would
 only move the defect: the fields are signals written by an `Effect`, which never runs on the server,
 so the response would carry an empty form. It needs the arrangement the email settings form already
 uses — the response resolves into a rendered value and the operator's edits are an overlay on it.
-The attribute lifecycle panel's loader returns a `LoadedScope` holding a `WriteJournal`, which is not
-serialisable and not the payload a `Resource` can carry; it needs a projection to the fields the panel
-renders, as the Pages workspace needed. The third is a type on the boundary rather than a payload: a surface that
+The attribute lifecycle panel's loader returns a `LoadedScope` holding a `WriteJournal` read from
+`session_storage`; the type serialises, but the record belongs to one tab, so it is not state the
+response can carry without serving another tab's recovery. The third is a type on the boundary rather than a payload: a surface that
 takes a resource as a prop declares its type, so the caller and the callee have to move together. The
 search admin's preview and analytics views and the product editor's attribute-values section both
 declared `LocalResource<…>` while their callers had already moved to `Resource<…>`; both now declare

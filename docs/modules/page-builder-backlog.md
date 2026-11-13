@@ -815,7 +815,7 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           declares `ssr=SsrMode::Async`, so every page inside it — including every `/modules/<slug>`
           surface — is rendered to completion with no stream left to fill a `Suspense`. A
           `LocalResource` on any of those pages is therefore `pending()` in the response and its
-          `Suspense` fallback is what a reader gets. Module admin surfaces still on `LocalResource`: 8. The product
+          `Suspense` fallback is what a reader gets. Module admin surfaces still on `LocalResource`: 5. The product
           module leads — attributes page, product grid, categories page, catalog filter controls and
           schema editor — and the forum split/merge/rename/fork panels, the auth invites and security
           pages, the blog moderation queue, the forms inbox, the brand directory, the cache diagnostics card,
@@ -824,15 +824,20 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           search and tenant admins followed, then the pricing, bundle, relation, marketplace listing
           and seller, translation, workflow, group, AI, auth, blog, forum, product grid and product
           editor surfaces, each resolving its state through `Resource`.
-          The eight that remain are not a swap. The variant create, variant axes and attribute
-          lifecycle panels read the browser write journal, and `write_journal::load` only answers
-          under `wasm32`, so their payload is a recovery projection the server cannot produce, and the
-          attribute lifecycle panel's loader additionally returns a `LoadedScope` holding a
-          `WriteJournal`. The events and iggy configuration surfaces copy the resolved configuration
-          into the form from an `Effect`, so they need the edit-overlay treatment the email settings
-          form got — a `Resource` behind an `Effect` still renders an empty form — and the cache
-          settings form is left in place on purpose, because the diagnostics card beside it is the
-          surface that moved. A surface that takes a resource as a prop
+          The events and iggy configuration surfaces were the edit-overlay treatment rather than a
+          swap: both filled their form from an `Effect`, so a `Resource` behind that effect would have
+          served an empty form. Both now render the resolved configuration with the operator's edits
+          laid over it, and the cache settings form was moved the same way — which needed two
+          component changes on the read and write faces of a field. `rustok_ui::Input` took only
+          `value: Option<ReadSignal<String>>`, the cell a form owns, and a derived value has no cell
+          to hand over, so it gained a `derived_value: Option<Signal<String>>` prop; both that
+          component and the `apps/admin` `Input` now take `set_value: SignalSetter<String>`, which is
+          the type Leptos has for the write face of a value that is not an owned cell, and
+          `From<WriteSignal>` keeps every existing caller working.
+          The five that remain all read the browser write journal. The journal serialises — that was
+          never the obstacle — but the record is per-tab state in `session_storage`, keyed by document
+          marker, and the server has no tab: rendering it would serve another tab's recovery record. A
+          surface that takes a resource as a prop
           declares its type, so the caller and the callee move together: the search admin's preview
           and analytics views and the product editor's attribute-values section declared
           `LocalResource<…>` after their callers had moved to `Resource<…>`, and were updated with

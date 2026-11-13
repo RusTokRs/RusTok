@@ -14,16 +14,33 @@ use crate::core::{
 };
 use crate::transport;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
+}
+
+/// The cache settings fields the operator has changed. `None` means "unchanged", so the value the
+/// backend resolved is what the field shows.
+#[derive(Clone, Debug, Default)]
+struct CacheSettingsEdits {
+    mode: Option<String>,
+    redis_host: Option<String>,
+    redis_port: Option<String>,
+    redis_password: Option<String>,
+    redis_db: Option<String>,
+    redis_url: Option<String>,
 }
 
 #[component]
@@ -33,16 +50,14 @@ pub fn CacheAdmin() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let labels = Arc::new(CacheAdminLabels::resolve(route_context.locale.as_deref()));
 
-    let (mode, set_mode) = signal("in-memory".to_string());
-    let (redis_host, set_redis_host) = signal("127.0.0.1".to_string());
-    let (redis_port, set_redis_port) = signal("6379".to_string());
-    let (redis_password, set_redis_password) = signal(String::new());
-    let (redis_db, set_redis_db) = signal("0".to_string());
-    let (redis_url, set_redis_url) = signal(String::new());
+    // The form is the resolved settings with the operator's edits laid over them, not a set of cells
+    // an `Effect` fills after the first render: an `Effect` is not driven before the server produces
+    // the response, so a form built that way arrives empty and a field nobody touched carries a
+    // value nobody set.
+    let (edits, set_edits) = signal(CacheSettingsEdits::default());
     let (saving, set_saving) = signal(false);
     let (save_result, set_save_result) = signal(Option::<Result<bool, String>>::None);
-    let (loaded, set_loaded) = signal(false);
-    let (schema_version, set_schema_version) = signal(0_i32);
+    let (schema_version_override, set_schema_version_override) = signal(Option::<i32>::None);
 
     // Resolved by the request: this page mounts inside the `Async` admin layout, so a
     // `LocalResource` here leaves the reader with the `Suspense` fallback.
@@ -53,28 +68,66 @@ pub fn CacheAdmin() -> impl IntoView {
         },
     );
 
-    let settings_resource = local_resource(
+    let settings_resource = loaded_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             transport::fetch_cache_settings(token_value, tenant_value).await
         },
     );
 
-    Effect::new(move |_| {
-        if let Some(Ok(response)) = settings_resource.get()
-            && !loaded.get_untracked()
-        {
-            if let Some(draft) = parse_cache_settings_json(&response.platform_settings.settings) {
-                set_mode.set(draft.mode);
-                set_redis_host.set(draft.redis_host);
-                set_redis_port.set(draft.redis_port);
-                set_redis_password.set(draft.redis_password);
-                set_redis_db.set(draft.redis_db);
-                set_redis_url.set(draft.redis_url);
-            }
-            set_schema_version.set(response.platform_settings.schema_version);
-            set_loaded.set(true);
+    let resolved = move || {
+        settings_resource
+            .get()
+            .and_then(Result::ok)
+            .map(|response| {
+                (
+                    parse_cache_settings_json(&response.platform_settings.settings)
+                        .unwrap_or_default(),
+                    response.platform_settings.schema_version,
+                )
+            })
+    };
+    let backend = move || resolved().map(|(draft, _)| draft);
+    // `Copy`, not `move`: every field captures it, and a moved closure would be `FnOnce`.
+    let field = |read: fn(&CacheSettingsEdits) -> Option<String>,
+                 backend: fn(&CacheAdminFormDraft) -> String| {
+        let edited = edits.get();
+        read(&edited).or_else(|| backend().map(|draft| backend(&draft)))
+    };
+
+    let mode = Signal::derive(move || {
+        let edited = edits.get();
+        edited
+            .mode
+            .clone()
+            .or_else(|| backend().map(|draft| draft.mode))
+            .unwrap_or_else(|| "in-memory".to_string())
+    });
+    let redis_host = Signal::derive(move || {
+        field(|edits| edits.redis_host.clone(), |draft| draft.redis_host.clone())
+    });
+    let redis_port = Signal::derive(move || {
+        field(|edits| edits.redis_port.clone(), |draft| draft.redis_port.clone())
+    });
+    let redis_password = Signal::derive(move || {
+        let edited = edits.get();
+        edited
+            .redis_password
+            .clone()
+            .or_else(|| backend().map(|draft| draft.redis_password))
+            .unwrap_or_default()
+    });
+    let redis_db = Signal::derive(move || {
+        field(|edits| edits.redis_db.clone(), |draft| draft.redis_db.clone())
+    });
+    let redis_url = Signal::derive(move || {
+        field(|edits| edits.redis_url.clone(), |draft| draft.redis_url.clone())
+    });
+    let schema_version = Signal::derive(move || {
+        if let Some(version) = schema_version_override.get() {
+            return version;
         }
+        resolved().map(|(_, version)| version).unwrap_or(0)
     });
 
     let save = move || {
@@ -115,9 +168,11 @@ pub fn CacheAdmin() -> impl IntoView {
             set_saving.set(false);
             match res {
                 Ok(response) => {
-                    set_schema_version.set(response.update_platform_settings.schema_version);
+                    set_schema_version_override
+                        .set(Some(response.update_platform_settings.schema_version));
                     set_save_result.set(Some(Ok(true)));
-                    set_redis_password.set(String::new());
+                    // The saved secret is never echoed back, so the field drops what was typed.
+                    set_edits.update(|edits| edits.redis_password = Some(String::new()));
                 }
                 Err(e) => {
                     set_save_result.set(Some(Err(e)));
@@ -241,7 +296,7 @@ pub fn CacheAdmin() -> impl IntoView {
                                         name="cache_mode"
                                         value="in-memory"
                                         checked=move || mode.get() == "in-memory"
-                                        on:change=move |_| set_mode.set("in-memory".to_string())
+                                        on:change=move |_| set_edits.update(|edits| edits.mode = Some("in-memory".to_string()))
                                         class="accent-primary"
                                     />
                                     <div>
@@ -259,7 +314,7 @@ pub fn CacheAdmin() -> impl IntoView {
                                         name="cache_mode"
                                         value="redis"
                                         checked=move || mode.get() == "redis"
-                                        on:change=move |_| set_mode.set("redis".to_string())
+                                        on:change=move |_| set_edits.update(|edits| edits.mode = Some("redis".to_string()))
                                         class="accent-primary"
                                     />
                                     <div>
@@ -277,7 +332,7 @@ pub fn CacheAdmin() -> impl IntoView {
                                         name="cache_mode"
                                         value="hybrid"
                                         checked=move || mode.get() == "hybrid"
-                                        on:change=move |_| set_mode.set("hybrid".to_string())
+                                        on:change=move |_| set_edits.update(|edits| edits.mode = Some("hybrid".to_string()))
                                         class="accent-primary"
                                     />
                                     <div>
@@ -318,8 +373,10 @@ pub fn CacheAdmin() -> impl IntoView {
                                                         {host_lbl}
                                                     </Label>
                                                     <Input
-                                                        value=redis_host
-                                                        set_value=set_redis_host
+                                                        derived_value=redis_host
+                                                        set_value=SignalSetter::map(move |value: String| {
+                                                            set_edits.update(|edits| edits.redis_host = Some(value));
+                                                        })
                                                     />
                                                 </div>
                                                 <div>
@@ -328,8 +385,10 @@ pub fn CacheAdmin() -> impl IntoView {
                                                     </Label>
                                                     <Input
                                                         r#type="number"
-                                                        value=redis_port
-                                                        set_value=set_redis_port
+                                                        derived_value=redis_port
+                                                        set_value=SignalSetter::map(move |value: String| {
+                                                            set_edits.update(|edits| edits.redis_port = Some(value));
+                                                        })
                                                     />
                                                 </div>
                                             </div>
@@ -341,8 +400,10 @@ pub fn CacheAdmin() -> impl IntoView {
                                                 <Input
                                                     r#type="password"
                                                     placeholder=pwd_ph
-                                                    value=redis_password
-                                                    set_value=set_redis_password
+                                                    derived_value=redis_password
+                                                    set_value=SignalSetter::map(move |value: String| {
+                                                        set_edits.update(|edits| edits.redis_password = Some(value));
+                                                    })
                                                 />
                                             </div>
 
@@ -352,8 +413,10 @@ pub fn CacheAdmin() -> impl IntoView {
                                                 </Label>
                                                 <Input
                                                     r#type="number"
-                                                    value=redis_db
-                                                    set_value=set_redis_db
+                                                    derived_value=redis_db
+                                                    set_value=SignalSetter::map(move |value: String| {
+                                                        set_edits.update(|edits| edits.redis_db = Some(value));
+                                                    })
                                                 />
                                             </div>
 
@@ -363,8 +426,10 @@ pub fn CacheAdmin() -> impl IntoView {
                                                 </Label>
                                                 <Input
                                                     placeholder=url_ph
-                                                    value=redis_url
-                                                    set_value=set_redis_url
+                                                    derived_value=redis_url
+                                                    set_value=SignalSetter::map(move |value: String| {
+                                                        set_edits.update(|edits| edits.redis_url = Some(value));
+                                                    })
                                                 />
                                             </div>
                                         </div>
