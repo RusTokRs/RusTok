@@ -119,11 +119,23 @@ browser-side loader, because the default stream degrades there to the page's own
 to a server render that waits.
 
 That scope includes every `/modules/<slug>` surface, because module admins are mounted inside the
-same layout. The first of them to move is the product attributes page
-(`rustok-product/admin/src/ui/attributes.rs`), which now resolves its directory and schemas through
-`Resource`; 66 `LocalResource` call sites remain across the module admin packages. Each is the same
-defect — a `Suspense` fallback served where the response should hold the surface — so they are worked
-through one page at a time, and the count is recorded in the backlog rather than left implicit.
+same layout. The product admin package leads: its attributes page
+(`rustok-product/admin/src/ui/attributes.rs`), product grid (`product_grid.rs`), categories page
+(`categories.rs`) and catalog filter controls (`catalog_admin.rs`) resolve their state through
+`Resource` now; 61 `LocalResource` call sites remain across the module admin packages. Each is the
+same defect — a `Suspense` fallback served where the response should hold the surface — so they are
+worked through one page at a time, and the count is recorded in the backlog rather than left
+implicit.
+
+Two of the product surfaces are not a swap, and they are the shape the rest will meet. The product
+editor fills about twenty form fields from its response, so pointing the loader at `Resource` would
+only move the defect: the fields are signals written by an `Effect`, which never runs on the server,
+so the response would carry an empty form. It needs the arrangement the email settings form already
+uses — the response resolves into a rendered value and the operator's edits are an overlay on it.
+The attribute lifecycle panel's loader returns a `LoadedScope` holding a `WriteJournal`, which is not
+serialisable and not the payload a `Resource` can carry; it needs a projection to the fields the panel
+renders, as the Pages workspace needed. Neither is a reason to leave the surfaces on `LocalResource`;
+both are work that the conversion schedules rather than a target it misses.
 
 Module availability itself was the second half of the same defect: `EnabledModulesProvider` resolved
 the effective policy through `LocalResource` and copied the result into signals from an `Effect`. On

@@ -815,8 +815,12 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           declares `ssr=SsrMode::Async`, so every page inside it — including every `/modules/<slug>`
           surface — is rendered to completion with no stream left to fill a `Suspense`. A
           `LocalResource` on any of those pages is therefore `pending()` in the response and its
-          `Suspense` fallback is what a reader gets. Module admin surfaces still on `LocalResource`: 66. The landed one is the product attributes page, which loads its directory and schemas
-          through `Resource` now; the rest are the same defect, one page at a time.
+          `Suspense` fallback is what a reader gets. Module admin surfaces still on `LocalResource`: 61. The product module leads: its attributes page, product grid, categories page and
+          catalog filter controls load through `Resource` now; the rest are the same defect, one page
+          at a time. Two surfaces in that module are not a swap: the product editor loads twenty
+          form fields from its response and needs the same edit-overlay treatment the email settings
+          form got, and the attribute lifecycle panel's loader returns a `LoadedScope` that is not
+          serialisable, so it needs a projection first, as the Pages workspace did.
           Owner: `rustok-pages-admin`, `apps/admin`.
     - [ ] Load the editor in a browser under the policy of `apps/admin/src/app/security.rs`.
           The two Playwright suites serve their pages without a policy, and `apps/admin` does
