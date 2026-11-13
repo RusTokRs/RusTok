@@ -1,6 +1,7 @@
 const OWNER_GRAPHQL: &str = include_str!("../../src/graphql.rs");
 const OWNER_MANIFEST: &str = include_str!("../../rustok-module.toml");
 const OWNER_CARGO: &str = include_str!("../../Cargo.toml");
+const STOREFRONT_CARGO: &str = include_str!("../Cargo.toml");
 const STOREFRONT_GRAPHQL: &str = include_str!("../src/transport/graphql_adapter.rs");
 const STOREFRONT_TRANSPORT: &str = include_str!("../src/transport.rs");
 const STOREFRONT_UI: &str = include_str!("../src/ui/leptos.rs");
@@ -17,9 +18,44 @@ fn manifest_composes_owner_runtime_data_without_host_registry_code() {
             "manifest is missing `{marker}`"
         );
     }
-    assert!(OWNER_CARGO.contains("default = []"));
-    assert!(OWNER_CARGO.contains("server = [\"rustok-api/server\", \"dep:async-graphql\"]"));
-    assert!(OWNER_CARGO.contains("async-graphql = { workspace = true, optional = true }"));
+    // The owner may choose its own defaults. The host explicitly selects `server`, and
+    // the storefront keeps the owner dependency out of its default client profile.
+    let owner: toml::Value = toml::from_str(OWNER_CARGO).expect("valid owner manifest");
+    let server_features = owner["features"]["server"]
+        .as_array()
+        .expect("owner server features");
+    for required in ["rustok-api/server", "dep:async-graphql"] {
+        assert!(
+            server_features
+                .iter()
+                .any(|feature| feature.as_str() == Some(required)),
+            "owner server feature is missing `{required}`"
+        );
+    }
+    assert_eq!(
+        owner["dependencies"]["async-graphql"]["optional"].as_bool(),
+        Some(true)
+    );
+
+    let storefront: toml::Value =
+        toml::from_str(STOREFRONT_CARGO).expect("valid storefront manifest");
+    assert!(
+        storefront["features"]["default"]
+            .as_array()
+            .expect("storefront default features")
+            .is_empty()
+    );
+    assert!(
+        storefront["features"]["ssr"]
+            .as_array()
+            .expect("storefront SSR features")
+            .iter()
+            .any(|feature| feature.as_str() == Some("dep:rustok-notifications"))
+    );
+    assert_eq!(
+        storefront["dependencies"]["rustok-notifications"]["optional"].as_bool(),
+        Some(true)
+    );
     assert!(SERVER_CARGO.contains("rustok-notifications/server"));
     assert!(OWNER_GRAPHQL.contains("pub fn attach_schema_data("));
     assert!(OWNER_GRAPHQL.contains("inputs.shared_get::<Arc<NotificationSourceRegistry>>()"));

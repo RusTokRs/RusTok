@@ -41,3 +41,4 @@ uuid.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+toml.workspace = true
