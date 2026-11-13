@@ -79,12 +79,13 @@ jobs:
           LABEL: ${{ matrix.label }}
         run: bash "$RUNNER_TEMP/check.sh" "$LABEL" bash -euo pipefail -c "$COMMAND"
       - name: Run media admin unit tests with SSR
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           bash "$RUNNER_TEMP/check.sh" 'Media admin' \
             cargo test --locked -p rustok-media-admin --features ssr --lib
       - name: Lint Fly browser and Page Builder integrations
-        if: ${{ success() && matrix.label == 'Pages admin' }}
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           bash "$RUNNER_TEMP/check.sh" 'Focused integration clippy' \
