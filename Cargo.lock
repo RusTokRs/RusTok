@@ -16910,6 +16910,7 @@ dependencies = [
  "rustok-page-builder",
  "rustok-ui-core",
  "rustok-ui-i18n",
+ "send_wrapper",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

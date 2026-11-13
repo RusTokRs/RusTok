@@ -76,6 +76,13 @@ const movedSurfaces = [
     forbidden: "LocalResource::new(",
     description: "both layout template catalogs load during the render",
   },
+  {
+    file: "crates/modules/rustok-page-builder/admin/src/editor/consumer_properties.rs",
+    component: "ConsumerPropertiesPanel",
+    resource: "Resource::new(",
+    forbidden: "LocalResource::new(",
+    description: "the consumer properties snapshot is resolved by the request",
+  },
 ];
 
 for (const surface of movedSurfaces) {
@@ -163,12 +170,9 @@ for (const match of moduleRoutes) {
 // The rest of the workspace is not yet moved. Report it, do not fail it: the ADR moves surfaces one
 // at a time, and a gate that failed on the whole backlog would be turned off instead of worked
 // through.
-// `consumer_properties.rs` is not a scheduling problem: `Resource::new` requires a `Send` future and
-// a `PartialEq + Send + Sync` source, and `ConsumerPropertyEditorPort::load` only returns a `Send`
-// future on native targets. Moving it changes that shared port, so it is a separate change.
-const notYetMoved = [
-  "crates/modules/rustok-page-builder/admin/src/editor/consumer_properties.rs",
-];
+// Every surface the ADR names has moved. The list stays so a surface that regresses is reported
+// rather than silently re-listed: an entry here must still create a `LocalResource`.
+const notYetMoved = [];
 for (const file of notYetMoved) {
   const source = read(file);
   if (source.includes("LocalResource::new(")) {

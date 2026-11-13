@@ -20,7 +20,14 @@ pub struct EnabledModulesContext {
 }
 
 impl EnabledModulesContext {
-    pub fn new(resource: Resource<Result<Vec<String>, String>>) -> Self {
+    /// Derives the availability signals from the request's resource.
+    ///
+    /// `refresh_generation` is owned by the caller because the resource's source reads it: the
+    /// provider has to create the signal before the resource, so it cannot be created here.
+    pub fn new(
+        resource: Resource<Result<Vec<String>, String>>,
+        refresh_generation: RwSignal<u64>,
+    ) -> Self {
         Self {
             modules: Memo::new(move |_| {
                 resource
@@ -31,7 +38,7 @@ impl EnabledModulesContext {
             }),
             is_loading: Memo::new(move |_| resource.get().is_none()),
             error: Memo::new(move |_| resource.get().and_then(|result| result.err())),
-            refresh_generation: RwSignal::new(0),
+            refresh_generation,
         }
     }
 
@@ -72,11 +79,7 @@ pub fn EnabledModulesProvider(children: Children) -> impl IntoView {
         },
     );
 
-    let context = EnabledModulesContext {
-        refresh_generation,
-        ..EnabledModulesContext::new(resource)
-    };
-    provide_context(context);
+    provide_context(EnabledModulesContext::new(resource, refresh_generation));
 
     children()
 }
@@ -86,12 +89,15 @@ pub struct EnabledModulesResource(EnabledModulesContext);
 
 impl EnabledModulesResource {
     /// The enabled slugs once the request resolved them; `None` while it has not.
-    pub fn modules(self) -> Option<HashSet<String>> {
+    ///
+    /// Takes `&self`: the render closure that calls this re-runs on every source change, and a
+    /// by-value receiver would make that closure `FnOnce`.
+    pub fn modules(&self) -> Option<HashSet<String>> {
         (!self.0.is_loading.get()).then(|| self.0.modules.get())
     }
 
     /// The failure the request reported, if it failed.
-    pub fn error(self) -> Option<String> {
+    pub fn error(&self) -> Option<String> {
         self.0.error.get()
     }
 }

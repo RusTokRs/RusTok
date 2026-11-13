@@ -109,18 +109,21 @@ rollback control, the published metadata admission, and both layout template cat
 was a `LocalResource` read under a `Suspense` that the server could never fill, so each rendered as
 nothing or as a skeleton in every response.
 
-One surface did not move and is not scheduled to: `consumer_properties.rs` cannot. `Resource::new`
-requires `S: PartialEq + Clone + Send + Sync`, `T: Send + Sync` and `Fut: Future + Send`, while
-`ConsumerPropertyEditorPort::load` returns `ConsumerPropertyLoadFuture`, which is `Send` only on
-native targets, and the runtime handle it would use as the source is not `PartialEq`. Moving that
-panel means changing the port every consumer property editor shares, so it is a separate change with
-its own contract, and the gate keeps it listed as pending rather than pretending otherwise.
+The consumer properties panel (`rustok-page-builder/admin/src/editor/consumer_properties.rs`) was
+the one surface held back, because `Resource::new` requires `S: PartialEq + Clone + Send + Sync` and
+`Fut: Future + Send`, while `ConsumerPropertyEditorPort::load` returns `ConsumerPropertyLoadFuture`,
+which is `Send` only on native targets. That turned out to be a constraint the workspace already
+answers: `rustok-graphql` wraps a browser-owned fetch in `send_wrapper::SendWrapper` for exactly this
+bound. The panel now does the same under `target_arch = "wasm32"`, and its source is a unit marker
+rather than the runtime handle, because a handle has no meaningful identity to compare and the panel
+is rebuilt when the handle changes. The port is untouched, so every consumer property editor keeps
+its contract.
 
 `scripts/verify/verify-standalone-admin-editor-delivery.mjs` holds the moved list: it fails if a
 listed surface creates a `LocalResource` again, if a module route loses `ssr=SsrMode::Async`, or if
 module availability goes back to a `LocalResource`/`Effect`. It also fails when a file listed as
-pending stops being pending, so the list cannot go stale, and it *reports* the one remaining surface
-instead of failing on it.
+pending stops being pending, so the list cannot go stale. Nothing is pending any more: the six
+surfaces the ADR names all resolve their state during the render.
 
 ## Sources of truth and ownership
 

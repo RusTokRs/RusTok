@@ -50,6 +50,10 @@ tracing.workspace = true
 uuid.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+# The editor port's load future is `!Send` in the browser. `send_wrapper` is how the workspace
+# transports a browser-owned future into `Resource`, whose fetcher must be `Send` on every target
+# (`rustok-graphql` wraps its fetch the same way).
+send_wrapper.workspace = true
 wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 js-sys = { version = "0.3", optional = true }

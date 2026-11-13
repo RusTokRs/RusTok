@@ -770,10 +770,11 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           launch, the rollback control, the published metadata admission and both layout template
           catalogs moved the same way (2026-11-13), so the Pages admin no longer gates a host that
           must show it on a `LocalResource`. The consumer properties panel
-          (`rustok-page-builder/admin/src/editor/consumer_properties.rs`) cannot move without
-          changing `ConsumerPropertyEditorPort`: `Resource::new` needs a `Send` future and a
-          `PartialEq + Send + Sync` source, and that port's `load` future is `Send` only on native
-          targets. It stays listed as pending, and the gate fails if a listing goes stale. The mechanism
+          (`rustok-page-builder/admin/src/editor/consumer_properties.rs`) moved too: its port's load
+          future is `Send` only on native targets, so the browser branch wraps it in
+          `send_wrapper::SendWrapper` exactly as `rustok-graphql` does, leaving the shared port
+          contract unchanged. Nothing is listed as pending any more, and the gate fails if a pending
+          listing goes stale. The mechanism
           is now named from `leptos` 0.8.21 source rather than inferred, and three of the obvious
           fixes are ruled out by it:
           - a `LocalResource` *never* resolves on the server — `ArcLocalResource::new` wraps the

@@ -22,17 +22,38 @@ pub fn ConsumerPropertiesPanel(
         return error_view(&error.to_string());
     }
 
-    // This panel cannot move to `Resource` yet, and the reason is a type, not a preference:
-    // `Resource::new` requires a `Send` future and a `PartialEq + Send + Sync` source, while
-    // `ConsumerPropertyEditorPort::load` returns a `Send` future only on native targets
-    // (`ConsumerPropertyLoadFuture` is `Pin<Box<dyn Future>>` on wasm, and the runtime handle is not
-    // `PartialEq`). Moving it means changing that port — the boundary every consumer property
-    // editor shares — so it is a separate change, not part of moving the Pages surfaces.
+    // The panel is part of the published-page surface, so its snapshot has to be resolved by the
+    // request: a `LocalResource` is `pending().await` under `ssr`, and the panel rendered its
+    // skeleton in every response that contained it.
+    //
+    // The port's future is `Send` only on native targets (`ConsumerPropertyLoadFuture` is
+    // `Pin<Box<dyn Future>>` on wasm), so the browser branch wraps it the same way the GraphQL
+    // transport does: the wrapper keeps the future on its originating JS thread while satisfying
+    // `Resource`'s `Send` bound.
     let load_runtime = Arc::clone(&runtime);
-    let snapshot = LocalResource::new(move || {
-        let runtime = Arc::clone(&load_runtime);
-        async move { runtime.load().await }
-    });
+    let snapshot = Resource::new(
+        // `Resource` compares the source to decide whether to refetch, and a runtime handle has no
+        // meaningful identity: the panel is rebuilt when the handle changes, so the source only has
+        // to exist. It yields a marker and carries the handle in the fetcher's capture instead.
+        move || (),
+        {
+            let runtime = Arc::clone(&load_runtime);
+            move |()| {
+                let runtime = Arc::clone(&runtime);
+                async move {
+                    // `Resource` needs a `Send` future on every target, and the browser's load
+                    // future is not: it is `Pin<Box<dyn Future>>` with no `Send` bound. The wrapper
+                    // keeps it on its originating JS thread while satisfying the bound, which is
+                    // what `rustok-graphql` does with its fetch.
+                    #[cfg(target_arch = "wasm32")]
+                    let result = send_wrapper::SendWrapper::new(runtime.load()).await;
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let result = runtime.load().await;
+                    result
+                }
+            }
+        },
+    );
 
     view! {
         <Suspense fallback=|| view! {
