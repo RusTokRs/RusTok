@@ -194,7 +194,7 @@ fn dispatch_named_intent(
             }))?
         }
         "save" => controller.dispatch(UiIntent::RequestSave)?,
-        "render_server_preview" => preview_request(controller, payload),
+        "render_server_preview" => preview_request(controller, payload)?,
         "create_page" if is_ssr_page_form(payload) => {
             let effects = dispatch_ssr_form(controller, intent, payload)?;
             open_created_page(controller, effects)?
@@ -596,7 +596,10 @@ fn result(
 ///
 /// A preview is not a publish: it produces a `Preview` request, which the consumer executes
 /// without persisting anything or advancing a revision.
-fn preview_request(controller: &AdminCanvasController, payload: &Value) -> Vec<AdminCanvasEffect> {
+fn preview_request(
+    controller: &AdminCanvasController,
+    payload: &Value,
+) -> Result<Vec<AdminCanvasEffect>, BrowserIntentDispatchError> {
     let active_page_index = controller.active_page_index();
     let mut document = controller.editor().document().clone();
     document.project.pages = document
@@ -614,13 +617,13 @@ fn preview_request(controller: &AdminCanvasController, payload: &Value) -> Vec<A
     // The command sequence identifies the render a preview answers, so a response for a draft the
     // editor has since moved on from is recognizable rather than silently applied.
     let command_sequence = controller.editor().revision().command_sequence;
-    vec![AdminCanvasEffect::Request {
+    Ok(vec![AdminCanvasEffect::Request {
         request: PageBuilderCapabilityRequest::Preview(
             PreviewPageBuilderInput::new(controller.page_id(), project_data).with_runtime(runtime),
         ),
         expected_hash: None,
         command_sequence,
-    }]
+    }])
 }
 
 fn effect(effect: AdminCanvasEffect) -> BrowserIntentEffect {
@@ -794,6 +797,15 @@ mod tests {
     #[test]
     fn render_server_preview_yields_a_preview_request_for_the_active_page() {
         let mut controller = controller();
+        controller
+            .dispatch(UiIntent::ActivatePage {
+                page_id: Some("about".to_string()),
+                page_index: 1,
+            })
+            .expect("activate second page");
+        let before = controller.editor().revision();
+        let sequence = before.command_sequence;
+        let hash = before.project_hash.hex();
         let result = dispatch_browser_intent(
             &mut controller,
             intent(
@@ -806,16 +818,18 @@ mod tests {
         )
         .expect("preview");
 
-        let requests = result
-            .effects
-            .iter()
-            .filter_map(|effect| match effect {
-                BrowserIntentEffect::Request { request, .. } => Some(request),
-                BrowserIntentEffect::Announce { .. } => None,
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(requests.len(), 1, "a preview is exactly one request");
-        let PageBuilderCapabilityRequest::Preview(preview) = requests[0] else {
+        assert_eq!(result.effects.len(), 1, "a preview is exactly one request");
+        let BrowserIntentEffect::Request {
+            request,
+            expected_hash,
+            command_sequence,
+        } = &result.effects[0]
+        else {
+            panic!("a preview intent must produce a request");
+        };
+        assert!(expected_hash.is_none());
+        assert_eq!(*command_sequence, sequence);
+        let PageBuilderCapabilityRequest::Preview(preview) = request else {
             panic!("a preview intent must not produce a publish request");
         };
         assert_eq!(preview.page_id, "home");
@@ -830,16 +844,21 @@ mod tests {
             .as_array()
             .expect("one-page document");
         assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0]["id"], "about");
         // Previewing is an authoring read: it neither dirties the draft nor advances a revision.
         assert!(!result.dirty);
+        assert_eq!(result.command_sequence, sequence);
+        assert_eq!(result.project_hash, hash);
+        assert!(result.project_data.is_none());
     }
 
     #[test]
     fn render_server_preview_tolerates_an_absent_or_malformed_runtime_context() {
         for payload in [json!({}), json!({ "runtime_context": "not-an-object" })] {
             let mut controller = controller();
-            let result = dispatch_browser_intent(&mut controller, intent("render_server_preview", payload))
-                .expect("preview");
+            let result =
+                dispatch_browser_intent(&mut controller, intent("render_server_preview", payload))
+                    .expect("preview");
             let request = result
                 .effects
                 .iter()

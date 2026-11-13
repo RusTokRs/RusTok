@@ -177,8 +177,7 @@ pub use registry::{
 pub use render::{
     AlternateLocaleLink, PageHead, PageSelection, RenderPolicy, RenderedPage,
     compose_document_html, document_html_stylesheet, document_html_with_style_nonce,
-    escape_css_attribute, render_page,
-    render_page_with_rich_text, resolve_page,
+    escape_css_attribute, render_page, render_page_with_rich_text, resolve_page,
 };
 pub use rich_text::{
     FLY_RICH_TEXT_FIELD, MAXIMUM_RICH_TEXT_BYTES, MAXIMUM_RICH_TEXT_DEPTH, MAXIMUM_RICH_TEXT_NODES,

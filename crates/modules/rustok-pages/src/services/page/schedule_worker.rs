@@ -102,12 +102,16 @@ impl PageScheduledPublishWorkAdapter {
         Condition::any()
             .add(
                 Condition::all()
-                    .add(page_publish_job::Column::State.eq(PagePublishJobState::Scheduled.as_str()))
+                    .add(
+                        page_publish_job::Column::State.eq(PagePublishJobState::Scheduled.as_str()),
+                    )
                     .add(page_publish_job::Column::PublishAt.lte(now)),
             )
             .add(
                 Condition::all()
-                    .add(page_publish_job::Column::State.eq(PagePublishJobState::Executing.as_str()))
+                    .add(
+                        page_publish_job::Column::State.eq(PagePublishJobState::Executing.as_str()),
+                    )
                     .add(
                         Condition::any()
                             .add(page_publish_job::Column::LeaseUntil.lte(now))

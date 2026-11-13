@@ -50,7 +50,9 @@ struct PagesWorkspaceData {
 impl PagesWorkspaceData {
     fn provider_status(&self) -> PageBuilderAdminProviderStatus {
         match self.provider_health.clone() {
-            Some(health) => PageBuilderAdminProviderStatus::observed(self.provider_flags.clone(), health),
+            Some(health) => {
+                PageBuilderAdminProviderStatus::observed(self.provider_flags.clone(), health)
+            }
             None => PageBuilderAdminProviderStatus::unobserved(self.provider_flags.clone()),
         }
     }
@@ -85,9 +87,7 @@ pub fn PagesAdmin() -> impl IntoView {
                 refresh_generation.get(),
             )
         },
-        move |(token, tenant, _generation)| async move {
-            transport::fetch_pages(token, tenant).await
-        },
+        move |(token, tenant, _generation)| async move { transport::fetch_pages(token, tenant).await },
     );
 
     let workspace_resource = Resource::new(
@@ -314,7 +314,13 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, default_locale: String) -> 
     let template_tenant = tenant;
     let template_locale = locale;
     let template_keys = Resource::new(
-        move || (template_token.get(), template_tenant.get(), template_locale.get()),
+        move || {
+            (
+                template_token.get(),
+                template_tenant.get(),
+                template_locale.get(),
+            )
+        },
         move |(token, tenant, locale)| async move {
             transport::fetch_template_keys(token, tenant, locale)
                 .await

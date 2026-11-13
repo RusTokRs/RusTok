@@ -316,10 +316,7 @@ mod tests {
             .route(
                 "/api/admin/pages/page-1/preview",
                 get(|_request: Request| async move {
-                    (
-                        [( "content-security-policy", DERIVED)],
-                        Body::empty(),
-                    )
+                    ([("content-security-policy", DERIVED)], Body::empty())
                 }),
             )
             .layer(middleware::from_fn(admin_security_headers));
@@ -338,7 +335,10 @@ mod tests {
             DERIVED
         );
         // The frame still has to be openable by this host, which is the layer's job.
-        assert_eq!(response.headers().get("x-frame-options").unwrap(), "SAMEORIGIN");
+        assert_eq!(
+            response.headers().get("x-frame-options").unwrap(),
+            "SAMEORIGIN"
+        );
         assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
     }
 

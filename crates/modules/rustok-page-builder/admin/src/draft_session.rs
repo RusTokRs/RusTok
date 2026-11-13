@@ -83,10 +83,7 @@ impl PersistentDraftSessionRecord {
     pub fn decode(bytes: &[u8]) -> Result<Self, SsrDraftSessionError> {
         let value: Value = serde_json::from_slice(bytes)
             .map_err(|error| SsrDraftSessionError::Serialization(error.to_string()))?;
-        let format = value
-            .get("format")
-            .and_then(Value::as_u64)
-            .unwrap_or(0);
+        let format = value.get("format").and_then(Value::as_u64).unwrap_or(0);
         if format > u64::from(DRAFT_SESSION_RECORD_FORMAT) {
             return Err(SsrDraftSessionError::UnsupportedFormat {
                 found: u32::try_from(format).unwrap_or(u32::MAX),
@@ -3687,10 +3684,9 @@ mod tests {
             .expect("object")
             .remove("format")
             .expect("the current shape carries a format");
-        let record = PersistentDraftSessionRecord::decode(
-            &serde_json::to_vec(&legacy).expect("json"),
-        )
-        .expect("legacy record");
+        let record =
+            PersistentDraftSessionRecord::decode(&serde_json::to_vec(&legacy).expect("json"))
+                .expect("legacy record");
         assert_eq!(record.format, 0);
         assert_eq!(record.token, "tokLegacy01");
         assert_eq!(record.generation, 3);

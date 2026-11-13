@@ -23,9 +23,9 @@ async fn main() {
     use leptos_auth::{ServerAuthSnapshot, provide_server_auth_snapshot};
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use rustok_admin::app::{
-        App, DRAFT_SESSION_PRUNE_INTERVAL, admin_security_headers,
-        auth_ssr::verify_auth_snapshot, request_auth_snapshot, request_csp_nonce, shell,
-        spawn_draft_session_prune, validate_admin_security_profile,
+        App, DRAFT_SESSION_PRUNE_INTERVAL, admin_security_headers, auth_ssr::verify_auth_snapshot,
+        request_auth_snapshot, request_csp_nonce, shell, spawn_draft_session_prune,
+        validate_admin_security_profile,
     };
     use rustok_pages_admin::{
         BrowserIntentEnvelope, DraftSessionOwner, FLY_CSRF_HEADER_NAME,
@@ -74,12 +74,13 @@ async fn main() {
                 // (unlike the access token), unguessable, and only ever embedded into pages this
                 // host renders for the authenticated browser. The page that embeds it derives it
                 // with the same helper, so the two sides cannot drift apart.
-                let csrf_secret = csrf_secret_from_access_token(&session.token).ok_or_else(|| {
-                    auth_error(
-                        StatusCode::FORBIDDEN,
-                        "Page Builder session has no session id to verify a CSRF token against",
-                    )
-                })?;
+                let csrf_secret =
+                    csrf_secret_from_access_token(&session.token).ok_or_else(|| {
+                        auth_error(
+                            StatusCode::FORBIDDEN,
+                            "Page Builder session has no session id to verify a CSRF token against",
+                        )
+                    })?;
                 match csrf_header {
                     Some(client_csrf) if verify_csrf_token(&csrf_secret, &client_csrf) => {
                         (session.token.clone(), session.tenant.clone())
@@ -240,11 +241,12 @@ async fn main() {
                 StatusCode::FORBIDDEN,
                 "The document of this page is not available to this principal",
             ),
-            Error::Draft(rustok_page_builder_admin::SsrDraftSessionError::OwnerMismatch) => (
-                StatusCode::FORBIDDEN,
-                "The draft belongs to another caller",
-            ),
-            Error::Draft(rustok_page_builder_admin::SsrDraftSessionError::PageMismatch { .. }) => (
+            Error::Draft(rustok_page_builder_admin::SsrDraftSessionError::OwnerMismatch) => {
+                (StatusCode::FORBIDDEN, "The draft belongs to another caller")
+            }
+            Error::Draft(rustok_page_builder_admin::SsrDraftSessionError::PageMismatch {
+                ..
+            }) => (
                 StatusCode::NOT_FOUND,
                 "The draft does not belong to this page",
             ),
@@ -286,7 +288,10 @@ async fn main() {
         axum::extract::RawQuery(query): axum::extract::RawQuery,
     ) -> Result<axum::response::Response, (StatusCode, Json<Value>)> {
         let session = auth.session.as_ref().ok_or_else(|| {
-            auth_error(StatusCode::UNAUTHORIZED, "Page Builder access token is missing")
+            auth_error(
+                StatusCode::UNAUTHORIZED,
+                "Page Builder access token is missing",
+            )
         })?;
         let query = preview_query(query.as_deref())?;
         // The principal is the one this request's single verified exchange produced. The intent
@@ -323,9 +328,8 @@ async fn main() {
         .await
         .map_err(page_builder_preview_error)?;
 
-        rustok_pages_admin::pages_server_preview_response(&preview.html).map_err(|error| {
-            auth_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
-        })
+        rustok_pages_admin::pages_server_preview_response(&preview.html)
+            .map_err(|error| auth_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))
     }
 
     validate_admin_security_profile().expect("valid standalone admin security profile");

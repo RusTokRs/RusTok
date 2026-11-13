@@ -16,8 +16,8 @@
 //! owner would be a preview of whoever's draft the token names, which is why there is no
 //! unattributed entry point here.
 
-use crate::builder::{self, PagesBuilderSaveSnapshot};
 use crate::browser_intent::PagesBrowserIntentError;
+use crate::builder::{self, PagesBuilderSaveSnapshot};
 use rustok_page_builder::dto::{
     PageBuilderCapabilityResponse, PageBuilderPreviewRuntime, PreviewPageBuilderInput,
 };
@@ -128,7 +128,8 @@ fn one_page_project(controller: &AdminCanvasController) -> Value {
         .cloned()
         .into_iter()
         .collect();
-    fly::GrapesJsCodec::encode_value(&document).unwrap_or_else(|_| Value::Object(Default::default()))
+    fly::GrapesJsCodec::encode_value(&document)
+        .unwrap_or_else(|_| Value::Object(Default::default()))
 }
 
 /// The response that serves a preview document, with the policy its own bytes require.
@@ -145,8 +146,7 @@ fn one_page_project(controller: &AdminCanvasController) -> Value {
 /// than the page may use.
 #[cfg(feature = "ssr")]
 pub fn pages_server_preview_response(html: &str) -> Result<axum::response::Response, PreviewError> {
-    let stylesheet = fly::document_html_stylesheet(html)
-        .ok_or(PreviewError::MissingEnvelope)?;
+    let stylesheet = fly::document_html_stylesheet(html).ok_or(PreviewError::MissingEnvelope)?;
     Ok(pages_server_preview_response_with_policy(
         html,
         &pages_server_preview_policy(stylesheet),
@@ -280,7 +280,11 @@ mod tests {
         let headers = response.headers();
         assert_eq!(headers.get("cache-control").unwrap(), "no-store");
         assert_eq!(headers.get("x-content-type-options").unwrap(), "nosniff");
-        let policy = headers.get("content-security-policy").unwrap().to_str().unwrap();
+        let policy = headers
+            .get("content-security-policy")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(
             policy.contains(&super::pages_server_preview_policy("body{margin:0}")),
             "{policy}"

@@ -45,7 +45,14 @@ pub(crate) fn PagesInlineEditLaunch(selected_page: Signal<Option<String>>) -> im
     // The launch control is part of the open page's chrome, so the request resolves it: a
     // `LocalResource` is `pending()` under `ssr` and the control would never reach a response.
     let launch_resource = Resource::new(
-        move || (selected_page.get(), current_user.get(), token.get(), tenant.get()),
+        move || {
+            (
+                selected_page.get(),
+                current_user.get(),
+                token.get(),
+                tenant.get(),
+            )
+        },
         move |(selected_page, user, token, tenant)| async move {
             if !same_origin_launch_enabled(SAME_ORIGIN_BUILD_FLAG) {
                 return Ok::<Option<String>, transport::TransportError>(None);

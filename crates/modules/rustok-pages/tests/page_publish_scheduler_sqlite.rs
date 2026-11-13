@@ -2,6 +2,8 @@ use std::error::Error;
 use std::sync::Arc;
 
 use chrono::{Duration as ChronoDuration, Utc};
+#[cfg(feature = "runtime")]
+use rustok_api::{ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource};
 use rustok_channel::ChannelModule;
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
@@ -11,16 +13,14 @@ use rustok_pages::dto::{
     CreatePageInput, PageBodyInput, PageBodyRevisionInput, PageTranslationInput, PublishPageInput,
     ReviewedPagePublishRuntimeInput, SavePageDocumentInput, SchedulePagePublishInput,
 };
-#[cfg(feature = "runtime")]
-use rustok_api::{ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource};
 use rustok_pages::entities::{page, page_publish_job};
+#[cfg(feature = "runtime")]
+use rustok_pages::services::PageScheduledPublishWorkAdapter;
 use rustok_pages::services::{
     MAX_PAGE_PUBLISH_JOB_ATTEMPTS, PAGE_PUBLISH_JOB_LEASE_EXPIRED,
     PAGE_PUBLISH_SCHEDULE_NOT_CANCELABLE, PAGE_PUBLISH_SWEEP_INTERVAL_SECS,
     PAGE_SCHEDULED_PUBLISH_WORKER, PagePublishScheduler, PageService,
 };
-#[cfg(feature = "runtime")]
-use rustok_pages::services::PageScheduledPublishWorkAdapter;
 use sea_orm::{
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
     EntityTrait, QueryFilter, Statement, sea_query::Expr,
@@ -286,7 +286,9 @@ async fn canceled_schedule_never_executes() -> TestResult<()> {
 #[tokio::test]
 async fn a_second_schedule_is_not_shadowed_by_the_published_job() -> TestResult<()> {
     let fixture = fixture().await?;
-    let (page_id, revision, version) = fixture.create_draft_page("Rescheduled after publish").await?;
+    let (page_id, revision, version) = fixture
+        .create_draft_page("Rescheduled after publish")
+        .await?;
     let first_publish_at = (Utc::now() + ChronoDuration::hours(1)).to_rfc3339();
     fixture
         .service
@@ -967,7 +969,10 @@ async fn scheduler_adapter_paces_executions_at_the_default_interval() -> TestRes
         .ok_or_else(|| std::io::Error::other("a due job must be claimed"))?;
     adapter.execute(first).await?;
     assert!(
-        adapter.claim(PAGE_SCHEDULED_PUBLISH_WORKER).await?.is_none(),
+        adapter
+            .claim(PAGE_SCHEDULED_PUBLISH_WORKER)
+            .await?
+            .is_none(),
         "a claim immediately after an execution must wait out the pace window"
     );
     Ok(())

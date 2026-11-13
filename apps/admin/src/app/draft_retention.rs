@@ -113,7 +113,9 @@ mod tests {
             self.prunes.fetch_add(1, Ordering::SeqCst);
             match self.removed {
                 Ok(removed) => Ok(removed),
-                Err(()) => Err(SsrDraftSessionError::Io("draft directory is gone".to_string())),
+                Err(()) => Err(SsrDraftSessionError::Io(
+                    "draft directory is gone".to_string(),
+                )),
             }
         }
     }

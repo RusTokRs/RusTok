@@ -1,10 +1,10 @@
-use crate::{PageBuilderAdminProviderStatus, editor::AdminEditorRuntime};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::i18n::t;
+use crate::{PageBuilderAdminProviderStatus, editor::AdminEditorRuntime};
 use leptos::prelude::*;
+use rustok_ui_core::UiCspNonce;
 #[cfg(not(target_arch = "wasm32"))]
 use rustok_ui_core::UiRouteContext;
-use rustok_ui_core::UiCspNonce;
 
 /// The preview document as the panel embeds it.
 ///
@@ -286,7 +286,9 @@ mod tests {
     /// Whether a rendered element carries `hidden` among its attributes, in either form a renderer
     /// may produce for a boolean Leptos attribute.
     fn is_hidden(html: &str, needle: &str) -> bool {
-        let start = html.find(needle).unwrap_or_else(|| panic!("{needle} not rendered"));
+        let start = html
+            .find(needle)
+            .unwrap_or_else(|| panic!("{needle} not rendered"));
         let tag_start = html[..start].rfind('<').expect("tag start");
         let tag_end = start + html[start..].find('>').expect("tag end");
         html[tag_start..tag_end]
@@ -303,7 +305,10 @@ mod tests {
             srcdoc.contains("<style nonce=\"0f3a9c\">p{color:red}</style>"),
             "{srcdoc}"
         );
-        assert!(!is_hidden(&html, "data-page-builder-server-preview-frame"), "{html}");
+        assert!(
+            !is_hidden(&html, "data-page-builder-server-preview-frame"),
+            "{html}"
+        );
 
         let html = panel_html(None, Some(preview_document()));
         assert_eq!(rendered_srcdoc(&html), preview_document());
@@ -327,10 +332,16 @@ mod tests {
             "the frame does not load the host's document: {html}"
         );
         assert_eq!(rendered_srcdoc(&html), "", "{html}");
-        assert!(!html.contains(" nonce=\"0f3a9c\""), "the document is not embedded: {html}");
+        assert!(
+            !html.contains(" nonce=\"0f3a9c\""),
+            "the document is not embedded: {html}"
+        );
         // A frame that is not shown is not a frame that has not been asked for: the document is
         // there as soon as a preview exists.
-        assert!(!is_hidden(&html, "data-page-builder-server-preview-frame"), "{html}");
+        assert!(
+            !is_hidden(&html, "data-page-builder-server-preview-frame"),
+            "{html}"
+        );
     }
 
     #[test]
@@ -338,7 +349,10 @@ mod tests {
         let nonce = UiCspNonce::new("0f3a9c").expect("nonce");
         let html = panel_html(Some(nonce), Some(preview_document()));
         assert!(!html.contains(" src="), "{html}");
-        assert!(rendered_srcdoc(&html).contains("<style nonce=\"0f3a9c\">"), "{html}");
+        assert!(
+            rendered_srcdoc(&html).contains("<style nonce=\"0f3a9c\">"),
+            "{html}"
+        );
     }
 
     #[test]
@@ -352,7 +366,10 @@ mod tests {
             html.contains("data-page-builder-server-preview-frame"),
             "the frame is not rendered before a document exists: {html}"
         );
-        assert!(is_hidden(&html, "data-page-builder-server-preview-frame"), "{html}");
+        assert!(
+            is_hidden(&html, "data-page-builder-server-preview-frame"),
+            "{html}"
+        );
         assert_eq!(rendered_srcdoc(&html), "");
         // The empty state, by contrast, is the visible one.
         assert!(!is_hidden(&html, "role=\"status\""), "{html}");
