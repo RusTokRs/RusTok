@@ -260,6 +260,11 @@ const movedModuleSurfaces = [
     marker: "let submissions = Resource::new(",
     description: "the form inbox resolves its submissions during the render",
   },
+  {
+    file: "crates/modules/rustok-brand/admin/src/ui/leptos.rs",
+    marker: "let directory = loaded_resource(",
+    description: "the brand directory resolves its rows during the render",
+  },
 ];
 for (const surface of movedModuleSurfaces) {
   const source = read(surface.file);

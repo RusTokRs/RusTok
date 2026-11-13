@@ -15,16 +15,21 @@ use crate::model::{
 };
 use crate::transport::{BrandAdminTransportContext, execute_brand_command, load_brand_directory};
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -54,7 +59,7 @@ pub fn BrandAdmin() -> impl IntoView {
     let draft_sort_order = RwSignal::new(0_i32);
 
     let directory_transport = transport.clone();
-    let directory = local_resource(
+    let directory = loaded_resource(
         move || (refresh_nonce.get(), search.get(), is_active_filter.get()),
         move |(_, search_term, active)| {
             let context = directory_transport.clone();
@@ -252,8 +257,9 @@ pub fn BrandAdmin() -> impl IntoView {
     let selection = RwSignal::new(RowSelection::new());
     let pagination = RwSignal::new(GridPagination::new(1, 10, 0));
 
+    let filtered_directory = directory.clone();
     let filtered_brands = Memo::new(move |_| {
-        let raw = directory
+        let loaded_items = filtered_directory
             .get()
             .and_then(Result::ok)
             .map(|data| data.items)
@@ -261,7 +267,7 @@ pub fn BrandAdmin() -> impl IntoView {
         let current_filters = filters.get();
         let search_term = search.get();
         let list = filter_brands(
-            &raw,
+            &loaded_items,
             &current_filters,
             if search_term.trim().is_empty() {
                 None
@@ -281,6 +287,7 @@ pub fn BrandAdmin() -> impl IntoView {
         edit_brand.run(item);
     });
 
+    let directory_loading = directory.clone();
     let cell_locale = locale;
     let cell_edit_brand = edit_brand;
     let cell_on_delete = on_delete.clone();
@@ -726,7 +733,8 @@ pub fn BrandAdmin() -> impl IntoView {
                         {t(Some(locale), "brand.loadingList", "Loading brands...")}
                     </div>
                 }>
-                    {move || match directory.get() {
+                    {let view_directory = directory.clone();
+                    move || match view_directory.get() {
                         None => view! {
                             <div class="p-8 text-center text-muted-foreground">
                                 {t(Some(locale), "brand.loading", "Loading...")}
@@ -747,7 +755,7 @@ pub fn BrandAdmin() -> impl IntoView {
                                         data=Signal::derive(move || filtered_brands.get())
                                         key_fn=|item: &BrandAdminListItem| item.id.clone()
                                         cell_renderer=cell_renderer
-                                        is_loading=Signal::derive(move || busy.get() || directory.get().is_none())
+                                        is_loading=Signal::derive(move || busy.get() || directory_loading.get().is_none())
                                         empty_message=empty_msg
                                         selection=selection
                                         pagination=pagination
