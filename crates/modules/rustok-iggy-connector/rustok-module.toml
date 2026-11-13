@@ -9,6 +9,9 @@ runtime = "extension"
 ui_classification = "admin_only"
 recommended_admin_surfaces = ["leptos-admin"]
 
+[crate]
+entry_type = "IggyConnectorModule"
+
 [provides.admin_ui]
 leptos_crate = "rustok-iggy-connector-admin"
 route_segment = "iggy-connector"

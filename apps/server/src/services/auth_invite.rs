@@ -116,10 +116,107 @@ impl AuthLifecycleService {
             .one(&tx)
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
-        let invite_id = match issued {
-            Some(invite) if invite.revoked_at.is_none() => invite.id,
+        let issued = match issued {
+            Some(invite) if invite.revoked_at.is_none() => invite,
             _ => return Err(InviteAcceptanceError::InvalidToken),
         };
+        if issued.role != ledger_role {
+            return Err(InviteAcceptanceError::InvalidToken);
+        }
+        let invite_id = issued.id;
+
+        // Role grants, module availability, and the issuer's authority can
+        // change while an invite is outstanding. Re-check the issuer's active
+        // invite permission, hierarchy, and current grant ceiling before
+        // accepting it, so a later role edit cannot widen the invitation.
+        // This happens before reservation, leaving policy-rejected invites
+        // unconsumed.
+        let issuer_id = issued
+            .issued_by
+            .ok_or(InviteAcceptanceError::InvalidToken)?;
+        let issuer = users::Entity::find_by_id(issuer_id)
+            .filter(users::Column::TenantId.eq(tenant_id))
+            .filter(users::Column::Status.eq(rustok_core::UserStatus::Active))
+            .one(&tx)
+            .await
+            .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+        if issuer.is_none() {
+            return Err(InviteAcceptanceError::InvalidToken);
+        }
+        let mut issuer_permissions = RbacService::get_user_permissions_authoritative(
+            &tx,
+            &tenant_id,
+            &issuer_id,
+        )
+        .await
+        .map_err(InviteAcceptanceError::Internal)?;
+        // Permission grants owned by disabled modules are persisted but are
+        // not current request authority. Apply the same effective-permission
+        // boundary used at invite issuance and regular authentication before
+        // checking whether the issuer may delegate this role.
+        let availability = crate::services::rbac_module_availability::permission_availability_for(
+            ctx, tenant_id,
+        )
+        .await
+        .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+        if let Some(availability) = availability {
+            issuer_permissions = availability.active_permissions(&issuer_permissions);
+        }
+        let issuer_role = RbacService::get_user_role_authoritative(&tx, &tenant_id, &issuer_id)
+            .await
+            .map_err(InviteAcceptanceError::Internal)?;
+        let may_issue_invite = issuer_may_issue_invite(
+            &issuer_permissions,
+            &role,
+            custom_role_slug.is_some(),
+        );
+        if !may_issue_invite {
+            tracing::warn!(
+                tenant_id = %tenant_id,
+                issuer_id = %issuer_id,
+                role_slug = %ledger_role,
+                "invite issuer no longer has authority to issue this invite"
+            );
+            return Err(InviteAcceptanceError::InvalidToken);
+        }
+        let authority_check = if let Some(slug) = custom_role_slug.as_deref() {
+            rustok_rbac::validate_custom_role_grant_on(
+                &tx,
+                tenant_id,
+                &issuer_role,
+                &issuer_permissions,
+                slug,
+            )
+            .await
+        } else {
+            async {
+                // Issuance enforces both the persisted role hierarchy and
+                // permission ceiling. Re-check both: an issuer demoted while
+                // the invite was pending must not retain the old role's
+                // assignment authority just because grants still overlap.
+                if role != rustok_core::UserRole::Customer {
+                    rustok_rbac::require_role_assignment(&issuer_role, &role)?;
+                }
+                rustok_rbac::validate_persisted_role_grant_on(
+                    &tx,
+                    tenant_id,
+                    &issuer_permissions,
+                    &role.to_string(),
+                )
+                .await
+            }
+            .await
+        };
+        if let Err(error) = authority_check {
+            tracing::warn!(
+                %error,
+                tenant_id = %tenant_id,
+                issuer_id = %issuer_id,
+                role_slug = %ledger_role,
+                "invite role no longer satisfies issuer authority"
+            );
+            return Err(InviteAcceptanceError::InvalidToken);
+        }
 
         // Reserve the digest first. The unique token_hash constraint is the
         // serialization point, so every concurrent replay is rejected before
@@ -172,10 +269,10 @@ impl AuthLifecycleService {
 
         // Layer the tenant-defined role over the baseline customer
         // membership created above. The issuer's authority ceiling was
-        // validated at issuance; acceptance only needs the role to
-        // still exist. If it was deleted meanwhile this fails closed
-        // and the transaction rollback leaves the invite unconsumed,
-        // so it can be retried after repair or revoked by an admin.
+        // revalidated against the current role grants before reservation.
+        // If the role changes again concurrently, the transactional role
+        // replacement still fails closed when the role no longer exists;
+        // the transaction rollback leaves the invite unconsumed.
         let role = if let Some(slug) = custom_role_slug.as_deref() {
             rustok_rbac::replace_persisted_user_role_by_slug_on(&tx, tenant_id, user.id, slug)
                 .await
@@ -246,6 +343,24 @@ impl AuthLifecycleService {
     }
 }
 
+fn issuer_may_issue_invite(
+    permissions: &[rustok_api::Permission],
+    role: &rustok_core::UserRole,
+    is_custom_role: bool,
+) -> bool {
+    use rustok_api::Permission;
+
+    if is_custom_role || role != &rustok_core::UserRole::Customer {
+        rustok_rbac::has_effective_permission_in_set(permissions, &Permission::USERS_MANAGE)
+    } else {
+        rustok_rbac::has_effective_permission_in_set(permissions, &Permission::USERS_CREATE)
+            || rustok_rbac::has_effective_permission_in_set(
+                permissions,
+                &Permission::USERS_MANAGE,
+            )
+    }
+}
+
 fn map_lifecycle_error(error: AuthLifecycleError) -> InviteAcceptanceError {
     match error {
         AuthLifecycleError::EmailAlreadyExists => InviteAcceptanceError::EmailAlreadyExists,
@@ -259,6 +374,50 @@ mod tests {
     use super::*;
     use crate::common::RustokSettings;
     use sha2::{Digest, Sha256};
+
+    #[test]
+    fn pending_invites_require_the_issuer_to_retain_invitation_authority() {
+        use rustok_api::Permission;
+        use rustok_core::UserRole;
+
+        assert!(issuer_may_issue_invite(
+            &[Permission::USERS_CREATE],
+            &UserRole::Customer,
+            false,
+        ));
+        assert!(!issuer_may_issue_invite(
+            &[],
+            &UserRole::Customer,
+            false,
+        ));
+        assert!(!issuer_may_issue_invite(
+            &[Permission::USERS_CREATE],
+            &UserRole::Admin,
+            false,
+        ));
+        assert!(issuer_may_issue_invite(
+            &[Permission::USERS_MANAGE],
+            &UserRole::Manager,
+            true,
+        ));
+        assert!(!issuer_may_issue_invite(
+            &[Permission::USERS_CREATE],
+            &UserRole::Manager,
+            true,
+        ));
+
+        let disabled_create = rustok_rbac::PermissionAvailability::new(
+            std::collections::BTreeMap::from([("users:create".to_string(), "auth".to_string())]),
+            std::collections::BTreeSet::new(),
+        );
+        let current_permissions =
+            disabled_create.active_permissions(&[Permission::USERS_CREATE]);
+        assert!(!issuer_may_issue_invite(
+            &current_permissions,
+            &UserRole::Customer,
+            false,
+        ));
+    }
 
     #[tokio::test]
     async fn disabled_invites_reject_before_token_decode() {

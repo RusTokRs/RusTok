@@ -318,6 +318,7 @@ mod tests {
                 tenant_id: Some(Uuid::new_v4()),
                 actor_id: None,
                 trace_id: None,
+                idempotency_key: None,
             },
             capability: CapabilityName::new("platform.fixture").expect("capability"),
             operation: "invoke".to_string(),

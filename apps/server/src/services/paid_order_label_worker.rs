@@ -28,6 +28,10 @@ impl PaidOrderCreateLabelWorkerHandle {
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self._handle.await
     }
+
+    pub(crate) fn into_task(self) -> JoinHandle<()> {
+        self._handle
+    }
 }
 
 pub fn spawn_paid_order_create_label_worker(

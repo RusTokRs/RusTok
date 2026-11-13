@@ -279,7 +279,8 @@ pub fn spawn_outbox_relay_worker(
                 "Outbox relay worker loop starting"
             );
 
-            let mut inner_handle = tokio::spawn(async move {
+            let mut inner_tasks = tokio::task::JoinSet::new();
+            inner_tasks.spawn(async move {
                 loop {
                     if let Err(error) = OutboxRelayPort::process_pending_once(
                         &relay,
@@ -303,19 +304,22 @@ pub fn spawn_outbox_relay_worker(
             });
 
             tokio::select! {
-                result = &mut inner_handle => {
+                result = inner_tasks.join_next() => {
                     if *stop_rx.borrow() {
                         tracing::info!("Outbox relay supervisor received shutdown signal, exiting");
                         return;
                     }
                     OUTBOX_RELAY_SUPERVISOR_RESTART_TOTAL.fetch_add(1, Ordering::Relaxed);
                     match result {
-                        Err(error) => tracing::error!(
+                        Some(Err(error)) => tracing::error!(
                             "Outbox relay worker failed: {:?}. Restarting in 5s.",
                             error
                         ),
-                        Ok(()) => tracing::error!(
+                        Some(Ok(())) => tracing::error!(
                             "Outbox relay worker exited unexpectedly. Restarting in 5s."
+                        ),
+                        None => tracing::error!(
+                            "Outbox relay worker set became empty unexpectedly. Restarting in 5s."
                         ),
                     }
                     tokio::select! {
@@ -330,7 +334,8 @@ pub fn spawn_outbox_relay_worker(
                 }
                 _ = stop_rx.changed() => {
                     tracing::info!("Outbox relay supervisor received shutdown signal, exiting");
-                    inner_handle.abort();
+                    inner_tasks.abort_all();
+                    while inner_tasks.join_next().await.is_some() {}
                     return;
                 }
             }

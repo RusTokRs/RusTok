@@ -38,7 +38,7 @@ pub async fn initialize_server_context(
     } else {
         tracing::info!(
             host_mode = ?runtime_ctx.settings().runtime.host_mode,
-            "Skipping default SuperAdmin provisioning for the read-only registry host"
+            "Skipping default SuperAdmin provisioning for a host mode without an administrative surface"
         );
     }
     Ok(())
@@ -51,9 +51,11 @@ fn should_initialize_default_superadmin(runtime_ctx: &ServerRuntimeContext) -> b
 fn should_initialize_default_superadmin_for_mode(
     host_mode: crate::common::settings::RuntimeHostMode,
 ) -> bool {
-    !matches!(
+    matches!(
         host_mode,
-        crate::common::settings::RuntimeHostMode::RegistryOnly
+        crate::common::settings::RuntimeHostMode::Full
+            | crate::common::settings::RuntimeHostMode::Api
+            | crate::common::settings::RuntimeHostMode::AdminSsr
     )
 }
 
@@ -330,19 +332,24 @@ mod tests {
     ];
 
     #[test]
-    fn registry_only_host_skips_default_superadmin_provisioning() {
-        assert!(!should_initialize_default_superadmin_for_mode(
-            crate::common::settings::RuntimeHostMode::RegistryOnly
-        ));
+    fn provisioning_is_limited_to_user_serving_host_modes() {
         for host_mode in [
             crate::common::settings::RuntimeHostMode::Full,
             crate::common::settings::RuntimeHostMode::Api,
             crate::common::settings::RuntimeHostMode::AdminSsr,
-            crate::common::settings::RuntimeHostMode::StorefrontSsr,
-            crate::common::settings::RuntimeHostMode::Worker,
         ] {
             assert!(
                 should_initialize_default_superadmin_for_mode(host_mode),
+                "{host_mode:?}"
+            );
+        }
+        for host_mode in [
+            crate::common::settings::RuntimeHostMode::RegistryOnly,
+            crate::common::settings::RuntimeHostMode::Worker,
+            crate::common::settings::RuntimeHostMode::StorefrontSsr,
+        ] {
+            assert!(
+                !should_initialize_default_superadmin_for_mode(host_mode),
                 "{host_mode:?}"
             );
         }

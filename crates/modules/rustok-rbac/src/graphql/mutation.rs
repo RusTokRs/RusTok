@@ -424,8 +424,12 @@ impl RbacMutation {
         let current_name: String = existing
             .try_get("", "name")
             .map_err(|e| internal_db_error("rbac role mutation", e))?;
-        let current_desc: Option<String> = existing.try_get("", "description").ok();
-        let is_system: bool = existing.try_get("", "is_system").unwrap_or(false);
+        let current_desc: Option<String> = existing
+            .try_get("", "description")
+            .map_err(|e| internal_db_error("rbac role mutation", e))?;
+        let is_system: bool = existing
+            .try_get("", "is_system")
+            .map_err(|e| internal_db_error("rbac role mutation", e))?;
 
         // Default roles are persisted tenant records and are editable
         // (name, description, permissions) within the actor's authority
@@ -447,28 +451,10 @@ impl RbacMutation {
         };
 
         // Dormant grants already on the role are preserved across saves;
-        // adding a *new* grant of a disabled module is refused.
+        // adding a *new* grant of a disabled module is refused. The existing
+        // grants are read under the role row lock below to avoid a concurrent
+        // permission replacement racing this check.
         let availability = availability_snapshot(ctx, tenant.id).await;
-        if let Some(new_permissions) = validated_update_permissions.as_ref() {
-            let current_rows = db
-                .query_all_raw(prepare_statement(
-                    backend,
-                    "SELECT p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ?",
-                    vec![role_id.into()],
-                ))
-                .await
-                .map_err(|e| internal_db_error("rbac role mutation", e))?;
-            let mut current_grants = Vec::with_capacity(current_rows.len());
-            for row in current_rows {
-                if let (Ok(resource), Ok(action)) = (
-                    row.try_get::<String>("", "resource"),
-                    row.try_get::<String>("", "action"),
-                ) {
-                    current_grants.push(format!("{resource}:{action}"));
-                }
-            }
-            reject_newly_dormant_grants(availability.as_ref(), new_permissions, &current_grants)?;
-        }
 
         // Resolve the optional host notifier before the transaction. The durable
         // generation remains mandatory even when no fast-path notifier exists.
@@ -488,10 +474,18 @@ impl RbacMutation {
         // above only shapes error reporting. If the role was deleted (or
         // deleted and recreated) concurrently, fail instead of writing grant
         // rows for a role that no longer exists.
+        let lock_role_sql = match backend {
+            sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql => {
+                "SELECT id FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
+            }
+            sea_orm::DbBackend::Sqlite => {
+                "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? RETURNING id"
+            }
+        };
         let tx_role = tx
             .query_one_raw(prepare_statement(
                 backend,
-                "SELECT id FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1",
+                lock_role_sql,
                 vec![tenant.id.into(), role_id.into()],
             ))
             .await
@@ -500,6 +494,28 @@ impl RbacMutation {
             return Err(<FieldError as GraphQLError>::not_found(&format!(
                 "Role '{slug}' not found"
             )));
+        }
+
+        if let Some(new_permissions) = validated_update_permissions.as_ref() {
+            let current_rows = tx
+                .query_all_raw(prepare_statement(
+                    backend,
+                    "SELECT p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ? AND p.tenant_id = ?",
+                    vec![role_id.into(), tenant.id.into()],
+                ))
+                .await
+                .map_err(|e| internal_db_error("rbac role mutation", e))?;
+            let mut current_grants = Vec::with_capacity(current_rows.len());
+            for row in current_rows {
+                let resource: String = row
+                    .try_get("", "resource")
+                    .map_err(|e| internal_db_error("rbac role mutation", e))?;
+                let action: String = row
+                    .try_get("", "action")
+                    .map_err(|e| internal_db_error("rbac role mutation", e))?;
+                current_grants.push(format!("{resource}:{action}"));
+            }
+            reject_newly_dormant_grants(availability.as_ref(), new_permissions, &current_grants)?;
         }
 
         let new_name = input
@@ -604,22 +620,23 @@ impl RbacMutation {
                 final_permissions.push(format!("{resource}:{action}"));
             }
         } else {
-            let cur_perms_sql = "SELECT p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ?";
+            let cur_perms_sql = "SELECT p.resource, p.action FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id WHERE rp.role_id = ? AND p.tenant_id = ?";
             let rows = tx
                 .query_all_raw(prepare_statement(
                     backend,
                     cur_perms_sql,
-                    vec![role_id.into()],
+                    vec![role_id.into(), tenant.id.into()],
                 ))
                 .await
                 .map_err(|e| internal_db_error("rbac role mutation", e))?;
             for row in rows {
-                if let (Ok(res), Ok(act)) = (
-                    row.try_get::<String>("", "resource"),
-                    row.try_get::<String>("", "action"),
-                ) {
-                    final_permissions.push(format!("{res}:{act}"));
-                }
+                let resource: String = row
+                    .try_get("", "resource")
+                    .map_err(|e| internal_db_error("rbac role mutation", e))?;
+                let action: String = row
+                    .try_get("", "action")
+                    .map_err(|e| internal_db_error("rbac role mutation", e))?;
+                final_permissions.push(format!("{resource}:{action}"));
             }
         }
 
@@ -745,10 +762,18 @@ impl RbacMutation {
         // Re-verify the role inside the deleting transaction: the lookup
         // above ran outside it, so a concurrent delete must surface as
         // not-found here instead of a phantom success below.
+        let lock_role_sql = match backend {
+            sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql => {
+                "SELECT id FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
+            }
+            sea_orm::DbBackend::Sqlite => {
+                "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? RETURNING id"
+            }
+        };
         let tx_role = tx
             .query_one_raw(prepare_statement(
                 backend,
-                "SELECT id FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1",
+                lock_role_sql,
                 vec![tenant.id.into(), role_id.into()],
             ))
             .await

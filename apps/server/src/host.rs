@@ -12,7 +12,7 @@ use crate::{
     middleware::security_headers::hsts_enabled,
     routes::ServerRouter,
     services::{
-        app_lifecycle::{resolve_boot_database_uri, shutdown_runtime_workers},
+        app_lifecycle::shutdown_runtime_workers,
         server_bootstrap::{bootstrap_application_router, initialize_server_context},
         server_runtime_context::{ServerAuthRuntime, ServerRuntimeContext},
     },
@@ -68,7 +68,8 @@ struct JwtConfig {
 /// Starts the HTTP-only Axum host.
 pub async fn run() -> Result<()> {
     let config = load_config().await?;
-    let database_uri = resolve_database_uri(&config.database.uri);
+    let database_url = std::env::var("DATABASE_URL").ok();
+    let database_uri = resolve_database_uri(database_url.as_deref(), &config.database.uri);
     let production = is_production_environment();
     validate_database_deployment(&database_uri, production)?;
     validate_https_deployment(production, hsts_enabled())?;
@@ -126,9 +127,51 @@ async fn with_runtime_shutdown<T>(
     ctx: &ServerRuntimeContext,
     run: impl std::future::Future<Output = Result<T>>,
 ) -> Result<T> {
+    let mut shutdown_on_drop = RuntimeShutdownOnDrop::new(ctx.clone());
     let result = run.await;
     shutdown_runtime_workers(ctx).await;
+    shutdown_on_drop.disarm();
     result
+}
+
+/// Schedules worker shutdown if the host lifecycle future is cancelled or unwinds.
+/// Normal completion disarms the guard and performs an awaited drain instead.
+struct RuntimeShutdownOnDrop {
+    ctx: ServerRuntimeContext,
+    armed: bool,
+}
+
+impl RuntimeShutdownOnDrop {
+    fn new(ctx: ServerRuntimeContext) -> Self {
+        Self { ctx, armed: true }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for RuntimeShutdownOnDrop {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let ctx = self.ctx.clone();
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => {
+                runtime.spawn(async move {
+                    tracing::warn!(
+                        "Host lifecycle was cancelled or unwound; scheduling runtime worker shutdown"
+                    );
+                    shutdown_runtime_workers(&ctx).await;
+                });
+            }
+            Err(error) => tracing::error!(
+                %error,
+                "Host lifecycle was cancelled outside a Tokio runtime; runtime worker shutdown could not be scheduled"
+            ),
+        }
+    }
 }
 
 async fn migrate_database_if_enabled(
@@ -309,17 +352,8 @@ fn application_router(
     crate::routes::build_application_router(host_mode, settings)
 }
 
-fn resolve_database_uri(configured_uri: &str) -> String {
-    match resolve_boot_database_uri(std::env::var("DATABASE_URL").is_ok(), configured_uri) {
-        Some(uri) => {
-            tracing::info!(
-                database_source = "local_sqlite_fallback",
-                "No external database found; using local SQLite"
-            );
-            uri.to_string()
-        }
-        None => std::env::var("DATABASE_URL").unwrap_or_else(|_| configured_uri.to_string()),
-    }
+fn resolve_database_uri(database_url: Option<&str>, configured_uri: &str) -> String {
+    database_url.unwrap_or(configured_uri).to_string()
 }
 
 async fn connect_database(
@@ -496,6 +530,84 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn host_shutdown_is_scheduled_when_lifecycle_future_is_cancelled() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::app_lifecycle::{ModuleWorkSchedulerHandle, StopHandle};
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+        use std::time::Duration;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let mut stop = StopHandle::ensure(&ctx).subscribe();
+        let (stopped_tx, stopped_rx) = tokio::sync::oneshot::channel();
+        let worker = tokio::spawn(async move {
+            if stop.changed().await.is_ok() && *stop.borrow() {
+                let _ = stopped_tx.send(());
+            }
+        });
+        ctx.shared_insert(ModuleWorkSchedulerHandle::new(worker));
+
+        let host_ctx = ctx.clone();
+        let host = tokio::spawn(async move {
+            super::with_runtime_shutdown(
+                &host_ctx,
+                std::future::pending::<crate::error::Result<()>>(),
+            )
+            .await
+        });
+        tokio::task::yield_now().await;
+        host.abort();
+        let _ = host.await;
+
+        tokio::time::timeout(Duration::from_secs(1), stopped_rx)
+            .await
+            .expect("cancellation must schedule shutdown")
+            .expect("tracked worker must receive shutdown");
+        assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+    }
+
+    #[tokio::test]
+    async fn host_shutdown_is_scheduled_when_lifecycle_future_unwinds() {
+        use crate::common::settings::RustokSettings;
+        use crate::services::app_lifecycle::{ModuleWorkSchedulerHandle, StopHandle};
+        use crate::services::server_runtime_context::ServerRuntimeContext;
+        use std::time::Duration;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let mut stop = StopHandle::ensure(&ctx).subscribe();
+        let (stopped_tx, stopped_rx) = tokio::sync::oneshot::channel();
+        let worker = tokio::spawn(async move {
+            if stop.changed().await.is_ok() && *stop.borrow() {
+                let _ = stopped_tx.send(());
+            }
+        });
+        ctx.shared_insert(ModuleWorkSchedulerHandle::new(worker));
+
+        let host_ctx = ctx.clone();
+        let trigger_panic = true;
+        let host = tokio::spawn(async move {
+            super::with_runtime_shutdown(&host_ctx, async move {
+                if trigger_panic {
+                    panic!("simulated host lifecycle panic");
+                }
+                Ok::<(), crate::error::Error>(())
+            })
+            .await
+        });
+        let panic = host
+            .await
+            .expect_err("host task should preserve panic behavior");
+        assert!(panic.is_panic());
+
+        tokio::time::timeout(Duration::from_secs(1), stopped_rx)
+            .await
+            .expect("unwind must schedule shutdown")
+            .expect("tracked worker must receive shutdown");
+        assert!(!ctx.shared_contains::<ModuleWorkSchedulerHandle>());
+    }
+
+    #[tokio::test]
     async fn host_shutdown_runs_when_listener_bind_fails() {
         use crate::common::settings::RustokSettings;
         use crate::services::app_lifecycle::{ModuleWorkSchedulerHandle, StopHandle};
@@ -547,17 +659,28 @@ mod tests {
     }
 
     #[test]
-    fn explicit_database_url_overrides_local_development_default() {
-        unsafe {
-            std::env::set_var("DATABASE_URL", "sqlite::memory:");
-        }
+    fn explicit_database_url_overrides_configured_uri_without_backend_heuristics() {
         assert_eq!(
-            resolve_database_uri("postgres://localhost/rustok"),
+            resolve_database_uri(
+                Some("sqlite::memory:"),
+                "postgres://localhost/rustok"
+            ),
             "sqlite::memory:"
         );
-        unsafe {
-            std::env::remove_var("DATABASE_URL");
-        }
+        assert_eq!(
+            resolve_database_uri(
+                None,
+                "postgres://u:p@db:5432/rustok"
+            ),
+            "postgres://u:p@db:5432/rustok"
+        );
+        assert_eq!(
+            resolve_database_uri(
+                None,
+                "postgres://u:p@localhost:5432/rustok"
+            ),
+            "postgres://u:p@localhost:5432/rustok"
+        );
     }
 
     #[test]

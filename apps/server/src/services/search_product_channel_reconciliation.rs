@@ -27,6 +27,10 @@ impl ProductChannelProjectionWorkerHandle {
     pub fn is_finished(&self) -> bool {
         self._handle.is_finished()
     }
+
+    pub(crate) fn into_task(self) -> JoinHandle<()> {
+        self._handle
+    }
 }
 
 pub fn start_product_channel_projection_reconciliation_if_ready(

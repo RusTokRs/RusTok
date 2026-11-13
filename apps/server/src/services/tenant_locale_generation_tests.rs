@@ -24,6 +24,68 @@ async fn locale_probe() -> &'static str {
     "ok"
 }
 
+#[tokio::test]
+async fn host_shutdown_aborts_and_joins_tenant_locale_listener_tasks() {
+    struct NotifyDrop(Option<tokio::sync::oneshot::Sender<()>>);
+    impl Drop for NotifyDrop {
+        fn drop(&mut self) {
+            if let Some(sender) = self.0.take() {
+                let _ = sender.send(());
+            }
+        }
+    }
+
+    let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+    let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+        db,
+        RustokSettings::default(),
+    );
+    let (stopped_tx, stopped_rx) = tokio::sync::oneshot::channel();
+    let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+    let task = tokio::spawn(async move {
+        let _notify_drop = NotifyDrop(Some(stopped_tx));
+        let _ = started_tx.send(());
+        std::future::pending::<()>().await;
+    });
+    started_rx.await.expect("listener task must start");
+    let handle = TenantLocaleGenerationListenerHandle::new(
+        task,
+        None,
+        None,
+        false,
+        Arc::new(TenantLocaleGenerationHealth::default()),
+    );
+    ctx.shared_insert(handle);
+
+    crate::services::app_lifecycle::shutdown_runtime_workers(&ctx).await;
+
+    stopped_rx
+        .await
+        .expect("host shutdown must abort and join tenant locale tasks");
+    assert!(!ctx.shared_contains::<TenantLocaleGenerationListenerHandle>());
+}
+
+#[tokio::test]
+async fn configured_redis_without_client_does_not_mark_started_locale_tasks_stopped() {
+    let local = tokio::spawn(std::future::pending::<()>());
+    let reconcile = tokio::spawn(std::future::pending::<()>());
+    let handle = TenantLocaleGenerationListenerHandle::new(
+        local,
+        None,
+        Some(reconcile),
+        true,
+        Arc::new(TenantLocaleGenerationHealth::default()),
+    );
+
+    assert!(handle.is_running());
+    assert!(!handle.is_ready());
+
+    for task in handle.take_tasks() {
+        task.abort();
+        let _ = task.await;
+    }
+}
+
 fn settings_with_redis(url: &str) -> RustokSettings {
     let mut settings = RustokSettings::default();
     settings.cache.redis_url = Some(url.to_string());

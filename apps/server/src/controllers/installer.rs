@@ -211,6 +211,7 @@ async fn apply(
 
     let submitted_at = Utc::now();
     let apply_options = InstallApplyOptions {
+        session_id: Some(job_id),
         lock_owner: request
             .lock_owner
             .filter(|value| !value.trim().is_empty())
@@ -230,7 +231,7 @@ async fn apply(
             )
         })?;
     let executor = ServerInstallExecutor::new(registry);
-    if let Err(error) = persistence.create_http_job(job_id, submitted_at).await {
+    if let Err(error) = persistence.create_http_job(job_id, job_id, submitted_at).await {
         ctx.shared_take::<ActiveInstallerJobHandle>();
         if matches!(
             error.sql_err(),

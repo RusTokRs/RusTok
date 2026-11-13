@@ -59,7 +59,10 @@ instead of hashing arbitrary nested payload conventions.
 idempotency, localization rows, and lifecycle serialization. The declaring
 module owns field semantics and runtime consumption. `tenant_modules` and
 `module_static_tenant_lifecycle` are private owner persistence; consumers must
-use owner read/policy ports rather than query those rows directly.
+use owner read/policy ports rather than query those rows directly. A successful
+static settings mutation also appends `TenantUpdated` to the canonical outbox
+inside the same owner transaction as the settings, revision, and replay receipt;
+outbox failure aborts the mutation.
 
 SQLite reads use the tenant owner's `tenant_identity_keys` projection in the
 same statement as the module rows. The tenant migration must be applied before
@@ -608,7 +611,7 @@ never grant access implicitly.
 
 Durable artifact binding idempotency is tenant-scoped at both query and database
 policy layers. `module_artifact_binding_operations` uses PostgreSQL RLS, and
-claim, completion, abandonment, replay, and lease recovery set the transaction's
+claim, completion, reconciliation marking, and replay set the transaction's
 `rustok.tenant_id` before touching request identity or stored responses. The
 tenant remains part of every unique key and mutation predicate; RLS is the
 independent fail-closed boundary rather than a substitute for those predicates.
@@ -616,6 +619,19 @@ Each binding receipt is partitioned by tenant and actor and carries a canonical
 semantic request digest. Trace and correlation values are retained only as
 first-attempt audit evidence; changing them on retry does not turn replay of
 the same semantic binding into a conflict.
+
+**Recovery boundary:** the 60-second lease is advisory metadata and its expiry
+never authorizes a new execution. A live pending receipt returns `InProgress`;
+expired pending receipts transition to `reconciliation_required`, and execution
+errors do the same rather than deleting them. This prevents automatic
+same-key replay but intentionally means ambiguous operations remain blocked
+until an owner-specific reconciliation workflow is implemented. The stable
+host idempotency key is propagated through `ArtifactBindingExecutionContext`,
+`SandboxContext`, and Rhai's read-only `IDEMPOTENCY_KEY` constant. That identity
+is useful to effect owners but does not itself make guest effects idempotent or
+provide exactly-once semantics. Installer recovery and capability-owner
+idempotency/reconciliation remain incomplete; do not clear or take over these
+receipts based only on elapsed time.
 
 Structured-data and object-data list calls validate bounded keyset continuation
 inside the requested logical prefix before invoking any capability broker. A

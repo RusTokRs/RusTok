@@ -17,12 +17,40 @@ const RBAC_DURABLE_GENERATION_RECONCILE_INTERVAL: Duration = Duration::from_secs
 const RBAC_DURABLE_GENERATION_WATCHDOG_RESTART_DELAY: Duration = Duration::from_secs(1);
 
 struct AbortOnDropWatchdogTask {
-    task: JoinHandle<()>,
+    task: std::sync::Mutex<Option<JoinHandle<()>>>,
+}
+
+impl AbortOnDropWatchdogTask {
+    fn abort(&self) {
+        if let Some(task) = self
+            .task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            task.abort();
+        }
+        rbac_invalidation_metrics::set_watchdog_running(false);
+    }
+
+    fn take_task(&self) -> Option<JoinHandle<()>> {
+        self.task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
 }
 
 impl Drop for AbortOnDropWatchdogTask {
     fn drop(&mut self) {
-        self.task.abort();
+        if let Some(task) = self
+            .task
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            task.abort();
+        }
         rbac_invalidation_metrics::set_watchdog_running(false);
     }
 }
@@ -39,16 +67,28 @@ impl RbacInvalidationGenerationWatchdogHandle {
     }
 
     fn new(task: JoinHandle<()>) -> Self {
-        Self(Arc::new(AbortOnDropWatchdogTask { task }))
+        Self(Arc::new(AbortOnDropWatchdogTask {
+            task: std::sync::Mutex::new(Some(task)),
+        }))
     }
 
     pub fn is_running(&self) -> bool {
-        !self.0.task.is_finished()
+        self.0
+            .task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|task| !task.is_finished())
     }
 
     pub(crate) fn abort(&self) {
-        self.0.task.abort();
+        self.0.abort();
+    }
+
+    pub(crate) fn take_task(&self) -> Option<JoinHandle<()>> {
+        let task = self.0.take_task();
         rbac_invalidation_metrics::set_watchdog_running(false);
+        task
     }
 }
 
@@ -242,6 +282,12 @@ pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeCont
             Error::Cache("RBAC durable generation watchdog start lock is unavailable".to_string())
         })?;
     let _start_guard = start_lock.0.lock().await;
+    if ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
+    {
+        return Ok(());
+    }
 
     if let Some(existing) = ctx.shared_get::<RbacInvalidationGenerationWatchdogHandle>() {
         if existing.is_running() {
@@ -251,6 +297,13 @@ pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeCont
         rbac_invalidation_metrics::set_watchdog_running(false);
         rbac_invalidation_metrics::record_watchdog_restart("runtime_replaced");
         tracing::warn!("Durable RBAC invalidation generation watchdog stopped; replacing runtime");
+        if let Some(task) = existing.take_task() {
+            if let Err(error) = task.await {
+                if !error.is_cancelled() {
+                    tracing::warn!(?error, "Old RBAC generation watchdog failed while being replaced");
+                }
+            }
+        }
     }
 
     let state = ensure_rbac_invalidation_generation_state(ctx);
@@ -258,6 +311,16 @@ pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeCont
     ctx.shared_insert(RbacInvalidationGenerationWatchdogHandle::new(task));
     rbac_invalidation_metrics::set_watchdog_running(true);
     Ok(())
+}
+
+pub(crate) async fn take_watchdog_task_for_shutdown(
+    ctx: &ServerRuntimeContext,
+) -> Option<JoinHandle<()>> {
+    let start_lock =
+        ctx.shared_get_or_insert_with(RbacInvalidationGenerationWatchdogStartLock::default);
+    let _start_guard = start_lock.0.lock().await;
+    ctx.shared_take::<RbacInvalidationGenerationWatchdogHandle>()
+        .and_then(|watchdog| watchdog.take_task())
 }
 
 fn is_missing_generation_state(error: &Error) -> bool {

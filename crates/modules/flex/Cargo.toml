@@ -17,6 +17,7 @@ async-graphql.workspace = true
 rustok-api = { workspace = true, features = ["server"] }
 rustok-core.workspace = true
 rustok-events.workspace = true
+rustok-outbox.workspace = true
 rustok-translation-targets.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true

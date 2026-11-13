@@ -268,7 +268,7 @@ impl ArtifactPermissionRegistrationPort for RbacArtifactPermissionCatalog {
 
         let current_epoch = read_permission_invalidation_generation(&self.db)
             .await
-            .unwrap_or(request.expected_rbac_epoch);
+            .map_err(storage_error)?;
 
         let approved = (candidate_fingerprint == predecessor_fingerprint)
             && added_keys.is_empty()
@@ -900,5 +900,32 @@ mod tests {
             receipt_modified.diff.added_keys,
             vec!["sample_module.admin.delete"]
         );
+    }
+
+    #[tokio::test]
+    async fn continuity_fails_closed_when_durable_epoch_is_unavailable() {
+        let database = Database::connect("sqlite::memory:")
+            .await
+            .expect("database");
+        migrate_catalog(&database).await;
+        database
+            .execute_unprepared("DROP TABLE rbac_invalidation_state")
+            .await
+            .expect("remove durable epoch state");
+        let catalog = RbacArtifactPermissionCatalog::new(database);
+
+        let error = catalog
+            .evaluate_permission_continuity(PermissionContinuityEvaluationRequest {
+                scope: ArtifactPermissionScope::Platform,
+                predecessor_release_digest: "sha256:pred".to_string(),
+                candidate_release_digest: "sha256:candidate".to_string(),
+                predecessor_permissions: sample_permissions(),
+                candidate_permissions: sample_permissions(),
+                expected_rbac_epoch: 0,
+            })
+            .await
+            .expect_err("missing durable epoch must not approve continuity");
+
+        assert_eq!(error.code, "rbac.artifact_permission_catalog");
     }
 }

@@ -38,6 +38,24 @@ impl TransactionalEventBus {
             .map(|_| ())
     }
 
+    /// Persists an already-created root envelope without changing its identity.
+    /// The owner can return or reference the same envelope after the transaction commits.
+    pub async fn publish_root_envelope_in_tx<C>(
+        txn: &C,
+        envelope: EventEnvelope,
+    ) -> Result<Uuid>
+    where
+        C: ConnectionTrait,
+    {
+        validate_event(&envelope.event)?;
+        envelope
+            .validate_registered_schema()
+            .map_err(|error| rustok_core::Error::Validation(error.to_string()))?;
+        let envelope_id = envelope.id;
+        OutboxTransport::write_envelope_in_tx(txn, envelope).await?;
+        Ok(envelope_id)
+    }
+
     /// Publishes a validated registered root event and returns the exact durable
     /// envelope identity written by the same owner transaction.
     pub async fn publish_root_in_tx_with_envelope_id<C>(

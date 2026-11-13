@@ -32,7 +32,7 @@ flex::impl_field_definition_source!(Model);
 
 impl Model {
     /// Convert a DB row into the portable `FieldDefinition` DTO.
-    pub fn into_field_definition(self) -> Option<FieldDefinition> {
+    pub fn into_field_definition(self) -> Result<FieldDefinition, String> {
         flex::field_definition_from_source(&self)
     }
 }

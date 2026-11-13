@@ -379,6 +379,29 @@ impl TenantCacheGenerationListener {
 #[derive(Clone)]
 pub struct TenantCacheGenerationListenerHandle {
     state: Arc<TenantCacheGenerationListenerState>,
+    required_task_count: usize,
+    tasks: Arc<std::sync::Mutex<Option<Vec<tokio::task::JoinHandle<()>>>>>,
+}
+
+impl TenantCacheGenerationListenerHandle {
+    fn is_running(&self) -> bool {
+        self.tasks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|tasks| {
+                tasks.len() >= self.required_task_count
+                    && tasks.iter().all(|task| !task.is_finished())
+            })
+    }
+
+    pub(crate) fn take_tasks(&self) -> Vec<tokio::task::JoinHandle<()>> {
+        self.tasks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+            .unwrap_or_default()
+    }
 }
 
 #[derive(Clone, Default)]
@@ -388,7 +411,15 @@ pub async fn tenant_cache_generation_listener_snapshot(
     ctx: &ServerRuntimeContext,
 ) -> TenantCacheGenerationListenerSnapshot {
     match ctx.shared_get::<TenantCacheGenerationListenerHandle>() {
-        Some(handle) => handle.state.snapshot().await,
+        Some(handle) => {
+            if !handle.is_running() {
+                handle
+                    .state
+                    .mark_runtime_stopped("tenant cache generation background task stopped")
+                    .await;
+            }
+            handle.state.snapshot().await
+        }
         None => TenantCacheGenerationListenerSnapshot::disabled(
             "tenant cache generation listener is not initialized",
         ),
@@ -406,10 +437,25 @@ pub async fn start_tenant_cache_generation_listener(
         .ok_or_else(|| Error::Cache("tenant listener start lock is unavailable".to_string()))?;
     let _start_guard = start_lock.0.lock().await;
     if ctx
-        .shared_get::<TenantCacheGenerationListenerHandle>()
-        .is_some()
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
     {
         return Ok(());
+    }
+    if let Some(existing) = ctx.shared_get::<TenantCacheGenerationListenerHandle>() {
+        if existing.is_running() {
+            return Ok(());
+        }
+        tracing::warn!("Tenant cache generation listener stopped; replacing runtime");
+        if let Some(stale) = ctx.shared_take::<TenantCacheGenerationListenerHandle>() {
+            let tasks = stale.take_tasks();
+            for task in &tasks {
+                task.abort();
+            }
+            for task in tasks {
+                let _ = task.await;
+            }
+        }
     }
 
     let redis_required = cache.redis_configuration_present();
@@ -436,13 +482,24 @@ pub async fn start_tenant_cache_generation_listener(
             );
         }
     }
+    if ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
+    {
+        return Ok(());
+    }
 
+    let mut tasks = Vec::new();
+    // A configured-but-uninitialized Redis client cannot spawn the subscriber or
+    // reconciler; readiness remains degraded, but the local listener is still a
+    // valid live supervisor and must not be restarted on every repeated init.
+    let required_task_count = if cache.redis_client_initialized() { 3 } else { 1 };
     let mut local = cache
         .invalidations()
         .subscribe_local_channel(TENANT_CACHE_GENERATION_CHANNEL);
     let local_listener = listener.clone();
     let local_state = Arc::clone(&state);
-    tokio::spawn(async move {
+    let local_task = tokio::spawn(async move {
         let runtime = EventConsumerRuntime::new("tenant_cache_generation_local");
         runtime.restarted("startup");
         loop {
@@ -484,12 +541,13 @@ pub async fn start_tenant_cache_generation_listener(
             }
         }
     });
+    tasks.push(local_task);
 
     if cache.redis_client_initialized() {
         let redis_listener = listener.clone();
         let invalidations = cache.invalidations();
         let redis_state = Arc::clone(&state);
-        tokio::spawn(async move {
+        let redis_task = tokio::spawn(async move {
             let runtime = EventConsumerRuntime::new("tenant_cache_generation_redis");
             let mut reason = "startup";
             loop {
@@ -556,10 +614,11 @@ pub async fn start_tenant_cache_generation_listener(
                 tokio::time::sleep(LISTENER_RESTART_DELAY).await;
             }
         });
+        tasks.push(redis_task);
 
         let reconcile_listener = listener.clone();
         let reconcile_state = Arc::clone(&state);
-        tokio::spawn(async move {
+        let reconcile_task = tokio::spawn(async move {
             let start = tokio::time::Instant::now() + GENERATION_RECONCILE_INTERVAL;
             let mut interval = tokio::time::interval_at(start, GENERATION_RECONCILE_INTERVAL);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -580,10 +639,31 @@ pub async fn start_tenant_cache_generation_listener(
                 }
             }
         });
+        tasks.push(reconcile_task);
     }
 
-    ctx.shared_insert(TenantCacheGenerationListenerHandle { state });
+    ctx.shared_insert(TenantCacheGenerationListenerHandle {
+        state,
+        required_task_count,
+        tasks: Arc::new(std::sync::Mutex::new(Some(tasks))),
+    });
     Ok(())
+}
+
+pub(crate) async fn take_listener_tasks_for_shutdown(
+    ctx: &ServerRuntimeContext,
+) -> Vec<tokio::task::JoinHandle<()>> {
+    let start_lock = ctx.shared_get_or_insert_with(TenantCacheGenerationListenerStartLock::default);
+    let _start_guard = match tokio::time::timeout(Duration::from_secs(5), start_lock.0.lock()).await {
+        Ok(guard) => guard,
+        Err(_) => {
+            tracing::warn!("Timed out waiting for tenant cache generation startup during shutdown");
+            return Vec::new();
+        }
+    };
+    ctx.shared_take::<TenantCacheGenerationListenerHandle>()
+        .map(|listener| listener.take_tasks())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -927,6 +1007,108 @@ mod tests {
                 second.generation
             );
         }
+    }
+
+    #[tokio::test]
+    async fn redis_listener_is_not_running_until_all_required_tasks_exist() {
+        let task = tokio::spawn(std::future::pending::<()>());
+        let handle = TenantCacheGenerationListenerHandle {
+            state: TenantCacheGenerationListenerState::new(true),
+            required_task_count: 3,
+            tasks: Arc::new(std::sync::Mutex::new(Some(vec![task]))),
+        };
+        assert!(!handle.is_running());
+
+        for task in handle.take_tasks() {
+            task.abort();
+            let _ = task.await;
+        }
+    }
+
+    #[tokio::test]
+    async fn configured_redis_without_client_tracks_only_the_started_local_task() {
+        let task = tokio::spawn(std::future::pending::<()>());
+        let handle = TenantCacheGenerationListenerHandle {
+            state: TenantCacheGenerationListenerState::new(true),
+            required_task_count: 1,
+            tasks: Arc::new(std::sync::Mutex::new(Some(vec![task]))),
+        };
+        assert!(handle.is_running());
+
+        for task in handle.take_tasks() {
+            task.abort();
+            let _ = task.await;
+        }
+    }
+
+    #[tokio::test]
+    async fn listener_handle_reports_finished_background_tasks() {
+        let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _ = finished_rx.await;
+        });
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, crate::common::settings::RustokSettings::default());
+        let state = TenantCacheGenerationListenerState::new(false);
+        state.mark_local_healthy().await;
+        let handle = TenantCacheGenerationListenerHandle {
+            state,
+            required_task_count: 1,
+            tasks: Arc::new(std::sync::Mutex::new(Some(vec![task]))),
+        };
+        ctx.shared_insert(handle.clone());
+
+        assert!(handle.is_running());
+        finished_tx.send(()).expect("signal task completion");
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while handle.is_running() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("listener handle must observe the finished task");
+        let snapshot = tenant_cache_generation_listener_snapshot(&ctx).await;
+        assert_eq!(
+            snapshot.status,
+            crate::services::tenant_cache_generation_status::TenantCacheGenerationListenerStatus::Degraded
+        );
+        assert!(!snapshot.local_ready);
+    }
+
+    #[tokio::test]
+    async fn shutdown_aborts_and_joins_tenant_generation_listener_tasks() {
+        struct NotifyDrop(Option<tokio::sync::oneshot::Sender<()>>);
+        impl Drop for NotifyDrop {
+            fn drop(&mut self) {
+                if let Some(sender) = self.0.take() {
+                    let _ = sender.send(());
+                }
+            }
+        }
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, crate::common::settings::RustokSettings::default());
+        let mut stop = crate::services::app_lifecycle::StopHandle::ensure(&ctx).subscribe();
+        let (stopped_tx, stopped_rx) = tokio::sync::oneshot::channel();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _notify_drop = NotifyDrop(Some(stopped_tx));
+            let _ = started_tx.send(());
+            let _ = stop.changed().await;
+        });
+        started_rx.await.expect("listener task must start");
+        ctx.shared_insert(TenantCacheGenerationListenerHandle {
+            state: TenantCacheGenerationListenerState::new(false),
+            required_task_count: 1,
+            tasks: Arc::new(std::sync::Mutex::new(Some(vec![task]))),
+        });
+
+        crate::services::app_lifecycle::shutdown_runtime_workers(&ctx).await;
+
+        stopped_rx
+            .await
+            .expect("shutdown must abort and join listener tasks");
+        assert!(!ctx.shared_contains::<TenantCacheGenerationListenerHandle>());
     }
 
     #[tokio::test]

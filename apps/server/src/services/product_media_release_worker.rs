@@ -18,6 +18,10 @@ impl ProductMediaReleaseWorkerHandle {
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self._task.await
     }
+
+    pub(crate) fn into_task(self) -> JoinHandle<()> {
+        self._task
+    }
 }
 pub fn spawn_product_media_release_worker(
     ctx: ServerRuntimeContext,

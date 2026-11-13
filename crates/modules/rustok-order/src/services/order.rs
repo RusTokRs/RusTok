@@ -1523,15 +1523,16 @@ async fn load_order_custom_fields_schema(
 
     let definitions = rows
         .into_iter()
-        .filter_map(order_field_definition_from_row)
-        .collect();
+        .map(order_field_definition_from_row)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(OrderError::Validation)?;
 
     Ok(CustomFieldsSchema::new(definitions))
 }
 
 fn order_field_definition_from_row(
     row: order_field_definitions_storage::Model,
-) -> Option<FieldDefinition> {
+) -> Result<FieldDefinition, String> {
     field_definition_from_source(&row)
 }
 

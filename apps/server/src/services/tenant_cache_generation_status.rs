@@ -89,6 +89,10 @@ impl TenantCacheGenerationListenerState {
         state
     }
 
+    pub(crate) fn redis_required(&self) -> bool {
+        self.redis_required
+    }
+
     pub async fn mark_local_healthy(&self) {
         self.local_ready.store(true, Ordering::Release);
         self.local_degraded.store(false, Ordering::Release);
@@ -148,6 +152,15 @@ impl TenantCacheGenerationListenerState {
         self.reconciliation_healthy.store(false, Ordering::Release);
         self.reconciliation_degraded.store(true, Ordering::Release);
         self.publish_metrics();
+    }
+
+    pub(crate) async fn mark_runtime_stopped(&self, error: impl Into<String>) {
+        let error = error.into();
+        self.mark_local_degraded(error.clone()).await;
+        if self.redis_required {
+            self.mark_subscriber_degraded(error.clone()).await;
+            self.mark_reconciliation_degraded(error).await;
+        }
     }
 
     fn any_component_degraded(&self) -> bool {

@@ -1885,14 +1885,6 @@ impl RootMutation {
             runtime_ctx
                 .effective_policy_cache()
                 .invalidate_tenant(tenant.id);
-            let bus = event_bus_from_context(runtime_ctx);
-            let _ = bus.publish_envelope(rustok_events::EventEnvelope::new(
-                tenant.id,
-                Some(auth.user_id),
-                rustok_events::DomainEvent::TenantUpdated {
-                    tenant_id: tenant.id,
-                },
-            ));
         }
 
         TenantModule::try_from(module).map_err(|_| {

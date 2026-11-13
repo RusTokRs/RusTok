@@ -103,6 +103,10 @@ impl ForumSearchContractConsumerWorkerHandle {
     pub fn is_ready(&self) -> bool {
         !self.is_finished()
     }
+
+    pub(crate) fn into_task(self) -> JoinHandle<()> {
+        self._handle
+    }
 }
 
 pub fn forum_search_contract_consumer_enabled() -> Result<bool> {

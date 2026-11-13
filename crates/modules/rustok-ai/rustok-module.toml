@@ -10,6 +10,9 @@ ui_classification = "admin_only"
 recommended_admin_surfaces = ["leptos-admin"]
 showcase_admin_surfaces = ["next-admin"]
 
+[crate]
+entry_type = "AiModule"
+
 [marketplace]
 category = "automation"
 tags = ["ai", "agents", "rig", "orchestration"]

@@ -424,6 +424,7 @@ impl AlloyDraftRequestBuilder {
                 tenant_id,
                 actor_id: context.user_id.clone(),
                 trace_id: None,
+                idempotency_key: None,
                 audit_label: None,
             },
             payload: SandboxPayload {

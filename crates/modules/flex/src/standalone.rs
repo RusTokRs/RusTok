@@ -303,11 +303,10 @@ pub fn standalone_localized_field_keys(schema: &CustomFieldsSchema) -> HashSet<S
 pub fn standalone_schema_view_from_source(
     source: &impl StandaloneSchemaViewSource,
     translation: Option<&impl StandaloneSchemaTranslationSource>,
-) -> FlexSchemaView {
-    let fields_config =
-        parse_standalone_fields_config(source.fields_config_json()).unwrap_or_default();
+) -> Result<FlexSchemaView, FlexError> {
+    let fields_config = parse_standalone_fields_config(source.fields_config_json())?;
 
-    FlexSchemaView {
+    Ok(FlexSchemaView {
         id: source.schema_id(),
         slug: source.slug().to_string(),
         name: translation
@@ -319,7 +318,7 @@ pub fn standalone_schema_view_from_source(
         is_active: source.is_active(),
         created_at: source.created_at_rfc3339(),
         updated_at: source.updated_at_rfc3339(),
-    }
+    })
 }
 
 pub fn standalone_entry_view_from_source(

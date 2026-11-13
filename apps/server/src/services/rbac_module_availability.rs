@@ -20,40 +20,34 @@ use crate::error::{Error, Result};
 #[derive(Clone)]
 pub struct RbacPermissionOwnership(pub Arc<BTreeMap<String, String>>);
 
-fn build_permission_ownership(registry: &ModuleRegistry) -> BTreeMap<String, String> {
+fn build_permission_ownership(
+    registry: &ModuleRegistry,
+) -> Result<BTreeMap<String, String>> {
+    let catalog = ModuleDefinitionCatalog::from_static_registry(registry)
+        .map_err(|error| Error::Message(format!("RBAC permission ownership catalog failed: {error}")))?;
     let mut ownership: BTreeMap<String, String> = BTreeMap::new();
-    match ModuleDefinitionCatalog::from_static_registry(registry) {
-        Ok(catalog) => {
-            for definition in catalog.definitions() {
-                for permission in &definition.permissions {
-                    // First registration wins: ownership must be stable and
-                    // must not depend on registry iteration order.
-                    ownership
-                        .entry(permission.key.clone())
-                        .or_insert_with(|| definition.slug.clone());
-                }
-            }
-        }
-        Err(error) => {
-            tracing::error!(
-                %error,
-                "failed to build RBAC permission ownership from the module registry; treating all permissions as platform-core"
-            );
+    for definition in catalog.definitions() {
+        for permission in &definition.permissions {
+            // First registration wins: ownership must be stable and must not
+            // depend on registry iteration order.
+            ownership
+                .entry(permission.key.clone())
+                .or_insert_with(|| definition.slug.clone());
         }
     }
-    ownership
+    Ok(ownership)
 }
 
 fn permission_ownership(
     ctx: &ServerRuntimeContext,
     registry: &ModuleRegistry,
-) -> Arc<BTreeMap<String, String>> {
+) -> Result<Arc<BTreeMap<String, String>>> {
     if let Some(cached) = ctx.shared_get::<RbacPermissionOwnership>() {
-        return cached.0;
+        return Ok(cached.0);
     }
-    let ownership = Arc::new(build_permission_ownership(registry));
+    let ownership = Arc::new(build_permission_ownership(registry)?);
     ctx.shared_insert(RbacPermissionOwnership(ownership.clone()));
-    ownership
+    Ok(ownership)
 }
 
 /// Resolve the availability snapshot for a tenant. Returns `Ok(None)` when
@@ -68,7 +62,7 @@ pub async fn permission_availability_for(
     let Some(registry) = ctx.shared_get::<ModuleRegistry>() else {
         return Ok(None);
     };
-    let ownership = permission_ownership(ctx, &registry);
+    let ownership = permission_ownership(ctx, &registry)?;
     let snapshot = EffectiveModulePolicyService::resolve_snapshot_cached(
         ctx.db(),
         &registry,
@@ -114,8 +108,17 @@ impl rustok_rbac::graphql::RbacModuleAvailabilityProvider for ServerRbacModuleAv
                 // mark every module-owned permission dormant instead of
                 // silently presenting disabled-module grants as active.
                 let registry = self.ctx.shared_get::<ModuleRegistry>()?;
-                let ownership = permission_ownership(&self.ctx, &registry);
-                Some(fail_closed_availability(&ownership))
+                match permission_ownership(&self.ctx, &registry) {
+                    Ok(ownership) => Some(fail_closed_availability(&ownership)),
+                    Err(ownership_error) => {
+                        tracing::error!(
+                            %ownership_error,
+                            tenant_id = %tenant_id,
+                            "RBAC permission ownership is unavailable; denying all permissions"
+                        );
+                        Some(PermissionAvailability::all_disabled())
+                    }
+                }
             }
         }
     }

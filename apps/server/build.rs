@@ -94,6 +94,12 @@ fn build_optional_module_entry(
     }
 
     let wiring = apply_module_package_manifest(workspace_root, &spec)?;
+    if spec.runtime == "extension" && wiring.entry_type.is_none() {
+        return Err(format!(
+            "runtime extension module `{slug}` must declare `[crate].entry_type` in rustok-module.toml"
+        )
+        .into());
+    }
     let crate_ident = spec.crate_name.replace('-', "_");
     let type_stem = pascal_case(&slug);
     let feature = format!("mod-{slug}");
@@ -102,27 +108,16 @@ fn build_optional_module_entry(
         .as_ref()
         .map(|root| root.join("rustok-module.toml").exists())
         .unwrap_or(false);
-    let lib_path = crate_root
-        .as_ref()
-        .map(|root| root.join("src").join("lib.rs"));
-    if let Some(path) = lib_path.as_ref().filter(|path| path.exists()) {
-        println!("cargo:rerun-if-changed={}", path.display());
-    }
-
     let module_expr = if spec.required {
         None
     } else {
-        wiring
-            .entry_type
-            .clone()
-            .or_else(|| infer_runtime_module_expr(lib_path.as_deref(), &spec.crate_name))
-            .or_else(|| {
-                if has_package_manifest {
-                    None
-                } else {
-                    Some(format!("{crate_ident}::{type_stem}Module"))
-                }
-            })
+        wiring.entry_type.clone().or_else(|| {
+            if has_package_manifest {
+                None
+            } else {
+                Some(format!("{crate_ident}::{type_stem}Module"))
+            }
+        })
     };
 
     let graphql_query_expr = wiring.graphql_query_type.clone().or_else(|| {
@@ -234,23 +229,6 @@ fn qualify_package_type_path(crate_name: &str, value: Option<&str>) -> Option<St
     let crate_ident = crate_name.replace('-', "_");
     let relative = value.strip_prefix("crate::").unwrap_or(value);
     Some(format!("{crate_ident}::{relative}"))
-}
-
-fn infer_runtime_module_expr(lib_path: Option<&Path>, crate_name: &str) -> Option<String> {
-    let lib_path = lib_path?;
-    let content = fs::read_to_string(lib_path).ok()?;
-    let marker = "impl RusToKModule for ";
-    let start = content.find(marker)? + marker.len();
-    let ident: String = content[start..]
-        .chars()
-        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
-        .collect();
-    if ident.is_empty() {
-        return None;
-    }
-
-    let crate_ident = crate_name.replace('-', "_");
-    Some(format!("{crate_ident}::{ident}"))
 }
 
 fn render_registry_codegen(entries: &[OptionalModuleEntry]) -> String {
