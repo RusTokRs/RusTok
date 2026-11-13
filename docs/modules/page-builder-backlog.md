@@ -815,11 +815,12 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           declares `ssr=SsrMode::Async`, so every page inside it — including every `/modules/<slug>`
           surface — is rendered to completion with no stream left to fill a `Suspense`. A
           `LocalResource` on any of those pages is therefore `pending()` in the response and its
-          `Suspense` fallback is what a reader gets. Module admin surfaces still on `LocalResource`: 45. The product
+          `Suspense` fallback is what a reader gets. Module admin surfaces still on `LocalResource`: 42. The product
           module leads — attributes page, product grid, categories page, catalog filter controls and
           schema editor — and the forum split/merge/rename/fork panels, the auth invites and security
-          pages, the blog moderation queue, the forms inbox and the brand directory followed, each
-          resolving its state through `Resource`.
+          pages, the blog moderation queue, the forms inbox, the brand directory, the cache diagnostics card,
+          the comments admin, the commerce admin and the customer directory followed, each resolving
+          its state through `Resource`.
           The rest are the same defect, one page at a time. Three surfaces in that module are not a swap. The product editor loads
           about twenty form fields from its response, so it needs the edit-overlay treatment the email
           settings form got. The attribute lifecycle panel's loader returns a `LoadedScope` holding a

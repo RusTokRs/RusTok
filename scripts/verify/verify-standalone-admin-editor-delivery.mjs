@@ -265,6 +265,26 @@ const movedModuleSurfaces = [
     marker: "let directory = loaded_resource(",
     description: "the brand directory resolves its rows during the render",
   },
+  {
+    file: "crates/modules/rustok-cache/admin/src/ui/leptos.rs",
+    marker: "let health_resource = Resource::new(",
+    description: "the cache diagnostics card resolves its health during the render",
+  },
+  {
+    file: "crates/modules/rustok-comments/admin/src/ui/leptos.rs",
+    marker: "let threads = loaded_resource(",
+    description: "the comments admin resolves its threads during the render",
+  },
+  {
+    file: "crates/modules/rustok-commerce/admin/src/ui/leptos.rs",
+    marker: "let shipping_profiles = Resource::new(",
+    description: "the commerce admin resolves its shipping profiles during the render",
+  },
+  {
+    file: "crates/modules/rustok-customer/admin/src/ui/leptos.rs",
+    marker: "let customers = loaded_resource(",
+    description: "the customer directory resolves its rows during the render",
+  },
 ];
 for (const surface of movedModuleSurfaces) {
   const source = read(surface.file);

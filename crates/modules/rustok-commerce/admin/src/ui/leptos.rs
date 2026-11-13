@@ -12,16 +12,21 @@ use crate::model::{
 };
 use crate::{core, transport};
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -349,14 +354,17 @@ pub fn CommerceAdmin() -> impl IntoView {
     let ui_locale_for_promotion_result = ui_locale.clone();
     let ui_locale_for_order_changes = ui_locale.clone();
 
-    let bootstrap = local_resource(
+    let bootstrap = loaded_resource(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             transport::fetch_bootstrap(token_value, tenant_value).await
         },
     );
 
-    let shipping_profiles = local_resource(
+    // Resolved by the request: the page mounts inside the `Async` admin layout, so a
+    // `LocalResource` here leaves the reader with the `Suspense` fallback. `Resource` is not
+    // `Copy`, so each reader below takes its own clone.
+    let shipping_profiles = Resource::new(
         move || (token.get(), tenant.get(), refresh_nonce.get(), search.get()),
         move |(token_value, tenant_value, _, search_value)| async move {
             let bootstrap =
@@ -371,7 +379,7 @@ pub fn CommerceAdmin() -> impl IntoView {
         },
     );
 
-    let order_changes = local_resource(
+    let order_changes = Resource::new(
         move || {
             (
                 token.get(),
@@ -417,9 +425,10 @@ pub fn CommerceAdmin() -> impl IntoView {
         }
     });
 
+    let edit_profile_bootstrap = bootstrap.clone();
     let edit_profile = Callback::new(move |profile_id: String| {
         let Some(CommerceAdminBootstrap { current_tenant }) =
-            bootstrap.get_untracked().and_then(Result::ok)
+            edit_profile_bootstrap.get_untracked().and_then(Result::ok)
         else {
             set_error.set(Some(edit_bootstrap_loading_label.clone()));
             return;
@@ -477,11 +486,12 @@ pub fn CommerceAdmin() -> impl IntoView {
 
     let submit_ui_locale = ui_locale.clone();
     let submit_query_writer = query_writer.clone();
+    let submit_profile_bootstrap = bootstrap.clone();
     let submit_profile = move |ev: SubmitEvent| {
         ev.prevent_default();
         let submit_query_writer = submit_query_writer.clone();
         let Some(CommerceAdminBootstrap { current_tenant }) =
-            bootstrap.get_untracked().and_then(Result::ok)
+            submit_profile_bootstrap.get_untracked().and_then(Result::ok)
         else {
             set_error.set(Some(submit_bootstrap_loading_label.clone()));
             return;
@@ -551,9 +561,10 @@ pub fn CommerceAdmin() -> impl IntoView {
         });
     };
 
+    let toggle_profile_bootstrap = bootstrap.clone();
     let toggle_profile = Callback::new(move |profile: ShippingProfile| {
         let Some(CommerceAdminBootstrap { current_tenant }) =
-            bootstrap.get_untracked().and_then(Result::ok)
+            toggle_profile_bootstrap.get_untracked().and_then(Result::ok)
         else {
             set_error.set(Some(toggle_bootstrap_loading_label.clone()));
             return;
@@ -611,9 +622,10 @@ pub fn CommerceAdmin() -> impl IntoView {
         reset_query_writer.clear_key(AdminQueryKey::ShippingProfileId.as_str());
         reset_form();
     });
+    let effect_bootstrap = bootstrap.clone();
     Effect::new(move |_| match selected_profile_query.get() {
         Some(profile_id) if !profile_id.trim().is_empty() => {
-            if bootstrap.get().and_then(Result::ok).is_none() {
+            if effect_bootstrap.get().and_then(Result::ok).is_none() {
                 return;
             }
             initial_edit_profile.run(profile_id);
@@ -742,6 +754,7 @@ pub fn CommerceAdmin() -> impl IntoView {
         set_order_change_refresh_nonce.update(|value| *value += 1);
     });
     let clear_order_query_writer = query_writer.clone();
+    let order_change_action_bootstrap = bootstrap.clone();
     let order_change_action = Callback::new(move |(change_id, apply): (String, bool)| {
         let Some(command) = core::prepare_order_change_action_command(
             change_id.as_str(),
@@ -752,7 +765,7 @@ pub fn CommerceAdmin() -> impl IntoView {
             return;
         };
         let Some(CommerceAdminBootstrap { current_tenant }) =
-            bootstrap.get_untracked().and_then(Result::ok)
+            order_change_action_bootstrap.get_untracked().and_then(Result::ok)
         else {
             set_order_change_error.set(Some(bootstrap_loading_label.clone()));
             return;
@@ -815,7 +828,8 @@ pub fn CommerceAdmin() -> impl IntoView {
                         </div>
                     </div>
                     <div class="mt-5 space-y-3">
-                        {move || match shipping_profiles.get() {
+                        {let view_shipping_profiles = shipping_profiles.clone();
+                        move || match view_shipping_profiles.get() {
                             None => view! { <div class="space-y-3"><div class="h-24 animate-pulse rounded-2xl bg-muted"></div><div class="h-24 animate-pulse rounded-2xl bg-muted"></div></div> }.into_any(),
                             Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{no_shipping_profiles_label.clone()}</div> }.into_any(),
                             Some(Ok(list)) => list.items.into_iter().map(|profile| {
@@ -920,7 +934,8 @@ pub fn CommerceAdmin() -> impl IntoView {
                         <button type="button" class="inline-flex rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-50" disabled=move || order_change_busy.get() on:click=move |_| sync_order_query.run(())>{refresh_order_changes_label.clone()}</button>
                     </div>
                     <div class="space-y-3">
-                        {move || match order_changes.get() {
+                        {let view_order_changes = order_changes.clone();
+                        move || match view_order_changes.get() {
                             None => view! { <div class="h-32 animate-pulse rounded-2xl bg-muted"></div> }.into_any(),
                             Some(Ok(list)) if list.items.is_empty() => view! { <div class="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{order_changes_empty_label.clone()}</div> }.into_any(),
                             Some(Ok(list)) => render_order_changes(ui_locale_for_order_changes.as_deref(), list.items, order_change_action, apply_order_change_label.clone(), cancel_order_change_label.clone(), order_change_busy),

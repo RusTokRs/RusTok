@@ -15,16 +15,21 @@ use crate::core::{
 use crate::i18n::t;
 use crate::transport;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -109,7 +114,7 @@ pub fn CommentsAdmin() -> impl IntoView {
     let detail_error_locale = ui_locale.clone();
     let route_effect_locale = ui_locale.clone();
 
-    let threads = local_resource(
+    let threads = loaded_resource(
         move || {
             (
                 token.get(),
@@ -133,7 +138,7 @@ pub fn CommentsAdmin() -> impl IntoView {
         },
     );
 
-    let detail = local_resource(
+    let detail = loaded_resource(
         move || {
             (
                 token.get(),
@@ -309,7 +314,10 @@ pub fn CommentsAdmin() -> impl IntoView {
                 </div>
             </section>
 
-            <div class="grid gap-6 xl:grid-cols-[1.1fr_1.3fr]">
+            {let paging_threads = threads.clone();
+            let view_threads = threads.clone();
+            let view_detail = detail.clone();
+            view! { <div class="grid gap-6 xl:grid-cols-[1.1fr_1.3fr]">
                 <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                     <div class="mb-4 flex items-center justify-between gap-4">
                         <h2 class="text-lg font-semibold text-card-foreground">{threads_title}</h2>
@@ -334,7 +342,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                 type="button"
                                 class="rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-60"
                                 disabled=move || {
-                                    threads
+                                    paging_threads
                                         .get()
                                         .and_then(|res| res.ok())
                                         .map(|payload| {
@@ -351,7 +359,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                     </div>
                     <Suspense fallback=move || view! { <div class="h-64 animate-pulse rounded-xl bg-muted"></div> }>
                         {move || {
-                            threads.get().map(|result| match result {
+                            view_threads.get().map(|result| match result {
                                 Ok(payload) => view! {
                                     <div class="space-y-3">
                                         <div class="text-sm text-muted-foreground">
@@ -546,6 +554,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                     </Suspense>
                 </section>
             </div>
+            } }
         </div>
     }
 }

@@ -44,7 +44,9 @@ pub fn CacheAdmin() -> impl IntoView {
     let (loaded, set_loaded) = signal(false);
     let (schema_version, set_schema_version) = signal(0_i32);
 
-    let health_resource = local_resource(
+    // Resolved by the request: this page mounts inside the `Async` admin layout, so a
+    // `LocalResource` here leaves the reader with the `Suspense` fallback.
+    let health_resource = Resource::new(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             transport::fetch_cache_health(token_value, tenant_value).await
@@ -165,7 +167,8 @@ pub fn CacheAdmin() -> impl IntoView {
                 <CardContent>
                     {
                         let lh = Arc::clone(&l_health);
-                        move || match health_resource.get() {
+                        let health_view = health_resource.clone();
+                        move || match health_view.get() {
                             None => view! {
                                 <div class="text-sm text-muted-foreground animate-pulse">
                                     "Loading..."
