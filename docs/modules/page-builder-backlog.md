@@ -761,25 +761,29 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           value while the attribute reads empty, and that a `sandbox=""` `srcdoc` frame with
           the Fly envelope applies its stylesheet with the nonce and drops it without. The
           probe did not use the built admin.
-    - [ ] **The standalone SSR admin does not render the editor.** Decided, not yet landed; the
-          decision is `DECISIONS/2026-11-12-page-builder-server-preview-delivery.md`:
-          a host that renders the editor on the server resolves the page before it renders
-          (`Resource` under a route mode that needs no script), or it ships its hydration bundle,
-          and a host that does neither renders the reason it cannot instead of an editor whose
-          controls cannot act. Read from source, not
-          executed. `PagesAdmin` (`crates/modules/rustok-pages/admin/src/composition.rs`) loads
-          the page list and the open page through `LocalResource`. With `leptos/ssr` a
-          `LocalResource` never resolves (`leptos_server/src/local_resource.rs`: "in SSR mode,
-          this will simply always be pending"), so the response holds the `Suspense` fallback
-          in place of `PageWorkspace` and `PagesFlyBuilder`. The shell of that host renders no
-          script (`apps/admin/src/app/shell.rs`; `verify-fly-ssr-first.mjs` requires the
-          comment that says so), although `build-standalone-admin-ssr.sh` builds a hydration
-          bundle, so nothing resolves the resource in the browser either. The `ssr + browser-js`
-          editor is therefore rendered by the render tests of the crate and by the Playwright
-          fixtures, and by no host. Needs a decision: the Pages workspace loads on the server
-          (a `Resource` under a route mode that needs no script), or the standalone host ships
-          its hydration bundle. `LocalResource` is used in 68 files of `apps/admin` and the
-          module admin packages, so the decision is not local to Pages.
+    - [ ] **The standalone SSR admin does not render the editor.** Decided 2026-11-13
+          (`DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`), not started. The mechanism
+          is now named from `leptos` 0.8.21 source rather than inferred, and two of the three
+          obvious fixes are ruled out by it:
+          - a `LocalResource` *never* resolves on the server — `ArcLocalResource::new` wraps the
+            fetcher in `if cfg!(feature = "ssr") { pending().await }` — so `PagesAdmin`
+            (`crates/modules/rustok-pages/admin/src/composition.rs`), which loads the page list and
+            the open page that way, can only ever render its `Suspense` fallback in the response;
+          - `Effect::new` dispatches to `new_isomorphic`, which spawns a task for the next tick and
+            is not driven to completion before the response is produced, so `LocalResource` plus an
+            `Effect` reproduces exactly the same empty render (this also applies to
+            `EnabledModulesProvider` in `apps/admin/src/shared/context/enabled_modules.rs`);
+          - `leptos_axum` calls `leptos::nonce::provide_nonce()` and generates its *own* nonce for
+            `HydrationScripts`, while `admin_security_headers` enforces a different per-request
+            nonce, so shipping the hydration bundle as-is would be blocked by this host's own
+            policy and fail silently.
+          The decision: the default SSR profile keeps no hydration bundle (it is a supported
+          profile for hosts that build one, under a stated nonce contract), and the editor's server
+          state is loaded through an awaitable `Resource` rather than `LocalResource` plus an
+          `Effect`. Surfaces move one at a time, starting with the Pages workspace, each with a
+          render test that asserts the workspace is in the SSR HTML and the fallback is not.
+          `LocalResource` appears in 72 files across `apps/admin` and the module admin packages, so
+          the rest stay where they are until a host is expected to show them.
           Owner: `rustok-pages-admin`, `apps/admin`.
     - [ ] Load the editor in a browser under the policy of `apps/admin/src/app/security.rs`.
           The two Playwright suites serve their pages without a policy, and `apps/admin` does

@@ -53,6 +53,7 @@ Non-ADR plans and research documents do not belong in this registry.
 
 | ADR | Title | Decision status | Implementation status | Relations |
 | --- | --- | --- | --- | --- |
+| [2026-11-13](./2026-11-13-standalone-admin-editor-delivery.md) | Standalone admin editor delivery | Accepted | Not started | Extends [Page Builder server preview delivery](./2026-11-12-page-builder-server-preview-delivery.md), [Fly SSR control contract](./2026-11-11-fly-ssr-control-contract-and-route-view-state.md), [Fly SSR-first browser runtime](./2026-07-16-fly-ssr-first-browser-runtime.md) |
 | [2026-11-12](./2026-11-12-page-builder-server-preview-delivery.md) | Page Builder server preview delivery | Accepted | Implemented | Extends [Fly SSR control contract](./2026-11-11-fly-ssr-control-contract-and-route-view-state.md), [Fly SSR-first browser runtime](./2026-07-16-fly-ssr-first-browser-runtime.md) |
 | [2026-11-12](./2026-11-12-module-composition-is-the-manifest.md) | Module composition is the manifest | Accepted | Implemented | Extends [Shared Platform Manifest Foundation Library](./2026-10-15-rustok-manifest-foundation-library.md) |
 | [2026-11-11](./2026-11-11-messenger-write-and-sync.md) | Messenger write authority and resumable delivery | Proposed | Not started | Extends [Outbox runtime](./2026-03-11-queue-runtime-source-of-truth-outbox.md), [Port ownership](./2026-07-01-port-contract-ownership-and-runtime-feature-boundary.md) |
