@@ -453,9 +453,9 @@
       "category": "modules",
       "files": 13,
       "loc": 883,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-13T05:39:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: runtime registration adapter for platform event capability, cycle-free dependency decoupling, module health lifecycle delegation, and contract validation; verified with cargo check -p rustok-events-module."
     },
     "crates/modules/rustok-events-module/admin": {
       "name": "admin",
@@ -463,9 +463,9 @@
       "category": "modules",
       "files": 9,
       "loc": 781,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-13T05:39:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation with pure-logic core.rs (0 UI framework imports), HostAuthority permissions gate with non-nil actor_id validation in native_server_adapter, input validation of event delivery profiles via is_known_profile across native server functions and GraphQL adapters, dual-transport parity, and localized summary view model; verified with cargo check -p rustok-events-admin and cargo check -p rustok-events-admin --features ssr."
     },
     "crates/modules/rustok-forum": {
       "name": "rustok-forum",
@@ -2225,9 +2225,9 @@
       "category": "apps",
       "files": 7,
       "loc": 423,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-13T05:39:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: dual Next.js and Leptos admin client parity, profile validation in saveEventDeliveryProfile matching known profiles ('outbox', 'outbox_iggy'), evaluateProfileSelection decision flow with Iggy unconfigured handling and restart requirements; verified."
     },
     "apps/next-admin/packages/forum": {
       "name": "forum",

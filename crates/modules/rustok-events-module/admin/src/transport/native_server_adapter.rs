@@ -41,7 +41,7 @@ pub async fn event_delivery_configuration_native()
         let authority = leptos_axum::extract::<HostAuthorityContext>()
             .await
             .map_err(|_| ServerFnError::new(HOST_AUTHORITY_REQUIRED))?;
-        if !authority.allows(HostAuthority::Read) {
+        if authority.actor_id().is_nil() || !authority.allows(HostAuthority::Read) {
             return Err(ServerFnError::new(HOST_AUTHORITY_REQUIRED));
         }
         let control = runtime
@@ -80,11 +80,18 @@ pub async fn update_event_delivery_profile_native(
             SharedEventDeliveryControl,
         };
 
+        let profile = profile.trim().to_string();
+        if !crate::core::is_known_profile(&profile) {
+            return Err(ServerFnError::new(format!(
+                "unknown event delivery profile: {profile}"
+            )));
+        }
+
         let runtime = expect_context::<rustok_api::HostRuntimeContext>();
         let authority = leptos_axum::extract::<HostAuthorityContext>()
             .await
             .map_err(|_| ServerFnError::new(HOST_AUTHORITY_REQUIRED))?;
-        if !authority.allows(HostAuthority::Manage) {
+        if authority.actor_id().is_nil() || !authority.allows(HostAuthority::Manage) {
             return Err(ServerFnError::new(HOST_AUTHORITY_REQUIRED));
         }
         let control = runtime

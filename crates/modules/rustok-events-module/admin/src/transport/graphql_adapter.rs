@@ -82,6 +82,12 @@ pub(super) async fn update_profile(
     tenant_slug: Option<String>,
     profile: String,
 ) -> Result<EventDeliveryUpdate, ApiError> {
+    let profile = profile.trim().to_string();
+    if !crate::core::is_known_profile(&profile) {
+        return Err(ApiError::Graphql(format!(
+            "unknown event delivery profile: {profile}"
+        )));
+    }
     let response: UpdateResponse = execute(
         GRAPHQL_ENDPOINT,
         GraphqlRequest::new(

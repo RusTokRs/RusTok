@@ -75,6 +75,10 @@ export async function saveEventDeliveryProfile(
   profile: string,
   opts: GqlOpts = {}
 ): Promise<EventDeliveryUpdate> {
+  const trimmed = profile.trim();
+  if (trimmed !== 'outbox' && trimmed !== 'outbox_iggy') {
+    throw new Error(`unknown event delivery profile: ${profile}`);
+  }
   const data = await graphqlRequest<
     { input: { profile: string } },
     {
@@ -82,7 +86,7 @@ export async function saveEventDeliveryProfile(
     }
   >(
     UPDATE_EVENT_DELIVERY_CONFIGURATION_MUTATION,
-    { input: { profile } },
+    { input: { profile: trimmed } },
     opts.token,
     opts.tenantSlug
   );
