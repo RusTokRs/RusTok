@@ -129,8 +129,8 @@
   },
   "contract_tests": {
     "status": "source_ready",
-    "source": "crates/modules/rustok-media-transport/tests/port_conformance.rs",
-    "runner": "cargo test -p rustok-media-transport --test port_conformance",
+    "source": "crates/modules/rustok-media/tests/port_conformance.rs",
+    "runner": "cargo test -p rustok-media --test port_conformance",
     "profiles": [
       "in_process",
       "loopback_grpc"
@@ -170,7 +170,7 @@
           "owner_scope_preserved",
           "bounded_keyset_pagination"
         ],
-        "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
+        "runtime_evidence": "crates/modules/rustok-media/tests/port_conformance.rs"
       },
       {
         "operation": "lookup_asset_references",
@@ -184,7 +184,7 @@
           "owner_scope_preserved",
           "bounded_bulk_identity_lookup"
         ],
-        "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
+        "runtime_evidence": "crates/modules/rustok-media/tests/port_conformance.rs"
       },
       {
         "operation": "get_image_descriptor",
@@ -277,7 +277,7 @@
           "context_deadline_preserved",
           "reference_lifecycle_gate"
         ],
-        "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
+        "runtime_evidence": "crates/modules/rustok-media/tests/port_conformance.rs"
       },
       {
         "operation": "retain_asset_reference",
@@ -291,7 +291,7 @@
           "idempotent_reference_identity",
           "deletion_fence_preserved"
         ],
-        "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
+        "runtime_evidence": "crates/modules/rustok-media/tests/port_conformance.rs"
       },
       {
         "operation": "release_asset_reference",
@@ -304,7 +304,7 @@
           "write_policy_preserved",
           "idempotent_reference_identity"
         ],
-        "runtime_evidence": "crates/modules/rustok-media-transport/tests/port_conformance.rs"
+        "runtime_evidence": "crates/modules/rustok-media/tests/port_conformance.rs"
       }
     ],
     "fallback_smoke": {

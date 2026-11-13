@@ -31,28 +31,27 @@ function forbidAll(source, markers, description) {
   }
 }
 
-const crateRoot = "crates/modules/rustok-product-transport";
+const crateRoot = "crates/modules/rustok-product/ports";
 const cargo = read(`${crateRoot}/Cargo.toml`);
 const build = read(`${crateRoot}/build.rs`);
 const proto = read(`${crateRoot}/proto/rustok/product/product_catalog.proto`);
-const lib = read(`${crateRoot}/src/lib.rs`);
-const client = read(`${crateRoot}/src/client.rs`);
-const server = read(`${crateRoot}/src/server.rs`);
-const conformance = read(`${crateRoot}/tests/port_conformance.rs`);
+const lib = read(`${crateRoot}/src/grpc/mod.rs`);
+const client = read(`${crateRoot}/src/grpc/client.rs`);
+const server = read(`${crateRoot}/src/grpc/server.rs`);
+const conformance = read("crates/modules/rustok-product/tests/port_conformance.rs");
 const readme = read(`${crateRoot}/README.md`);
 const registrySource = read("crates/modules/rustok-product/contracts/product-fba-registry.json");
 const plan = read("crates/modules/rustok-product/docs/implementation-plan.md");
 
 requireAll(cargo, [
-  'name = "rustok-product-transport"',
+  'name = "rustok-product-ports"',
   "rustok-api.workspace = true",
-  "rustok-product.workspace = true",
   "thiserror.workspace = true",
   "tonic = { workspace = true",
-  "tonic-prost.workspace = true",
+  "tonic-prost = { workspace = true",
   "url.workspace = true",
-  "protoc-bin-vendored.workspace = true",
-  "tonic-prost-build.workspace = true",
+  "protoc-bin-vendored = { workspace = true",
+  "tonic-prost-build = { workspace = true",
   'tokio-stream = { version = "0.1", features = ["net"] }',
 ], "transport Cargo manifest");
 forbidAll(cargo, ["sea-orm", "rustok-outbox", "rustok-pricing"], "transport Cargo ownership");
@@ -133,12 +132,12 @@ requireAll(conformance, [
   "serve_with_incoming_shutdown",
 ], "loopback conformance harness");
 requireAll(readme, [
-  "Typed tonic gRPC framing",
-  "does not own Product DTOs",
-  "TrustedProductCatalogAuthority",
-  "cargo test -p rustok-product-transport --test port_conformance",
-  "Loopback conformance covers transport and authority handling",
-  "boundary_ready",
+  "rustok-product-ports",
+  "ProductCatalogReadPort",
+  "ProductVariantIdentityReadPort",
+  "ProductCatalogCommandPort",
+  "grpc-client",
+  "grpc-server",
 ], "transport README");
 
 let registry;
@@ -152,8 +151,8 @@ if (registry) {
     failures.push("Product FBA registry must remain boundary_ready before execution evidence");
   }
   const external = registry.external_transport ?? {};
-  if (external.crate !== "rustok-product-transport") {
-    failures.push("Product FBA registry must name rustok-product-transport");
+  if (external.crate !== "rustok-product-ports") {
+    failures.push("Product FBA registry must name rustok-product-ports");
   }
   if (external.status !== "runtime_wired_execution_pending") {
     failures.push("Product external transport must remain runtime_wired_execution_pending");

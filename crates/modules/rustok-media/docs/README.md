@@ -21,7 +21,7 @@
 - `MediaPublicImageReadPort`, which returns one owner result containing the canonical `MediaItem` and the public descriptor selected by Media policy;
 - `MediaPublicImageService`, which turns only storage-relative image descriptors into `/api/media/public/images/{id}/{checksum_sha256}` capability URLs;
 - an unauthenticated Media-owned capability GET that derives tenant authority from `TenantContext`, verifies the active ready image blob and checksum, reads the object, and returns immutable bytes with ETag, content length/type, and `nosniff`;
-- `rustok-media-transport` tonic adapter and conformance sources for metadata/control and public-image descriptors. Binary bodies remain outside gRPC; current-revision execution and production deployment evidence are separate gates;
+- `rustok-media-ports` tonic adapter and conformance sources for metadata/control and public-image descriptors. Binary bodies remain outside gRPC; current-revision execution and production deployment evidence are separate gates;
 - GraphQL and REST adapters of the module;
 - upload validation by size/MIME policy, module-scoped storage namespace (`media/{zone}/tenants/{tenant_id}/modules/{owner_module}/...`), and tenant isolation before accessing storage;
 - module-scoped media management: `owner_module` tracking, filtering with `list_by_module`, and cascading cleanup with `purge_module_media` on module deactivation/uninstallation;
@@ -85,7 +85,7 @@ Direct-public media has the same public-delivery revocation model as before: onc
 - `node scripts/verify/verify-media-public-image-proxy.mjs`
 - `cargo xtask module validate media`
 - `cargo xtask module test media`
-- `cargo test -p rustok-media-transport`
+- `cargo test -p rustok-media --test port_conformance`
 - existing targeted upload, translation, lifecycle, reconciliation, admin, Local, and S3 suites.
 
 These commands are maintainer-run and were not executed while publishing this slice.
@@ -95,7 +95,7 @@ These commands are maintainer-run and were not executed while publishing this sl
 - [README crate](../README.md)
 - [Implementation plan](./implementation-plan.md)
 - [Admin package](../admin/README.md)
-- [gRPC transport](../../rustok-media-transport/docs/README.md)
+- [Canonical FBA ports](../ports/README.md)
 - [Manifest layer contract](../../../../docs/modules/manifest.md)
 
 ## Atomic consumer control-port selection (2026-10-18)

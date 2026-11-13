@@ -59,7 +59,7 @@ The modular monolith uses those tables in the shared PostgreSQL deployment. Whol
 - The public image handler verifies tenant, active asset/blob, ready state, image MIME, checksum, object metadata size, and body size. It returns checksum ETag, one-year immutable cache semantics, content type/length, and `nosniff`.
 - Invalid id/checksum/tenant/lifecycle/state/MIME combinations are indistinguishable as not found; storage/database/invariant failures return static unavailable messages while details remain in logs.
 - Profiles consumes this owner surface for GraphQL and native storefront avatar/banner presentation and independently revalidates tenant, uploader, and image MIME.
-- `rustok-media-transport` now carries `MediaPublicImageAsset` through `GetPublicImageAsset` with deadline propagation, exact typed owner errors, trusted authority, and explicit operation authorization. Image bytes remain outside gRPC.
+- `rustok-media-ports` now carries `MediaPublicImageAsset` through `GetPublicImageAsset` with deadline propagation, exact typed owner errors, trusted authority, and explicit operation authorization. Image bytes remain outside gRPC.
 
 ## FFA/FBA boundary
 
@@ -69,7 +69,7 @@ The modular monolith uses those tables in the shared PostgreSQL deployment. Whol
 - Provider contracts: `MediaAssetReadPort`, `MediaPublicImageReadPort`, and `MediaAssetWritePort`.
 - Cross-module consumers receive typed descriptors and control operations, never object-store handles or storage keys.
 - Local streaming REST and presigned object-store PUT are Media-owned binary transports. The public image capability GET is also Media-owned binary delivery; generic gRPC DTOs carry no bytes.
-- `rustok-media-transport` provides tonic client/server adapters for metadata, public descriptor selection, and write/control contracts.
+- `rustok-media-ports` provides tonic client/server adapters for metadata, public descriptor selection, and write/control contracts.
 - The public-image gRPC server requires explicit `with_public_image_provider(...)` configuration and a separate `MediaGrpcOperation::GetPublicImageAsset` grant. Generic asset-read authorization does not imply public URL selection.
 - Source-level embedded/loopback conformance now covers owner-selected capability descriptors, deadlines, deleted-state errors, and explicit trusted operation grants.
 - Remote byte delivery is not a gRPC concern. Extracted deployments still need a reachable Media HTTP ingress, public base routing when a shared relative ingress is unavailable, cache/conditional-GET evidence, mTLS, readiness, isolated database/storage, rollback, and performance evidence.
@@ -137,10 +137,10 @@ The database remains the index; consumers never derive or list these keys.
   `MediaAssetSummary` is the content-free read projection used by the FBA
   contract.
 - `cargo test -p rustok-media --test public_image_proxy -- --nocapture`
-- `cargo test -p rustok-media-transport --test port_conformance -- --nocapture`
+- `cargo test -p rustok-media --test port_conformance -- --nocapture`
 - `node scripts/verify/verify-media-public-image-proxy.mjs`
 - `cargo test -p rustok-media`
-- `cargo test -p rustok-media-transport`
+- `cargo test -p rustok-media-ports`
 - `cargo test -p rustok-media --features s3 --test s3_lifecycle`
 - `cargo xtask module validate media`
 - `cargo xtask module test media`

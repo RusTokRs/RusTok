@@ -42,7 +42,7 @@ pub async fn configure_profile_media_public_image_deployment(
         use std::sync::Arc;
 
         use rustok_media::MediaPublicImageReadPort;
-        use rustok_media_transport::GrpcMediaPublicImageConnectionConfig;
+        use rustok_media_ports::grpc::GrpcMediaPublicImageConnectionConfig;
         use rustok_profiles::ProfileMediaPublicImageProvider;
 
         let deployment = deployment_from_environment().map_err(Error::Message)?;

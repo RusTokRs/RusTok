@@ -41,7 +41,7 @@ The returned descriptor may point to a Media-owned HTTP capability route, but im
 cargo check -p rustok-profiles-storefront --all-targets
 cargo test -p rustok-profiles-storefront
 cargo test -p rustok-media --test public_image_proxy -- --nocapture
-cargo test -p rustok-media-transport --test port_conformance -- --nocapture
+cargo test -p rustok-media --test port_conformance -- --nocapture
 cargo test -p rustok-social-graph --test follow_state_sqlite -- --nocapture
 node scripts/verify/verify-media-public-image-proxy.mjs
 node scripts/verify/verify-profiles-media-provider-composition.mjs

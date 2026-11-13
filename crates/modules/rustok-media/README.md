@@ -73,7 +73,7 @@ For production deployments, TLS certificates (`RUSTOK_MEDIA_SERVICE_TLS_CERT_PAT
 - `rustok-seo`, Profiles, and owner SEO providers consume Media-owned image descriptors without raw media blob coupling.
 - Profiles revalidates tenant, uploader, and image MIME on the `MediaItem` returned alongside the descriptor; it never constructs the capability path.
 - `rustok-media-admin` uses native Leptos `#[server]` functions as the default internal data layer, keeps GraphQL as the selected path for list/detail/translations/delete/usage, and preserves REST upload via `/api/media`.
-- Media is a proposed whole-module extraction pilot. `rustok-media-transport` supplies metadata/control and public-image descriptor adapters. The owner HTTP/storage endpoint still delivers bytes; complete provider-host, security, ingress and isolated-runtime evidence remain required.
+- Media is a whole-module extraction pilot following canonical FBA. `rustok-media-ports` supplies metadata/control and public-image descriptor adapters. The owner HTTP/storage endpoint delivers bytes.
 
 ## Entry points
 
@@ -91,7 +91,7 @@ For production deployments, TLS certificates (`RUSTOK_MEDIA_SERVICE_TLS_CERT_PAT
 - `MediaAssetReadPort` / `MediaAssetWritePort`
 - `MediaAssetReferenceListRequest` / `MediaAssetReferenceListPage`
 - `MediaUploadRequest` / `MediaUploadTarget`
-- `rustok-media-transport::{GrpcMediaProvider, MediaGrpcService}`
+- `rustok-media-ports::grpc::{GrpcMediaProvider, MediaGrpcService}`
 - `CreateRenditionInput` / `MediaRenditionItem` / `ImageWorker`
 - `PrepareUploadSessionInput` / `PreparedUploadSession`
 - `MediaImageDescriptor` / `MediaImageDeliveryProfile` / `MediaImagePublicUrlPolicy`

@@ -465,7 +465,6 @@ rustok-storage = { path = "crates/utils/rustok-storage" }
 rustok-secrets = { path = "crates/utils/rustok-secrets" }
 rustok-media = { path = "crates/modules/rustok-media" }
 rustok-media-ports = { path = "crates/modules/rustok-media/ports" }
-rustok-media-transport = { path = "crates/modules/rustok-media-transport" }
 rustok-blog-cli = { path = "crates/modules/rustok-blog/cli" }
 rustok-media-cli = { path = "crates/modules/rustok-media/cli" }
 rustok-profiles-cli = { path = "crates/modules/rustok-profiles/cli" }

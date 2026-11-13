@@ -35,10 +35,10 @@ const schemaPath = "apps/server/src/services/graphql_schema.rs";
 const bootstrapPath = "apps/server/src/services/server_bootstrap.rs";
 const routerPath = "apps/server/src/services/app_router.rs";
 const serverCargoPath = "apps/server/Cargo.toml";
-const transportCargoPath = "crates/modules/rustok-media-transport/Cargo.toml";
+const transportCargoPath = "crates/modules/rustok-media/ports/Cargo.toml";
 const transportClientPath =
-  "crates/modules/rustok-media-transport/src/public_image_client.rs";
-const transportLibPath = "crates/modules/rustok-media-transport/src/lib.rs";
+  "crates/modules/rustok-media/ports/src/grpc/public_image_client.rs";
+const transportLibPath = "crates/modules/rustok-media/ports/src/grpc/mod.rs";
 const profileGraphqlPath = "crates/modules/rustok-profiles/src/graphql/types.rs";
 const profileNativePath =
   "crates/modules/rustok-profiles/storefront/src/transport/native_server_adapter.rs";
@@ -184,8 +184,8 @@ for (const marker of [
   );
 }
 for (const marker of [
-  'mod-profiles  = ["dep:rustok-profiles", "dep:rustok-media-transport"',
-  "rustok-media-transport = { workspace = true, optional = true }",
+  'mod-profiles  = ["dep:rustok-profiles", "dep:rustok-media-ports"',
+  "rustok-media-ports = { workspace = true, optional = true",
 ]) {
   requireMarker(serverCargo, marker, `${serverCargoPath}: missing remote Media wiring ${marker}`);
 }

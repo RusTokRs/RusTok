@@ -6,7 +6,7 @@
     "relation_source": "crates/modules/rustok-forum/src/services/attachment_relation.rs",
     "reconciliation_service": "crates/modules/rustok-forum/src/services/attachment_hold_reconciliation.rs",
     "media_contract_source": "crates/modules/rustok-media/src/ports.rs",
-    "media_transport_proto": "crates/modules/rustok-media-transport/proto/rustok/media/media.proto"
+    "media_transport_proto": "crates/modules/rustok-media/ports/proto/rustok/media/media.proto"
   },
   "source_of_truth": {
     "forum": "Forum attachment relation rows own relation existence, target, locale, usage, order, caption and stable reference identity.",
@@ -78,7 +78,7 @@
     "contract_test": "crates/modules/rustok-forum/tests/reconciliation_graphql_contract.rs",
     "maintainer_runtime_commands": [
       "cargo test -p rustok-forum --test reconciliation_graphql_contract -- --nocapture",
-      "cargo test -p rustok-media-transport --test port_conformance -- --nocapture",
+      "cargo test -p rustok-media --test port_conformance -- --nocapture",
       "cargo xtask module validate forum",
       "cargo xtask module validate media",
       "node scripts/verify/verify-forum-attachment-hold-reconciliation.mjs"

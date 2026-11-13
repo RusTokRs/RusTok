@@ -199,7 +199,7 @@
     "contract": "crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json",
     "runner": "scripts/evidence/capture-product-catalog-separate-process-runtime.mjs",
     "verifier": "scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs",
-    "probe": "crates/modules/rustok-product-transport/examples/product_catalog_runtime_probe.rs",
+    "probe": "crates/modules/rustok-product/examples/product_catalog_runtime_probe.rs",
     "evidence_path": "crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime.json",
     "transport_profile": "explicit_loopback_plaintext_local_evidence",
     "processes": [

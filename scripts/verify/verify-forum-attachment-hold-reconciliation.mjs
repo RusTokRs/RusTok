@@ -77,7 +77,7 @@ hasAll(host, [
   'host_runtime.shared_get::<Arc<dyn MediaAssetReadPort>>()',
 ], 'server host composition');
 
-const mediaPorts = read('crates/modules/rustok-media/src/ports.rs');
+const mediaPorts = `${read('crates/modules/rustok-media/src/ports.rs')}\n${fs.existsSync('crates/modules/rustok-media/ports/src/ports.rs') ? read('crates/modules/rustok-media/ports/src/ports.rs') : ''}`;
 hasAll(mediaPorts, [
   'pub struct MediaAssetReferenceListRequest',
   'pub struct MediaAssetReferenceListPage',
@@ -87,7 +87,7 @@ hasAll(mediaPorts, [
   'async fn lookup_asset_references(',
 ], 'Media read contract');
 
-const transportServer = read('crates/modules/rustok-media-transport/src/server.rs');
+const transportServer = read('crates/modules/rustok-media/ports/src/grpc/server.rs');
 hasAll(
   transportServer,
   [
@@ -97,7 +97,7 @@ hasAll(
   'Media gRPC trusted operations'
 );
 
-const transportProto = read('crates/modules/rustok-media-transport/proto/rustok/media/media.proto');
+const transportProto = read('crates/modules/rustok-media/ports/proto/rustok/media/media.proto');
 hasAll(
   transportProto,
   [

@@ -23,7 +23,7 @@
       "args": [
         "run",
         "-p",
-        "rustok-product-transport",
+        "rustok-product-ports",
         "--example",
         "product_catalog_runtime_probe"
       ]
@@ -83,12 +83,12 @@
   },
   "source_files": [
     "crates/modules/rustok-product/contracts/evidence/product-catalog-separate-process-runtime-contract.json",
-    "crates/modules/rustok-product-catalog-service/src/main.rs",
-    "crates/modules/rustok-product-transport/examples/product_catalog_runtime_probe.rs",
-    "crates/modules/rustok-product-transport/src/auth.rs",
-    "crates/modules/rustok-product-transport/src/client.rs",
-    "crates/modules/rustok-product-transport/src/connection.rs",
-    "crates/modules/rustok-product-transport/src/server.rs",
+    "crates/modules/rustok-product/src/bin/service.rs",
+    "crates/modules/rustok-product/examples/product_catalog_runtime_probe.rs",
+    "crates/modules/rustok-product/ports/src/grpc/auth.rs",
+    "crates/modules/rustok-product/ports/src/grpc/client.rs",
+    "crates/modules/rustok-product/ports/src/grpc/connection.rs",
+    "crates/modules/rustok-product/ports/src/grpc/server.rs",
     "apps/server/src/services/product_catalog_deployment.rs",
     "scripts/evidence/capture-product-catalog-separate-process-runtime.mjs"
   ],

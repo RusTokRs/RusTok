@@ -83,7 +83,7 @@ mod-product   = ["dep:rustok-product", "dep:rustok-product-ports", "mod-taxonomy
 mod-product_relations = ["dep:rustok-product-relations", "mod-product", "rustok-distribution/mod-product_relations"]
 mod-brand = ["dep:rustok-brand", "mod-product", "rustok-distribution/mod-brand"]
 mod-product_bundles = ["dep:rustok-product-bundles", "mod-product", "rustok-distribution/mod-product_bundles"]
-mod-profiles  = ["dep:rustok-profiles", "dep:rustok-media-transport", "mod-media", "mod-social_graph", "mod-taxonomy", "rustok-distribution/mod-profiles"]
+mod-profiles  = ["dep:rustok-profiles", "dep:rustok-media-ports", "mod-media", "mod-social_graph", "mod-taxonomy", "rustok-distribution/mod-profiles"]
 mod-social_graph = ["dep:rustok-social-graph", "rustok-social-graph/graphql", "rustok-social-graph/index-consumer"]
 mod-groups    = ["dep:rustok-groups", "rustok-groups/graphql", "rustok-distribution/mod-groups"]
 mod-region    = ["dep:rustok-region", "dep:rustok-translation-targets", "rustok-distribution/mod-region"]
@@ -129,7 +129,7 @@ mod-deal = ["dep:rustok-deal", "rustok-distribution/mod-deal"]
 mod-party = ["dep:rustok-party", "rustok-distribution/mod-party"]
 mod-media     = ["dep:rustok-media", "dep:rustok-translation-targets", "rustok-distribution/mod-media"]
 # Whole-owner Media control ports must not require the unrelated Profiles module.
-media-grpc = ["mod-media", "dep:rustok-media-transport"]
+media-grpc = ["mod-media", "dep:rustok-media-ports"]
 mod-translation = [
   "dep:rustok-translation",
   "dep:rustok-translation-targets",
@@ -212,7 +212,7 @@ rustok-taxonomy  = { workspace = true, optional = true }
 rustok-storage   = { workspace = true, features = ["s3"] }
 object_store.workspace = true
 rustok-media     = { workspace = true, optional = true }
-rustok-media-transport = { workspace = true, optional = true }
+rustok-media-ports = { workspace = true, optional = true, features = ["grpc-client", "grpc-server"] }
 rustok-translation-targets = { workspace = true, optional = true }
 rustok-translation = { workspace = true, optional = true }
 rustok-seo       = { workspace = true, optional = true }

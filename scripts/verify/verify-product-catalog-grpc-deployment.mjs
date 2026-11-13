@@ -31,10 +31,10 @@ function forbidAll(source, markers, description) {
   }
 }
 
-const transportCargo = read("crates/modules/rustok-product-transport/Cargo.toml");
-const transportLib = read("crates/modules/rustok-product-transport/src/lib.rs");
-const connection = read("crates/modules/rustok-product-transport/src/connection.rs");
-const readme = read("crates/modules/rustok-product-transport/README.md");
+const transportCargo = read("crates/modules/rustok-product/ports/Cargo.toml");
+const transportLib = read("crates/modules/rustok-product/ports/src/grpc/mod.rs");
+const connection = read("crates/modules/rustok-product/ports/src/grpc/connection.rs");
+const readme = read("crates/modules/rustok-product/ports/README.md");
 const serverCargo = read("apps/server/Cargo.toml");
 const services = read("apps/server/src/services/mod.rs");
 const deployment = read("apps/server/src/services/product_catalog_deployment.rs");
@@ -47,8 +47,8 @@ requireAll(transportCargo, [
   "thiserror.workspace = true",
   "url.workspace = true",
   'features = ["tls-ring", "tls-webpki-roots"]',
-  "sha2.workspace = true",
-  'subtle = "2"',
+  "sha2 = { workspace = true",
+  'subtle = { version = "2"',
 ], "Product transport connection dependencies");
 requireAll(transportLib, [
   "pub mod auth;",
@@ -81,8 +81,8 @@ requireAll(connection, [
 forbidAll(connection, ["std::env::var", "CatalogService", "sea_orm"], "Product transport deployment ownership");
 
 requireAll(serverCargo, [
-  'mod-product   = ["dep:rustok-product", "dep:rustok-product-transport"',
-  'rustok-product-transport = { path = "../../crates/modules/rustok-product-transport", optional = true }',
+  'mod-product   = ["dep:rustok-product", "dep:rustok-product-ports"',
+  'rustok-product-ports = { workspace = true, optional = true',
 ], "server Product transport dependency");
 requireAll(services, ["pub mod product_catalog_deployment;"], "server service exports");
 requireAll(deployment, [

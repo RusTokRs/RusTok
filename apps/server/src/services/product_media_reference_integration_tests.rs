@@ -417,7 +417,7 @@ mod grpc {
     }
     impl Loopback {
         async fn start(fixture: &Fixture) -> (Self, MediaAssetPorts) {
-            use rustok_media_transport::{
+            use rustok_media_ports::grpc::{
                 GrpcMediaProvider, MediaGrpcOperation, MediaGrpcService, TrustedMediaAuthority,
                 proto::media_service_server::MediaServiceServer,
             };

@@ -407,7 +407,7 @@ mod tests {
         let channel = tonic::transport::Endpoint::from_static("http://media-owner.invalid:50051")
             .connect_lazy();
         let pair = MediaAssetPorts::new(Arc::new(
-            rustok_media_transport::GrpcMediaProvider::from_channel(channel),
+            rustok_media_ports::grpc::GrpcMediaProvider::from_channel(channel),
         ));
         // Compilation/composition proof only; intentionally no claim of live RPC.
         let _provider = ProductMediaReferenceProvider::new(pair);

@@ -50,7 +50,7 @@ const aiProductRegistrySource = read(
 const aiProductPlan = read("crates/modules/rustok-ai-product/docs/implementation-plan.md");
 
 requireAll(commerceCargo, [
-  'rustok-product-transport = { path = "../rustok-product-transport" }',
+  'rustok-product-ports = { workspace = true, features = ["grpc-client", "grpc-server"] }',
   'tokio-stream = { version = "0.1", features = ["net"] }',
   "tonic.workspace = true",
   'name = "product_remote_consumer_behavior"',
@@ -97,7 +97,7 @@ for (const operation of ["read_product_projection", "read_variant_product_projec
 }
 
 requireAll(aiCargo, [
-  'rustok-product-transport = { path = "../rustok-product-transport" }',
+  'rustok-product-ports = { workspace = true, features = ["grpc-client", "grpc-server"] }',
   'tokio-stream = { version = "0.1", features = ["net"] }',
   '"dep:tonic"',
   "tonic = { workspace = true, optional = true }",

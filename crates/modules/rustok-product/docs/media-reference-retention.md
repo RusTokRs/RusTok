@@ -168,7 +168,7 @@ cargo test --locked -p rustok-product --lib
 cargo test --locked -p rustok-product --test media_reference_protocol
 cargo test --locked -p rustok-commerce --test catalog_service_test
 cargo test --locked -p rustok-media --test lifecycle
-cargo test --locked -p rustok-media-transport --test port_conformance
+cargo test --locked -p rustok-media --test port_conformance
 # With the configured PostgreSQL admin URL:
 cargo test --locked -p rustok-product --test media_reference_protocol -- --ignored
 cargo test --locked -p rustok-product --test postgres_migrations -- --ignored

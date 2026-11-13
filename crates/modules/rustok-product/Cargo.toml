@@ -55,3 +55,6 @@ regex = "1.12"
 [dev-dependencies]
 rustok-test-utils.workspace = true
 rustok-taxonomy.workspace = true
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic.workspace = true
+rustok-product-ports = { workspace = true, features = ["grpc-client", "grpc-server"] }
