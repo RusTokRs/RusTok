@@ -79,6 +79,12 @@ against a fake API. Isolated manifests and dependency substitutions still differ
 workspace; a root `cargo test --locked -p fly --lib` using the available vendor source could not
 resolve the locked `anyhow` version. Real services and deployed CSP remain unverified.
 
+A later locked-workspace CI recheck on 2026-11-13 ([diagnostic run 43524866139](https://github.com/RusTokRs/RusTok/actions/runs/43524866139))
+passed all 224 Page Builder admin library tests and the static sanitization inventory and tests
+(5 sanitization, 13 policy, 3 resource-limit tests). The diagnostic did not create the official
+execution receipt; the separately admitted registry entry remains as recorded below. These results
+are not a host, real-service or enforced-CSP test, nor a full workspace build.
+
 Fly source guards passed 20/20. Next Pages 17/17, Product 10/10, Cart 4/4, buyer 42/42 and the
 GraphQL adapter 3/3 passed, as did generated i18n/typecheck and action-asset parity. The checked-in
 `npm --prefix apps/next-frontend run test:e2e:fly` ran 57/57 Chromium tests of shipped assets and
@@ -95,8 +101,8 @@ clippy needed the two existing `too_many_arguments` exceptions. The remediation 
 invariants passed, but its
 architecture guard is blocked by the
 pre-existing `rustok-server -> flex` dependency, which is absent from its unchanged allow-list.
-Real workspace Rust builds and mounted/deployed acceptance remain outstanding; none of this
-promotes the module or checkout to production-ready. Draft KV driver, retention scaling and CSS
+The remaining workspace Rust builds and mounted/deployed acceptance remain outstanding; none of
+this promotes the module or checkout to production-ready. Draft KV driver, retention scaling and CSS
 `@scope`/global-at-rule policy remain open in item 10 below.
 
 ## Done (2026-10-14 remediation, Phases 1–6)
