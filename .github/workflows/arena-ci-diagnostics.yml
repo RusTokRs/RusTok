@@ -11,6 +11,7 @@ permissions:
   contents: read
 
 env:
+  RUSTUP_TOOLCHAIN: "1.96.0"
   CARGO_TERM_COLOR: never
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
@@ -24,20 +25,45 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: Page Builder core, effective CI toolchain
-            command: cargo test --locked -p rustok-page-builder --lib
-          - label: Page Builder core, declared Rust 1.96
-            command: cargo +1.96.0 test --locked -p rustok-page-builder --lib
-          - label: UI i18n consumer integration
+          - label: Page Builder admin on Rust 1.96
+            command: cargo test --locked -p rustok-page-builder-admin --lib
+          - label: Pages admin on Rust 1.96
+            command: cargo test --locked -p rustok-pages-admin --lib
+          - label: UI i18n consumer integration on Rust 1.96
             command: |
-              export RUSTUP_TOOLCHAIN=1.96.0
-              echo 'Testing notifications storefront consumer'
-              cargo test -p rustok-notifications-storefront
-              echo 'Testing rustok-api locale consumer'
-              cargo test -p rustok-api locale::tests --lib
+              cargo test --locked -p rustok-notifications-storefront
+              cargo test --locked -p rustok-api locale::tests --lib
+              cargo test --locked -p rustok-page-builder locale::tests --lib
+          - label: Notifications storefront SSR on Rust 1.96
+            command: cargo check --locked -p rustok-notifications-storefront --no-default-features --features ssr
+          - label: UI i18n converted packages on Rust 1.96
+            command: >-
+              cargo check --locked --lib --all-features
+              -p rustok-ai-admin -p rustok-channel-admin -p rustok-comments-admin
+              -p rustok-fulfillment-admin -p rustok-pricing-storefront
+              -p rustok-product-admin -p rustok-product-storefront
+              -p rustok-product-relations-admin -p rustok-brand-admin -p rustok-product-bundles-admin
+              -p rustok-marketplace-seller-admin -p rustok-marketplace-listing-admin
+          - label: Checkout focused Rust check on effective stable
+            command: >-
+              RUSTUP_TOOLCHAIN=stable RUSTFLAGS=-Dwarnings CARGO_ENCODED_RUSTFLAGS=-Dwarnings
+              cargo check -p rustok-order -p rustok-commerce -p rustok-order-storefront
+              -p rustok-tax -p rustok-inventory --all-features
+          - label: Base migration plan export on Rust 1.96
+            command: >-
+              cargo run --manifest-path migration-base/Cargo.toml
+              -p rustok-migrations --bin export-migration-plan --
+              --output "$RUNNER_TEMP/migration-plans/base.json"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          persist-credentials: false
+      - name: Checkout base migration source
+        if: ${{ matrix.label == 'Base migration plan export on Rust 1.96' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 36670f3cc371580064aa1876a51c6a84df3af017
+          path: migration-base
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
@@ -93,7 +119,7 @@ jobs:
           LABEL: ${{ matrix.label }}
         run: bash "$RUNNER_TEMP/check.sh" "$LABEL" bash -euo pipefail -c "$COMMAND"
       - name: Lint Fly browser and Page Builder integrations
-        if: ${{ !cancelled() && matrix.label == 'Page Builder core, effective CI toolchain' }}
+        if: ${{ !cancelled() && matrix.label == 'Pages admin on Rust 1.96' }}
         shell: bash
         run: |
           bash "$RUNNER_TEMP/check.sh" 'Focused integration clippy' \
@@ -139,4 +165,5 @@ jobs:
           check_format 'UI i18n referenced files formatting' rustfmt --edition 2024 --check apps/admin/src/i18n.rs apps/admin/src/main.rs crates/libs/rustok-api/src/locale.rs crates/modules/rustok-page-builder/src/locale.rs
           check_format 'Media adapter formatting' rustfmt --edition 2024 --check crates/modules/rustok-media/admin/src/ui/leptos.rs
           check_format 'Landing contract formatting' rustfmt --edition 2024 --check crates/modules/rustok-page-builder/src/domain/landing_contract.rs
+          check_format 'Notifications contract formatting' rustfmt --edition 2024 --check crates/modules/rustok-notifications/storefront/tests/grouped_graphql_contract.rs
           exit "$overall"
