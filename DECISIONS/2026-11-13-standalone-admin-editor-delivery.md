@@ -148,6 +148,17 @@ recovery read is separated from the mount path. The rest of the backlog is the s
 `Suspense` fallback served where the response should hold the surface — so it is worked through one
 page at a time, and the count is recorded in the backlog rather than left implicit.
 
+A `Resource` payload is serialised into the response and read back on the client, so it has to be
+`Serialize + DeserializeOwned`: a payload that is only `Clone` does not compile, and one that
+serialises but cannot be read back arrives empty. That is a property of every moved surface, not a
+detail of one, and it cannot be checked by reading the moved file, because the payload type is
+declared in the module's model. The gate resolves each resource back to the transport function it
+fetches with, then to that function's return type, inside the crate that renders the surface — the
+function names are not unique across modules, so a workspace-wide index would check the wrong
+signature — and requires the payload type to be declared with serde. It is a declaration lookup, not
+a type check, and it holds the class rather than one instance: a payload that loses serde later is
+reported against the surface that would serve it empty.
+
 Two of the product surfaces are not a swap, and they are the shape the rest will meet. The product
 editor fills about twenty form fields from its response, so pointing the loader at `Resource` would
 only move the defect: the fields are signals written by an `Effect`, which never runs on the server,

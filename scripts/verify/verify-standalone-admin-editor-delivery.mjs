@@ -559,6 +559,94 @@ for (const [file, source] of sources) {
   }
 }
 
+// A `Resource` payload is serialised into the response and read back on the client, so it has to
+// implement `Serialize + DeserializeOwned`; a payload that is only `Clone` fails to compile and, if
+// it compiled, would arrive empty. The transport return type is where that shows up. A transport
+// function name is not unique across modules — every module has its own `fetch_bootstrap` and its
+// own `execute` — so the signature is resolved inside the crate that renders the surface, never
+// across the workspace.
+const typeDeclarations = new Map();
+const signatureByFile = new Map();
+function walkRustFiles(relative, into) {
+  let entries;
+  try {
+    entries = readdirSync(join(root, relative), { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const path = `${relative}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (["node_modules", "target", "tests"].includes(entry.name)) continue;
+      walkRustFiles(path, into);
+    } else if (entry.name.endsWith(".rs")) {
+      into.push(path);
+    }
+  }
+}
+const packageFiles = [];
+for (const base of ["crates/modules", "apps/admin/src"]) walkRustFiles(base, packageFiles);
+for (const file of packageFiles) {
+  const source = read(file);
+  for (const match of source.matchAll(
+    /((?:#\[[^\]]*\]\s*)+)\s*(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum)\s+(\w+)/g,
+  )) {
+    const existing = typeDeclarations.get(match[2]) ?? [];
+    existing.push(match[1]);
+    typeDeclarations.set(match[2], existing);
+  }
+  const signatures = new Map();
+  for (const match of source.matchAll(/pub async fn (\w+)\b/g)) {
+    const tail = source.slice(match.index, match.index + 1200);
+    const result = /->\s*([^;{]+)/.exec(tail);
+    if (!result) continue;
+    const types = [...result[1].matchAll(/\b([A-Z]\w+)\b/g)].map((type) => type[1]);
+    const existing = signatures.get(match[1]) ?? new Set();
+    for (const type of types) existing.add(type);
+    signatures.set(match[1], existing);
+  }
+  if (signatures.size > 0) signatureByFile.set(file, signatures);
+}
+function crateOf(file) {
+  const parts = file.split("/");
+  if (parts[0] === "apps") return "apps/admin/src";
+  const admin = parts.indexOf("admin");
+  return admin > 0 ? parts.slice(0, admin + 2).join("/") : parts.slice(0, 2).join("/");
+}
+function declaresSerde(name) {
+  const attributes = typeDeclarations.get(name);
+  if (!attributes) return null;
+  return attributes.some(
+    (attribute) => /Serialize/.test(attribute) && /Deserialize/.test(attribute),
+  );
+}
+const resourcePayloadFailures = [];
+for (const file of moduleAdminSources()) {
+  const crate = crateOf(file);
+  const source = read(file);
+  for (const match of source.matchAll(/(?:Resource::new|loaded_resource)\(/g)) {
+    const call = source.slice(match.index, match.index + 3000);
+    const transport = /(?:\w*transport)::(\w+)\(/.exec(call);
+    if (!transport) continue;
+    const payloadTypes = new Set();
+    for (const [path, signatures] of signatureByFile) {
+      if (!path.startsWith(crate)) continue;
+      for (const type of signatures.get(transport[1]) ?? []) payloadTypes.add(type);
+    }
+    for (const type of payloadTypes) {
+      if (declaresSerde(type) === false) {
+        const line = source.slice(0, match.index).split("\n").length;
+        resourcePayloadFailures.push(
+          `${file}:${line}: the resource fetches \`${transport[1]}\`, whose payload \`${type}\` is ` +
+            "declared without `Serialize`/`Deserialize`; a `Resource` serialises its payload into " +
+            "the response, so the type has to be serialisable",
+        );
+      }
+    }
+  }
+}
+failures.push(...resourcePayloadFailures);
+
 if (failures.length > 0) {
   console.error("Standalone admin editor delivery verification failed:");
   for (const failure of failures) console.error(`- ${failure}`);
