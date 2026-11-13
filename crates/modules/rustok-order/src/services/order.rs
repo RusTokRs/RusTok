@@ -108,6 +108,16 @@ async fn find_order_for_update_in_tx(
     tenant_id: Uuid,
     order_id: Uuid,
 ) -> OrderResult<entities::order::Model> {
+    if tenant_id.is_nil() {
+        return Err(OrderError::Validation(
+            "tenant_id must be a valid non-nil UUID".to_string(),
+        ));
+    }
+    if order_id.is_nil() {
+        return Err(OrderError::Validation(
+            "order_id must be a valid non-nil UUID".to_string(),
+        ));
+    }
     let query = entities::order::Entity::find_by_id(order_id)
         .filter(entities::order::Column::TenantId.eq(tenant_id));
     let order = match txn.get_database_backend() {
@@ -133,6 +143,16 @@ async fn find_order_change_for_update_in_tx(
     tenant_id: Uuid,
     change_id: Uuid,
 ) -> OrderResult<entities::order_change::Model> {
+    if tenant_id.is_nil() {
+        return Err(OrderError::Validation(
+            "tenant_id must be a valid non-nil UUID".to_string(),
+        ));
+    }
+    if change_id.is_nil() {
+        return Err(OrderError::Validation(
+            "change_id must be a valid non-nil UUID".to_string(),
+        ));
+    }
     let query = entities::order_change::Entity::find_by_id(change_id)
         .filter(entities::order_change::Column::TenantId.eq(tenant_id));
     let change = match txn.get_database_backend() {
@@ -158,6 +178,16 @@ async fn find_order_return_for_update_in_tx(
     tenant_id: Uuid,
     return_id: Uuid,
 ) -> OrderResult<entities::order_return::Model> {
+    if tenant_id.is_nil() {
+        return Err(OrderError::Validation(
+            "tenant_id must be a valid non-nil UUID".to_string(),
+        ));
+    }
+    if return_id.is_nil() {
+        return Err(OrderError::Validation(
+            "return_id must be a valid non-nil UUID".to_string(),
+        ));
+    }
     let query = entities::order_return::Entity::find_by_id(return_id)
         .filter(entities::order_return::Column::TenantId.eq(tenant_id));
     let order_return = match txn.get_database_backend() {
@@ -286,6 +316,11 @@ impl OrderService {
         if tenant_id.is_nil() {
             return Err(OrderError::Validation(
                 "tenant_id must be a valid non-nil UUID".to_string(),
+            ));
+        }
+        if actor_id.is_nil() {
+            return Err(OrderError::Validation(
+                "actor_id must be a valid non-nil UUID".to_string(),
             ));
         }
         if matches!(channel_id, Some(id) if id.is_nil()) {

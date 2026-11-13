@@ -853,9 +853,9 @@
       "category": "modules",
       "files": 90,
       "loc": 23881,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T00:45:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards in create_order_with_channel_internal, find_order_for_update_in_tx, find_order_change_for_update_in_tx, and find_order_return_for_update_in_tx; dialect-specific pessimistic row locking for TOCTOU prevention; financial bounds checking on adjustments, subtotal, shipping, and tax lines; post-order work refused on cancelled orders; verified with cargo check -p rustok-order"
     },
     "crates/modules/rustok-order/admin": {
       "name": "admin",
@@ -863,9 +863,9 @@
       "category": "modules",
       "files": 15,
       "loc": 3206,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T00:45:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in server functions, RBAC permission verification, robust error mapping; verified with cargo check -p rustok-order-admin and cargo check -p rustok-order-admin --features ssr"
     },
     "crates/modules/rustok-order/storefront": {
       "name": "storefront",
@@ -873,9 +873,9 @@
       "category": "modules",
       "files": 13,
       "loc": 2333,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T00:45:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation, tenant and buyer session isolation; verified with cargo check -p rustok-order-storefront and cargo check -p rustok-order-storefront --features ssr"
     },
     "crates/modules/rustok-outbox": {
       "name": "rustok-outbox",

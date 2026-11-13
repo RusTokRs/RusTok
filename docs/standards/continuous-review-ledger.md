@@ -35,7 +35,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[Phase FS-01 — Entrypoint & Composition Root (`apps/server`)](#fs-01---entrypoint-&-composition-root-appsserver)** (33/33 tracks completed)
 - [x] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (10/10 completed)
 - [x] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (24/24 completed)
-- [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (6/37 completed)
+- [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (9/37 completed)
 - [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (0/40 completed)
 - [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (0/26 completed)
 - [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (0/26 completed)
@@ -149,9 +149,9 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[`crates/modules/rustok-commerce/storefront`](../../crates/modules/rustok-commerce/storefront)** (16 files, 2,022 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in shared_adapter::parse_cart_id, robust error mapping in native server functions, locale resolution and fallback; verified with `cargo check -p rustok-commerce-storefront` and `cargo check -p rustok-commerce-storefront --features ssr`).*
 - [x] **[`crates/modules/rustok-cart`](../../crates/modules/rustok-cart)** (73 files, 19,638 LOC) — *(Done: verified across 6 Universal Logic Dimensions: non-nil UUID guards in create_cart_with_channel, load_cart_in_tx, load_cart_for_update_in_tx; pessimistic row locking (load_cart_for_update_in_tx) for TOCTOU prevention; checked integer math (checked_mul, saturating_sub) for marketplace and line item pricing; ISO-4217 currency validation; verified with `cargo check -p rustok-cart`).*
 - [x] **[`crates/modules/rustok-cart/storefront`](../../crates/modules/rustok-cart/storefront)** (18 files, 4,545 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID guards in parse_cart_id and parse_line_item_id, robust error mapping in native server functions, customer session resolution; verified with `cargo check -p rustok-cart-storefront` and `cargo check -p rustok-cart-storefront --features ssr`).*
-- [ ] **[`crates/modules/rustok-order`](../../crates/modules/rustok-order)** (85 files, 22,532 LOC)
-- [ ] **[`crates/modules/rustok-order/admin`](../../crates/modules/rustok-order/admin)** (14 files, 2,813 LOC)
-- [ ] **[`crates/modules/rustok-order/storefront`](../../crates/modules/rustok-order/storefront)** (12 files, 2,171 LOC)
+- [x] **[`crates/modules/rustok-order`](../../crates/modules/rustok-order)** (85 files, 22,532 LOC) — *(Done: verified across 6 Universal Logic Dimensions: non-nil UUID guards in create_order_with_channel_internal, find_order_for_update_in_tx, find_order_change_for_update_in_tx, and find_order_return_for_update_in_tx; dialect-specific pessimistic row locking for TOCTOU prevention; financial bounds checking on adjustments, subtotal, shipping, and tax lines; post-order work refused on cancelled orders; verified with `cargo check -p rustok-order`).*
+- [x] **[`crates/modules/rustok-order/admin`](../../crates/modules/rustok-order/admin)** (14 files, 2,813 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in server functions, RBAC permission verification, robust error mapping; verified with `cargo check -p rustok-order-admin` and `cargo check -p rustok-order-admin --features ssr`).*
+- [x] **[`crates/modules/rustok-order/storefront`](../../crates/modules/rustok-order/storefront)** (12 files, 2,171 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation, tenant and buyer session isolation; verified with `cargo check -p rustok-order-storefront` and `cargo check -p rustok-order-storefront --features ssr`).*
 - [ ] **[`crates/modules/rustok-payment`](../../crates/modules/rustok-payment)** (88 files, 24,276 LOC)
 - [ ] **[`crates/modules/rustok-payment/storefront`](../../crates/modules/rustok-payment/storefront)** (11 files, 1,315 LOC)
 - [ ] **[`crates/modules/rustok-pricing`](../../crates/modules/rustok-pricing)** (48 files, 19,495 LOC)
@@ -562,9 +562,9 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 83 | 24,134 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-notifications/admin) | `modules` | 7 | 293 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-notifications/storefront) | `modules` | 17 | 3,300 | None |  |
-| [ ] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 90 | 23,881 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-order/admin) | `modules` | 15 | 3,206 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 13 | 2,333 | None |  |
+| [x] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 90 | 23,881 | 2026-11-14 | Phase FS-04 in progress |
+| [x] | [admin](../../crates/modules/rustok-order/admin) | `modules` | 15 | 3,206 | 2026-11-14 | Phase FS-04 in progress |
+| [x] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 13 | 2,333 | 2026-11-14 | Phase FS-04 in progress |
 | [ ] | [rustok-outbox](../../crates/modules/rustok-outbox) | `modules` | 29 | 5,559 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-outbox/admin) | `modules` | 9 | 580 | None |  |
 | [ ] | [rustok-page-builder](../../crates/modules/rustok-page-builder) | `modules` | 123 | 39,760 | None |  |
