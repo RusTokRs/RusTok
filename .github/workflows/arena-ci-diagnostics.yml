@@ -1,0 +1,98 @@
+name: Arena CI failure diagnostics (temporary)
+
+on:
+  push:
+    branches:
+      - arena/2605f28e-rustok
+    paths:
+      - .github/workflows/arena-ci-diagnostics.yml
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  rust-diagnostics:
+    name: Diagnose ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: static sanitization inventory
+            command: cargo test --locked -p rustok-page-builder --lib -- --list
+          - label: Page Builder admin
+            command: cargo test -p rustok-page-builder-admin --lib
+          - label: Pages admin
+            command: cargo test -p rustok-pages-admin --lib
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          shared-key: fly-page-builder
+      - name: Run scoped command and annotate its diagnostics
+        shell: bash
+        env:
+          COMMAND: ${{ matrix.command }}
+        run: |
+          set -o pipefail
+          status=0
+          bash -o pipefail -c "$COMMAND" 2>&1 | tee "$RUNNER_TEMP/arena-diagnostic.log" || status=$?
+          if (( status != 0 )); then
+            python3 - <<'PY'
+          import os
+          from pathlib import Path
+          text = Path(os.environ['RUNNER_TEMP'], 'arena-diagnostic.log').read_text(errors='replace')
+          excerpt = text[-5500:]
+          escaped = excerpt.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title=Scoped Cargo diagnostics::{escaped}')
+          PY
+          fi
+          exit "$status"
+
+  formatting:
+    name: Diagnose focused formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - name: Format the packages checked by Fly CI and publish the patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt -p fly -p fly-ui -p fly-web -p fly-browser -p fly-leptos -p fly-dioxus -p rustok-page-builder-admin -p rustok-pages -p rustok-pages-admin -p rustok-pages-storefront -p rustok-admin
+          git diff --no-ext-diff --binary -- '*.rs' > "$RUNNER_TEMP/arena-fmt.patch"
+          python3 - <<'PY'
+          import base64
+          import os
+          import zlib
+          from pathlib import Path
+          patch = Path(os.environ['RUNNER_TEMP'], 'arena-fmt.patch').read_bytes()
+          if not patch:
+              print('Focused rustfmt produced no changes')
+              raise SystemExit(0)
+          encoded = base64.b64encode(zlib.compress(patch, 9)).decode('ascii')
+          chunks = [encoded[i:i+6000] for i in range(0, len(encoded), 6000)]
+          if len(chunks) > 9:
+              print(f'::error::Formatting patch is too large to transfer safely: {len(chunks)} chunks')
+              raise SystemExit(1)
+          for index, chunk in enumerate(chunks, 1):
+              print(f'::notice title=rustfmt patch {index} of {len(chunks)}::{chunk}')
+          print(f'::error::Focused rustfmt found differences in {len(patch)} patch bytes')
+          raise SystemExit(1)
+          PY
