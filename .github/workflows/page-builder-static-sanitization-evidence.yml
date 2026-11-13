@@ -27,6 +27,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # rust-toolchain.toml selects stable; make the workflow's pinned toolchain take precedence.
+  RUSTUP_TOOLCHAIN: "1.96.0"
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
 

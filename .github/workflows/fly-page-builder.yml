@@ -64,6 +64,9 @@ jobs:
     name: Focused formatting
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # rust-toolchain.toml selects stable; use the toolchain installed by this job.
+      RUSTUP_TOOLCHAIN: "1.96.0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
@@ -90,6 +93,9 @@ jobs:
     name: Focused tests and source guards
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # rust-toolchain.toml selects stable; use the toolchain installed by this job.
+      RUSTUP_TOOLCHAIN: "1.96.0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
