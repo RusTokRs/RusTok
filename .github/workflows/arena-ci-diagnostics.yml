@@ -1,0 +1,142 @@
+name: Arena focused CI retest (temporary)
+
+on:
+  push:
+    branches:
+      - arena/2605f28e-rustok
+    paths:
+      - .github/workflows/arena-ci-diagnostics.yml
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+
+jobs:
+  rust-tests:
+    name: Retest ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Page Builder core, effective CI toolchain
+            command: cargo test --locked -p rustok-page-builder --lib
+          - label: Page Builder core, declared Rust 1.96
+            command: cargo +1.96.0 test --locked -p rustok-page-builder --lib
+          - label: UI i18n consumer integration
+            command: |
+              export RUSTUP_TOOLCHAIN=1.96.0
+              echo 'Testing notifications storefront consumer'
+              cargo test -p rustok-notifications-storefront
+              echo 'Testing rustok-api locale consumer'
+              cargo test -p rustok-api locale::tests --lib
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: "1.96.0"
+          components: clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          shared-key: fly-page-builder
+          cache-on-failure: true
+      - name: Record effective toolchain
+        shell: bash
+        run: |
+          echo "::notice title=Toolchain versions::active=$(rustup show active-toolchain); rustc=$(rustc --version); cargo=$(cargo --version); explicit=$(rustc +1.96.0 --version)"
+      - name: Prepare bounded diagnostics
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/check.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -o pipefail
+          label="$1"
+          shift
+          status=0
+          "$@" 2>&1 | tee "$RUNNER_TEMP/arena-output.log" || status=$?
+          export ARENA_LABEL="$label" ARENA_STATUS="$status"
+          python3 - <<'PY'
+          import base64, os, re, zlib
+          from pathlib import Path
+          text = Path(os.environ['RUNNER_TEMP'], 'arena-output.log').read_text(errors='replace')
+          label = os.environ['ARENA_LABEL']
+          def escape(s):
+              return s.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          if os.environ['ARENA_STATUS'] == '0':
+              lines = [line for line in text.splitlines() if line.startswith('test result:') or 'All static inventory markers found' in line]
+              print(f'::notice title={label} results::{escape(chr(10).join(lines) or "Command succeeded")}')
+          else:
+              excerpt = text[-2200:]
+              print(f'::error title={label} diagnostics::{escape(excerpt)}')
+              # Preserve more than the last error without exceeding annotation message limits.
+              encoded = base64.b64encode(zlib.compress(text[-100000:].encode(), 9)).decode()
+              if len(encoded) > 24000:
+                  encoded = base64.b64encode(zlib.compress(text[-20000:].encode(), 9)).decode()
+              chunks = [encoded[i:i+3000] for i in range(0, len(encoded), 3000)]
+              if len(chunks) <= 8:
+                  for i, chunk in enumerate(chunks, 1):
+                      print(f'::notice title={label} log {i} of {len(chunks)}::{chunk}')
+          PY
+          exit "$status"
+          SH
+      - name: Run focused tests
+        shell: bash
+        env:
+          COMMAND: ${{ matrix.command }}
+          LABEL: ${{ matrix.label }}
+        run: bash "$RUNNER_TEMP/check.sh" "$LABEL" bash -euo pipefail -c "$COMMAND"
+      - name: Lint Fly browser and Page Builder integrations
+        if: ${{ !cancelled() && matrix.label == 'Page Builder core, effective CI toolchain' }}
+        shell: bash
+        run: |
+          bash "$RUNNER_TEMP/check.sh" 'Focused integration clippy' \
+            cargo clippy --locked -p fly-browser -p rustok-page-builder-admin -p rustok-pages -p rustok-pages-admin -p rustok-pages-storefront --lib -- -D warnings
+
+  formatting:
+    name: Retest Rust formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt
+      - name: Check focused, i18n and media formatting
+        shell: bash
+        run: |
+          set -o pipefail
+          overall=0
+          check_format() {
+            local label="$1"
+            shift
+            local status=0
+            "$@" > "$RUNNER_TEMP/fmt.log" 2>&1 || status=$?
+            if (( status == 0 )); then
+              echo "::notice title=$label::Passed"
+            else
+              overall=1
+              LABEL="$label" python3 - <<'PY'
+          import os
+          from pathlib import Path
+          text = Path(os.environ['RUNNER_TEMP'], 'fmt.log').read_text(errors='replace')[:2200]
+          escaped = text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error title={os.environ["LABEL"]}::{escaped}')
+          PY
+            fi
+          }
+          check_format 'Focused formatting' cargo fmt -p fly -p fly-ui -p fly-web -p fly-browser -p fly-leptos -p fly-dioxus -p rustok-page-builder-admin -p rustok-pages -p rustok-pages-admin -p rustok-pages-storefront -p rustok-admin -- --check
+          check_format 'UI i18n package formatting' cargo fmt -p rustok-ui-i18n -- --check
+          check_format 'UI i18n referenced files formatting' rustfmt --edition 2024 --check apps/admin/src/i18n.rs apps/admin/src/main.rs crates/libs/rustok-api/src/locale.rs crates/modules/rustok-page-builder/src/locale.rs
+          check_format 'Media adapter formatting' rustfmt --edition 2024 --check crates/modules/rustok-media/admin/src/ui/leptos.rs
+          check_format 'Landing contract formatting' rustfmt --edition 2024 --check crates/modules/rustok-page-builder/src/domain/landing_contract.rs
+          exit "$overall"
