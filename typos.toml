@@ -3,6 +3,7 @@
 # non-English words that are valid for those locales.
 extend-exclude = [
   "crates/libs/rustok-core/src/i18n.rs",
+  "crates/ui/rustok-grid/locales/fr.ftl",
   "crates/modules/rustok-commerce/tests/catalog_service_test.rs",
   "apps/next-admin/src/styles/globals.css",
   "crates/modules/rustok-ai/src/direct.rs",
@@ -34,6 +35,12 @@ extend-ignore-re = [
   "\\bAuThOrIzEd\\b",
   "\\bsitemap_enabeld\\b",
   "\\bgrep -rin\\b",
+  # Mixed-case policy validates case-insensitive parsing in Commerce fixtures.
+  "\\bCoNtInUe\\b",
+  # This deliberately malformed value verifies rejection by the policy parser.
+  '"allwed"\.parse::<VariantAxisPolicy>',
+  # French text asserted by the localized grid test.
+  '"11–20 sur 42"',
 ]
 
 [default.extend-words]

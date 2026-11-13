@@ -231,7 +231,7 @@ async fn shipment_proof(
     location: Option<Uuid>,
 ) {
     // Test-only owner fixture: native proof has no cross-owner relation requiring an
-    // invented Fulfillment lifecycle. All identities/counters satisfy its real CHECKs.
+    // invented Fulfillment lifecycle. All identities/counters satisfy its real CHECK constraints.
     let reservation = item.map(|_| Uuid::new_v4());
     db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,

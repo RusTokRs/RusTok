@@ -1384,7 +1384,7 @@ async fn summary_read_rejects_corrupt_negative_member_count() {
     use sea_orm::{ActiveModelTrait, ConnectionTrait, DbBackend, Set, Statement};
 
     let f = fixture(GroupJoinPolicy::Open).await;
-    // Bypass production CHECKs only to exercise the read projection's corruption boundary.
+    // Bypass production CHECK constraints only to exercise the read projection's corruption boundary.
     f.db.execute_raw(Statement::from_string(
         DbBackend::Sqlite,
         "PRAGMA ignore_check_constraints = ON",
