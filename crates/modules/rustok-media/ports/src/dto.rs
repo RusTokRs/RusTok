@@ -405,3 +405,265 @@ pub struct MediaReconciliationReport {
     pub retry_later: u64,
 }
 
+impl MediaReconciliationReport {
+    pub fn is_empty(&self) -> bool {
+        self.inspected == 0 && self.upload_sessions_inspected == 0
+    }
+
+    pub fn changed_records(&self) -> u64 {
+        self.missing_marked
+            + self.deletions_completed
+            + self.upload_sessions_expired
+            + self.staging_objects_deleted
+    }
+
+    pub fn completed_without_retry(&self) -> bool {
+        self.retry_later == 0
+    }
+
+    pub fn should_retry(&self) -> bool {
+        self.retry_later > 0
+    }
+
+    pub fn merge(&mut self, other: Self) {
+        self.inspected += other.inspected;
+        self.healthy += other.healthy;
+        self.missing_marked += other.missing_marked;
+        self.deletions_completed += other.deletions_completed;
+        self.upload_sessions_inspected += other.upload_sessions_inspected;
+        self.upload_sessions_expired += other.upload_sessions_expired;
+        self.staging_objects_deleted += other.staging_objects_deleted;
+        self.retry_later += other.retry_later;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        MediaAssetKind, MediaAssetSummary, MediaAssetUsageProfile, MediaImageDeliveryProfile,
+        MediaImageDescriptor, MediaImagePublicUrlPolicy, MediaItem, UpsertTranslationInput,
+    };
+
+    #[test]
+    fn upsert_translation_input_normalizes_locale_and_optional_text() {
+        let normalized = UpsertTranslationInput {
+            locale: " EN_us ".to_string(),
+            title: Some("  Hero  ".to_string()),
+            alt_text: Some("   ".to_string()),
+            caption: Some("Caption".to_string()),
+        }
+        .normalize()
+        .expect("input should normalize");
+
+        assert_eq!(normalized.locale.as_str(), "en-US");
+        assert_eq!(normalized.title.as_deref(), Some("Hero"));
+        assert_eq!(normalized.alt_text, None);
+        assert_eq!(normalized.caption.as_deref(), Some("Caption"));
+    }
+
+    #[test]
+    fn upsert_translation_input_rejects_empty_or_unsafe_locale() {
+        for locale in [
+            "   ",
+            "en/us",
+            "ru@test",
+            "und",
+            "en--US",
+            "abcdefghijklmnopqrstuvwxyzabcdefg",
+        ] {
+            assert!(
+                UpsertTranslationInput {
+                    locale: locale.to_string(),
+                    title: None,
+                    alt_text: None,
+                    caption: None,
+                }
+                .normalize()
+                .is_err(),
+                "locale `{locale}` should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn media_image_descriptor_normalizes_mime_and_derived_fields() {
+        let descriptor = MediaImageDescriptor::from_parts(
+            "https://cdn.example.com/assets/hero.webp?version=2",
+            Some(" Hero image ".to_string()),
+            Some(1200),
+            Some(630),
+            None,
+        )
+        .expect("descriptor should be created for valid URL");
+
+        assert_eq!(descriptor.alt.as_deref(), Some("Hero image"));
+        assert_eq!(descriptor.mime_type.as_deref(), Some("image/webp"));
+        assert_eq!(descriptor.file_extension().as_deref(), Some("webp"));
+        assert!(descriptor.has_alt());
+        assert!(descriptor.has_size());
+        assert_eq!(descriptor.pixel_count(), Some(756000));
+        assert_eq!(descriptor.aspect_ratio(), Some(1200.0 / 630.0));
+    }
+
+    #[test]
+    fn media_image_descriptor_trims_explicit_mime_and_rejects_invalid_dimensions() {
+        let descriptor = MediaImageDescriptor::from_parts(
+            " https://cdn.example.com/assets/photo.JPG#hero ",
+            Some("   ".to_string()),
+            Some(0),
+            Some(-10),
+            Some(" image/jpeg ".to_string()),
+        )
+        .expect("descriptor should keep trimmed URL with explicit mime");
+
+        assert_eq!(
+            descriptor.url,
+            "https://cdn.example.com/assets/photo.JPG#hero"
+        );
+        assert_eq!(descriptor.alt, None);
+        assert_eq!(descriptor.width, None);
+        assert_eq!(descriptor.height, None);
+        assert_eq!(descriptor.mime_type.as_deref(), Some("image/jpeg"));
+        assert!(!descriptor.has_alt());
+        assert!(!descriptor.has_size());
+        assert_eq!(descriptor.pixel_count(), None);
+        assert_eq!(descriptor.aspect_ratio(), None);
+        assert_eq!(descriptor.file_extension().as_deref(), Some("jpg"));
+    }
+
+    #[test]
+    fn media_image_descriptor_infers_mime_after_query_and_fragment_cleanup() {
+        let descriptor = MediaImageDescriptor::from_parts(
+            "https://cdn.example.com/assets/banner.png?signature=abc#fragment",
+            None,
+            Some(320),
+            Some(160),
+            None,
+        )
+        .expect("descriptor should infer mime from cleaned path");
+
+        assert_eq!(descriptor.mime_type.as_deref(), Some("image/png"));
+        assert_eq!(descriptor.file_extension().as_deref(), Some("png"));
+        assert_eq!(descriptor.pixel_count(), Some(51200));
+        assert_eq!(descriptor.aspect_ratio(), Some(2.0));
+        assert_eq!(
+            descriptor.delivery_profile(),
+            MediaImageDeliveryProfile::AbsolutePublicUrl
+        );
+        assert_eq!(
+            descriptor.public_url_policy(),
+            MediaImagePublicUrlPolicy::DirectPublic
+        );
+        assert!(descriptor.is_publicly_addressable());
+        assert!(descriptor.should_emit_to_public_metadata());
+        assert_eq!(
+            descriptor.normalized_public_url(),
+            Some("https://cdn.example.com/assets/banner.png?signature=abc#fragment")
+        );
+    }
+
+    #[test]
+    fn media_image_descriptor_classifies_public_and_storage_delivery_profiles() {
+        let root_relative =
+            MediaImageDescriptor::from_parts("/media/hero.jpg", None, None, None, None)
+                .expect("root-relative URL should create descriptor");
+        let storage_relative =
+            MediaImageDescriptor::from_parts("tenant/object.webp", None, None, None, None)
+                .expect("storage path should create descriptor");
+        let opaque = MediaImageDescriptor::from_parts("asset-key", None, None, None, None)
+            .expect("opaque key should create descriptor");
+
+        assert_eq!(
+            root_relative.delivery_profile(),
+            MediaImageDeliveryProfile::RootRelativePublicUrl
+        );
+        assert!(root_relative.is_publicly_addressable());
+        assert_eq!(
+            storage_relative.delivery_profile(),
+            MediaImageDeliveryProfile::StorageRelativePath
+        );
+        assert_eq!(
+            storage_relative.public_url_policy(),
+            MediaImagePublicUrlPolicy::ProxyRequired
+        );
+        assert!(!storage_relative.is_publicly_addressable());
+        assert!(storage_relative.requires_public_proxy());
+        assert!(!storage_relative.should_emit_to_public_metadata());
+        assert_eq!(storage_relative.normalized_public_url(), None);
+        assert_eq!(
+            opaque.delivery_profile(),
+            MediaImageDeliveryProfile::OpaqueReference
+        );
+        assert_eq!(
+            opaque.public_url_policy(),
+            MediaImagePublicUrlPolicy::NotAddressable
+        );
+        assert!(!opaque.is_publicly_addressable());
+        assert!(!opaque.requires_public_proxy());
+        assert!(!opaque.should_emit_to_public_metadata());
+    }
+
+    #[test]
+    fn media_image_descriptor_builds_proxy_path_only_for_storage_relative_urls() {
+        let storage_relative =
+            MediaImageDescriptor::from_parts("tenant/object.webp", None, None, None, None)
+                .expect("storage-relative descriptor should be created");
+        let direct = MediaImageDescriptor::from_parts("/media/object.webp", None, None, None, None)
+            .expect("root-relative descriptor should be created");
+
+        assert_eq!(
+            storage_relative.proxy_path("/api/media/proxy/"),
+            Some("/api/media/proxy/tenant/object.webp".to_string())
+        );
+        assert_eq!(direct.proxy_path("/api/media/proxy"), None);
+    }
+
+    #[test]
+    fn media_asset_summary_classifies_kind_and_usage_profile() {
+        let item = MediaItem {
+            id: uuid::Uuid::new_v4(),
+            tenant_id: uuid::Uuid::new_v4(),
+            owner_module: "general".to_string(),
+            uploaded_by: None,
+            filename: "hero.webp".to_string(),
+            original_name: "hero.webp".to_string(),
+            mime_type: " image/webp ".to_string(),
+            size: 1024,
+            storage_path: "tenant/hero.webp".to_string(),
+            storage_driver: "memory".to_string(),
+            public_url: "/media/hero.webp".to_string(),
+            width: Some(1200),
+            height: Some(630),
+            metadata: serde_json::json!({}),
+            created_at: chrono::Utc::now(),
+        };
+
+        let summary = MediaAssetSummary::from_media_item(&item, Some("Hero".to_string()));
+
+        assert_eq!(summary.kind, MediaAssetKind::Image);
+        assert_eq!(
+            summary.usage_profile,
+            MediaAssetUsageProfile::PublicImageMetadata
+        );
+        assert!(summary.is_public_metadata_ready());
+        assert!(!summary.requires_public_proxy());
+        assert_eq!(
+            summary.image.and_then(|image| image.pixel_count()),
+            Some(756000)
+        );
+        assert!(MediaAssetKind::from_mime_type("video/mp4").is_streamable());
+        assert_eq!(
+            MediaAssetUsageProfile::for_asset(MediaAssetKind::Binary, None),
+            MediaAssetUsageProfile::InternalOnly
+        );
+    }
+
+    #[test]
+    fn media_image_descriptor_rejects_empty_url() {
+        assert!(
+            MediaImageDescriptor::from_parts("   ", None, None, None, None).is_none(),
+            "empty URL should not create descriptor"
+        );
+    }
+}
+

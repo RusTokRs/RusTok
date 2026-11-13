@@ -5,8 +5,9 @@ use rustok_api::{
 };
 use rustok_outbox::TransactionalEventBus;
 use rustok_product::{
-    AdminProductListQuery, StorefrontCatalogFacet, StorefrontCatalogFacetValue,
-    StorefrontCatalogFacetsRequest, StorefrontProductListQuery,
+    AdminProductListQuery, AdminProductListQueryExt, StorefrontCatalogFacet,
+    StorefrontCatalogFacetValue, StorefrontCatalogFacetsRequest, StorefrontProductListQuery,
+    StorefrontProductListQueryExt,
 };
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;

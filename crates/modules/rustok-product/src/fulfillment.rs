@@ -1,47 +1,4 @@
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
-
-/// Product-owned fulfillment requirement derived from the canonical product kind.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ProductFulfillmentRequirement {
-    Digital,
-    Physical,
-}
-
-impl ProductFulfillmentRequirement {
-    pub fn from_product_type(product_type: Option<&str>) -> Self {
-        match product_type.map(str::trim) {
-            Some(value) if value.eq_ignore_ascii_case("digital") => Self::Digital,
-            _ => Self::Physical,
-        }
-    }
-
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Digital => "digital",
-            Self::Physical => "physical",
-        }
-    }
-}
-
-impl From<ProductFulfillmentRequirement> for rustok_product_ports::dto::ProductFulfillmentRequirement {
-    fn from(req: ProductFulfillmentRequirement) -> Self {
-        match req {
-            ProductFulfillmentRequirement::Digital => rustok_product_ports::dto::ProductFulfillmentRequirement::Digital,
-            ProductFulfillmentRequirement::Physical => rustok_product_ports::dto::ProductFulfillmentRequirement::Physical,
-        }
-    }
-}
-
-impl From<rustok_product_ports::dto::ProductFulfillmentRequirement> for ProductFulfillmentRequirement {
-    fn from(req: rustok_product_ports::dto::ProductFulfillmentRequirement) -> Self {
-        match req {
-            rustok_product_ports::dto::ProductFulfillmentRequirement::Digital => ProductFulfillmentRequirement::Digital,
-            rustok_product_ports::dto::ProductFulfillmentRequirement::Physical => ProductFulfillmentRequirement::Physical,
-        }
-    }
-}
+pub use rustok_product_ports::dto::ProductFulfillmentRequirement;
 
 #[cfg(test)]
 mod tests {

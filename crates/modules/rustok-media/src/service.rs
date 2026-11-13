@@ -16,8 +16,8 @@ use crate::{
     dto::{
         ApplyExactMediaTranslationInput, CreateRenditionInput, DEFAULT_MAX_SIZE,
         MediaAssetReference, MediaAssetReferenceInput, MediaAssetSummary, MediaItem,
-        MediaRenditionItem, MediaTranslationItem, PrepareUploadSessionInput, PreparedUploadSession,
-        UploadInput, UpsertTranslationInput,
+        MediaReconciliationReport, MediaRenditionItem, MediaTranslationItem,
+        PrepareUploadSessionInput, PreparedUploadSession, UploadInput, UpsertTranslationInput,
     },
     entities::{
         asset::{ActiveModel as AssetActiveModel, Column as AssetCol, Entity as AssetEntity},
@@ -84,18 +84,6 @@ pub enum MediaReconciliationDecision {
     RetryLater,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct MediaReconciliationReport {
-    pub inspected: u64,
-    pub healthy: u64,
-    pub missing_marked: u64,
-    pub deletions_completed: u64,
-    pub upload_sessions_inspected: u64,
-    pub upload_sessions_expired: u64,
-    pub staging_objects_deleted: u64,
-    pub retry_later: u64,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MediaUsageSnapshot {
     pub tenant_id: Uuid,
@@ -107,38 +95,6 @@ pub struct MediaUsageSnapshot {
 struct VerifiedMediaType {
     mime_type: &'static str,
     extension: &'static str,
-}
-
-impl MediaReconciliationReport {
-    pub fn is_empty(&self) -> bool {
-        self.inspected == 0 && self.upload_sessions_inspected == 0
-    }
-
-    pub fn changed_records(&self) -> u64 {
-        self.missing_marked
-            + self.deletions_completed
-            + self.upload_sessions_expired
-            + self.staging_objects_deleted
-    }
-
-    pub fn completed_without_retry(&self) -> bool {
-        self.retry_later == 0
-    }
-
-    pub fn should_retry(&self) -> bool {
-        self.retry_later > 0
-    }
-
-    fn merge(&mut self, other: Self) {
-        self.inspected += other.inspected;
-        self.healthy += other.healthy;
-        self.missing_marked += other.missing_marked;
-        self.deletions_completed += other.deletions_completed;
-        self.upload_sessions_inspected += other.upload_sessions_inspected;
-        self.upload_sessions_expired += other.upload_sessions_expired;
-        self.staging_objects_deleted += other.staging_objects_deleted;
-        self.retry_later += other.retry_later;
-    }
 }
 
 pub async fn load_media_usage_snapshot(

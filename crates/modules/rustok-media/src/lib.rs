@@ -55,7 +55,7 @@ pub use public_image::{
     MediaPublicImageReadPort, MediaPublicImageService, public_image_path,
 };
 pub use service::{
-    MediaReconciliationDecision, MediaReconciliationReport, MediaService, MediaUsageSnapshot,
+    MediaReconciliationDecision, MediaService, MediaUsageSnapshot,
     load_media_usage_snapshot,
 };
 pub use translation_target::MediaTranslationTargetProvider;

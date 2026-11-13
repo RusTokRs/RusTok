@@ -100,6 +100,7 @@ For Flutter, this translates to:
 ```text
 rustok_mobile/
   apps/
+    rustok_admin_mobile/       # business admin / operator host (CRM, fulfillment)
     rustok_frontend_mobile/    # customer storefront / SuperApp host
   packages/
     app_graphql/               # shared transport

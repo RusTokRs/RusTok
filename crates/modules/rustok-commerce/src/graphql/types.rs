@@ -1,6 +1,6 @@
 use async_graphql::{Enum, InputObject, Json, MaybeUndefined, SimpleObject};
 use rust_decimal::Decimal;
-use rustok_product::entities::product::ProductStatus;
+use rustok_product::ProductStatus;
 use uuid::Uuid;
 
 use crate::dto;
@@ -28,6 +28,26 @@ impl From<GqlProductStatus> for ProductStatus {
             GqlProductStatus::Draft => ProductStatus::Draft,
             GqlProductStatus::Active => ProductStatus::Active,
             GqlProductStatus::Archived => ProductStatus::Archived,
+        }
+    }
+}
+
+impl From<rustok_product::entities::product::ProductStatus> for GqlProductStatus {
+    fn from(status: rustok_product::entities::product::ProductStatus) -> Self {
+        match status {
+            rustok_product::entities::product::ProductStatus::Draft => GqlProductStatus::Draft,
+            rustok_product::entities::product::ProductStatus::Active => GqlProductStatus::Active,
+            rustok_product::entities::product::ProductStatus::Archived => GqlProductStatus::Archived,
+        }
+    }
+}
+
+impl From<GqlProductStatus> for rustok_product::entities::product::ProductStatus {
+    fn from(status: GqlProductStatus) -> Self {
+        match status {
+            GqlProductStatus::Draft => rustok_product::entities::product::ProductStatus::Draft,
+            GqlProductStatus::Active => rustok_product::entities::product::ProductStatus::Active,
+            GqlProductStatus::Archived => rustok_product::entities::product::ProductStatus::Archived,
         }
     }
 }

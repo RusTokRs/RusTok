@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use rustok_cart::{CartLineFulfillmentRequirement, CartLineItemResponse, CartResponse};
 use rustok_product::{
-    ProductFulfillmentRequirement, dto::ProductResponse, entities::product::ProductStatus,
+    ProductFulfillmentRequirement, ProductStatus, dto::ProductResponse,
 };
 use uuid::Uuid;
 

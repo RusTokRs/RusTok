@@ -2,6 +2,7 @@ use std::net::IpAddr;
 use std::time::Duration;
 
 use thiserror::Error;
+#[cfg(feature = "grpc-client")]
 use tonic::transport::{ClientTlsConfig, Endpoint};
 use url::{Host, Url};
 

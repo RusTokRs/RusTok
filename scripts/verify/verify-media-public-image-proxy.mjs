@@ -57,6 +57,10 @@ for (const value of Object.values(paths)) assertExists(value);
 
 const mediaService = readRepo(paths.mediaService);
 const mediaPublic = readRepo(paths.mediaPublic);
+const mediaPorts = existsSync(repoPath("crates/modules/rustok-media/ports/src/ports.rs"))
+  ? readRepo("crates/modules/rustok-media/ports/src/ports.rs")
+  : "";
+const combinedMediaPublic = `${mediaPublic}\n${mediaPorts}`;
 const mediaLib = readRepo(paths.mediaLib);
 const mediaController = readRepo(paths.mediaController);
 const mediaTest = readRepo(paths.mediaTest);
@@ -82,7 +86,7 @@ for (const marker of [
   'blob.mime_type.starts_with("image/")',
   "context.require_policy(PortCallPolicy::read())",
 ]) {
-  assertContains(mediaPublic, marker, `${paths.mediaPublic}: missing owner marker ${marker}`);
+  assertContains(combinedMediaPublic, marker, `${paths.mediaPublic}: missing owner marker ${marker}`);
 }
 assertContains(mediaLib, "pub mod public_image;", `${paths.mediaLib}: public image module not wired`);
 assertContains(mediaLib, "MediaPublicImageReadPort", "media lib: public image port not exported");

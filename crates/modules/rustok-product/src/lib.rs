@@ -89,7 +89,8 @@ pub use runtime::{
 };
 pub use services::catalog::concurrency::next_revision as next_product_revision;
 pub use services::{
-    AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
+    AdminProductList, AdminProductListItem, AdminProductListQuery, AdminProductListQueryExt,
+    CatalogService,
     MAX_CATALOG_FACET_VALUES, MAX_CATALOG_FACETS, MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE,
     MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE, MAX_PRODUCT_SALES_CHANNEL_CONVERGENCE_ERROR_BYTES,
     MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS, MAX_PRODUCT_SALES_CHANNEL_RELATION_PAGE,
@@ -124,7 +125,7 @@ pub use services::{
     ProductVariantTranslationExactLocaleResult, ProductVariantTranslationExactLocaleSnapshot,
     StorefrontCatalogFacet, StorefrontCatalogFacetValue, StorefrontProductList,
     StorefrontProductListImage, StorefrontProductListItem, StorefrontProductListPrice,
-    StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
+    StorefrontProductListQuery, StorefrontProductListQueryExt, StorefrontProductSortBy, StorefrontProductSortDirection,
     group_product_attribute_filters, product_attribute_boolean_term, product_attribute_date_term,
     product_attribute_datetime_term, product_attribute_decimal_term,
     product_attribute_integer_term, product_attribute_localized_presence_term,

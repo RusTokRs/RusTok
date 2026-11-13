@@ -355,16 +355,6 @@ fn validate_transport_security(
     }
 }
 
-fn telemetry_config() -> rustok_telemetry::TelemetryConfig {
-    let service_name = optional_env("RUSTOK_TELEMETRY_SERVICE_NAME")
-        .unwrap_or_else(|| "rustok-media-service".to_string());
-    let mut config = rustok_telemetry::TelemetryConfig::new(service_name);
-    config.log_level = optional_env("RUSTOK_LOG_LEVEL")
-        .or_else(|| optional_env("RUST_LOG"))
-        .unwrap_or_else(|| "info".to_string());
-    config
-}
-
 fn optional_env(name: &str) -> Option<String> {
     env::var(name)
         .ok()
@@ -374,10 +364,6 @@ fn optional_env(name: &str) -> Option<String> {
 
 fn optional_path_env(name: &str) -> Option<PathBuf> {
     optional_env(name).map(PathBuf::from)
-}
-
-fn required_env(name: &str) -> Result<String> {
-    optional_env(name).ok_or_else(|| anyhow!("missing required environment variable `{name}`"))
 }
 
 fn required_secret_env(name: &str) -> Result<String> {

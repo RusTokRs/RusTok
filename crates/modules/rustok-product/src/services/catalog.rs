@@ -15,6 +15,7 @@ mod translation;
 mod translation_changes;
 mod translation_progress;
 pub mod types;
+pub use types::{AdminProductListQueryExt, StorefrontProductListQueryExt};
 mod variant_translation;
 mod variant_translation_changes;
 mod variant_translation_progress;

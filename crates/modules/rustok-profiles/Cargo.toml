@@ -24,6 +24,7 @@ server = [
   "dep:rustok-outbox",
   "dep:rustok-social-graph",
   "dep:rustok-storage",
+  "dep:rustok-taxonomy",
   "dep:sea-orm",
   "dep:sea-orm-migration",
   "dep:tracing",
@@ -41,6 +42,7 @@ rustok-media = { workspace = true, optional = true }
 rustok-outbox = { workspace = true, optional = true }
 rustok-social-graph = { path = "../rustok-social-graph", optional = true }
 rustok-storage = { workspace = true, optional = true }
+rustok-taxonomy = { workspace = true, optional = true }
 sea-orm = { workspace = true, optional = true }
 sea-orm-migration = { workspace = true, optional = true }
 serde.workspace = true

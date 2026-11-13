@@ -198,9 +198,26 @@ pub trait StorefrontProductListQueryExt: Sized {
         sort_direction: Option<String>,
         attribute_filters: Vec<String>,
     ) -> CommerceResult<Self>;
+
+    fn with_currency_code(self, currency: Option<String>) -> CommerceResult<Self>;
 }
 
 impl StorefrontProductListQueryExt for StorefrontProductListQuery {
+    fn with_currency_code(mut self, currency: Option<String>) -> CommerceResult<Self> {
+        let currency = currency
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        if let Some(ref code) = currency {
+            if code.len() != 3 || !code.chars().all(|ch| ch.is_ascii_alphabetic()) {
+                return Err(CommerceError::Validation(
+                    "currency_code must be a 3-letter ISO code".to_string(),
+                ));
+            }
+        }
+        self.currency_code = currency.map(|value| value.to_ascii_uppercase());
+        Ok(self)
+    }
+
     fn try_new(
         search: Option<String>,
         category_id: Option<Uuid>,

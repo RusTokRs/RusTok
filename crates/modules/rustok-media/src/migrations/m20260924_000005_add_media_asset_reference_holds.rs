@@ -46,7 +46,9 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        if manager.has_table("tenants").await? {
+        if manager.get_database_backend() == DatabaseBackend::Postgres
+            && manager.has_table("tenants").await?
+        {
             manager
                 .create_foreign_key(
                     ForeignKey::create()

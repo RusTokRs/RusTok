@@ -12,9 +12,9 @@ mod index_refresh_relay;
 pub(crate) mod write_transaction;
 
 pub use catalog::{
-    AdminProductList, AdminProductListItem, AdminProductListQuery, CatalogService,
-    MAX_CATALOG_FACET_VALUES, MAX_CATALOG_FACETS, MAX_STOREFRONT_PRODUCT_SEARCH_BYTES,
-    ProductAttributeFilter, ProductAttributeFilterSelection,
+    AdminProductList, AdminProductListItem, AdminProductListQuery, AdminProductListQueryExt,
+    CatalogService, MAX_CATALOG_FACET_VALUES, MAX_CATALOG_FACETS,
+    MAX_STOREFRONT_PRODUCT_SEARCH_BYTES, ProductAttributeFilter, ProductAttributeFilterSelection,
     ProductImageTranslationExactLocaleApply, ProductImageTranslationExactLocaleApplyReceipt,
     ProductImageTranslationExactLocaleError, ProductImageTranslationExactLocaleRecord,
     ProductImageTranslationExactLocaleResult, ProductImageTranslationExactLocaleSnapshot,
@@ -27,8 +27,8 @@ pub use catalog::{
     ProductVariantTranslationExactLocaleResult, ProductVariantTranslationExactLocaleSnapshot,
     StorefrontCatalogFacet, StorefrontCatalogFacetValue, StorefrontProductList,
     StorefrontProductListImage, StorefrontProductListItem, StorefrontProductListPrice,
-    StorefrontProductListQuery, StorefrontProductSortBy, StorefrontProductSortDirection,
-    group_product_attribute_filters,
+    StorefrontProductListQuery, StorefrontProductListQueryExt, StorefrontProductSortBy,
+    StorefrontProductSortDirection, group_product_attribute_filters,
 };
 pub use catalog_attribute_terms::{
     ProductAttributeTermError, ProductAttributeTermExpr, ProductResolvedAttributeFilter,

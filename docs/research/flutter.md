@@ -24,12 +24,14 @@ Key takeaway: **do not** build the Flutter application as one large `lib/feature
 
 > [!IMPORTANT]
 > **Architectural Decision Update (2026-11-12)**:
-> Under ADR [`2026-11-12-decommission-mobile-admin-host.md`](../../DECISIONS/2026-11-12-decommission-mobile-admin-host.md),
-> the experimental mobile admin host (`rustok_admin_mobile`) and its pilot registry package (`rustok_modules_mobile`)
-> have been **decommissioned**. Administration of the platform is strictly web- and desktop-first (`apps/next-admin`, `apps/admin`, and `apps/dioxus-admin`),
-> with operational workflows handled headless/agentic through `rustok-ai`, MCP tools, and GraphQL mutations.
-> The Flutter workspace (`rustok_mobile`) is dedicated exclusively to the customer-facing **SuperApp / Storefront**
-> host (`apps/rustok_frontend_mobile`) and module-owned customer packages (e.g. `rustok_catalog_mobile`).
+> Under ADR [`2026-11-12-mobile-admin-business-operator-boundary.md`](../../DECISIONS/2026-11-12-mobile-admin-business-operator-boundary.md),
+> the platform maintains strict decoupling between customer storefront (`rustok_frontend_mobile`)
+> and business administration / CRM / operator workflows (`rustok_admin_mobile`).
+> 
+> To prevent code bloat and maintenance overhead, **system superadmin / DevOps settings** (low-level module toggles,
+> server migration repair, engine lifecycle failure recovery) are **strictly excluded** from mobile clients,
+> remaining in desktop web consoles (`apps/next-admin`, `apps/admin`) and AI agent control (`rustok-ai` / MCP).
+> `rustok_admin_mobile` is focused on **business operations and CRM workflows** (the Odoo model).
 
 ## What the RusTok Analysis Showed
 
@@ -1179,7 +1181,8 @@ To address feedback from the previous PR and avoid a "plan for the plan's sake",
 | Deterministic codegen job | mobile CI pipeline | `dart run build_runner build --delete-conflicting-outputs` + `git diff --exit-code` | ⬜ Planned |
 | Local deterministic codegen check | `rustok_mobile/tooling/scripts/check_mobile_codegen.py` | generator CLI runs into temp outputs and diffs against committed manifest/snapshot | ✅ Done |
 | Generated-file diff diagnostics | `rustok_mobile/tooling/scripts/verify_mobile_manifest.py` | stale manifest/snapshot failures print unified diff + regeneration command | ✅ Done |
-| Historical Admin Pilot (PR-C/E/F/G) | `rustok_admin_mobile` + `rustok_modules_mobile` | Decommissioned under ADR 2026-11-12 in favor of client SuperApp & agentic control | ⛔ Decommissioned |
+| Host adapter seam (`module_entry_adapter`) | `apps/rustok_admin_mobile` | registry connects without manual module list in shell-router | ✅ Done |
+| Manifest-driven nav icon mapping | `apps/rustok_admin_mobile` | host nav uses `nav.icon` from generated manifest and fallback by module metadata without manual route list | ✅ Done |
 | Storefront catalog/cart GraphQL source verifier | `rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py` + `rustok_mobile/tooling/tests/test_storefront_cart_graphql_contract.py` | `python3 rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py` verifies catalog/cart operation documents against existing server-owned surfaces | ✅ Done |
 | Storefront live schema/test-server promotion | mobile CI pipeline + server test harness | source verifier now accepts `--live-results` JSON for the same catalog/cart operation set and fails on missing/non-passed live results; producing that JSON from a real test server remains the CI harness step | 🟡 In progress |
 | Storefront package mapping expansion gate | `apps/rustok_frontend_mobile` + module-owned packages | add a new package-backed route only when a module-owned package exists and consumes a host-provided repository | ⬜ Planned |
@@ -1197,7 +1200,7 @@ A separate customer-facing Flutter host was added because the web storefront alr
 Next storefront mobile step: advance the cart part to a shared-transport backend implementation and connect storefront packages through the generated registry, synchronously with `docs/UI/storefront.md` and web storefront parity rules.
 
 > [!NOTE]
-> The sections below (PR-C, PR-E, PR-F, PR-G) describe the initial pilot flow for an experimental mobile admin host (`rustok_admin_mobile` / `rustok_modules_mobile`). Under ADR [`2026-11-12-decommission-mobile-admin-host.md`](../../DECISIONS/2026-11-12-decommission-mobile-admin-host.md), mobile administration was retired to avoid host proliferation, and all mobile efforts are consolidated into the customer SuperApp (`rustok_frontend_mobile`). These sections are preserved solely for engineering and git history context.
+> The sections below (PR-C, PR-E, PR-F, PR-G) describe the initial pilot flow for the mobile admin host (`rustok_admin_mobile` / `rustok_modules_mobile`). Under ADR [`2026-11-12-mobile-admin-business-operator-boundary.md`](../../DECISIONS/2026-11-12-mobile-admin-business-operator-boundary.md), `rustok_admin_mobile` is retained as a separate business/operator host, with low-level superadmin settings strictly excluded from mobile.
 
 #### PR-C Evidence Pack (Phase 1 pilot modules flow — Historical)
 
