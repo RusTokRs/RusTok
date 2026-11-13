@@ -141,9 +141,9 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-04 — Commerce, Financial & Marketplace Domain Modules
-*Cart, checkout pipeline, orders, payments, pricing, inventory reservations, fulfillment, marketplace multi-vendor economics, seller balances, and commissions.* (0/37 completed)
+*Cart, checkout pipeline, orders, payments, pricing, inventory reservations, fulfillment, marketplace multi-vendor economics, seller balances, and commissions.* (1/37 completed)
 
-- [ ] **[`crates/modules/rustok-commerce-foundation`](../../crates/modules/rustok-commerce-foundation)** (19 files, 1,106 LOC)
+- [x] **[`crates/modules/rustok-commerce-foundation`](../../crates/modules/rustok-commerce-foundation)** (17 files, 2,126 LOC) — *(Done: verified across 6 Universal Logic Dimensions: SQL LIKE wildcard escaping (`escape_like_pattern` for `%`, `_`, `\`) in product translation title search conditions, query length truncation (MAX_SEARCH_QUERY_LEN = 255), decimal price non-negativity and ISO-4217 3-letter currency code validation, non-nil channel_id/variant_id UUID guards, inventory quantity non-negativity and non-zero adjustment validation; unit tests added; verified with `cargo check -p rustok-commerce-foundation`).*
 - [ ] **[`crates/modules/rustok-commerce`](../../crates/modules/rustok-commerce)** (297 files, 132,631 LOC)
 - [ ] **[`crates/modules/rustok-commerce/admin`](../../crates/modules/rustok-commerce/admin)** (21 files, 5,889 LOC)
 - [ ] **[`crates/modules/rustok-commerce/storefront`](../../crates/modules/rustok-commerce/storefront)** (16 files, 2,022 LOC)

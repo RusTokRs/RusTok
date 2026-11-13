@@ -22,14 +22,13 @@ use rustok_media::{
     migrations::Migrator as MediaMigrator,
 };
 use rustok_media_ports::grpc::{
-    MediaGrpcBearerAuthenticator, MediaGrpcBearerInterceptor, MediaGrpcService,
+    MediaGrpcBearerInterceptor, MediaGrpcService,
     proto::media_service_server::MediaServiceServer,
 };
-use rustok_outbox::SysEvents;
-use rustok_outbox::migration::Migrator as OutboxMigrator;
+use rustok_outbox::{SysEvents, SysEventsMigration};
 use rustok_storage::{LocalStorageConfig, StorageRuntime};
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait};
-use sea_orm_migration::MigratorTrait;
+use sea_orm_migration::{MigrationTrait, MigratorTrait, SchemaManager};
 use tonic::transport::{Identity, Server, ServerTlsConfig};
 use url::Url;
 
@@ -188,7 +187,9 @@ async fn run() -> Result<()> {
     let database = connect_database(&config).await?;
 
     // Apply database migrations for Outbox and Media
-    OutboxMigrator::up(&database, None)
+    let schema_manager = SchemaManager::new(&database);
+    SysEventsMigration
+        .up(&schema_manager)
         .await
         .context("running Outbox migrations failed")?;
     MediaMigrator::up(&database, None)
@@ -198,10 +199,12 @@ async fn run() -> Result<()> {
     verify_required_schema(&database).await?;
 
     let storage_config = LocalStorageConfig {
-        root: config.storage_root.clone(),
-        public_url_base: None,
+        base_dir: config.storage_root.display().to_string(),
+        base_url: "/media".to_string(),
+        fsync: false,
     };
-    let storage = StorageRuntime::local(&storage_config);
+    let storage = StorageRuntime::local(&storage_config)
+        .context("initializing Media storage runtime failed")?;
 
     let media_service = Arc::new(MediaService::new(database.clone(), storage.clone()));
     let public_image_service = Arc::new(MediaPublicImageService::new(database.clone(), storage));
@@ -424,6 +427,27 @@ fn optional_bool(name: &str, default: bool) -> Result<bool> {
         "1" | "true" | "yes" | "on" => Ok(true),
         "0" | "false" | "no" | "off" => Ok(false),
         _ => bail!("{name} must be a boolean (true/false)"),
+    }
+}
+
+fn telemetry_config() -> rustok_telemetry::TelemetryConfig {
+    let log_format = match env::var("RUSTOK_LOG_FORMAT").as_deref() {
+        Ok("json") => rustok_telemetry::LogFormat::Json,
+        _ => rustok_telemetry::LogFormat::Pretty,
+    };
+    let metrics = env::var("RUSTOK_METRICS")
+        .map(|value| value != "0" && !value.eq_ignore_ascii_case("false"))
+        .unwrap_or(false);
+    let otel = env::var("OTEL_ENABLED")
+        .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+        .then(rustok_telemetry::otel::OtelConfig::from_env);
+
+    rustok_telemetry::TelemetryConfig {
+        service_name: "rustok-media-service".to_string(),
+        log_format,
+        metrics,
+        otel,
     }
 }
 

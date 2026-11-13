@@ -2,6 +2,19 @@ use sea_orm::{Condition, DbBackend, Value, sea_query::Expr};
 
 pub const MAX_SEARCH_QUERY_LEN: usize = 255;
 
+/// Escapes the SQL `LIKE` wildcards (`%`, `_`, `\`) so a text-filter needle
+/// matches its characters literally instead of broadening the pattern.
+pub fn escape_like_pattern(needle: &str) -> String {
+    let mut escaped = String::with_capacity(needle.len());
+    for ch in needle.chars() {
+        if matches!(ch, '%' | '_' | '\\') {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped
+}
+
 pub fn product_translation_title_search_condition(
     backend: DbBackend,
     _locale: &str,
@@ -12,7 +25,8 @@ pub fn product_translation_title_search_condition(
         return Condition::all();
     }
     let bounded: String = trimmed.chars().take(MAX_SEARCH_QUERY_LEN).collect();
-    let pattern = format!("%{bounded}%");
+    let escaped = escape_like_pattern(&bounded);
+    let pattern = format!("%{escaped}%");
 
     let exists_sql = match backend {
         DbBackend::Sqlite => {
@@ -58,7 +72,8 @@ pub fn product_translation_title_and_locale_search_condition(
     }
 
     let bounded: String = trimmed_search.chars().take(MAX_SEARCH_QUERY_LEN).collect();
-    let pattern = format!("%{bounded}%");
+    let escaped = escape_like_pattern(&bounded);
+    let pattern = format!("%{escaped}%");
 
     let exists_sql = match backend {
         DbBackend::Sqlite => {
@@ -137,5 +152,13 @@ mod tests {
         let long_query = "a".repeat(500);
         let cond = product_translation_title_search_condition(DbBackend::Sqlite, "en", &long_query);
         assert!(!cond.is_empty());
+    }
+
+    #[test]
+    fn test_escape_like_pattern() {
+        assert_eq!(escape_like_pattern("100%"), "100\\%");
+        assert_eq!(escape_like_pattern("item_name"), "item\\_name");
+        assert_eq!(escape_like_pattern("path\\to"), "path\\\\to");
+        assert_eq!(escape_like_pattern("normal text"), "normal text");
     }
 }

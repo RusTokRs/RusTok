@@ -18,7 +18,8 @@ The platform supports host applications for web/headless and mobile slices:
 - `apps/storefront` — primary Leptos storefront host;
 - `apps/next-admin` — parallel Next.js admin host;
 - `apps/next-frontend` — parallel Next.js storefront host;
-- `rustok_mobile/apps/rustok_frontend_mobile` — Flutter mobile storefront / SuperApp host.
+- `rustok_mobile/apps/rustok_admin_mobile` — Flutter business admin / operator mobile host;
+- `rustok_mobile/apps/rustok_frontend_mobile` — Flutter customer storefront / SuperApp host.
 
 Leptos hosts are the primary runtime path for platform-owned UI within the Rust workspace. Next.js hosts run as a parallel headless path and must maintain parity in transport, auth, i18n, and module contracts.
 
@@ -121,6 +122,7 @@ your current task — you do not need to read all three at once.
 - [Leptos Storefront](../../apps/storefront/docs/README.md)
 - [Next.js Admin](../../apps/next-admin/docs/README.md)
 - [Next.js Storefront](../../apps/next-frontend/docs/README.md)
+- [Flutter Admin Mobile](../../rustok_mobile/apps/rustok_admin_mobile/README.md)
 - [Flutter Storefront Mobile](../../rustok_mobile/apps/rustok_frontend_mobile/README.md)
 
 ## Keeping Documentation Up to Date

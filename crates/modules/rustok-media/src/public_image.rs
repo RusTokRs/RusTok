@@ -15,11 +15,7 @@ use crate::{
 
 pub const MEDIA_PUBLIC_IMAGE_PATH_PREFIX: &str = "/api/media/public/images";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MediaPublicImageAsset {
-    pub asset: MediaItem,
-    pub descriptor: Option<MediaImageDescriptor>,
-}
+pub use rustok_media_ports::{MediaPublicImageAsset, MediaPublicImageReadPort};
 
 #[derive(Debug, Clone)]
 pub struct MediaPublicImageBody {
@@ -32,16 +28,6 @@ impl MediaPublicImageBody {
     pub fn etag(&self) -> String {
         format!("\"sha256-{}\"", self.checksum_sha256)
     }
-}
-
-#[async_trait]
-pub trait MediaPublicImageReadPort: Send + Sync {
-    async fn get_public_image_asset(
-        &self,
-        context: PortContext,
-        media_id: Uuid,
-        alt: Option<String>,
-    ) -> Result<MediaPublicImageAsset, PortError>;
 }
 
 #[derive(Clone)]

@@ -1,0 +1,541 @@
+[
+  {
+    "module_slug": "ai",
+    "surface_kind": "admin_mobile",
+    "route_segment": "ai",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "ai",
+    "child_pages": []
+  },
+  {
+    "module_slug": "auth",
+    "surface_kind": "admin_mobile",
+    "route_segment": "auth",
+    "nav_icon": "shield",
+    "permissions": [],
+    "locale_namespace": "auth",
+    "child_pages": []
+  },
+  {
+    "module_slug": "billing",
+    "surface_kind": "admin_mobile",
+    "route_segment": "billing",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "billing",
+    "child_pages": []
+  },
+  {
+    "module_slug": "blog",
+    "surface_kind": "admin_mobile",
+    "route_segment": "blog",
+    "nav_icon": "article",
+    "permissions": [],
+    "locale_namespace": "blog",
+    "child_pages": [
+      {
+        "subpath": "categories",
+        "title": "Blog Categories",
+        "nav_label": "Categories"
+      },
+      {
+        "subpath": "new",
+        "title": "Add Blog Post",
+        "nav_label": "Add Post"
+      },
+      {
+        "subpath": "posts",
+        "title": "All Blog Posts",
+        "nav_label": "All Posts"
+      }
+    ]
+  },
+  {
+    "module_slug": "brand",
+    "surface_kind": "admin_mobile",
+    "route_segment": "brands",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "brand",
+    "child_pages": []
+  },
+  {
+    "module_slug": "product_bundles",
+    "surface_kind": "admin_mobile",
+    "route_segment": "bundles",
+    "nav_icon": "inventory_2",
+    "permissions": [],
+    "locale_namespace": "product_bundles",
+    "child_pages": []
+  },
+  {
+    "module_slug": "cache",
+    "surface_kind": "admin_mobile",
+    "route_segment": "cache",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "cache",
+    "child_pages": []
+  },
+  {
+    "module_slug": "calendar",
+    "surface_kind": "admin_mobile",
+    "route_segment": "calendar",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "calendar",
+    "child_pages": []
+  },
+  {
+    "module_slug": "calls",
+    "surface_kind": "admin_mobile",
+    "route_segment": "calls",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "calls",
+    "child_pages": []
+  },
+  {
+    "module_slug": "channel",
+    "surface_kind": "admin_mobile",
+    "route_segment": "channels",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "channel",
+    "child_pages": [
+      {
+        "subpath": "apps",
+        "title": "Channel Apps",
+        "nav_label": "Apps"
+      },
+      {
+        "subpath": "targets",
+        "title": "Channel Targets",
+        "nav_label": "Targets"
+      }
+    ]
+  },
+  {
+    "module_slug": "comments",
+    "surface_kind": "admin_mobile",
+    "route_segment": "comments",
+    "nav_icon": "chat",
+    "permissions": [],
+    "locale_namespace": "comments",
+    "child_pages": []
+  },
+  {
+    "module_slug": "commerce",
+    "surface_kind": "admin_mobile",
+    "route_segment": "commerce",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "commerce",
+    "child_pages": []
+  },
+  {
+    "module_slug": "customer",
+    "surface_kind": "admin_mobile",
+    "route_segment": "customers",
+    "nav_icon": "people",
+    "permissions": [],
+    "locale_namespace": "customer",
+    "child_pages": []
+  },
+  {
+    "module_slug": "deal",
+    "surface_kind": "admin_mobile",
+    "route_segment": "deal",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "deal",
+    "child_pages": []
+  },
+  {
+    "module_slug": "events",
+    "surface_kind": "admin_mobile",
+    "route_segment": "events",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "events",
+    "child_pages": []
+  },
+  {
+    "module_slug": "finance",
+    "surface_kind": "admin_mobile",
+    "route_segment": "finance",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "finance",
+    "child_pages": []
+  },
+  {
+    "module_slug": "forms",
+    "surface_kind": "admin_mobile",
+    "route_segment": "forms",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "forms",
+    "child_pages": []
+  },
+  {
+    "module_slug": "forum",
+    "surface_kind": "admin_mobile",
+    "route_segment": "forum",
+    "nav_icon": "forum",
+    "permissions": [],
+    "locale_namespace": "forum",
+    "child_pages": [
+      {
+        "subpath": "categories",
+        "title": "Forum Categories",
+        "nav_label": "Categories"
+      },
+      {
+        "subpath": "merge",
+        "title": "Merge Forum Topics",
+        "nav_label": "Merge Topics"
+      },
+      {
+        "subpath": "rename_slug",
+        "title": "Rename Forum Topic Route",
+        "nav_label": "Rename Topic Route"
+      },
+      {
+        "subpath": "topics",
+        "title": "Forum Topics",
+        "nav_label": "Topics"
+      }
+    ]
+  },
+  {
+    "module_slug": "fulfillment",
+    "surface_kind": "admin_mobile",
+    "route_segment": "fulfillment",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "fulfillment",
+    "child_pages": []
+  },
+  {
+    "module_slug": "groups",
+    "surface_kind": "admin_mobile",
+    "route_segment": "groups",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "groups",
+    "child_pages": [
+      {
+        "subpath": "applications",
+        "title": "Membership Applications",
+        "nav_label": "Applications"
+      },
+      {
+        "subpath": "features",
+        "title": "Group Features",
+        "nav_label": "Features"
+      },
+      {
+        "subpath": "invitations",
+        "title": "Group Invitations",
+        "nav_label": "Invitations"
+      },
+      {
+        "subpath": "memberships",
+        "title": "Group Memberships",
+        "nav_label": "Memberships"
+      }
+    ]
+  },
+  {
+    "module_slug": "iggy_connector",
+    "surface_kind": "admin_mobile",
+    "route_segment": "iggy_connector",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "iggy_connector",
+    "child_pages": []
+  },
+  {
+    "module_slug": "index",
+    "surface_kind": "admin_mobile",
+    "route_segment": "index",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "index",
+    "child_pages": []
+  },
+  {
+    "module_slug": "inventory",
+    "surface_kind": "admin_mobile",
+    "route_segment": "inventory",
+    "nav_icon": "inventory",
+    "permissions": [],
+    "locale_namespace": "inventory",
+    "child_pages": []
+  },
+  {
+    "module_slug": "marketplace_listing",
+    "surface_kind": "admin_mobile",
+    "route_segment": "marketplace_listings",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "marketplace_listing",
+    "child_pages": []
+  },
+  {
+    "module_slug": "marketplace_seller",
+    "surface_kind": "admin_mobile",
+    "route_segment": "marketplace_sellers",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "marketplace_seller",
+    "child_pages": []
+  },
+  {
+    "module_slug": "media",
+    "surface_kind": "admin_mobile",
+    "route_segment": "media",
+    "nav_icon": "perm_media",
+    "permissions": [],
+    "locale_namespace": "media",
+    "child_pages": []
+  },
+  {
+    "module_slug": "messenger",
+    "surface_kind": "admin_mobile",
+    "route_segment": "messenger",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "messenger",
+    "child_pages": []
+  },
+  {
+    "module_slug": "notifications",
+    "surface_kind": "admin_mobile",
+    "route_segment": "notifications",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "notifications",
+    "child_pages": []
+  },
+  {
+    "module_slug": "order",
+    "surface_kind": "admin_mobile",
+    "route_segment": "orders",
+    "nav_icon": "receipt_long",
+    "permissions": [],
+    "locale_namespace": "order",
+    "child_pages": []
+  },
+  {
+    "module_slug": "outbox",
+    "surface_kind": "admin_mobile",
+    "route_segment": "outbox",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "outbox",
+    "child_pages": []
+  },
+  {
+    "module_slug": "page_builder",
+    "surface_kind": "admin_mobile",
+    "route_segment": "page_builder",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "page_builder",
+    "child_pages": []
+  },
+  {
+    "module_slug": "pages",
+    "surface_kind": "admin_mobile",
+    "route_segment": "pages",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "pages",
+    "child_pages": [
+      {
+        "subpath": "all",
+        "title": "All Pages",
+        "nav_label": "All Pages"
+      },
+      {
+        "subpath": "new",
+        "title": "Add Page",
+        "nav_label": "Add Page"
+      }
+    ]
+  },
+  {
+    "module_slug": "party",
+    "surface_kind": "admin_mobile",
+    "route_segment": "party",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "party",
+    "child_pages": []
+  },
+  {
+    "module_slug": "pricing",
+    "surface_kind": "admin_mobile",
+    "route_segment": "pricing",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "pricing",
+    "child_pages": []
+  },
+  {
+    "module_slug": "product",
+    "surface_kind": "admin_mobile",
+    "route_segment": "product",
+    "nav_icon": "inventory_2",
+    "permissions": [],
+    "locale_namespace": "product",
+    "child_pages": [
+      {
+        "subpath": "attributes",
+        "title": "Attributes",
+        "nav_label": "Attributes"
+      },
+      {
+        "subpath": "categories",
+        "title": "Categories",
+        "nav_label": "Categories"
+      },
+      {
+        "subpath": "new",
+        "title": "Add Product",
+        "nav_label": "Add Product"
+      },
+      {
+        "subpath": "products",
+        "title": "All Products",
+        "nav_label": "All Products"
+      }
+    ]
+  },
+  {
+    "module_slug": "product_relations",
+    "surface_kind": "admin_mobile",
+    "route_segment": "product_relations",
+    "nav_icon": "inventory_2",
+    "permissions": [],
+    "locale_namespace": "product_relations",
+    "child_pages": []
+  },
+  {
+    "module_slug": "rbac",
+    "surface_kind": "admin_mobile",
+    "route_segment": "rbac",
+    "nav_icon": "shield",
+    "permissions": [],
+    "locale_namespace": "rbac",
+    "child_pages": []
+  },
+  {
+    "module_slug": "region",
+    "surface_kind": "admin_mobile",
+    "route_segment": "regions",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "region",
+    "child_pages": []
+  },
+  {
+    "module_slug": "search",
+    "surface_kind": "admin_mobile",
+    "route_segment": "search",
+    "nav_icon": "search",
+    "permissions": [],
+    "locale_namespace": "search",
+    "child_pages": [
+      {
+        "subpath": "analytics",
+        "title": "Search Analytics",
+        "nav_label": "Analytics"
+      },
+      {
+        "subpath": "dictionaries",
+        "title": "Search Dictionaries",
+        "nav_label": "Dictionaries"
+      },
+      {
+        "subpath": "engines",
+        "title": "Search Engines",
+        "nav_label": "Engines"
+      },
+      {
+        "subpath": "playground",
+        "title": "Search Playground",
+        "nav_label": "Playground"
+      }
+    ]
+  },
+  {
+    "module_slug": "security",
+    "surface_kind": "admin_mobile",
+    "route_segment": "security",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "security",
+    "child_pages": []
+  },
+  {
+    "module_slug": "seo",
+    "surface_kind": "admin_mobile",
+    "route_segment": "seo",
+    "nav_icon": "travel_explore",
+    "permissions": [],
+    "locale_namespace": "seo",
+    "child_pages": [
+      {
+        "subpath": "overview",
+        "title": "SEO Overview",
+        "nav_label": "Overview"
+      }
+    ]
+  },
+  {
+    "module_slug": "tasks",
+    "surface_kind": "admin_mobile",
+    "route_segment": "tasks",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "tasks",
+    "child_pages": []
+  },
+  {
+    "module_slug": "tenant",
+    "surface_kind": "admin_mobile",
+    "route_segment": "tenant",
+    "nav_icon": "apartment",
+    "permissions": [],
+    "locale_namespace": "tenant",
+    "child_pages": []
+  },
+  {
+    "module_slug": "translation",
+    "surface_kind": "admin_mobile",
+    "route_segment": "translation",
+    "nav_icon": "module",
+    "permissions": [],
+    "locale_namespace": "translation",
+    "child_pages": []
+  },
+  {
+    "module_slug": "workflow",
+    "surface_kind": "admin_mobile",
+    "route_segment": "workflow",
+    "nav_icon": "account_tree",
+    "permissions": [],
+    "locale_namespace": "workflow",
+    "child_pages": [
+      {
+        "subpath": "templates",
+        "title": "Workflow Templates",
+        "nav_label": "Templates"
+      }
+    ]
+  }
+]
