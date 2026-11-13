@@ -189,12 +189,6 @@ const adminSources = [
 ];
 for (const file of adminSources) {
   const source = read(file);
-  if (/LocalResource::new\(/.test(source)) {
-    failures.push(
-      `${file}: creates a \`LocalResource\` inside the \`Async\` admin layout, where nothing fills ` +
-        "the fallback on the server. Load this state through `Resource` so it is in the response.",
-    );
-  }
   // An `Effect` runs on a later tick and is never driven before the response. Using one to turn a
   // resolved value into what the page renders keeps the whole page out of the HTML, which is the
   // ADR's second invariant, so the page's data path must be the render's.
@@ -208,6 +202,42 @@ for (const file of adminSources) {
       );
     }
   }
+}
+
+// The five files above were the ones carrying the defect when the ADR was written. The layout covers
+// the whole `apps/admin` tree, so the tree is what is checked: a page added later sits inside the
+// same `Async` render, and a list of five files would have nothing to say about it. The installer is
+// the one page outside the layout — it declares no mode and keeps a browser-side loader — so it is
+// the one file where a `LocalResource` is the documented answer rather than a leftover.
+const adminLocalResourceSources = [];
+{
+  const walkAdmin = (relative) => {
+    let entries;
+    try {
+      entries = readdirSync(join(root, relative), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const path = `${relative}/${entry.name}`;
+      if (entry.isDirectory()) {
+        if (["node_modules", "target", "tests"].includes(entry.name)) continue;
+        walkAdmin(path);
+      } else if (entry.name.endsWith(".rs")) {
+        adminLocalResourceSources.push(path);
+      }
+    }
+  };
+  walkAdmin("apps/admin/src");
+}
+for (const file of adminLocalResourceSources) {
+  if (file.endsWith("/pages/installer.rs")) continue;
+  if (!/LocalResource::new\(/.test(read(file))) continue;
+  failures.push(
+    `${file}: creates a \`LocalResource\` inside the \`Async\` admin layout, where nothing fills ` +
+      "the fallback on the server. Load this state through `Resource` so it is in the response, or " +
+      "move the page outside the layout the way the installer is.",
+  );
 }
 
 // Module admin surfaces are mounted at `/modules/:module_slug/*module_path`, inside the same `Async`
@@ -397,6 +427,23 @@ if (!remainingModuleLocalResources) {
   failures.push(
     "docs/modules/page-builder-backlog.md: the count of module admin surfaces still on " +
       "`LocalResource` is not recorded, so the remaining work is invisible",
+  );
+}
+// The count is a tally of what is still there, so it is compared with the source rather than
+// trusted: a surface that moves without the record moving makes the backlog claim work that is done
+// and hides work that is not, and the number is the only thing a reader of the backlog has.
+const actualLocalResources = moduleAdminSources().reduce(
+  (total, file) => total + [...read(file).matchAll(/LocalResource::new\(/g)].length,
+  0,
+);
+if (
+  remainingModuleLocalResources &&
+  Number(remainingModuleLocalResources) !== actualLocalResources
+) {
+  failures.push(
+    `docs/modules/page-builder-backlog.md: records ${remainingModuleLocalResources} module admin ` +
+      `surfaces on \`LocalResource\`, but the module packages create ${actualLocalResources}; the ` +
+      "record and the source move together",
   );
 }
 

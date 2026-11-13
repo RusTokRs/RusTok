@@ -159,6 +159,16 @@ signature — and requires the payload type to be declared with serde. It is a d
 a type check, and it holds the class rather than one instance: a payload that loses serde later is
 reported against the surface that would serve it empty.
 
+Two things the gate was reading rather than checking, both closed the same way. The record of
+surfaces still on `LocalResource` was validated only for being present, so the count could drift from
+the source in either direction: a surface that moved left the backlog claiming work that was done, and
+a surface that regressed into a `LocalResource` did not move the number at all. The count is now
+compared with what the module packages create. The `apps/admin` check was five files named when the
+ADR was written, although the layout it describes wraps the whole tree, so a page added later sat
+inside the same `Async` render with nothing to say about it; the check now walks the tree and treats
+the installer — the one page outside the layout, which keeps a browser-side loader on purpose — as
+the single documented exception.
+
 Two of the product surfaces are not a swap, and they are the shape the rest will meet. The product
 editor fills about twenty form fields from its response, so pointing the loader at `Resource` would
 only move the defect: the fields are signals written by an `Effect`, which never runs on the server,

@@ -843,7 +843,10 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           than in the moved file, so a surface can be moved correctly and still serve an empty value
           if its payload loses serde; the gate resolves each resource to its transport function and
           that function's return type inside the crate that renders it, because the function names
-          are not unique across modules. A
+          are not unique across modules. The recorded count is compared with the source rather than
+          trusted, and the `apps/admin` side of the same defect is checked across the tree instead of
+          the five files it was first written against, with the installer as the one documented
+          exception because it renders outside the layout. A
           surface that takes a resource as a prop
           declares its type, so the caller and the callee move together: the search admin's preview
           and analytics views and the product editor's attribute-values section declared
