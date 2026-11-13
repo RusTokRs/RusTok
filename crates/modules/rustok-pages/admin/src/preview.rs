@@ -211,6 +211,44 @@ mod tests {
             .unwrap_or_else(|| panic!("no {name} in {policy}"))
     }
 
+    fn object_sources_denied(policy: &str) -> bool {
+        let directives = policy.split(';').map(str::trim).collect::<Vec<_>>();
+        let objects = directives
+            .iter()
+            .copied()
+            .filter(|item| item.split_ascii_whitespace().next() == Some("object-src"))
+            .collect::<Vec<_>>();
+        if objects.is_empty() {
+            let defaults = directives
+                .iter()
+                .copied()
+                .filter(|item| item.split_ascii_whitespace().next() == Some("default-src"))
+                .collect::<Vec<_>>();
+            defaults.len() == 1 && defaults[0] == "default-src 'none'"
+        } else {
+            objects.len() == 1 && objects[0] == "object-src 'none'"
+        }
+    }
+
+    #[test]
+    fn object_source_check_handles_default_fallback_and_explicit_override() {
+        for (policy, denied) in [
+            ("default-src 'none'", true),
+            ("default-src 'none'; object-src 'none'", true),
+            ("default-src 'self'; object-src 'none'", true),
+            ("default-src 'none'; object-src https:", false),
+            ("default-src 'self'", false),
+            ("default-src 'none'; object-src", false),
+            ("default-src 'self'; default-src 'none'", false),
+            (
+                "default-src 'none'; object-src https:; object-src 'none'",
+                false,
+            ),
+        ] {
+            assert_eq!(object_sources_denied(policy), denied, "{policy}");
+        }
+    }
+
     #[test]
     fn the_policy_names_the_hash_of_the_stylesheet_the_document_carries() {
         let policy = pages_server_preview_policy("body{margin:0}");
@@ -246,7 +284,12 @@ mod tests {
             0,
             "{policy}"
         );
-        assert_eq!(directive(&policy, "object-src"), "object-src 'none'");
+        // An absent object-src inherits the already-checked default-src 'none'. An explicit
+        // object-src must be at least as restrictive, rather than override that fallback.
+        assert!(
+            object_sources_denied(&policy),
+            "object-src must deny plugins explicitly or inherit default-src: {policy}"
+        );
         assert_eq!(directive(&policy, "base-uri"), "base-uri 'none'");
     }
 
