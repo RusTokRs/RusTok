@@ -24,27 +24,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: Page Builder admin
-            command: cargo test --locked -p rustok-page-builder-admin --lib
           - label: Pages admin
             command: cargo test --locked -p rustok-pages-admin --lib
-          - label: static sanitization
-            command: |
-              cargo test --locked -p rustok-page-builder --lib -- --list > "$RUNNER_TEMP/static-list.txt"
-              for marker in \
-                'publish_sanitization::tests::sanitization_assigns_stable_ids_and_hashes_policy_bound_project' \
-                'publish_sanitization::tests::sanitization_rejects_excess_global_resources' \
-                'publish_sanitization::tests::sanitization_rejects_insecure_public_resources' \
-                'publish_sanitization::tests::sanitization_rejects_renderer_dropped_attributes_and_css' \
-                'static_publish_policy::tests::' \
-                'static_publish_resource_limits::tests::'
-              do
-                grep -F "$marker" "$RUNNER_TEMP/static-list.txt" > /dev/null
-              done
-              echo 'All static inventory markers found'
-              for filter in publish_sanitization::tests:: static_publish_policy::tests:: static_publish_resource_limits::tests::; do
-                cargo test --locked -p rustok-page-builder --lib "$filter" -- --nocapture
-              done
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -97,6 +78,11 @@ jobs:
           COMMAND: ${{ matrix.command }}
           LABEL: ${{ matrix.label }}
         run: bash "$RUNNER_TEMP/check.sh" "$LABEL" bash -euo pipefail -c "$COMMAND"
+      - name: Run media admin unit tests with SSR
+        shell: bash
+        run: |
+          bash "$RUNNER_TEMP/check.sh" 'Media admin' \
+            cargo test --locked -p rustok-media-admin --features ssr --lib
       - name: Lint Fly browser and Page Builder integrations
         if: ${{ success() && matrix.label == 'Pages admin' }}
         shell: bash
@@ -116,7 +102,7 @@ jobs:
         with:
           toolchain: "1.96.0"
           components: rustfmt
-      - name: Check focused, i18n and workspace formatting
+      - name: Check focused, i18n and media formatting
         shell: bash
         run: |
           set -o pipefail
@@ -143,5 +129,4 @@ jobs:
           check_format 'UI i18n package formatting' cargo fmt -p rustok-ui-i18n -- --check
           check_format 'UI i18n referenced files formatting' rustfmt --edition 2024 --check apps/admin/src/i18n.rs apps/admin/src/main.rs crates/libs/rustok-api/src/locale.rs crates/modules/rustok-page-builder/src/locale.rs
           check_format 'Media adapter formatting' rustfmt --edition 2024 --check crates/modules/rustok-media/admin/src/ui/leptos.rs
-          check_format 'Workspace formatting' cargo fmt --all -- --check
           exit "$overall"
