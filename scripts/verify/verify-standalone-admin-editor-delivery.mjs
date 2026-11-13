@@ -255,6 +255,11 @@ const movedModuleSurfaces = [
     marker: "let comments_resource = Resource::new(",
     description: "the moderation queue resolves its comments during the render",
   },
+  {
+    file: "crates/modules/rustok-forms/admin/src/lib.rs",
+    marker: "let submissions = Resource::new(",
+    description: "the form inbox resolves its submissions during the render",
+  },
 ];
 for (const surface of movedModuleSurfaces) {
   const source = read(surface.file);
