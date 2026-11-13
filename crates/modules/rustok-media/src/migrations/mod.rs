@@ -5,7 +5,16 @@ mod m20260916_000004_add_media_owner_module;
 mod m20260924_000005_add_media_asset_reference_holds;
 
 use rustok_core::MigrationDependencyDescriptor;
-use sea_orm_migration::MigrationTrait;
+use sea_orm_migration::{MigrationTrait, MigratorTrait};
+
+pub struct Migrator;
+
+#[async_trait::async_trait]
+impl MigratorTrait for Migrator {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        migrations()
+    }
+}
 
 pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![

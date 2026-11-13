@@ -70,7 +70,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def _validate_snapshot_schema(
-    entries: object, *, expected_surface_kind: str = "storefront_mobile"
+    entries: object, *, expected_surface_kind: str = "admin_mobile"
 ) -> str | None:
     if not isinstance(entries, list):
         return "snapshot root must be an array"

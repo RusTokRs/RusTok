@@ -16260,6 +16260,7 @@ dependencies = [
  "rustok-api",
  "rustok-core",
  "rustok-events",
+ "rustok-media-ports",
  "rustok-outbox",
  "rustok-storage",
  "rustok-telemetry",
@@ -16273,6 +16274,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+ "tonic",
  "tracing",
  "url",
  "uuid",
@@ -16318,6 +16320,31 @@ dependencies = [
  "sea-orm",
  "serde_json",
  "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-media-ports"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "chrono",
+ "mime_guess",
+ "prost",
+ "protoc-bin-vendored",
+ "rustok-api",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "subtle",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "url",
  "uuid",
 ]
 

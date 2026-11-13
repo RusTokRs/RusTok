@@ -39,7 +39,7 @@ CSR remains a mandatory compatibility/debug profile for standalone Trunk/WASM an
 | module-owned Leptos UI standalone `csr` | debug/compatibility | GraphQL/REST | — |
 | `apps/next-admin` | headless | GraphQL/REST | — |
 | `apps/next-frontend` | headless | GraphQL/REST | — |
-| `rustok_mobile/apps/rustok_admin_mobile` | headless/mobile host | GraphQL/REST (+ `/api/graphql/ws`) | — |
+| `rustok_mobile/apps/rustok_frontend_mobile` | headless/mobile host | GraphQL/REST (+ `/api/graphql/ws`) | — |
 | external/mobile clients | headless | GraphQL/REST | — |
 
 ## Contract for Leptos UI
@@ -128,6 +128,6 @@ implementations alive.
 - [`apps/admin` Documentation](../../apps/admin/docs/README.md)
 - [`apps/storefront` Documentation](../../apps/storefront/docs/README.md)
 - [`apps/server` Documentation](../../apps/server/docs/README.md)
-- [Flutter Admin Mobile Documentation](../../rustok_mobile/apps/rustok_admin_mobile/README.md)
+- [Flutter Storefront Mobile Documentation](../../rustok_mobile/apps/rustok_frontend_mobile/README.md)
 - [ADR: SSR-first Leptos hosts with headless parity](../../DECISIONS/2026-04-24-ssr-first-leptos-hosts-with-headless-parity.md)
 - [Documentation Map](../index.md)

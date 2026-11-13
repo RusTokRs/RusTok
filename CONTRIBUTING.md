@@ -148,7 +148,7 @@ Update documentation when:
 - **apps/storefront**: Leptos storefront host (SSR-first contract)
 - **apps/next-admin**: Next.js admin host
 - **apps/next-frontend**: Next.js storefront
-- **rustok_mobile/apps/rustok_admin_mobile**: Flutter admin mobile host (experimental rollout)
+- **rustok_mobile/apps/rustok_frontend_mobile**: Flutter mobile SuperApp / storefront host
 
 ### Crates Workspace Layout (`crates/`)
 

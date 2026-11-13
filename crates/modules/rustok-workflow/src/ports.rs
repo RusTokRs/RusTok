@@ -36,6 +36,12 @@ impl WorkflowReadPort for WorkflowService {
         workflow_id: Uuid,
     ) -> Result<WorkflowResponse, PortError> {
         context.require_policy(PortCallPolicy::read())?;
+        if workflow_id.is_nil() {
+            return Err(PortError::validation(
+                "workflow.workflow_id_invalid",
+                "workflow_id must not be nil",
+            ));
+        }
         let tenant_id = workflow_tenant_id(&context)?;
         self.get(tenant_id, workflow_id)
             .await
@@ -44,12 +50,19 @@ impl WorkflowReadPort for WorkflowService {
 }
 
 fn workflow_tenant_id(context: &PortContext) -> Result<Uuid, PortError> {
-    Uuid::parse_str(&context.tenant_id).map_err(|_| {
+    let id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         PortError::validation(
             "workflow.tenant_id_invalid",
             "workflow read port requires a UUID tenant id",
         )
-    })
+    })?;
+    if id.is_nil() {
+        return Err(PortError::validation(
+            "workflow.tenant_id_invalid",
+            "workflow read port requires a non-nil tenant id",
+        ));
+    }
+    Ok(id)
 }
 
 fn workflow_error_to_port_error(error: WorkflowError) -> PortError {

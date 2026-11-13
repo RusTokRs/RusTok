@@ -100,14 +100,12 @@ For Flutter, this translates to:
 ```text
 rustok_mobile/
   apps/
-    rustok_admin_mobile/       # admin/operator host
-    rustok_frontend_mobile/    # customer storefront host
+    rustok_frontend_mobile/    # customer storefront / SuperApp host
   packages/
     app_graphql/               # shared transport
     app_route_contracts/       # typed route/query contracts
     app_module_contracts/      # module mounting contracts
     rustok_catalog_mobile/     # module-owned storefront UI
-    rustok_modules_mobile/     # module-owned admin/operator UI
 ```
 
 A Flutter package can own a product card, a cart screen, an empty state,

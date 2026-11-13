@@ -22,6 +22,15 @@ From a Flutter ecosystem perspective, the choice of Riverpod/go_router seems the
 
 Key takeaway: **do not** build the Flutter application as one large `lib/features/...` without package boundaries. For RusTok a better approach is the **host app + shared scaffold packages + module-owned mobile packages + generated contracts** scheme. This reduces UI drift, allows mirroring the parallel module structure of the platform, simplifies phased migration and makes the mobile client compatible with the manifest-driven future of the platform.
 
+> [!IMPORTANT]
+> **Architectural Decision Update (2026-11-12)**:
+> Under ADR [`2026-11-12-decommission-mobile-admin-host.md`](../../DECISIONS/2026-11-12-decommission-mobile-admin-host.md),
+> the experimental mobile admin host (`rustok_admin_mobile`) and its pilot registry package (`rustok_modules_mobile`)
+> have been **decommissioned**. Administration of the platform is strictly web- and desktop-first (`apps/next-admin`, `apps/admin`, and `apps/dioxus-admin`),
+> with operational workflows handled headless/agentic through `rustok-ai`, MCP tools, and GraphQL mutations.
+> The Flutter workspace (`rustok_mobile`) is dedicated exclusively to the customer-facing **SuperApp / Storefront**
+> host (`apps/rustok_frontend_mobile`) and module-owned customer packages (e.g. `rustok_catalog_mobile`).
+
 ## What the RusTok Analysis Showed
 
 The RusTok repository already has almost all the architectural rules needed for a mobile client. The platform is divided into host applications (`apps/server`, `apps/admin`, `apps/storefront`, `apps/next-admin`, `apps/next-frontend`), platform modules and shared/capability crates; UI ownership stays with the module, and the host is responsible for routing, shell, locale propagation, auth/session UX and wiring module surfaces. In other words, it makes most sense to introduce the Flutter client as **yet another host**, not as a set of chaotically copied screens.
@@ -136,7 +145,7 @@ This literally mirrors the current RusTok philosophy, where the host mounts surf
 ```text
 rustok_mobile/
 ├── apps/
-│   └── rustok_admin_mobile/
+│   └── rustok_frontend_mobile/
 │       ├── lib/
 │       │   ├── main.dart
 │       │   ├── bootstrap.dart
@@ -220,13 +229,12 @@ rustok_mobile/
 │   │       ├── data/
 │   │       ├── graphql/
 │   │       └── auth_mobile_module.dart
-│   ├── rustok_modules_mobile/
+│   ├── rustok_catalog_mobile/
 │   │   └── lib/
 │   │       ├── presentation/
 │   │       ├── application/
 │   │       ├── data/
-│   │       ├── graphql/
-│   │       └── modules_mobile_module.dart
+│   │       └── rustok_catalog_mobile.dart
 │   ├── rustok_blog_mobile/
 │   ├── rustok_product_mobile/
 │   ├── rustok_users_mobile/
@@ -244,7 +252,7 @@ rustok_mobile/
 
 | Path | Purpose |
 |---|---|
-| `apps/rustok_admin_mobile` | Host application: bootstrap, shell, routing, registry wiring, global context |
+| `apps/rustok_frontend_mobile` | Customer SuperApp host application: bootstrap, shell, routing, registry wiring, global context |
 | `packages/app_core` | Basic error/result/env/logging tools without UI or domain-specific code |
 | `packages/app_ui_kit` | Shared design tokens, themes, base widgets and scaffold components |
 | `packages/app_graphql` | Single point for GraphQL client assembly, auth/tenant/locale headers, refresh token, error mapping |
@@ -309,7 +317,7 @@ Practically this means: either the RusTok backend/CI publishes a JSON module reg
 RusTok already sets the correct host model: shell, routing, locale propagation, auth UX, permissions and wiring of module surfaces should be host-owned. This is exactly what should appear in the Flutter `main.dart`, not a "bare MaterialApp with three screens".
 
 ```dart
-// apps/rustok_admin_mobile/lib/main.dart
+// apps/rustok_frontend_mobile/lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -322,14 +330,14 @@ Future<void> main() async {
   runApp(
     UncontrolledProviderScope(
       container: container,
-      child: const RustokAdminMobileApp(),
+      child: const RustokMobileApp(),
     ),
   );
 }
 ```
 
 ```dart
-// apps/rustok_admin_mobile/lib/bootstrap.dart
+// apps/rustok_frontend_mobile/lib/bootstrap.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:app_core/env/env.dart';
@@ -352,7 +360,7 @@ Future<ProviderContainer> bootstrap() async {
 ```
 
 ```dart
-// apps/rustok_admin_mobile/lib/app.dart
+// apps/rustok_frontend_mobile/lib/app.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -415,7 +423,7 @@ For RusTok it is especially important that routing is:
 This is where `go_router` provides the best balance: URL-based API, deep links, redirects, sub-routes and `ShellRoute` for a persistent shell/navigation bar.
 
 ```dart
-// apps/rustok_admin_mobile/lib/app_router.dart
+// apps/rustok_frontend_mobile/lib/app_router.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -477,17 +485,15 @@ abstract interface class MobileModuleEntry {
 ```
 
 ```dart
-// apps/rustok_admin_mobile/lib/registry/mobile_module_registry.dart
+// apps/rustok_frontend_mobile/lib/registry/mobile_module_registry.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:rustok_blog_mobile/blog_mobile_module.dart';
-import 'package:rustok_modules_mobile/modules_mobile_module.dart';
+import 'package:rustok_catalog_mobile/rustok_catalog_mobile.dart';
 
 final mobileModuleRegistryProvider = Provider<MobileModuleRegistry>((ref) {
   final entries = [
-    BlogMobileModule(),
-    ModulesMobileModule(),
+    CatalogMobileModule(),
     // further auto-generated wiring
   ]..sort((a, b) => a.navOrder.compareTo(b.navOrder));
 
@@ -1173,9 +1179,7 @@ To address feedback from the previous PR and avoid a "plan for the plan's sake",
 | Deterministic codegen job | mobile CI pipeline | `dart run build_runner build --delete-conflicting-outputs` + `git diff --exit-code` | ⬜ Planned |
 | Local deterministic codegen check | `rustok_mobile/tooling/scripts/check_mobile_codegen.py` | generator CLI runs into temp outputs and diffs against committed manifest/snapshot | ✅ Done |
 | Generated-file diff diagnostics | `rustok_mobile/tooling/scripts/verify_mobile_manifest.py` | stale manifest/snapshot failures print unified diff + regeneration command | ✅ Done |
-| Host adapter seam (`module_entry_adapter`) | `apps/rustok_admin_mobile` | registry connects without manual module list in shell-router | ✅ Done |
-| Manifest-driven nav icon mapping | `apps/rustok_admin_mobile` | host nav uses `nav.icon` from generated manifest and fallback by module metadata without manual route list | ✅ Done |
-| Pilot E2E evidence (modules/blog) | `rustok_mobile/apps/rustok_admin_mobile/test/pilot_modules_flow_test.dart` + `rustok_mobile/packages/rustok_modules_mobile/test/modules_mobile_screen_test.dart` | authenticated shell → GraphQL-backed module list → module detail route → shell back; package widget test verifies `toggleModule` action refresh and operation history/recovery actions | 🟡 In progress |
+| Historical Admin Pilot (PR-C/E/F/G) | `rustok_admin_mobile` + `rustok_modules_mobile` | Decommissioned under ADR 2026-11-12 in favor of client SuperApp & agentic control | ⛔ Decommissioned |
 | Storefront catalog/cart GraphQL source verifier | `rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py` + `rustok_mobile/tooling/tests/test_storefront_cart_graphql_contract.py` | `python3 rustok_mobile/tooling/scripts/verify_storefront_graphql_contract.py` verifies catalog/cart operation documents against existing server-owned surfaces | ✅ Done |
 | Storefront live schema/test-server promotion | mobile CI pipeline + server test harness | source verifier now accepts `--live-results` JSON for the same catalog/cart operation set and fails on missing/non-passed live results; producing that JSON from a real test server remains the CI harness step | 🟡 In progress |
 | Storefront package mapping expansion gate | `apps/rustok_frontend_mobile` + module-owned packages | add a new package-backed route only when a module-owned package exists and consumes a host-provided repository | ⬜ Planned |
@@ -1192,7 +1196,10 @@ A separate customer-facing Flutter host was added because the web storefront alr
 
 Next storefront mobile step: advance the cart part to a shared-transport backend implementation and connect storefront packages through the generated registry, synchronously with `docs/UI/storefront.md` and web storefront parity rules.
 
-#### PR-C Evidence Pack (Phase 1 pilot modules flow)
+> [!NOTE]
+> The sections below (PR-C, PR-E, PR-F, PR-G) describe the initial pilot flow for an experimental mobile admin host (`rustok_admin_mobile` / `rustok_modules_mobile`). Under ADR [`2026-11-12-decommission-mobile-admin-host.md`](../../DECISIONS/2026-11-12-decommission-mobile-admin-host.md), mobile administration was retired to avoid host proliferation, and all mobile efforts are consolidated into the customer SuperApp (`rustok_frontend_mobile`). These sections are preserved solely for engineering and git history context.
+
+#### PR-C Evidence Pack (Phase 1 pilot modules flow — Historical)
 
 **Pilot package:** `rustok_mobile/packages/rustok_modules_mobile`.
 
@@ -1457,7 +1464,7 @@ The minimum schema contract for the mobile registry is established with the foll
 For the current track, the Flutter scope is established as:
 - do not create a "third web frontend" parallel to `apps/admin` / `apps/next-admin` / `apps/storefront` / `apps/next-frontend`;
 - develop **headless clients** (mobile and desktop) as host applications on top of the existing backend contract;
-- keep admin/operator and customer storefront as separate Flutter host applications (`rustok_admin_mobile` and `rustok_frontend_mobile`), not mixing their navigation and UX;
+- focus Flutter mobile strictly on the customer-facing SuperApp / storefront host application (`rustok_frontend_mobile`); administrative workflows remain web- and agentic-first (`apps/next-admin` / `apps/admin` / `rustok-ai`), with `rustok_admin_mobile` decommissioned under ADR 2026-11-12;
 - reuse common client-core (auth/session, tenant/locale context, GraphQL transport, route/query contracts) between mobile and desktop surfaces.
 
 This preserves platform parity and reduces maintenance cost compared to a separate web-host fork.
@@ -1484,7 +1491,7 @@ Below are items **not specified** in the requirements, so in the report I gave o
 | Target platforms | **Clarified** | Mobile-first (iOS + Android), then desktop (macOS/Windows/Linux) on common client-core; without starting a new web host |
 | Minimum OS/SDK requirements | **Not specified** | Take the current stable Flutter branch and agree on minima after package set freeze |
 | Offline support | **Not specified** | Start without offline-first; only persisted cache + secure auth + drafts |
-| Mobile app type | **Clarified** | Admin/operator and customer storefront as separate host applications: `rustok_admin_mobile` and `rustok_frontend_mobile` |
+| Mobile app type | **Clarified** | Customer storefront / SuperApp host application: `rustok_frontend_mobile` (mobile admin decommissioned under ADR 2026-11-12) |
 | Method of obtaining manifest/export for mobile registry | **Not specified** | First phase — snapshot/codegen from RusTok repo; long term — backend/export endpoint |
 | Distribution model | **Not specified** | Internal/TestFlight/Play Internal in early phases |
 | Live schema/test-server harness for Flutter storefront | **Planned** | Use source-backed verifier as preflight; live job should execute the same catalog/cart operations against test schema/server without new Flutter-specific endpoints |

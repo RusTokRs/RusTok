@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Media asset management for RusTok — uploads, metadata, translations"
+autobins = false
+
+[[bin]]
+name = "rustok-media-service"
+path = "src/bin/service.rs"
+required-features = ["service"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -12,8 +18,12 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 default = []
 s3 = ["rustok-storage/s3"]
+service = ["dep:tonic", "rustok-media-ports/grpc-server"]
 
 [dependencies]
+rustok-media-ports.workspace = true
+tonic = { workspace = true, optional = true, features = ["tls-ring"] }
+url.workspace = true
 anyhow.workspace = true
 async-graphql.workspace = true
 rustok-core.workspace = true

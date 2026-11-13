@@ -256,7 +256,7 @@ graph LR
    - The server validates stock levels inside a single PostgreSQL transaction. If a stock conflict occurs (e.g. goods were claimed elsewhere), a typed **Discrepancy Resolution Task** is returned to the operator.
 
 2. **Role-Based Dynamic Workspaces:**
-   The Flutter shell (`apps/rustok_admin_mobile`) composes targeted workspaces based on operator permissions:
+   Dedicated operator mobile companion flows compose targeted workspaces based on operator permissions:
    - **Warehouse Picker:** Mounts barcode scanning, bin relocation, and waybill acceptance screens.
    - **Sales Representative:** Mounts CRM Kanban, Party lookups, Invoice creation, and PDF sharing.
    - **Finance & Executive:** Mounts Bank account balances, cash desk, statement reconciliation, and high-level KPI dashboards.

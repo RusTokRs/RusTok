@@ -60,16 +60,6 @@ impl MigrationTrait for Migration {
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk_media_translation_changes_tenant")
-                            .from(
-                                MediaTranslationChanges::Table,
-                                MediaTranslationChanges::TenantId,
-                            )
-                            .to(Tenants::Table, Tenants::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
                             .name("fk_media_translation_changes_tenant_asset")
                             .from_tbl(MediaTranslationChanges::Table)
                             .from_col(MediaTranslationChanges::TenantId)
@@ -82,6 +72,22 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+
+        if manager.has_table("tenants").await? {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_media_translation_changes_tenant")
+                        .from(
+                            MediaTranslationChanges::Table,
+                            MediaTranslationChanges::TenantId,
+                        )
+                        .to(Tenants::Table, Tenants::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .create_index(

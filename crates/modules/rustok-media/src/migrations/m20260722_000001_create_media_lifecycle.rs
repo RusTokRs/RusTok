@@ -47,23 +47,35 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(Assets::DeleteRequestedAt).timestamp_with_time_zone())
                     .col(ColumnDef::new(Assets::DeletedAt).timestamp_with_time_zone())
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_media_assets_tenant")
-                            .from(Assets::Table, Assets::TenantId)
-                            .to(Tenants::Table, Tenants::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_media_assets_uploader")
-                            .from(Assets::Table, Assets::UploadedBy)
-                            .to(Users::Table, Users::Id)
-                            .on_delete(ForeignKeyAction::SetNull),
-                    )
                     .to_owned(),
             )
             .await?;
+
+        if manager.has_table("tenants").await? {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_media_assets_tenant")
+                        .from(Assets::Table, Assets::TenantId)
+                        .to(Tenants::Table, Tenants::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        }
+
+        if manager.has_table("users").await? {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_media_assets_uploader")
+                        .from(Assets::Table, Assets::UploadedBy)
+                        .to(Users::Table, Users::Id)
+                        .on_delete(ForeignKeyAction::SetNull)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .create_index(
@@ -120,13 +132,6 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Blobs::LastError).text())
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk_media_blobs_tenant")
-                            .from(Blobs::Table, Blobs::TenantId)
-                            .to(Tenants::Table, Tenants::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
                             .name("fk_media_blobs_tenant_asset")
                             .from_tbl(Blobs::Table)
                             .from_col(Blobs::TenantId)
@@ -139,6 +144,19 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+
+        if manager.has_table("tenants").await? {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_media_blobs_tenant")
+                        .from(Blobs::Table, Blobs::TenantId)
+                        .to(Tenants::Table, Tenants::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .create_index(
@@ -207,13 +225,6 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Renditions::LastError).text())
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk_media_renditions_tenant")
-                            .from(Renditions::Table, Renditions::TenantId)
-                            .to(Tenants::Table, Tenants::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
                             .name("fk_media_renditions_tenant_asset")
                             .from_tbl(Renditions::Table)
                             .from_col(Renditions::TenantId)
@@ -248,6 +259,19 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+
+        if manager.has_table("tenants").await? {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_media_renditions_tenant")
+                        .from(Renditions::Table, Renditions::TenantId)
+                        .to(Tenants::Table, Tenants::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .create_table(
@@ -305,23 +329,35 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(UploadSessions::StagingDeletedAt).timestamp_with_time_zone(),
                     )
                     .col(ColumnDef::new(UploadSessions::LastError).text())
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_media_upload_sessions_tenant")
-                            .from(UploadSessions::Table, UploadSessions::TenantId)
-                            .to(Tenants::Table, Tenants::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
-                            .name("fk_media_upload_sessions_actor")
-                            .from(UploadSessions::Table, UploadSessions::ActorId)
-                            .to(Users::Table, Users::Id)
-                            .on_delete(ForeignKeyAction::SetNull),
-                    )
                     .to_owned(),
             )
             .await?;
+
+        if manager.has_table("tenants").await? {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_media_upload_sessions_tenant")
+                        .from(UploadSessions::Table, UploadSessions::TenantId)
+                        .to(Tenants::Table, Tenants::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        }
+
+        if manager.has_table("users").await? {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_media_upload_sessions_actor")
+                        .from(UploadSessions::Table, UploadSessions::ActorId)
+                        .to(Users::Table, Users::Id)
+                        .on_delete(ForeignKeyAction::SetNull)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         if manager.get_database_backend() == DatabaseBackend::Postgres {
             manager

@@ -32,7 +32,12 @@ def write_module_manifest(root: pathlib.Path) -> None:
 
 class CheckMobileCodegenTests(unittest.TestCase):
     def _run_check(
-        self, root: pathlib.Path, manifest: pathlib.Path, snapshot: pathlib.Path
+        self,
+        root: pathlib.Path,
+        manifest: pathlib.Path,
+        snapshot: pathlib.Path,
+        *,
+        surface: str = "admin",
     ):
         argv_backup = sys.argv
         sys.argv = [
@@ -43,6 +48,8 @@ class CheckMobileCodegenTests(unittest.TestCase):
             str(manifest),
             "--snapshot",
             str(snapshot),
+            "--surface",
+            surface,
         ]
         stdout = io.StringIO()
         try:

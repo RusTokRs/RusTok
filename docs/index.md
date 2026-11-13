@@ -298,7 +298,6 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 - [Storefront Documentation](../apps/storefront/docs/README.md)
 - [Next Admin Documentation](../apps/next-admin/docs/README.md)
 - [Next Frontend Documentation](../apps/next-frontend/docs/README.md)
-- [Flutter Admin Mobile Documentation](../rustok_mobile/apps/rustok_admin_mobile/README.md)
 - [Flutter Frontend Mobile Documentation](../rustok_mobile/apps/rustok_frontend_mobile/README.md)
 
 ## Crate Documentation

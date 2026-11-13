@@ -33,13 +33,6 @@ impl MigrationTrait for Migration {
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk_media_asset_reference_holds_tenant")
-                            .from(ReferenceHolds::Table, ReferenceHolds::TenantId)
-                            .to(Tenants::Table, Tenants::Id)
-                            .on_delete(ForeignKeyAction::Cascade),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
                             .name("fk_media_asset_reference_holds_asset")
                             .from_tbl(ReferenceHolds::Table)
                             .from_col(ReferenceHolds::TenantId)
@@ -52,6 +45,19 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+
+        if manager.has_table("tenants").await? {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_media_asset_reference_holds_tenant")
+                        .from(ReferenceHolds::Table, ReferenceHolds::TenantId)
+                        .to(Tenants::Table, Tenants::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         for index in [
             Index::create()

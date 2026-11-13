@@ -6,6 +6,8 @@
 //! Provides the media library service, pure-Rust image resizing and formatting,
 //! storage reconciliation, GraphQL/REST controllers, and consumer reference retention.
 
+pub use rustok_media_ports::*;
+
 pub mod controllers;
 pub mod dto;
 pub mod entities;

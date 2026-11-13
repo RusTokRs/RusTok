@@ -38,6 +38,16 @@ impl WorkflowService {
         actor_id: Option<Uuid>,
         input: CreateWorkflowInput,
     ) -> WorkflowResult<Uuid> {
+        if tenant_id.is_nil() {
+            return Err(WorkflowError::InvalidTriggerConfig(
+                "tenant_id must not be nil".to_string(),
+            ));
+        }
+        if input.name.trim().is_empty() || input.name.len() > 255 {
+            return Err(WorkflowError::InvalidTriggerConfig(
+                "workflow name must contain 1 to 255 characters".to_string(),
+            ));
+        }
         let (webhook_slug, webhook_secret) =
             normalize_webhook_configuration(input.webhook_slug, input.webhook_secret)?;
 
@@ -65,6 +75,9 @@ impl WorkflowService {
     }
 
     pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> WorkflowResult<WorkflowResponse> {
+        if tenant_id.is_nil() || id.is_nil() {
+            return Err(WorkflowError::NotFound(id));
+        }
         let workflow = WorkflowEntity::find_by_id(id)
             .filter(workflow::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -95,6 +108,9 @@ impl WorkflowService {
     }
 
     pub async fn list(&self, tenant_id: Uuid) -> WorkflowResult<Vec<WorkflowSummary>> {
+        if tenant_id.is_nil() {
+            return Ok(Vec::new());
+        }
         let workflows = WorkflowEntity::find()
             .filter(workflow::Column::TenantId.eq(tenant_id))
             .order_by(workflow::Column::CreatedAt, Order::Desc)
@@ -123,6 +139,16 @@ impl WorkflowService {
         actor_id: Option<Uuid>,
         input: UpdateWorkflowInput,
     ) -> WorkflowResult<()> {
+        if tenant_id.is_nil() || id.is_nil() {
+            return Err(WorkflowError::NotFound(id));
+        }
+        if let Some(ref name) = input.name {
+            if name.trim().is_empty() || name.len() > 255 {
+                return Err(WorkflowError::InvalidTriggerConfig(
+                    "workflow name must contain 1 to 255 characters".to_string(),
+                ));
+            }
+        }
         let transaction = self.db.begin().await?;
         let existing = lock_workflow_for_update(&transaction, tenant_id, id).await?;
 
@@ -165,6 +191,9 @@ impl WorkflowService {
     }
 
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> WorkflowResult<()> {
+        if tenant_id.is_nil() || id.is_nil() {
+            return Err(WorkflowError::NotFound(id));
+        }
         let transaction = self.db.begin().await?;
         let existing = lock_workflow_for_update(&transaction, tenant_id, id).await?;
         let model: WorkflowActiveModel = existing.into();
@@ -182,6 +211,9 @@ impl WorkflowService {
         workflow_id: Uuid,
         input: CreateWorkflowStepInput,
     ) -> WorkflowResult<Uuid> {
+        if tenant_id.is_nil() || workflow_id.is_nil() {
+            return Err(WorkflowError::NotFound(workflow_id));
+        }
         let transaction = self.db.begin().await?;
         // Lock the parent workflow so concurrent workflow updates/restores cannot
         // interleave with step creation.
@@ -210,6 +242,9 @@ impl WorkflowService {
         step_id: Uuid,
         input: UpdateWorkflowStepInput,
     ) -> WorkflowResult<()> {
+        if tenant_id.is_nil() || workflow_id.is_nil() || step_id.is_nil() {
+            return Err(WorkflowError::StepNotFound(step_id));
+        }
         let transaction = self.db.begin().await?;
         lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
 
@@ -247,6 +282,9 @@ impl WorkflowService {
         workflow_id: Uuid,
         step_id: Uuid,
     ) -> WorkflowResult<()> {
+        if tenant_id.is_nil() || workflow_id.is_nil() || step_id.is_nil() {
+            return Err(WorkflowError::StepNotFound(step_id));
+        }
         let transaction = self.db.begin().await?;
         lock_workflow_for_update(&transaction, tenant_id, workflow_id).await?;
 
@@ -268,6 +306,9 @@ impl WorkflowService {
         &self,
         workflow_id: Uuid,
     ) -> WorkflowResult<Vec<crate::entities::WorkflowStep>> {
+        if workflow_id.is_nil() {
+            return Ok(Vec::new());
+        }
         let steps = WorkflowStepEntity::find()
             .filter(workflow_step::Column::WorkflowId.eq(workflow_id))
             .order_by(workflow_step::Column::Position, Order::Asc)
@@ -286,6 +327,9 @@ impl WorkflowService {
         payload: serde_json::Value,
         force: bool,
     ) -> WorkflowResult<Uuid> {
+        if tenant_id.is_nil() || workflow_id.is_nil() {
+            return Err(WorkflowError::NotFound(workflow_id));
+        }
         let workflow = WorkflowEntity::find_by_id(workflow_id)
             .filter(workflow::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -318,6 +362,9 @@ impl WorkflowService {
         workflow_id: Uuid,
         auto_disable_threshold: u32,
     ) -> WorkflowResult<()> {
+        if tenant_id.is_nil() || workflow_id.is_nil() {
+            return Err(WorkflowError::NotFound(workflow_id));
+        }
         // Increment failure_count
         workflow::Entity::update_many()
             .col_expr(
@@ -367,6 +414,9 @@ impl WorkflowService {
         tenant_id: Uuid,
         workflow_id: Uuid,
     ) -> WorkflowResult<Vec<WorkflowExecutionResponse>> {
+        if tenant_id.is_nil() || workflow_id.is_nil() {
+            return Ok(Vec::new());
+        }
         let executions: Vec<crate::entities::WorkflowExecution> = WorkflowExecutionEntity::find()
             .filter(workflow_execution::Column::WorkflowId.eq(workflow_id))
             .filter(workflow_execution::Column::TenantId.eq(tenant_id))
@@ -394,6 +444,9 @@ impl WorkflowService {
         tenant_id: Uuid,
         execution_id: Uuid,
     ) -> WorkflowResult<WorkflowExecutionResponse> {
+        if tenant_id.is_nil() || execution_id.is_nil() {
+            return Err(WorkflowError::ExecutionNotFound(execution_id));
+        }
         let exec = WorkflowExecutionEntity::find_by_id(execution_id)
             .filter(workflow_execution::Column::TenantId.eq(tenant_id))
             .one(&self.db)
@@ -420,6 +473,9 @@ impl WorkflowService {
         body: &[u8],
         signature: Option<&str>,
     ) -> WorkflowResult<Vec<Uuid>> {
+        if tenant_id.is_nil() || webhook_slug.trim().is_empty() {
+            return Ok(vec![]);
+        }
         let matching = WorkflowEntity::find()
             .filter(workflow::Column::TenantId.eq(tenant_id))
             .filter(workflow::Column::Status.eq(WorkflowStatus::Active.to_string()))
