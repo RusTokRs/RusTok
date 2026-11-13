@@ -147,22 +147,51 @@ if (/Effect::new\(/.test(providerSource)) {
 // admin shell serves no script. `SsrMode::Async` is the mode that waits for the resources of the
 // route and renders one complete document, so every route that renders a moved surface has to
 // declare it.
+// The route that resolves module availability is the layout, not the module leaves: the provider
+// lives in `AppLayout`, which wraps every admin surface, and the sidebar renders the module
+// navigation from it on all of them. Declaring the mode on a leaf would leave the sidebar streaming
+// a fallback on every other route, so the assertion is on the route that owns the resource.
+//
+// Leptos derives a listing's mode from the route definition and promotes it to the most restrictive
+// mode among its ancestors, so a child cannot lower what the layout declares.
 const routerSource = read("apps/admin/src/app/router.rs");
-const moduleRoutes = [
-  ...routerSource.matchAll(
-    /<Route[\s\S]*?path=path!\(\s*"(\/modules[^"]*)"[\s\S]*?view=ModuleAdminPage[\s\S]*?\/>/g,
-  ),
+const layoutRoutes = [
+  ...routerSource.matchAll(/<ParentRoute[\s\S]*?view=AppLayout[\s\S]*?>/g),
 ];
-if (moduleRoutes.length === 0) {
-  failures.push("apps/admin/src/app/router.rs: no module route was found to check");
+if (layoutRoutes.length !== 1) {
+  failures.push(
+    `apps/admin/src/app/router.rs: expected exactly one route rendering \`AppLayout\`, found ` +
+      `${layoutRoutes.length}; the module-availability provider is mounted there, so its SSR mode ` +
+      "has to be checkable at exactly one place.",
+  );
 }
-for (const match of moduleRoutes) {
-  const route = match[0];
-  if (!route.includes("ssr=SsrMode::Async")) {
+for (const match of layoutRoutes) {
+  if (!match[0].includes("ssr=SsrMode::Async")) {
     failures.push(
-      `apps/admin/src/app/router.rs: the route for \`${match[1]}\` does not declare ` +
-        "`ssr=SsrMode::Async`, so its resources are written as a fallback and a `<template>` that " +
-        "this shell never runs. A host with no hydration script cannot show the surface.",
+      "apps/admin/src/app/router.rs: the route rendering `AppLayout` does not declare " +
+        "`ssr=SsrMode::Async`. `AppLayout` mounts the module-availability provider and renders the " +
+        "sidebar from it, so under the default mode every admin page streams that `Suspense` as a " +
+        "fallback plus a `<template>` this shell never runs.",
+    );
+  }
+}
+
+// The layout route sets `Async`, which covers every page it wraps. Inside such a render there is no
+// streaming left to fill a `Suspense` later, and a `LocalResource` is `pending()` on the server, so
+// any surface that still uses one arrives empty even though the route was made to wait. The
+// installer is the only page outside the layout, and it declares no mode of its own.
+const adminSources = [
+  "apps/admin/src/pages/dashboard.rs",
+  "apps/admin/src/pages/modules.rs",
+  "apps/admin/src/pages/email_settings.rs",
+  "apps/admin/src/app/modules/search_composition.rs",
+  "apps/admin/src/app/page_builder_contributions.rs",
+];
+for (const file of adminSources) {
+  if (/LocalResource::new\(/.test(read(file))) {
+    failures.push(
+      `${file}: creates a \`LocalResource\` inside the \`Async\` admin layout, where nothing fills ` +
+        "the fallback on the server. Load this state through `Resource` so it is in the response.",
     );
   }
 }

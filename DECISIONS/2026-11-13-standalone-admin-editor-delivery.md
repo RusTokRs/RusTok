@@ -91,9 +91,25 @@ values cross the boundary, and the render derives the status again. That keeps t
 serialisable without a second wire type and without letting a consumer fabricate an observed
 snapshot — an absent health value stays absent.
 
-The two module routes (`/modules/:module_slug` and `/modules/:module_slug/*module_path`) declare
-`ssr=SsrMode::Async` (`apps/admin/src/app/router.rs`), so the resources the module surfaces load are
-resolved into the document rather than streamed as a fallback plus a template no script replaces.
+The layout route (`<ParentRoute view=AppLayout>`) declares `ssr=SsrMode::Async`
+(`apps/admin/src/app/router.rs`), so the resources every admin surface loads are resolved into the
+document rather than streamed as a fallback plus a template no script replaces.
+
+The mode belongs on that route and not on the module leaves, because the route owns the resource: it
+mounts `EnabledModulesProvider`, and the sidebar renders the module navigation from it on *every*
+admin page, `ModuleGuard` on `/mcp` and `/email` included. Declaring the mode per module route left
+every other page streaming the sidebar's `Suspense` — a defect this decision had, briefly, before the
+assertion moved to the route that actually mounts the provider. Leptos promotes a listing to the most
+restrictive mode among its ancestors, so the layout's declaration covers its children and a child
+cannot lower it.
+
+Because that mode now governs every admin page, the layout's own pages had to stop depending on a
+component that can only resolve in the browser: under `Async` there is no stream left to fill a
+`Suspense` later, and a `LocalResource` is `pending()` on the server, so the dashboard, the modules
+index, the search composition and the email settings form arrived empty. They load through `Resource`
+now. The installer is the one page outside the layout — it declares no mode of its own and keeps its
+browser-side loader, because the default stream degrades there to the page's own fallback rather than
+to a server render that waits.
 
 Module availability itself was the second half of the same defect: `EnabledModulesProvider` resolved
 the effective policy through `LocalResource` and copied the result into signals from an `Effect`. On

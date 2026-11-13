@@ -12,18 +12,6 @@ use crate::shared::api::ApiError;
 use crate::shared::ui::PageHeader;
 use crate::use_admin_locale;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
-where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
-{
-    LocalResource::new(move || fetcher(source()))
-}
-
 #[derive(Clone, Deserialize, Serialize)]
 struct ModulesPageData {
     modules: Vec<ModuleInfo>,
@@ -42,7 +30,7 @@ pub fn Modules() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
 
-    let modules_resource = local_resource(
+    let modules_resource = Resource::new(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             let modules = transport::fetch_modules(token_value.clone(), tenant_value.clone())

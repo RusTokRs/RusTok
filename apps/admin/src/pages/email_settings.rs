@@ -7,18 +7,6 @@ use crate::features::email::transport;
 use crate::shared::ui::{Alert, AlertVariant, Button, Input, PageHeader};
 use crate::use_admin_locale;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
-where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
-{
-    LocalResource::new(move || fetcher(source()))
-}
-
 #[component]
 pub fn EmailSettingsPage() -> impl IntoView {
     let i18n = use_admin_locale();
@@ -34,7 +22,10 @@ pub fn EmailSettingsPage() -> impl IntoView {
     let (loaded, set_loaded) = signal(false);
     let (schema_version, set_schema_version) = signal(0_i32);
 
-    let settings_resource = local_resource(
+    // A `Resource`, not a `LocalResource`: the page is served `Async` inside the admin layout, and
+    // a `LocalResource` is `pending()` on the server, so the form arrived empty and the `Effect`
+    // that fills it never ran.
+    let settings_resource = Resource::new(
         move || (token.get(), tenant.get()),
         move |(token_value, tenant_value)| async move {
             transport::fetch_email_settings(token_value, tenant_value).await

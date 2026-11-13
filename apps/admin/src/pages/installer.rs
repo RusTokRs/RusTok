@@ -11,6 +11,10 @@ use rustok_installer::{
 use crate::features::installer::transport;
 use crate::shared::ui::PageHeader;
 
+// The installer is the one page outside the admin layout: it declares no `ssr` mode of its own and
+// is served by the default out-of-order stream, so a `LocalResource` here degrades to the page's own
+// fallback rather than reaching an `Async` render. It is setup-time UI, outside the surfaces the
+// delivery decision covers, so it keeps the browser-side loader.
 fn local_resource<S, Fut, T>(
     source: impl Fn() -> S + 'static,
     fetcher: impl Fn(S) -> Fut + 'static,

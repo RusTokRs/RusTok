@@ -794,7 +794,10 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
             that a script swaps in, so even resolved data stays out of the document.
             `SsrMode::Async` is the mode that emits one complete document, `SsrMode::PartiallyBlocked`
             is a TODO in the axum integration in 0.8.21, and the route listing inherits the mode from
-            the route definition, so the mode is declared per route. The module routes now do.
+            the route definition, and a listing is promoted to the most restrictive mode among its
+            ancestors, so the mode is declared on the route that owns the resource. The layout route
+            does: it mounts `EnabledModulesProvider`, and the sidebar renders the module navigation
+            from it on every admin page.
           Module availability was the other half: `EnabledModulesProvider` resolved it through
           `LocalResource` and copied it into signals from an `Effect`, so `is_loading` was still
           `true` in the response and the module route rendered its loading branch before the editor
