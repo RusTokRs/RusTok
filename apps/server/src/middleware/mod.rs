@@ -57,69 +57,63 @@ pub mod tenant {
     }
 
     /// Invalidate the tenant resolver namespace through a durable generation rotation.
-    pub async fn invalidate_tenant_cache(ctx: &ServerRuntimeContext, _identifier: &str) {
-        rotate_tenant_cache_generation(ctx, None, "manual_tenant_invalidation").await;
+    pub async fn invalidate_tenant_cache(
+        ctx: &ServerRuntimeContext,
+        _identifier: &str,
+    ) -> crate::error::Result<()> {
+        rotate_tenant_cache_generation(ctx, None, "manual_tenant_invalidation").await
     }
 
     /// Compatibility entry point for callers that used to publish a per-key host invalidation.
     /// Tenant resolver backends share one generation, so rotating it safely invalidates all aliases.
-    pub async fn invalidate_tenant_cache_by_host(ctx: &ServerRuntimeContext, _host: &str) {
-        rotate_tenant_cache_generation(ctx, None, "manual_host_invalidation").await;
+    pub async fn invalidate_tenant_cache_by_host(
+        ctx: &ServerRuntimeContext,
+        _host: &str,
+    ) -> crate::error::Result<()> {
+        rotate_tenant_cache_generation(ctx, None, "manual_host_invalidation").await
     }
 
     /// Compatibility entry point for callers that used to publish a per-key slug invalidation.
-    pub async fn invalidate_tenant_cache_by_slug(ctx: &ServerRuntimeContext, _slug: &str) {
-        rotate_tenant_cache_generation(ctx, None, "manual_slug_invalidation").await;
+    pub async fn invalidate_tenant_cache_by_slug(
+        ctx: &ServerRuntimeContext,
+        _slug: &str,
+    ) -> crate::error::Result<()> {
+        rotate_tenant_cache_generation(ctx, None, "manual_slug_invalidation").await
     }
 
     /// Compatibility entry point for callers that used to publish a per-key UUID invalidation.
-    pub async fn invalidate_tenant_cache_by_uuid(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
-        rotate_tenant_cache_generation(ctx, Some(tenant_id), "manual_uuid_invalidation").await;
+    pub async fn invalidate_tenant_cache_by_uuid(
+        ctx: &ServerRuntimeContext,
+        tenant_id: Uuid,
+    ) -> crate::error::Result<()> {
+        rotate_tenant_cache_generation(ctx, Some(tenant_id), "manual_uuid_invalidation").await
     }
 
     async fn rotate_tenant_cache_generation(
         ctx: &ServerRuntimeContext,
         tenant_id: Option<Uuid>,
         cause: &'static str,
-    ) {
-        let Some(cache) = ctx.shared_get::<CacheService>() else {
-            tracing::warn!(
-                cause,
-                "Tenant cache generation rotation skipped: cache service missing"
-            );
-            return;
-        };
+    ) -> crate::error::Result<()> {
+        let cache = ctx.shared_get::<CacheService>().ok_or_else(|| {
+            crate::error::Error::Cache("cache service is not initialized".to_string())
+        })?;
 
-        let generation = match cache
+        let generation = cache
             .bump_cache_backend_generation(TENANT_CACHE_BACKEND_PREFIX)
             .await
-        {
-            Ok(generation) => {
-                let _ = crate::services::tenant_cache_generation::observe_tenant_backend_generation(
-                    generation.generation,
-                );
-                generation
-            }
-            Err(error) => {
-                tracing::warn!(%error, cause, "Tenant cache generation rotation failed");
-                return;
-            }
-        };
-        let emitted_at_unix_ms = match unix_ms_at(SystemTime::now()) {
-            Ok(timestamp) => timestamp,
-            Err(error) => {
-                tracing::error!(
-                    %error,
-                    cause,
-                    "Tenant cache generation publication aborted because system time is before the Unix epoch"
-                );
-                return;
-            }
-        };
+            .map_err(|error| crate::error::Error::Cache(error.to_string()))?;
+        crate::services::tenant_cache_generation::observe_tenant_backend_generation(
+            generation.generation,
+        )?;
+        let emitted_at_unix_ms = unix_ms_at(SystemTime::now()).map_err(|error| {
+            crate::error::Error::Message(format!(
+                "tenant cache invalidation timestamp is unavailable: {error}"
+            ))
+        })?;
         let invalidation_key = tenant_id
             .map(|tenant_id| tenant_id.to_string())
             .unwrap_or_else(|| "*".to_string());
-        let record = match DurableCacheInvalidationRecord::new(
+        let record = DurableCacheInvalidationRecord::new(
             Uuid::new_v4(),
             tenant_id,
             TENANT_CACHE_GENERATION_CHANNEL,
@@ -128,27 +122,24 @@ pub mod tenant {
             emitted_at_unix_ms,
             cause,
             None,
-        ) {
-            Ok(record) => record,
-            Err(error) => {
-                tracing::warn!(%error, cause, "Tenant cache generation record creation failed");
-                return;
-            }
-        };
-        let outcome = match cache.invalidations().publish_durable(&record).await {
-            Ok(outcome) => outcome,
-            Err(error) => {
-                tracing::warn!(%error, cause, "Tenant cache generation publication failed");
-                return;
-            }
-        };
+        )
+        .map_err(|error| crate::error::Error::Cache(error.to_string()))?;
+        let outcome = cache
+            .invalidations()
+            .publish_durable(&record)
+            .await
+            .map_err(|error| crate::error::Error::Cache(error.to_string()))?;
 
         if cache.redis_configuration_present() && !outcome.redis_published {
             tracing::warn!(
                 cause,
                 "Tenant generation advanced but Redis publication was unavailable"
             );
-        } else if !cache.redis_configuration_present() {
+            return Err(crate::error::Error::Cache(
+                "Redis tenant-generation publication was unavailable".to_string(),
+            ));
+        }
+        if !cache.redis_configuration_present() {
             let listener = tenant_invalidation_listener_snapshot(ctx).await;
             if listener.status != TenantInvalidationListenerStatus::Healthy || !listener.local_ready
             {
@@ -158,8 +149,12 @@ pub mod tenant {
                     error = ?listener.last_error,
                     "Tenant generation advanced without the canonical local listener"
                 );
+                return Err(crate::error::Error::Cache(
+                    "canonical local tenant invalidation listener is not healthy".to_string(),
+                ));
             }
         }
+        Ok(())
     }
 
     fn unix_ms_at(time: SystemTime) -> Result<u64, std::time::SystemTimeError> {
@@ -185,8 +180,23 @@ pub mod tenant {
 
     #[cfg(test)]
     mod tests {
-        use super::unix_ms_at;
+        use super::{invalidate_tenant_cache, unix_ms_at};
+        use crate::common::settings::RustokSettings;
+        use crate::services::server_runtime_context::ServerRuntimeContext;
         use std::time::{Duration, UNIX_EPOCH};
+
+        #[tokio::test]
+        async fn tenant_invalidation_reports_missing_cache_instead_of_silently_succeeding() {
+            let db = sea_orm::Database::connect("sqlite::memory:")
+                .await
+                .expect("in-memory database");
+            let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+
+            let error = invalidate_tenant_cache(&ctx, "tenant")
+                .await
+                .expect_err("missing cache service is a failed invalidation");
+            assert!(matches!(error, crate::error::Error::Cache(_)));
+        }
 
         #[test]
         fn invalidation_timestamp_rejects_pre_epoch_clock() {

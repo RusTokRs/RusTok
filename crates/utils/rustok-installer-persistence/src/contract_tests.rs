@@ -169,6 +169,21 @@ async fn session_persistence_lifecycle_and_state_transitions() {
 }
 
 #[tokio::test]
+async fn reserved_session_id_is_used_by_the_durable_session_row() {
+    let db = setup_contract_test_db().await;
+    let service = InstallerPersistenceService::new(db);
+    let expected_id = Uuid::new_v4();
+    let plan = sample_plan();
+    let session = service
+        .create_session_with_id(expected_id, &plan, None, None)
+        .await
+        .expect("reserved session should be persisted");
+
+    assert_eq!(session.id, expected_id);
+    assert_eq!(session.status, "draft");
+}
+
+#[tokio::test]
 async fn receipt_persistence_and_conversion() {
     let db = setup_contract_test_db().await;
     let service = InstallerPersistenceService::new(db);

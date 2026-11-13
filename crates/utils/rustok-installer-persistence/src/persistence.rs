@@ -28,15 +28,21 @@ impl InstallerPersistenceService {
     pub async fn create_http_job(
         &self,
         job_id: Uuid,
+        session_id: Uuid,
         submitted_at: chrono::DateTime<Utc>,
     ) -> Result<install_http_job::Model, sea_orm::DbErr> {
+        if job_id.is_nil() || session_id.is_nil() {
+            return Err(sea_orm::DbErr::Custom(
+                "installer job and session IDs must not be nil".to_string(),
+            ));
+        }
         install_http_job::ActiveModel {
             id: Set(job_id),
             status: Set(HTTP_INSTALL_JOB_RUNNING_STATUS.to_string()),
             submitted_at: Set(submitted_at),
             started_at: Set(submitted_at),
             finished_at: Set(None),
-            session_id: Set(None),
+            session_id: Set(Some(session_id)),
             tenant_id: Set(None),
             output: Set(None),
             error_message: Set(None),
@@ -139,9 +145,25 @@ impl InstallerPersistenceService {
         tenant_id: Option<Uuid>,
         created_by: Option<Uuid>,
     ) -> Result<install_session::Model, sea_orm::DbErr> {
+        self.create_session_with_id(rustok_core::generate_id(), plan, tenant_id, created_by)
+            .await
+    }
+
+    pub async fn create_session_with_id(
+        &self,
+        session_id: Uuid,
+        plan: &InstallPlan,
+        tenant_id: Option<Uuid>,
+        created_by: Option<Uuid>,
+    ) -> Result<install_session::Model, sea_orm::DbErr> {
+        if session_id.is_nil() {
+            return Err(sea_orm::DbErr::Custom(
+                "installer session ID must not be nil".to_string(),
+            ));
+        }
         let now = Utc::now();
         install_session::ActiveModel {
-            id: Set(rustok_core::generate_id()),
+            id: Set(session_id),
             tenant_id: Set(tenant_id),
             status: Set(install_state_value(InstallState::Draft).to_string()),
             profile: Set(serde_name(plan.profile)),
@@ -496,7 +518,7 @@ mod tests {
 
         let writer = InstallerPersistenceService::new(db.clone());
         writer
-            .create_http_job(job_id, submitted_at)
+            .create_http_job(job_id, job_id, submitted_at)
             .await
             .expect("job should be created");
 
@@ -509,6 +531,7 @@ mod tests {
 
         assert_eq!(stored.id, job_id);
         assert_eq!(stored.status, "running");
+        assert_eq!(stored.session_id, Some(job_id));
         assert_eq!(stored.submitted_at, submitted_at);
         assert_eq!(stored.started_at, submitted_at);
     }
@@ -520,11 +543,11 @@ mod tests {
         let writer = InstallerPersistenceService::new(db.clone());
 
         writer
-            .create_http_job(job_id, Utc::now())
+            .create_http_job(job_id, job_id, Utc::now())
             .await
             .expect("job should be created");
 
-        let output = sample_output(Uuid::new_v4(), Uuid::new_v4());
+        let output = sample_output(job_id, Uuid::new_v4());
         writer
             .finish_http_job_succeeded(job_id, output.session_id, output.tenant_id, &output)
             .await
@@ -555,7 +578,7 @@ mod tests {
         let service = InstallerPersistenceService::new(db);
 
         service
-            .create_http_job(job_id, Utc::now())
+            .create_http_job(job_id, job_id, Utc::now())
             .await
             .expect("job should be created");
         service

@@ -104,6 +104,7 @@ pub struct RusToKMcpServer {
     enabled_tools: Option<Arc<HashSet<String>>>,
     access_context: Option<Arc<McpAccessContext>>,
     runtime_binding: Option<Arc<McpRuntimeBinding>>,
+    access_resolver: Option<SharedMcpAccessResolver>,
     session_context: Arc<McpSessionContext>,
     audit_sink: Option<SharedMcpAuditSink>,
 }
@@ -116,6 +117,7 @@ impl Clone for RusToKMcpServer {
             enabled_tools: self.enabled_tools.as_ref().map(Arc::clone),
             access_context: self.access_context.as_ref().map(Arc::clone),
             runtime_binding: self.runtime_binding.as_ref().map(Arc::clone),
+            access_resolver: self.access_resolver.as_ref().map(Arc::clone),
             session_context: Arc::clone(&self.session_context),
             audit_sink: self.audit_sink.as_ref().map(Arc::clone),
         }
@@ -130,6 +132,7 @@ impl RusToKMcpServer {
             enabled_tools: None,
             access_context: None,
             runtime_binding: None,
+            access_resolver: None,
             session_context: Arc::new(McpSessionContext::default()),
             audit_sink: None,
         }
@@ -142,6 +145,7 @@ impl RusToKMcpServer {
             enabled_tools: Some(Arc::new(enabled_tools)),
             access_context: None,
             runtime_binding: None,
+            access_resolver: None,
             session_context: Arc::new(McpSessionContext::default()),
             audit_sink: None,
         }
@@ -156,6 +160,7 @@ impl RusToKMcpServer {
             enabled_tools: None,
             access_context: None,
             runtime_binding: None,
+            access_resolver: None,
             session_context: Arc::new(McpSessionContext::default()),
             audit_sink: None,
         }
@@ -172,6 +177,7 @@ impl RusToKMcpServer {
             enabled_tools: Some(Arc::new(enabled_tools)),
             access_context: None,
             runtime_binding: None,
+            access_resolver: None,
             session_context: Arc::new(McpSessionContext::default()),
             audit_sink: None,
         }
@@ -185,6 +191,11 @@ impl RusToKMcpServer {
     pub fn with_runtime_binding(mut self, runtime_binding: McpRuntimeBinding) -> Self {
         self.access_context = Some(Arc::new(runtime_binding.access_context.clone()));
         self.runtime_binding = Some(Arc::new(runtime_binding));
+        self
+    }
+
+    pub fn with_shared_access_resolver(mut self, resolver: SharedMcpAccessResolver) -> Self {
+        self.access_resolver = Some(resolver);
         self
     }
 
@@ -274,6 +285,25 @@ impl RusToKMcpServer {
             }
             None => true,
         }
+    }
+
+    async fn resolve_live_binding(
+        &self,
+    ) -> Result<Option<McpRuntimeBinding>, rmcp::ErrorData> {
+        let Some(resolver) = &self.access_resolver else {
+            return Ok(None);
+        };
+        resolver
+            .resolve_runtime_binding(&self.session_context)
+            .await
+            .map(Some)
+            .map_err(|error| {
+                tracing::warn!(%error, "MCP access revalidation failed");
+                rmcp::ErrorData::internal_error(
+                    "MCP credentials or policy could not be revalidated",
+                    None,
+                )
+            })
     }
 
     fn protocol_version() -> rmcp::model::ProtocolVersion {
@@ -400,6 +430,21 @@ impl ServerHandler for RusToKMcpServer {
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, rmcp::ErrorData> {
+        if request.name.as_ref() != TOOL_MCP_HEALTH {
+            if let Some(binding) = self.resolve_live_binding().await? {
+                let mut refreshed = self.clone();
+                refreshed.access_context = Some(Arc::new(binding.access_context.clone()));
+                refreshed.runtime_binding = Some(Arc::new(binding));
+                refreshed.access_resolver = None;
+                // Re-enter once with the refreshed binding; boxing breaks the
+                // recursive async future type, and clearing the resolver prevents recursion.
+                return Box::pin(<Self as ServerHandler>::call_tool(
+                    &refreshed, request, _context,
+                ))
+                .await;
+            }
+        }
+
         tracing::info!(tool = %request.name, "MCP tool call");
 
         if !self.tool_enabled_by_legacy_config(request.name.as_ref()) {
@@ -781,9 +826,14 @@ pub async fn serve_stdio(config: McpServerConfig) -> Result<()> {
         audit_sink,
     } = config;
 
+    let dynamic_access_resolver = if access_context.is_none() {
+        access_resolver.clone()
+    } else {
+        None
+    };
     let runtime_binding = if let Some(access_context) = access_context {
         Some(McpRuntimeBinding::from_access_context(access_context))
-    } else if let Some(access_resolver) = access_resolver {
+    } else if let Some(access_resolver) = dynamic_access_resolver.as_ref() {
         Some(
             access_resolver
                 .resolve_runtime_binding(&session_context)
@@ -808,6 +858,9 @@ pub async fn serve_stdio(config: McpServerConfig) -> Result<()> {
     if let Some(audit_sink) = audit_sink {
         server = server.with_shared_audit_sink(audit_sink);
     }
+    if let Some(access_resolver) = dynamic_access_resolver {
+        server = server.with_shared_access_resolver(access_resolver);
+    }
 
     server
         .serve(stdio())
@@ -824,3 +877,7 @@ fn require_args(
 ) -> Result<serde_json::Map<String, serde_json::Value>, rmcp::ErrorData> {
     args.ok_or_else(|| rmcp::ErrorData::invalid_params("Missing arguments", None))
 }
+
+#[cfg(test)]
+#[path = "server_live_authority_tests.rs"]
+mod live_authority_tests;

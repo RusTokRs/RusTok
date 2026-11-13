@@ -255,9 +255,17 @@ impl McpManagementService {
         let tokens = mcp_tokens::Entity::find_by_client(db, client.id)
             .await
             .map_err(map_db_err)?;
-        let effective_access_context = policy.as_ref().map(|policy| {
-            policy.to_access_context(&client, Some(identity_for_client(&client, policy)))
-        });
+        let effective_access_context = policy
+            .as_ref()
+            .map(|policy| {
+                identity_for_client(&client, policy)
+                    .and_then(|identity| policy.to_access_context(&client, Some(identity)))
+            })
+            .transpose()
+            .map_err(|error| {
+                tracing::error!(%error, client_id = %client.id, "Persisted MCP policy is invalid");
+                Error::InternalServerError
+            })?;
 
         Ok(Some(McpClientDetails {
             client,
@@ -923,15 +931,18 @@ where
     Ok((token, plaintext_token))
 }
 
-fn identity_for_client(client: &mcp_clients::Model, policy: &mcp_policies::Model) -> McpIdentity {
-    McpIdentity {
+fn identity_for_client(
+    client: &mcp_clients::Model,
+    policy: &mcp_policies::Model,
+) -> Result<McpIdentity, String> {
+    Ok(McpIdentity {
         actor_id: client.id.to_string(),
         actor_type: client.actor_type(),
         tenant_id: Some(client.tenant_id.to_string()),
         delegated_user_id: client.delegated_user_id.map(|value| value.to_string()),
         display_name: Some(client.display_name.clone()),
-        scopes: policy.granted_scopes_list(),
-    }
+        scopes: policy.granted_scopes_list()?,
+    })
 }
 
 fn generate_token() -> String {

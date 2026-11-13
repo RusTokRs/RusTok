@@ -205,7 +205,10 @@ fn start_source_retry_handoff_worker(
         instance_id,
     ));
     runtime_ctx.shared_insert(CommentsTcpDelegationScheduleAuditHandoffWorkerHandle(
-        Arc::new(CommentsTcpDelegationScheduleAuditHandoffWorkerRuntime { instance_id, task }),
+        Arc::new(CommentsTcpDelegationScheduleAuditHandoffWorkerRuntime {
+            instance_id,
+            task: std::sync::Mutex::new(Some(task)),
+        }),
     ));
 
     tracing::info!(

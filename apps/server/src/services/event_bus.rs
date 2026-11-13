@@ -23,26 +23,53 @@ pub struct SharedEventBus(pub Arc<EventBus>);
 struct EventBusStartLock(Arc<Mutex<()>>);
 
 struct AbortOnDropEventForwarderTask {
-    task: JoinHandle<()>,
+    task: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl AbortOnDropEventForwarderTask {
     fn new(task: JoinHandle<()>) -> Self {
-        Self { task }
+        Self {
+            task: Mutex::new(Some(task)),
+        }
     }
 
     fn is_running(&self) -> bool {
-        !self.task.is_finished()
+        self.task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|task| !task.is_finished())
     }
 
     fn abort(&self) {
-        self.task.abort();
+        if let Some(task) = self
+            .task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            task.abort();
+        }
+    }
+
+    fn take_task(&self) -> Option<JoinHandle<()>> {
+        self.task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 }
 
 impl Drop for AbortOnDropEventForwarderTask {
     fn drop(&mut self) {
-        self.task.abort();
+        if let Some(task) = self
+            .task
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            task.abort();
+        }
     }
 }
 
@@ -67,6 +94,10 @@ impl EventForwarderHandle {
 
     pub(crate) fn abort(&self) {
         self.0.abort();
+    }
+
+    pub(crate) fn take_task(&self) -> Option<JoinHandle<()>> {
+        self.0.take_task()
     }
 }
 
@@ -102,6 +133,13 @@ fn ensure_event_forwarder(ctx: &ServerRuntimeContext, bus: Arc<EventBus>) {
             .unwrap_or(default_transport)
     };
 
+    if ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
+    {
+        return;
+    }
+
     if let Some(existing) = ctx.shared_get::<EventForwarderHandle>() {
         if existing.is_running() {
             return;
@@ -113,6 +151,18 @@ fn ensure_event_forwarder(ctx: &ServerRuntimeContext, bus: Arc<EventBus>) {
     let transport = shared_transport;
     let task = tokio::spawn(supervise_event_forwarder(bus, transport));
     ctx.shared_insert(EventForwarderHandle::new(task));
+}
+
+pub(crate) fn take_forwarder_task_for_shutdown(
+    ctx: &ServerRuntimeContext,
+) -> Option<JoinHandle<()>> {
+    let start_lock = ctx.shared_get_or_insert_with(EventBusStartLock::default);
+    let _start_guard = start_lock
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    ctx.shared_take::<EventForwarderHandle>()
+        .and_then(|forwarder| forwarder.take_task())
 }
 
 async fn supervise_event_forwarder(bus: Arc<EventBus>, transport: Arc<dyn EventTransport>) {

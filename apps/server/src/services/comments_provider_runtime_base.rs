@@ -24,7 +24,7 @@ use rustok_core::ModuleRuntimeExtensions;
 use tokio::{
     net::TcpListener,
     sync::Semaphore,
-    task::{JoinError, JoinSet},
+    task::{JoinError, JoinHandle, JoinSet},
     time::timeout,
 };
 use uuid::Uuid;
@@ -182,6 +182,8 @@ pub struct CommentsTcpListenerHandle {
     pub instance_id: u64,
     pub local_addr: SocketAddr,
 }
+
+pub(crate) struct CommentsTcpListenerTask(pub(crate) JoinHandle<()>);
 
 struct CommentsTcpListenerLifecycleReservation;
 
@@ -377,7 +379,7 @@ async fn start_comments_tcp_listener(
     let stop_handle = ensure_stop_handle(runtime_ctx);
     let stop_rx = stop_handle.subscribe();
     let instance_id = COMMENTS_TCP_LISTENER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
-    tokio::spawn(run_comments_tcp_listener(
+    let task = tokio::spawn(run_comments_tcp_listener(
         listener,
         adapter,
         channel_acceptor,
@@ -389,6 +391,7 @@ async fn start_comments_tcp_listener(
         instance_id,
         local_addr,
     });
+    runtime_ctx.shared_insert(CommentsTcpListenerTask(task));
 
     tracing::info!(
         instance_id,

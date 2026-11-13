@@ -1,8 +1,6 @@
 use async_graphql::{Context, Object, Result};
 use rustok_api::Permission;
-use rustok_core::EventBus;
 use rustok_core::field_schema::FieldType;
-use rustok_events::EventEnvelope;
 use uuid::Uuid;
 
 use super::{
@@ -60,7 +58,7 @@ impl FlexMutation {
             .transpose()?;
 
         let entity_type = resolve_entity_type(input.entity_type)?;
-        let (view, event) = crate::create_field_definition(
+        let (view, _event) = crate::create_field_definition(
             runtime.field_registry(),
             runtime.db(),
             tenant.id,
@@ -81,7 +79,6 @@ impl FlexMutation {
         .await
         .map_err(map_flex_error)?;
 
-        publish_event(ctx, event);
         invalidate_field_def_cache(runtime, tenant.id, &entity_type).await;
 
         Ok(FieldDefinitionObject::from(view))
@@ -122,7 +119,7 @@ impl FlexMutation {
             .transpose()?;
 
         let entity_type = resolve_entity_type(input.entity_type)?;
-        let (view, event) = crate::update_field_definition(
+        let (view, _event) = crate::update_field_definition(
             runtime.field_registry(),
             runtime.db(),
             tenant.id,
@@ -143,7 +140,6 @@ impl FlexMutation {
         .await
         .map_err(map_flex_error)?;
 
-        publish_event(ctx, event);
         invalidate_field_def_cache(runtime, tenant.id, &entity_type).await;
 
         Ok(FieldDefinitionObject::from(view))
@@ -160,7 +156,7 @@ impl FlexMutation {
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
 
-        let event = crate::deactivate_field_definition(
+        let _event = crate::deactivate_field_definition(
             runtime.field_registry(),
             runtime.db(),
             tenant.id,
@@ -171,13 +167,12 @@ impl FlexMutation {
         .await
         .map_err(map_flex_error)?;
 
-        publish_event(ctx, event);
         invalidate_field_def_cache(runtime, tenant.id, &entity_type).await;
 
         Ok(DeleteFieldDefinitionPayload { success: true })
     }
 
-    /// Reorder attached field definitions by supplying an ordered list of ids.
+    /// Reorder attached field definitions by supplying every definition id exactly once.
     async fn reorder_field_definitions(
         &self,
         ctx: &Context<'_>,
@@ -396,7 +391,7 @@ impl FlexMutation {
         let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_CREATE).await?;
         let service = runtime(ctx)?.standalone_service();
 
-        let (view, event) = crate::create_schema_with_event(
+        let (view, _event) = crate::create_schema_with_event(
             service.as_ref(),
             tenant.id,
             Some(auth.user_id),
@@ -412,7 +407,6 @@ impl FlexMutation {
         .await
         .map_err(map_flex_error)?;
 
-        publish_event(ctx, event);
         Ok(FlexSchemaObject::from(view))
     }
 
@@ -426,7 +420,7 @@ impl FlexMutation {
         let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_UPDATE).await?;
         let service = runtime(ctx)?.standalone_service();
 
-        let (view, event) = crate::update_schema_with_event(
+        let (view, _event) = crate::update_schema_with_event(
             service.as_ref(),
             tenant.id,
             Some(auth.user_id),
@@ -442,7 +436,6 @@ impl FlexMutation {
         .await
         .map_err(map_flex_error)?;
 
-        publish_event(ctx, event);
         Ok(FlexSchemaObject::from(view))
     }
 
@@ -451,12 +444,11 @@ impl FlexMutation {
         let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_DELETE).await?;
         let service = runtime(ctx)?.standalone_service();
 
-        let event =
+        let _event =
             crate::delete_schema_with_event(service.as_ref(), tenant.id, Some(auth.user_id), id)
                 .await
                 .map_err(map_flex_error)?;
 
-        publish_event(ctx, event);
         Ok(DeleteFlexPayload { success: true })
     }
 
@@ -469,7 +461,7 @@ impl FlexMutation {
         let (tenant, auth) = require_access(ctx, Permission::FLEX_ENTRIES_CREATE).await?;
         let service = runtime(ctx)?.standalone_service();
 
-        let (view, event) = crate::create_entry_with_event(
+        let (view, _event) = crate::create_entry_with_event(
             service.as_ref(),
             tenant.id,
             Some(auth.user_id),
@@ -484,7 +476,6 @@ impl FlexMutation {
         .await
         .map_err(map_flex_error)?;
 
-        publish_event(ctx, event);
         Ok(FlexEntryObject::from(view))
     }
 
@@ -499,7 +490,7 @@ impl FlexMutation {
         let (tenant, auth) = require_access(ctx, Permission::FLEX_ENTRIES_UPDATE).await?;
         let service = runtime(ctx)?.standalone_service();
 
-        let (view, event) = crate::update_entry_with_event(
+        let (view, _event) = crate::update_entry_with_event(
             service.as_ref(),
             tenant.id,
             Some(auth.user_id),
@@ -513,7 +504,6 @@ impl FlexMutation {
         .await
         .map_err(map_flex_error)?;
 
-        publish_event(ctx, event);
         Ok(FlexEntryObject::from(view))
     }
 
@@ -527,7 +517,7 @@ impl FlexMutation {
         let (tenant, auth) = require_access(ctx, Permission::FLEX_ENTRIES_DELETE).await?;
         let service = runtime(ctx)?.standalone_service();
 
-        let event = crate::delete_entry_with_event(
+        let _event = crate::delete_entry_with_event(
             service.as_ref(),
             tenant.id,
             Some(auth.user_id),
@@ -537,7 +527,6 @@ impl FlexMutation {
         .await
         .map_err(map_flex_error)?;
 
-        publish_event(ctx, event);
         Ok(DeleteFlexPayload { success: true })
     }
 }
@@ -612,12 +601,4 @@ fn parse_fields_config(
     value: serde_json::Value,
 ) -> Result<Vec<rustok_core::field_schema::FieldDefinition>> {
     crate::parse_field_definitions_config(value).map_err(|error| bad_user_input(error.message()))
-}
-
-fn publish_event(ctx: &Context<'_>, event: EventEnvelope) {
-    if let Ok(bus) = ctx.data::<EventBus>()
-        && let Err(error) = bus.publish_envelope(event)
-    {
-        tracing::warn!(error = %error, "Failed to publish flex event");
-    }
 }

@@ -28,6 +28,10 @@ impl SocialGraphIndexPoisonObserverHandle {
     pub fn is_ready(&self) -> bool {
         !self.handle.is_finished()
     }
+
+    pub(crate) fn into_task(self) -> JoinHandle<()> {
+        self.handle
+    }
 }
 
 /// Starts a count-only observer for connector-owned neutral poison receipts.

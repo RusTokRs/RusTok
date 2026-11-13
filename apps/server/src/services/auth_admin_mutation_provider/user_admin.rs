@@ -7,7 +7,7 @@ use rustok_auth::{
     UserMutationRecord,
 };
 use rustok_core::events::EventTransport;
-use rustok_core::{UserRole, UserStatus, infer_user_role_from_permissions};
+use rustok_core::{UserRole, UserStatus};
 use rustok_events::DomainEvent;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_rbac::{
@@ -15,6 +15,7 @@ use rustok_rbac::{
     RbacRoleMutationPlan, RbacRoleMutationPolicyError, RbacUserRoleMutationRequest,
     plan_persisted_custom_role_assignment_on, plan_persisted_user_role_mutation_on,
     replace_persisted_user_role_by_slug_on, validate_custom_role_grant_on,
+    validate_persisted_role_grant_on,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter,
@@ -245,10 +246,9 @@ impl ServerAuthAdminMutationProvider {
     where
         C: ConnectionTrait,
     {
-        let permissions = RbacService::get_user_permissions_authoritative(db, &tenant_id, &user_id)
+        rustok_rbac::resolve_role_hierarchy_on(db, tenant_id, user_id)
             .await
-            .map_err(super::internal_admin_error)?;
-        Ok(infer_user_role_from_permissions(&permissions))
+            .map_err(super::super_admin_guard::persistence_error)
     }
 
     async fn ensure_role_assignment_allowed(
@@ -445,6 +445,23 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         .await
         .map_err(map_lifecycle_error)?;
         let tx = self.db.begin().await.map_err(super::internal_admin_error)?;
+        if custom_slug.is_none() {
+            let actor_permissions = permissions_for(&context.tenant_id, &context.actor_id)
+                .ok_or_else(|| {
+                    AuthAdminMutationError::Forbidden(
+                        "user administration requires a request-bound permission snapshot"
+                            .to_string(),
+                    )
+                })?;
+            validate_persisted_role_grant_on(
+                &tx,
+                context.tenant_id,
+                &actor_permissions,
+                &role.to_string(),
+            )
+            .await
+            .map_err(super::super_admin_guard::persistence_error)?;
+        }
         let mut user = AuthLifecycleService::create_user_in_tx(
             &tx,
             context.tenant_id,
@@ -654,6 +671,21 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
         let role_mutation_plan: Option<RolePlan> =
             if let Some(requested_role) = requested_role.as_ref() {
                 let actor_role = self.actor_role(context).await?;
+                let actor_permissions = permissions_for(&context.tenant_id, &context.actor_id)
+                    .ok_or_else(|| {
+                        AuthAdminMutationError::Forbidden(
+                            "user administration requires a request-bound permission snapshot"
+                                .to_string(),
+                        )
+                    })?;
+                validate_persisted_role_grant_on(
+                    &tx,
+                    context.tenant_id,
+                    &actor_permissions,
+                    &requested_role.to_string(),
+                )
+                .await
+                .map_err(super::super_admin_guard::persistence_error)?;
                 match plan_persisted_user_role_mutation_on(
                     &tx,
                     RbacUserRoleMutationRequest {
@@ -1023,6 +1055,21 @@ impl UserAdminMutationPort for ServerAuthAdminMutationProvider {
             .await
             .map_err(super::super_admin_guard::persistence_error)?
         } else {
+            let actor_permissions = permissions_for(&context.tenant_id, &context.actor_id)
+                .ok_or_else(|| {
+                    AuthAdminMutationError::Forbidden(
+                        "user administration requires a request-bound permission snapshot"
+                            .to_string(),
+                    )
+                })?;
+            validate_persisted_role_grant_on(
+                &tx,
+                context.tenant_id,
+                &actor_permissions,
+                &role.to_string(),
+            )
+            .await
+            .map_err(super::super_admin_guard::persistence_error)?;
             role.to_string()
         };
 

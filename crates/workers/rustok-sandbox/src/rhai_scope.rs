@@ -18,6 +18,7 @@ const RESERVED_BINDING_NAMES: &[&str] = &[
     "TIMESTAMP",
     "TENANT_ID",
     "ACTOR_ID",
+    "IDEMPOTENCY_KEY",
 ];
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

@@ -70,7 +70,10 @@ impl Entity {
                 .await
                 .map_err(|error| DbErr::Custom(error.to_string()))?;
 
-                for raw in policy.granted_permissions_list() {
+                let granted_permissions = policy
+                    .granted_permissions_list()
+                    .map_err(DbErr::Custom)?;
+                for raw in granted_permissions {
                     let Ok(permission) = Permission::from_str(raw.trim()) else {
                         return Ok(None);
                     };

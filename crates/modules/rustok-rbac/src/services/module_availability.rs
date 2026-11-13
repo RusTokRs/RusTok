@@ -58,6 +58,7 @@ impl ModulePermissionStatus {
 pub struct PermissionAvailability {
     ownership: BTreeMap<String, String>,
     enabled_modules: BTreeSet<String>,
+    fail_closed: bool,
 }
 
 impl PermissionAvailability {
@@ -65,6 +66,18 @@ impl PermissionAvailability {
         Self {
             ownership,
             enabled_modules,
+            fail_closed: false,
+        }
+    }
+
+    /// Snapshot used when permission ownership itself cannot be trusted.
+    /// Unlike an empty ownership map (which means all permissions are core),
+    /// this denies every permission until the registry can be resolved again.
+    pub fn all_disabled() -> Self {
+        Self {
+            ownership: BTreeMap::new(),
+            enabled_modules: BTreeSet::new(),
+            fail_closed: true,
         }
     }
 
@@ -73,6 +86,9 @@ impl PermissionAvailability {
     }
 
     pub fn status(&self, permission: &str) -> ModulePermissionStatus {
+        if self.fail_closed {
+            return ModulePermissionStatus::Disabled("unavailable".to_string());
+        }
         match self.ownership.get(permission) {
             None => ModulePermissionStatus::Core,
             Some(slug) if self.enabled_modules.contains(slug) => {
@@ -124,6 +140,17 @@ mod tests {
             ]),
             BTreeSet::from(["blog".to_string()]),
         )
+    }
+
+    #[test]
+    fn unavailable_ownership_snapshot_disables_every_permission() {
+        let snapshot = PermissionAvailability::all_disabled();
+        assert!(!snapshot.is_active(&Permission::USERS_MANAGE));
+        assert!(!snapshot.is_active(&Permission::AI_PROVIDERS_MANAGE));
+        assert_eq!(
+            snapshot.status("unregistered:permission"),
+            ModulePermissionStatus::Disabled("unavailable".to_string())
+        );
     }
 
     #[test]

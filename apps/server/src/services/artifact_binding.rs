@@ -114,6 +114,9 @@ pub(crate) async fn dispatch_artifact_binding_operation(
             .as_ref()
             .map(|request| request.context.trace_id.clone())
             .or_else(rustok_telemetry::current_trace_id),
+        idempotency_key: request
+            .as_ref()
+            .map(|request| request.context.idempotency_key),
     };
     match request {
         Some(request) => {
@@ -127,6 +130,13 @@ pub(crate) async fn dispatch_artifact_binding_operation(
                         "An identical artifact binding request is still executing",
                     )))
                 }
+                ArtifactBindingIdempotencyClaim::ReconciliationRequired => {
+                    Err(http_error(rustok_web::HttpError::new(
+                        StatusCode::CONFLICT,
+                        "artifact_binding_reconciliation_required",
+                        "The previous artifact binding outcome is unresolved; operator reconciliation is required before retry",
+                    )))
+                }
                 ArtifactBindingIdempotencyClaim::Execute { operation_id } => {
                     let result = execute_operation(
                         executor.as_ref(),
@@ -138,15 +148,38 @@ pub(crate) async fn dispatch_artifact_binding_operation(
                     )
                     .await;
                     match result {
-                        Ok(output) => {
-                            store
-                                .complete(&request, operation_id, &output)
-                                .await
-                                .map_err(map_idempotency_error)?;
-                            Ok(output)
+                        Ok(output) => match store.complete(&request, operation_id, &output).await {
+                            Ok(()) => Ok(output),
+                            Err(error) => {
+                                if let Err(reconciliation_error) = store
+                                    .require_reconciliation(&request, operation_id)
+                                    .await
+                                {
+                                    tracing::error!(
+                                        %reconciliation_error,
+                                        %operation_id,
+                                        "Failed to mark artifact binding operation for reconciliation after receipt persistence failed"
+                                    );
+                                }
+                                tracing::error!(
+                                    %error,
+                                    %operation_id,
+                                    "Artifact binding execution succeeded but its durable response receipt could not be committed"
+                                );
+                                Err(map_idempotency_error(error))
+                            }
                         }
                         Err(error) => {
-                            let _ = store.abandon(&request, operation_id).await;
+                            if let Err(reconciliation_error) = store
+                                .require_reconciliation(&request, operation_id)
+                                .await
+                            {
+                                tracing::error!(
+                                    %reconciliation_error,
+                                    %operation_id,
+                                    "Failed to mark artifact binding operation for reconciliation after execution failure"
+                                );
+                            }
                             Err(error)
                         }
                     }

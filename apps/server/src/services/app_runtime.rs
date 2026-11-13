@@ -9,8 +9,8 @@ use crate::graphql::AppSchema;
 use crate::middleware;
 use crate::middleware::rate_limit::{
     PUBLIC_READINESS_RATE_LIMIT_PREFIXES, PathRateLimitMiddlewareState, PathRateLimitPolicy,
-    RateLimitConfig, RateLimiter, SharedApiRateLimiter, SharedAuthRateLimiter,
-    SharedOAuthRateLimiter, SharedSearchRateLimiter, cleanup_task,
+    RateLimitCleanupTaskRegistry, RateLimitConfig, RateLimiter, SharedApiRateLimiter,
+    SharedAuthRateLimiter, SharedOAuthRateLimiter, SharedSearchRateLimiter, cleanup_task,
 };
 use crate::modules;
 use crate::modules::{DeploymentSurfaceContract, ManifestManager};
@@ -140,7 +140,7 @@ pub async fn bootstrap_app_runtime(
             runtime_ctx.clone(),
         ));
         runtime_ctx.shared_insert(
-            crate::services::mcp_runtime::DbBackedMcpRuntimeBridge::shared(runtime_ctx.db_clone()),
+            crate::services::mcp_runtime::DbBackedMcpRuntimeBridge::shared(runtime_ctx.clone()),
         );
         sync_manifest_managed_apps_for_all_tenants(runtime_ctx.db(), &manifest)
             .await
@@ -577,9 +577,11 @@ fn build_namespaced_rate_limiter(
 
     if settings.rate_limit.enabled {
         let limiter_for_cleanup = limiter.clone();
-        tokio::spawn(async move {
+        let cleanup_handle = tokio::spawn(async move {
             cleanup_task(limiter_for_cleanup).await;
         });
+        ctx.shared_get_or_insert(RateLimitCleanupTaskRegistry::default())
+            .register(cleanup_handle);
     }
 
     Ok(limiter)

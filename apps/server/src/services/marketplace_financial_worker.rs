@@ -28,6 +28,10 @@ impl MarketplaceFinancialWorkerHandle {
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self._handle.await
     }
+
+    pub(crate) fn into_task(self) -> JoinHandle<()> {
+        self._handle
+    }
 }
 
 pub fn spawn_marketplace_financial_worker(

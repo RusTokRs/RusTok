@@ -146,9 +146,10 @@ impl InstallPersistencePort<DatabaseConnection> for ServerInstallerPorts {
     async fn create_session(
         &self,
         runtime: &DatabaseConnection,
+        session_id: Uuid,
         plan: &InstallPlan,
     ) -> std::result::Result<InstallSessionRecord, InstallExecutionError> {
-        InstallPersistencePort::create_session(&SeaOrmInstallerPorts, runtime, plan).await
+        InstallPersistencePort::create_session(&SeaOrmInstallerPorts, runtime, session_id, plan).await
     }
 
     async fn acquire_lock(

@@ -594,6 +594,9 @@ impl RhaiExecutor {
         if let Some(actor_id) = &request.context.actor_id {
             scope.push_constant("ACTOR_ID", actor_id.clone());
         }
+        if let Some(idempotency_key) = request.context.idempotency_key {
+            scope.push_constant("IDEMPOTENCY_KEY", idempotency_key.to_string());
+        }
         scope.push_constant("input", json_to_dynamic(input));
         scope
     }

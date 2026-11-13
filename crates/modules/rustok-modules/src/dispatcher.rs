@@ -46,6 +46,9 @@ pub struct ModuleExecutionDispatcher<'a> {
 pub struct ArtifactBindingExecutionContext {
     pub actor_id: Option<String>,
     pub trace_id: Option<String>,
+    /// Stable host-issued key for replay-safe effect handling. It is the same
+    /// for every attempt of one idempotent binding request.
+    pub idempotency_key: Option<uuid::Uuid>,
 }
 
 impl ArtifactBindingExecutionContext {
@@ -59,6 +62,9 @@ impl ArtifactBindingExecutionContext {
                 .trace_id
                 .as_ref()
                 .is_none_or(|value| !value.is_empty() && value.len() <= Self::MAX_IDENTITY_BYTES)
+            && self
+                .idempotency_key
+                .is_none_or(|idempotency_key| !idempotency_key.is_nil())
     }
 }
 
@@ -1463,6 +1469,7 @@ mod tests {
                 ArtifactBindingExecutionContext {
                     actor_id: Some("user-42".to_string()),
                     trace_id: Some("trace-42".to_string()),
+                    idempotency_key: Some(uuid::Uuid::new_v4()),
                 },
             )
             .await
@@ -1515,6 +1522,7 @@ mod tests {
                     ArtifactBindingExecutionContext {
                         actor_id: Some(String::new()),
                         trace_id: None,
+                        idempotency_key: None,
                     },
                 )
                 .await,

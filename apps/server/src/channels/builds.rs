@@ -4,8 +4,8 @@
 //! `BuildEvent` payloads as newline-delimited JSON until the build hub
 //! is dropped or the client disconnects.
 //!
-//! **Authentication**: Bearer token in the `Authorization` header
-//! (standard JWT — same as REST endpoints).
+//! **Authentication**: a valid user Bearer token plus explicit host-global
+//! read authority (`x-rustok-host-token`), configured by the host operator.
 
 use axum::{
     extract::{
@@ -27,7 +27,6 @@ use uuid::Uuid;
 use crate::extractors::auth::{CurrentUser, WebSocketAuthLease};
 use crate::services::build_event_hub::build_event_hub_from_context;
 use crate::services::server_runtime_context::ServerAuthRuntime;
-use rustok_api::{Permission, has_any_effective_permission};
 use rustok_build::BuildEvent;
 
 const BUILD_WS_AUTH_REVALIDATION_INTERVAL: Duration = Duration::from_secs(30);
@@ -35,12 +34,6 @@ const BUILD_WS_MAX_MESSAGE_SIZE: usize = 64 * 1024;
 const BUILD_WS_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const BUILD_WS_AUTH_CHANGED_CODE: u16 = 4401;
 const BUILD_WS_AUTH_CHANGED_REASON: &str = "authorization changed; reconnect required";
-
-const BUILD_STREAM_PERMISSIONS: [Permission; 3] = [
-    Permission::MODULES_READ,
-    Permission::MODULES_LIST,
-    Permission::MODULES_MANAGE,
-];
 
 // ── Wire-format message ───────────────────────────────────────────────────────
 
@@ -141,10 +134,11 @@ pub async fn ws_builds(
     current_user: CurrentUser,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
 ) -> Response {
-    if !has_any_effective_permission(&current_user.permissions, &BUILD_STREAM_PERMISSIONS) {
+    let host_authority = crate::host_authority::current_host_authority();
+    if !crate::services::platform_build_access::is_platform_build_operator(host_authority) {
         return (
             StatusCode::FORBIDDEN,
-            "Permission denied: modules:read required",
+            "Host-global read authority is required for the platform build stream",
         )
             .into_response();
     }
@@ -153,12 +147,17 @@ pub async fn ws_builds(
     let hub = build_event_hub_from_context(auth_runtime.runtime_ctx());
     ws.max_message_size(BUILD_WS_MAX_MESSAGE_SIZE)
         .max_frame_size(BUILD_WS_MAX_MESSAGE_SIZE)
-        .on_upgrade(move |socket| handle_socket(socket, hub, auth_runtime, lease))
+        .on_upgrade(move |socket| handle_socket(socket, hub, auth_runtime, lease, host_authority))
         .into_response()
 }
 
-async fn check_build_ws_auth(auth_runtime: &ServerAuthRuntime, lease: &WebSocketAuthLease) -> bool {
-    lease.revalidate(auth_runtime).await.is_ok()
+async fn check_build_ws_auth(
+    auth_runtime: &ServerAuthRuntime,
+    lease: &WebSocketAuthLease,
+    host_authority: Option<rustok_api::HostAuthorityContext>,
+) -> bool {
+    crate::services::platform_build_access::is_platform_build_operator(host_authority)
+        && lease.revalidate(auth_runtime).await.is_ok()
 }
 
 async fn close_for_auth_change(socket: &mut WebSocket) {
@@ -180,6 +179,7 @@ async fn handle_socket(
     hub: std::sync::Arc<crate::services::build_event_hub::BuildEventHub>,
     auth_runtime: ServerAuthRuntime,
     lease: WebSocketAuthLease,
+    host_authority: Option<rustok_api::HostAuthorityContext>,
 ) {
     let mut rx = hub.subscribe();
     let mut revalidation = tokio::time::interval(BUILD_WS_AUTH_REVALIDATION_INTERVAL);
@@ -194,7 +194,7 @@ async fn handle_socket(
                 break;
             }
             _ = revalidation.tick() => {
-                if !check_build_ws_auth(&auth_runtime, &lease).await {
+                if !check_build_ws_auth(&auth_runtime, &lease, host_authority).await {
                     close_for_auth_change(&mut socket).await;
                     break;
                 }
@@ -204,7 +204,7 @@ async fn handle_socket(
                     Ok(event) => {
                         // Revalidate the authority before sending each event,
                         // even when the periodic validation tick has not fired yet.
-                        if !check_build_ws_auth(&auth_runtime, &lease).await {
+                        if !check_build_ws_auth(&auth_runtime, &lease, host_authority).await {
                             close_for_auth_change(&mut socket).await;
                             break;
                         }
@@ -272,22 +272,15 @@ pub fn router() -> crate::routes::ServerRouter {
 
 #[cfg(test)]
 mod tests {
-    use super::{BUILD_STREAM_PERMISSIONS, Permission, has_any_effective_permission};
+    use super::*;
 
-    #[test]
-    fn build_stream_accepts_each_module_read_level() {
-        assert!(has_any_effective_permission(
-            &[Permission::MODULES_READ],
-            &BUILD_STREAM_PERMISSIONS,
-        ));
-        assert!(has_any_effective_permission(
-            &[Permission::MODULES_LIST],
-            &BUILD_STREAM_PERMISSIONS,
-        ));
-        assert!(has_any_effective_permission(
-            &[Permission::MODULES_MANAGE],
-            &BUILD_STREAM_PERMISSIONS,
-        ));
+    async fn with_test_host_authority(
+        request: axum::extract::Request,
+        next: axum::middleware::Next,
+    ) -> Response {
+        let authority = rustok_api::HostAuthorityContext::manage(Uuid::new_v4())
+            .expect("non-nil test host actor");
+        rustok_api::with_host_authority_scope(Some(authority), next.run(request)).await
     }
 
     #[tokio::test]
@@ -337,10 +330,10 @@ mod tests {
             &db,
             tenant.id,
             user.id,
-            UserRole::Admin,
+            UserRole::SuperAdmin,
         )
         .await
-        .expect("admin role");
+        .expect("superadmin role");
         let mut session = sessions::ActiveModel::new(
             tenant.id,
             user.id,
@@ -358,8 +351,9 @@ mod tests {
             AuthSettingsOverrides::default(),
         )
         .expect("auth configuration");
-        let token = encode_access_token(&config, user.id, tenant.id, UserRole::Admin, session_id)
-            .expect("access token");
+        let token =
+            encode_access_token(&config, user.id, tenant.id, UserRole::SuperAdmin, session_id)
+                .expect("access token");
         let runtime = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
         let hub = build_event_hub_from_context(&runtime);
         let auth_runtime = ServerAuthRuntime::new(runtime, config);
@@ -374,6 +368,7 @@ mod tests {
         };
         let app = router()
             .layer(axum::Extension(TenantContextExtension(tenant_ctx)))
+            .layer(axum::middleware::from_fn(with_test_host_authority))
             .with_state(auth_runtime);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -420,13 +415,5 @@ mod tests {
         .await
         .expect("WebSocket test deadline");
         server.abort();
-    }
-
-    #[test]
-    fn build_stream_rejects_unrelated_permissions() {
-        assert!(!has_any_effective_permission(
-            &[Permission::USERS_READ],
-            &BUILD_STREAM_PERMISSIONS,
-        ));
     }
 }
