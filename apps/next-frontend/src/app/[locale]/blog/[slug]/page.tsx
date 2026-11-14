@@ -18,6 +18,7 @@ import {
 import { buildSeoMetadata } from "@/shared/seo/metadata";
 import { getSiteUrl } from "@/shared/seo/site";
 import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
+import { getRequestCspNonce } from "@/shared/security/nonce";
 import {
   fetchPublishedPost,
   fetchPublishedPosts,
@@ -167,6 +168,7 @@ export default async function BlogPostPage({
       commentsPage={commentsPage}
       relatedPosts={relatedPosts}
       siteUrl={getSiteUrl()}
+      nonce={await getRequestCspNonce()}
     />
   );
 }

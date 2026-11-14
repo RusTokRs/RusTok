@@ -1,12 +1,22 @@
 {
   "schema_version": 1,
   "policy": {
-    "directive": "style-src-attr 'unsafe-inline'",
+    "directive": "style-src-attr 'none'",
     "runtime_style_directive": "style-src 'self' 'nonce-<per-response>'",
     "owner": "Platform security and Next UI maintainers",
     "approved_on": "2026-07-18",
     "review_by": "2027-07-18",
-    "exit_criteria": "Every registered JSX style prop is replaced by a reviewed class, native attribute, bounded DOM adapter, or another representation compatible with style-src-attr 'none'; every runtime style element is removed or receives the exact per-response nonce through a reviewed host boundary."
+    "exit_criteria": "Every registered JSX style prop is replaced by a reviewed class, native attribute, bounded DOM adapter, or another representation compatible with style-src-attr 'none'; every runtime style element is removed or receives the exact per-response nonce through a reviewed host boundary. The single registered landing style element remains bounded to one and is re-ratcheted to zero once a reviewed same-origin stylesheet route replaces it."
   },
-  "exceptions": []
+  "exceptions": [
+    {
+      "path": "apps/next-frontend/packages/rustok-pages/src/components/page-builder-content.tsx",
+      "owner": "Platform security and Next storefront maintainers",
+      "reason": "Published landing CSS is per-page and cannot be emitted as a static stylesheet. The Next storefront scopes it and emits one style element that carries the exact request-local CSP nonce issued by the proxy.",
+      "constraints": "Exactly one runtime style element, with the exact nonce supplied by getRequestCspNonce(); no JSX style attributes, direct DOM style writes, unregistered style elements, or user-authored nonce values.",
+      "exit_criteria": "Replace the inline style element with a reviewed same-origin stylesheet route that serves the scoped CSS, or prove with cross-stack browser evidence that the nonce-bearing element is the only viable boundary, then re-ratchet the runtime-style-element count to zero.",
+      "expected_style_attribute_occurrences": 0,
+      "expected_runtime_style_element_occurrences": 1
+    }
+  ]
 }

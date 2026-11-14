@@ -98,6 +98,9 @@ Reusable storefront presentation components that are shared across multiple doma
 
 ## Verification
 
+- `npm run test:csp` covers the request-local nonce entropy, nonce validation and strict-policy construction.
+- After `npm run build`, `npm run test:csp-runtime` starts the production server and checks CSP/SSR nonce agreement, per-response uniqueness, rejection of a client-supplied nonce, cache headers, plain/dotted HTML 404s and cacheable Next static assets.
+- `node scripts/verify/verify-csp-next-style-boundary.mjs` and the reporting/inline-style verifiers enforce the host's static CSP boundary; browser response/header and visual smoke evidence remains a separate release gate.
 - lint/typecheck runs across `apps/next-frontend`
 - `npm run lint:blog` checks `packages/rustok-blog/src`; its flat-config entry
   explicitly matches TS/TSX and reuses the approved Next parser. An ignored-file

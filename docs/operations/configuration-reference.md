@@ -84,7 +84,7 @@ certificates; these remain deployment gates.
 
 Use the [Product connection contract](../../crates/modules/rustok-product/ports/README.md),
 [Product provider host](../../crates/modules/rustok-product/README.md#standalone-catalog-profile)
-and [Media connection contract](../../crates/modules/rustok-media-transport/docs/README.md#server-deployment-wiring)
+and [Media connection contract](../../crates/modules/rustok-media/ports/README.md)
 for exact options and limits. There is no current whole-module `RUSTOK_MEDIA_PROVIDER`
 selector. See [FBA scope](../backend/module-backend-architecture.md#fba-contracts).
 

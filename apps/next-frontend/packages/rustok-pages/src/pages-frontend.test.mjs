@@ -174,7 +174,12 @@ test("the storefront route renders the landing of the page read and nothing else
 
   assert.ok(api.includes("query: STOREFRONT_PAGE_QUERY"));
   assert.ok(api.includes("return readStorefrontPage(response);"));
-  assert.ok(route.includes("<PageBuilderContent html={landing.html} css={landing.css} />"));
+  assert.ok(route.includes("const nonce = await getRequestCspNonce();"));
+  assert.ok(
+    route.includes(
+      "<PageBuilderContent html={landing.html} css={landing.css} nonce={nonce} />"
+    )
+  );
   assert.ok(!/\bbody\b/.test(route), "the route must not read the page body");
   // The landing comes with the page: no second request, no artifact document to parse.
   for (const source of [api, route]) {

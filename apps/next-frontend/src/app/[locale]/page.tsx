@@ -13,6 +13,7 @@ import {
 } from "@/shared/seo/metadata";
 import { getStorefrontTenantId } from "@/shared/api/modules";
 import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
+import { getRequestCspNonce } from "@/shared/security/nonce";
 import { storefrontGraphql } from "@/shared/lib/graphql";
 import { Button } from "@/shared/ui/base/button";
 
@@ -63,6 +64,7 @@ export default async function StorefrontHome({
   const structuredDataScripts = buildSeoStructuredDataScripts(
     seoResolution.context,
   );
+  const nonce = await getRequestCspNonce();
 
   return (
     <>
@@ -192,6 +194,7 @@ export default async function StorefrontHome({
         <script
           key={script.key}
           type="application/ld+json"
+          nonce={nonce}
           dangerouslySetInnerHTML={{ __html: script.json }}
         />
       ))}
