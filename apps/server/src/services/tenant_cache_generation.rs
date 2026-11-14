@@ -493,7 +493,11 @@ pub async fn start_tenant_cache_generation_listener(
     // A configured-but-uninitialized Redis client cannot spawn the subscriber or
     // reconciler; readiness remains degraded, but the local listener is still a
     // valid live supervisor and must not be restarted on every repeated init.
-    let required_task_count = if cache.redis_client_initialized() { 3 } else { 1 };
+    let required_task_count = if cache.redis_client_initialized() {
+        3
+    } else {
+        1
+    };
     let mut local = cache
         .invalidations()
         .subscribe_local_channel(TENANT_CACHE_GENERATION_CHANNEL);
@@ -654,7 +658,8 @@ pub(crate) async fn take_listener_tasks_for_shutdown(
     ctx: &ServerRuntimeContext,
 ) -> Vec<tokio::task::JoinHandle<()>> {
     let start_lock = ctx.shared_get_or_insert_with(TenantCacheGenerationListenerStartLock::default);
-    let _start_guard = match tokio::time::timeout(Duration::from_secs(5), start_lock.0.lock()).await {
+    let _start_guard = match tokio::time::timeout(Duration::from_secs(5), start_lock.0.lock()).await
+    {
         Ok(guard) => guard,
         Err(_) => {
             tracing::warn!("Timed out waiting for tenant cache generation startup during shutdown");

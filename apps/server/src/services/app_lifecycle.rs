@@ -484,8 +484,7 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     }
     // Serialize the maintenance handle's take/join/reinsert lifecycle with both
     // concurrent startup calls and the shutdown drain.
-    let artifact_initialization =
-        ModuleArtifactMaintenanceInitializationLock::ensure(&runtime_ctx);
+    let artifact_initialization = ModuleArtifactMaintenanceInitializationLock::ensure(&runtime_ctx);
     let _artifact_initialization_guard = artifact_initialization.0.lock().await;
     if stop_handle.is_stopping() {
         tracing::warn!("Shutdown requested while waiting for artifact maintenance initialization");
@@ -506,8 +505,7 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
         }
         None => false,
     };
-    let durable_storage_available =
-        runtime_ctx.shared_contains::<rustok_storage::StorageRuntime>();
+    let durable_storage_available = runtime_ctx.shared_contains::<rustok_storage::StorageRuntime>();
     if !artifact_maintenance_running && !durable_storage_available {
         return Err(Error::Message(
             "Module artifact maintenance is required for background-worker hosts, but durable storage is not initialized"
@@ -630,8 +628,8 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     let timeout_duration = Duration::from_secs(5);
 
     let rate_limit_cleanup_drain = async {
-        if let Some(registry) = runtime_ctx
-            .shared_take::<crate::middleware::rate_limit::RateLimitCleanupTaskRegistry>()
+        if let Some(registry) =
+            runtime_ctx.shared_take::<crate::middleware::rate_limit::RateLimitCleanupTaskRegistry>()
         {
             let tasks = registry.take_tasks();
             for task in &tasks {
@@ -654,7 +652,8 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     let retention_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<OutboxRetentionWorkerHandle>() {
-            await_runtime_worker_shutdown("Outbox retention worker", Some(worker.into_task())).await;
+            await_runtime_worker_shutdown("Outbox retention worker", Some(worker.into_task()))
+                .await;
         }
     };
 
@@ -666,7 +665,11 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     let reaper_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<RemoteExecutorReaperHandle>() {
-            await_runtime_worker_shutdown("Remote executor reaper worker", Some(worker.into_task())).await;
+            await_runtime_worker_shutdown(
+                "Remote executor reaper worker",
+                Some(worker.into_task()),
+            )
+            .await;
         }
     };
 
@@ -702,7 +705,8 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-workflow")]
     let workflow_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<WorkflowCronSchedulerHandle>() {
-            await_runtime_worker_shutdown("Workflow cron scheduler", Some(worker.into_task())).await;
+            await_runtime_worker_shutdown("Workflow cron scheduler", Some(worker.into_task()))
+                .await;
         }
     };
     #[cfg(not(feature = "mod-workflow"))]
@@ -721,11 +725,8 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
             // Request a cooperative drain first; the bounded helper aborts and
             // joins the dispatcher if an in-flight handler exceeds the deadline.
             worker.request_stop();
-            await_runtime_worker_shutdown(
-                "Module event dispatcher",
-                Some(worker.into_task()),
-            )
-            .await;
+            await_runtime_worker_shutdown("Module event dispatcher", Some(worker.into_task()))
+                .await;
         }
     };
 
@@ -752,18 +753,16 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-comments")]
     let comments_tcp_drain = async {
-        if let Some(listener_task) = runtime_ctx.shared_take::<
-            crate::services::comments_provider_runtime::CommentsTcpListenerTask,
-        >() {
-            await_runtime_worker_shutdown(
-                "Comments TCP listener",
-                Some(listener_task.0),
-            )
-            .await;
+        if let Some(listener_task) =
+            runtime_ctx
+                .shared_take::<crate::services::comments_provider_runtime::CommentsTcpListenerTask>(
+                )
+        {
+            await_runtime_worker_shutdown("Comments TCP listener", Some(listener_task.0)).await;
         }
-        runtime_ctx.shared_remove::<
-            crate::services::comments_provider_runtime::CommentsTcpListenerHandle,
-        >();
+        runtime_ctx
+            .shared_remove::<crate::services::comments_provider_runtime::CommentsTcpListenerHandle>(
+            );
     };
     #[cfg(not(feature = "mod-comments"))]
     let comments_tcp_drain = std::future::ready(());
@@ -831,10 +830,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     };
 
     let rbac_cache_invalidation_drain = async {
-        let tasks = crate::services::rbac_cache_invalidation::take_listener_tasks_for_shutdown(
-            runtime_ctx,
-        )
-        .await;
+        let tasks =
+            crate::services::rbac_cache_invalidation::take_listener_tasks_for_shutdown(runtime_ctx)
+                .await;
         for task in &tasks {
             task.abort();
         }
@@ -855,7 +853,8 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     };
 
     let event_forwarder_drain = async {
-        if let Some(task) = crate::services::event_bus::take_forwarder_task_for_shutdown(runtime_ctx)
+        if let Some(task) =
+            crate::services::event_bus::take_forwarder_task_for_shutdown(runtime_ctx)
         {
             task.abort();
             await_runtime_worker_shutdown("Event forwarder", Some(task)).await;
@@ -863,10 +862,8 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     };
 
     let cache_redis_status_drain = async {
-        if let Some(task) = crate::services::cache_redis_status_monitor::take_task_for_shutdown(
-            runtime_ctx,
-        )
-        .await
+        if let Some(task) =
+            crate::services::cache_redis_status_monitor::take_task_for_shutdown(runtime_ctx).await
         {
             task.abort();
             await_runtime_worker_shutdown("Cache Redis status monitor", Some(task)).await;
@@ -875,7 +872,9 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     let field_definition_cache_invalidation_drain = async {
         if let Some(task) =
-            crate::services::field_definition_cache::take_invalidation_task_for_shutdown(runtime_ctx)
+            crate::services::field_definition_cache::take_invalidation_task_for_shutdown(
+                runtime_ctx,
+            )
         {
             task.abort();
             await_runtime_worker_shutdown("Field definition cache invalidation", Some(task)).await;
@@ -912,26 +911,17 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         for task in &tasks {
             task.abort();
         }
-        await_runtime_worker_shutdown_tasks(
-            "Tenant locale generation listener",
-            tasks,
-        )
-        .await;
+        await_runtime_worker_shutdown_tasks("Tenant locale generation listener", tasks).await;
     };
 
     let tenant_cache_generation_drain = async {
-        let tasks = crate::services::tenant_cache_generation::take_listener_tasks_for_shutdown(
-            runtime_ctx,
-        )
-        .await;
+        let tasks =
+            crate::services::tenant_cache_generation::take_listener_tasks_for_shutdown(runtime_ctx)
+                .await;
         for task in &tasks {
             task.abort();
         }
-        await_runtime_worker_shutdown_tasks(
-            "Tenant cache generation listener",
-            tasks,
-        )
-        .await;
+        await_runtime_worker_shutdown_tasks("Tenant cache generation listener", tasks).await;
     };
 
     let event_dlq_duplicate_alert_drain = async {
@@ -1104,7 +1094,6 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         forum_search_drain,
         forum_search_contract_consumer_drain,
     );
-
 }
 
 /// Guard a task handle so cancellation of the shutdown future cannot turn a
@@ -1213,7 +1202,10 @@ fn await_runtime_worker_shutdown_tasks_with_timeout(
                     tracing::warn!(worker, ?error, "Runtime worker exited with error");
                 }
                 Err(_) => {
-                    tracing::warn!(worker, "Runtime worker shutdown timed out; aborting remaining tasks");
+                    tracing::warn!(
+                        worker,
+                        "Runtime worker shutdown timed out; aborting remaining tasks"
+                    );
                     task.abort();
                     if let Err(error) = task.handle_mut().await {
                         if !error.is_cancelled() {

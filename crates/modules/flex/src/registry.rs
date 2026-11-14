@@ -67,8 +67,15 @@ pub trait FieldDefinitionSource {
 pub fn field_definition_from_source<T: FieldDefinitionSource>(
     source: &T,
 ) -> Result<FieldDefinition, String> {
-    let field_type: FieldType = serde_json::from_value(JsonValue::String(source.field_type().to_string()))
-        .map_err(|error| format!("unknown persisted field type `{}`: {error}", source.field_type()))?;
+    let field_type: FieldType = serde_json::from_value(JsonValue::String(
+        source.field_type().to_string(),
+    ))
+    .map_err(|error| {
+        format!(
+            "unknown persisted field type `{}`: {error}",
+            source.field_type()
+        )
+    })?;
 
     let label: HashMap<String, String> = serde_json::from_value(source.label().clone())
         .map_err(|error| format!("persisted field label is invalid: {error}"))?;
@@ -220,6 +227,31 @@ pub fn validate_field_definition_create(
         });
     }
 
+    Ok(())
+}
+
+/// Validate owner-owned reorder guardrails for attached field definitions.
+pub fn validate_field_definition_reorder(
+    ids: &[Uuid],
+    existing_ids: &std::collections::HashSet<Uuid>,
+) -> Result<(), FlexError> {
+    let requested_ids = ids
+        .iter()
+        .copied()
+        .collect::<std::collections::HashSet<_>>();
+    if requested_ids.len() != ids.len() {
+        return Err(FlexError::InvalidFieldKey(
+            "field-definition reorder contains duplicate ids".to_string(),
+        ));
+    }
+    if let Some(missing_id) = requested_ids.difference(existing_ids).next() {
+        return Err(FlexError::NotFound(*missing_id));
+    }
+    if requested_ids != *existing_ids {
+        return Err(FlexError::InvalidFieldKey(
+            "field-definition reorder must include every definition exactly once".to_string(),
+        ));
+    }
     Ok(())
 }
 
@@ -455,16 +487,36 @@ mod persisted_definition_tests {
     }
 
     impl FieldDefinitionSource for Source {
-        fn field_key(&self) -> &str { "custom_field" }
-        fn field_type(&self) -> &str { &self.field_type }
-        fn label(&self) -> &JsonValue { &self.label }
-        fn description(&self) -> Option<&JsonValue> { self.description.as_ref() }
-        fn is_localized(&self) -> bool { false }
-        fn is_required(&self) -> bool { false }
-        fn default_value(&self) -> Option<&JsonValue> { None }
-        fn validation(&self) -> Option<&JsonValue> { self.validation.as_ref() }
-        fn position(&self) -> i32 { 0 }
-        fn is_active(&self) -> bool { true }
+        fn field_key(&self) -> &str {
+            "custom_field"
+        }
+        fn field_type(&self) -> &str {
+            &self.field_type
+        }
+        fn label(&self) -> &JsonValue {
+            &self.label
+        }
+        fn description(&self) -> Option<&JsonValue> {
+            self.description.as_ref()
+        }
+        fn is_localized(&self) -> bool {
+            false
+        }
+        fn is_required(&self) -> bool {
+            false
+        }
+        fn default_value(&self) -> Option<&JsonValue> {
+            None
+        }
+        fn validation(&self) -> Option<&JsonValue> {
+            self.validation.as_ref()
+        }
+        fn position(&self) -> i32 {
+            0
+        }
+        fn is_active(&self) -> bool {
+            true
+        }
     }
 
     fn source() -> Source {
@@ -480,26 +532,32 @@ mod persisted_definition_tests {
     fn persisted_field_conversion_fails_on_unknown_type() {
         let mut source = source();
         source.field_type = "future_unknown_type".to_string();
-        assert!(field_definition_from_source(&source)
-            .expect_err("unknown type must not drop the definition")
-            .contains("unknown persisted field type"));
+        assert!(
+            field_definition_from_source(&source)
+                .expect_err("unknown type must not drop the definition")
+                .contains("unknown persisted field type")
+        );
     }
 
     #[test]
     fn persisted_field_conversion_fails_on_malformed_label() {
         let mut source = source();
         source.label = serde_json::json!(["not", "a", "label-map"]);
-        assert!(field_definition_from_source(&source)
-            .expect_err("invalid label must not become an empty map")
-            .contains("persisted field label is invalid"));
+        assert!(
+            field_definition_from_source(&source)
+                .expect_err("invalid label must not become an empty map")
+                .contains("persisted field label is invalid")
+        );
     }
 
     #[test]
     fn persisted_field_conversion_fails_on_malformed_validation() {
         let mut source = source();
         source.validation = Some(serde_json::json!({ "min": "not-a-number" }));
-        assert!(field_definition_from_source(&source)
-            .expect_err("invalid validation must not be dropped")
-            .contains("persisted field validation is invalid"));
+        assert!(
+            field_definition_from_source(&source)
+                .expect_err("invalid validation must not be dropped")
+                .contains("persisted field validation is invalid")
+        );
     }
 }

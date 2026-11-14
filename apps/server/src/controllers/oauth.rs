@@ -458,17 +458,15 @@ pub(crate) async fn authorize_browser_handler(
         )
         .await
         {
-            Ok(code) => {
-                redirect_with_code(
-                    &validated.redirect_uri,
-                    &code,
-                    validated.state.as_deref(),
-                    &headers,
-                    addr.ip(),
-                    runtime_ctx.settings(),
-                )
-                    .into_response()
-            }
+            Ok(code) => redirect_with_code(
+                &validated.redirect_uri,
+                &code,
+                validated.state.as_deref(),
+                &headers,
+                addr.ip(),
+                runtime_ctx.settings(),
+            )
+            .into_response(),
             Err(error) => oauth_error_response(error),
         };
     }
@@ -500,17 +498,15 @@ pub(crate) async fn authorize_browser_handler(
         )
         .await
         {
-            Ok(code) => {
-                redirect_with_code(
-                    &validated.redirect_uri,
-                    &code,
-                    validated.state.as_deref(),
-                    &headers,
-                    addr.ip(),
-                    runtime_ctx.settings(),
-                )
-                    .into_response()
-            }
+            Ok(code) => redirect_with_code(
+                &validated.redirect_uri,
+                &code,
+                validated.state.as_deref(),
+                &headers,
+                addr.ip(),
+                runtime_ctx.settings(),
+            )
+            .into_response(),
             Err(error) => oauth_error_response(error),
         };
     }
@@ -783,7 +779,8 @@ async fn validate_authorize_request(
     if !is_valid_s256_challenge(&code_challenge) {
         return Err(TokenErrorResponse {
             error: "invalid_request".to_string(),
-            error_description: "code_challenge must be a 43-character base64url S256 value".to_string(),
+            error_description: "code_challenge must be a 43-character base64url S256 value"
+                .to_string(),
         });
     }
 

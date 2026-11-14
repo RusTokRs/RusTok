@@ -144,7 +144,10 @@ impl FieldDefinitionCache {
         tenant_id: Uuid,
         entity_type: &str,
     ) -> Option<Vec<FieldDefinitionView>> {
-        let entry = self.inner.get(&(tenant_id, entity_type.to_string())).await?;
+        let entry = self
+            .inner
+            .get(&(tenant_id, entity_type.to_string()))
+            .await?;
         (entry.generation == self.generation(tenant_id, entity_type)).then_some(entry.rows)
     }
 
@@ -243,10 +246,7 @@ impl FieldDefinitionCache {
     }
 }
 
-fn field_definition_entry_weight(
-    key: &(Uuid, String),
-    entry: &FieldDefinitionCacheEntry,
-) -> u32 {
+fn field_definition_entry_weight(key: &(Uuid, String), entry: &FieldDefinitionCacheEntry) -> u32 {
     let mut weight = std::mem::size_of::<Uuid>()
         .saturating_add(key.1.len())
         .saturating_add(std::mem::size_of::<FieldDefinitionCacheEntry>());
@@ -676,12 +676,7 @@ mod tests {
         let tenant_id = Uuid::new_v4();
         let generation = cache.generation(tenant_id, "product");
         cache
-            .set_if_generation(
-                tenant_id,
-                "product",
-                vec![mock_view("sku")],
-                generation,
-            )
+            .set_if_generation(tenant_id, "product", vec![mock_view("sku")], generation)
             .await;
 
         cache.invalidate(tenant_id, "user").await;

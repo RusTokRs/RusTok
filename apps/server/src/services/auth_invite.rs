@@ -143,33 +143,26 @@ impl AuthLifecycleService {
         if issuer.is_none() {
             return Err(InviteAcceptanceError::InvalidToken);
         }
-        let mut issuer_permissions = RbacService::get_user_permissions_authoritative(
-            &tx,
-            &tenant_id,
-            &issuer_id,
-        )
-        .await
-        .map_err(InviteAcceptanceError::Internal)?;
+        let mut issuer_permissions =
+            RbacService::get_user_permissions_authoritative(&tx, &tenant_id, &issuer_id)
+                .await
+                .map_err(InviteAcceptanceError::Internal)?;
         // Permission grants owned by disabled modules are persisted but are
         // not current request authority. Apply the same effective-permission
         // boundary used at invite issuance and regular authentication before
         // checking whether the issuer may delegate this role.
-        let availability = crate::services::rbac_module_availability::permission_availability_for(
-            ctx, tenant_id,
-        )
-        .await
-        .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
+        let availability =
+            crate::services::rbac_module_availability::permission_availability_for(ctx, tenant_id)
+                .await
+                .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
         if let Some(availability) = availability {
             issuer_permissions = availability.active_permissions(&issuer_permissions);
         }
         let issuer_role = RbacService::get_user_role_authoritative(&tx, &tenant_id, &issuer_id)
             .await
             .map_err(InviteAcceptanceError::Internal)?;
-        let may_issue_invite = issuer_may_issue_invite(
-            &issuer_permissions,
-            &role,
-            custom_role_slug.is_some(),
-        );
+        let may_issue_invite =
+            issuer_may_issue_invite(&issuer_permissions, &role, custom_role_slug.is_some());
         if !may_issue_invite {
             tracing::warn!(
                 tenant_id = %tenant_id,
@@ -354,10 +347,7 @@ fn issuer_may_issue_invite(
         rustok_rbac::has_effective_permission_in_set(permissions, &Permission::USERS_MANAGE)
     } else {
         rustok_rbac::has_effective_permission_in_set(permissions, &Permission::USERS_CREATE)
-            || rustok_rbac::has_effective_permission_in_set(
-                permissions,
-                &Permission::USERS_MANAGE,
-            )
+            || rustok_rbac::has_effective_permission_in_set(permissions, &Permission::USERS_MANAGE)
     }
 }
 
@@ -385,11 +375,7 @@ mod tests {
             &UserRole::Customer,
             false,
         ));
-        assert!(!issuer_may_issue_invite(
-            &[],
-            &UserRole::Customer,
-            false,
-        ));
+        assert!(!issuer_may_issue_invite(&[], &UserRole::Customer, false,));
         assert!(!issuer_may_issue_invite(
             &[Permission::USERS_CREATE],
             &UserRole::Admin,
@@ -410,8 +396,7 @@ mod tests {
             std::collections::BTreeMap::from([("users:create".to_string(), "auth".to_string())]),
             std::collections::BTreeSet::new(),
         );
-        let current_permissions =
-            disabled_create.active_permissions(&[Permission::USERS_CREATE]);
+        let current_permissions = disabled_create.active_permissions(&[Permission::USERS_CREATE]);
         assert!(!issuer_may_issue_invite(
             &current_permissions,
             &UserRole::Customer,

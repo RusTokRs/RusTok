@@ -174,7 +174,8 @@ fn start_field_definition_cache_generation_reconciliation_with_timing(
 }
 
 pub(crate) fn take_task_for_shutdown(ctx: &ServerRuntimeContext) -> Option<JoinHandle<()>> {
-    let start_lock = ctx.shared_get_or_insert_with(FieldDefinitionCacheGenerationStartLock::default);
+    let start_lock =
+        ctx.shared_get_or_insert_with(FieldDefinitionCacheGenerationStartLock::default);
     let _start_guard = start_lock
         .0
         .lock()

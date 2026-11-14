@@ -661,24 +661,15 @@ mod tests {
     #[test]
     fn explicit_database_url_overrides_configured_uri_without_backend_heuristics() {
         assert_eq!(
-            resolve_database_uri(
-                Some("sqlite::memory:"),
-                "postgres://localhost/rustok"
-            ),
+            resolve_database_uri(Some("sqlite::memory:"), "postgres://localhost/rustok"),
             "sqlite::memory:"
         );
         assert_eq!(
-            resolve_database_uri(
-                None,
-                "postgres://u:p@db:5432/rustok"
-            ),
+            resolve_database_uri(None, "postgres://u:p@db:5432/rustok"),
             "postgres://u:p@db:5432/rustok"
         );
         assert_eq!(
-            resolve_database_uri(
-                None,
-                "postgres://u:p@localhost:5432/rustok"
-            ),
+            resolve_database_uri(None, "postgres://u:p@localhost:5432/rustok"),
             "postgres://u:p@localhost:5432/rustok"
         );
     }

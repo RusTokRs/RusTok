@@ -81,13 +81,10 @@ impl ForumNotificationRecipientContextPort for ServerForumNotificationRecipientC
             dependency_unavailable()
         })?;
         let permissions = filter_active_permissions(permissions, availability);
-        let role = RbacService::get_user_role_authoritative(
-            db,
-            &request.tenant_id,
-            &request.recipient_id,
-        )
-        .await
-        .map_err(|_| dependency_unavailable())?;
+        let role =
+            RbacService::get_user_role_authoritative(db, &request.tenant_id, &request.recipient_id)
+                .await
+                .map_err(|_| dependency_unavailable())?;
 
         build_recipient_context(&caller_context, &request, role, permissions)
     }
@@ -246,10 +243,8 @@ mod tests {
             )]),
             std::collections::BTreeSet::new(),
         );
-        let permissions = filter_active_permissions(
-            vec![Permission::FORUM_TOPICS_READ],
-            Some(availability),
-        );
+        let permissions =
+            filter_active_permissions(vec![Permission::FORUM_TOPICS_READ], Some(availability));
         let error = build_recipient_context(
             &caller_context(tenant_id),
             &request,
@@ -287,9 +282,11 @@ mod tests {
         .expect("other active permissions may remain in the context");
 
         assert!(result.claims.contains(&Permission::USERS_READ.to_string()));
-        assert!(!result
-            .claims
-            .contains(&Permission::FORUM_TOPICS_MODERATE.to_string()));
+        assert!(
+            !result
+                .claims
+                .contains(&Permission::FORUM_TOPICS_MODERATE.to_string())
+        );
     }
 
     #[test]

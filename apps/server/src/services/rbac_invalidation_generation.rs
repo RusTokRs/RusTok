@@ -300,7 +300,10 @@ pub async fn start_rbac_invalidation_generation_watchdog(ctx: &ServerRuntimeCont
         if let Some(task) = existing.take_task() {
             if let Err(error) = task.await {
                 if !error.is_cancelled() {
-                    tracing::warn!(?error, "Old RBAC generation watchdog failed while being replaced");
+                    tracing::warn!(
+                        ?error,
+                        "Old RBAC generation watchdog failed while being replaced"
+                    );
                 }
             }
         }

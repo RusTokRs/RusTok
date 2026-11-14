@@ -416,12 +416,13 @@ fn service_forum_boundary_violation(
 #[cfg(test)]
 mod tests {
     use super::{
-        PAGES_AUTHORING_CACHE_CONTROL, PAGES_AUTHORING_ROBOTS_POLICY, auth_error_response,
-        auth_can_resolve_without_tenant_context, is_direct_user_self_service_path,
-        is_direct_user_self_service_principal, is_human_user_self_service_path,
-        is_observability_auth_path, is_pages_inline_authoring_server_fn,
-        is_pages_inline_authoring_surface, pages_inline_authoring_response,
-        service_forum_boundary_violation, verified_tenant_id_from_access_token,
+        PAGES_AUTHORING_CACHE_CONTROL, PAGES_AUTHORING_ROBOTS_POLICY,
+        auth_can_resolve_without_tenant_context, auth_error_response,
+        is_direct_user_self_service_path, is_direct_user_self_service_principal,
+        is_human_user_self_service_path, is_observability_auth_path,
+        is_pages_inline_authoring_server_fn, is_pages_inline_authoring_surface,
+        pages_inline_authoring_response, service_forum_boundary_violation,
+        verified_tenant_id_from_access_token,
     };
     use axum::http::{HeaderMap, Method, StatusCode, header::AUTHORIZATION};
     use axum::response::IntoResponse;
@@ -637,8 +638,7 @@ mod tests {
             let bytes = to_bytes(response.into_body(), 4096)
                 .await
                 .expect("read error body");
-            let body: ErrorBody =
-                serde_json::from_slice(&bytes).expect("JSON error envelope");
+            let body: ErrorBody = serde_json::from_slice(&bytes).expect("JSON error envelope");
             assert_eq!(body.code, expected_code);
             assert_eq!(body.message, expected_message);
             assert!(!body.message.contains("secret key"));

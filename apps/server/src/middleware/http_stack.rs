@@ -130,8 +130,7 @@ async fn enforce_request_timeout(
 }
 
 fn timeout_response() -> Response {
-    rustok_web::HttpError::gateway_timeout("timeout", "Request timed out")
-        .into_response()
+    rustok_web::HttpError::gateway_timeout("timeout", "Request timed out").into_response()
 }
 
 pub fn is_upload_request<B>(request: &axum::http::Request<B>) -> bool {
@@ -394,11 +393,9 @@ mod tests {
 
     #[tokio::test]
     async fn request_timeout_uses_the_canonical_gateway_timeout_envelope() {
-        let response = enforce_request_timeout(
-            Duration::from_millis(1),
-            std::future::pending::<Response>(),
-        )
-        .await;
+        let response =
+            enforce_request_timeout(Duration::from_millis(1), std::future::pending::<Response>())
+                .await;
         assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
         assert_eq!(
             response

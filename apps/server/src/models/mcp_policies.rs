@@ -75,8 +75,7 @@ mod tests {
     #[test]
     fn policy_list_parser_accepts_string_arrays() {
         assert_eq!(
-            parse_string_list("denied_tools", &json!(["tool:read", "tool:write"]))
-                .unwrap(),
+            parse_string_list("denied_tools", &json!(["tool:read", "tool:write"])).unwrap(),
             vec!["tool:read", "tool:write"]
         );
     }

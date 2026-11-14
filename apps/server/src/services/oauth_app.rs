@@ -279,10 +279,9 @@ impl OAuthAppService {
             ));
         }
 
-        let expected_hash = app
-            .client_secret_hash
-            .clone()
-            .ok_or_else(|| Error::BadRequest("This OAuth app has no rotatable secret".to_string()))?;
+        let expected_hash = app.client_secret_hash.clone().ok_or_else(|| {
+            Error::BadRequest("This OAuth app has no rotatable secret".to_string())
+        })?;
         let new_secret = generate_client_secret()?;
         let new_hash = auth::hash_password_async(new_secret.clone()).await?;
         let updated_at = Utc::now();
@@ -1132,7 +1131,10 @@ async fn update_first_party_app_from_manifest(
             Expr::value(Some(format!("Auto-created for {slug}"))),
         )
         .col_expr(oauth_apps::Column::Scopes, Expr::value(scopes_json))
-        .col_expr(oauth_apps::Column::GrantTypes, Expr::value(grant_types_json))
+        .col_expr(
+            oauth_apps::Column::GrantTypes,
+            Expr::value(grant_types_json),
+        )
         .col_expr(
             oauth_apps::Column::GrantedPermissions,
             Expr::value(to_json_array(granted_permissions)?),
@@ -2517,13 +2519,11 @@ mod tests {
         let revoke_result = OAuthAppService::revoke_app(&db, managed.id).await;
         assert!(revoke_result.is_err());
 
-        let other_tenant = tenants::ActiveModel::new(
-            "Other tenant",
-            &format!("tenant-{}", Uuid::new_v4()),
-        )
-        .insert(&db)
-        .await
-        .expect("insert second tenant");
+        let other_tenant =
+            tenants::ActiveModel::new("Other tenant", &format!("tenant-{}", Uuid::new_v4()))
+                .insert(&db)
+                .await
+                .expect("insert second tenant");
         assert!(
             OAuthAppService::rotate_secret(&db, other_tenant.id, managed.id)
                 .await
@@ -2605,8 +2605,14 @@ mod tests {
             .await
             .expect("load manual app after failed sync")
             .expect("manual app remains persisted");
-        assert_eq!(persisted.client_secret_hash.as_deref(), Some(manual_secret_hash.as_str()));
-        assert_eq!(persisted.granted_permissions, serde_json::json!(["settings:manage"]));
+        assert_eq!(
+            persisted.client_secret_hash.as_deref(),
+            Some(manual_secret_hash.as_str())
+        );
+        assert_eq!(
+            persisted.granted_permissions,
+            serde_json::json!(["settings:manage"])
+        );
         assert_eq!(
             persisted.redirect_uris,
             serde_json::json!(["https://operator.example/callback"])
@@ -2773,13 +2779,12 @@ mod tests {
         assert!(!orphan.is_active);
         assert!(orphan.revoked_at.is_some());
 
-        let other_manifest_auto_created = OAuthAppsEntity::find_by_id(
-            auto_created_for_another_manifest_entry.id,
-        )
-        .one(&db)
-        .await
-        .expect("load app owned by another manifest entry")
-        .expect("other manifest's app remains queryable");
+        let other_manifest_auto_created =
+            OAuthAppsEntity::find_by_id(auto_created_for_another_manifest_entry.id)
+                .one(&db)
+                .await
+                .expect("load app owned by another manifest entry")
+                .expect("other manifest's app remains queryable");
         assert!(
             other_manifest_auto_created.is_active,
             "orphan cleanup must not deactivate an app owned by another manifest entry"
@@ -2815,17 +2820,18 @@ mod tests {
             .await
             .expect("load resynced app")
             .expect("manifest-managed app remains present");
-        assert!(OAuthAppService::verify_client_secret(
-            &rotated.client_secret,
-            resynced
-                .client_secret_hash
-                .as_deref()
-                .expect("resynced app retains its credential hash"),
-        )
-        .expect("verify rotated credential after resync"));
+        assert!(
+            OAuthAppService::verify_client_secret(
+                &rotated.client_secret,
+                resynced
+                    .client_secret_hash
+                    .as_deref()
+                    .expect("resynced app retains its credential hash"),
+            )
+            .expect("verify rotated credential after resync")
+        );
         assert_eq!(
-            resynced.last_used_at,
-            last_used_before_resync,
+            resynced.last_used_at, last_used_before_resync,
             "manifest sync must not overwrite runtime-owned usage timestamps"
         );
     }

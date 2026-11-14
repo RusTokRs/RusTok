@@ -162,8 +162,7 @@ impl flex::FlexStandaloneService for FlexStandaloneSeaOrmService {
         let schema_ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
         let translations = self.load_schema_translation_map(&schema_ids).await?;
 
-        rows
-            .into_iter()
+        rows.into_iter()
             .map(|row| {
                 let translation = translations
                     .get(&row.id)

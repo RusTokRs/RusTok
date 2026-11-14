@@ -151,9 +151,8 @@ pub(crate) async fn dispatch_artifact_binding_operation(
                         Ok(output) => match store.complete(&request, operation_id, &output).await {
                             Ok(()) => Ok(output),
                             Err(error) => {
-                                if let Err(reconciliation_error) = store
-                                    .require_reconciliation(&request, operation_id)
-                                    .await
+                                if let Err(reconciliation_error) =
+                                    store.require_reconciliation(&request, operation_id).await
                                 {
                                     tracing::error!(
                                         %reconciliation_error,
@@ -168,11 +167,10 @@ pub(crate) async fn dispatch_artifact_binding_operation(
                                 );
                                 Err(map_idempotency_error(error))
                             }
-                        }
+                        },
                         Err(error) => {
-                            if let Err(reconciliation_error) = store
-                                .require_reconciliation(&request, operation_id)
-                                .await
+                            if let Err(reconciliation_error) =
+                                store.require_reconciliation(&request, operation_id).await
                             {
                                 tracing::error!(
                                     %reconciliation_error,

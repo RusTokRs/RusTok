@@ -67,7 +67,10 @@ impl TopicFieldService {
         actor_id: Option<Uuid>,
         input: CreateFieldDefinitionInput,
     ) -> Result<(Model, EventEnvelope), FlexError> {
-        let txn = db.begin().await.map_err(|error| FlexError::Database(error.to_string()))?;
+        let txn = db
+            .begin()
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
         // Serialize the count-and-insert guard on databases with row-level locks.
         // SQLite has no SELECT FOR UPDATE; its write transaction remains the fallback.
         let tenant_query = crate::models::tenants::Entity::find_by_id(tenant_id);
@@ -155,7 +158,10 @@ impl TopicFieldService {
         id: Uuid,
         input: UpdateFieldDefinitionInput,
     ) -> Result<(Model, EventEnvelope), FlexError> {
-        let txn = db.begin().await.map_err(|error| FlexError::Database(error.to_string()))?;
+        let txn = db
+            .begin()
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
         let query = Entity::find_by_id(id).filter(Column::TenantId.eq(tenant_id));
         let row = match db.get_database_backend() {
             sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => {
@@ -218,7 +224,10 @@ impl TopicFieldService {
         actor_id: Option<Uuid>,
         id: Uuid,
     ) -> Result<EventEnvelope, FlexError> {
-        let txn = db.begin().await.map_err(|error| FlexError::Database(error.to_string()))?;
+        let txn = db
+            .begin()
+            .await
+            .map_err(|error| FlexError::Database(error.to_string()))?;
         let query = Entity::find_by_id(id).filter(Column::TenantId.eq(tenant_id));
         let row = match db.get_database_backend() {
             sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => {
@@ -253,13 +262,6 @@ impl TopicFieldService {
         tenant_id: Uuid,
         ids: &[Uuid],
     ) -> Result<Vec<Model>, FlexError> {
-        let requested_ids = ids.iter().copied().collect::<std::collections::HashSet<_>>();
-        if requested_ids.len() != ids.len() {
-            return Err(FlexError::InvalidFieldKey(
-                "field-definition reorder contains duplicate ids".to_string(),
-            ));
-        }
-
         let txn = db
             .begin()
             .await
@@ -268,10 +270,9 @@ impl TopicFieldService {
             .filter(Column::TenantId.eq(tenant_id))
             .order_by_asc(Column::Id);
         let rows = match db.get_database_backend() {
-            sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => query
-                .lock_exclusive()
-                .all(&txn)
-                .await,
+            sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => {
+                query.lock_exclusive().all(&txn).await
+            }
             _ => query.all(&txn).await,
         }
         .map_err(|error| FlexError::Database(error.to_string()))?;
@@ -279,14 +280,7 @@ impl TopicFieldService {
             .iter()
             .map(|row| row.id)
             .collect::<std::collections::HashSet<_>>();
-        if let Some(missing_id) = requested_ids.difference(&existing_ids).next() {
-            return Err(FlexError::NotFound(*missing_id));
-        }
-        if requested_ids != existing_ids {
-            return Err(FlexError::InvalidFieldKey(
-                "field-definition reorder must include every definition exactly once".to_string(),
-            ));
-        }
+        flex::validate_field_definition_reorder(ids, &existing_ids)?;
 
         let mut rows_by_id = rows
             .into_iter()

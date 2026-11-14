@@ -45,9 +45,10 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
         context: &McpManagementContext,
         client_id: uuid::Uuid,
     ) -> Result<Option<McpClientDetailsRecord>, McpManagementMutationError> {
-        let details = McpManagementService::get_client_details(&self.db, context.tenant_id, client_id)
-            .await
-            .map_err(mutation_error)?;
+        let details =
+            McpManagementService::get_client_details(&self.db, context.tenant_id, client_id)
+                .await
+                .map_err(mutation_error)?;
         details
             .map(|details| {
                 Ok(McpClientDetailsRecord {

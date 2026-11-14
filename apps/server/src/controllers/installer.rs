@@ -231,7 +231,10 @@ async fn apply(
             )
         })?;
     let executor = ServerInstallExecutor::new(registry);
-    if let Err(error) = persistence.create_http_job(job_id, job_id, submitted_at).await {
+    if let Err(error) = persistence
+        .create_http_job(job_id, job_id, submitted_at)
+        .await
+    {
         ctx.shared_take::<ActiveInstallerJobHandle>();
         if matches!(
             error.sql_err(),

@@ -86,13 +86,9 @@ impl McpManagementAuthorityService {
             ));
         }
 
-        let delegated = delegated_permissions(
-            db,
-            tenant_id,
-            client.actor_type(),
-            client.delegated_user_id,
-        )
-        .await?;
+        let delegated =
+            delegated_permissions(db, tenant_id, client.actor_type(), client.delegated_user_id)
+                .await?;
         if let Some(delegated) = delegated {
             let granted_permissions = policy.granted_permissions_list().map_err(|error| {
                 internal_error("decode persisted MCP granted permissions", error)

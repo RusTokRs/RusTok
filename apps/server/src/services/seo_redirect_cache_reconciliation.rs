@@ -211,7 +211,8 @@ fn start_seo_redirect_cache_reconciliation_with_options(
 }
 
 pub(crate) fn take_task_for_shutdown(ctx: &ServerRuntimeContext) -> Option<JoinHandle<()>> {
-    let start_lock = ctx.shared_get_or_insert_with(SeoRedirectCacheReconciliationStartLock::default);
+    let start_lock =
+        ctx.shared_get_or_insert_with(SeoRedirectCacheReconciliationStartLock::default);
     let _start_guard = start_lock
         .0
         .lock()

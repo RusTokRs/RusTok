@@ -382,12 +382,8 @@ mod tests {
         ));
         let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
 
-        let no_admin_scope = RbacRequestScope::new(
-            tenant.id,
-            actor_id,
-            Vec::new(),
-            UserRole::Customer,
-        );
+        let no_admin_scope =
+            RbacRequestScope::new(tenant.id, actor_id, Vec::new(), UserRole::Customer);
         let no_admin_access = with_rbac_request_scope(Some(no_admin_scope), async {
             guarded.rotate_oauth_app_secret(&context, app_id).await
         })
@@ -414,22 +410,22 @@ mod tests {
             .await
             .expect("reload OAuth app after denied rotation")
             .expect("OAuth app remains present");
-        assert!(OAuthAppService::verify_client_secret(
-            &original_secret,
-            unchanged
-                .client_secret_hash
-                .as_deref()
-                .expect("existing secret hash"),
-        )
-        .expect("verify original secret after denied attempt"));
+        assert!(
+            OAuthAppService::verify_client_secret(
+                &original_secret,
+                unchanged
+                    .client_secret_hash
+                    .as_deref()
+                    .expect("existing secret hash"),
+            )
+            .expect("verify original secret after denied attempt")
+        );
 
-        let other_tenant = tenants::ActiveModel::new(
-            "Other tenant",
-            &format!("oauth-guard-{}", Uuid::new_v4()),
-        )
-        .insert(&db)
-        .await
-        .expect("insert another tenant");
+        let other_tenant =
+            tenants::ActiveModel::new("Other tenant", &format!("oauth-guard-{}", Uuid::new_v4()))
+                .insert(&db)
+                .await
+                .expect("insert another tenant");
         let other_context = AuthAdminMutationContext {
             tenant_id: other_tenant.id,
             ..context.clone()
@@ -455,14 +451,16 @@ mod tests {
             .await
             .expect("reload OAuth app after cross-tenant rotation attempt")
             .expect("OAuth app remains present");
-        assert!(OAuthAppService::verify_client_secret(
-            &original_secret,
-            after_cross_tenant_attempt
-                .client_secret_hash
-                .as_deref()
-                .expect("existing secret hash"),
-        )
-        .expect("verify cross-tenant attempt did not rotate the secret"));
+        assert!(
+            OAuthAppService::verify_client_secret(
+                &original_secret,
+                after_cross_tenant_attempt
+                    .client_secret_hash
+                    .as_deref()
+                    .expect("existing secret hash"),
+            )
+            .expect("verify cross-tenant attempt did not rotate the secret")
+        );
 
         let sufficient_scope = RbacRequestScope::new(
             tenant.id,
@@ -484,10 +482,14 @@ mod tests {
             .client_secret_hash
             .as_deref()
             .expect("rotated secret hash");
-        assert!(OAuthAppService::verify_client_secret(&rotated.client_secret, persisted_hash)
-            .expect("verify rotated client secret"));
-        assert!(!OAuthAppService::verify_client_secret(&original_secret, persisted_hash)
-            .expect("verify old secret is rejected"));
+        assert!(
+            OAuthAppService::verify_client_secret(&rotated.client_secret, persisted_hash)
+                .expect("verify rotated client secret")
+        );
+        assert!(
+            !OAuthAppService::verify_client_secret(&original_secret, persisted_hash)
+                .expect("verify old secret is rejected")
+        );
     }
 
     #[test]

@@ -351,9 +351,14 @@ mod tests {
             AuthSettingsOverrides::default(),
         )
         .expect("auth configuration");
-        let token =
-            encode_access_token(&config, user.id, tenant.id, UserRole::SuperAdmin, session_id)
-                .expect("access token");
+        let token = encode_access_token(
+            &config,
+            user.id,
+            tenant.id,
+            UserRole::SuperAdmin,
+            session_id,
+        )
+        .expect("access token");
         let runtime = ServerRuntimeContext::new(db.clone(), RustokSettings::default());
         let hub = build_event_hub_from_context(&runtime);
         let auth_runtime = ServerAuthRuntime::new(runtime, config);

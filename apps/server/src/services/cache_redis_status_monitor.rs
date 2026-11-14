@@ -118,7 +118,10 @@ pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache:
         if let Some(task) = existing.take_task() {
             if let Err(error) = task.await {
                 if !error.is_cancelled() {
-                    tracing::warn!(?error, "Old Cache Redis status monitor failed while being replaced");
+                    tracing::warn!(
+                        ?error,
+                        "Old Cache Redis status monitor failed while being replaced"
+                    );
                 }
             }
         }
@@ -163,14 +166,15 @@ pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache:
     ctx.shared_insert(CacheRedisStatusMonitorHandle::new(task));
 }
 
-pub(crate) async fn take_task_for_shutdown(
-    ctx: &ServerRuntimeContext,
-) -> Option<JoinHandle<()>> {
+pub(crate) async fn take_task_for_shutdown(ctx: &ServerRuntimeContext) -> Option<JoinHandle<()>> {
     let start_lock = ctx.shared_get_or_insert_with(CacheRedisStatusMonitorStartLock::default);
-    let _start_guard = match tokio::time::timeout(Duration::from_secs(5), start_lock.0.lock()).await {
+    let _start_guard = match tokio::time::timeout(Duration::from_secs(5), start_lock.0.lock()).await
+    {
         Ok(guard) => guard,
         Err(_) => {
-            tracing::warn!("Timed out waiting for Cache Redis status monitor startup during shutdown");
+            tracing::warn!(
+                "Timed out waiting for Cache Redis status monitor startup during shutdown"
+            );
             return None;
         }
     };

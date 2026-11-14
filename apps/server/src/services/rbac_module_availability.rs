@@ -20,11 +20,10 @@ use crate::error::{Error, Result};
 #[derive(Clone)]
 pub struct RbacPermissionOwnership(pub Arc<BTreeMap<String, String>>);
 
-fn build_permission_ownership(
-    registry: &ModuleRegistry,
-) -> Result<BTreeMap<String, String>> {
-    let catalog = ModuleDefinitionCatalog::from_static_registry(registry)
-        .map_err(|error| Error::Message(format!("RBAC permission ownership catalog failed: {error}")))?;
+fn build_permission_ownership(registry: &ModuleRegistry) -> Result<BTreeMap<String, String>> {
+    let catalog = ModuleDefinitionCatalog::from_static_registry(registry).map_err(|error| {
+        Error::Message(format!("RBAC permission ownership catalog failed: {error}"))
+    })?;
     let mut ownership: BTreeMap<String, String> = BTreeMap::new();
     for definition in catalog.definitions() {
         for permission in &definition.permissions {

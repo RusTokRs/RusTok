@@ -21,7 +21,6 @@ use crate::services::mcp_management_authority::{
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_core::ModuleRegistry;
-use rustok_rbac::PermissionAvailability;
 use rustok_mcp::{
     ApplyModuleScaffoldRequest, ApplyModuleScaffoldResponse, McpAccessContext, McpAccessPolicy,
     McpAccessResolver, McpActorType, McpAuditSink, McpIdentity, McpRuntimeBinding,
@@ -30,6 +29,7 @@ use rustok_mcp::{
     ReviewModuleScaffoldResponse, ScaffoldModuleRequest, StageModuleScaffoldResponse,
     TOOL_MCP_WHOAMI, scaffold_source_digest,
 };
+use rustok_rbac::PermissionAvailability;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct McpRemoteBootstrapResponse {
@@ -486,7 +486,9 @@ async fn touch_last_used(
     token: &mcp_tokens::Model,
 ) -> Result<()> {
     if token.tenant_id != client.tenant_id || token.client_id != client.id {
-        return Err(Error::Unauthorized("MCP token binding is invalid".to_string()));
+        return Err(Error::Unauthorized(
+            "MCP token binding is invalid".to_string(),
+        ));
     }
 
     let now = Utc::now();
@@ -581,18 +583,16 @@ mod tests {
     use super::{filter_active_module_permissions, map_db_err};
     use axum::{http::StatusCode, response::IntoResponse};
 
-    use super::{
-        access_context_for_client, actor_user_id_from_runtime_context, touch_last_used,
-    };
+    use super::{access_context_for_client, actor_user_id_from_runtime_context, touch_last_used};
     use crate::models::{mcp_clients, mcp_policies, mcp_tokens, tenants};
+    use rustok_api::Permission;
     use rustok_mcp::{
         McpAccessContext, McpActorType, McpIdentity, McpScaffoldDraftRuntimeContext,
         McpSessionContext, TOOL_MCP_WHOAMI,
     };
+    use rustok_rbac::PermissionAvailability;
     use sea_orm::entity::prelude::Uuid;
     use std::collections::{BTreeMap, BTreeSet};
-    use rustok_api::Permission;
-    use rustok_rbac::PermissionAvailability;
 
     #[test]
     fn disabled_module_grants_are_removed_from_mcp_runtime_context() {
@@ -636,13 +636,11 @@ mod tests {
         use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 
         let db = setup_test_db_with_migrations::<Migrator>().await;
-        let tenant = tenants::ActiveModel::new(
-            "MCP touch tenant",
-            &format!("mcp-touch-{}", Uuid::new_v4()),
-        )
-        .insert(&db)
-        .await
-        .expect("insert tenant");
+        let tenant =
+            tenants::ActiveModel::new("MCP touch tenant", &format!("mcp-touch-{}", Uuid::new_v4()))
+                .insert(&db)
+                .await
+                .expect("insert tenant");
         let client = mcp_clients::ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
@@ -757,7 +755,8 @@ mod tests {
             updated_at: chrono::Utc::now().into(),
         };
 
-        let access_context = access_context_for_client(&client, None).expect("default policy context");
+        let access_context =
+            access_context_for_client(&client, None).expect("default policy context");
 
         assert_eq!(
             access_context.policy.allowed_tools,

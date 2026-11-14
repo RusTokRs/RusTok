@@ -111,7 +111,11 @@ impl RbacCacheInvalidationRuntime {
         if let Some(task) = self.local.take_task() {
             tasks.push(task);
         }
-        if let Some(task) = self.redis.as_ref().and_then(AbortOnDropInvalidationTask::take_task) {
+        if let Some(task) = self
+            .redis
+            .as_ref()
+            .and_then(AbortOnDropInvalidationTask::take_task)
+        {
             tasks.push(task);
         }
         if let Some(task) = self.reconcile.take_task() {
@@ -601,7 +605,10 @@ pub async fn start_rbac_cache_invalidation_listener(
         for task in tasks {
             if let Err(error) = task.await {
                 if !error.is_cancelled() {
-                    tracing::warn!(?error, "Old RBAC invalidation worker failed while being replaced");
+                    tracing::warn!(
+                        ?error,
+                        "Old RBAC invalidation worker failed while being replaced"
+                    );
                 }
             }
         }
@@ -682,7 +689,8 @@ pub(crate) async fn take_listener_tasks_for_shutdown(
     ctx: &ServerRuntimeContext,
 ) -> Vec<JoinHandle<()>> {
     let start_lock = ctx.shared_get_or_insert_with(RbacCacheInvalidationListenerStartLock::default);
-    let _start_guard = match tokio::time::timeout(Duration::from_secs(5), start_lock.0.lock()).await {
+    let _start_guard = match tokio::time::timeout(Duration::from_secs(5), start_lock.0.lock()).await
+    {
         Ok(guard) => guard,
         Err(_) => {
             tracing::warn!("Timed out waiting for RBAC invalidation startup during shutdown");
