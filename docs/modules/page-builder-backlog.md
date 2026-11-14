@@ -15,6 +15,21 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
 
 ## Storefront and identity continuation (2026-11-13) — OPEN
 
+Reduced-motion follow-up: the shared Fly browser asset now uses instant scrolling for
+`scroll_to` when the target document requests reduced motion, including in the presence of
+CSS `scroll-behavior: smooth`; animations use the same document preference. The Node runtime
+regressions exercise dispatch with a minimal DOM. Chromium media-emulation and actual scrolling
+also passed in the focused Fly action suite. This does not close the broader deployed accessibility
+and storefront evidence below.
+
+Fragment isolation follow-up: both storefront bridges now keep same-context fragment links and
+`navigate` events inside the originating landing, including missing, malformed, empty or nested
+landing targets, and honor reduced motion. Shared Node tests execute both implementations with
+minimal DOM doubles. The focused Fly actions and storefront bridge Playwright suites passed
+36/36 in Chromium 153 using test host boundaries, not deployed hosts or real services. Native
+navigation before the bridge installs, modified clicks, downloads and links targeting other
+browsing contexts retain browser behavior and are not covered by this interception guarantee.
+
 This continuation supersedes historical claims below about direct landing-to-Cart adds,
 compact delta-only history accounting, and automatic commerce bindings. Fly now remaps owned
 component/HTML references with collision checks, reserves runtime identity hooks, scopes action
@@ -371,14 +386,38 @@ this promotes the module or checkout to production-ready. Draft KV driver, reten
    files already lived in `rustok-page-builder`). Cargo verification of the
    move is part of item 1's maintainer run.
 
-9. **Page and Template Builder Unification ([`DECISIONS/2026-10-16-page-and-template-builder-unification.md`](../../DECISIONS/2026-10-16-page-and-template-builder-unification.md)) — COMPLETE (2026-10-17).**
+9. **Page and Template Builder Unification ([`DECISIONS/2026-10-16-page-and-template-builder-unification.md`](../../DECISIONS/2026-10-16-page-and-template-builder-unification.md)) — IN PROGRESS.**
+   The phases below describe earlier implementation work, not end-to-end completion.
+   The Leptos and Next create forms now read the server catalog and instantiate the
+   selected revision; the former local presets have moved to the Pages service.
+   Both admin surfaces offer create-only starter snapshots of an exact-locale saved
+   page body, not the unsaved editor draft; the response identifies the captured
+   revision without guaranteeing it remained latest through insertion. Both UIs offer
+   metadata-only editing and confirmed revision-guarded deletion of tenant starters.
+   Both create forms list exact-locale layout keys, show suggested-layout availability
+   and recheck the explicit choice. Both request the new checked-layout create contract;
+   same-locale creation/deletion serialization is implemented for PostgreSQL/SQLite,
+   while MySQL non-default checked creation fails closed. Legacy labels and cross-locale
+   deletion checks are outside this guarantee; layout revisions are not pinned.
+   Creators without `pages:manage` are offered only `default`, since non-default
+   builder composition is manage-only; page-scoped composition authorization for
+   editors of existing non-default pages remains open. Content/thumbnail editing
+   and full layout reference integrity remain open. Source changes add CAS-protected starter save/delete
+   and reject uncloneable saves. Instantiation uses the page locale and does not import
+   embedded shared-symbol catalogs: linked starters require `pages:manage`, validate
+   against current exact-locale symbols and carry their CAS token. The UI integration,
+   CAS migration/backfill and new
+   regression tests have not been run or compiled here (Rust toolchain unavailable;
+   Next dependencies incomplete). Stop old writers during deployment.
    Unified canvas, layout slots, reviewed publish closure, and starter preset catalog:
    - **Phase 1: Reviewed publish closure & layout wiring.** Connected `compose_layout_document` into `PageService::publish_reviewed`. Enforces exact-locale `page_templates` and `site_symbols` composition into monolithic static landing artifacts (`page_static_landing_artifacts`) with optimistic revision CAS and transactional outbox events (`PageTemplateSaved`) to invalidate Next.js ISR tags. Tested in `reviewed_publish_layout_sqlite.rs` and `page_template_catalog_sqlite.rs`.
    - **Phase 2: Fly `<PageContentSlot />`, DocumentKind & Deep AST cloning.** Added `page_content_slot` in `fly::builtin_blocks` and `flyDocumentKind` (`Page`, `LayoutTemplate`, `SectionSymbol`, `StarterPreset`). Enforced child-free slot validator (exactly one slot in `LayoutTemplate`, zero in `Page`). Implemented `ProjectDocument::clone_as_page` with deep recursive AST identifier and style rule remapping (`fly::model`).
    - **Phase 3: Visual Layout Editor & In-Context Page Authoring.** Injected layout symbols with `data-fly-layout-slot` and `data-fly-locked = "true"`. Added canvas iframe styling (dashed border and `🔒 Layout (slot)` badge), authoring controller guards against drag/drop/delete/reorder/modify of locked nodes, and trait panel read-only layout indicators. Implemented `strip_layout_nodes` in `PageService::save_document`, guaranteeing page persistence purity without layout pollution.
-   - **Phase 4: Starter Templates Catalog & Composition.** Created migration `m20261017_000001_create_page_starters.rs`, `PageStarter` entity, and `PageStarterService` with built-in presets (`landing-product`, `about-company`, `contact-simple`) and tenant overrides. Implemented GraphQL queries (`pageStarters`, `pageStarter`, `instantiatePageStarter`) and mutation (`savePageStarter`). Built FFA admin UI in `rustok-pages-admin` (`starters.rs`).
+   - **Phase 4: Starter Templates Catalog & Composition.** Created migration `m20261017_000001_create_page_starters.rs`, `PageStarter` entity, and `PageStarterService` with built-ins and tenant overrides. GraphQL offers catalog reads, revision-guarded instantiate/save/delete; preset definitions now live in `rustok-pages/src/services/starter_presets.rs`.
        - **Phase 5: Layout Templates & Site Symbols Management Surface & In-Context Preview.** Implemented `SiteSymbolService` (`list`, `get`, `save`, `delete`) with identifier and `SymbolDescriptor` validation, size limits, tenant and locale isolation, and protection against deleting symbols referenced by templates or active page bodies. Extended `PageTemplateService` with `get` and `list_keys` (always guaranteeing virtual `default` layout availability) and unified `Action::Manage` authorization. Implemented GraphQL authoring queries & mutations (`site_symbols`, `site_symbol`, `save_site_symbol`, `delete_site_symbol`, `page_template`, `page_template_keys`). Added layout template selector in `CreatePageCard` of `rustok-pages-admin`, in-context template preview injection into `PagesPageBuilderProjectStore::load_project` for WYSIWYG canvas authoring, and built dedicated `TemplatesAdmin` UI panel in `rustok-pages-admin` (`templates_admin.rs`) with subtabs for Layout Templates and Site Symbols (listing, live validation, creation, editing with CAS revision token, and deletion).
-    All scoped verification suites passing: `fly` (301 tests), `rustok-page-builder` (140 tests), `rustok-page-builder-admin` (106 tests), `rustok-pages-admin` (53 tests), `rustok-pages` (83 lib tests, 3/3 `page_template_catalog_sqlite`, 3/3 `site_symbol_catalog_sqlite`), and layout/starter integration suites.
+    Historical report (2026-10-17): scoped suites were reported passing for `fly`,
+    `rustok-page-builder`, their admin packages, `rustok-pages`, and layout/starter
+    integration. This is not evidence for subsequent changes.
    Owner: `rustok-page-builder`, `fly`, `rustok-pages`.
 
 10. **Follow-ups of the 2026-11-10 Page Builder audit — OPEN.** The audit and the journal of its
@@ -841,23 +880,38 @@ this promotes the module or checkout to production-ready. Draft KV driver, reten
       a document and bind a compiled landing where content is needed
       (`storefront/tests/support/mod.rs`). They were rewritten without being compiled; run
       them with `--features ssr`. Owner: `rustok-pages` storefront.
+    - **Stale-draft preservation, source only.** A revision mismatch no longer removes or
+      reseeds the session: its original document/base and generation are retained, a conflict is
+      reported, and the route provides the complete project JSON for manual copying. Missing route
+      sessions stop the editor; missing intent tokens return `DRAFT_UNAVAILABLE`. Sessions still
+      expire/are evicted, no automatic merge/import exists, and the full endpoint, browser route
+      and all store backends require concurrency/integration verification. Unit tests were added
+      but not compiled or run. Owner: `rustok-pages-admin`.
+    - **Preview projection source change, unverified.** Both preview entrypoints now use
+      `AdminCanvasController::active_page_project`; missing active pages and encoding failures
+      propagate instead of yielding an empty project. Compile and add behavioral regression coverage
+      for both paths and their error responses before treating this as release evidence. Owners:
+      `rustok-page-builder-admin`, `rustok-pages-admin`.
     - Decide whether a failed draft save should be retried without a document change (today
       only an explicit save or the next edit retries). Owner: `rustok-pages-admin`.
-    - DONE (2026-11-12), message only: `PagesFlyBuilder`
-      (`rustok-pages/admin/src/composition.rs`) restored the draft session with
-      `.load(…).ok().flatten()`: a store error on page open (I/O, lock timeout, a record that
-      does not parse, an owner mismatch) opened the editor on the saved document, without the
-      unsaved edits and without a message. `load_route_draft` returns the error, and the
-      editor renders it in an alert above the workspace (`pages.builder.draftLoadError`, en
-      and ru) while it still opens the saved page. Two unit tests on an in-memory store; not
-      compiled here, CI decides. Open:
-      - The error is not logged: the crate has no `tracing` dependency, and adding one changes
-        `Cargo.lock`, which cannot be regenerated in this workspace.
-        Owner: `rustok-pages-admin`.
-      - A session that is gone, or that was started from another saved revision, still opens
-        the saved page without a message. Owner: `rustok-pages-admin`.
-      - The address keeps the draft token, so each editor action is refused with the same
-        error until the author opens the page without it. Owner: `rustok-pages-admin`.
+    - Pages supplies the rendered draft token and generation to the browser. A cached draft on a
+      saved-page render blocks editing and offers its recovery route; out-of-order responses no
+      longer change the address and a history-write failure stops editing. The bootstrap also
+      checks page, route draft and root connection before sending an intent or applying its route
+      response; a late answer cannot rewrite or navigate the newly selected page. Ten Node
+      DOM-boundary checks and 24 Chromium host-bootstrap/response-order fixture tests passed with
+      stubbed endpoints. Page changes clear the previous draft route token atomically in the query
+      update; the stored draft is not deleted. Abort after server commit can still lose a response
+      token, and multiple adapters for one page can replace the single storage pointer. Rust
+      render/route tests, SSR/hydration with the real Pages server, concurrent store writers,
+      expired sessions and outage recovery still require verification. Draft load errors are not
+      logged. Owners: Pages and Page Builder admin.
+    - **Document CAS and save receipts are not yet a multi-writer guarantee.** Working-body
+      timestamps can repeat and responses are read after commit, so a concurrent writer can supply
+      the revision adopted by another editor. Replace the token/receipt protocol and exercise
+      concurrent save, restore and lifecycle transitions across supported databases. SQLite uses
+      no row lock in `find_page_for_update`; lock contention/error handling needs coverage too.
+      Owner: Pages.
     - The save-failure Playwright spec (`apps/next-admin/tests/e2e/fly-browser-save-failure.spec.ts`)
       drives the adapter with a stubbed intent endpoint. No test runs the Pages endpoint and
       the adapter together through a rejected save. Owner: `rustok-pages-admin`.

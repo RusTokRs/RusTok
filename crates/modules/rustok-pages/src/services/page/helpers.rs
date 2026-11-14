@@ -69,7 +69,7 @@ pub(super) fn normalize_page_body_input(
     }))
 }
 
-pub(super) fn normalize_locale(locale: &str) -> PagesResult<String> {
+pub(crate) fn normalize_locale(locale: &str) -> PagesResult<String> {
     TenantLocale::new(locale)
         .map(TenantLocale::into_inner)
         .map_err(|_| PagesError::validation("Invalid locale"))

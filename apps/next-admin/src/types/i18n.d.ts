@@ -848,6 +848,84 @@ export type AppMessageKey =
   | 'modules.toast.disabled'
   | 'modules-toast-enabled'
   | 'modules.toast.enabled'
+  | 'pages-layout-contextAfterCreate'
+  | 'pages.layout.contextAfterCreate'
+  | 'pages-layout-label'
+  | 'pages.layout.label'
+  | 'pages-layout-loading'
+  | 'pages.layout.loading'
+  | 'pages-layout-permissionsHint'
+  | 'pages.layout.permissionsHint'
+  | 'pages-layout-reload'
+  | 'pages.layout.reload'
+  | 'pages-layout-selectionError'
+  | 'pages.layout.selectionError'
+  | 'pages-layout-suggestionAvailable'
+  | 'pages.layout.suggestionAvailable'
+  | 'pages-layout-suggestionMissing'
+  | 'pages.layout.suggestionMissing'
+  | 'pages-layout-unavailable'
+  | 'pages.layout.unavailable'
+  | 'pages-starter-builtin'
+  | 'pages.starter.builtin'
+  | 'pages-starter-cancel'
+  | 'pages.starter.cancel'
+  | 'pages-starter-category'
+  | 'pages.starter.category'
+  | 'pages-starter-confirmDelete'
+  | 'pages.starter.confirmDelete'
+  | 'pages-starter-contextError'
+  | 'pages.starter.contextError'
+  | 'pages-starter-delete'
+  | 'pages.starter.delete'
+  | 'pages-starter-deleted'
+  | 'pages.starter.deleted'
+  | 'pages-starter-deleteWarning'
+  | 'pages.starter.deleteWarning'
+  | 'pages-starter-description'
+  | 'pages.starter.description'
+  | 'pages-starter-edit'
+  | 'pages.starter.edit'
+  | 'pages-starter-key'
+  | 'pages.starter.key'
+  | 'pages-starter-label'
+  | 'pages.starter.label'
+  | 'pages-starter-layoutHint'
+  | 'pages.starter.layoutHint'
+  | 'pages-starter-layoutKey'
+  | 'pages.starter.layoutKey'
+  | 'pages-starter-manageHint'
+  | 'pages.starter.manageHint'
+  | 'pages-starter-manageTitle'
+  | 'pages.starter.manageTitle'
+  | 'pages-starter-name'
+  | 'pages.starter.name'
+  | 'pages-starter-notDeleted'
+  | 'pages.starter.notDeleted'
+  | 'pages-starter-operationError'
+  | 'pages.starter.operationError'
+  | 'pages-starter-reload'
+  | 'pages.starter.reload'
+  | 'pages-starter-saveAction'
+  | 'pages.starter.saveAction'
+  | 'pages-starter-saveChanges'
+  | 'pages.starter.saveChanges'
+  | 'pages-starter-saved'
+  | 'pages.starter.saved'
+  | 'pages-starter-savedWarning'
+  | 'pages.starter.savedWarning'
+  | 'pages-starter-saveTitle'
+  | 'pages.starter.saveTitle'
+  | 'pages-starter-selectionError'
+  | 'pages.starter.selectionError'
+  | 'pages-starter-sourceLocale'
+  | 'pages.starter.sourceLocale'
+  | 'pages-starter-tenant'
+  | 'pages.starter.tenant'
+  | 'pages-starter-unavailable'
+  | 'pages.starter.unavailable'
+  | 'pages-starter-updated'
+  | 'pages.starter.updated'
   | 'product-attributeLifecycle-active'
   | 'product.attributeLifecycle.active'
   | 'product-attributeLifecycle-archive'
@@ -3196,6 +3274,84 @@ export interface AppMessageArgs {
   'modules.toast.disabled'?: Record<string, never>;
   'modules-toast-enabled'?: Record<string, never>;
   'modules.toast.enabled'?: Record<string, never>;
+  'pages-layout-contextAfterCreate'?: Record<string, never>;
+  'pages.layout.contextAfterCreate'?: Record<string, never>;
+  'pages-layout-label'?: Record<string, never>;
+  'pages.layout.label'?: Record<string, never>;
+  'pages-layout-loading'?: Record<string, never>;
+  'pages.layout.loading'?: Record<string, never>;
+  'pages-layout-permissionsHint'?: Record<string, never>;
+  'pages.layout.permissionsHint'?: Record<string, never>;
+  'pages-layout-reload'?: Record<string, never>;
+  'pages.layout.reload'?: Record<string, never>;
+  'pages-layout-selectionError'?: Record<string, never>;
+  'pages.layout.selectionError'?: Record<string, never>;
+  'pages-layout-suggestionAvailable'?: Record<string, never>;
+  'pages.layout.suggestionAvailable'?: Record<string, never>;
+  'pages-layout-suggestionMissing'?: Record<string, never>;
+  'pages.layout.suggestionMissing'?: Record<string, never>;
+  'pages-layout-unavailable'?: Record<string, never>;
+  'pages.layout.unavailable'?: Record<string, never>;
+  'pages-starter-builtin'?: Record<string, never>;
+  'pages.starter.builtin'?: Record<string, never>;
+  'pages-starter-cancel'?: Record<string, never>;
+  'pages.starter.cancel'?: Record<string, never>;
+  'pages-starter-category'?: Record<string, never>;
+  'pages.starter.category'?: Record<string, never>;
+  'pages-starter-confirmDelete'?: Record<string, never>;
+  'pages.starter.confirmDelete'?: Record<string, never>;
+  'pages-starter-contextError'?: Record<string, never>;
+  'pages.starter.contextError'?: Record<string, never>;
+  'pages-starter-delete'?: Record<string, never>;
+  'pages.starter.delete'?: Record<string, never>;
+  'pages-starter-deleted'?: Record<string, never>;
+  'pages.starter.deleted'?: Record<string, never>;
+  'pages-starter-deleteWarning'?: Record<string, never>;
+  'pages.starter.deleteWarning'?: Record<string, never>;
+  'pages-starter-description'?: Record<string, never>;
+  'pages.starter.description'?: Record<string, never>;
+  'pages-starter-edit'?: Record<string, never>;
+  'pages.starter.edit'?: Record<string, never>;
+  'pages-starter-key'?: Record<string, never>;
+  'pages.starter.key'?: Record<string, never>;
+  'pages-starter-label'?: Record<string, never>;
+  'pages.starter.label'?: Record<string, never>;
+  'pages-starter-layoutHint'?: Record<string, never>;
+  'pages.starter.layoutHint'?: Record<string, never>;
+  'pages-starter-layoutKey'?: Record<string, never>;
+  'pages.starter.layoutKey'?: Record<string, never>;
+  'pages-starter-manageHint'?: Record<string, never>;
+  'pages.starter.manageHint'?: Record<string, never>;
+  'pages-starter-manageTitle'?: Record<string, never>;
+  'pages.starter.manageTitle'?: Record<string, never>;
+  'pages-starter-name'?: Record<string, never>;
+  'pages.starter.name'?: Record<string, never>;
+  'pages-starter-notDeleted'?: Record<string, never>;
+  'pages.starter.notDeleted'?: Record<string, never>;
+  'pages-starter-operationError'?: Record<string, never>;
+  'pages.starter.operationError'?: Record<string, never>;
+  'pages-starter-reload'?: Record<string, never>;
+  'pages.starter.reload'?: Record<string, never>;
+  'pages-starter-saveAction'?: Record<string, never>;
+  'pages.starter.saveAction'?: Record<string, never>;
+  'pages-starter-saveChanges'?: Record<string, never>;
+  'pages.starter.saveChanges'?: Record<string, never>;
+  'pages-starter-saved'?: Record<string, never>;
+  'pages.starter.saved'?: Record<string, never>;
+  'pages-starter-savedWarning'?: Record<string, never>;
+  'pages.starter.savedWarning'?: Record<string, never>;
+  'pages-starter-saveTitle'?: Record<string, never>;
+  'pages.starter.saveTitle'?: Record<string, never>;
+  'pages-starter-selectionError'?: Record<string, never>;
+  'pages.starter.selectionError'?: Record<string, never>;
+  'pages-starter-sourceLocale'?: Record<string, never>;
+  'pages.starter.sourceLocale'?: Record<string, never>;
+  'pages-starter-tenant'?: Record<string, never>;
+  'pages.starter.tenant'?: Record<string, never>;
+  'pages-starter-unavailable'?: Record<string, never>;
+  'pages.starter.unavailable'?: Record<string, never>;
+  'pages-starter-updated'?: Record<string, never>;
+  'pages.starter.updated'?: Record<string, never>;
   'product-attributeLifecycle-active'?: Record<string, never>;
   'product.attributeLifecycle.active'?: Record<string, never>;
   'product-attributeLifecycle-archive'?: Record<string, never>;
@@ -5545,6 +5701,84 @@ export interface AppMessages {
   'modules.toast.disabled': Record<string, never>;
   'modules-toast-enabled': Record<string, never>;
   'modules.toast.enabled': Record<string, never>;
+  'pages-layout-contextAfterCreate': Record<string, never>;
+  'pages.layout.contextAfterCreate': Record<string, never>;
+  'pages-layout-label': Record<string, never>;
+  'pages.layout.label': Record<string, never>;
+  'pages-layout-loading': Record<string, never>;
+  'pages.layout.loading': Record<string, never>;
+  'pages-layout-permissionsHint': Record<string, never>;
+  'pages.layout.permissionsHint': Record<string, never>;
+  'pages-layout-reload': Record<string, never>;
+  'pages.layout.reload': Record<string, never>;
+  'pages-layout-selectionError': Record<string, never>;
+  'pages.layout.selectionError': Record<string, never>;
+  'pages-layout-suggestionAvailable': Record<string, never>;
+  'pages.layout.suggestionAvailable': Record<string, never>;
+  'pages-layout-suggestionMissing': Record<string, never>;
+  'pages.layout.suggestionMissing': Record<string, never>;
+  'pages-layout-unavailable': Record<string, never>;
+  'pages.layout.unavailable': Record<string, never>;
+  'pages-starter-builtin': Record<string, never>;
+  'pages.starter.builtin': Record<string, never>;
+  'pages-starter-cancel': Record<string, never>;
+  'pages.starter.cancel': Record<string, never>;
+  'pages-starter-category': Record<string, never>;
+  'pages.starter.category': Record<string, never>;
+  'pages-starter-confirmDelete': Record<string, never>;
+  'pages.starter.confirmDelete': Record<string, never>;
+  'pages-starter-contextError': Record<string, never>;
+  'pages.starter.contextError': Record<string, never>;
+  'pages-starter-delete': Record<string, never>;
+  'pages.starter.delete': Record<string, never>;
+  'pages-starter-deleted': Record<string, never>;
+  'pages.starter.deleted': Record<string, never>;
+  'pages-starter-deleteWarning': Record<string, never>;
+  'pages.starter.deleteWarning': Record<string, never>;
+  'pages-starter-description': Record<string, never>;
+  'pages.starter.description': Record<string, never>;
+  'pages-starter-edit': Record<string, never>;
+  'pages.starter.edit': Record<string, never>;
+  'pages-starter-key': Record<string, never>;
+  'pages.starter.key': Record<string, never>;
+  'pages-starter-label': Record<string, never>;
+  'pages.starter.label': Record<string, never>;
+  'pages-starter-layoutHint': Record<string, never>;
+  'pages.starter.layoutHint': Record<string, never>;
+  'pages-starter-layoutKey': Record<string, never>;
+  'pages.starter.layoutKey': Record<string, never>;
+  'pages-starter-manageHint': Record<string, never>;
+  'pages.starter.manageHint': Record<string, never>;
+  'pages-starter-manageTitle': Record<string, never>;
+  'pages.starter.manageTitle': Record<string, never>;
+  'pages-starter-name': Record<string, never>;
+  'pages.starter.name': Record<string, never>;
+  'pages-starter-notDeleted': Record<string, never>;
+  'pages.starter.notDeleted': Record<string, never>;
+  'pages-starter-operationError': Record<string, never>;
+  'pages.starter.operationError': Record<string, never>;
+  'pages-starter-reload': Record<string, never>;
+  'pages.starter.reload': Record<string, never>;
+  'pages-starter-saveAction': Record<string, never>;
+  'pages.starter.saveAction': Record<string, never>;
+  'pages-starter-saveChanges': Record<string, never>;
+  'pages.starter.saveChanges': Record<string, never>;
+  'pages-starter-saved': Record<string, never>;
+  'pages.starter.saved': Record<string, never>;
+  'pages-starter-savedWarning': Record<string, never>;
+  'pages.starter.savedWarning': Record<string, never>;
+  'pages-starter-saveTitle': Record<string, never>;
+  'pages.starter.saveTitle': Record<string, never>;
+  'pages-starter-selectionError': Record<string, never>;
+  'pages.starter.selectionError': Record<string, never>;
+  'pages-starter-sourceLocale': Record<string, never>;
+  'pages.starter.sourceLocale': Record<string, never>;
+  'pages-starter-tenant': Record<string, never>;
+  'pages.starter.tenant': Record<string, never>;
+  'pages-starter-unavailable': Record<string, never>;
+  'pages.starter.unavailable': Record<string, never>;
+  'pages-starter-updated': Record<string, never>;
+  'pages.starter.updated': Record<string, never>;
   'product-attributeLifecycle-active': Record<string, never>;
   'product.attributeLifecycle.active': Record<string, never>;
   'product-attributeLifecycle-archive': Record<string, never>;

@@ -13,7 +13,7 @@
 #
 # Usage
 #   scripts/fly-check.sh            # everything (gates, tests, features, lint, format)
-#   scripts/fly-check.sh gates      # source guards only — node, no cargo, a few seconds
+#   scripts/fly-check.sh gates      # source guards and action runtime Node tests — no cargo
 #   scripts/fly-check.sh test       # crate tests only
 #   scripts/fly-check.sh features   # non-default feature combinations, incl. wasm32
 #   scripts/fly-check.sh lint       # clippy (-D warnings) and rustfmt
@@ -73,11 +73,10 @@ check_browser_asset() {
 }
 
 # --------------------------------------------------------------------------------------------
-# Source guards. Pure node, no toolchain, seconds. Run these first: they are the cheapest signal
-# and they catch the drift that compiling cannot.
+# Source guards and a focused browser-asset unit test. Pure node, no Rust toolchain.
 # --------------------------------------------------------------------------------------------
 run_gates() {
-  heading 'Source guards'
+  heading 'Source guards and browser-asset unit tests'
   if ! have node; then
     skip 'all source guards' 'node not installed'
     return
@@ -106,6 +105,8 @@ run_gates() {
     step "$gate" node "scripts/verify/$gate.mjs"
   done
   step 'fly-browser.js parses' check_browser_asset
+  step 'fly action runtime (Node DOM boundary)' node --test crates/ui/fly/browser/tests/action_runtime.test.mjs
+  step 'draft route recovery (Node DOM boundary)' node --test crates/modules/rustok-page-builder/scripts/tests/browser-host-draft.test.mjs
   # Crate-local Page Builder gate: the scenario-baseline journal contract lives with the
   # module it guards, so it is invoked by path rather than from scripts/verify.
   step 'pages-scenario-baseline-promotion' node crates/modules/rustok-pages/scripts/verify/verify-pages-builder-scenario-promotion.mjs

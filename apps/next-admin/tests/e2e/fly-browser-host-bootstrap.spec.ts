@@ -38,7 +38,10 @@ type RecordedRequest = {
 
 type FlyGlobal = typeof globalThis & {
   FlyBrowser?: {
-    mount?: (root: Element) => { selectedId?: string | null } | null;
+    mount?: (root: Element) => {
+      selectedId?: string | null;
+      emitIntent: (intent: string, payload: Record<string, unknown>) => Promise<unknown>;
+    } | null;
   };
   __flyRequests?: RecordedRequest[];
   __flySelections?: unknown[];
@@ -86,7 +89,15 @@ async function importHostModule(page: Page) {
 
 async function mountHost(
   page: Page,
-  options: { reload?: boolean; answer?: Record<string, unknown> } = {}
+  options: {
+    reload?: boolean;
+    answer?: Record<string, unknown>;
+    strictDraft?: boolean;
+    renderedDraft?: { token: string; generation: string };
+    cachedDraft?: { token: string; generation: number };
+    expectRecovery?: boolean;
+    failHistory?: boolean;
+  } = {}
 ) {
   await page.setContent(`
     <div
@@ -202,10 +213,21 @@ async function mountHost(
     </div>
   `);
 
-  await page.evaluate(({ reload, answer }) => {
+  await page.evaluate(({ reload, answer, strictDraft, renderedDraft, cachedDraft, failHistory }) => {
     const root = document.querySelector('#fly-root');
     if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
+    if (strictDraft) root.setAttribute('data-fly-draft-contract', 'rendered');
+    root.setAttribute('data-fly-draft-recovery-message', 'Recover the rendered session');
+    root.setAttribute('data-fly-draft-recovery-link', 'Open recovery');
+    if (renderedDraft) {
+      root.setAttribute('data-fly-rendered-draft-token', renderedDraft.token);
+      root.setAttribute('data-fly-rendered-draft-generation', renderedDraft.generation);
+    }
+    if (cachedDraft) {
+      sessionStorage.setItem('fly:ssr-draft:home', JSON.stringify(cachedDraft));
+    }
 
+    if (failHistory) history.replaceState = () => { throw new Error('history blocked'); };
     const fly = globalThis as FlyGlobal;
     const requests: RecordedRequest[] = [];
     fly.__flyRequests = requests;
@@ -235,12 +257,19 @@ async function mountHost(
     root.addEventListener('fly:select', (event) => {
       selections.push((event as CustomEvent).detail);
     });
-  }, { reload: options.reload === true, answer: options.answer ?? {} });
+  }, {
+    reload: options.reload === true,
+    answer: options.answer ?? {},
+    strictDraft: options.strictDraft === true,
+    renderedDraft: options.renderedDraft ?? null,
+    cachedDraft: options.cachedDraft ?? null,
+    failHistory: options.failHistory === true
+  });
 
   await importHostModule(page);
   await expect(page.locator('#fly-root')).toHaveAttribute(
     'data-fly-browser-mounted',
-    'true'
+    options.expectRecovery ? 'false' : 'true'
   );
 }
 
@@ -443,7 +472,7 @@ const editorOrigin = 'http://fly-editor.test';
 async function openEditorRoute(
   page: Page,
   search: string,
-  options: { reload?: boolean } = {}
+  options: Parameters<typeof mountHost>[1] = {}
 ) {
   await page.route(`${editorOrigin}/**`, (route) =>
     route.fulfill({
@@ -570,4 +599,138 @@ test('an answer that asks for a reload reloads the route that carries the draft 
   expect(url.searchParams.get('tab')).toBe('builder');
   // A navigation, not `history.replaceState`: the document the form was in is gone.
   await expect(page.locator('#fly-root')).toHaveCount(0);
+});
+
+
+test('the rendered draft generation, not sessionStorage, guards the first intent', async ({ page }) => {
+  await openEditorRoute(page, '?fly_draft=draft-1', {
+    strictDraft: true,
+    renderedDraft: { token: 'draft-1', generation: '3' },
+    cachedDraft: { token: 'draft-1', generation: 9 }
+  });
+  await page.locator('#create-page-id').fill('about');
+  await page.locator('#create-page-submit').click();
+  await expect.poll(async () => (await requests(page)).length).toBe(1);
+  const [request] = await requests(page);
+  expect(request.body?.draft_token).toBe('draft-1');
+  expect(request.body).toHaveProperty('draft_generation', 3);
+});
+
+test('a cached draft is offered for recovery rather than used with a saved-page render', async ({ page }) => {
+  await openEditorRoute(page, '?tab=builder', {
+    strictDraft: true,
+    cachedDraft: { token: 'cached-draft', generation: 7 },
+    expectRecovery: true
+  });
+  await expect(page.locator('#fly-root')).toHaveAttribute('inert', '');
+  const recovery = page.locator('[data-fly-draft-recovery]');
+  await expect(recovery).toHaveAttribute('role', 'alert');
+  await expect(recovery).toContainText('Recover the rendered session');
+  await expect(recovery.locator('a')).toHaveText('Open recovery');
+  const href = await recovery.locator('a').getAttribute('href');
+  expect(href).not.toBeNull();
+  const target = new URL(href!);
+  expect(target.searchParams.get('fly_draft')).toBe('cached-draft');
+  expect(target.searchParams.get('tab')).toBe('builder');
+  expect(await requests(page)).toHaveLength(0);
+  expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('fly:ssr-draft:home') ?? 'null')))
+    .toEqual({ token: 'cached-draft', generation: 7 });
+});
+
+test('an out-of-order response cannot replace the draft in the route', async ({ page }) => {
+  await openEditorRoute(page, '?tab=builder', { strictDraft: true });
+  const result = await page.evaluate(async () => {
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
+    const adapter = (globalThis as FlyGlobal).FlyBrowser?.mount?.(root);
+    if (!adapter) throw new Error('Fly adapter unavailable');
+    const pending: Array<(response: Response) => void> = [];
+    globalThis.fetch = () => new Promise<Response>((resolve) => pending.push(resolve));
+    const old = adapter.emitIntent('save', {});
+    const current = adapter.emitIntent('save', {});
+    if (pending.length !== 2) throw new Error('expected two in-flight requests');
+    const answer = (draft: string) => new Response(JSON.stringify({
+      result: { revision_id: 'rev-2', project_hash: 'hash-2' },
+      draft_token: draft, draft_generation: 1, reload: false
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+    pending[1](answer('new'));
+    await current;
+    pending[0](answer('old'));
+    await old;
+    return {
+      route: new URL(location.href).searchParams.get('fly_draft'),
+      stored: JSON.parse(sessionStorage.getItem('fly:ssr-draft:home') ?? 'null')
+    };
+  });
+  expect(result.route).toBe('new');
+  expect(result.stored.token).toBe('new');
+});
+
+test('an inconsistent rendered draft offers the displayed session for recovery', async ({ page }) => {
+  await openEditorRoute(page, '?fly_draft=other', {
+    strictDraft: true,
+    renderedDraft: { token: 'displayed', generation: '5' },
+    expectRecovery: true
+  });
+  const href = await page.locator('[data-fly-draft-recovery] a').getAttribute('href');
+  expect(new URL(href!).searchParams.get('fly_draft')).toBe('displayed');
+  expect(await requests(page)).toHaveLength(0);
+});
+
+test('failure to write the route blocks reload and preserves the response token', async ({ page }) => {
+  await openEditorRoute(page, '?tab=builder', { strictDraft: true, failHistory: true, reload: true });
+  await page.locator('#create-page-id').fill('about');
+  await page.locator('#create-page-submit').click();
+  const recovery = page.locator('[data-fly-draft-recovery]');
+  await expect(recovery).toBeVisible();
+  await expect(page.locator('#fly-root')).toHaveAttribute('inert', '');
+  const href = await recovery.locator('a').getAttribute('href');
+  expect(new URL(href!).searchParams.get('fly_draft')).toBe('draft-1');
+  await expect.poll(async () => page.evaluate(() => JSON.parse(sessionStorage.getItem('fly:ssr-draft:home') ?? 'null')?.token)).toBe('draft-1');
+  expect(new URL(page.url()).searchParams.get('fly_draft')).toBeNull();
+});
+
+test('a response arriving after a page switch cannot rewrite or reload the new route', async ({ page }) => {
+  await openEditorRoute(page, '?page_id=home&tab=builder', { strictDraft: true });
+  const result = await page.evaluate(async () => {
+    const root = document.querySelector('#fly-root');
+    if (!(root instanceof HTMLElement)) throw new Error('Fly root unavailable');
+    const adapter = (globalThis as FlyGlobal).FlyBrowser?.mount?.(root);
+    if (!adapter) throw new Error('Fly adapter unavailable');
+    let resolveResponse: ((response: Response) => void) | undefined;
+    globalThis.fetch = () => new Promise<Response>((resolve) => { resolveResponse = resolve; });
+    const request = adapter.emitIntent('save', {});
+    history.pushState(null, '', '?page_id=other&tab=builder');
+    if (!resolveResponse) throw new Error('request was not dispatched');
+    resolveResponse(new Response(JSON.stringify({
+      result: { revision_id: 'rev-2', project_hash: 'hash-2' },
+      draft_token: 'home-draft', draft_generation: 2, reload: true,
+      location: '/wrong-page'
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    await request;
+    return {
+      url: location.href,
+      mounted: root.dataset.flyBrowserMounted,
+      inert: root.inert,
+      notice: document.querySelector('[data-fly-draft-recovery]') !== null,
+      saved: JSON.parse(sessionStorage.getItem('fly:ssr-draft:home') ?? 'null')
+    };
+  });
+  const url = new URL(result.url);
+  expect(url.searchParams.get('page_id')).toBe('other');
+  expect(url.searchParams.get('fly_draft')).toBeNull();
+  expect(result.mounted).toBe('false');
+  expect(result.inert).toBe(true);
+  expect(result.notice).toBe(false);
+  expect(result.saved.token).toBe('home-draft');
+});
+
+test('an old canvas cannot send new intents after client-side page navigation', async ({ page }) => {
+  await openEditorRoute(page, '?page_id=home&tab=builder', { strictDraft: true });
+  await page.locator('#create-page-id').fill('about');
+  await page.evaluate(() => history.pushState(null, '', '?page_id=other&tab=builder'));
+  await page.locator('#create-page-submit').click();
+  await expect(page.locator('#fly-root')).toHaveAttribute('inert', '');
+  expect(await requests(page)).toHaveLength(0);
+  expect(new URL(page.url()).searchParams.get('page_id')).toBe('other');
 });

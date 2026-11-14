@@ -24,8 +24,10 @@ mod schedule;
 mod schedule_worker;
 mod symbols;
 pub(crate) use symbols::{
-    lock_site_symbol_catalog_in_tx, symbol_used_by_any_page, template_symbol_ids,
+    content_has_symbol_instances, lock_site_symbol_catalog_in_tx, replace_symbol_block,
+    resolve_content_symbols, symbol_used_by_any_page, template_symbol_ids,
 };
+pub(crate) use helpers::normalize_locale;
 mod translation_apply;
 
 use rustok_content::entities::node::ContentStatus;

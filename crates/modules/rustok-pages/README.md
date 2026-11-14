@@ -106,6 +106,17 @@ compatibility or drop migration is retained.
 Recorded by earlier page-subsystem audits.
 These are gaps in what the runtime actually does, not accepted design:
 
+- **Document CAS and save receipts need hardening before multi-writer use.** Working-copy
+  revision tokens are `updated_at` timestamps truncated to microseconds, not monotonic unique
+  revisions; a repeated timestamp or clock rollback can reuse a token. On PostgreSQL/MySQL the
+  save and restore paths take the page row lock before checking the working body; SQLite's
+  `find_page_for_update` is a read, so a competing writer may instead fail with a database lock
+  error. The mutation commits before it reads its `PageResponse`: a subsequent writer can change
+  the body before that read, causing the response to carry a different writer's revision. A
+  builder may then associate that later revision with its own local project. Replace the token
+  and receipt protocol, and verify concurrent save/restore/lifecycle operations on each supported
+  backend, before relying on these guards to prevent lost writes.
+
 - **Wave 2 scheduled publishing (G-3 of the 2026-10-09 audit) is implemented**: editors
   schedule/cancel a publication (`pagePublishSchedule`, `schedulePagePublish`,
   `cancelPagePublish`; REST `/api/admin/pages/{id}/publish-schedule`; admin schedule

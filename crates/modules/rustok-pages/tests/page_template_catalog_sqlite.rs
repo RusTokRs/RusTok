@@ -136,6 +136,23 @@ async fn catalog_is_tenant_and_exact_locale_scoped_with_revision_cas() -> TestRe
         service.list_keys(other, &actor, "en").await?,
         vec!["default".to_string()]
     );
+    // Non-default composition currently requires manage, so creators see only default.
+    let creator = SecurityContext::from_permissions(
+        rustok_core::UserRole::Manager, Some(Uuid::new_v4()),
+        [rustok_api::Permission::PAGES_CREATE],
+    );
+    let reader = SecurityContext::from_permissions(
+        rustok_core::UserRole::Manager, Some(Uuid::new_v4()),
+        [rustok_api::Permission::PAGES_READ],
+    );
+    assert_eq!(service.list_keys(tenant, &creator, "en").await?, vec!["default"]);
+    assert_eq!(service.list_keys(tenant, &creator, "ru").await?, vec!["default"]);
+    assert_eq!(service.list_keys(other, &creator, "en").await?, vec!["default"]);
+    assert!(service.list(tenant, &creator, "en").await.is_err());
+    assert!(service.get(tenant, &creator, "site", "en").await.is_err());
+    assert!(service.list_keys(tenant, &reader, "en").await.is_err());
+    assert!(service.list_keys(tenant, &SecurityContext::public_read(), "en").await.is_err());
+    assert!(service.list_keys(tenant, &creator, "und").await.is_err());
 
     let default_tpl = service
         .get(tenant, &actor, "default", "en")

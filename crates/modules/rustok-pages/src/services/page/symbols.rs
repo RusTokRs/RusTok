@@ -42,7 +42,7 @@ pub(super) fn symbol_values_in_content(content: &str) -> PagesResult<Vec<Value>>
 ///
 /// The scan runs on the raw JSON so instance-free documents keep their exact
 /// stored bytes through the resolve step.
-pub(super) fn content_has_symbol_instances(content: &str) -> PagesResult<bool> {
+pub(crate) fn content_has_symbol_instances(content: &str) -> PagesResult<bool> {
     let value = parse_project_value(content)?;
     Ok(value.get("pages").is_some_and(value_has_symbol_instance))
 }
@@ -60,7 +60,7 @@ fn value_has_symbol_instance(value: &Value) -> bool {
 /// Refreshes the embedded catalog and its optimistic revision token on an
 /// editor read. The returned token is required by subsequent body saves when a
 /// catalog exists; stale pages cannot erase definitions created elsewhere.
-pub(super) fn replace_symbol_block(content: &str, symbols: Vec<Value>) -> PagesResult<String> {
+pub(crate) fn replace_symbol_block(content: &str, symbols: Vec<Value>) -> PagesResult<String> {
     let mut value = parse_project_value(content)?;
     let object = value
         .as_object_mut()
@@ -128,7 +128,7 @@ pub(super) fn assert_reviewed_symbol_snapshot(content: &str, current: &[Value]) 
 /// Instance-free documents return their exact input bytes; documents with
 /// instances are decoded, resolved fail-closed (unknown references and cycles
 /// are errors), and re-encoded.
-pub(super) fn resolve_content_symbols(content: &str) -> PagesResult<String> {
+pub(crate) fn resolve_content_symbols(content: &str) -> PagesResult<String> {
     if !content_has_symbol_instances(content)? {
         return Ok(content.to_string());
     }

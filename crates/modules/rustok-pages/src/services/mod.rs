@@ -6,6 +6,7 @@ pub mod page_template;
 pub(crate) mod rbac;
 pub mod scenario_baseline;
 pub mod site_symbol;
+mod starter_presets;
 
 pub use page::{
     AuditPageArtifactsInput, DEFAULT_PAGE_ARTIFACT_AUDIT_RECORDS,

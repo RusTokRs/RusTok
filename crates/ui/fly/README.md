@@ -57,7 +57,7 @@ is not a useful instruction for a Fly change. One command runs exactly what Fly 
 
 ```bash
 scripts/fly-check.sh            # everything
-scripts/fly-check.sh gates      # source guards only: node, no toolchain, ~2 seconds
+scripts/fly-check.sh gates      # source guards and action runtime Node tests: no Rust toolchain
 scripts/fly-check.sh test       # crate tests
 scripts/fly-check.sh features   # non-default feature combinations, including wasm32
 scripts/fly-check.sh lint       # clippy -D warnings, rustfmt

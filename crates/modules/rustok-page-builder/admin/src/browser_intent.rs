@@ -600,16 +600,7 @@ fn preview_request(
     controller: &AdminCanvasController,
     payload: &Value,
 ) -> Result<Vec<AdminCanvasEffect>, BrowserIntentDispatchError> {
-    let active_page_index = controller.active_page_index();
-    let mut document = controller.editor().document().clone();
-    document.project.pages = document
-        .project
-        .pages
-        .get(active_page_index)
-        .cloned()
-        .into_iter()
-        .collect();
-    let project_data = GrapesJsCodec::encode_value(&document)?;
+    let project_data = controller.active_page_project()?;
     let runtime = PageBuilderPreviewRuntime::new(
         optional_object(payload, "runtime_context"),
         optional_trimmed_string(payload, "runtime_scenario_id"),

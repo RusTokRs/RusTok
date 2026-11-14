@@ -233,7 +233,7 @@ page_builder-status-dragging = Выберите позицию вставки н
 page_builder-status-saveFailed = Ошибка сохранения
 page_builder-status-saveSucceeded = Проект сохранён
 page_builder-status-saved = Сохранено
-page_builder-status-saveConflict = Конфликт сохранения: страница изменена в другой сессии. Ваши изменения не сохранены; перезагрузите последнюю версию перед продолжением.
+page_builder-status-saveConflict = Конфликт сохранения: страница изменена в другом сеансе. Сохраните несохранённые изменения, прежде чем открывать последнюю версию.
 page_builder-status-saving = Сохранение
 page_builder-subtitle = Управление средой Fly, совместимостью и провайдером.
 page_builder-title = Конструктор страниц
@@ -291,3 +291,6 @@ page_builder-action-saveToken = Сохранить токен
 page_builder-workspace-title = Конструктор страниц
 page_builder-workspace-toolbar = Панель инструментов редактора
 page_builder-workspace-previewFailed = Не удалось показать предпросмотр
+
+page_builder-draftRecovery-message = Редактор не соответствует черновику. Редактирование остановлено. Восстановите черновик перед продолжением: срок его хранения ограничен.
+page_builder-draftRecovery-link = Восстановить черновик или перезагрузить адрес

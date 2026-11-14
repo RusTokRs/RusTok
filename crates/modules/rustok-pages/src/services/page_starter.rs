@@ -1,8 +1,8 @@
 //! Starter templates catalog (presets) for quick page creation.
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder,
+    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    sea_query::{Expr, OnConflict},
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -10,7 +10,9 @@ use uuid::Uuid;
 use rustok_api::{Action, Resource};
 use rustok_core::{PermissionScope, SecurityContext};
 
-use crate::entities::page_starter;
+use crate::entities::{page, page_body, page_body_draft, page_starter, site_symbol};
+use crate::services::rbac::can_read_page_source;
+use super::page::{content_has_symbol_instances, normalize_locale, replace_symbol_block, resolve_content_symbols};
 use crate::error::{PagesError, PagesResult};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -23,6 +25,8 @@ pub struct PageStarterRecord {
     pub thumbnail_url: Option<String>,
     pub default_template_key: String,
     pub content: serde_json::Value,
+    /// None for built-ins; tenant-owned rows carry a compare-and-swap token.
+    pub revision: Option<Uuid>,
 }
 
 impl TryFrom<page_starter::Model> for PageStarterRecord {
@@ -38,6 +42,7 @@ impl TryFrom<page_starter::Model> for PageStarterRecord {
             thumbnail_url: row.thumbnail_url,
             default_template_key: row.default_template_key,
             content: row.content,
+            revision: Some(row.revision),
         })
     }
 }
@@ -51,6 +56,38 @@ pub struct SavePageStarterInput {
     pub thumbnail_url: Option<String>,
     pub default_template_key: Option<String>,
     pub content: serde_json::Value,
+    /// None creates a tenant row; updates require its last observed token.
+    pub expected_revision: Option<Uuid>,
+}
+
+/// Update metadata without replacing the starter document or its thumbnail.
+#[derive(Clone, Debug)]
+pub struct UpdatePageStarterMetadataInput {
+    pub key: String,
+    pub category: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub default_template_key: String,
+    pub expected_revision: Uuid,
+}
+
+/// Create-only snapshot of one persisted page working copy, never the browser's unsaved draft.
+#[derive(Clone, Debug)]
+pub struct SavePageStarterFromPageInput {
+    pub page_id: Uuid,
+    pub locale: String,
+    pub key: String,
+    pub category: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SavedPageStarterSnapshot {
+    pub starter: PageStarterRecord,
+    pub source_locale: String,
+    pub source_state: String,
+    pub source_revision: String,
 }
 
 #[derive(Clone)]
@@ -63,8 +100,8 @@ impl PageStarterService {
         Self { db }
     }
 
-    /// Lists starters for a tenant, optionally filtered by category.
-    /// If no tenant-specific starters exist in the database, returns the standard built-in starters.
+    /// Lists built-ins and tenant starters, with tenant records overriding built-ins by key.
+    /// Category filtering is applied after overrides, matching `get` for every key.
     pub async fn list(
         &self,
         tenant_id: Uuid,
@@ -72,40 +109,28 @@ impl PageStarterService {
         category: Option<&str>,
     ) -> PagesResult<Vec<PageStarterRecord>> {
         require_scope(security, Action::Read)?;
-        let mut query =
-            page_starter::Entity::find().filter(page_starter::Column::TenantId.eq(tenant_id));
-
-        if let Some(cat) = category {
-            let cat = cat.trim();
-            if !cat.is_empty() {
-                query = query.filter(page_starter::Column::Category.eq(cat));
-            }
-        }
-
-        let custom_rows: Vec<PageStarterRecord> = query
-            .order_by_asc(page_starter::Column::StarterKey)
+        let custom_rows: Vec<PageStarterRecord> = page_starter::Entity::find()
+            .filter(page_starter::Column::TenantId.eq(tenant_id))
             .all(&self.db)
             .await?
             .into_iter()
             .map(TryInto::try_into)
             .collect::<PagesResult<Vec<_>>>()?;
 
-        if !custom_rows.is_empty() {
-            return Ok(custom_rows);
+        let mut catalog = builtin_starters()?
+            .into_iter()
+            .map(|starter| (starter.key.clone(), starter))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        for starter in custom_rows {
+            catalog.insert(starter.key.clone(), starter);
         }
-
-        // Return platform built-ins if tenant has not yet customized the library
-        let built_ins = builtin_starters();
-        if let Some(cat) = category {
-            let cat = cat.trim();
-            if !cat.is_empty() {
-                return Ok(built_ins
-                    .into_iter()
-                    .filter(|s| s.category.eq_ignore_ascii_case(cat))
-                    .collect());
-            }
-        }
-        Ok(built_ins)
+        let category = category.map(str::trim).filter(|value| !value.is_empty());
+        Ok(catalog
+            .into_values()
+            .filter(|starter| {
+                category.is_none_or(|value| starter.category.eq_ignore_ascii_case(value))
+            })
+            .collect())
     }
 
     /// Gets a single starter by key.
@@ -129,7 +154,66 @@ impl PageStarterService {
             return Ok(custom);
         }
 
-        Ok(builtin_starters().into_iter().find(|s| s.key == key))
+        Ok(builtin_starters()?.into_iter().find(|s| s.key == key))
+    }
+
+    /// Capture the exact-locale persisted working copy. No unsaved browser state is read.
+    /// Source reads and the starter insert are not a single revision-locked transaction;
+    /// the returned token identifies the body that was actually captured.
+    pub async fn save_from_page(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        input: SavePageStarterFromPageInput,
+    ) -> PagesResult<SavedPageStarterSnapshot> {
+        require_scope(security, Action::Manage)?;
+        let locale = normalize_locale(&input.locale)?;
+        let key = input.key.trim();
+        if builtin_starters()?.iter().any(|starter| starter.key == key) {
+            return Err(PagesError::validation("Choose a key that does not belong to a built-in starter"));
+        }
+        let page = page::Entity::find_by_id(input.page_id)
+            .filter(page::Column::TenantId.eq(tenant_id))
+            .one(&self.db).await?
+            .ok_or_else(|| PagesError::validation("Source page not found"))?;
+        if !can_read_page_source(security, page.author_id) {
+            return Err(PagesError::forbidden("Permission denied"));
+        }
+        let draft = page_body_draft::Entity::find()
+            .filter(page_body_draft::Column::TenantId.eq(tenant_id))
+            .filter(page_body_draft::Column::PageId.eq(page.id))
+            .filter(page_body_draft::Column::Locale.eq(&locale))
+            .one(&self.db).await?;
+        let (content, format, revision, state) = if let Some(body) = draft {
+            (body.content, body.format, body.updated_at.to_string(), "draft")
+        } else {
+            let body = page_body::Entity::find()
+                .filter(page_body::Column::TenantId.eq(tenant_id))
+                .filter(page_body::Column::PageId.eq(page.id))
+                .filter(page_body::Column::Locale.eq(&locale))
+                .one(&self.db).await?
+                .ok_or_else(|| PagesError::validation("No saved page document for this locale"))?;
+            (body.content, body.format, body.updated_at.to_string(), "current")
+        };
+        if format != rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT {
+            return Err(PagesError::validation("Source is not a Page Builder document"));
+        }
+        let mut content: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|error| PagesError::validation(format!("Invalid source document: {error}")))?;
+        let object = content.as_object_mut()
+            .ok_or_else(|| PagesError::validation("Invalid source document"))?;
+        // Symbol definitions are shared authoring data, not part of the starter's authority.
+        // Keep references only; instantiation resolves against the target locale.
+        object.remove("flySymbols");
+        object.remove("flySymbolsRevision");
+        let starter = self.save(tenant_id, security, SavePageStarterInput {
+            key: input.key, category: input.category, name: input.name,
+            description: input.description, thumbnail_url: None,
+            default_template_key: Some(page.template), content, expected_revision: None,
+        }).await?;
+        Ok(SavedPageStarterSnapshot {
+            starter, source_locale: locale, source_state: state.to_string(), source_revision: revision,
+        })
     }
 
     /// Saves a starter preset into the tenant's library (creates or updates).
@@ -145,71 +229,75 @@ impl PageStarterService {
             .map_err(|err| PagesError::validation(format!("Invalid starter key: {err}")))?;
 
         let category = input.category.trim();
-        if category.is_empty() || category.len() > 64 {
-            return Err(PagesError::validation(
-                "Category must be between 1 and 64 characters",
-            ));
-        }
-
         let name = input.name.trim();
-        if name.is_empty() || name.len() > 255 {
-            return Err(PagesError::validation(
-                "Name must be between 1 and 255 characters",
-            ));
-        }
+        let default_template_key = input.default_template_key.as_deref().unwrap_or("default").trim();
+        validate_metadata(category, name, default_template_key)?;
 
-        let default_template_key = input
-            .default_template_key
-            .as_deref()
-            .unwrap_or("default")
-            .trim();
-
-        // Validate that content is a decodable ProjectDocument
-        let _decoded =
+        // A decodable document can still have ambiguous identities and cannot be cloned.
+        // Reject it before replacing a usable starter in the tenant catalog.
+        let decoded =
             fly::GrapesJsCodec::decode_value(input.content.clone()).map_err(|error| {
                 PagesError::validation(format!("Invalid starter content document: {error}"))
             })?;
+        decoded
+            .clone_as_page(&mut fly::UniqueIdGenerator::new("page"))
+            .map_err(|error| PagesError::validation(format!("Cannot instantiate starter: {error}")))?;
 
         let now = Utc::now();
-        let existing = page_starter::Entity::find()
-            .filter(page_starter::Column::TenantId.eq(tenant_id))
-            .filter(page_starter::Column::StarterKey.eq(key))
-            .one(&self.db)
-            .await?;
-
-        let id = match existing {
-            Some(row) => {
-                let id = row.id;
-                let mut active: page_starter::ActiveModel = row.into();
-                active.category = Set(category.to_string());
-                active.name = Set(name.to_string());
-                active.description = Set(input.description.clone());
-                active.thumbnail_url = Set(input.thumbnail_url.clone());
-                active.default_template_key = Set(default_template_key.to_string());
-                active.content = Set(input.content.clone());
-                active.updated_at = Set(now.into());
-                active.update(&self.db).await?;
-                id
-            }
-            None => {
-                let id = Uuid::new_v4();
-                page_starter::ActiveModel {
-                    id: Set(id),
-                    tenant_id: Set(tenant_id),
-                    starter_key: Set(key.to_string()),
-                    category: Set(category.to_string()),
-                    name: Set(name.to_string()),
-                    description: Set(input.description.clone()),
-                    thumbnail_url: Set(input.thumbnail_url.clone()),
-                    default_template_key: Set(default_template_key.to_string()),
-                    content: Set(input.content.clone()),
-                    created_at: Set(now.into()),
-                    updated_at: Set(now.into()),
-                }
-                .insert(&self.db)
+        let revision = Uuid::new_v4();
+        let id = if let Some(expected) = input.expected_revision {
+            let existing = page_starter::Entity::find()
+                .filter(page_starter::Column::TenantId.eq(tenant_id))
+                .filter(page_starter::Column::StarterKey.eq(key))
+                .filter(page_starter::Column::Revision.eq(expected))
+                .one(&self.db)
+                .await?
+                .ok_or_else(starter_conflict)?;
+            let result = page_starter::Entity::update_many()
+                .col_expr(page_starter::Column::Category, Expr::value(category.to_string()))
+                .col_expr(page_starter::Column::Name, Expr::value(name.to_string()))
+                .col_expr(page_starter::Column::Description, Expr::value(input.description.clone()))
+                .col_expr(page_starter::Column::ThumbnailUrl, Expr::value(input.thumbnail_url.clone()))
+                .col_expr(page_starter::Column::DefaultTemplateKey, Expr::value(default_template_key.to_string()))
+                .col_expr(page_starter::Column::Content, Expr::value(input.content.clone()))
+                .col_expr(page_starter::Column::Revision, Expr::value(revision))
+                .col_expr(page_starter::Column::UpdatedAt, Expr::value(now))
+                .filter(page_starter::Column::TenantId.eq(tenant_id))
+                .filter(page_starter::Column::StarterKey.eq(key))
+                .filter(page_starter::Column::Revision.eq(expected))
+                .exec(&self.db)
                 .await?;
-                id
+            if result.rows_affected != 1 {
+                return Err(starter_conflict());
             }
+            existing.id
+        } else {
+            let id = Uuid::new_v4();
+            let inserted = page_starter::Entity::insert(page_starter::ActiveModel {
+                id: Set(id),
+                tenant_id: Set(tenant_id),
+                starter_key: Set(key.to_string()),
+                category: Set(category.to_string()),
+                name: Set(name.to_string()),
+                description: Set(input.description.clone()),
+                thumbnail_url: Set(input.thumbnail_url.clone()),
+                default_template_key: Set(default_template_key.to_string()),
+                content: Set(input.content.clone()),
+                revision: Set(revision),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
+            })
+            .on_conflict(
+                OnConflict::columns([page_starter::Column::TenantId, page_starter::Column::StarterKey])
+                    .do_nothing()
+                    .to_owned(),
+            )
+            .exec_without_returning(&self.db)
+            .await?;
+            if inserted != 1 {
+                return Err(starter_conflict());
+            }
+            id
         };
 
         Ok(PageStarterRecord {
@@ -221,16 +309,120 @@ impl PageStarterService {
             thumbnail_url: input.thumbnail_url,
             default_template_key: default_template_key.to_string(),
             content: input.content,
+            revision: Some(revision),
         })
     }
 
-    /// Instantiates a starter into an independent, remapped page document string.
+    /// Atomically update only metadata of an existing tenant row at its observed revision.
+    /// Built-ins have no tenant row and cannot be implicitly overridden by this operation.
+    pub async fn update_metadata(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        input: UpdatePageStarterMetadataInput,
+    ) -> PagesResult<Uuid> {
+        require_scope(security, Action::Manage)?;
+        let key = input.key.trim();
+        fly::validate_identifier(key)
+            .map_err(|err| PagesError::validation(format!("Invalid starter key: {err}")))?;
+        let category = input.category.trim();
+        let name = input.name.trim();
+        let layout = input.default_template_key.trim();
+        validate_metadata(category, name, layout)?;
+        let revision = Uuid::new_v4();
+        let result = page_starter::Entity::update_many()
+            .col_expr(page_starter::Column::Category, Expr::value(category.to_string()))
+            .col_expr(page_starter::Column::Name, Expr::value(name.to_string()))
+            .col_expr(page_starter::Column::Description, Expr::value(input.description))
+            .col_expr(page_starter::Column::DefaultTemplateKey, Expr::value(layout.to_string()))
+            .col_expr(page_starter::Column::Revision, Expr::value(revision))
+            .col_expr(page_starter::Column::UpdatedAt, Expr::value(Utc::now()))
+            .filter(page_starter::Column::TenantId.eq(tenant_id))
+            .filter(page_starter::Column::StarterKey.eq(key))
+            .filter(page_starter::Column::Revision.eq(input.expected_revision))
+            .exec(&self.db).await?;
+        if result.rows_affected != 1 {
+            return Err(starter_conflict());
+        }
+        Ok(revision)
+    }
+
+    /// Delete a tenant-owned row only at the observed revision. Deleting an
+    /// override reveals the built-in with that key; built-ins have no row.
+    pub async fn delete(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        key: &str,
+        expected_revision: Uuid,
+    ) -> PagesResult<()> {
+        require_scope(security, Action::Manage)?;
+        let key = key.trim();
+        fly::validate_identifier(key)
+            .map_err(|err| PagesError::validation(format!("Invalid starter key: {err}")))?;
+        let result = page_starter::Entity::delete_many()
+            .filter(page_starter::Column::TenantId.eq(tenant_id))
+            .filter(page_starter::Column::StarterKey.eq(key))
+            .filter(page_starter::Column::Revision.eq(expected_revision))
+            .exec(&self.db)
+            .await?;
+        if result.rows_affected != 1 {
+            return Err(starter_conflict());
+        }
+        Ok(())
+    }
+
+    /// Instantiates the exact catalog revision the caller selected. A null token
+    /// means the caller selected a built-in, not an arbitrary tenant override.
+    pub async fn instantiate_selected(
+        &self,
+        tenant_id: Uuid,
+        security: &SecurityContext,
+        key: &str,
+        expected_revision: Option<Uuid>,
+        locale: &str,
+    ) -> PagesResult<String> {
+        let locale = normalize_locale(locale)?;
+        let starter = self.get(tenant_id, security, key).await?
+            .ok_or_else(|| PagesError::validation("Starter preset not found"))?;
+        if starter.revision != expected_revision {
+            return Err(starter_conflict());
+        }
+        let document = Self::instantiate_starter(&starter)?;
+        if !content_has_symbol_instances(&document)? {
+            // A catalog embedded in a starter is not authority to modify site symbols.
+            let mut value: serde_json::Value = serde_json::from_str(&document)
+                .map_err(|error| PagesError::validation(format!("Invalid instantiated document: {error}")))?;
+            let object = value.as_object_mut().ok_or_else(|| PagesError::validation("Invalid instantiated document"))?;
+            object.remove("flySymbols");
+            object.remove("flySymbolsRevision");
+            return serde_json::to_string(&value)
+                .map_err(|error| PagesError::validation(format!("Cannot serialize instantiated page: {error}")));
+        }
+        // The response contains the full site catalog, whose authoring API requires manage.
+        // Do not disclose it through the starter read endpoint to read-only principals.
+        require_scope(security, Action::Manage)?;
+        let symbols = site_symbol::Entity::find()
+            .filter(site_symbol::Column::TenantId.eq(tenant_id))
+            .filter(site_symbol::Column::Locale.eq(locale))
+            .order_by_asc(site_symbol::Column::SymbolId)
+            .all(&self.db)
+            .await?
+            .into_iter().map(|row| row.content).collect();
+        let document = replace_symbol_block(&document, symbols)?;
+        // Validate references without replacing linked instances in the authoring document.
+        resolve_content_symbols(&document)?;
+        Ok(document)
+    }
+
+    /// Raw identity-remapping helper. Use `instantiate_selected` before creating a page:
+    /// this helper does not reconcile embedded site symbols with the target locale.
     pub fn instantiate_starter(starter: &PageStarterRecord) -> PagesResult<String> {
         let document =
             fly::GrapesJsCodec::decode_value(starter.content.clone()).map_err(|error| {
                 PagesError::validation(format!("Invalid starter document: {error}"))
             })?;
-        let mut generator = fly::SequentialIdGenerator::default();
+        let mut generator = fly::UniqueIdGenerator::new("page");
         let page_doc = document.clone_as_page(&mut generator).map_err(|error| {
             PagesError::validation(format!("Cannot instantiate starter: {error}"))
         })?;
@@ -243,19 +435,36 @@ impl PageStarterService {
     }
 }
 
+fn validate_metadata(category: &str, name: &str, layout: &str) -> PagesResult<()> {
+    if category.is_empty() || category.len() > 64 {
+        return Err(PagesError::validation("Category must be between 1 and 64 characters"));
+    }
+    if name.is_empty() || name.len() > 255 {
+        return Err(PagesError::validation("Name must be between 1 and 255 characters"));
+    }
+    fly::validate_identifier(layout)
+        .map_err(|err| PagesError::validation(format!("Invalid default template key: {err}")))?;
+    Ok(())
+}
+
+fn starter_conflict() -> PagesError {
+    PagesError::StarterRevisionConflict
+}
+
 fn require_scope(security: &SecurityContext, action: Action) -> PagesResult<()> {
-    if security.get_scope(Resource::Pages, action) == PermissionScope::None {
+    if security.is_public_read() || security.get_scope(Resource::Pages, action) != PermissionScope::All {
         return Err(PagesError::forbidden(
-            "Access to starter catalog requires Pages permission",
+            "Starter catalog requires tenant-wide Pages permission",
         ));
     }
     Ok(())
 }
 
-fn builtin_starters() -> Vec<PageStarterRecord> {
-    vec![
+fn builtin_starters() -> PagesResult<Vec<PageStarterRecord>> {
+    let mut starters = vec![
         PageStarterRecord {
             id: Uuid::nil(),
+            revision: None,
             key: "landing-product".to_string(),
             category: "landing".to_string(),
             name: "SaaS & Product Launch".to_string(),
@@ -325,6 +534,7 @@ fn builtin_starters() -> Vec<PageStarterRecord> {
         },
         PageStarterRecord {
             id: Uuid::nil(),
+            revision: None,
             key: "about-company".to_string(),
             category: "about".to_string(),
             name: "About Company & Team".to_string(),
@@ -363,6 +573,7 @@ fn builtin_starters() -> Vec<PageStarterRecord> {
         },
         PageStarterRecord {
             id: Uuid::nil(),
+            revision: None,
             key: "contact-simple".to_string(),
             category: "contact".to_string(),
             name: "Contact & Support".to_string(),
@@ -399,7 +610,9 @@ fn builtin_starters() -> Vec<PageStarterRecord> {
                 }]
             }),
         },
-    ]
+    ];
+    starters.extend(super::starter_presets::catalog()?);
+    Ok(starters)
 }
 
 #[cfg(test)]
@@ -408,7 +621,7 @@ mod tests {
 
     #[test]
     fn builtin_starters_are_valid_and_non_empty() {
-        let starters = builtin_starters();
+        let starters = builtin_starters().expect("built-ins must decode");
         assert!(!starters.is_empty());
         for starter in &starters {
             assert!(!starter.key.is_empty());

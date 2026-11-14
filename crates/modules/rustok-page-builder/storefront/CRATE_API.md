@@ -25,7 +25,7 @@ Canonical public contract and domain architecture specification for `rustok-page
 - `PageBuilderStorefrontViewModel`: Framework-agnostic view-model for page rendering states and titles.
 
 ### Browser Bridges & Assets
-- `FLY_STOREFRONT_BRIDGE_JS`: JavaScript bridge for landing-local navigation, validated Product buyer handoff and acknowledged Cart open/close/toggle requests. See the [README](README.md#purchase-and-cart-bridge) for the shared payload and host event protocol.
+- `FLY_STOREFRONT_BRIDGE_JS`: JavaScript bridge for landing-local navigation, validated Product buyer handoff and acknowledged Cart open/close/toggle requests. Same-context fragment links and `navigate` events resolve only inside the nearest landing; missing, empty and malformed fragments do not trigger host navigation. Scrolling honors reduced motion. See the [README](README.md#purchase-and-cart-bridge) for the shared payload and host event protocol.
 - `fly_browser`: Re-export of Fly browser utilities and interactive action scripts.
 
 ---

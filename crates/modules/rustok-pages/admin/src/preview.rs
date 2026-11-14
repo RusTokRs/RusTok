@@ -21,7 +21,7 @@ use crate::builder::{self, PagesBuilderSaveSnapshot};
 use rustok_page_builder::dto::{
     PageBuilderCapabilityResponse, PageBuilderPreviewRuntime, PreviewPageBuilderInput,
 };
-use rustok_page_builder_admin::{AdminCanvasController, SsrDraftSessionStore};
+use rustok_page_builder_admin::SsrDraftSessionStore;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -46,8 +46,9 @@ pub fn pages_server_preview_store() -> &'static dyn SsrDraftSessionStore {
 /// Renders the preview of the page `snapshot` addresses.
 ///
 /// `draft_token` names the session the editor is using; without one the saved page is previewed,
-/// which is what a first render before any edit shows. `snapshot.owner` is the caller the host
-/// verified; a session bound to another owner is refused by the store rather than read.
+/// which is what a first render before any edit shows. An unavailable supplied token is an
+/// error, not a fallback to the saved page. `snapshot.owner` is the caller the host verified;
+/// a session bound to another owner is refused by the store rather than read.
 ///
 /// Nothing is committed: a preview is a read of the draft, and the revision the session carries is
 /// left exactly as it was.
@@ -61,7 +62,11 @@ pub async fn render_server_preview(
 ) -> Result<PagesServerPreview, PagesBrowserIntentError> {
     let page_id = snapshot.page_id.clone();
     let loaded_session = match draft_token {
-        Some(token) => draft_store.load(token, &page_id, snapshot.owner.as_ref())?,
+        Some(token) => Some(
+            draft_store
+                .load(token, &page_id, snapshot.owner.as_ref())?
+                .ok_or(PagesBrowserIntentError::DraftUnavailable)?,
+        ),
         None => None,
     };
 
@@ -94,7 +99,7 @@ pub async fn render_server_preview(
 
     let response = crate::builder::execute_preview_capability(
         snapshot,
-        PreviewPageBuilderInput::new(page_id, one_page_project(&controller)).with_runtime(
+        PreviewPageBuilderInput::new(page_id, controller.active_page_project()?).with_runtime(
             PageBuilderPreviewRuntime::new(runtime_context, runtime_scenario_id),
         ),
     )
@@ -111,25 +116,6 @@ pub async fn render_server_preview(
         project_hash,
         runtime_scenario_id: result.runtime_scenario_id,
     })
-}
-
-/// The document of the page the editor is on, as one page.
-///
-/// A preview shows the page being edited, not the whole project: the renderer selects the first
-/// page, and a project that still held the others would make the selection depend on an order the
-/// caller did not intend.
-fn one_page_project(controller: &AdminCanvasController) -> Value {
-    let active_page_index = controller.active_page_index();
-    let mut document = controller.editor().document().clone();
-    document.project.pages = document
-        .project
-        .pages
-        .get(active_page_index)
-        .cloned()
-        .into_iter()
-        .collect();
-    fly::GrapesJsCodec::encode_value(&document)
-        .unwrap_or_else(|_| Value::Object(Default::default()))
 }
 
 /// The response that serves a preview document, with the policy its own bytes require.
@@ -201,6 +187,26 @@ pub fn pages_server_preview_policy(stylesheet: &str) -> String {
 
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
+    #[tokio::test]
+    async fn preview_refuses_missing_draft_instead_of_showing_saved_document() {
+        use rustok_page_builder_admin::InMemorySsrDraftSessionStore;
+        let snapshot = crate::builder::PagesBuilderSaveSnapshot {
+            token: None,
+            tenant_slug: None,
+            page_id: "home".to_string(),
+            default_locale: "en".to_string(),
+            owner: None,
+        };
+        let result = super::render_server_preview(
+            snapshot,
+            &InMemorySsrDraftSessionStore::editor_default(),
+            Some("gone-token"),
+            serde_json::json!({}),
+            None,
+        ).await;
+        assert!(matches!(result, Err(crate::browser_intent::PagesBrowserIntentError::DraftUnavailable)));
+    }
+
     use super::{PREVIEW_FRAME_ANCESTORS, pages_server_preview_policy};
 
     fn directive<'a>(policy: &'a str, name: &str) -> &'a str {

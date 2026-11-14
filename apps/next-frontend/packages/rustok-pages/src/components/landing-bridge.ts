@@ -109,6 +109,24 @@ function belongsToLanding(element: Element, root: HTMLElement): boolean {
   return element.closest(LANDING_ROOT) === root;
 }
 
+// Fragment navigation must never fall through to the document's global ID lookup.
+function scrollLandingFragment(root: HTMLElement, href: string): void {
+  let id: string;
+  try {
+    id = decodeURIComponent(href.slice(1));
+  } catch {
+    return;
+  }
+  if (!id) return;
+  const destination = Array.from(root.querySelectorAll("[id], a[name]"))
+    .find((element) => belongsToLanding(element, root) &&
+      (element.id === id || element.getAttribute("name") === id));
+  if (!destination) return;
+  const view = destination.ownerDocument.defaultView;
+  const reduced = typeof view?.matchMedia === "function" && view.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  destination.scrollIntoView({ behavior: reduced ? "instant" : "smooth" });
+}
+
 /** Install one bridge on this landing, never on the host document or a different landing. */
 export function installLandingBridge(root: HTMLElement, handlers: LandingBridgeHandlers): () => void {
   const handleFlyAction = (event: Event) => {
@@ -135,7 +153,8 @@ export function installLandingBridge(root: HTMLElement, handlers: LandingBridgeH
       handlers.toggleCart();
     } else if (eventName === "navigate") {
       const href = safeNavigationHref(data.href || data.url);
-      if (href) handlers.navigate(href);
+      if (href?.startsWith("#")) scrollLandingFragment(root, href);
+      else if (href) handlers.navigate(href);
     }
   };
 
@@ -147,7 +166,15 @@ export function installLandingBridge(root: HTMLElement, handlers: LandingBridgeH
     // A Fly action on the same click will be handled by the canonical runtime at document
     // level. Let that action own the click instead of toggling the cart twice.
     const action = target.closest("[data-fly-action]");
-    if (action && root.contains(action)) return;
+    if (action && root.contains(action)) {
+      // Even an invalid or unavailable action must not expose a fragment to the host.
+      const link = target.closest("a");
+      if (link && root.contains(link) && (!link.target || link.target === "_self") &&
+          !link.hasAttribute("download") && link.getAttribute("href")?.startsWith("#")) {
+        event.preventDefault();
+      }
+      return;
+    }
     if (trigger && root.contains(trigger)) {
       event.preventDefault();
       handlers.toggleCart();
@@ -158,20 +185,9 @@ export function installLandingBridge(root: HTMLElement, handlers: LandingBridgeH
         anchor.hasAttribute("download") || anchor.hasAttribute("data-fly-action")) return;
     const href = anchor.getAttribute("href");
     if (!href) return;
-    if (href.startsWith("#") && href.length > 1) {
-      let id: string;
-      try {
-        id = decodeURIComponent(href.slice(1));
-      } catch {
-        return;
-      }
-      const destination = Array.from(root.querySelectorAll("[id], a[name]"))
-        .find((element) => belongsToLanding(element, root) &&
-          (element.id === id || element.getAttribute("name") === id));
-      if (destination) {
-        event.preventDefault();
-        destination.scrollIntoView({ behavior: "smooth" });
-      }
+    if (href.startsWith("#")) {
+      event.preventDefault();
+      scrollLandingFragment(root, href);
     } else if (href.startsWith("/") && safeNavigationHref(href)) {
       event.preventDefault();
       handlers.navigate(href);

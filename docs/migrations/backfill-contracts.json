@@ -399,6 +399,15 @@
       "mode": "none",
       "owner": "rustok-pages",
       "reason": "Adds the nullable reaper lease column and a partial index over executing rows to page_publish_jobs; existing rows keep NULL leases, which the reaper deliberately treats as expired claims, so no historical data is converted or backfilled"
+    },
+    {
+      "id": "pages-starter-revision-backfill",
+      "migration": "m20261114_000001_add_page_starter_revision",
+      "mode": "fixture",
+      "owner": "rustok-pages",
+      "reason": "Assigns each existing tenant starter its own row UUID as the initial CAS token; later updates and recreated rows receive fresh tokens",
+      "setup_sql": "INSERT INTO page_starters (id, tenant_id, starter_key, category, name, content) VALUES ('77000000-0000-0000-0000-0000000000d1'::uuid, '77000000-0000-0000-0000-0000000000d2'::uuid, 'revision-fixture', 'test', 'Fixture', '{\"pages\":[]}'::jsonb)",
+      "assertion_sql": "SELECT EXISTS (SELECT 1 FROM page_starters WHERE id = '77000000-0000-0000-0000-0000000000d1'::uuid AND revision = id) AS passed"
     }
   ]
 }

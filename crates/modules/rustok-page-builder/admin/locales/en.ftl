@@ -233,7 +233,7 @@ page_builder-status-dragging = Choose a drop position in the canvas
 page_builder-status-saveFailed = Save failed
 page_builder-status-saveSucceeded = Project saved
 page_builder-status-saved = Saved
-page_builder-status-saveConflict = Save conflict: this page changed in another session. Your changes are not saved; reload the latest version before continuing.
+page_builder-status-saveConflict = Save conflict: this page changed in another session. Preserve your unsaved work before opening the latest version.
 page_builder-status-saving = Saving
 page_builder-subtitle = Fly runtime, compatibility, and provider control surface.
 page_builder-title = Page Builder
@@ -291,3 +291,6 @@ page_builder-action-saveToken = Save token
 page_builder-workspace-title = Page Builder
 page_builder-workspace-toolbar = Editor toolbar
 page_builder-workspace-previewFailed = Preview failed
+
+page_builder-draftRecovery-message = The editor does not match its draft session. Editing is stopped. Restore the draft before continuing; it may expire.
+page_builder-draftRecovery-link = Restore draft or reload this address

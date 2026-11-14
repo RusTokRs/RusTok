@@ -1,8 +1,18 @@
 use crate::model::{CreatePageDraft, PageDetail};
-pub use crate::starters::{instantiate_starter_preset, page_starters};
 use rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT;
-use rustok_ui_core::{normalize_ui_text, parse_ui_csv};
+use rustok_ui_core::{AdminQueryKey, normalize_ui_text, parse_ui_csv};
 use serde_json::{Value, json};
+
+/// Draft sessions belong to a page. A page change must clear the previous
+/// page's route token in the same query update without deleting its session.
+pub const FLY_DRAFT_QUERY_KEY: &str = "fly_draft";
+
+pub fn page_selection_query_update(page_id: Option<String>) -> Vec<(String, Option<String>)> {
+    vec![
+        (AdminQueryKey::PageId.as_str().to_string(), page_id),
+        (FLY_DRAFT_QUERY_KEY.to_string(), None),
+    ]
+}
 
 pub fn slugify(value: &str) -> String {
     value
@@ -51,7 +61,6 @@ pub struct PageDraftFormInput<'a> {
     pub title: &'a str,
     pub slug: &'a str,
     pub channel_slugs: &'a str,
-    pub starter_id: Option<&'a str>,
     pub template: Option<&'a str>,
 }
 
@@ -72,17 +81,24 @@ pub fn build_create_page_draft(
     }
 }
 
-pub fn build_create_page_draft_with_starter(input: PageDraftFormInput<'_>) -> CreatePageDraft {
-    let starter_id = input.starter_id.unwrap_or("blank");
-    let doc = instantiate_starter_preset(starter_id, input.title)
-        .unwrap_or_else(|_| default_project_data(input.title));
-    build_create_page_draft(input, doc)
+/// A layout choice is valid only when it exists in the exact-locale key snapshot.
+pub fn selected_layout_available(keys: &[String], selected: &str) -> bool {
+    keys.iter().any(|key| key == selected)
 }
 
-pub fn missing_required_page_field(draft: &CreatePageDraft) -> Option<PageRequiredField> {
-    if draft.title.is_empty() {
+/// Resolve the selected key only from the loaded tenant catalog. A missing key
+/// is an error in the UI, never an implicit switch to another starter.
+pub fn selected_page_starter(
+    starters: &[crate::model::PageStarterSummary],
+    key: &str,
+) -> Option<crate::model::PageStarterSummary> {
+    starters.iter().find(|starter| starter.key == key).cloned()
+}
+
+pub fn missing_required_page_field(title: &str, slug: &str) -> Option<PageRequiredField> {
+    if title.trim().is_empty() {
         Some(PageRequiredField::Title)
-    } else if draft.slug.is_empty() {
+    } else if slug.trim().is_empty() {
         Some(PageRequiredField::Slug)
     } else {
         None
