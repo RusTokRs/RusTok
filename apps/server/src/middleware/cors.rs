@@ -85,7 +85,20 @@ pub fn build_cors_layer(is_production: bool, allowed_origins: Option<&[String]>)
         configured
             .iter()
             .map(|origin| normalize_host_origin(origin))
-            .filter_map(|origin| origin.parse::<HeaderValue>().ok())
+            .filter_map(|origin| match origin.parse::<HeaderValue>() {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    // Dropping an origin silently would narrow the allow-list
+                    // without any operator-visible signal.
+                    tracing::error!(
+                        %origin,
+                        %error,
+                        "Configured CORS origin is not a valid header value; \
+                         requests from it will be denied"
+                    );
+                    None
+                }
+            })
             .collect()
     } else {
         Vec::new()
@@ -93,6 +106,18 @@ pub fn build_cors_layer(is_production: bool, allowed_origins: Option<&[String]>)
 
     if origins.is_empty() {
         if is_production {
+            // Falling back to a loopback origin in production means the
+            // deployment supplied no usable allow-list. Serving traffic with
+            // this silently would look healthy while every real browser origin
+            // is rejected, and it would also be trusted by mistake if a proxy
+            // ever fronted the listener on 127.0.0.1.
+            tracing::error!(
+                fallback_origin = DEFAULT_PRODUCTION_ORIGIN,
+                configured = allowed_origins.map(<[String]>::len).unwrap_or(0),
+                "No usable CORS origin configured in production; the allow-list \
+                 falls back to a loopback origin and browser clients will be rejected. \
+                 Set the allowed origins explicitly."
+            );
             origins.push(HeaderValue::from_static(DEFAULT_PRODUCTION_ORIGIN));
         } else {
             origins.extend(
@@ -248,6 +273,27 @@ mod tests {
     fn production_cors_fallback_is_not_wildcard() {
         let cors = build_cors_layer(true, None);
         assert!(format!("{cors:?}").contains("CorsLayer"));
+    }
+
+    #[test]
+    fn unparseable_configured_origins_are_dropped_not_trusted() {
+        // A CR/LF cannot appear in a header value. The configured origin must be
+        // rejected; before the explicit logging branch it was silently dropped,
+        // which made a misconfiguration indistinguishable from "no origins".
+        let origins = vec![
+            "https://good.example.com".to_string(),
+            "https://evil.example.com\r\nX-Injected: 1".to_string(),
+        ];
+        let cors = build_cors_layer(true, Some(&origins));
+        let debug = format!("{cors:?}");
+        assert!(
+            debug.contains("good.example.com"),
+            "the valid origin must be kept: {debug}"
+        );
+        assert!(
+            !debug.contains("evil.example.com"),
+            "the unparseable origin must never enter the allow-list: {debug}"
+        );
     }
 
     #[test]
