@@ -18,7 +18,7 @@ fn source(relative: &str) -> String {
 fn production_bootstrap_uses_the_hardened_registry_provider() {
     let runtime = source("apps/server/src/services/app_runtime.rs");
     assert!(
-        runtime.contains("HardenedRegistryMarketplaceProvider::from_env()"),
+        runtime.contains("HardenedRegistryMarketplaceProvider::from_env()?"),
         "production bootstrap must use the bounded registry provider"
     );
     assert!(
@@ -108,4 +108,31 @@ fn marketplace_registry_client_fails_closed_and_disables_redirects() {
     assert!(provider.contains(".redirect(reqwest::redirect::Policy::none())"));
     assert!(provider.contains("failed to construct bounded marketplace registry client"));
     assert!(!provider.contains("using reqwest defaults"));
+}
+
+#[test]
+fn marketplace_registry_configuration_errors_abort_startup_instead_of_panicking() {
+    let provider = source("apps/server/src/services/marketplace_catalog_cache_base.rs");
+    // Only the production half of the file is under guard: the unit tests in
+    // `mod tests` legitimately use `panic!`/`unwrap()` as assertions, and they
+    // never run on a boot path.
+    let production = provider
+        .split("mod tests {")
+        .next()
+        .unwrap_or(provider.as_str());
+    for forbidden in ["panic!", "unreachable!", ".unwrap()"] {
+        assert!(
+            !production.contains(forbidden),
+            "registry configuration must fail closed through a typed error, found {forbidden}"
+        );
+    }
+    assert!(
+        production.contains("pub fn from_env() -> Result<Vec<Self>, Error>"),
+        "the registry provider constructor must return its configuration failure"
+    );
+    let runtime = source("apps/server/src/services/app_runtime.rs");
+    assert!(
+        runtime.contains("init_marketplace_catalog(&runtime_ctx)?"),
+        "bootstrap must abort when registry configuration is invalid"
+    );
 }

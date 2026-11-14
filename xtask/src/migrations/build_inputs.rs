@@ -415,7 +415,7 @@ fn project(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
 
     struct Fixture {
         directory: PathBuf,
@@ -698,11 +698,9 @@ mod tests {
         assert_eq!(original, fixture.project(&metadata)?);
         metadata["packages"][0]["targets"][1]["name"] = json!(BINARIES[0]);
         assert!(fixture.project(&metadata).is_err());
-        metadata["packages"][0]["targets"][1]["src_path"] = json!(
-            fixture
-                .root
-                .join("crates/utils/rustok-migrations/src/lib.rs")
-        );
+        metadata["packages"][0]["targets"][1]["src_path"] = json!(fixture
+            .root
+            .join("crates/utils/rustok-migrations/src/lib.rs"));
         assert_ne!(original, fixture.project(&metadata)?);
         Ok(())
     }

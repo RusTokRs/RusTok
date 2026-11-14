@@ -437,7 +437,9 @@ impl OAuthAdminPort for ServerAuthAdminMutationProvider {
             .map_err(internal_admin_error)?
             .filter(|app| app.tenant_id == context.tenant_id)
             .ok_or_else(|| AuthAdminMutationError::NotFound("oauth app".to_string()))?;
-        let revoked = OAuthAppService::revoke_app(&self.db, app.id)
+        // The ownership check above is a pre-check for a precise error; the
+        // service scopes the lookup itself, so neither call alone is load-bearing.
+        let revoked = OAuthAppService::revoke_app(&self.db, context.tenant_id, app.id)
             .await
             .map_err(map_service_error)?;
         self.record(context, revoked).await

@@ -68,6 +68,11 @@ fn map_platform_settings_update_error(error: SettingsError) -> FieldError {
         SettingsError::WriteConflict => <FieldError as GraphQLError>::conflict(
             "Settings were changed concurrently; re-read the category and retry",
         ),
+        // A settings write without an actor is an authorization failure, not a
+        // server fault: the change event cannot carry a nil `changed_by`.
+        SettingsError::MissingActor => <FieldError as GraphQLError>::permission_denied(
+            "settings:manage required: settings changes must record an actor",
+        ),
         error => graphql_settings_internal_error("Unable to update platform settings", error),
     }
 }

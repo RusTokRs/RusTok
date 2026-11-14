@@ -20,7 +20,6 @@ pub mod auth_retention;
 mod blog_search_result_eligibility;
 pub mod build_control;
 pub mod build_event_hub;
-pub mod build_executor;
 pub mod cache_redis_status_monitor;
 pub mod cache_runtime;
 pub mod cache_settings_admin;

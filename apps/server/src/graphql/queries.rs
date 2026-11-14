@@ -1246,9 +1246,10 @@ impl RootQuery {
             .checkpoint(operation_id, Some(tenant.id))
             .await
             .map_err(crate::graphql::transition_lifecycle::map_transition_service_error)?;
-        Ok(checkpoint
+        checkpoint
             .map(rustok_api::ModuleTransitionCheckpointView::from)
-            .map(Into::into))
+            .map(TryInto::try_into)
+            .transpose()
     }
 
     /// Query all unresolved governed module release transitions, including
@@ -1265,11 +1266,11 @@ impl RootQuery {
             .active_checkpoints(Some(tenant.id))
             .await
             .map_err(crate::graphql::transition_lifecycle::map_transition_service_error)?;
-        Ok(checkpoints
+        checkpoints
             .into_iter()
             .map(rustok_api::ModuleTransitionCheckpointView::from)
-            .map(Into::into)
-            .collect())
+            .map(TryInto::try_into)
+            .collect()
     }
 
     /// Query all active artifact retention holds protecting CAS blobs, slots, and recovery points.
@@ -1285,11 +1286,11 @@ impl RootQuery {
             .retention_holds(Some(tenant.id))
             .await
             .map_err(crate::graphql::transition_lifecycle::map_transition_service_error)?;
-        Ok(holds
+        holds
             .into_iter()
             .map(rustok_api::ModuleRetentionHoldView::from)
-            .map(Into::into)
-            .collect())
+            .map(TryInto::try_into)
+            .collect()
     }
 }
 

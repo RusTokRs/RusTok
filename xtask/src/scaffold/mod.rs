@@ -23,8 +23,8 @@ use transaction::ScaffoldWorkspace;
 
 #[allow(unused_imports)]
 pub use options::{
-    ScaffoldOptions, ScaffoldProfile, ScaffoldUi, default_title_from_slug, is_valid_slug,
-    parse_options, print_scaffold_usage,
+    default_title_from_slug, is_valid_slug, parse_options, print_scaffold_usage, ScaffoldOptions,
+    ScaffoldProfile, ScaffoldUi,
 };
 
 pub(crate) fn scaffold_command(args: &[String]) -> Result<()> {
@@ -336,8 +336,8 @@ fn scaffold_in_workspace(
 #[cfg(test)]
 mod tests {
     use super::{
-        PlannedFile, ScaffoldOptions, ScaffoldProfile, ScaffoldTransaction, ScaffoldUi,
-        build_scaffold_plan, scaffold,
+        build_scaffold_plan, scaffold, PlannedFile, ScaffoldOptions, ScaffoldProfile,
+        ScaffoldTransaction, ScaffoldUi,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -426,12 +426,10 @@ mod tests {
         let index_change = plan.iter().find(|file| file.path == index).unwrap();
         assert!(!index_change.content.ends_with('\n'));
         assert!(index_change.content.contains("\r\n"));
-        assert!(
-            index_change
-                .content
-                .split_inclusive('\n')
-                .all(|line| !line.ends_with('\n') || line.ends_with("\r\n"))
-        );
+        assert!(index_change
+            .content
+            .split_inclusive('\n')
+            .all(|line| !line.ends_with('\n') || line.ends_with("\r\n")));
         let render = || {
             let mut output = Vec::new();
             super::scaffold_in_workspace(&root, &options, &mut output, |_, _| {
@@ -743,11 +741,9 @@ mod tests {
         let parsed: toml::Value = toml::from_str(planned).unwrap();
         assert!(parsed["modules"].get("example").is_some());
         assert!(parsed["modules"].get("some_example").is_some());
-        assert!(
-            !fs::read_to_string(manifest)
-                .unwrap()
-                .contains("crate = \"rustok-example\"")
-        );
+        assert!(!fs::read_to_string(manifest)
+            .unwrap()
+            .contains("crate = \"rustok-example\""));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1075,12 +1071,10 @@ mod tests {
     fn database_requests_fail_even_in_preview_mode() {
         let mut request = options();
         request.with_db = true;
-        assert!(
-            scaffold(&request, std::io::sink())
-                .unwrap_err()
-                .to_string()
-                .contains("--with-db")
-        );
+        assert!(scaffold(&request, std::io::sink())
+            .unwrap_err()
+            .to_string()
+            .contains("--with-db"));
     }
 
     #[test]
@@ -1090,11 +1084,9 @@ mod tests {
             request.ui = mode;
             let planned = super::ui::render_ui_templates(&request, "Example");
             assert!(!planned.is_empty());
-            assert!(
-                planned
-                    .iter()
-                    .any(|(path, _)| path.ends_with("src/ui/leptos.rs"))
-            );
+            assert!(planned
+                .iter()
+                .any(|(path, _)| path.ends_with("src/ui/leptos.rs")));
             assert!(
                 scaffold(&request, std::io::sink()).is_ok(),
                 "dry-run must preview every UI mode"

@@ -292,6 +292,13 @@ fn map_tenant_error(error: crate::TenantError) -> PortError {
             "tenant.locale_policy_idempotency_conflict",
             "tenant locale policy idempotency key was already used for a different request",
         ),
+        // A claimed host is a caller-fixable conflict, not a transient outage:
+        // reporting it as `Unavailable` would mark it retryable and invite a retry
+        // that can never succeed.
+        crate::TenantError::DomainAlreadyExists(domain) => PortError::conflict(
+            "tenant.domain_already_exists",
+            format!("tenant domain `{domain}` is already assigned to another tenant"),
+        ),
         crate::TenantError::LocalePolicyInvariant(message) => {
             PortError::invariant_violation("tenant.locale_policy_invariant", message)
         }
@@ -367,6 +374,24 @@ mod tests {
                 .unwrap_err()
                 .code,
             "tenant.domain_empty"
+        );
+    }
+
+    #[test]
+    fn a_claimed_domain_maps_to_a_non_retryable_conflict() {
+        // Both the code and the retryability matter: a hard host collision is
+        // caller-fixable, so advertising it as retryable would invite a retry
+        // loop that can never succeed.
+        let error = map_tenant_error(crate::TenantError::DomainAlreadyExists(
+            "admin.example.com".to_string(),
+        ));
+        assert_eq!(error.kind, PortErrorKind::Conflict, "{error:?}");
+        assert_eq!(error.code, "tenant.domain_already_exists");
+        assert!(!error.retryable, "a claimed domain must not be retryable");
+        assert!(
+            error.message.contains("admin.example.com"),
+            "the rejected host must be identifiable: {}",
+            error.message
         );
     }
 }

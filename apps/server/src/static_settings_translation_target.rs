@@ -322,11 +322,18 @@ impl TranslationTargetProvider for StaticSettingsTranslationTargetProvider {
         if has_more {
             resources.truncate(usize::from(request.limit));
         }
-        let next_cursor = has_more.then(|| resources.last()).flatten().map(|summary| {
-            // INVARIANT: resource_id is an alphanumeric module slug conforming to OpaqueCursor grammar
-            OpaqueCursor::new(summary.identity.resource_id.as_str())
-                .expect("Settings module slug resource ID must satisfy the opaque cursor contract")
-        });
+        let next_cursor = has_more
+            .then(|| resources.last())
+            .flatten()
+            .map(|summary| {
+                OpaqueCursor::new(summary.identity.resource_id.as_str()).map_err(|error| {
+                    PortError::invariant_violation(
+                        "settings.translation_cursor_invalid",
+                        error.to_string(),
+                    )
+                })
+            })
+            .transpose()?;
 
         Ok(TranslationResourcePage {
             resources,

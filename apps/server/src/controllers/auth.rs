@@ -5,7 +5,8 @@ use axum::{
     Json,
     extract::State,
     extract::{ConnectInfo, Path, Query},
-    http::header::USER_AGENT,
+    http::header::{CACHE_CONTROL, USER_AGENT},
+    middleware::Next,
     routing::{delete, get, post},
 };
 use rustok_api::Permission;
@@ -973,6 +974,27 @@ async fn revoke_session(
     }
 }
 
+/// Credential-bearing responses must never be stored by browsers or shared
+/// intermediaries, including on error paths.
+///
+/// `/api/auth/login`, `/refresh`, `/session/*` and `/reset/confirm` return access
+/// and refresh tokens in the body (and rotate them into a cookie), so a shared
+/// cache that stored one of those responses could replay another user's
+/// credentials. The OAuth endpoints already enforce this via their own
+/// `disable_oauth_caching` layer; the auth surface needs the same guarantee.
+async fn disable_auth_response_caching(request: axum::extract::Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(
+        CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response.headers_mut().insert(
+        axum::http::header::PRAGMA,
+        axum::http::HeaderValue::from_static("no-cache"),
+    );
+    response
+}
+
 pub fn router() -> crate::routes::ServerRouter {
     axum::Router::new()
         .route("/api/auth/register", post(register))
@@ -995,6 +1017,7 @@ pub fn router() -> crate::routes::ServerRouter {
         .route("/api/auth/change-password", post(change_password))
         .route("/api/auth/profile", post(update_profile))
         .route("/api/auth/history", get(login_history))
+        .layer(axum::middleware::from_fn(disable_auth_response_caching))
 }
 
 fn clamp_session_limit(limit: Option<u64>) -> u64 {
@@ -1002,7 +1025,7 @@ fn clamp_session_limit(limit: Option<u64>) -> u64 {
 }
 #[cfg(test)]
 mod tests {
-    use super::ensure_registration_enabled;
+    use super::{disable_auth_response_caching, ensure_registration_enabled};
     use crate::common::RustokSettings;
 
     #[test]
@@ -1016,6 +1039,45 @@ mod tests {
             ensure_registration_enabled(&disabled),
             Err(crate::error::Error::Forbidden(message)) if message == "Registration is disabled"
         ));
+    }
+
+    #[tokio::test]
+    async fn auth_responses_are_never_cacheable() {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode, header::CACHE_CONTROL};
+        use tower::ServiceExt;
+
+        // Success, redirect and error paths all carry credentials or credential
+        // material; none of them may be stored by a browser or shared cache.
+        let router = axum::Router::new()
+            .route("/ok", axum::routing::get(|| async { StatusCode::OK }))
+            .route(
+                "/redirect",
+                axum::routing::get(|| async { StatusCode::FOUND }),
+            )
+            .route(
+                "/error",
+                axum::routing::get(|| async { StatusCode::BAD_REQUEST }),
+            )
+            .layer(axum::middleware::from_fn(disable_auth_response_caching));
+
+        for path in ["/ok", "/redirect", "/error"] {
+            let response = router
+                .clone()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .expect("auth response");
+            assert_eq!(
+                response.headers().get(CACHE_CONTROL).unwrap(),
+                "no-store",
+                "{path} must not be cacheable"
+            );
+            assert_eq!(
+                response.headers().get(axum::http::header::PRAGMA).unwrap(),
+                "no-cache",
+                "{path} must not be cacheable by HTTP/1.0 intermediaries"
+            );
+        }
     }
 
     #[test]

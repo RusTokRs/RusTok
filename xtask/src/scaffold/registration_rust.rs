@@ -2,8 +2,8 @@ use super::options::ScaffoldOptions;
 use anyhow::{Context, Result};
 use std::{fs, path::Path};
 use syn::{
-    Expr, Item, ItemFn, Lit, Meta, Pat, Stmt, Token, punctuated::Punctuated, spanned::Spanned,
-    visit::Visit,
+    punctuated::Punctuated, spanned::Spanned, visit::Visit, Expr, Item, ItemFn, Lit, Meta, Pat,
+    Stmt, Token,
 };
 
 pub(super) const DISTRIBUTION_SOURCE: &str = "crates/modules/rustok-distribution/src/lib.rs";
