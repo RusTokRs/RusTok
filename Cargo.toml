@@ -249,7 +249,7 @@ unic-langid = "0.9.6"
 # Keep the syn-2 macro family in Cargo.lock: server_fn_macro 0.8.12 and
 # leptos_hot_reload 0.8.7 expose syn-3 types to callers still using syn 2.
 # Retain the compatible parsers until their public AST types are aligned.
-leptos = "=0.8.21"
+leptos = "=0.8.23"
 leptos_axum = "0.8.9"
 leptos_router = "0.8.13"
 rustok-auth-ui = { path = "crates/modules/rustok-auth/ui", default-features = false }
