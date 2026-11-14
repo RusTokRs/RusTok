@@ -2,7 +2,7 @@
 
 - Date: 2026-11-11
 - Decision status: Accepted
-- Implementation status: Complete
+- Implementation status: In progress
 - Owners: rustok-blog, rustok-taxonomy
 - Extends: [2026-09-18-canonical-native-module-reference-contract.md](./2026-09-18-canonical-native-module-reference-contract.md), [2026-11-11-inventory-taxonomy-sovereignty-and-product-decoupling.md](./2026-11-11-inventory-taxonomy-sovereignty-and-product-decoupling.md)
 - Supersedes: None
@@ -149,7 +149,7 @@ Implementation state, read from the tree at 2026-11-12: steps 1 and 2 are presen
 
 ## Verification
 
-- `cargo check -p rustok-blog` passes without `rustok-taxonomy` in dependencies.
-- `cargo test -p rustok-blog --lib` passes with decoupled ports.
-- `cargo check -p rustok-taxonomy` passes with `BlogTaxonomyPort` adapter implemented.
+- Current state: these Rust checks have not been run in this environment because the Rust toolchain is unavailable.
+- Before advancing the implementation status, run `cargo check -p rustok-blog` and `cargo test -p rustok-blog --lib` against the current ports and transports; the manifest still has a production `rustok-taxonomy` dependency, and the adapter, host wiring and translation-owner cutover are not implemented.
+- After those cutovers, run `cargo check -p rustok-taxonomy` and adapter-backed integration tests that prove category/tag persistence, transaction rollback and standalone behavior. Do not claim a dependency-free Blog build until the manifest and code actually satisfy that invariant.
 

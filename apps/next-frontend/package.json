@@ -11,6 +11,8 @@
     "lint:blog": "eslint packages/rustok-blog/src",
     "typegen:i18n": "next-fluent typegen -i messages/en.ftl -o src/types/i18n.d.ts",
     "typecheck": "npm run typegen:i18n && next typegen && tsc --noEmit",
+    "test:csp": "node --experimental-strip-types --test src/shared/security/csp.test.mjs",
+    "test:csp-runtime": "node --test src/shared/security/csp-runtime.test.mjs",
     "test:graphql": "node --experimental-strip-types --test src/shared/lib/graphql.test.mjs",
     "test:modules": "node --experimental-strip-types --test src/modules/registry.test.mjs",
     "test": "npm run test:graphql && npm run test:modules && npm run verify:seo-runtime-fixtures && npm run verify:fly-actions-parity",

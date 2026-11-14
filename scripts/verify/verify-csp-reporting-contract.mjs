@@ -114,6 +114,7 @@ const appRouterFile = "apps/server/src/services/app_router.rs";
 const standaloneAdminSecurityFile = "apps/admin/src/app/security.rs";
 const standaloneAdminMainFile = "apps/admin/src/main.rs";
 const standaloneAdminAuthFile = "apps/admin/src/app/auth_ssr.rs";
+const standaloneAdminShellFile = "apps/admin/src/app/shell.rs";
 const standaloneAdminCargoFile = "apps/admin/Cargo.toml";
 const inventoryFile = "docs/security/csp-report-only-inventory.md";
 
@@ -126,6 +127,7 @@ const appRouter = read(appRouterFile);
 const standaloneAdminSecurity = read(standaloneAdminSecurityFile);
 const standaloneAdminMain = read(standaloneAdminMainFile);
 const standaloneAdminAuth = read(standaloneAdminAuthFile);
+const standaloneAdminShell = read(standaloneAdminShellFile);
 const standaloneAdminCargo = read(standaloneAdminCargoFile);
 const inventory = read(inventoryFile);
 
@@ -233,19 +235,36 @@ for (const marker of [
   "validate_admin_security_profile()",
   "request_csp_nonce()",
   "provide_context(nonce)",
+  "rustok_ui_core::UiCspNonce::new(nonce.as_str())",
+  "document_csp_nonce()",
+  "script[nonce]",
   ".layer(middleware::from_fn(admin_security_headers))",
 ]) {
   requireMarker(standaloneAdminMain, marker, standaloneAdminMainFile);
 }
 
 for (const marker of [
-  "use rustok_web::CspNonce;",
-  "or_else(crate::app::security::request_csp_nonce)",
-  "nonce=nonce",
-  'data-rustok-auth-bootstrap="local-storage-cookie-v1"',
+  "verified_snapshot_from_headers",
+  "verify_auth_snapshot",
+  "request_auth_snapshot",
+  "request.extensions_mut().insert(snapshot)",
+  ".get::<ServerAuthSnapshot>()",
 ]) {
   requireMarker(standaloneAdminAuth, marker, standaloneAdminAuthFile);
 }
+forbidMarker(
+  standaloneAdminAuth,
+  "data-rustok-auth-bootstrap",
+  standaloneAdminAuthFile,
+);
+
+for (const marker of [
+  "intentionally omits `HydrationScripts`",
+  '<link rel="stylesheet" href="/pkg/rustok-admin.css"/>',
+]) {
+  requireMarker(standaloneAdminShell, marker, standaloneAdminShellFile);
+}
+forbidMarker(standaloneAdminShell, "<script", standaloneAdminShellFile);
 
 for (const marker of [
   '"dep:rustok-web"',
@@ -293,7 +312,10 @@ for (const marker of [
   "## Trusted Script and Style Element Nonce Boundary",
   "## Connection Profile Boundary",
   "## Current Migration State",
-  "## Enforcement Exit Criteria",
+  "## Cross-Stack CSP Acceptance Criteria",
+  "### Next/React boundary",
+  "1 nonce-bearing runtime style element",
+  "Next storefront now enforces its request-local policy",
   "64 KiB",
   "20 per request",
   "Never copy a full reported URL",

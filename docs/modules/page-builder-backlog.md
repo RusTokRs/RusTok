@@ -93,10 +93,13 @@ Remaining release work, with owners:
    hosts with real Product/Pricing/Cart services, accessibility and enforced CSP. Leptos passes
    the host nonce to trusted landing styles/scripts on module routes and in the home slot, marks
    nonce-bearing HTML `private, no-store`, and refuses ETag/304 caching of nonce-bearing Pages
-   responses; this remains unverified in the actual host. The Next landing currently emits
-   an inline style element and style attributes without a request nonce; a strict CSP deployment
-   needs host integration. The Next production-host smoke uses a fake API, and synthetic Chromium
-   CSP tests are not deployment evidence.
+   responses; this remains unverified in the actual host. The Next storefront now has request-local
+   nonce/CSP host wiring: published landing CSS, home/blog JSON-LD and custom 404 use the response
+   nonce; the single landing `<style>` element is registered and style attributes are removed.
+   The production HTTP test (`npm run test:csp-runtime` after `npm run build`) verifies the home
+   response's CSP/SSR nonce agreement and rotation, spoof resistance, no-store headers and custom
+   404. It does not exercise a published landing or blog JSON-LD. Fatal `global-error` behavior,
+   Chromium, real-service, mounted-host and deployed-CSP evidence remain open.
 3. **Complete Cart/checkout recovery** (Cart + Commerce + Next host). Owner-backed shipping
    choices, exact-money presentation, signed-in checkout authorization, durable idempotency and
    fencing/recovery of uncertain completion remain open. A fresh key on every retry is not an

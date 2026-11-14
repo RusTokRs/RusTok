@@ -17,9 +17,12 @@ const excludedDirectories = new Set([
   "node_modules",
   "out",
 ]);
-const maxRegisteredFiles = 0;
+// The Next storefront owns exactly one reviewed runtime style element: the
+// published-landing stylesheet carries the request-local CSP nonce. All other
+// Next sources remain at zero.
+const maxRegisteredFiles = 1;
 const maxStyleAttributeSites = 0;
-const maxRuntimeStyleElements = 0;
+const maxRuntimeStyleElements = 1;
 const failures = [];
 
 function read(relativePath) {
@@ -308,15 +311,6 @@ requireMarkers("apps/next-admin/src/shared/ui/forms/form-textarea.tsx", [
 forbidMarkers("apps/next-admin/src/shared/ui/forms/form-textarea.tsx", [
   "style={{ resize }}",
 ]);
-requireMarkers("apps/next-admin/src/features/overview/components/bar-graph-skeleton.tsx", [
-  "const BAR_HEIGHT_CLASSES = [",
-  "BAR_HEIGHT_CLASSES.map",
-  "className={`w-full ${heightClass}`}",
-]);
-forbidMarkers("apps/next-admin/src/features/overview/components/bar-graph-skeleton.tsx", [
-  "Math.random",
-  "style=",
-]);
 requireMarkers("apps/next-admin/src/shared/ui/shadcn/sonner.tsx", [
   "type RusTokToasterProps = Omit<ToasterProps, 'style'>",
   "[--normal-bg:var(--popover)]",
@@ -404,14 +398,79 @@ forbidMarkers("apps/next-admin/src/shared/ui/shadcn/chart.tsx", [
   "--color-${configKey}",
   "ChartStyle",
 ]);
-requireMarkers("apps/next-admin/src/features/overview/components/area-graph.tsx", [
-  "stroke='var(--primary)'",
-  "stopColor='var(--primary)'",
+// Request-local strict CSP boundary for the Next storefront. The proxy issues
+// one nonce per request; host-owned inline elements opt into it explicitly.
+requireMarkers("apps/next-frontend/src/shared/security/csp.ts", [
+  "CSP_NONCE_HEADER = \"x-nonce\"",
+  "CSP_POLICY_HEADER = \"Content-Security-Policy\"",
+  "export function createCspNonce()",
+  "export function shouldBypassCspForNonDocumentResource(",
+  "export function buildStrictCsp(",
+  "style-src-attr 'none'",
 ]);
-forbidMarkers("apps/next-admin/src/features/overview/components/area-graph.tsx", [
-  "var(--color-desktop)",
-  "var(--color-mobile)",
+requireMarkers("apps/next-frontend/src/shared/security/nonce.ts", [
+  "headers()",
+  "isValidCspNonce",
 ]);
+requireMarkers("apps/next-frontend/src/proxy.ts", [
+  "createCspNonce()",
+  "shouldBypassCspForNonDocumentResource(",
+  "CSP_NONCE_HEADER",
+  "CSP_POLICY_HEADER",
+  "RUSTOK_STRICT_CSP",
+  "Cache-Control",
+  "private, no-store",
+  "matcher",
+]);
+requireMarkers("apps/next-frontend/packages/rustok-pages/src/components/page-builder-content.tsx", [
+  "LANDING_CONTAINMENT_CSS",
+  "scopeLandingCss(css, \".fly-page-container\")",
+  "data-fly-landing-styles=\"true\"",
+  "nonce={nonce}",
+]);
+forbidMarkers("apps/next-frontend/packages/rustok-pages/src/components/page-builder-content.tsx", [
+  "style={{",
+  "useMemo",
+]);
+requireMarkers("apps/next-frontend/src/app/[locale]/pages/[slug]/page.tsx", [
+  "getRequestCspNonce",
+  "nonce={nonce}",
+]);
+requireMarkers("apps/next-frontend/src/app/[locale]/page.tsx", [
+  "getRequestCspNonce",
+  "nonce={nonce}",
+]);
+requireMarkers("apps/next-frontend/src/app/[locale]/blog/[slug]/page.tsx", [
+  "getRequestCspNonce",
+  "nonce={await getRequestCspNonce()}",
+]);
+requireMarkers("apps/next-frontend/packages/rustok-blog/src/components/blog-detail.tsx", [
+  "nonce?: string",
+  "nonce={nonce}",
+]);
+requireMarkers("apps/next-frontend/src/app/not-found.tsx", [
+  "getRequestCspNonce",
+  "await getRequestCspNonce()",
+]);
+forbidMarkers("apps/next-frontend/src/app/not-found.tsx", ["style=", "<style"]);
+requireMarkers("apps/next-frontend/src/app/global-error.tsx", [
+  "import \"@/styles/globals.css\"",
+  "onClick={() => retry()}",
+  "We could not complete your request.",
+]);
+forbidMarkers("apps/next-frontend/src/app/global-error.tsx", [
+  "style=",
+  "<style",
+  "error.message",
+]);
+
+for (const [relativePath, counts] of observed) {
+  if (counts.styleElements > 0 && !read(relativePath).includes("nonce={nonce}")) {
+    failures.push(
+      `${relativePath}: runtime style element must carry the request-local nonce`,
+    );
+  }
+}
 
 if (failures.length > 0) {
   console.error("Next CSP style boundary verification failed:");

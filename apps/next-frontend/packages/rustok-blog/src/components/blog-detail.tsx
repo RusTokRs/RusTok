@@ -35,6 +35,8 @@ export interface BlogPostDetailViewProps {
   commentsPage: number;
   relatedPosts: BlogPostSummary[];
   siteUrl: string;
+  /** Request-local CSP nonce issued by the storefront proxy. */
+  nonce?: string;
 }
 
 export async function BlogPostDetailView({
@@ -46,6 +48,7 @@ export async function BlogPostDetailView({
   commentsPage,
   relatedPosts,
   siteUrl,
+  nonce,
 }: BlogPostDetailViewProps) {
   const t = await getTranslations('Blog');
   const publishedDate = post.publishedAt
@@ -86,6 +89,7 @@ export async function BlogPostDetailView({
       {/* Schema.org JSON-LD structured data for article */}
       <script
         type="application/ld+json"
+        nonce={nonce}
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
 

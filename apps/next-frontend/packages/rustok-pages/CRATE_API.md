@@ -15,9 +15,9 @@
 
 ### Components
 
-- `PageBuilderContent({ html, css, className }: PageBuilderContentProps)`:
-  - Renders the scoped landing page HTML markup and injects scoped CSS. The inline `<style>` and wrapper style attributes have no host nonce here; strict Next CSP support remains open.
-  - Wraps content in `<div className="fly-page-container" style={{ isolation: "isolate", contain: "style layout" }}>`.
+- `PageBuilderContent({ html, css, className, nonce }: PageBuilderContentProps)`:
+  - Renders the scoped landing page HTML markup and injects scoped CSS through its sole runtime `<style data-fly-landing-styles="true">` element. The Next host passes the validated request nonce; the element is registered as the one bounded exception in `docs/security/csp-next-style-exceptions.json`.
+  - The wrapper uses CSS containment/isolation through the registered stylesheet, not a JSX `style` attribute. The component must not accept or mint author-controlled nonce values.
   - Mounts the client `<FlyActionBridge />` island for handling interactive triggers.
 - `FlyActionBridge()`:
   - Client component (`"use client"`) that side-effect imports the canonical `fly-actions.js` runtime asset (a byte-exact copy of `crates/ui/fly/browser/assets/fly-actions.js`, the same script the Rust storefront inlines) and listens for `fly:action` CustomEvents.

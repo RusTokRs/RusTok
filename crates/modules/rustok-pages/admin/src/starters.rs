@@ -129,13 +129,15 @@ fn build_blank_doc(title: &str) -> ProjectDocument {
         vec![
             json!({
                 "id": "heading",
-                "type": "text",
-                "content": format!("<h1>{}</h1>", escape_html(title))
+                "type": "heading",
+                "tagName": "h1",
+                "content": title
             }),
             json!({
                 "id": "intro",
                 "type": "text",
-                "content": "<p>Build this page with Fly.</p>"
+                "tagName": "p",
+                "content": "Build this page with Fly."
             }),
         ],
     )
@@ -151,7 +153,7 @@ fn build_saas_landing_doc(title: &str) -> ProjectDocument {
             "type": "container",
             "style": { "max-width": "960px", "margin": "0 auto" },
             "components": [
-                { "id": "hero-headline", "type": "heading", "tagName": "h1", "content": escape_html(title), "style": { "font-size": "56px", "line-height": "1.1", "margin": "0 0 20px", "color": "#0f172a" } },
+                { "id": "hero-headline", "type": "heading", "tagName": "h1", "content": title, "style": { "font-size": "56px", "line-height": "1.1", "margin": "0 0 20px", "color": "#0f172a" } },
                 { "id": "hero-subhead", "type": "text", "content": "The unified platform for high-performance websites and digital commerce.", "style": { "font-size": "20px", "line-height": "1.6", "color": "#475569", "margin": "0 auto 32px", "max-width": "720px" } },
                 { "id": "hero-cta", "type": "button", "tagName": "a", "content": "Get Started Free", "style": { "display": "inline-block", "padding": "14px 32px", "background": "#2563eb", "color": "#ffffff", "border-radius": "10px", "font-weight": "600", "text-decoration": "none" } }
             ]
@@ -252,7 +254,7 @@ fn build_ecommerce_showcase_doc(title: &str) -> ProjectDocument {
                         "style": { "flex": "1 1 480px" },
                         "components": [
                             { "id": "eco-badge", "type": "text", "tagName": "span", "content": "NEW RELEASE", "style": { "display": "inline-block", "padding": "4px 12px", "background": "#dbeafe", "color": "#1d4ed8", "border-radius": "9999px", "font-size": "12px", "font-weight": "700", "margin-bottom": "16px" } },
-                            { "id": "eco-head", "type": "heading", "tagName": "h1", "content": escape_html(title), "style": { "font-size": "48px", "line-height": "1.15", "margin": "0 0 16px", "color": "#0f172a" } },
+                            { "id": "eco-head", "type": "heading", "tagName": "h1", "content": title, "style": { "font-size": "48px", "line-height": "1.15", "margin": "0 0 16px", "color": "#0f172a" } },
                             { "id": "eco-body", "type": "text", "content": "Designed with precision craftsmanship and premium sustainable materials.", "style": { "font-size": "18px", "line-height": "1.6", "color": "#475569", "margin": "0 0 32px" } },
                             { "id": "eco-buy", "type": "button", "tagName": "a", "content": "Shop Collection — $129", "style": { "display": "inline-block", "padding": "14px 32px", "background": "#0f172a", "color": "#ffffff", "border-radius": "10px", "font-weight": "600", "text-decoration": "none" } }
                         ]
@@ -307,7 +309,7 @@ fn build_lead_capture_doc(title: &str) -> ProjectDocument {
             "style": { "max-width": "800px", "margin": "0 auto" },
             "components": [
                 { "id": "lead-badge", "type": "text", "tagName": "span", "content": "EXCLUSIVE MASTERCLASS", "style": { "display": "inline-block", "padding": "4px 14px", "background": "#1e293b", "color": "#38bdf8", "border-radius": "9999px", "font-size": "13px", "font-weight": "700", "margin-bottom": "20px" } },
-                { "id": "lead-head", "type": "heading", "tagName": "h1", "content": escape_html(title), "style": { "font-size": "48px", "line-height": "1.15", "margin": "0 0 20px", "color": "#ffffff" } },
+                { "id": "lead-head", "type": "heading", "tagName": "h1", "content": title, "style": { "font-size": "48px", "line-height": "1.15", "margin": "0 0 20px", "color": "#ffffff" } },
                 { "id": "lead-sub", "type": "text", "content": "Reserve your spot to discover how leading engineering teams scale multi-tenant architectures without technical debt.", "style": { "font-size": "18px", "line-height": "1.6", "color": "#94a3b8", "margin": "0 auto 36px", "max-width": "640px" } }
             ]
         }]
@@ -382,7 +384,7 @@ fn build_link_in_bio_doc(title: &str) -> ProjectDocument {
                 },
                 "style": { "width": "96px", "height": "96px", "border-radius": "9999px", "margin": "0 auto 20px", "border": "3px solid #38bdf8" }
             },
-            { "id": "bio-title", "type": "heading", "tagName": "h1", "content": escape_html(title), "style": { "font-size": "26px", "color": "#ffffff", "margin": "0 0 8px" } },
+            { "id": "bio-title", "type": "heading", "tagName": "h1", "content": title, "style": { "font-size": "26px", "color": "#ffffff", "margin": "0 0 8px" } },
             { "id": "bio-desc", "type": "text", "content": "Software architect, systems engineer & digital craftsman.", "style": { "font-size": "15px", "color": "#94a3b8", "margin": "0 0 32px", "line-height": "1.5" } },
             {
                 "id": "bio-links",
@@ -427,7 +429,7 @@ fn build_company_contact_doc(title: &str) -> ProjectDocument {
             "type": "container",
             "style": { "max-width": "800px", "margin": "0 auto" },
             "components": [
-                { "id": "corp-head", "type": "heading", "tagName": "h1", "content": escape_html(title), "style": { "font-size": "44px", "margin": "0 0 16px", "color": "#0f172a" } },
+                { "id": "corp-head", "type": "heading", "tagName": "h1", "content": title, "style": { "font-size": "44px", "margin": "0 0 16px", "color": "#0f172a" } },
                 { "id": "corp-sub", "type": "text", "content": "We partner with visionary enterprises worldwide. Reach out to discuss your technical challenges and custom deployments.", "style": { "font-size": "18px", "color": "#475569", "line-height": "1.6" } }
             ]
         }]
@@ -526,7 +528,16 @@ fn testimonial_card(id: &str, quote: &str, author: &str, role: &str) -> Value {
         "style": { "padding": "28px", "border": "1px solid #e2e8f0", "border-radius": "16px", "background": "#f8fafc" },
         "components": [
             { "id": format!("{id}-quote"), "type": "text", "content": format!("“{}”", quote), "style": { "font-style": "italic", "color": "#334155", "line-height": "1.6", "margin": "0 0 16px" } },
-            { "id": format!("{id}-author"), "type": "text", "content": format!("<strong>{}</strong> — {}", author, role), "style": { "font-size": "14px", "color": "#64748b" } }
+            {
+                "id": format!("{id}-author"),
+                "type": "container",
+                "tagName": "div",
+                "style": { "font-size": "14px", "color": "#64748b" },
+                "components": [
+                    { "id": format!("{id}-author-name"), "type": "text", "tagName": "strong", "content": author, "style": { "font-weight": "700" } },
+                    { "id": format!("{id}-author-role"), "type": "text", "tagName": "span", "content": format!(" — {}", role) }
+                ]
+            }
         ]
     })
 }
@@ -553,6 +564,24 @@ fn link_card_button(id: &str, label: &str, href: &str) -> Value {
     })
 }
 
+/// Pricing amount and period as sibling Fly text components. The renderer
+/// escapes `content`, so an HTML `<span>` would be shown as literal text; a
+/// JSON style map on the period would also become an inline `style` attribute
+/// under a policy that refuses them. Two components keep both semantics in the
+/// canonical component tree.
+fn price_node(id: &str, amount: &str) -> Value {
+    json!({
+        "id": id,
+        "type": "container",
+        "tagName": "div",
+        "style": { "font-size": "32px", "font-weight": "700", "margin": "0 0 16px" },
+        "components": [
+            { "id": format!("{id}-value"), "type": "text", "tagName": "span", "content": amount },
+            { "id": format!("{id}-period"), "type": "text", "tagName": "span", "content": " / month", "style": { "font-size": "14px", "font-weight": "400", "color": "#64748b" } }
+        ]
+    })
+}
+
 fn pricing_table_node(id: &str) -> Value {
     json!({
         "id": id,
@@ -567,7 +596,7 @@ fn pricing_table_node(id: &str) -> Value {
                 "style": { "padding": "32px", "border": "1px solid #e2e8f0", "border-radius": "16px", "background": "#ffffff" },
                 "components": [
                     { "id": format!("{id}-t1-name"), "type": "heading", "content": "Starter", "style": { "font-size": "20px", "margin": "0 0 8px", "color": "#0f172a" } },
-                    { "id": format!("{id}-t1-price"), "type": "text", "content": "$29 <span style='font-size:14px;color:#64748b;'>/ month</span>", "style": { "font-size": "32px", "font-weight": "700", "margin": "0 0 16px" } },
+                    price_node(&format!("{id}-t1-price"), "$29"),
                     { "id": format!("{id}-t1-btn"), "type": "button", "tagName": "a", "content": "Choose Starter", "style": { "display": "block", "text-align": "center", "padding": "10px", "background": "#f1f5f9", "color": "#0f172a", "border-radius": "8px", "font-weight": "600", "text-decoration": "none" } }
                 ]
             },
@@ -578,7 +607,7 @@ fn pricing_table_node(id: &str) -> Value {
                 "style": { "padding": "32px", "border": "2px solid #2563eb", "border-radius": "16px", "background": "#ffffff", "position": "relative" },
                 "components": [
                     { "id": format!("{id}-t2-name"), "type": "heading", "content": "Professional", "style": { "font-size": "20px", "margin": "0 0 8px", "color": "#2563eb" } },
-                    { "id": format!("{id}-t2-price"), "type": "text", "content": "$99 <span style='font-size:14px;color:#64748b;'>/ month</span>", "style": { "font-size": "32px", "font-weight": "700", "margin": "0 0 16px" } },
+                    price_node(&format!("{id}-t2-price"), "$99"),
                     { "id": format!("{id}-t2-btn"), "type": "button", "tagName": "a", "content": "Choose Pro", "style": { "display": "block", "text-align": "center", "padding": "10px", "background": "#2563eb", "color": "#ffffff", "border-radius": "8px", "font-weight": "600", "text-decoration": "none" } }
                 ]
             }
@@ -651,20 +680,49 @@ fn faq_accordion_node(id: &str) -> Value {
     })
 }
 
-fn escape_html(input: &str) -> String {
-    input
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use fly::{RegistrySet, ValidationLimits, validate_project};
     use std::collections::HashSet;
+
+    fn assert_no_raw_html_content(value: &Value) {
+        match value {
+            Value::Object(map) => {
+                if let Some(Value::String(content)) = map.get("content") {
+                    let has_raw_tag = ["<span", "<strong", "<h1", "<p"]
+                        .iter()
+                        .any(|tag| content.contains(tag));
+                    assert!(
+                        !has_raw_tag,
+                        "starter content contains raw HTML: {content}"
+                    );
+                    assert!(
+                        !content.contains(" style="),
+                        "starter content contains an inline style attribute: {content}"
+                    );
+                }
+                for child in map.values() {
+                    assert_no_raw_html_content(child);
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    assert_no_raw_html_content(item);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn starter_content_uses_typed_components_instead_of_raw_html() {
+        for starter in page_starters() {
+            let value = instantiate_starter_preset(&starter.id, "Test <Title> & More")
+                .expect("starter must instantiate");
+            assert_no_raw_html_content(&value);
+        }
+    }
 
     #[test]
     fn starter_catalog_has_all_canonical_presets() {
