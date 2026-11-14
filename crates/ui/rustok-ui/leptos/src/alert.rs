@@ -18,6 +18,7 @@ pub fn Alert(
     #[prop(optional, into)] class: String,
     children: Children,
 ) -> impl IntoView {
+    let title = title.and_then(|t| (!t.trim().is_empty()).then_some(t));
     let custom = (!class.is_empty()).then_some(class.as_str());
     let full_class = alert_classes(variant, custom);
 

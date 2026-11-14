@@ -42,8 +42,10 @@ pub fn Button(
             disabled=is_disabled
             aria-busy=move || loading.get()
             on:click=move |_| {
-                if let Some(ref handler) = on_click {
-                    handler();
+                if !is_disabled() {
+                    if let Some(ref handler) = on_click {
+                        handler();
+                    }
                 }
             }
         >

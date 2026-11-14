@@ -22,6 +22,7 @@ pub fn Avatar(
     let custom = (!class.is_empty()).then_some(class.as_str());
     let (container_class, fallback_class) = avatar_classes(size, custom);
 
+    let src = src.and_then(|s| (!s.trim().is_empty()).then_some(s));
     let initials = extract_initials(fallback.as_deref().unwrap_or(""));
     let (img_error, set_img_error) = signal(false);
 

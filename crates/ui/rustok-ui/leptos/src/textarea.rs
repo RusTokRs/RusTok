@@ -61,12 +61,14 @@ pub fn Textarea(
             name=name
             prop:value=current_value
             on:input=move |ev| {
-                let val = event_target_value(&ev);
-                if let Some(ref set) = set_value {
-                    set.set(val.clone());
-                }
-                if let Some(cb) = on_input {
-                    cb.run(val);
+                if !disabled.get_untracked() {
+                    let val = event_target_value(&ev);
+                    if let Some(ref set) = set_value {
+                        set.set(val.clone());
+                    }
+                    if let Some(cb) = on_input {
+                        cb.run(val);
+                    }
                 }
             }
         />
