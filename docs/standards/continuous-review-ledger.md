@@ -37,7 +37,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (24/24 completed)
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (22/37 completed)
 - [x] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (40/40 completed)
-- [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (11/26 completed)
+- [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (13/26 completed)
 - [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (0/26 completed)
 - [ ] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (0/19 completed)
 - [ ] **[Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)](#fs-09---platform-utilities,-storage-&-build-tooling-cratesutils)** (0/19 completed)
@@ -230,7 +230,7 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages
-*Product catalog, variants, EAV attributes, categories tree closure, brand taxonomy, navigation menus, dynamic page builder, CMS pages, forms, and docs.* (11/26 completed)
+*Product catalog, variants, EAV attributes, categories tree closure, brand taxonomy, navigation menus, dynamic page builder, CMS pages, forms, and docs.* (13/26 completed)
 
 - [x] **[`crates/modules/rustok-product`](../../crates/modules/rustok-product)** (190 files, 81,078 LOC)
 - [x] **[`crates/modules/rustok-product/admin`](../../crates/modules/rustok-product/admin)** (29 files, 21,028 LOC)
@@ -243,8 +243,8 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[`crates/modules/rustok-taxonomy`](../../crates/modules/rustok-taxonomy)** (53 files, 14,828 LOC)
 - [x] **[`crates/modules/rustok-brand`](../../crates/modules/rustok-brand)** (22 files, 3,399 LOC)
 - [x] **[`crates/modules/rustok-brand/admin`](../../crates/modules/rustok-brand/admin)** (9 files, 2,081 LOC)
-- [ ] **[`crates/modules/rustok-navigation`](../../crates/modules/rustok-navigation)** (40 files, 5,286 LOC)
-- [ ] **[`crates/modules/rustok-navigation/storefront`](../../crates/modules/rustok-navigation/storefront)** (9 files, 495 LOC)
+- [x] **[`crates/modules/rustok-navigation`](../../crates/modules/rustok-navigation)** (40 files, 5,286 LOC)
+- [x] **[`crates/modules/rustok-navigation/storefront`](../../crates/modules/rustok-navigation/storefront)** (9 files, 495 LOC)
 - [ ] **[`crates/modules/alloy`](../../crates/modules/alloy)** (77 files, 25,206 LOC)
 - [ ] **[`crates/modules/flex`](../../crates/modules/flex)** (51 files, 17,159 LOC)
 - [ ] **[`crates/modules/rustok-page-builder`](../../crates/modules/rustok-page-builder)** (116 files, 35,885 LOC)

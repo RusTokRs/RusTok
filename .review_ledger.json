@@ -811,9 +811,9 @@
       "category": "modules",
       "files": 43,
       "loc": 5894,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: menu hierarchy depth bounds (MAX_MENU_DEPTH = 16), translation limits (max 50 locales, max 1000 items), negative position guards, channel slot binding validation, translation evidence recording in transaction; verified with cargo check -p rustok-navigation"
     },
     "crates/modules/rustok-navigation/storefront": {
       "name": "storefront",
@@ -821,9 +821,9 @@
       "category": "modules",
       "files": 10,
       "loc": 652,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: Leptos SSR navigation storefront slots (Header/Footer), context snapshot provider, dual native server function and GraphQL transports; verified with cargo check -p rustok-navigation-storefront --features ssr"
     },
     "crates/modules/rustok-notifications": {
       "name": "rustok-notifications",
