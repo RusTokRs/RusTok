@@ -68,8 +68,11 @@ the validated refresh-cookie value only server-to-server to the idempotent cooki
 endpoint, refuses redirects, and clears the BFF cookie only after a confirmed response. A failed
 logout retains the in-memory identity for explicit retry but leaves the client scope unverified;
 admin callers display failure rather than silently treating it as a guest. Direct-cookie logout
-also requires the API's explicit `ok` response rather than accepting any 2xx body. These changes
-need real-service and mounted UI verification, including cross-tab refresh/logout races. Admin SSR
+also requires the API's explicit `ok` response rather than accepting any 2xx body. Direct-cookie
+session operations reject a cross-origin API before sending and reject a changed final response
+URL. Browser fetch may have already followed a redirect, so this is not a redirect-prevention
+guarantee. These changes need real-service and mounted UI verification, including cross-tab
+refresh/logout races. Admin SSR
 inspects every Cookie header and preserves the cookie on an unclassified exchange failure; it
 still renders an anonymous snapshot on failure, not proof of guest identity.
 

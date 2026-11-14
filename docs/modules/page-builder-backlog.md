@@ -40,8 +40,10 @@ Remaining release work, with owners:
    event or document lease cannot cancel an already-sent operation. The guest Cart adapter emits
    a plaintext capability header and its cookie currently lacks `Secure`; establish the intended
    client/HTTPS policy before rollout. Direct-cookie refresh conflates absent and rejected
-   credentials. Native logout now uses the idempotent cookie-session API, retains local identity
-   on uncertain failure and surfaces admin failure; real-service, mounted retry and cross-tab
+   credentials. Direct-cookie session operations now require a same-origin endpoint and reject a
+   changed final response URL; fetch may already have followed redirects, so this is not redirect
+   prevention. Native logout uses the idempotent cookie-session API, retains local identity on
+   uncertain failure and surfaces admin failure; real-service, mounted retry and cross-tab
    logout/refresh verification remain open.
 2. **Verify actual hosts, SSR and CSP** (Page Builder storefront + both hosts). Compile and run
    the new Leptos SSR/nonce and canonical Pages response tests in the real workspace, including
@@ -71,13 +73,23 @@ navigation guard's Node tests passed 4/4. Chromium passed 14/14 targeted shipped
 handshake, navigation and enforced-CSP simulation tests. Those tests use simulated owners/HTML,
 not mounted WASM or real services. UI i18n parity (77 catalogs), the i18n contract and
 Cart/Product source-boundary guards passed. Locked CI [43570979257](https://github.com/RusTokRs/RusTok/actions/runs/43570979257)
-on `80934be` passed the actual-feature WASM host check, native client check, default and SSR Auth
-tests, and default Product tests. The Cart library had six failing owner tests whose panic details were truncated,
-and the native host-client test compilation hit Product's default Rust recursion limit; SSR and
-admission checks were not reached. This continuation adds a native test executor, a larger Product
-recursion limit and shorter diagnostics, but these are not yet verified. The subsequent Auth
-read-only projections, logout recovery and UI tests also have not been compiled. The same-document
-auth lease, cookie propagation, SSR/admission and live host remain unverified.
+on `80934be` had six Cart owner-test failures and a Product recursion overflow in the host-client
+build. The later [43572760768](https://github.com/RusTokRs/RusTok/actions/runs/43572760768) on
+`96d83df` passed the actual-feature WASM check and navigation tests. Its native job ran every
+independent command before exiting and emitted failure annotations only for Auth admin, the
+host-client test build and the admin-client build: thus Cart, Product, native Auth default/SSR
+(including the then-current mock logout tests), Profiles/Reactions consumers and Notifications'
+initial typed contract completed without reported failure. Individual test counts/logs were not
+available. The Cart test executor and Product dependency recursion fixes compiled there; the
+host-client tests themselves did not run because SSR-only contract tests were incorrectly included
+in the client-only feature set. Auth admin and the wider admin host hit pre-existing missing serde
+bounds on generic `Resource` helpers. The same pattern occurs in other admin modules; the in-scope
+Auth helpers and host test gating are corrected in source but not yet rechecked. SSR/admission were
+not reached in that run. A separate pre-existing Flex/outbox return-type mismatch also blocks the
+SSR graph; this continuation maps the durable envelope ID to unit and adds fixture/atomicity tests,
+which remain unverified. Later direct-cookie origin/redirect checks are unverified on WASM and with
+real services. The same-document auth lease, cookie propagation, SSR/admission and live host remain
+release gates.
 
 Evidence in this continuation: isolated tests using the real Fly and platform i18n sources passed
 Fly 356/356 with default platform i18n and 353/353 without it, `fly-browser` 39/39, `fly-ui` 81/81,

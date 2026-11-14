@@ -169,7 +169,9 @@ impl GenericAttachedFieldDefinitionService {
             .map(field_definition_from_source)
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| {
-                FlexError::Database(format!("invalid persisted attached field definition: {error}"))
+                FlexError::Database(format!(
+                    "invalid persisted attached field definition: {error}"
+                ))
             })?;
         Ok(CustomFieldsSchema::new(definitions))
     }
@@ -308,12 +310,13 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
         let txn = db.begin().await.map_err(database_error)?;
         // Lock the durable generation row before counting so concurrent field
         // creates for this tenant/entity cannot both pass the maximum guard.
-        let _schema_lease = crate::attached_translation_guard::lock_attached_translation_schema_in_tx(
-            &txn,
-            tenant_id,
-            self.entity_type,
-        )
-        .await?;
+        let _schema_lease =
+            crate::attached_translation_guard::lock_attached_translation_schema_in_tx(
+                &txn,
+                tenant_id,
+                self.entity_type,
+            )
+            .await?;
         let existing = Entity::find()
             .filter(Column::TenantId.eq(tenant_id))
             .filter(Column::EntityType.eq(self.entity_type))
@@ -453,12 +456,8 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
         active.is_active = Set(false);
         active.updated_at = Set(Utc::now().fixed_offset());
         active.update(&txn).await.map_err(database_error)?;
-        let event = field_definition_deleted_event(
-            tenant_id,
-            actor_id,
-            self.entity_type,
-            field_key,
-        );
+        let event =
+            field_definition_deleted_event(tenant_id, actor_id, self.entity_type, field_key);
         persist_attached_event(&txn, event.clone()).await?;
         txn.commit().await.map_err(database_error)?;
         Ok(event)
@@ -470,11 +469,14 @@ async fn persist_attached_event(
     event: EventEnvelope,
 ) -> Result<(), FlexError> {
     rustok_outbox::TransactionalEventBus::publish_root_envelope_in_tx(transaction, event)
-    .await
-    .map_err(|error| {
-        tracing::error!(%error, "Failed to persist attached field-definition event");
-        FlexError::Database(format!("failed to persist attached field-definition event: {error}"))
-    })
+        .await
+        .map(|_| ())
+        .map_err(|error| {
+            tracing::error!(%error, "Failed to persist attached field-definition event");
+            FlexError::Database(format!(
+                "failed to persist attached field-definition event: {error}"
+            ))
+        })
 }
 
 fn database_error(error: sea_orm::DbErr) -> FlexError {

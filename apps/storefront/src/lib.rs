@@ -1055,7 +1055,13 @@ pub fn router(runtime: rustok_api::HostRuntimeContext) -> Router {
     router
 }
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    any(
+        feature = "ssr",
+        not(any(feature = "blog-comment-island", feature = "product-buyer-island"))
+    )
+))]
 mod contract_tests;
 
 #[cfg(feature = "ssr")]
