@@ -25,18 +25,69 @@ of submitting an unquoted Cart add. See the [Fly contract](../../crates/ui/fly/C
 [Next handoff](../../apps/next-frontend/packages/rustok-pages/README.md#shared-purchase-handoff),
 and [Leptos bridge](../../crates/modules/rustok-page-builder/storefront/README.md#purchase-and-cart-bridge).
 
+The shared Leptos auth lifecycle has also been cut over in source to the Auth module's
+[`rustok-auth-ui` FFA package](../../crates/modules/rustok-auth/ui/README.md), with explicit
+`core`, `model`, `transport` and `ui::leptos` boundaries shared by admin and storefront. The
+former `leptos-auth` package is no longer used; only its retirement description remains. This
+is an API and ownership cutover, not a new login surface or a claim of runtime parity. Its
+[decision](../../DECISIONS/2026-11-13-auth-owned-client-ffa-boundary.md) retains the existing
+cookie/security contract and the verification gates below.
+
+On this cutover, the Auth owner/source and feature-propagation guard and six negative/positive
+fixtures passed; the actual core/cookie source ran 7/7 and the scope state machine 4/4 in standalone
+`rustc` harnesses. Fly, Cart, Product, Auth admin and Notifications source guards, i18n parity and
+docs governance passed. Those checks are not browser/service evidence. Local
+`cargo test --offline --locked -p rustok-auth-ui --lib` stopped before compilation on the uncached
+Athanor Git revision. On cutover commit `5ce7c6c`, the Auth job in
+[43575756113](https://github.com/RusTokRs/RusTok/actions/runs/43575756113) passed locked native
+Auth default/SSR tests, the public contract and Auth admin SSR check. Its WASM job passed the
+Auth and Auth admin CSR checks and Product buyer island (including Auth hydrate), but failed the
+full storefront CSR and admin hydrate checks. Storefront CSR had pre-existing unconditional
+imports of optional Product/Search packages despite empty client-only codegen; the source now
+limits that Search composition to SSR and must be rechecked. Admin hydrate hit pre-existing missing
+serde bounds in Product Relations; other admin modules have the same pattern. The WASM graph fence
+was skipped after that failure. The broader native job passed Cart, Product, Auth consumer/admin,
+Notifications, host-client and Flex tests/checks as well as Cart/Product SSR checks. Commerce
+admission was blocked by pre-existing Product/Inventory test type mismatches and a missing `brands`
+fixture field; the test sources have now been updated and need rechecking. Admin-client failed on
+the Region generic bounds, and admin Auth host tests could not use the baseline `rig` dependencies
+requiring Rust 1.97.1 with the workflow's 1.96 toolchain. No final storefront SSR host result was
+reported. The new SSR rendering contract also needs to run. The older
+[43573684681](https://github.com/RusTokRs/RusTok/actions/runs/43573684681) WASM success was for
+the previous package, and its native job was cancelled. Continue with both host profiles, then
+mounted browser and real-service tests. The standalone storefront CSR entry now provides Auth to
+both route branches, with a source regression check. Its SSR shell still has the pre-existing
+separate owner without an Auth provider or validated snapshot; Auth-hook children can fail, so
+request-validated, tenant- and cache-safe SSR composition remains open. The broad FFA
+migration contract still fails on pre-existing structural-status omissions in eight unrelated
+module plans. The Forum navigation-badge guard references a missing historical note, while the Blog
+reference/Product table-host checks report existing unrelated owner-source/markup violations. The
+Search boundary verifier expects older Product service markers, absent in the base implementation;
+its fixture tests passed 14/14. These checks do not establish this cutover.
+
 Remaining release work, with owners:
 
-1. **Mount the Leptos Cart boundary** (Cart + Product owners + `apps/storefront`). Implement and
-   verify the cancelable open/close/toggle consumer and scope-aware count/invalidation publisher;
-   without an acknowledging consumer the bridge reports unavailable, and an unknown count is not
-   zero. The independently mounted Leptos Product buyer currently does **not** receive the host's
-   Cart-enabled state: `BuyerCartController::can_write` checks auth/session/busy state, not module
-   availability. Do not treat the handoff as capability-safe until the host supplies a reactive,
-   fail-closed capability to the island and Cart fences reads/writes and quote generations across
-   disable/re-enable and tenant/auth changes. Verify the owner-side Commerce/Cart admission policy
-   independently; a UI flag is not authorization. Exercise real mounted capability, tenant, auth,
-   in-flight create/add and navigation transitions, not just synthetic events.
+1. **Mount and verify the Leptos Cart boundary** (Cart + Product owners + `apps/storefront`) —
+   source in progress, **OPEN**. One host-mounted Cart controller now supplies the drawer, the
+   cancelable open/close/toggle consumer and a scope-aware count/invalidation publisher, and is
+   injected into Product with a reactive fail-closed capability. Counts remain unknown without a
+   confirmed owner observation, and acknowledgements do not prove mutations. Cart and Product
+   fence reads, writes and quote cycles across policy/auth/route changes; Commerce adds separate
+   tenant and selected-channel Cart admission. These are source changes, not authorization or
+   runtime certification. Obtain locked native and actual-feature WASM builds, owner admission
+   and real mounted capability, tenant, auth, in-flight create/add, disposal and navigation tests.
+   Verify guest cookie restoration and cross-provider/tab races explicitly; a local hint, browser
+   event or document lease cannot cancel an already-sent operation. The guest Cart adapter emits
+   a plaintext capability header and its cookie currently lacks `Secure`; establish the intended
+   client/HTTPS policy before rollout. Direct-cookie refresh conflates absent and rejected
+   credentials. Direct-cookie session operations now require a same-origin endpoint and reject a
+   changed final response URL; fetch may already have followed redirects, so this is not redirect
+   prevention. Native logout uses the idempotent cookie-session API, retains local identity on
+   uncertain failure and surfaces admin failure. Auth providers do not themselves subscribe
+   to external invalidation; Cart invalidates its own state, but other Auth projections can
+   remain stale across roots or tabs. Route guards and some storage-backed transports bypass
+   the ready-scope getters. Real-service, mounted retry and cross-tab logout/refresh verification
+   remain open.
 2. **Verify actual hosts, SSR and CSP** (Page Builder storefront + both hosts). Compile and run
    the new Leptos SSR/nonce and canonical Pages response tests in the real workspace, including
    default platform i18n and consumer builds. Test Leptos mounted hydration and navigation, both
@@ -59,6 +110,29 @@ Remaining release work, with owners:
    action. An author must replace the sample and configure the explicit handoff; neither bridge
    selects a SKU, fabricates a price or bypasses Product confirmation.
 
+Latest bounded Cart-boundary evidence: standalone `ClientAuthScope` 4/4, Cart capability 2/2,
+Cart operation fence 2/2 and an extracted Auth cookie-classification harness 3/3 passed; the
+navigation guard's Node tests passed 4/4. Chromium passed 14/14 targeted shipped bridge, late-count
+handshake, navigation and enforced-CSP simulation tests. Those tests use simulated owners/HTML,
+not mounted WASM or real services. UI i18n parity (77 catalogs), the i18n contract and
+Cart/Product source-boundary guards passed. Locked CI [43570979257](https://github.com/RusTokRs/RusTok/actions/runs/43570979257)
+on `80934be` had six Cart owner-test failures and a Product recursion overflow in the host-client
+build. The later [43572760768](https://github.com/RusTokRs/RusTok/actions/runs/43572760768) on
+`96d83df` passed the actual-feature WASM check and navigation tests. Its native job ran every
+independent command before exiting and emitted failure annotations only for Auth admin, the
+host-client test build and the admin-client build: thus Cart, Product, native Auth default/SSR
+(including the then-current mock logout tests), Profiles/Reactions consumers and Notifications'
+initial typed contract completed without reported failure. Individual test counts/logs were not
+available. The Cart test executor and Product dependency recursion fixes compiled there; the
+host-client tests themselves did not run because SSR-only contract tests were incorrectly included
+in the client-only feature set. Auth admin and the wider admin host hit pre-existing missing serde
+bounds on generic `Resource` helpers. On the cutover run above, the in-scope Auth helper and the
+host-client test gating fixes passed, and Cart/Product SSR compiled. The separate Flex/outbox
+return-type fix and fixture/atomicity tests also passed there. Commerce admission and full host
+checks remain blocked as detailed above. The direct-cookie origin/redirect source compiled for WASM,
+but behavior with real services, the same-document auth lease, cookie propagation and live host
+remain release gates.
+
 Evidence in this continuation: isolated tests using the real Fly and platform i18n sources passed
 Fly 356/356 with default platform i18n and 353/353 without it, `fly-browser` 39/39, `fly-ui` 81/81,
 `fly-web` 34/34, `fly-leptos` 16/16, Page Builder core 128/128, and Page Builder storefront
@@ -79,6 +153,12 @@ against a fake API. Isolated manifests and dependency substitutions still differ
 workspace; a root `cargo test --locked -p fly --lib` using the available vendor source could not
 resolve the locked `anyhow` version. Real services and deployed CSP remain unverified.
 
+A later locked-workspace CI recheck on 2026-11-13 ([diagnostic run 43524866139](https://github.com/RusTokRs/RusTok/actions/runs/43524866139))
+passed all 224 Page Builder admin library tests and the static sanitization inventory and tests
+(5 sanitization, 13 policy, 3 resource-limit tests). The diagnostic did not create the official
+execution receipt; the separately admitted registry entry remains as recorded below. These results
+are not a host, real-service or enforced-CSP test, nor a full workspace build.
+
 Fly source guards passed 20/20. Next Pages 17/17, Product 10/10, Cart 4/4, buyer 42/42 and the
 GraphQL adapter 3/3 passed, as did generated i18n/typecheck and action-asset parity. The checked-in
 `npm --prefix apps/next-frontend run test:e2e:fly` ran 57/57 Chromium tests of shipped assets and
@@ -95,8 +175,8 @@ clippy needed the two existing `too_many_arguments` exceptions. The remediation 
 invariants passed, but its
 architecture guard is blocked by the
 pre-existing `rustok-server -> flex` dependency, which is absent from its unchanged allow-list.
-Real workspace Rust builds and mounted/deployed acceptance remain outstanding; none of this
-promotes the module or checkout to production-ready. Draft KV driver, retention scaling and CSS
+The remaining workspace Rust builds and mounted/deployed acceptance remain outstanding; none of
+this promotes the module or checkout to production-ready. Draft KV driver, retention scaling and CSS
 `@scope`/global-at-rule policy remain open in item 10 below.
 
 ## Done (2026-10-14 remediation, Phases 1–6)

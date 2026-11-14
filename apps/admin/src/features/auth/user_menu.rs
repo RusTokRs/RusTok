@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::components::A;
 
-use leptos_auth::hooks::{use_auth, use_current_user};
+use rustok_auth_ui::ui::leptos::hooks::{use_auth, use_current_user};
 
 use crate::use_admin_locale;
 
@@ -13,11 +13,30 @@ pub fn UserMenu() -> impl IntoView {
     let current_user = use_current_user();
 
     let (open, set_open) = signal(false);
+    let (logout_failed, set_logout_failed) = signal(false);
+    let (logout_busy, set_logout_busy) = signal(false);
+    let logout_loading = auth.is_loading();
 
     let handle_logout = Callback::new(move |_| {
+        if auth.is_loading().try_get_untracked().unwrap_or(true)
+            || set_logout_busy.try_update(|busy| {
+                if *busy {
+                    false
+                } else {
+                    *busy = true;
+                    true
+                }
+            }) != Some(true)
+        {
+            return;
+        }
+        let _ = set_logout_failed.try_set(false);
         let auth = auth.clone();
         spawn_local(async move {
-            let _ = auth.sign_out().await;
+            if auth.sign_out().await.is_err() {
+                let _ = set_logout_failed.try_set(true);
+            }
+            let _ = set_logout_busy.try_set(false);
         });
     });
 
@@ -109,11 +128,17 @@ pub fn UserMenu() -> impl IntoView {
                     <div class="border-t border-border py-1">
                         <button
                             on:click=move |ev| handle_logout.run(ev)
-                            class="flex w-full items-center gap-3 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10"
+                            disabled=move || logout_busy.get() || logout_loading.get()
+                            class="flex w-full items-center gap-3 px-4 py-2 text-sm text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
                         >
                             <MenuIcon icon="logout" />
                             <span>{move || i18n.translate("app.menu.signOut")}</span>
                         </button>
+                        <Show when=move || logout_failed.get()>
+                            <p role="alert" class="px-4 py-2 text-sm text-destructive">
+                                {move || i18n.translate("app.menu.signOutFailed")}
+                            </p>
+                        </Show>
                     </div>
                 </div>
             </Show>

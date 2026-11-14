@@ -1,11 +1,11 @@
 use leptos::task::spawn_local;
 use leptos::{html, prelude::*};
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui::{
     Alert, AlertVariant, Badge, BadgeVariant, Button, ButtonVariant, Card, CardContent,
     CardDescription, CardHeader, CardTitle, Checkbox, Input, Label, Select, SelectOption, Textarea,
 };
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::UiRouteContext;
@@ -199,13 +199,7 @@ fn OverviewTab(
     // Resolved by the request: the module admin mounts inside the `Async` admin layout, so a
     // `LocalResource` here leaves the reader with the `Suspense` fallback.
     let bootstrap = Resource::new(
-        move || {
-            (
-                token.get(),
-                tenant.get(),
-                locale_for_resource.clone(),
-            )
-        },
+        move || (token.get(), tenant.get(), locale_for_resource.clone()),
         move |(token_value, tenant_value, locale_value)| async move {
             let context = core::transport_context(token_value, tenant_value, locale_value);
             let policy = transport::execute(context.clone(), TranslationAdminOperation::ReadPolicy)

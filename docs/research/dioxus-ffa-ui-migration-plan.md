@@ -273,7 +273,7 @@ Below captures the alignment of the plan with the current repository state.
 - Framework-specific adapter crates depend on Leptos:
   - `crates/ui/leptos-ui/Cargo.toml`
   - `crates/ui/leptos-ui-routing/Cargo.toml`
-  - `crates/ui/leptos-auth/Cargo.toml`
+  - `crates/modules/rustok-auth/ui/Cargo.toml`
 - Framework-neutral GraphQL execution, UI state, form-result, auth-value,
   transport, and i18n contracts live in `rustok-graphql` and `rustok-ui-*`
   crates without Leptos dependencies.

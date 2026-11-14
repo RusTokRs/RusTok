@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use serde::{Deserialize, Serialize};
 
 use crate::entities::module::{

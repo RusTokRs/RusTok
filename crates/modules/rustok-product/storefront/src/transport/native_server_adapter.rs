@@ -247,7 +247,7 @@ fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
 #[server(
     prefix = "/api/fn",
     endpoint = "product/storefront/catalog-search-options",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn storefront_catalog_search_options_native(
     locale: String,
@@ -432,7 +432,7 @@ pub(super) fn map_product_port_error(error: rustok_api::PortError) -> ServerFnEr
     map_product_internal_error()
 }
 
-#[server(prefix = "/api/fn", endpoint = "product/storefront-data", client = leptos_auth::AuthorizedBrowserClient)]
+#[server(prefix = "/api/fn", endpoint = "product/storefront-data", client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
 async fn storefront_product_detail_native(
     handle: String,
     locale: Option<String>,
@@ -473,7 +473,7 @@ async fn storefront_product_detail_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "product/storefront-buyer-quote", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
+#[server(prefix = "/api/fn", endpoint = "product/storefront-buyer-quote", input = leptos::server_fn::codec::Json, client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
 async fn storefront_buyer_quote_native(
     request: crate::core::buyer::BuyerQuoteRequest,
 ) -> Result<ProductPricingDetail, ServerFnError> {

@@ -94,7 +94,7 @@ fn map_product_list(value: rustok_product::StorefrontProductList) -> ProductList
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "product/storefront/catalog-list", client = leptos_auth::AuthorizedBrowserClient)]
+#[server(prefix = "/api/fn", endpoint = "product/storefront/catalog-list", client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
 async fn storefront_catalog_list_native(
     locale: Option<String>,
     search: Option<String>,

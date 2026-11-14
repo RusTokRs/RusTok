@@ -1,14 +1,14 @@
-use crate::{AuthError, AuthSession, AuthUser};
+use crate::model::{AuthError, AuthSession, AuthUser};
 
 #[cfg(target_arch = "wasm32")]
-use crate::{ADMIN_SESSION_KEY, ADMIN_TENANT_KEY, ADMIN_TOKEN_KEY, ADMIN_USER_KEY};
+use crate::core::{ADMIN_SESSION_KEY, ADMIN_TENANT_KEY, ADMIN_TOKEN_KEY, ADMIN_USER_KEY};
 #[cfg(target_arch = "wasm32")]
 use gloo_storage::{LocalStorage, Storage};
 
 /// Request-scoped authentication state supplied by an SSR host.
 ///
 /// The host remains responsible for validating its cookie/session and constructing this snapshot.
-/// `leptos-auth` only exposes it to existing `AuthContext` consumers, so UI modules do not branch
+/// `rustok-auth-ui` only exposes it to existing `AuthContext` consumers, so UI modules do not branch
 /// on browser vs server storage.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ServerAuthSnapshot {
@@ -39,7 +39,7 @@ pub fn provide_server_auth_snapshot(_snapshot: ServerAuthSnapshot) {}
 mod memory {
     use std::cell::RefCell;
 
-    use crate::{AuthSession, AuthUser};
+    use crate::model::{AuthSession, AuthUser};
 
     thread_local! {
         static SESSION: RefCell<Option<AuthSession>> = const { RefCell::new(None) };
@@ -78,7 +78,7 @@ fn purge_legacy_persisted_credentials() {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn save_session(session: &AuthSession) -> Result<(), AuthError> {
+pub(crate) fn save_session(session: &AuthSession) -> Result<(), AuthError> {
     purge_legacy_persisted_credentials();
     // The tenant slug is not a credential; persisting it lets a page
     // reload attempt a silent cookie refresh for the right tenant.
@@ -88,7 +88,7 @@ pub fn save_session(session: &AuthSession) -> Result<(), AuthError> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn save_session(_session: &AuthSession) -> Result<(), AuthError> {
+pub(crate) fn save_session(_session: &AuthSession) -> Result<(), AuthError> {
     // Response-cookie persistence belongs to the SSR host because it owns cookie flags, domain,
     // session rotation, and CSRF policy.
     Ok(())
@@ -108,13 +108,13 @@ pub fn load_session() -> Result<AuthSession, AuthError> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn save_user(user: &AuthUser) -> Result<(), AuthError> {
+pub(crate) fn save_user(user: &AuthUser) -> Result<(), AuthError> {
     memory::save_user(user.clone());
     Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn save_user(_user: &AuthUser) -> Result<(), AuthError> {
+pub(crate) fn save_user(_user: &AuthUser) -> Result<(), AuthError> {
     Ok(())
 }
 
@@ -131,13 +131,13 @@ pub fn load_user() -> Result<AuthUser, AuthError> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn clear_session() {
+pub(crate) fn clear_session() {
     purge_legacy_persisted_credentials();
     memory::clear();
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn clear_session() {}
+pub(crate) fn clear_session() {}
 
 #[cfg(target_arch = "wasm32")]
 pub fn get_token() -> Option<String> {
@@ -149,6 +149,21 @@ pub fn get_token() -> Option<String> {
     leptos::prelude::use_context::<ServerAuthSnapshot>()
         .and_then(|snapshot| snapshot.session)
         .map(|session| session.token)
+}
+
+/// Check both the persisted public tenant and any in-memory session. This detects a tenant
+/// change in another tab even when this tab still holds an older access token.
+pub fn matches_request_tenant(tenant: &str) -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let stored = LocalStorage::get::<String>(ADMIN_TENANT_KEY).ok();
+        stored.as_deref() == Some(tenant)
+            && memory::load_session().is_none_or(|session| session.tenant == tenant)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        get_tenant().is_none_or(|current| current == tenant)
+    }
 }
 
 /// Bind a host-resolved public tenant to the existing canonical browser tenant key.

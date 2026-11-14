@@ -13,6 +13,12 @@ use std::collections::HashMap;
 #[component]
 fn StorefrontLayout(locale: String, body: AnyView) -> impl IntoView {
     let strings = locale_strings(locale.as_str());
+    #[cfg(feature = "ssr")]
+    let cart_tenant = use_context::<rustok_api::TenantContext>()
+        .map(|tenant| tenant.slug)
+        .unwrap_or_default();
+    #[cfg(not(feature = "ssr"))]
+    let cart_tenant = rustok_auth_ui::ui::leptos::storage::get_tenant().unwrap_or_default();
     let enabled_modules = use_enabled_modules().get_untracked();
     let header_navigation_views =
         components_for_slot(StorefrontSlot::HeaderNavigation, Some(&enabled_modules))
@@ -45,6 +51,10 @@ fn StorefrontLayout(locale: String, body: AnyView) -> impl IntoView {
             />
 
             {body}
+
+            // Host-only composition point: Cart owns the client UI and receives this public
+            // request tenant and locale, never a cookie, token or user profile.
+            <span data-rustok-cart-host="true" data-tenant=cart_tenant data-locale=locale.clone()></span>
 
             <Footer
                 tagline=strings.footer_tagline

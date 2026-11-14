@@ -31,7 +31,7 @@ Verification relies on the current-state contract:
 
 ### Shared Leptos crates
 
-- [ ] `crates/ui/leptos-auth`
+- [ ] `crates/modules/rustok-auth/ui` (Auth-owned shared client capability)
 - [ ] `crates/ui/leptos-ui`
 - [ ] `crates/ui/leptos-ui-routing`
 

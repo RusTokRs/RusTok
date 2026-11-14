@@ -184,6 +184,7 @@ fn create_product_input() -> CreateProductInput {
         shipping_profile_slug: None,
         primary_category_id: None,
         tags: vec![],
+        brands: vec![],
         publish: false,
         metadata: serde_json::json!({}),
     }
@@ -1526,7 +1527,7 @@ async fn seed_tenant_context(db: &DatabaseConnection, tenant_id: Uuid) {
         .unwrap();
     }
 
-    for module_slug in ["commerce", "product"] {
+    for module_slug in ["commerce", "cart", "product"] {
         db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             "INSERT INTO tenant_modules (id, tenant_id, module_slug, enabled, settings, created_at, updated_at)

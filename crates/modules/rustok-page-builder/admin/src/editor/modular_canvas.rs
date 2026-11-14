@@ -49,7 +49,8 @@ pub fn AdminCanvas(
     #[prop(optional_no_strip)] browser_intent_endpoint: Option<String>,
     #[prop(optional_no_strip)] browser_csrf_token: Option<String>,
     /// Where the host serves a preview document as its own response, if it serves one.
-    #[prop(optional_no_strip)] preview_endpoint: Option<String>,
+    #[prop(optional_no_strip)]
+    preview_endpoint: Option<String>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;

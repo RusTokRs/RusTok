@@ -1,8 +1,8 @@
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::i18n::t;
@@ -490,8 +490,9 @@ pub fn CommerceAdmin() -> impl IntoView {
     let submit_profile = move |ev: SubmitEvent| {
         ev.prevent_default();
         let submit_query_writer = submit_query_writer.clone();
-        let Some(CommerceAdminBootstrap { current_tenant }) =
-            submit_profile_bootstrap.get_untracked().and_then(Result::ok)
+        let Some(CommerceAdminBootstrap { current_tenant }) = submit_profile_bootstrap
+            .get_untracked()
+            .and_then(Result::ok)
         else {
             set_error.set(Some(submit_bootstrap_loading_label.clone()));
             return;
@@ -563,8 +564,9 @@ pub fn CommerceAdmin() -> impl IntoView {
 
     let toggle_profile_bootstrap = bootstrap;
     let toggle_profile = Callback::new(move |profile: ShippingProfile| {
-        let Some(CommerceAdminBootstrap { current_tenant }) =
-            toggle_profile_bootstrap.get_untracked().and_then(Result::ok)
+        let Some(CommerceAdminBootstrap { current_tenant }) = toggle_profile_bootstrap
+            .get_untracked()
+            .and_then(Result::ok)
         else {
             set_error.set(Some(toggle_bootstrap_loading_label.clone()));
             return;
@@ -764,8 +766,9 @@ pub fn CommerceAdmin() -> impl IntoView {
             set_order_change_error.set(Some(order_change_required_label.clone()));
             return;
         };
-        let Some(CommerceAdminBootstrap { current_tenant }) =
-            order_change_action_bootstrap.get_untracked().and_then(Result::ok)
+        let Some(CommerceAdminBootstrap { current_tenant }) = order_change_action_bootstrap
+            .get_untracked()
+            .and_then(Result::ok)
         else {
             set_order_change_error.set(Some(bootstrap_loading_label.clone()));
             return;

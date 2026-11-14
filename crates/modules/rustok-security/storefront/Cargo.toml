@@ -17,10 +17,11 @@ crate-type = ["rlib"]
 
 [features]
 default = []
-csr = ["leptos/csr"]
-hydrate = ["leptos/hydrate"]
+csr = ["leptos/csr", "rustok-auth-ui/csr"]
+hydrate = ["leptos/hydrate", "rustok-auth-ui/hydrate"]
 ssr = [
   "leptos/ssr",
+  "rustok-auth-ui/ssr",
   "dep:leptos_axum",
   "dep:rustok-core",
   "dep:rustok-security",
@@ -34,7 +35,7 @@ rustok-ui-i18n.workspace = true
 leptos-ui.workspace = true
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
-leptos-auth.workspace = true
+rustok-auth-ui.workspace = true
 rustok-graphql.workspace = true
 leptos-ui-routing.workspace = true
 leptos_router.workspace = true
@@ -50,4 +51,4 @@ uuid = { workspace = true, features = ["serde"] }
 tracing.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
-normal = ["leptos-ui", "leptos-auth", "rustok-graphql", "leptos-ui-routing", "leptos_axum", "rustok-security", "rustok-core"]
+normal = ["leptos-ui", "rustok-auth-ui", "rustok-graphql", "leptos-ui-routing", "leptos_axum", "rustok-security", "rustok-core"]

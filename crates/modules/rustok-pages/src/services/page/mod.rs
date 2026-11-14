@@ -93,9 +93,7 @@ pub use schedule::{
     PagePublishScheduler, PagePublishSchedulerMetricsSnapshot, PagePublishSweepOutcome,
 };
 #[cfg(feature = "runtime")]
-pub use schedule_worker::{
-    PageScheduledPublishWorkAdapter, PageScheduledPublishWorkRegistration,
-};
+pub use schedule_worker::{PageScheduledPublishWorkAdapter, PageScheduledPublishWorkRegistration};
 pub(crate) use translation_apply::ApplyExactPageMetadataTranslationInput;
 
 pub(super) const PAGE_KIND: &str = "page";

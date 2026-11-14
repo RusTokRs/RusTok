@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local_scoped_with_cancellation;
-use leptos_auth::AuthContext;
 use leptos_ui::{Button, ButtonVariant, Size};
+use rustok_auth_ui::ui::leptos::AuthContext;
 use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::t;
@@ -15,7 +15,7 @@ pub fn ReactionBar(subject: ReactionSubjectUiRef) -> impl IntoView {
         (
             transport::ReactionStorefrontTransportContext::from_auth(auth.as_ref()),
             auth.as_ref()
-                .and_then(|auth| auth.user.get())
+                .and_then(|auth| auth.user().get())
                 .map(|user| user.id),
         )
     });

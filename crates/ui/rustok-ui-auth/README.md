@@ -16,7 +16,7 @@ policy shared by RusToK UI adapters.
 
 Server authentication, authorization, token issuance, refresh persistence, and
 tenant authority remain owned by Auth and RBAC. Leptos contexts, route guards,
-signals, browser storage, and native server functions remain in `leptos-auth`.
+signals, browser storage, and native server functions remain in `rustok-auth-ui`.
 Other framework adapters consume this crate directly and add only their own
 lifecycle bindings.
 

@@ -56,6 +56,13 @@ cart-drawer-discount = Скидка
 cart-drawer-shipping = Доставка
 cart-drawer-total = Итого к оплате
 cart-trigger-label = Корзина
+cart-drawer-noReference = Корзина ещё не выбрана.
+cart-drawer-viewCart = Открыть корзину
+cart-drawer-decrease = Уменьшить количество
+cart-drawer-remove = Удалить товар
+cart-drawer-inspect = Проверить корзину
+cart-drawer-resetReference = Сбросить ссылку на корзину
+cart-count-unknown = Количество товаров неизвестно
 cart-handoff-title = Оформление заказа и доставка
 cart-handoff-subtitle = Выберите способ доставки и укажите контактные данные
 cart-handoff-ownership = Агрегированное оформление заказа в модуле commerce
@@ -75,6 +82,7 @@ cart-handoff-success = Заказ успешно оформлен! Номер з
 
 
 cart-buyer-restoring = Восстанавливаем корзину перед включением покупки.
+cart-buyer-unavailable = Корзина недоступна для этой витрины. Покупки отключены.
 cart-buyer-restoreFailed = Сохранённую корзину не удалось проверить. Проверьте её или явно сбросьте локальную ссылку.
 cart-buyer-contextMismatch = Валюта, регион, канал или язык корзины отличаются от расчёта. Используйте контекст корзины и запросите цену заново. Глобальная корзина может быть несовместима с витриной определённого канала.
 cart-buyer-unconfirmed = Результат операции неизвестен; автоматического повтора не будет. Проверьте корзину перед новым добавлением. Сброс ссылки не отменяет операцию.

@@ -96,7 +96,7 @@ pub async fn apply_scaffold_draft(
 #[server(
     prefix = "/api/fn",
     endpoint = "mcp/scaffold-drafts",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 pub async fn mcp_scaffold_drafts_native() -> Result<Vec<McpScaffoldDraftPayload>, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -116,7 +116,7 @@ pub async fn mcp_scaffold_drafts_native() -> Result<Vec<McpScaffoldDraftPayload>
 #[server(
     prefix = "/api/fn",
     endpoint = "mcp/audit-events",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 pub async fn mcp_audit_events_native() -> Result<Vec<McpAuditEventPayload>, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -136,7 +136,7 @@ pub async fn mcp_audit_events_native() -> Result<Vec<McpAuditEventPayload>, Serv
 #[server(
     prefix = "/api/fn",
     endpoint = "mcp/clients",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 pub async fn mcp_clients_native() -> Result<Vec<McpClientPayload>, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -154,7 +154,7 @@ pub async fn mcp_clients_native() -> Result<Vec<McpClientPayload>, ServerFnError
 #[server(
     prefix = "/api/fn",
     endpoint = "mcp/client-details",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 pub async fn mcp_client_details_native(
     client_id: String,
@@ -178,7 +178,7 @@ pub async fn mcp_client_details_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "mcp/create-client",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 pub async fn mcp_create_client_native(
     input: CreateMcpClientPayload,
@@ -221,7 +221,7 @@ pub async fn mcp_create_client_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "mcp/rotate-token",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 pub async fn mcp_rotate_token_native(
     input: RotateMcpTokenPayload,
@@ -257,7 +257,7 @@ pub async fn mcp_rotate_token_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "mcp/update-policy",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 pub async fn mcp_update_policy_native(input: UpdateMcpPolicyPayload) -> Result<(), ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -292,7 +292,7 @@ pub async fn mcp_update_policy_native(input: UpdateMcpPolicyPayload) -> Result<(
 #[server(
     prefix = "/api/fn",
     endpoint = "mcp/revoke-token",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 pub async fn mcp_revoke_token_native(
     token_id: String,
@@ -323,7 +323,7 @@ pub async fn mcp_revoke_token_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "mcp/deactivate-client",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 pub async fn mcp_deactivate_client_native(
     client_id: String,
@@ -354,7 +354,7 @@ pub async fn mcp_deactivate_client_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "mcp/stage-scaffold-draft",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 pub async fn mcp_stage_scaffold_draft_native(
     input: StageMcpScaffoldDraftPayload,
@@ -399,7 +399,7 @@ pub async fn mcp_stage_scaffold_draft_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "mcp/apply-scaffold-draft",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 pub async fn mcp_apply_scaffold_draft_native(
     input: ApplyMcpScaffoldDraftPayload,

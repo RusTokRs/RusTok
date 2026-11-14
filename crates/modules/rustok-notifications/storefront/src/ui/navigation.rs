@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos_auth::AuthContext;
+use rustok_auth_ui::ui::leptos::AuthContext;
 use rustok_ui_core::UiRouteContext;
 
 use super::leptos::NotificationUnreadBadge;

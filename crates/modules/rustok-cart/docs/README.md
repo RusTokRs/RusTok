@@ -57,7 +57,10 @@
 - cross-module contract changes must be synchronized with `rustok-commerce` and adjacent split modules;
 - storefront package uses native Leptos `#[server]` functions as the default data layer and keeps GraphQL storefront contract as a fallback.
 - the cart owner publishes `guest_access_http::resolve`; HTTP hosts compose this
-  adapter instead of owning or duplicating guest-cart token parsing and emission.
+  adapter instead of owning or duplicating guest-cart token parsing and emission. It currently
+  emits a plaintext capability in the response header as well as an `HttpOnly; SameSite=Lax`
+  cookie without `Secure`. Browser/header exposure, HTTPS deployment policy and real guest-cart
+  restoration must be reviewed and verified before the shared buyer is considered ready.
 
 Tax recalculation reads `RegionTaxPolicy` through
 `RegionService::read_tax_policy_in_tx` in the active Cart write transaction.

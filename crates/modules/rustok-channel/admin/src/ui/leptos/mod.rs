@@ -53,8 +53,8 @@ pub fn ChannelAdmin() -> impl IntoView {
     let ui_locale = route_context.locale.clone();
     let selected_channel_query = use_route_query_value(AdminQueryKey::ChannelId.as_str());
     let query_writer = use_route_query_writer();
-    let token = leptos_auth::hooks::use_token();
-    let tenant = leptos_auth::hooks::use_tenant();
+    let token = rustok_auth_ui::ui::leptos::hooks::use_token();
+    let tenant = rustok_auth_ui::ui::leptos::hooks::use_tenant();
     let badge_label = t(ui_locale.as_deref(), "channel.badge", "Experimental Core");
     let title_label = t(ui_locale.as_deref(), "channel.title", "Channel Management");
     let subtitle_label = t(

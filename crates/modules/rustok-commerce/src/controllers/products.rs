@@ -1193,11 +1193,11 @@ mod core_product_policy_tests {
 #[cfg(test)]
 mod deletion_errors {
     use super::*;
-    use rustok_inventory::CatalogDeletionBlocker;
+    use rustok_product::ProductInventoryDeletionBlocker;
 
     #[test]
     fn deletion_domain_and_port_http_policies_agree_without_provider_text() {
-        for reason in CatalogDeletionBlocker::ALL {
+        for reason in ProductInventoryDeletionBlocker::ALL {
             let domain = product_error_policy(&CommerceError::InventoryDeletionBlocked(reason));
             let mut port = rustok_product::error::inventory_deletion_port_error(&reason);
             port.message = "private-provider-details".into();
@@ -1219,7 +1219,7 @@ mod deletion_errors {
     #[test]
     fn mismatched_deletion_code_keeps_the_actual_dependency_http_class() {
         let mut error = rustok_product::error::inventory_deletion_port_error(
-            &CatalogDeletionBlocker::HistoryPresent,
+            &ProductInventoryDeletionBlocker::HistoryPresent,
         );
         error.kind = PortErrorKind::Unavailable;
         error.message = "private-provider-details".into();
@@ -1233,11 +1233,11 @@ mod deletion_errors {
 #[cfg(test)]
 mod quantity_errors {
     use super::*;
-    use rustok_inventory::QuantityWriteBlocker;
+    use rustok_product::ProductInventoryQuantityBlocker;
 
     #[test]
     fn quantity_http_domain_and_port_use_fixed_copy_and_exact_owner_kind() {
-        for reason in QuantityWriteBlocker::ALL {
+        for reason in ProductInventoryQuantityBlocker::ALL {
             let domain = product_error_policy(&CommerceError::InventoryQuantityBlocked(reason));
             let mut port = rustok_product::error::inventory_quantity_port_error(&reason);
             port.message = "private-provider-details".into();
@@ -1259,7 +1259,7 @@ mod quantity_errors {
     #[test]
     fn quantity_http_mismatched_kind_preserves_unknown_storage_outcome() {
         let mut port = rustok_product::error::inventory_quantity_port_error(
-            &QuantityWriteBlocker::InsufficientStock,
+            &ProductInventoryQuantityBlocker::InsufficientStock,
         );
         port.kind = PortErrorKind::Unavailable;
         port.message = "private-provider-details".into();

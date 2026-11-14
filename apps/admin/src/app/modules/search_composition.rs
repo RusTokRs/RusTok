@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_product_admin::fetch_catalog_search_options;
 use rustok_search_admin::{SearchAdmin, SearchCatalogFilterOption};
 use rustok_ui_core::UiRouteContext;

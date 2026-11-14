@@ -28,7 +28,7 @@ Leptos admin UI package for the `rustok-commerce` module.
 ## Interactions
 
 - Consumed by `apps/admin` via manifest-driven `build.rs` code generation.
-- Uses the `rustok-commerce` GraphQL contract plus native `#[server]` functions and shared auth hooks from `leptos-auth`.
+- Uses the `rustok-commerce` GraphQL contract plus native `#[server]` functions and shared auth hooks from `rustok-auth-ui`.
 - Coexists with `rustok-product-admin` and `rustok-fulfillment-admin` during the current UI split while other ecommerce admin slices still move to their module-owned packages.
 - Consumes `shippingProfiles`, `shippingProfile`, `createShippingProfile`, `updateShippingProfile`, `deactivateShippingProfile`, and `reactivateShippingProfile`.
 - Consumes `orderChanges`, `applyOrderChange`, and `cancelOrderChange` for post-order operator actions instead of duplicating exchange/claim rules in the UI package.

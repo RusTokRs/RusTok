@@ -9,7 +9,7 @@
 ## Platform Capability Bindings
 - **`rustok-ui-i18n`**: Bilingual support (`en`, `ru`) across all 10 triage action, state, and header keys.
 - **`rustok-graphql`**: GraphQL request execution (`execute_graphql`).
-- **`leptos-auth`**: Authentication session token (`use_token`) and tenant context (`use_tenant`).
+- **`rustok-auth-ui`**: Authentication session token (`use_token`) and tenant context (`use_tenant`).
 
 ## Domain Collaborations
 - **`rustok-forms`**: Consumes backend form submission entities, triage state machines, and honeypot indicators.

@@ -5,9 +5,14 @@
 `rustok-auth` owns authentication primitives for RusToK: password hashing, JWT lifecycle,
 refresh-token helpers, invite-token helpers, auth config assembly/validation, and auth-related migrations.
 
+The shared Leptos client lifecycle belongs to the Auth-owned [`rustok-auth-ui`](./ui/README.md)
+FFA package. The former `leptos-auth` package is no longer used; its directory retains only
+[retirement documentation](../../ui/leptos-auth/README.md).
+
 ## Responsibilities
 
 - Provide `AuthModule` metadata for the runtime registry.
+- Own the shared browser/session FFA boundary in [`ui`](./ui/README.md), used by both hosts, and the admin pages in [`admin`](./admin/README.md).
 - Expose auth primitives used by `apps/server` transport adapters and lifecycle services.
 - Publish the typed `users:*` RBAC surface through `AUTH_USER_PERMISSIONS` and `RusToKModule::permissions()`.
 - Own typed `AuthLifecyclePort`, `UserAdminMutationPort`, and `OAuthAdminPort` boundaries used by GraphQL and native adapters.

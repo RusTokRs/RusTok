@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::components::A;
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
@@ -386,11 +386,8 @@ fn TemplateGallery(
     let templates_resource = loaded_resource(
         move || (token_for_templates.clone(), tenant_for_templates.clone()),
         move |(token_value, tenant_value)| async move {
-            transport::fetch_templates(workflow_admin_transport_context(
-                token_value,
-                tenant_value,
-            ))
-            .await
+            transport::fetch_templates(workflow_admin_transport_context(token_value, tenant_value))
+                .await
         },
     );
 

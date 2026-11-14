@@ -59,7 +59,7 @@ pub async fn remove_line_item(
         .map_err(ApiError::from)
 }
 
-#[server(prefix = "/api/fn", endpoint = "cart/storefront-data", client = leptos_auth::AuthorizedBrowserClient)]
+#[server(prefix = "/api/fn", endpoint = "cart/storefront-data", client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
 async fn storefront_cart_native(
     selected_cart_id: Option<String>,
     locale: Option<String>,
@@ -76,7 +76,7 @@ async fn storefront_cart_native(
         ))
     }
 }
-#[server(prefix = "/api/fn", endpoint = "cart/decrement-line-item", client = leptos_auth::AuthorizedBrowserClient)]
+#[server(prefix = "/api/fn", endpoint = "cart/decrement-line-item", client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
 async fn storefront_cart_decrement_line_item(
     cart_id: String,
     line_item_id: String,
@@ -94,7 +94,7 @@ async fn storefront_cart_decrement_line_item(
         ))
     }
 }
-#[server(prefix = "/api/fn", endpoint = "cart/remove-line-item", client = leptos_auth::AuthorizedBrowserClient)]
+#[server(prefix = "/api/fn", endpoint = "cart/remove-line-item", client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
 async fn storefront_cart_remove_line_item(
     cart_id: String,
     line_item_id: String,

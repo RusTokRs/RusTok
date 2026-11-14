@@ -16,8 +16,8 @@
 //! owner would be a preview of whoever's draft the token names, which is why there is no
 //! unattributed entry point here.
 
-use crate::builder::{self, PagesBuilderSaveSnapshot};
 use crate::browser_intent::PagesBrowserIntentError;
+use crate::builder::{self, PagesBuilderSaveSnapshot};
 use rustok_page_builder::dto::{
     PageBuilderCapabilityResponse, PageBuilderPreviewRuntime, PreviewPageBuilderInput,
 };
@@ -128,7 +128,8 @@ fn one_page_project(controller: &AdminCanvasController) -> Value {
         .cloned()
         .into_iter()
         .collect();
-    fly::GrapesJsCodec::encode_value(&document).unwrap_or_else(|_| Value::Object(Default::default()))
+    fly::GrapesJsCodec::encode_value(&document)
+        .unwrap_or_else(|_| Value::Object(Default::default()))
 }
 
 /// The response that serves a preview document, with the policy its own bytes require.
@@ -145,8 +146,7 @@ fn one_page_project(controller: &AdminCanvasController) -> Value {
 /// than the page may use.
 #[cfg(feature = "ssr")]
 pub fn pages_server_preview_response(html: &str) -> Result<axum::response::Response, PreviewError> {
-    let stylesheet = fly::document_html_stylesheet(html)
-        .ok_or(PreviewError::MissingEnvelope)?;
+    let stylesheet = fly::document_html_stylesheet(html).ok_or(PreviewError::MissingEnvelope)?;
     Ok(pages_server_preview_response_with_policy(
         html,
         &pages_server_preview_policy(stylesheet),
@@ -211,6 +211,44 @@ mod tests {
             .unwrap_or_else(|| panic!("no {name} in {policy}"))
     }
 
+    fn object_sources_denied(policy: &str) -> bool {
+        let directives = policy.split(';').map(str::trim).collect::<Vec<_>>();
+        let objects = directives
+            .iter()
+            .copied()
+            .filter(|item| item.split_ascii_whitespace().next() == Some("object-src"))
+            .collect::<Vec<_>>();
+        if objects.is_empty() {
+            let defaults = directives
+                .iter()
+                .copied()
+                .filter(|item| item.split_ascii_whitespace().next() == Some("default-src"))
+                .collect::<Vec<_>>();
+            defaults.len() == 1 && defaults[0] == "default-src 'none'"
+        } else {
+            objects.len() == 1 && objects[0] == "object-src 'none'"
+        }
+    }
+
+    #[test]
+    fn object_source_check_handles_default_fallback_and_explicit_override() {
+        for (policy, denied) in [
+            ("default-src 'none'", true),
+            ("default-src 'none'; object-src 'none'", true),
+            ("default-src 'self'; object-src 'none'", true),
+            ("default-src 'none'; object-src https:", false),
+            ("default-src 'self'", false),
+            ("default-src 'none'; object-src", false),
+            ("default-src 'self'; default-src 'none'", false),
+            (
+                "default-src 'none'; object-src https:; object-src 'none'",
+                false,
+            ),
+        ] {
+            assert_eq!(object_sources_denied(policy), denied, "{policy}");
+        }
+    }
+
     #[test]
     fn the_policy_names_the_hash_of_the_stylesheet_the_document_carries() {
         let policy = pages_server_preview_policy("body{margin:0}");
@@ -246,7 +284,12 @@ mod tests {
             0,
             "{policy}"
         );
-        assert_eq!(directive(&policy, "object-src"), "object-src 'none'");
+        // An absent object-src inherits the already-checked default-src 'none'. An explicit
+        // object-src must be at least as restrictive, rather than override that fallback.
+        assert!(
+            object_sources_denied(&policy),
+            "object-src must deny plugins explicitly or inherit default-src: {policy}"
+        );
         assert_eq!(directive(&policy, "base-uri"), "base-uri 'none'");
     }
 
@@ -280,7 +323,11 @@ mod tests {
         let headers = response.headers();
         assert_eq!(headers.get("cache-control").unwrap(), "no-store");
         assert_eq!(headers.get("x-content-type-options").unwrap(), "nosniff");
-        let policy = headers.get("content-security-policy").unwrap().to_str().unwrap();
+        let policy = headers
+            .get("content-security-policy")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(
             policy.contains(&super::pages_server_preview_policy("body{margin:0}")),
             "{policy}"

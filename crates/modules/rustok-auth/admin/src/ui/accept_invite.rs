@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::use_auth;
 use leptos_router::hooks::{use_navigate, use_query_map};
+use rustok_auth_ui::ui::leptos::hooks::use_auth;
 use rustok_ui_core::UiRouteContext;
 use rustok_ui_forms::FormState;
 
@@ -74,7 +74,7 @@ where
         set_form_state.set(FormState::submitting());
 
         spawn_local(async move {
-            let email = match leptos_auth::transport::accept_invite(
+            let email = match rustok_auth_ui::transport::accept_invite(
                 token_val,
                 password_val.clone(),
                 if name_val.is_empty() {

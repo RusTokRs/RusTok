@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{CONNECTOR_MODES, is_known_mode, parse_addresses};
@@ -103,11 +103,13 @@ pub fn IggyConnectorAdmin() -> impl IntoView {
             .or_else(|| resolved().map(|current| backend_mode(&current)))
             .unwrap_or_else(|| "bundled".to_string())
     });
-    let addresses = Signal::derive(move || field(|edits| edits.addresses.clone(), backend_addresses));
+    let addresses =
+        Signal::derive(move || field(|edits| edits.addresses.clone(), backend_addresses));
     let username = Signal::derive(move || {
-        field(|edits| edits.username.clone(), |current| {
-            current.external_username.clone()
-        })
+        field(
+            |edits| edits.username.clone(),
+            |current| current.external_username.clone(),
+        )
     });
     let password_resolver = Signal::derive(move || {
         field(
@@ -116,9 +118,8 @@ pub fn IggyConnectorAdmin() -> impl IntoView {
         )
         .unwrap_or_else(|| "env".to_string())
     });
-    let password_key = Signal::derive(move || {
-        field(|edits| edits.password_key.clone(), backend_password_key)
-    });
+    let password_key =
+        Signal::derive(move || field(|edits| edits.password_key.clone(), backend_password_key));
     let tls_enabled = Signal::derive(move || {
         let edited = edits.get();
         edited
@@ -127,9 +128,10 @@ pub fn IggyConnectorAdmin() -> impl IntoView {
             .unwrap_or(false)
     });
     let tls_domain = Signal::derive(move || {
-        field(|edits| edits.tls_domain.clone(), |current| {
-            current.tls_domain.clone().unwrap_or_default()
-        })
+        field(
+            |edits| edits.tls_domain.clone(),
+            |current| current.tls_domain.clone().unwrap_or_default(),
+        )
     });
 
     let save = move |_| {

@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos_auth::AuthContext;
+use rustok_auth_ui::ui::leptos::AuthContext;
 use rustok_graphql::{GraphqlRequest, execute as execute_graphql, graphql_url};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

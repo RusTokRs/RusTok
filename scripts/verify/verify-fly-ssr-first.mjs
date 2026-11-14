@@ -77,7 +77,7 @@ requireMarkers('appsAdminMain', [
   '#[tokio::main]',
   'generate_route_list(App)',
   '/api/admin/pages/{page_id}/builder/intents',
-  'leptos_auth::transport::fetch_current_user(',
+  'rustok_auth_ui::transport::fetch_current_user(',
   'dispatch_pages_browser_intent_with_capabilities(',
   'PagesBrowserIntentProblem',
   'let problem = PagesBrowserIntentProblem::from(&error);',

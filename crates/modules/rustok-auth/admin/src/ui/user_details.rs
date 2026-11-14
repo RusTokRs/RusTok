@@ -1,9 +1,9 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::{use_navigate, use_params};
 use leptos_router::params::Params;
 use leptos_ui::{Select, SelectOption};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 use rustok_ui_forms::FormState;
 
@@ -24,7 +24,7 @@ fn loaded_resource<S, Fut, T>(
 where
     S: PartialEq + Clone + Send + Sync + 'static,
     Fut: std::future::Future<Output = T> + Send + 'static,
-    T: Send + Sync + 'static,
+    T: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static,
 {
     Resource::new(source, fetcher)
 }

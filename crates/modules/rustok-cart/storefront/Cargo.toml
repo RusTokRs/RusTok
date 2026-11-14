@@ -14,10 +14,11 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
-hydrate = ["leptos-auth/hydrate", "leptos/hydrate"]
+hydrate = ["rustok-auth-ui/hydrate", "leptos/hydrate", "rustok-ui-leptos/hydrate"]
 ssr = [
-  "leptos-auth/ssr",
+  "rustok-auth-ui/ssr",
   "leptos/ssr",
+  "rustok-ui-leptos/ssr",
   "dep:leptos_axum",
   "dep:rustok-cart",
   "dep:rustok-customer",
@@ -27,12 +28,14 @@ ssr = [
   "dep:rustok-inventory",
   "dep:rustok-commerce",
   "dep:rustok-region",
+  "dep:sea-orm",
   "rustok-api/server",
 ]
 
 [dependencies]
-leptos-auth.workspace = true
+rustok-auth-ui.workspace = true
 rustok-ui-core.workspace = true
+rustok-ui-leptos = { path = "../../../ui/rustok-ui/leptos", default-features = false }
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-graphql.workspace = true
@@ -50,7 +53,8 @@ rustok-inventory = { workspace = true, optional = true }
 rustok-commerce = { workspace = true, optional = true }
 rustok-region = { workspace = true, optional = true }
 rustok-pricing-storefront = { workspace = true, default-features = false }
-sea-orm.workspace = true
+# Database access is only used by the SSR adapter; never link it into the browser island.
+sea-orm = { workspace = true, optional = true }
 rust_decimal.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
@@ -58,5 +62,10 @@ sha2.workspace = true
 uuid.workspace = true
 tracing.workspace = true
 
+[dev-dependencies]
+# Native owner tests construct Leptos effects even though their browser tasks are not polled.
+any_spawner = { workspace = true, features = ["futures-executor"] }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-web-sys = { version = "0.3", features = ["Window", "Storage"] }
+js-sys = { version = "0.3" }
+web-sys = { version = "0.3", features = ["Window", "Location", "Storage", "Document", "Element", "Node", "HtmlElement", "Event", "EventTarget", "CustomEvent", "CustomEventInit", "StorageEvent"] }

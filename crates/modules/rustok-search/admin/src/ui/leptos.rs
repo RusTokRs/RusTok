@@ -108,8 +108,8 @@ pub fn SearchAdmin(
         "Failed to load search bootstrap data",
     );
 
-    let token = leptos_auth::hooks::use_token();
-    let tenant = leptos_auth::hooks::use_tenant();
+    let token = rustok_auth_ui::ui::leptos::hooks::use_token();
+    let tenant = rustok_auth_ui::ui::leptos::hooks::use_tenant();
 
     let (query, set_query) = signal(initial_query);
     let (channel_id, set_channel_id) = signal(String::new());
@@ -1024,9 +1024,12 @@ fn CatalogFilterOptions(
 fn analytics_view(
     ui_locale: Option<String>,
     diagnostics: SearchDiagnosticsPayload,
-    lagging_documents: Resource<Result<Vec<LaggingSearchDocumentPayload>, transport::TransportError>>,
-    consistency_issues:
-        Resource<Result<Vec<SearchConsistencyIssuePayload>, transport::TransportError>>,
+    lagging_documents: Resource<
+        Result<Vec<LaggingSearchDocumentPayload>, transport::TransportError>,
+    >,
+    consistency_issues: Resource<
+        Result<Vec<SearchConsistencyIssuePayload>, transport::TransportError>,
+    >,
     search_analytics: Resource<Result<SearchAnalyticsPayload, transport::TransportError>>,
 ) -> impl IntoView {
     let locale = ui_locale.clone();
@@ -1421,8 +1424,8 @@ fn preview_result_action(
             .into_any();
     };
 
-    let token = leptos_auth::hooks::use_token();
-    let tenant = leptos_auth::hooks::use_tenant();
+    let token = rustok_auth_ui::ui::leptos::hooks::use_token();
+    let tenant = rustok_auth_ui::ui::leptos::hooks::use_tenant();
 
     view! {
         <a
@@ -1680,8 +1683,8 @@ fn DictionariesView() -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let ui_locale = route_context.locale.clone();
     let locale = ui_locale.as_deref();
-    let token = leptos_auth::hooks::use_token();
-    let tenant = leptos_auth::hooks::use_tenant();
+    let token = rustok_auth_ui::ui::leptos::hooks::use_token();
+    let tenant = rustok_auth_ui::ui::leptos::hooks::use_tenant();
     let (refresh_nonce, set_refresh_nonce) = signal(0_u64);
     let (feedback, set_feedback) = signal(Option::<String>::None);
     let (busy, set_busy) = signal(false);

@@ -68,7 +68,8 @@ mod rustok_pricing_shim;
 // implementation module can consume the same scoped aliases without textual inclusion.
 pub(crate) use super::{
     MODULE_SLUG, PRODUCT_MODULE_SLUG, current_tenant_scope, product_query_tenant,
-    require_commerce_permission, require_storefront_channel_enabled, types,
+    require_commerce_permission, require_storefront_cart_enabled,
+    require_storefront_channel_enabled, types,
 };
 
 #[path = "../query.rs"]

@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_auth, use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_auth, use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 use rustok_ui_forms::FormState;
 
@@ -8,6 +8,39 @@ use crate::core::{ChangePasswordInputError, prepare_change_password_request};
 use crate::i18n::{auth_transport_error_message, t};
 use crate::transport::change_password;
 use crate::ui::components::{Button, Input, PageHeader};
+
+/// Do not sign out a newer identity when the revoke-other-sessions request completes late.
+struct SessionRevocationFence {
+    scope: rustok_auth_ui::model::ClientAuthScope,
+    token: String,
+    tenant: String,
+}
+
+impl SessionRevocationFence {
+    fn capture(auth: &rustok_auth_ui::ui::leptos::AuthContext) -> Option<Self> {
+        let session = auth.session().try_get_untracked().flatten()?;
+        let fence = Self {
+            scope: auth.client_scope_untracked(),
+            token: session.token,
+            tenant: session.tenant,
+        };
+        fence.is_current(auth).then_some(fence)
+    }
+
+    fn is_current(&self, auth: &rustok_auth_ui::ui::leptos::AuthContext) -> bool {
+        self.scope.is_ready()
+            && auth.client_scope_untracked() == self.scope
+            && !auth.is_token_expired()
+            && auth
+                .session()
+                .try_get_untracked()
+                .flatten()
+                .is_some_and(|session| session.token == self.token && session.tenant == self.tenant)
+            && rustok_auth_ui::ui::leptos::storage::get_token().as_deref()
+                == Some(self.token.as_str())
+            && rustok_auth_ui::ui::leptos::storage::matches_request_tenant(&self.tenant)
+    }
+}
 
 #[component]
 pub fn Security() -> impl IntoView {
@@ -25,6 +58,9 @@ pub fn Security() -> impl IntoView {
     let (new_password, set_new_password) = signal(String::new());
     let (form_state, set_form_state) = signal(FormState::idle());
     let (success_message, set_success_message) = signal(Option::<String>::None);
+    let (session_action_error, set_session_action_error) = signal(Option::<String>::None);
+    let (session_action_busy, set_session_action_busy) = signal(false);
+    let auth_loading = auth.is_loading();
 
     let on_change_password = Callback::new(move |_| {
         let request = match prepare_change_password_request(
@@ -111,12 +147,53 @@ pub fn Security() -> impl IntoView {
     });
 
     let on_sign_out_all = Callback::new(move |_| {
-        let tok = token.get();
-        let ten = tenant.get();
+        if auth.is_loading().try_get_untracked().unwrap_or(true)
+            || session_action_busy.try_get_untracked().unwrap_or(true)
+        {
+            return;
+        }
+        let failure = t_local(
+            "security.signOutAllFailed",
+            "Sign-out could not be confirmed. Check active sessions or retry from the account menu.",
+        );
+        let Some(fence) = SessionRevocationFence::capture(&auth) else {
+            let _ = set_session_action_error.try_set(Some(failure));
+            return;
+        };
+        if set_session_action_busy.try_update(|busy| {
+            if *busy {
+                false
+            } else {
+                *busy = true;
+                true
+            }
+        }) != Some(true)
+        {
+            return;
+        }
+        let _ = set_session_action_error.try_set(None);
         let auth = auth.clone();
         spawn_local(async move {
-            let _ = crate::transport::revoke_all_sessions(tok, ten).await;
-            let _ = auth.sign_out().await;
+            // The scheduled task can start after a route or auth transition.
+            let confirmed = if fence.is_current(&auth) {
+                crate::transport::revoke_all_sessions(
+                    Some(fence.token.clone()),
+                    Some(fence.tenant.clone()),
+                )
+                .await
+                .is_ok()
+            } else {
+                false
+            };
+            let signed_out = if confirmed && fence.is_current(&auth) {
+                auth.sign_out().await.is_ok()
+            } else {
+                false
+            };
+            if !signed_out {
+                let _ = set_session_action_error.try_set(Some(failure));
+            }
+            let _ = set_session_action_busy.try_set(false);
         });
     });
 
@@ -129,6 +206,7 @@ pub fn Security() -> impl IntoView {
                 actions=view! {
                     <Button
                         on_click=on_sign_out_all
+                        disabled=Signal::derive(move || session_action_busy.get() || auth_loading.get())
                         class="border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground"
                     >
                         {t_local("security.signOutAll", "Sign out all sessions")}
@@ -136,6 +214,11 @@ pub fn Security() -> impl IntoView {
                 }
                 .into_any()
             />
+            <Show when=move || session_action_error.get().is_some()>
+                <p role="alert" class="mb-4 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                    {move || session_action_error.get().unwrap_or_default()}
+                </p>
+            </Show>
 
             <div class="grid gap-6 lg:grid-cols-2">
                 <div class="grid gap-4 rounded-xl border border-border bg-card p-6 shadow-sm">
@@ -268,5 +351,54 @@ pub fn Security() -> impl IntoView {
                 </div>
             </div>
         </section>
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod session_revocation_tests {
+    use super::*;
+
+    #[test]
+    fn revocation_fence_requires_a_live_current_owner_and_session() {
+        let owner = Owner::new();
+        let (auth, fence) = owner.with(|| {
+            let session = serde_json::from_value(serde_json::json!({
+                "token": "test-access",
+                "expires_at": i64::MAX,
+                "tenant": "shop"
+            }))
+            .unwrap();
+            rustok_auth_ui::ui::leptos::provide_server_auth_snapshot(
+                rustok_auth_ui::ui::leptos::ServerAuthSnapshot {
+                    session: Some(session),
+                    user: None,
+                },
+            );
+            let auth = rustok_auth_ui::ui::leptos::AuthContext::new();
+            let fence = SessionRevocationFence::capture(&auth).unwrap();
+            assert!(fence.is_current(&auth));
+            (auth, fence)
+        });
+        owner.cleanup();
+        assert!(!fence.is_current(&auth));
+        assert!(SessionRevocationFence::capture(&auth).is_none());
+
+        let expired_owner = Owner::new();
+        expired_owner.with(|| {
+            let session = serde_json::from_value(serde_json::json!({
+                "token": "expired-access",
+                "expires_at": 0,
+                "tenant": "shop"
+            }))
+            .unwrap();
+            rustok_auth_ui::ui::leptos::provide_server_auth_snapshot(
+                rustok_auth_ui::ui::leptos::ServerAuthSnapshot {
+                    session: Some(session),
+                    user: None,
+                },
+            );
+            let auth = rustok_auth_ui::ui::leptos::AuthContext::new();
+            assert!(SessionRevocationFence::capture(&auth).is_none());
+        });
     }
 }

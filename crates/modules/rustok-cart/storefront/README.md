@@ -22,6 +22,7 @@ Leptos storefront UI package for the `rustok-cart` module.
 ## Entry Points
 
 - `CartView` - root storefront view re-exported from `ui::leptos` and rendered from the host storefront slot registry.
+- `CartClient`, `BuyerCartController`, `CartCapability` and `use_buyer_cart` - shared host-mounted buyer, policy and lifecycle boundary.
 - `core::view_model` helpers re-exported from `core` - framework-agnostic display mapping for cart summary, adjustments, delivery groups, and line items.
 - `transport::fetch_cart` - thin UI-facing facade for build-profile-selected cart reads, while preserving core validation errors without retry.
 - `transport::decrement_line_item` - thin UI-facing facade for safe line-item decrement with the same validation-vs-selected-path policy.
@@ -42,11 +43,20 @@ Leptos storefront UI package for the `rustok-cart` module.
 
 ## Product buyer lifecycle
 
-`use_buyer_cart` exposes read-only, actor-bound session state to Product and keeps checkpoint,
-authorization fences and command execution in Cart. Native/GraphQL create/add use the Commerce
-workflow and guarded Cart ports; restore is a read-only owner GET, not repricing. Known original
-scope references and pending warning hints are preserved conservatively. See the [Cart plan](../docs/implementation-plan.md#product-buyer-continuation-2026-10-30).
-The source is uncompiled/unrun; hints are not server receipts or a multi-tab/exactly-once protocol.
+`CartClient` mounts a single Cart-owned controller, modal and landing bridge; the host injects
+that controller into Product with its current tenant, locale, module capability and guarded URL
+callbacks. The Product selection callback returns the actual host-merged URL, or `None` if it
+cannot persist under the current verified quote context; public quotes and selection remain
+independent of Cart availability. `use_buyer_cart` fences owner reads and writes against capability,
+auth, route and restore generations. Writes and synchronous inspect/reset share one operation
+reservation; a dropped operation poisons that owner rather than implying cancellation. A count is
+published only for a current, confirmed, valid owner projection;
+missing or uncertain is unknown, not zero. Native/GraphQL create/add use the Commerce workflow
+and guarded Cart ports; restore is an owner read, not repricing. Known original-scope references
+and pending hints are preserved conservatively, including across token rotation by session lineage.
+See the [Cart plan](../docs/implementation-plan.md#product-buyer-continuation-2026-10-30).
+This source is not yet validated by locked native/WASM or mounted-service tests. Hints are not
+server receipts, a cross-tab lock, proof of cancellation or an exactly-once protocol.
 
 
 ## Known Limitations / Pending Implementation

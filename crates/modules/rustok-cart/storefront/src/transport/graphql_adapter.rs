@@ -174,8 +174,8 @@ where
     execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(query, Some(variables)),
-        leptos_auth::storage::get_token(),
-        leptos_auth::storage::get_tenant(),
+        rustok_auth_ui::ui::leptos::storage::get_token(),
+        rustok_auth_ui::ui::leptos::storage::get_tenant(),
         None,
     )
     .await
@@ -373,7 +373,7 @@ pub(super) async fn create_cart(
     let response: CreateBuyerCartResponse = execute_graphql(&graphql_url(), GraphqlRequest::new(
         CREATE_BUYER_CART, Some(serde_json::json!({ "input": {
             "currencyCode": request.currency_code, "regionId": request.region_id, "locale": request.locale,
-        }}))), leptos_auth::storage::get_token(), leptos_auth::storage::get_tenant(), locale).await?;
+        }}))), rustok_auth_ui::ui::leptos::storage::get_token(), rustok_auth_ui::ui::leptos::storage::get_tenant(), locale).await?;
     Ok(map_graphql_cart(response.cart.cart))
 }
 
@@ -389,7 +389,7 @@ pub(super) async fn add_variant(
             "expectedContext": { "currencyCode": context.currency_code, "regionId": context.region_id,
                 "priceListId": context.price_list_id, "channelId": context.channel_id,
                 "channelSlug": context.channel_slug, "quantity": context.quantity },
-        }}))), leptos_auth::storage::get_token(), leptos_auth::storage::get_tenant(), request.locale).await?;
+        }}))), rustok_auth_ui::ui::leptos::storage::get_token(), rustok_auth_ui::ui::leptos::storage::get_tenant(), request.locale).await?;
     Ok(map_graphql_cart(response.cart))
 }
 

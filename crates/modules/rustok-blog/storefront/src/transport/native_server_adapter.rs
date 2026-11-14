@@ -144,7 +144,7 @@ async fn fetch_preview_post_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "blog/comment-create",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn create_blog_comment_native(
     request: BlogCommentCreateRequest,

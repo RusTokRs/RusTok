@@ -50,7 +50,7 @@
   - `serde`: Serialization and deserialization contracts for session data.
   - `thiserror`: Typed client-side error derivation.
 - **Downstream Consumers**:
-  - `leptos-auth`: Leptos reactive context and routing guards.
+  - `rustok-auth-ui`: Leptos reactive context and routing guards.
   - `rustok-ui-dioxus`: Dioxus authentication hooks and state management.
   - Storefront and Admin UI client packages.
 - **Boundary Rules**:

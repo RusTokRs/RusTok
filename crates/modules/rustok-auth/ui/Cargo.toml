@@ -1,9 +1,9 @@
 [package]
-name = "leptos-auth"
+name = "rustok-auth-ui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Leptos authentication context, protected route wrappers, and token refresh hooks"
+description = "Auth-owned FFA client session, transport, and Leptos bindings"
 readme = "README.md"
 repository.workspace = true
 rust-version.workspace = true
@@ -14,7 +14,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
-csr = []
+csr = ["leptos/csr"]
 hydrate = ["leptos/hydrate"]
 ssr = [
   "leptos/ssr",
@@ -36,9 +36,12 @@ reqwest = { version = "0.13", default-features = false, features = ["json"] }
 leptos_axum = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 
+[dev-dependencies]
+tokio.workspace = true
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 gloo-storage = { workspace = true }
-web-sys = { version = "0.3", features = ["Window", "Location", "Headers"] }
+web-sys = { version = "0.3", features = ["Window", "Location", "Headers", "Storage", "Event", "EventTarget", "CustomEvent", "CustomEventInit"] }
 js-sys = { version = "0.3" }
 
 [package.metadata.cargo-udeps.ignore]

@@ -51,7 +51,7 @@ Before writing reusable code, check whether it already exists in shared librarie
 - `rustok-ui-forms` - framework-agnostic form state, validation engine, field descriptors, and dirty tracking
 - `rustok-forms-leptos` - Leptos 0.8 form components, accessible controls, and submit button
 - `rustok-ui-auth` - framework-agnostic client auth/session values and expiry policy
-- `leptos-auth` - auth hooks and session
+- `rustok-auth-ui` - auth hooks and session
 
 ### 2. Do Not Invent Custom i18n
 

@@ -44,7 +44,7 @@ Canonical public contract and domain architecture specification for `rustok-page
 
 - **`rustok-page-builder`**: Consumes core document representations, static landing compilation, and runtime render pipelines.
 - **`rustok-pages`**: Serves as the primary content source for published page builder pages.
-- **`rustok-product` / `rustok-cart`**: Product validates and quotes a handoff; Cart owns cart actions and observations. The Leptos host does not yet connect the bridge's Cart event protocol.
+- **`rustok-product` / `rustok-cart`**: Product validates and quotes a handoff; Cart owns cart actions and observations. The Leptos host now composes a shared event consumer in source, pending mounted and real-service verification.
 
 ---
 
@@ -65,7 +65,7 @@ Canonical public contract and domain architecture specification for `rustok-page
 
 ### Events / Outbox Side Effects
 - Storefront rendering is read-only and does not emit transactional outbox events.
-- Cart controls dispatch cancelable `rustok:cart:{open,close,toggle}` requests. A consumer must acknowledge them with `preventDefault()`; no consumer is currently mounted in the Leptos host. A `rustok:cart:updated` observation updates counters and `{status: "unknown"}` invalidates them. The purchase handoff is navigation, not a Cart add event.
+- Cart controls dispatch cancelable `rustok:cart:{open,close,toggle}` requests. The Cart consumer acknowledges a handled request with `preventDefault()`; without it, the bridge reports unavailable. `rustok:cart:updated` updates counters and `{status: "unknown"}` invalidates them; `rustok:cart:request-count` asks a mounted owner to republish after a late bridge installation. The purchase handoff is navigation, not a Cart add event.
 
 ### Errors / Failure Codes
 - `fly::FlyError`: Document parsing, validation, or sanitization failures.

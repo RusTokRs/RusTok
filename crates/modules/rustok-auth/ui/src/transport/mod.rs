@@ -5,7 +5,7 @@ mod native_server_adapter;
 use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
 
-use crate::{AuthError, AuthSession, AuthUser};
+use crate::model::{AuthError, AuthSession, AuthUser};
 
 fn selected_transport_path() -> UiTransportPath {
     if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {
@@ -291,18 +291,20 @@ pub async fn sign_out(tenant: String) -> Result<(), AuthError> {
     }
 }
 
-/// Rotate the cookie-held refresh token and return fresh in-memory
-/// session state. Used both for proactive refresh and for restoring
-/// a session after a page reload (silent refresh).
-pub async fn refresh_session(tenant: String) -> Result<(AuthSession, AuthUser), AuthError> {
+/// Rotate the cookie-held refresh token and return fresh in-memory session state.
+/// `None` is an explicit native-host observation that the refresh cookie was absent;
+/// an invalid/expired credential or an ambiguous direct-cookie 401 remains an error.
+pub async fn refresh_session(tenant: String) -> Result<Option<(AuthSession, AuthUser)>, AuthError> {
     match selected_transport_path() {
         UiTransportPath::NativeServer => {
             let payload = native_server_adapter::refresh_token_native(tenant)
                 .await
                 .map_err(|error| map_server_auth_error(error, false))?;
-            Ok((payload.session, payload.user))
+            Ok(payload.map(|payload| (payload.session, payload.user)))
         }
-        UiTransportPath::Graphql => cookie_adapter::refresh_session_cookie(tenant).await,
+        UiTransportPath::Graphql => cookie_adapter::refresh_session_cookie(tenant)
+            .await
+            .map(Some),
     }
 }
 

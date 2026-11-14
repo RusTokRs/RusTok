@@ -3,9 +3,9 @@ use leptos_router::components::Outlet;
 #[cfg(target_arch = "wasm32")]
 use leptos_router::hooks::use_navigate;
 
-use crate::hooks::use_is_authenticated;
+use super::hooks::use_is_authenticated;
 #[cfg(target_arch = "wasm32")]
-use crate::hooks::use_is_loading;
+use super::hooks::use_is_loading;
 
 #[component]
 pub fn ProtectedRoute() -> impl IntoView {

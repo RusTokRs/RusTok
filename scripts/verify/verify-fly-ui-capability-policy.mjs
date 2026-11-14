@@ -279,7 +279,7 @@ requireMarkers('pagesLib', [
 ], 'Pages public access and problem exports');
 
 requireMarkers('adminMain', [
-  'leptos_auth::transport::fetch_current_user(',
+  'rustok_auth_ui::transport::fetch_current_user(',
   'pages_editor_capability_policy_from_effective(&verified_user.permissions)',
   'PagesBrowserIntentProblem',
   'let problem = PagesBrowserIntentProblem::from(&error);',

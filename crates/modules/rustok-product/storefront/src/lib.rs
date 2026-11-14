@@ -3,6 +3,9 @@
 //! Leptos storefront UI package for the `rustok-product` module,
 //! providing customer-facing catalog discovery, product detail views, and facet filtering.
 
+// The hydrated buyer view's nested Leptos types exceed Rust's default layout depth.
+#![recursion_limit = "256"]
+
 mod catalog_controls;
 mod core;
 mod i18n;

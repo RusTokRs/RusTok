@@ -161,7 +161,7 @@ test("a feature that stops forwarding the adapter is rejected, the adapter itsel
   const failures = failuresAfter((_, manifests) => {
     manifests.set(
       victim,
-      manifests.get(victim).replace('"leptos/hydrate",\n  "leptos-auth/hydrate",\n  "rustok-grid-leptos/hydrate",', '"leptos/hydrate",\n  "leptos-auth/hydrate",'),
+      manifests.get(victim).replace('"leptos/hydrate",\n  "rustok-auth-ui/hydrate",\n  "rustok-grid-leptos/hydrate",', '"leptos/hydrate",\n  "rustok-auth-ui/hydrate",'),
     );
   });
   assert.ok(find(failures, `${victim}: feature "hydrate" must forward`));

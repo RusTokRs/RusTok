@@ -1,10 +1,10 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui::{
     Alert, AlertVariant, Badge, BadgeVariant, Button, ButtonVariant, Card, CardContent,
     CardDescription, CardHeader, CardTitle, Input, Label,
 };
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 use std::sync::Arc;
 
@@ -104,10 +104,16 @@ pub fn CacheAdmin() -> impl IntoView {
             .unwrap_or_else(|| "in-memory".to_string())
     });
     let redis_host = Signal::derive(move || {
-        field(|edits| edits.redis_host.clone(), |draft| draft.redis_host.clone())
+        field(
+            |edits| edits.redis_host.clone(),
+            |draft| draft.redis_host.clone(),
+        )
     });
     let redis_port = Signal::derive(move || {
-        field(|edits| edits.redis_port.clone(), |draft| draft.redis_port.clone())
+        field(
+            |edits| edits.redis_port.clone(),
+            |draft| draft.redis_port.clone(),
+        )
     });
     let redis_password = Signal::derive(move || {
         let edited = edits.get();
@@ -118,10 +124,16 @@ pub fn CacheAdmin() -> impl IntoView {
             .unwrap_or_default()
     });
     let redis_db = Signal::derive(move || {
-        field(|edits| edits.redis_db.clone(), |draft| draft.redis_db.clone())
+        field(
+            |edits| edits.redis_db.clone(),
+            |draft| draft.redis_db.clone(),
+        )
     });
     let redis_url = Signal::derive(move || {
-        field(|edits| edits.redis_url.clone(), |draft| draft.redis_url.clone())
+        field(
+            |edits| edits.redis_url.clone(),
+            |draft| draft.redis_url.clone(),
+        )
     });
     let schema_version = Signal::derive(move || {
         if let Some(version) = schema_version_override.get() {

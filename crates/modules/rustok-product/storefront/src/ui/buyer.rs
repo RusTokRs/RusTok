@@ -18,36 +18,14 @@ pub(super) fn ProductBuyerIsland(snapshot: ProductBuyerSnapshot) -> impl IntoVie
     let tenant_slug = snapshot.tenant_slug.clone();
     view! {
         <div data-product-buyer-island="true" data-product-buyer-snapshot=encoded data-product-buyer-client-error-label=buyer::labels(locale.as_deref()).javascript>
-            <leptos_auth::AuthProvider tenant_slug=tenant_slug.clone()><ProductBuyerInteraction snapshot /></leptos_auth::AuthProvider>
+            <rustok_auth_ui::ui::leptos::AuthProvider tenant_slug=tenant_slug.clone()><ProductBuyerInteraction snapshot /></rustok_auth_ui::ui::leptos::AuthProvider>
         </div>
     }.into_any()
 }
 
-/// DOM/history operations are adapter behavior, not a second route parser.
-fn replace_location(href: &str) -> bool {
-    #[cfg(target_arch = "wasm32")]
-    {
-        let Some(window) = web_sys::window() else {
-            return false;
-        };
-        let (Ok(history), Ok(hash)) = (window.history(), window.location().hash()) else {
-            return false;
-        };
-        let href = format!("{href}{hash}");
-        return history
-            .replace_state_with_url(&leptos::wasm_bindgen::JsValue::NULL, "", Some(&href))
-            .is_ok();
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _ = href;
-        false
-    }
-}
-
 fn change_input(input: RwSignal<BuyerInput>, generation: RwSignal<u64>, next: BuyerInput) {
     // Invalidate synchronously, including A -> B -> A and same-key retries before any effect runs.
-    generation.update(|value| *value = value.wrapping_add(1));
+    generation.update(|value| *value = value.saturating_add(1));
     input.set(next);
 }
 
@@ -68,37 +46,32 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
     let input = RwSignal::new(initial);
     let generation = RwSignal::new(0_u64);
     let link_error = RwSignal::new(false);
-    let saved_href = RwSignal::new(None::<String>);
+    let saved_href = RwSignal::new(None::<(BuyerQuoteCycle, String, String)>);
     let interactive = RwSignal::new(cfg!(target_arch = "wasm32"));
-    let persist_reference = Callback::new(move |id| {
-        let href = snapshot.with_value(|snapshot| {
-            buyer::selection_with_cart_href(
-                &base.get_value(),
-                &snapshot.route,
-                &snapshot.product,
-                &input.get_untracked(),
-                id,
-            )
-        });
-        let saved = replace_location(&href);
-        link_error.set(!saved);
-        saved_href.set(saved.then_some(href));
-        saved
+    // A detached or server-rendered buyer has no host capability and stays read-only.
+    // The mounted host injects the same Cart controller used by its drawer and landing bridge.
+    let cart = use_context::<rustok_cart_storefront::BuyerCartController>().unwrap_or_else(|| {
+        rustok_cart_storefront::use_buyer_cart(
+            snapshot.with_value(|snapshot| snapshot.route.query.get("cart_id").cloned()),
+            snapshot.with_value(|snapshot| snapshot.input.locale.clone()),
+            snapshot.with_value(|snapshot| snapshot.tenant_slug.clone()),
+            rustok_cart_storefront::CartCapability::new(false),
+            Callback::new(|_| false),
+            Callback::new(|_| None),
+        )
     });
-    let cart = rustok_cart_storefront::use_buyer_cart(
-        snapshot.with_value(|snapshot| snapshot.route.query.get("cart_id").cloned()),
-        snapshot.with_value(|snapshot| snapshot.input.locale.clone()),
-        snapshot.with_value(|snapshot| snapshot.tenant_slug.clone()),
-        persist_reference,
-    );
     let cycle = Memo::new(move |_| BuyerQuoteCycle {
         input: generation.get(),
-        scope: cart.generation.get(),
+        scope: cart.generation(),
+        capability: cart.capability_generation(),
+        auth: cart.auth_generation(),
     });
     let quote = Resource::new(
         move || {
             (
-                if cfg!(feature = "ssr") || cart.context_ready() {
+                if generation.get() < u64::MAX
+                    && (cfg!(feature = "ssr") || cart.quote_context_ready())
+                {
                     snapshot.with_value(|snapshot| {
                         buyer::quote_request(&snapshot.product, &input.get())
                     })
@@ -108,15 +81,29 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
                 cycle.get(),
             )
         },
-        move |(request, cycle)| async move {
+        move |(request, quote_cycle)| async move {
             match request {
                 Ok(Some(request)) => {
+                    // A resource fetch can be polled after its input or shared host changes.
+                    // Do not transmit or publish a quote for an earlier buyer cycle.
+                    if cfg!(target_arch = "wasm32")
+                        && (cycle.try_get_untracked() != Some(quote_cycle)
+                            || !cart.quote_context_ready_untracked())
+                    {
+                        return None;
+                    }
                     let result = crate::transport::fetch_buyer_quote(request.clone())
                         .await
                         .map_err(|error| error.to_string());
-                    Some(snapshot.with_value(|snapshot| {
-                        buyer::observe_quote(&snapshot.product, request, cycle, result)
-                    }))
+                    if cfg!(target_arch = "wasm32")
+                        && (cycle.try_get_untracked() != Some(quote_cycle)
+                            || !cart.quote_context_ready_untracked())
+                    {
+                        return None;
+                    }
+                    snapshot.try_with_value(|snapshot| {
+                        buyer::observe_quote(&snapshot.product, request, quote_cycle, result)
+                    })
                 }
                 Ok(None) | Err(_) => None,
             }
@@ -146,13 +133,21 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
     });
     Effect::new(move |_| {
         let href = href.get();
-        if interactive.get() {
-            let saved = replace_location(&href);
-            link_error.set(!saved);
-            saved_href.set(saved.then_some(href));
+        let selection_cycle = cycle.get();
+        if interactive.get() && cart.quote_context_ready() {
+            let saved = cart.persist_selection(href.clone());
+            let still_current = cycle.try_get_untracked() == Some(selection_cycle)
+                && cart.quote_context_ready_untracked();
+            // The host callback may synchronously dispose this Product owner.
+            let _ = link_error.try_set(saved.is_none() || !still_current);
+            let _ = saved_href.try_set(
+                saved
+                    .filter(|_| still_current)
+                    .map(|actual| (selection_cycle, href, actual)),
+            );
         }
     });
-    let locked = Signal::derive(move || !interactive.get() || cart.busy.get());
+    let locked = Signal::derive(move || !interactive.get() || cart.busy.try_get().unwrap_or(true));
     let (quantity, set_quantity) = signal(input.get_untracked().quantity_text);
     let (currency, set_currency) = signal(
         input
@@ -184,8 +179,14 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
     });
     let purchase_disabled = Signal::derive(move || {
         !interactive.get()
+            || generation.get() == u64::MAX
             || link_error.get()
-            || saved_href.get().as_ref() != Some(&href.get())
+            || saved_href
+                .get()
+                .as_ref()
+                .is_none_or(|(saved_cycle, saved, _)| {
+                    *saved_cycle != cycle.get() || saved != &href.get()
+                })
             || !cart.can_write()
             || !view_model.get().can_purchase
     });
@@ -206,16 +207,23 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
         };
         let submitted_cycle = cycle.get_untracked();
         leptos::task::spawn_local(async move {
+            // spawn_local may start after another input/auth/policy transition. Do not send
+            // a quote selected by a previous cycle, even when the eventual values look equal.
+            if cycle.try_get_untracked() != Some(submitted_cycle)
+                || purchase_disabled.try_get_untracked() != Some(false)
+            {
+                return;
+            }
             if cart
                 .add_variant(request.variant_id, context, request.locale)
                 .await
             {
-                added_cycle.set(Some(submitted_cycle));
+                let _ = added_cycle.try_set(Some(submitted_cycle));
             }
         });
     };
     view! {
-        <section class="mt-6 space-y-4 border-t border-border pt-5" data-product-buyer="true" aria-busy=move || quote.get().is_none() || cart.busy.get()>
+        <section class="mt-6 space-y-4 border-t border-border pt-5" data-product-buyer="true" aria-busy=move || quote.get().is_none() || cart.busy.try_get().unwrap_or(true)>
             {move || (!interactive.get()).then(|| view! { <Alert>{labels.get_value().javascript}</Alert> })}
             <div class="space-y-3">
                 <For each=move || snapshot.with_value(|snapshot| snapshot.product.variant_axes.clone()) key=|axis| axis.attribute_id.clone()
@@ -255,8 +263,8 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
             }}
             {move || link_error.get().then(|| view! { <Alert>{labels.get_value().link_error}</Alert> })}
             <div class="flex flex-wrap gap-2">
-                <Button on_click=Box::new(add) disabled=purchase_disabled loading=Signal::derive(move || cart.busy.get())>{labels.get_value().add}</Button>
-                {move || view_model.get().unavailable.then(|| view! { <Button variant=ButtonVariant::Outline disabled=locked on_click=Box::new(move || generation.update(|value| *value = value.wrapping_add(1)))>{labels.get_value().retry}</Button> })}
+                <Button on_click=Box::new(add) disabled=purchase_disabled loading=Signal::derive(move || cart.busy.try_get().unwrap_or(true))>{labels.get_value().add}</Button>
+                {move || view_model.get().unavailable.then(|| view! { <Button variant=ButtonVariant::Outline disabled=locked on_click=Box::new(move || generation.update(|value| *value = value.saturating_add(1)))>{labels.get_value().retry}</Button> })}
                 {move || view_model.get().preview.then(|| view! { <Button variant=ButtonVariant::Outline disabled=locked on_click=Box::new(move || change_input(input, generation, buyer::ordinary_context(&input.get_untracked())))>{labels.get_value().ordinary}</Button> })}
                 {move || cart.session.get().cart.map(|cart| {
                     let href = snapshot.with_value(|snapshot| buyer::cart_context_href(&snapshot.route, &snapshot.product, &input.get(), &cart));
@@ -268,7 +276,21 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
                 {move || cart.session.get().cart_id.map(|id| view! { <a class="text-sm underline" href=snapshot.with_value(|snapshot| buyer::cart_href(&snapshot.route, &id))>{labels.get_value().inspect_cart}</a> })}
                 {move || cart.session.get().can_inspect().then(|| view! { <Button variant=ButtonVariant::Outline disabled=Signal::derive(move || !interactive.get() || !cart.can_reset()) on_click=Box::new(move || cart.inspect())>{labels.get_value().inspect_cart}</Button> })}
                 <Button variant=ButtonVariant::Outline disabled=Signal::derive(move || !interactive.get() || !cart.can_reset()) on_click=Box::new(move || cart.reset_reference())>{labels.get_value().reset_cart}</Button>
-                <a class="text-sm underline" href=move || href.get()>{labels.get_value().selection_link}</a>
+                {move || {
+                    let desired = href.get();
+                    let actual = if !interactive.get() {
+                        Some(desired.clone())
+                    } else if cart.quote_context_ready() {
+                        saved_href.get().and_then(|(saved_cycle, saved, actual)| {
+                            (saved_cycle == cycle.get() && saved == desired).then_some(actual)
+                        })
+                    } else {
+                        None
+                    };
+                    actual.map(|actual| view! {
+                        <a class="text-sm underline" href=actual>{labels.get_value().selection_link}</a>
+                    })
+                }}
             </div>
         </section>
     }.into_any()
@@ -329,14 +351,27 @@ fn BuyerAxisControl(
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn mount_product_buyer(root: web_sys::HtmlElement) -> Result<(), String> {
+pub fn mount_product_buyer(
+    root: web_sys::HtmlElement,
+    tenant_slug: &str,
+    current_query: &std::collections::BTreeMap<String, String>,
+    cart: rustok_cart_storefront::BuyerCartController,
+) -> Result<Box<dyn FnOnce()>, String> {
     let encoded = root
         .get_attribute("data-product-buyer-snapshot")
         .ok_or_else(|| "Missing product buyer snapshot".to_string())?;
     let snapshot = buyer::decode_snapshot(&encoded)
         .map_err(|_| "Invalid product buyer snapshot".to_string())?;
-    let tenant_slug = snapshot.tenant_slug.clone();
+    if snapshot.tenant_slug != tenant_slug {
+        return Err("Product buyer tenant does not match the storefront".to_string());
+    }
+    if &snapshot.route.query != current_query {
+        return Err("Product buyer route changed before the client mounted".to_string());
+    }
     root.set_inner_html("");
-    mount_to(root, move || view! { <leptos_auth::AuthProvider tenant_slug=Some(tenant_slug.clone())><ProductBuyerInteraction snapshot=snapshot.clone() /></leptos_auth::AuthProvider> }).forget();
-    Ok(())
+    let handle = mount_to(root, move || {
+        provide_context(cart);
+        view! { <ProductBuyerInteraction snapshot /> }
+    });
+    Ok(Box::new(move || drop(handle)))
 }

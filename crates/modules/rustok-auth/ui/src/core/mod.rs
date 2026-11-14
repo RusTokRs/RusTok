@@ -1,16 +1,8 @@
-//! # Leptos Auth
-//!
-//! Shared authentication UI and runtime boundary for Leptos applications,
-//! including auth context, reactive hooks, route guards, and cookie helpers.
+//! Framework-independent Auth client scope, refresh-cookie and session helpers.
 
-mod client;
-pub mod components;
-pub mod context;
-pub mod hooks;
-pub mod storage;
-pub mod transport;
+mod cookie;
 
-use rustok_ui_auth::{AuthError, AuthSession, AuthUser};
+pub use cookie::{RefreshCookieError, inspect_refresh_cookie_headers};
 
 pub const ADMIN_TOKEN_KEY: &str = "rustok-admin-token";
 pub const ADMIN_TENANT_KEY: &str = "rustok-admin-tenant";
@@ -35,18 +27,6 @@ pub fn parse_refresh_cookie_value(value: &str) -> Option<(&str, &str)> {
     (!tenant.is_empty() && !token.is_empty()).then_some((tenant, token))
 }
 
-/// Extract `(tenant, refresh_token)` from a raw `Cookie` header value.
-pub fn extract_refresh_cookie(cookie_header: &str) -> Option<(String, String)> {
-    cookie_header.split(';').find_map(|part| {
-        let (name, value) = part.trim().split_once('=')?;
-        if name.trim() != ADMIN_REFRESH_COOKIE {
-            return None;
-        }
-        let (tenant, token) = parse_refresh_cookie_value(value)?;
-        Some((tenant.to_string(), token.to_string()))
-    })
-}
-
 /// `Set-Cookie` header value persisting the BFF refresh cookie.
 pub fn refresh_cookie_header(tenant: &str, refresh_token: &str, secure: bool) -> String {
     let mut cookie = format!(
@@ -67,15 +47,6 @@ pub fn clear_refresh_cookie_header(secure: bool) -> String {
     }
     cookie
 }
-
-pub use client::AuthorizedBrowserClient;
-pub use components::{GuestRoute, ProtectedRoute, RequireAuth};
-pub use context::{AuthContext, AuthProvider};
-pub use hooks::{
-    use_auth, use_auth_error, use_current_user, use_is_authenticated, use_is_loading,
-    use_is_token_valid, use_session, use_tenant, use_token,
-};
-pub use storage::{ServerAuthSnapshot, provide_server_auth_snapshot};
 
 /// Extract the stable session id (`session_id` claim) from an access
 /// token WITHOUT verifying it.
@@ -130,6 +101,3 @@ fn base64url_decode(input: &str) -> Option<Vec<u8>> {
     }
     Some(output)
 }
-
-#[cfg(test)]
-mod contract_tests;

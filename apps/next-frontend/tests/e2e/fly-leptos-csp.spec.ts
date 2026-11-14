@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 // It complements Rust SSR tests; it is not a deployed-host or hydration test.
 const runtime = new URL('../../../../crates/ui/fly/browser/assets/fly-actions.js', import.meta.url);
 const bridge = new URL('../../../../crates/modules/rustok-page-builder/storefront/assets/fly-storefront-bridge.js', import.meta.url);
+const bootstrap = new URL('../../../../apps/storefront/public/assets/product-buyer-bootstrap.js', import.meta.url);
 const securityHeaders = new URL('../../../../apps/server/src/middleware/security_headers.rs', import.meta.url);
 const nonce = 'test_nonce_123';
 
@@ -18,8 +19,8 @@ function policy(source: string, allowedNonce: string): string {
 }
 
 async function mount(page: Page, allowedNonce: string): Promise<void> {
-  const [actions, storefrontBridge, cspSource] = await Promise.all([
-    readFile(runtime, 'utf8'), readFile(bridge, 'utf8'), readFile(securityHeaders, 'utf8'),
+  const [actions, storefrontBridge, navigationBootstrap, cspSource] = await Promise.all([
+    readFile(runtime, 'utf8'), readFile(bridge, 'utf8'), readFile(bootstrap, 'utf8'), readFile(securityHeaders, 'utf8'),
   ]);
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body>
     <div class="probe" data-testid="host-probe">Host</div>
@@ -42,6 +43,7 @@ async function mount(page: Page, allowedNonce: string): Promise<void> {
       <script data-fly-actions="true" nonce="${nonce}">${actions}</script>
       <script data-fly-storefront-bridge="true" nonce="${nonce}">${storefrontBridge}</script>
     </section>
+    <script type="module" nonce="${nonce}">${navigationBootstrap}\nwindow.testNavigationGuard = installStorefrontNavigationGuard;</script>
   </body></html>`;
   await page.route('https://leptos-csp.test/**', (route) => route.fulfill({
     contentType: 'text/html',
@@ -61,6 +63,7 @@ async function expectUntrustedMarkupBlocked(page: Page): Promise<void> {
 
 test('matching CSP nonce allows landing CSS and runtime, not author script or inline attributes', async ({ page }) => {
   await mount(page, nonce);
+  await page.waitForFunction(() => typeof (window as unknown as { testNavigationGuard?: unknown }).testNavigationGuard === 'function');
   await expectUntrustedMarkupBlocked(page);
   await expect(page.getByTestId('panel')).toHaveCSS('color', 'rgb(1, 2, 3)');
   await expect(page.getByTestId('panel')).toBeHidden();
@@ -93,6 +96,7 @@ test('matching CSP nonce allows landing CSS and runtime, not author script or in
 
 test('a mismatched CSP nonce blocks the landing CSS and both scripts', async ({ page }) => {
   await mount(page, 'wrong_nonce');
+  expect(await page.evaluate(() => (window as unknown as { testNavigationGuard?: unknown }).testNavigationGuard)).toBeUndefined();
   await expectUntrustedMarkupBlocked(page);
   await expect(page.getByTestId('panel')).not.toHaveCSS('color', 'rgb(1, 2, 3)');
   await expect(page.getByTestId('count')).toHaveText('0');

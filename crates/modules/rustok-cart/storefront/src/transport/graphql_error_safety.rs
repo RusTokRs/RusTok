@@ -202,5 +202,5 @@ impl GraphqlCallContext {
 
 fn configured_tenant_slug_length() -> Option<usize> {
     // Observe the same canonical reader as the actual GraphQL request, not an env-only shadow.
-    leptos_auth::storage::get_tenant().map(|value| value.chars().count())
+    rustok_auth_ui::ui::leptos::storage::get_tenant().map(|value| value.chars().count())
 }

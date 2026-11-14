@@ -35,6 +35,19 @@ A classic Next.js host independently composes React components and routes.
 
 ---
 
+## Shared domain capability used by multiple surfaces
+
+The [Auth-owned client decision](../../DECISIONS/2026-11-13-auth-owned-client-ffa-boundary.md)
+applies this ownership rule. When admin and storefront need the same domain client lifecycle, the domain module
+may own a shared capability package next to its surface packages. Auth uses
+[`rustok-auth/ui`](../../crates/modules/rustok-auth/ui/README.md): one `core` /
+`model` / `transport` / `ui::leptos` boundary is consumed by both hosts and
+`rustok-auth/admin`. This capability is not a separately mounted storefront page,
+so page routes and locale catalogs remain with the admin surface. It must not pull
+the server-heavy backend into WASM, create a second provider, or infer server
+authorization from browser state. Feature propagation and real host behavior must
+be checked independently.
+
 ## The Three-Layer Split
 
 Every module-owned Leptos UI package is decomposed into three layers:

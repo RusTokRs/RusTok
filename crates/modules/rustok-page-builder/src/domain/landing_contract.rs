@@ -675,7 +675,7 @@ where
         ))
     };
     let mut pages = Vec::with_capacity(render_document.project.pages.len());
-    for page_index in 0..render_document.project.pages.len() {
+    for (page_index, _) in render_document.project.pages.iter().enumerate() {
         let rendered = renderer.render_page(&render_document, page_index, render_policy)?;
         if rendered.page_index != page_index {
             return Err(FlyError::Encode(format!(
@@ -866,6 +866,54 @@ mod tests {
         assert!(first.pages[0].document_html.contains("<title>Home</title>"));
         assert!(first.pages[0].body_html.contains("Stable landing"));
         first.verify_integrity().expect("valid artifact");
+    }
+
+    #[test]
+    fn static_artifact_keeps_sections_on_their_own_pages() {
+        let project = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "title": "Home", "description": "Home page", "slug": "home" },
+                "component": {
+                    "id": "home-root", "type": "wrapper",
+                    "components": [{ "id": "home-title", "type": "heading", "tagName": "h1", "content": "Home" }]
+                }
+            }, {
+                "id": "about",
+                "flyPageMeta": { "title": "About", "description": "About page", "slug": "about" },
+                "component": {
+                    "id": "about-root", "type": "wrapper",
+                    "components": [builtin_section(LandingSectionKind::Hero)]
+                }
+            }]
+        }))
+        .expect("project");
+        let result = build_static_landing_artifact(
+            &project,
+            &RegistrySet::with_builtins(),
+            LandingReadinessPolicy::default(),
+            &RenderPolicy::default(),
+        )
+        .expect("build");
+        assert!(result.ready, "{:?}", result.readiness.issues);
+        let artifact = result.artifact.expect("artifact");
+        assert_eq!(artifact.pages.len(), 2);
+        for (index, page) in artifact.pages.iter().enumerate() {
+            assert_eq!(page.page_index, index);
+            assert_eq!(
+                page.landing_sections,
+                result.landing_sections.pages[index].sections
+            );
+        }
+        assert_eq!(artifact.pages[0].page_id.as_deref(), Some("home"));
+        assert!(artifact.pages[0].landing_sections.is_empty());
+        assert_eq!(artifact.pages[1].page_id.as_deref(), Some("about"));
+        assert_eq!(artifact.pages[1].landing_sections.len(), 1);
+        assert_eq!(
+            artifact.pages[1].landing_sections[0].kind,
+            LandingSectionKind::Hero
+        );
+        artifact.verify_integrity().expect("valid artifact");
     }
 
     #[derive(Debug, Clone, Copy)]

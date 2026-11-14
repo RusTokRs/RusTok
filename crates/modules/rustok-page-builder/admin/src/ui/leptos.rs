@@ -157,6 +157,7 @@ impl PageBuilderAdminHostContext {
 
     /// Sets where the host serves the preview document as its own response.
     pub fn with_preview_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        let endpoint = endpoint.into();
         self.preview_endpoint = (!endpoint.trim().is_empty()).then_some(endpoint);
         self
     }

@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use serde_json::Value;
 
 use crate::features::email::transport;
