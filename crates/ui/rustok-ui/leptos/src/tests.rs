@@ -19,8 +19,12 @@ use crate::card::*;
 use crate::checkbox::*;
 use crate::dialog::*;
 use crate::input::*;
+use crate::language_toggle::*;
 use crate::progress::*;
+use crate::select::*;
 use crate::skeleton::*;
+use crate::spinner::*;
+use crate::success_message::*;
 use crate::switch::*;
 use crate::tabs::*;
 
@@ -218,6 +222,7 @@ fn test_dialog_root_and_trigger_render_ssr_state() {
     });
     assert!(html_open.contains("aria-expanded=\"true\""));
     assert!(html_open.contains("data-state=\"open\""));
+    assert!(html_open.contains("aria-controls=\"dialog-"));
 
     // Leptos Portal, like Radix's client portal, mounts overlay/content only in
     // the browser; the server output retains the trigger but no dialog panel.
@@ -232,6 +237,9 @@ fn test_render_checkbox_ssr() {
     let html_static = view_static.to_html();
     assert!(html_static.contains("type=\"checkbox\""));
     assert!(html_static.contains("id=\"terms\""));
+    assert!(html_static.contains("data-slot=\"checkbox\""));
+    assert!(html_static.contains("data-state=\"indeterminate\""));
+    assert!(html_static.contains("aria-checked=\"mixed\""));
 
     let is_ind = Signal::derive(|| true);
     let view_reactive = view! {
@@ -239,6 +247,9 @@ fn test_render_checkbox_ssr() {
     };
     let html_reactive = view_reactive.to_html();
     assert!(html_reactive.contains("type=\"checkbox\""));
+    assert!(html_reactive.contains("data-slot=\"checkbox\""));
+    assert!(html_reactive.contains("data-state=\"indeterminate\""));
+    assert!(html_reactive.contains("aria-checked=\"mixed\""));
 }
 
 #[test]
@@ -248,6 +259,7 @@ fn test_render_input_ssr() {
     };
     let html_plain = view_plain.to_html();
     assert!(html_plain.contains("placeholder=\"Enter username\""));
+    assert!(html_plain.contains("data-slot=\"input\""));
     assert!(!html_plain.contains("pl-9"));
 
     let view_adorned = view! {
@@ -258,6 +270,8 @@ fn test_render_input_ssr() {
         />
     };
     let html_adorned = view_adorned.to_html();
+    assert!(html_adorned.contains("data-slot=\"input-wrapper\""));
+    assert!(html_adorned.contains("data-slot=\"input\""));
     assert!(html_adorned.contains("pl-9"));
     assert!(html_adorned.contains("pr-9"));
     assert!(html_adorned.contains("🔍"));
@@ -274,6 +288,9 @@ fn test_render_toc_ssr() {
     };
     let html = view.to_html();
     assert!(html.contains("<nav"));
+    assert!(html.contains("data-slot=\"toc\""));
+    assert!(html.contains("data-slot=\"toc-header\""));
+    assert!(html.contains("data-slot=\"toc-list\""));
     assert!(html.contains("Содержание"));
     assert!(html.contains("Overview"));
     assert!(html.contains("Details"));
@@ -357,4 +374,78 @@ fn test_render_switch_ssr() {
     });
     assert!(html_controlled.contains("aria-checked=\"true\""));
     assert!(html_controlled.contains("data-state=\"checked\""));
+}
+
+#[test]
+fn test_render_select_ssr() {
+    let options = Signal::derive(|| {
+        vec![
+            SelectOption::new("opt1", "Option 1"),
+            SelectOption::new("opt2", "Option 2"),
+        ]
+    });
+    let view = view! {
+        <Select
+            id="test-select"
+            name="test-name"
+            options=options
+            placeholder="Select an item".to_string()
+            aria_label="Test Select"
+        />
+    };
+    let html = view.to_html();
+    assert!(html.contains("data-slot=\"select\""));
+    assert!(html.contains("id=\"test-select\""));
+    assert!(html.contains("name=\"test-name\""));
+    assert!(html.contains("aria-label=\"Test Select\""));
+    assert!(html.contains("Select an item"));
+    assert!(html.contains("Option 1"));
+    assert!(html.contains("Option 2"));
+}
+
+#[test]
+fn test_render_spinner_ssr() {
+    let view = view! {
+        <Spinner size=Size::Lg aria_label="Please wait" />
+    };
+    let html = view.to_html();
+    assert!(html.contains("data-slot=\"spinner\""));
+    assert!(html.contains("role=\"status\""));
+    assert!(html.contains("aria-label=\"Please wait\""));
+}
+
+#[test]
+fn test_render_success_message_ssr() {
+    let view = view! {
+        <SuccessMessage message="Item saved successfully!".to_string() />
+    };
+    let html = view.to_html();
+    assert!(html.contains("data-slot=\"success-message\""));
+    assert!(html.contains("role=\"status\""));
+    assert!(html.contains("Item saved successfully!"));
+}
+
+#[test]
+fn test_render_language_toggle_ssr() {
+    let current = Signal::derive(|| "en".to_string());
+    let options = vec![
+        LanguageToggleOption::new("en", "English"),
+        LanguageToggleOption::new("ru", "Русский"),
+    ];
+    let view = view! {
+        <LanguageToggle
+            current_locale=current
+            options=options
+            on_set_locale=|_| {}
+        />
+    };
+    let html = view.to_html();
+    assert!(html.contains("data-slot=\"language-toggle\""));
+    assert!(html.contains("data-slot=\"language-toggle-item\""));
+    assert!(html.contains("data-state=\"active\""));
+    assert!(html.contains("data-state=\"inactive\""));
+    assert!(html.contains("aria-pressed=\"true\""));
+    assert!(html.contains("aria-pressed=\"false\""));
+    assert!(html.contains("English"));
+    assert!(html.contains("Русский"));
 }

@@ -89,9 +89,8 @@ pub fn EmailSettingsPage() -> impl IntoView {
                 .0
             })
     };
-    // `Copy`, not `move`: the four inputs each capture it, and a moved closure would be `FnOnce`.
-    let field = |read: fn(&EmailSettingsEdits) -> Option<String>,
-                 backend: fn(&ResolvedEmailSettings) -> String| {
+    let field = move |read: fn(&EmailSettingsEdits) -> Option<String>,
+                      backend: fn(&ResolvedEmailSettings) -> String| {
         let edited = edits.get();
         read(&edited).or_else(|| resolved().map(|settings| backend(&settings)))
     };

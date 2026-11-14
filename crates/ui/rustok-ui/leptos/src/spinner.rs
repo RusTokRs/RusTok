@@ -33,6 +33,7 @@ pub fn Spinner(
     view! {
         <span
             role="status"
+            data-slot="spinner"
             aria-label=aria_label
             class=full_class
         />

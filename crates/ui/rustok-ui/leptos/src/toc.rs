@@ -56,10 +56,11 @@ pub fn TableOfContents(
     view! {
         <nav
             role="navigation"
+            data-slot="toc"
             aria-label=aria_title
             class=nav_class
         >
-            <div class=header_class>
+            <div data-slot="toc-header" class=header_class>
                 <svg
                     xmlns="http://www.w3.org/2000/svg"
                     width="16"
@@ -80,6 +81,7 @@ pub fn TableOfContents(
             </div>
             <ul
                 role="list"
+                data-slot="toc-list"
                 class=list_class
             >
                 {resolved_items

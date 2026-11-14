@@ -35,15 +35,22 @@ where
     F: Fn(&str) + 'static + Copy,
 {
     view! {
-        <div class="flex gap-2">
+        <div data-slot="language-toggle" class="flex gap-2">
             {options
                 .into_iter()
                 .map(|option| {
                     let locale_for_class = option.locale.clone();
+                    let locale_for_state = option.locale.clone();
+                    let locale_for_aria = option.locale.clone();
                     let locale_for_click = option.locale.clone();
                     view! {
                         <button
                             type="button"
+                            data-slot="language-toggle-item"
+                            data-state=move || {
+                                if current_locale.get() == locale_for_state { "active" } else { "inactive" }
+                            }
+                            aria-pressed=move || (current_locale.get() == locale_for_aria).to_string()
                             class=move || {
                                 let is_active = current_locale.get() == locale_for_class;
                                 if is_active {

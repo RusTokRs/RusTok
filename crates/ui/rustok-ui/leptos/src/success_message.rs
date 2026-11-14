@@ -9,11 +9,21 @@
  */
 
 use leptos::prelude::*;
+use rustok_ui::merge_classes;
 
 #[component]
-pub fn SuccessMessage(#[prop(into)] message: String) -> impl IntoView {
+pub fn SuccessMessage(
+    #[prop(into)] message: String,
+    #[prop(optional, into)] class: String,
+) -> impl IntoView {
+    let base_class = "rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400";
+    let full_class = merge_classes(&[base_class, class.as_str()]);
     view! {
-        <div class="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400">
+        <div
+            role="status"
+            data-slot="success-message"
+            class=full_class
+        >
             {message}
         </div>
     }

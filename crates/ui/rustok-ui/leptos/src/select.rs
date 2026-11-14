@@ -32,9 +32,16 @@ pub fn Select(
     #[prop(optional, into)] class: String,
     #[prop(optional, into)] id: String,
     #[prop(optional, into)] name: String,
+    #[prop(default = false)] required: bool,
+    #[prop(optional, into)] aria_label: String,
+    #[prop(optional, into)] aria_labelledby: String,
+    #[prop(optional, into)] aria_describedby: String,
 ) -> impl IntoView {
     let id = (!id.is_empty()).then_some(id);
     let name = (!name.is_empty()).then_some(name);
+    let aria_label = (!aria_label.is_empty()).then_some(aria_label);
+    let aria_labelledby = (!aria_labelledby.is_empty()).then_some(aria_labelledby);
+    let aria_describedby = (!aria_describedby.is_empty()).then_some(aria_describedby);
     let custom_class = StoredValue::new(class);
     let custom = move || custom_class.get_value();
     let full_class = move || {
@@ -49,10 +56,18 @@ pub fn Select(
     view! {
         <select
             id=id
+            data-slot="select"
             class=full_class
             disabled=move || disabled.get()
             aria-invalid=move || invalid.get()
+            data-invalid=move || invalid.get().then_some("")
+            data-disabled=move || disabled.get().then_some("")
+            aria-required=required.then_some("true")
+            aria-label=aria_label
+            aria-labelledby=aria_labelledby
+            aria-describedby=aria_describedby
             name=name
+            required=required
             prop:value=move || value.map(|v| v.get()).unwrap_or_default()
             on:change=move |ev| {
                 let selected = event_target_value(&ev);

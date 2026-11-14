@@ -17,6 +17,9 @@ use rustok_ui::{
     dialog_description_classes, dialog_footer_classes, dialog_header_classes, dialog_title_classes,
     merge_classes,
 };
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static DIALOG_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
 #[cfg(target_arch = "wasm32")]
 thread_local! {
@@ -209,6 +212,9 @@ struct DialogContext {
     set_open: Callback<bool>,
     modal: bool,
     last_trigger: RwSignal<Option<NodeRef<html::Button>>>,
+    content_id: RwSignal<String>,
+    title_id: RwSignal<String>,
+    description_id: RwSignal<String>,
 }
 
 fn expect_dialog_context() -> DialogContext {
@@ -260,6 +266,11 @@ pub fn Dialog(
     let open_signal =
         Signal::derive(move || open_prop.get().unwrap_or_else(|| internal_open.get()));
     let last_trigger = RwSignal::new(None::<NodeRef<html::Button>>);
+    let next_id = DIALOG_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let instance_id = format!("dialog-{next_id}");
+    let content_id = RwSignal::new(format!("{instance_id}-content"));
+    let title_id = RwSignal::new(format!("{instance_id}-title"));
+    let description_id = RwSignal::new(format!("{instance_id}-description"));
     let set_open = Callback::new(move |next_open| {
         if open_prop.get().is_none() {
             internal_open.set(next_open);
@@ -273,6 +284,9 @@ pub fn Dialog(
         set_open,
         modal,
         last_trigger,
+        content_id,
+        title_id,
+        description_id,
     });
 
     // When a dialog is closed by its content, restore focus to the trigger that
@@ -320,9 +334,8 @@ pub fn Dialog(
 
 /// Button that toggles the containing dialog.
 ///
-/// Set `aria_controls` to the corresponding [`DialogContent`] `id` to provide
-/// the trigger/panel relationship; automatic Radix-style ID generation is not
-/// yet provided.
+/// Can be paired explicitly via `aria_controls` or automatically linked to
+/// the containing [`DialogContent`].
 #[component]
 pub fn DialogTrigger(
     #[prop(default = false)] disabled: bool,
@@ -336,7 +349,11 @@ pub fn DialogTrigger(
     let context = expect_dialog_context();
     let id = (!id.is_empty()).then_some(id);
     let aria_label = (!aria_label.is_empty()).then_some(aria_label);
-    let aria_controls = (!aria_controls.is_empty()).then_some(aria_controls);
+    let aria_controls = if !aria_controls.is_empty() {
+        Some(aria_controls)
+    } else {
+        Some(context.content_id.get())
+    };
     let trigger_ref = NodeRef::<html::Button>::new();
     view! {
         <button
@@ -453,12 +470,23 @@ pub fn DialogContent(
     children: ChildrenFn,
 ) -> impl IntoView {
     let context = expect_dialog_context();
-    let id = (!id.is_empty()).then_some(id);
+    let id = if !id.is_empty() {
+        context.content_id.set(id.clone());
+        Some(id)
+    } else {
+        Some(context.content_id.get())
+    };
     let custom = (!class.is_empty()).then_some(class.as_str());
     let content_class = dialog_content_classes(true, custom);
     let close_class = dialog_close_classes(None);
     let label_attr = (!aria_label.is_empty()).then_some(aria_label);
-    let labelledby_attr = (!aria_labelledby.is_empty()).then_some(aria_labelledby);
+    let labelledby_attr = if !aria_labelledby.is_empty() {
+        Some(aria_labelledby)
+    } else if label_attr.is_none() {
+        Some(context.title_id.get())
+    } else {
+        None
+    };
     let describedby_attr = (!aria_describedby.is_empty()).then_some(aria_describedby);
     let dialog_ref = NodeRef::<html::Div>::new();
 
@@ -538,15 +566,23 @@ pub fn DialogHeader(#[prop(optional, into)] class: String, children: Children) -
     }
 }
 
-/// Dialog heading. Set `id` when the parent names itself through
-/// `aria_labelledby`.
+/// Dialog heading. Can be explicitly identified by `id`, or automatically
+/// linked to the enclosing [`DialogContent`].
 #[component]
 pub fn DialogTitle(
     #[prop(optional, into)] id: String,
     #[prop(optional, into)] class: String,
     children: Children,
 ) -> impl IntoView {
-    let id = (!id.is_empty()).then_some(id);
+    let context = use_context::<DialogContext>();
+    let id = if !id.is_empty() {
+        if let Some(ctx) = context {
+            ctx.title_id.set(id.clone());
+        }
+        Some(id)
+    } else {
+        context.map(|ctx| ctx.title_id.get())
+    };
     let custom = (!class.is_empty()).then_some(class.as_str());
     view! {
         <h2 id=id data-slot="dialog-title" class=dialog_title_classes(custom)>
@@ -555,14 +591,23 @@ pub fn DialogTitle(
     }
 }
 
-/// Supporting description. Give it an `id` to reference from `DialogContent`.
+/// Supporting description. Can be explicitly identified by `id`, or
+/// automatically linked to the enclosing [`DialogContent`].
 #[component]
 pub fn DialogDescription(
     #[prop(optional, into)] id: String,
     #[prop(optional, into)] class: String,
     children: Children,
 ) -> impl IntoView {
-    let id = (!id.is_empty()).then_some(id);
+    let context = use_context::<DialogContext>();
+    let id = if !id.is_empty() {
+        if let Some(ctx) = context {
+            ctx.description_id.set(id.clone());
+        }
+        Some(id)
+    } else {
+        context.map(|ctx| ctx.description_id.get())
+    };
     let custom = (!class.is_empty()).then_some(class.as_str());
     view! {
         <p id=id data-slot="dialog-description" class=dialog_description_classes(custom)>

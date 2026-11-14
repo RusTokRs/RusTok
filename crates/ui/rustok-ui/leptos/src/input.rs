@@ -44,6 +44,8 @@ pub fn Input(
     #[prop(optional, into)] name: String,
     #[prop(optional, into)] described_by: String,
     #[prop(optional, into)] input_mode: String,
+    #[prop(optional, into)] aria_label: String,
+    #[prop(optional, into)] aria_labelledby: String,
 ) -> impl IntoView {
     // A field is either an owned cell or a value derived from the response; the derived one wins
     // when given, so a caller migrating a form off an `Effect` does not have to invent a cell.
@@ -57,6 +59,8 @@ pub fn Input(
     let name = (!name.is_empty()).then_some(name);
     let described_by = (!described_by.is_empty()).then_some(described_by);
     let input_mode = (!input_mode.is_empty()).then_some(input_mode);
+    let aria_label = (!aria_label.is_empty()).then_some(aria_label);
+    let aria_labelledby = (!aria_labelledby.is_empty()).then_some(aria_labelledby);
     let custom_class = StoredValue::new(class);
     let custom = move || custom_class.get_value();
 
@@ -73,10 +77,15 @@ pub fn Input(
             <input
                 id=id
                 type=r#type
+                data-slot="input"
                 class=full_class
                 disabled=move || disabled.get()
                 aria-invalid=move || invalid.get()
+                data-invalid=move || invalid.get().then_some("")
+                data-disabled=move || disabled.get().then_some("")
                 aria-describedby=described_by
+                aria-label=aria_label.clone()
+                aria-labelledby=aria_labelledby.clone()
                 inputmode=input_mode
                 placeholder=placeholder
                 name=name
@@ -108,7 +117,7 @@ pub fn Input(
             full_class
         };
         view! {
-            <div class="relative flex items-center w-full">
+            <div data-slot="input-wrapper" class="relative flex items-center w-full">
                 {prefix.map(|p| view! {
                     <span class="pointer-events-none absolute left-3 flex items-center text-muted-foreground">
                         {p}
@@ -117,11 +126,16 @@ pub fn Input(
                 <input
                     id=id
                     type=r#type
+                    data-slot="input"
                     class=full_class
                     disabled=move || disabled.get()
                     aria-invalid=move || invalid.get()
-                aria-describedby=described_by
-                inputmode=input_mode
+                    data-invalid=move || invalid.get().then_some("")
+                    data-disabled=move || disabled.get().then_some("")
+                    aria-describedby=described_by
+                    aria-label=aria_label
+                    aria-labelledby=aria_labelledby
+                    inputmode=input_mode
                     placeholder=placeholder
                     name=name
                     prop:value=move || current_value()
