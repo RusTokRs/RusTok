@@ -119,6 +119,10 @@ impl OAuthAppService {
             &granted_permissions,
         )?;
         validate_app_display_fields(&input.name, Some(&input.slug), input.icon_url.as_deref())?;
+        // `(tenant_id, slug)` is a unique index. Probing first turns a colliding
+        // slug into a 409 the caller can act on, instead of a 500 raised from a
+        // constraint violation deep inside the insert transaction.
+        ensure_slug_available(db, tenant_id, &input.slug).await?;
 
         let client_id = Uuid::new_v4();
         let client_secret_plain = generate_client_secret()?;
@@ -1239,6 +1243,41 @@ async fn replace_oauth_secret_if_current(
 const OAUTH_APP_NAME_MAX_LEN: usize = 255;
 const OAUTH_APP_SLUG_MAX_LEN: usize = 100;
 const OAUTH_APP_ICON_URL_MAX_LEN: usize = 500;
+
+/// Reject a slug that is already taken within the tenant.
+///
+/// The uniqueness rule lives in `idx_oauth_apps_tenant_slug`; checking it up
+/// front keeps the failure a `Conflict` (409) rather than a generic 500 derived
+/// from the constraint violation, and the message tells the operator which
+/// field collided. The check is advisory: the unique index remains the
+/// authority, so a race between two concurrent creates still cannot persist a
+/// duplicate.
+async fn ensure_slug_available(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) -> Result<()> {
+    let taken = OAuthApps::find()
+        .filter(
+            sea_orm::Condition::all()
+                .add(oauth_apps::Column::TenantId.eq(tenant_id))
+                .add(oauth_apps::Column::Slug.eq(slug)),
+        )
+        .one(db)
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                error = %error,
+                "Failed to check OAuth app slug availability"
+            );
+            Error::InternalServerError
+        })?
+        .is_some();
+
+    if taken {
+        return Err(Error::Conflict(format!(
+            "OAuth app slug `{slug}` is already in use for this tenant"
+        )));
+    }
+    Ok(())
+}
 
 fn validate_app_display_fields(
     name: &str,
