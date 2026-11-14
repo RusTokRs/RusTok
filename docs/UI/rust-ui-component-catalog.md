@@ -51,13 +51,13 @@ covered. Components not yet given that feature audit remain provisional.
 | Select | `crates/ui/rustok-ui/leptos/src/select.rs` | `apps/next-admin/src/shared/ui/shadcn/select.tsx` | functional audit pending |
 | Spinner | `crates/ui/rustok-ui/leptos/src/spinner.rs` | `apps/next-admin/src/shared/ui/icons.tsx` (spinner icon only) | no shared component counterpart identified |
 | Progress | `crates/ui/rustok-ui/leptos/src/progress.rs` | `apps/next-admin/src/shared/ui/shadcn/progress.tsx` | range/orientation/ARIA behavior implemented; generic DOM-prop forwarding and validation pending |
-| Switch | `crates/ui/rustok-ui/leptos/src/switch.rs` | `apps/next-admin/src/shared/ui/shadcn/switch.tsx` | functional audit pending |
+| Switch | `crates/ui/rustok-ui/leptos/src/switch.rs` | `apps/next-admin/src/shared/ui/shadcn/switch.tsx` | full parity across Leptos and Next.js (controlled/uncontrolled, WAI-ARIA, Radix `data-state`/`data-slot`, form submission) |
 | Textarea | `crates/ui/rustok-ui/leptos/src/textarea.rs` | `apps/next-admin/src/shared/ui/shadcn/textarea.tsx` | functional audit pending |
 | Avatar | `crates/ui/rustok-ui/leptos/src/avatar.rs` | `apps/next-admin/src/shared/ui/shadcn/avatar.tsx` | functional audit pending |
 | Skeleton | `crates/ui/rustok-ui/leptos/src/skeleton.rs` | `apps/next-admin/src/shared/ui/shadcn/skeleton.tsx` | functional audit pending |
 | Dialog | `crates/ui/rustok-ui/leptos/src/dialog.rs` | `apps/next-admin/src/shared/ui/shadcn/dialog.tsx` (`@radix-ui/react-dialog`) | feature parity in progress; see current gaps below |
 | Card | `crates/ui/rustok-ui/leptos/src/card.rs` | `apps/next-admin/src/shared/ui/shadcn/card.tsx` | functional audit pending |
-| Tabs | `crates/ui/rustok-ui/leptos/src/tabs.rs` | `apps/next-admin/src/shared/ui/shadcn/tabs.tsx` | functional audit pending |
+| Tabs | `crates/ui/rustok-ui/leptos/src/tabs.rs` | `apps/next-admin/src/shared/ui/shadcn/tabs.tsx` | full parity across Leptos and Next.js (TabsContext, roving tabindex, W3C arrow navigation, controlled/uncontrolled) |
 | Label | `crates/ui/rustok-ui/leptos/src/label.rs` | `apps/next-admin/src/shared/ui/shadcn/label.tsx` | functional audit pending |
 | Separator | `crates/ui/rustok-ui/leptos/src/separator.rs` | `apps/next-admin/src/shared/ui/shadcn/separator.tsx` | functional audit pending |
 | TableOfContents | `crates/ui/rustok-ui/leptos/src/toc.rs` (`rustok-ui-leptos`), `crates/ui/rustok-ui/dioxus/src/toc.rs` | `apps/next-frontend/src/shared/ui/table-of-contents.tsx` | full parity across Leptos, Dioxus, and Next.js for Blog, Forum, and Product Descriptions |
@@ -87,6 +87,20 @@ explicitly resolved and tested against the Next wrapper. The Dioxus `Dialog`
 adapter remains a single host-managed wrapper and is also a known parity gap; the
 Leptos adapter is the web path being aligned with `apps/next-admin` here.
 
+### Tabs & Switch feature-parity specification
+
+- **Tabs (`crates/ui/rustok-ui/leptos/src/tabs.rs`)**:
+  - Context & State: declarative subtree coordination via `TabsContext` (`value: Signal<String>`, `set_value`, `orientation`).
+  - Modes: supports controlled mode (`value` + `on_value_change`) and uncontrolled mode (`default_value`). Backwards-compatible with legacy `active: bool` direct props.
+  - Accessibility: WAI-ARIA `role="tablist"`, `aria-orientation`, `role="tab"`, `aria-selected`, `aria-controls`, `role="tabpanel"`, `aria-labelledby`.
+  - Keyboard Navigation: roving `tabindex` (`"0"` on active tab, `"-1"` on inactive tabs) and client-side arrow key navigation on `wasm32` (`ArrowRight`/`ArrowLeft`/`ArrowDown`/`ArrowUp`/`Home`/`End`) with focus wrapping and selection trigger.
+
+- **Switch (`crates/ui/rustok-ui/leptos/src/switch.rs`)**:
+  - State: supports controlled mode (`checked` + `set_checked` / `on_checked_change`) and uncontrolled mode (`default_checked`).
+  - Accessibility: WAI-ARIA `role="switch"`, `aria-checked`, `aria-label`, `aria-labelledby`, `data-disabled`.
+  - CSS & Radix Parity: `data-state="checked" | "unchecked"` and `data-slot="switch"` / `data-slot="switch-thumb"` matching Radix/Shadcn Tailwind selectors.
+  - Form Integration: renders a hidden accessible `<input type="checkbox">` when `name` is provided to allow native HTML form submission and `FormData` extraction.
+
 Progress work currently covers the wrapper's value/max range, orientation, ARIA
 naming and text, state/data attributes, and normalized visual percentage;
 generic DOM-prop forwarding and runtime validation are still pending. Keep
@@ -101,15 +115,18 @@ because its base markup or class names match.
 - `Input`
 - `Badge`
 - `Alert`
-- `Card`
-- `CardHeader`
-- `CardTitle`
-- `CardDescription`
-- `CardAction`
-- `CardContent`
-- `CardFooter`
+- `Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardAction`, `CardContent`, `CardFooter`
+- `Checkbox`
+- `Dialog`, `DialogTrigger`, `DialogContent`, `DialogHeader`, `DialogFooter`, `DialogTitle`, `DialogDescription`, `DialogClose`, `DialogOverlay`, `DialogPortal`
 - `Label`
+- `Progress`
+- `Select`
 - `Separator`
+- `Skeleton`
+- `Spinner`
+- `Switch`
+- `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent`, `TabsContext`, `use_tabs_context`
+- `Textarea`
 - `LanguageToggle`
 - `RichTextHtml` for editor-free rendering of a typed, server-derived
   `RichTextView`
