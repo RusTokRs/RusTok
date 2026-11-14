@@ -36,6 +36,18 @@ use crate::policy::{
 use crate::resolution::TargetSurface;
 use crate::target_type::ChannelTargetType;
 
+/// Column widths the channel schema enforces.
+///
+/// PostgreSQL `varchar(n)` counts characters while Rust `str::len()` counts
+/// bytes, so these limits are checked with `chars().count()`: using byte length
+/// rejected valid multi-byte names and, worse, let ASCII values longer than the
+/// column through to fail later as a database error.
+const CHANNEL_SLUG_MAX_CHARS: usize = 100;
+const CHANNEL_NAME_MAX_CHARS: usize = 255;
+const CHANNEL_MODULE_SLUG_MAX_CHARS: usize = 100;
+const CHANNEL_POLICY_SET_SLUG_MAX_CHARS: usize = 100;
+const CHANNEL_TARGET_VALUE_MAX_CHARS: usize = 500;
+
 #[derive(Debug, Clone)]
 pub struct ChannelService {
     db: DatabaseConnection,
@@ -62,10 +74,10 @@ impl ChannelService {
                 "channel slug must not be empty".to_string(),
             ));
         }
-        if slug.len() > 255 {
-            return Err(ChannelError::Validation(
-                "channel slug must not exceed 255 characters".to_string(),
-            ));
+        if slug.chars().count() > CHANNEL_SLUG_MAX_CHARS {
+            return Err(ChannelError::Validation(format!(
+                "channel slug must not exceed {CHANNEL_SLUG_MAX_CHARS} characters"
+            )));
         }
         let name = input.name.trim().to_string();
         if name.is_empty() {
@@ -73,10 +85,10 @@ impl ChannelService {
                 "channel name must not be empty".to_string(),
             ));
         }
-        if name.len() > 255 {
-            return Err(ChannelError::Validation(
-                "channel name must not exceed 255 characters".to_string(),
-            ));
+        if name.chars().count() > CHANNEL_NAME_MAX_CHARS {
+            return Err(ChannelError::Validation(format!(
+                "channel name must not exceed {CHANNEL_NAME_MAX_CHARS} characters"
+            )));
         }
 
         if let Some(_existing) = channel::Entity::find()
@@ -643,10 +655,10 @@ impl ChannelService {
                 "module_slug must not be empty".to_string(),
             ));
         }
-        if module_slug.len() > 255 {
-            return Err(ChannelError::Validation(
-                "module_slug must not exceed 255 characters".to_string(),
-            ));
+        if module_slug.chars().count() > CHANNEL_MODULE_SLUG_MAX_CHARS {
+            return Err(ChannelError::Validation(format!(
+                "module_slug must not exceed {CHANNEL_MODULE_SLUG_MAX_CHARS} characters"
+            )));
         }
 
         let now = chrono::Utc::now().into();
@@ -796,10 +808,10 @@ impl ChannelService {
                 "policy set slug must not be empty".to_string(),
             ));
         }
-        if slug.len() > 255 {
-            return Err(ChannelError::Validation(
-                "policy set slug must not exceed 255 characters".to_string(),
-            ));
+        if slug.chars().count() > CHANNEL_POLICY_SET_SLUG_MAX_CHARS {
+            return Err(ChannelError::Validation(format!(
+                "policy set slug must not exceed {CHANNEL_POLICY_SET_SLUG_MAX_CHARS} characters"
+            )));
         }
         let name = input.name.trim().to_string();
         if name.is_empty() {
@@ -807,10 +819,10 @@ impl ChannelService {
                 "policy set name must not be empty".to_string(),
             ));
         }
-        if name.len() > 255 {
-            return Err(ChannelError::Validation(
-                "policy set name must not exceed 255 characters".to_string(),
-            ));
+        if name.chars().count() > CHANNEL_NAME_MAX_CHARS {
+            return Err(ChannelError::Validation(format!(
+                "policy set name must not exceed {CHANNEL_NAME_MAX_CHARS} characters"
+            )));
         }
 
         if let Some(_existing) = channel_resolution_policy_set::Entity::find()
@@ -1526,8 +1538,17 @@ fn to_channel_resolution_rule_response(
     })
 }
 
+/// Normalize a target value, rejecting anything the `channel_targets.value`
+/// column cannot store.
+///
+/// Only the web-domain branch is bounded by hostname rules; every other target
+/// type (mobile app, API client, embedded, external) is free-form text that went
+/// straight into a `varchar(500)` column, so an over-long value surfaced as a
+/// database error instead of a rejected input.
 fn normalize_target_value(target_type: ChannelTargetType, raw: &str) -> Option<String> {
-    target_type.normalize_value(raw)
+    target_type
+        .normalize_value(raw)
+        .filter(|value| value.chars().count() <= CHANNEL_TARGET_VALUE_MAX_CHARS)
 }
 
 fn normalize_optional_patch_text(raw: String) -> Option<String> {
@@ -1713,6 +1734,69 @@ mod tests {
         assert!(second.is_default, "new default must be marked");
         assert_eq!(listed[0].channel.id, second_channel_id);
         assert_eq!(default.channel.id, second_channel_id);
+    }
+
+    #[tokio::test]
+    async fn rejects_slug_beyond_the_column_width_and_counts_characters() {
+        let db = setup_channel_db().await;
+        let tenant_id = Uuid::new_v4();
+        seed_tenant(&db, tenant_id, "limits").await;
+        let service = ChannelService::new(db);
+
+        // `channels.slug` is varchar(100): 101 characters must be rejected here
+        // rather than reaching the insert and failing as a database error.
+        let error = service
+            .create_channel(CreateChannelInput {
+                tenant_id,
+                slug: "a".repeat(101),
+                name: "Too long".to_string(),
+                settings: None,
+            })
+            .await
+            .expect_err("a slug beyond the column width must be rejected");
+        assert!(matches!(error, ChannelError::Validation(_)), "{error:?}");
+
+        // Exactly at the limit is accepted: the check must not be off by one.
+        service
+            .create_channel(CreateChannelInput {
+                tenant_id,
+                slug: "a".repeat(100),
+                name: "At limit".to_string(),
+                settings: None,
+            })
+            .await
+            .expect("a slug of exactly 100 characters must be accepted");
+
+        // `channels.name` is varchar(255) counted in characters, so a 200-char
+        // Cyrillic name (400 bytes) is valid and must not be rejected on byte
+        // length alone.
+        let multi_byte_name = "я".repeat(200);
+        assert_eq!(
+            multi_byte_name.len(),
+            400,
+            "test premise: two bytes per Cyrillic character"
+        );
+        service
+            .create_channel(CreateChannelInput {
+                tenant_id,
+                slug: "cyrillic".to_string(),
+                name: multi_byte_name,
+                settings: None,
+            })
+            .await
+            .expect("a 200-character multi-byte name must be accepted");
+
+        // One character past the name width is still rejected.
+        let error = service
+            .create_channel(CreateChannelInput {
+                tenant_id,
+                slug: "too-many-chars".to_string(),
+                name: "я".repeat(256),
+                settings: None,
+            })
+            .await
+            .expect_err("a name beyond 255 characters must be rejected");
+        assert!(matches!(error, ChannelError::Validation(_)), "{error:?}");
     }
 
     #[tokio::test]
