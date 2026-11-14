@@ -76,7 +76,7 @@ pub fn CartClient(
     on_ready.run(controller);
     let labels = StoredValue::new(labels(locale.as_deref()));
     let locale = StoredValue::new(locale);
-    let change_open = Callback::new(move |next| {
+    let change_open = Callback::new(move |next: bool| {
         if !next || controller.context_ready() {
             drawer.set(next);
         }

@@ -9,7 +9,7 @@ pub mod model;
 pub mod transport;
 mod ui;
 
-pub use ui::client::CartClient;
+pub use ui::CartClient;
 pub use ui::leptos::{CartCheckoutHandoffCard, CartHeaderTrigger, CartView};
 
 #[cfg(test)]
