@@ -503,9 +503,10 @@
       "category": "modules",
       "files": 86,
       "loc": 31472,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T03:25:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID validation in ShippingSelectionPort and FulfillmentService; typed status transitions in FulfillmentStatusKind (can_ship, can_deliver, is_terminal); atomic shipment stock movement via ShipmentStockPort with replay protection; provider operation journaling and reconciliation; checkout fulfillment identity anchor",
+      "last_audited": "2026-11-14"
     },
     "crates/modules/rustok-fulfillment/admin": {
       "name": "admin",
@@ -513,9 +514,10 @@
       "category": "modules",
       "files": 9,
       "loc": 2077,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T03:25:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, shipping option grid definition with bilingual filters (ru/en), normalized request pagination bounds, robust error mapping",
+      "last_audited": "2026-11-14"
     },
     "crates/modules/rustok-fulfillment/storefront": {
       "name": "storefront",
@@ -523,9 +525,10 @@
       "category": "modules",
       "files": 13,
       "loc": 1730,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T03:25:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in parse_optional_uuid and storefront_fulfillment_select_shipping_option_native, bounded selection updates, safe error reporting",
+      "last_audited": "2026-11-14"
     },
     "crates/modules/rustok-groups": {
       "name": "rustok-groups",
