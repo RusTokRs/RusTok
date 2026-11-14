@@ -237,7 +237,9 @@ async fn main() {
         use rustok_pages_admin::PagesBrowserIntentError as Error;
         let (status, message) = match &error {
             Error::PageNotFound => (StatusCode::NOT_FOUND, "The page to preview was not found"),
-            Error::DraftUnavailable => (StatusCode::CONFLICT, "The draft is unavailable or expired"),
+            Error::DraftUnavailable => {
+                (StatusCode::CONFLICT, "The draft is unavailable or expired")
+            }
             Error::DocumentUnavailable => (
                 StatusCode::FORBIDDEN,
                 "The document of this page is not available to this principal",

@@ -2,8 +2,8 @@ use super::options::ScaffoldOptions;
 use anyhow::{Context, Result};
 use std::{fs, path::Path};
 use syn::{
-    punctuated::Punctuated, spanned::Spanned, visit::Visit, Expr, Item, ItemFn, Lit, Meta, Pat,
-    Stmt, Token,
+    Expr, Item, ItemFn, Lit, Meta, Pat, Stmt, Token, punctuated::Punctuated, spanned::Spanned,
+    visit::Visit,
 };
 
 pub(super) const DISTRIBUTION_SOURCE: &str = "crates/modules/rustok-distribution/src/lib.rs";
@@ -47,8 +47,10 @@ pub(super) fn register(root: &Path, opts: &ScaffoldOptions, pascal: &str) -> Res
     } else {
         format!("{eol}{indent}")
     };
-    let line = format!("{leading}#[cfg(feature = \"{}\")]{eol}{indent}let registry = registry.register({}::{});{eol}{indent}",
-        expected.feature, expected.crate_name, expected.module);
+    let line = format!(
+        "{leading}#[cfg(feature = \"{}\")]{eol}{indent}let registry = registry.register({}::{});{eol}{indent}",
+        expected.feature, expected.crate_name, expected.module
+    );
     source.insert_str(offset, &line);
     fs::write(path, source)?;
     Ok(())

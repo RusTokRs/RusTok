@@ -299,9 +299,7 @@ impl MediaGrpcBearerInterceptor {
         secret: impl AsRef<str>,
         actor: PortActor,
     ) -> Result<Self, MediaGrpcAuthenticationError> {
-        Ok(Self::new(MediaGrpcBearerAuthenticator::new(
-            secret, actor,
-        )?))
+        Ok(Self::new(MediaGrpcBearerAuthenticator::new(secret, actor)?))
     }
 }
 
@@ -337,4 +335,3 @@ mod tests {
         }
     }
 }
-

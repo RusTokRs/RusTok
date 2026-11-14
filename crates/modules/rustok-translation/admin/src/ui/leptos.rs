@@ -1,14 +1,14 @@
 use leptos::task::spawn_local;
 use leptos::{html, prelude::*};
-use rustok_ui_leptos::{
-    Alert, AlertVariant, Badge, BadgeVariant, Button, ButtonVariant, Card, CardContent,
-    CardDescription, CardHeader, CardTitle, Checkbox, Input, Label, Select, SelectOption, Textarea,
-};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::UiRouteContext;
+use rustok_ui_leptos::{
+    Alert, AlertVariant, Badge, BadgeVariant, Button, ButtonVariant, Card, CardContent,
+    CardDescription, CardHeader, CardTitle, Checkbox, Input, Label, Select, SelectOption, Textarea,
+};
 
 use crate::core::{self, ProposalCommand, TranslationAdminTab, operation_receipt_view_model};
 use crate::i18n::t;

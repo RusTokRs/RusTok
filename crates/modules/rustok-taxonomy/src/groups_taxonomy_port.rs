@@ -52,11 +52,9 @@ fn map_taxonomy_error(err: TaxonomyError) -> GroupsError {
         | TaxonomyError::DuplicateSlug(msg)
         | TaxonomyError::DuplicateAlias(msg)
         | TaxonomyError::Conflict(msg) => GroupsError::Conflict(msg),
-        TaxonomyError::TranslationRevisionExhausted { term_id, locale } => {
-            GroupsError::Conflict(format!(
-                "Translation revision exhausted for term {term_id} locale {locale}"
-            ))
-        }
+        TaxonomyError::TranslationRevisionExhausted { term_id, locale } => GroupsError::Conflict(
+            format!("Translation revision exhausted for term {term_id} locale {locale}"),
+        ),
         TaxonomyError::Internal(msg) => GroupsError::Invariant(msg),
     }
 }

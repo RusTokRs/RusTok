@@ -221,9 +221,9 @@ fn normalize_taxonomy_category_color(value: &str) -> Result<Option<String>, Stri
     if trimmed.is_empty() {
         return Ok(None);
     }
-    let digits = trimmed.strip_prefix('#').ok_or_else(|| {
-        "Category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA".to_string()
-    })?;
+    let digits = trimmed
+        .strip_prefix('#')
+        .ok_or_else(|| "Category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA".to_string())?;
     if !matches!(digits.len(), 3 | 4 | 6 | 8) || !digits.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err("Category color must use #RGB, #RGBA, #RRGGBB, or #RRGGBBAA".to_string());
     }

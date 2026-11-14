@@ -1,5 +1,5 @@
 use crate::module_cli_args::cli_option_value;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::collections::HashSet;
 
 /// Architectural roles are distinct even when their output is a Rust crate.
@@ -107,7 +107,9 @@ fn validate_scaffold_arguments(args: &[String]) -> Result<()> {
                     .chars()
                     .any(|ch| ch.is_control() || ch == '|' || ch == '\u{2028}' || ch == '\u{2029}')
             {
-                bail!("Scaffold option '{flag}' must be a single line without control characters or '|' table delimiters");
+                bail!(
+                    "Scaffold option '{flag}' must be a single line without control characters or '|' table delimiters"
+                );
             }
             index += 2;
         } else {
@@ -254,17 +256,25 @@ impl ScaffoldOptions {
 pub fn print_scaffold_usage() {
     println!("Usage:");
     println!("  cargo xtask scaffold <slug> [OPTIONS]");
-    println!("  cargo xtask scaffold --recover   Recover an interrupted operation without creating a module");
+    println!(
+        "  cargo xtask scaffold --recover   Recover an interrupted operation without creating a module"
+    );
     println!("  cargo xtask module new <slug> [OPTIONS]");
     println!();
     println!("Options:");
-    println!("  --profile native         Native runtime module (default); support/WASI are separate workflows");
+    println!(
+        "  --profile native         Native runtime module (default); support/WASI are separate workflows"
+    );
     println!("  --title <title>          Human-readable title (defaults to Title Case of slug)");
     println!("  --description <desc>     Module description for documentation and manifests");
     println!("  --category <cat>         Marketplace category (default: 'collaboration')");
     println!("  --no-db                  No storage schema (default)");
-    println!("  --with-db                Requires a defined owner schema; unsupported until DB template cutover");
-    println!("  --ui <mode>              none (default), admin, storefront, dual; creates unmounted Leptos FFA crates");
+    println!(
+        "  --with-db                Requires a defined owner schema; unsupported until DB template cutover"
+    );
+    println!(
+        "  --ui <mode>              none (default), admin, storefront, dual; creates unmounted Leptos FFA crates"
+    );
     println!("  --with-ui                Alias for --ui dual; draft crates are created unmounted");
     println!("  --no-ui                  Explicit headless module (same as default)");
     println!("  --skip-server-wire       Leave server and distribution wiring unchanged");
@@ -274,14 +284,18 @@ pub fn print_scaffold_usage() {
     );
     println!();
     println!("Examples:");
-    println!("  cargo xtask scaffold calls --title \"WebRTC Calls & Conferencing\" --category collaboration");
+    println!(
+        "  cargo xtask scaffold calls --title \"WebRTC Calls & Conferencing\" --category collaboration"
+    );
     println!(
         "  cargo xtask scaffold party --title \"Counterparty & Legal Entities\" --category crm"
     );
     println!(
         "  cargo xtask scaffold page_builder --title \"Visual Page Builder\" --category content"
     );
-    println!("  cargo xtask scaffold digital-wallet --title \"Digital Wallet & Balance\" --category fintech");
+    println!(
+        "  cargo xtask scaffold digital-wallet --title \"Digital Wallet & Balance\" --category fintech"
+    );
 }
 
 pub fn is_valid_slug(slug: &str) -> bool {

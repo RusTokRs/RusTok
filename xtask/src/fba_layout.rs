@@ -1,5 +1,5 @@
 use crate::manifest_io::load_manifest_from;
-use anyhow::{ensure, Context, Result};
+use anyhow::{Context, Result, ensure};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path};
@@ -46,7 +46,7 @@ pub(crate) fn lint(workspace: &Path, slug: &str, required: bool) -> Result<()> {
             return Ok(());
         }
         Err(error) => {
-            return Err(error).with_context(|| format!("Cannot inspect {}", ports_root.display()))
+            return Err(error).with_context(|| format!("Cannot inspect {}", ports_root.display()));
         }
     }
 
@@ -285,10 +285,18 @@ fn check_service(owner: &Value, root: &Path, grpc_ports_key: Option<&str>) -> Re
     ensure!(
         service.next().is_none()
             && root.join(SERVICE_BIN).is_file()
-            && owner.get("package").and_then(|package| package.get("autobins"))
-                .and_then(Value::as_bool) == Some(false)
-            && bin.get("name").and_then(Value::as_str).is_some_and(|name| !name.is_empty())
-            && bin.get("required-features").is_some_and(|value| strings(value).eq(["service"])),
+            && owner
+                .get("package")
+                .and_then(|package| package.get("autobins"))
+                .and_then(Value::as_bool)
+                == Some(false)
+            && bin
+                .get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| !name.is_empty())
+            && bin
+                .get("required-features")
+                .is_some_and(|value| strings(value).eq(["service"])),
         "The owner service requires an explicit [[bin]] name, path = \"src/bin/service.rs\", required-features = [\"service\"] and package.autobins = false"
     );
     ensure!(

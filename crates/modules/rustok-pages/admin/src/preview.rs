@@ -203,8 +203,12 @@ mod tests {
             Some("gone-token"),
             serde_json::json!({}),
             None,
-        ).await;
-        assert!(matches!(result, Err(crate::browser_intent::PagesBrowserIntentError::DraftUnavailable)));
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(crate::browser_intent::PagesBrowserIntentError::DraftUnavailable)
+        ));
     }
 
     use super::{PREVIEW_FRAME_ANCESTORS, pages_server_preview_policy};

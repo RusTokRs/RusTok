@@ -245,7 +245,9 @@ fn command_failed(error: impl std::fmt::Display) -> CliCoreError {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEVELOPMENT_APP_LOCALE, create_development_app, required_tenant_id, validate_identity};
+    use super::{
+        DEVELOPMENT_APP_LOCALE, create_development_app, required_tenant_id, validate_identity,
+    };
     use rustok_cli_core::CliCoreError;
     use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
     use uuid::Uuid;

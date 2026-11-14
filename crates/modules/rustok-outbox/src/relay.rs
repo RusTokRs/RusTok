@@ -218,7 +218,8 @@ impl OutboxRelay {
         }
         if self.config.backoff_max < self.config.backoff_base {
             return Err(Error::Validation(
-                "outbox relay backoff_max must be greater than or equal to backoff_base".to_string(),
+                "outbox relay backoff_max must be greater than or equal to backoff_base"
+                    .to_string(),
             ));
         }
         Ok(())

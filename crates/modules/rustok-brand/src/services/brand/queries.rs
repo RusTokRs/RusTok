@@ -132,8 +132,7 @@ impl BrandService {
         };
 
         let brand_ids: Vec<Uuid> = brands.iter().map(|b| b.id).collect();
-        let mut translations_by_brand =
-            load_translations_batch(&self.db, &brand_ids).await?;
+        let mut translations_by_brand = load_translations_batch(&self.db, &brand_ids).await?;
 
         let mut dtos = Vec::with_capacity(brands.len());
         for brand in brands {
@@ -262,8 +261,7 @@ impl BrandService {
             .await?;
 
         let brand_ids_vec: Vec<Uuid> = brands.iter().map(|b| b.id).collect();
-        let mut translations_by_brand =
-            load_translations_batch(&self.db, &brand_ids_vec).await?;
+        let mut translations_by_brand = load_translations_batch(&self.db, &brand_ids_vec).await?;
 
         let mut map: std::collections::HashMap<Uuid, BrandDto> =
             std::collections::HashMap::with_capacity(brands.len());

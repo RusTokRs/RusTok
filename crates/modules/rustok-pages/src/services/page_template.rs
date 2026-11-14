@@ -115,7 +115,9 @@ impl PageTemplateService {
         if security.is_public_read()
             || security.get_scope(Resource::Pages, Action::Create) == PermissionScope::None
         {
-            return Err(PagesError::forbidden("Layout key selection requires Pages creation permission"));
+            return Err(PagesError::forbidden(
+                "Layout key selection requires Pages creation permission",
+            ));
         }
         let locale = normalize_locale(locale)?;
         if security.get_scope(Resource::Pages, Action::Manage) != PermissionScope::All {
@@ -128,7 +130,8 @@ impl PageTemplateService {
             .filter(page_template::Column::Locale.eq(locale))
             .order_by_asc(page_template::Column::TemplateKey)
             .into_tuple::<String>()
-            .all(&self.db).await?;
+            .all(&self.db)
+            .await?;
         let mut keys = vec!["default".to_string()];
         for key in items {
             if key != "default" && !keys.contains(&key) {
@@ -379,7 +382,10 @@ async fn lock_sqlite_template_writer(
     // Acquire SQLite's write reservation before the existence/usage read. An
     // incompatible snapshot returns SQLITE_BUSY rather than committing stale data.
     page_template::Entity::update_many()
-        .col_expr(page_template::Column::Revision, Expr::col(page_template::Column::Revision))
+        .col_expr(
+            page_template::Column::Revision,
+            Expr::col(page_template::Column::Revision),
+        )
         .filter(page_template::Column::TenantId.eq(tenant_id))
         .filter(page_template::Column::Locale.eq(locale))
         .filter(page_template::Column::TemplateKey.eq(key))

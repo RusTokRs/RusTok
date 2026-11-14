@@ -378,16 +378,36 @@ fn project(
         );
     }
     Ok(BuildInputs {
-        source_sha256: snapshot.sha256.clone(), lockfile_sha256,
-        configuration_inputs: snapshot.files.iter().filter(|file| matches!(file.path.as_str(),
-            "Cargo.toml" | ".cargo/config" | ".cargo/config.toml" | "rust-toolchain" | "rust-toolchain.toml"
-        )).cloned().collect(),
-        host_target: host.to_owned(), root_package: identities[root_id].clone(), packages: resolved,
+        source_sha256: snapshot.sha256.clone(),
+        lockfile_sha256,
+        configuration_inputs: snapshot
+            .files
+            .iter()
+            .filter(|file| {
+                matches!(
+                    file.path.as_str(),
+                    "Cargo.toml"
+                        | ".cargo/config"
+                        | ".cargo/config.toml"
+                        | "rust-toolchain"
+                        | "rust-toolchain.toml"
+                )
+            })
+            .cloned()
+            .collect(),
+        host_target: host.to_owned(),
+        root_package: identities[root_id].clone(),
+        packages: resolved,
         coverage: Coverage {
             resolution: "native normal/build dependency closure from filtered workspace metadata",
             feature_precision: "workspace resolution may include features from unbuilt workspace/dev consumers; not an exact compilation unit graph",
-            unverified: ["external package bytes", "generated inputs", "build-script and proc-macro effects",
-                "ambient native/toolchain inputs", "per-migration source attribution"],
+            unverified: [
+                "external package bytes",
+                "generated inputs",
+                "build-script and proc-macro effects",
+                "ambient native/toolchain inputs",
+                "per-migration source attribution",
+            ],
         },
     })
 }
@@ -395,7 +415,7 @@ fn project(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     struct Fixture {
         directory: PathBuf,
@@ -413,10 +433,22 @@ mod tests {
             let root = directory.join("source");
             fs::create_dir_all(&root)?;
             for (path, bytes) in [
-                ("Cargo.toml", "[workspace]\nmembers = [\"crates/utils/rustok-migrations\"]\nresolver = \"2\"\n"),
-                ("Cargo.lock", "version = 4\n\n[[package]]\nname = \"rustok-migrations\"\nversion = \"0.1.0\"\n"),
-                (ROOT_MANIFEST, "[package]\nname = \"rustok-migrations\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"),
-                ("crates/utils/rustok-migrations/src/lib.rs", "pub fn migration_source() {}\n"),
+                (
+                    "Cargo.toml",
+                    "[workspace]\nmembers = [\"crates/utils/rustok-migrations\"]\nresolver = \"2\"\n",
+                ),
+                (
+                    "Cargo.lock",
+                    "version = 4\n\n[[package]]\nname = \"rustok-migrations\"\nversion = \"0.1.0\"\n",
+                ),
+                (
+                    ROOT_MANIFEST,
+                    "[package]\nname = \"rustok-migrations\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                ),
+                (
+                    "crates/utils/rustok-migrations/src/lib.rs",
+                    "pub fn migration_source() {}\n",
+                ),
                 (".cargo/config.toml", "[alias]\nfixture = \"metadata\"\n"),
             ] {
                 let file = root.join(path);
@@ -666,9 +698,11 @@ mod tests {
         assert_eq!(original, fixture.project(&metadata)?);
         metadata["packages"][0]["targets"][1]["name"] = json!(BINARIES[0]);
         assert!(fixture.project(&metadata).is_err());
-        metadata["packages"][0]["targets"][1]["src_path"] = json!(fixture
-            .root
-            .join("crates/utils/rustok-migrations/src/lib.rs"));
+        metadata["packages"][0]["targets"][1]["src_path"] = json!(
+            fixture
+                .root
+                .join("crates/utils/rustok-migrations/src/lib.rs")
+        );
         assert_ne!(original, fixture.project(&metadata)?);
         Ok(())
     }
@@ -719,8 +753,11 @@ mod tests {
             working_snapshot(&root, None)? == expected,
             "source changed during metadata probe"
         );
-        println!("Native normal/build closure: {} packages, {local} captured path packages; resolution {}",
-            inputs.packages.len(), digest(&serde_json::to_vec(&inputs)?));
+        println!(
+            "Native normal/build closure: {} packages, {local} captured path packages; resolution {}",
+            inputs.packages.len(),
+            digest(&serde_json::to_vec(&inputs)?)
+        );
         Ok(())
     }
 

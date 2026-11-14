@@ -105,11 +105,13 @@ pub use dialog::{
 };
 pub use input::Input as ui_input;
 pub use label::Label as ui_label;
+pub use language_toggle::LanguageToggle as ui_language_toggle;
 pub use progress::Progress as ui_progress;
 pub use select::Select as ui_select;
 pub use separator::Separator as ui_separator;
 pub use skeleton::Skeleton as ui_skeleton;
 pub use spinner::Spinner as ui_spinner;
+pub use success_message::SuccessMessage as ui_success_message;
 pub use switch::Switch as ui_switch;
 pub use tabs::{
     Tabs as ui_tabs, TabsContent as ui_tabs_content, TabsList as ui_tabs_list,
@@ -117,5 +119,3 @@ pub use tabs::{
 };
 pub use textarea::Textarea as ui_textarea;
 pub use toc::TableOfContents as ui_table_of_contents;
-pub use language_toggle::LanguageToggle as ui_language_toggle;
-pub use success_message::SuccessMessage as ui_success_message;

@@ -85,7 +85,10 @@ fn selected_starter_requires_an_exact_catalog_key() {
         default_template_key: "default".into(),
         revision: Some("revision".into()),
     };
-    assert_eq!(crate::core::selected_page_starter(&[item.clone()], "team"), Some(item));
+    assert_eq!(
+        crate::core::selected_page_starter(&[item.clone()], "team"),
+        Some(item)
+    );
     assert!(crate::core::selected_page_starter(&[], "blank").is_none());
 }
 
@@ -151,8 +154,11 @@ fn stable_problem_detail_conflict_codes() {
 #[test]
 fn starter_metadata_update_uses_required_revision_and_no_document() {
     let input = crate::model::PageStarterMetadataUpdate {
-        key: "team".into(), category: "custom".into(), name: "Team".into(),
-        description: None, default_template_key: "default".into(),
+        key: "team".into(),
+        category: "custom".into(),
+        name: "Team".into(),
+        description: None,
+        default_template_key: "default".into(),
         expected_revision: "observed-revision".into(),
     };
     let value = serde_json::to_value(input).expect("serialize metadata");
@@ -176,7 +182,10 @@ fn changing_page_clears_only_the_route_draft_in_the_same_update() {
     let page_key = rustok_ui_core::AdminQueryKey::PageId.as_str().to_string();
     assert_eq!(
         page_selection_query_update(Some("new-page".to_string())),
-        vec![(page_key.clone(), Some("new-page".to_string())), (FLY_DRAFT_QUERY_KEY.to_string(), None)]
+        vec![
+            (page_key.clone(), Some("new-page".to_string())),
+            (FLY_DRAFT_QUERY_KEY.to_string(), None)
+        ]
     );
     assert_eq!(
         page_selection_query_update(None),

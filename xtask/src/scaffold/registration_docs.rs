@@ -1,5 +1,5 @@
 use super::options::{ScaffoldOptions, ScaffoldUi};
-use crate::docs_markdown::{Document, Section, MODULE_COLUMNS, OPTIONAL_MODULES};
+use crate::docs_markdown::{Document, MODULE_COLUMNS, OPTIONAL_MODULES, Section};
 use anyhow::{Context, Result};
 use pulldown_cmark::HeadingLevel::{H2, H3};
 use std::{fs, ops::Range, path::Path};
@@ -189,12 +189,45 @@ fn projections(opts: &ScaffoldOptions) -> Vec<(&'static str, Vec<Entry>)> {
     let desc = escape_text(&opts.description);
     let (surfaces, shape) = draft_readiness(opts.ui);
     let registry = vec![
-        Entry::table(READINESS, &["Module slug", "UI surfaces", "FFA status", "FBA status", "Structural shape", "Source plan"], slug,
-            format!("| `{slug}` | {surfaces} | `not_started` | `not_started` | {shape} | [Implementation plan]({plan}); {desc} |")),
-        Entry { target: Target::Table(MODULE_COLUMNS, Some(name.clone())), ..Entry::table(OPTIONAL_MODULES, MODULE_COLUMNS, slug,
-            format!("| `{slug}` | `{name}` | none | {desc} |")) },
-        Entry::table(RELEASE, &["Module slug", "Transition Class", "Data Boundary Owner", "Predecessor Standby", "Rollback Eligibility", "Recovery Invariants & Guards"], slug,
-            format!("| `{slug}` | `Stateless` | `data boundary: none` | none | `DeniedMaintenanceOnly` | Draft identity; release and rollback execution unverified; [owner plan]({plan}) |")),
+        Entry::table(
+            READINESS,
+            &[
+                "Module slug",
+                "UI surfaces",
+                "FFA status",
+                "FBA status",
+                "Structural shape",
+                "Source plan",
+            ],
+            slug,
+            format!(
+                "| `{slug}` | {surfaces} | `not_started` | `not_started` | {shape} | [Implementation plan]({plan}); {desc} |"
+            ),
+        ),
+        Entry {
+            target: Target::Table(MODULE_COLUMNS, Some(name.clone())),
+            ..Entry::table(
+                OPTIONAL_MODULES,
+                MODULE_COLUMNS,
+                slug,
+                format!("| `{slug}` | `{name}` | none | {desc} |"),
+            )
+        },
+        Entry::table(
+            RELEASE,
+            &[
+                "Module slug",
+                "Transition Class",
+                "Data Boundary Owner",
+                "Predecessor Standby",
+                "Rollback Eligibility",
+                "Recovery Invariants & Guards",
+            ],
+            slug,
+            format!(
+                "| `{slug}` | `Stateless` | `data boundary: none` | none | `DeniedMaintenanceOnly` | Draft identity; release and rollback execution unverified; [owner plan]({plan}) |"
+            ),
+        ),
     ];
     let mut index = vec![Entry::table(
         DOMAIN,
@@ -202,8 +235,14 @@ fn projections(opts: &ScaffoldOptions) -> Vec<(&'static str, Vec<Entry>)> {
         &name,
         format!("| `{name}` | [docs]({base}/docs/README.md) | [plan]({plan}) |"),
     )];
-    let plans = vec![Entry::table(LIVE_PLANS, &["Module/Crate", "Local plan", "Status", "Nearest priority"], slug,
-        format!("| `{slug}` | [plan]({plan}) | `not_started` | Specify owner operations and invariants before persistence, transports or live UI. |"))];
+    let plans = vec![Entry::table(
+        LIVE_PLANS,
+        &["Module/Crate", "Local plan", "Status", "Nearest priority"],
+        slug,
+        format!(
+            "| `{slug}` | [plan]({plan}) | `not_started` | Specify owner operations and invariants before persistence, transports or live UI. |"
+        ),
+    )];
     let mut ui = Vec::new();
     for (requested, surface, section) in [
         (

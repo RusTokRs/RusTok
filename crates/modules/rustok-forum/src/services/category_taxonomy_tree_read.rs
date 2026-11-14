@@ -12,7 +12,9 @@ use crate::dto::{
 };
 use crate::entities::{forum_category, forum_category_lifecycle};
 use crate::error::{ForumError, ForumResult};
-use crate::ports::taxonomy::{ForumTaxonomyCategorySnapshot, ForumTaxonomyPort, NoopForumTaxonomyPort};
+use crate::ports::taxonomy::{
+    ForumTaxonomyCategorySnapshot, ForumTaxonomyPort, NoopForumTaxonomyPort,
+};
 use crate::services::category_policy::CategoryTopicPolicyService;
 use crate::services::subscription::SubscriptionService;
 

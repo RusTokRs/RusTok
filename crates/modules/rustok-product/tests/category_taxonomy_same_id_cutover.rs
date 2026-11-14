@@ -238,8 +238,9 @@ async fn product_category_schema_and_service_use_canonical_same_id_taxonomy() ->
 
     // 3. Create parent and child categories using ProductCatalogSchemaService.
     let event_bus = mock_transactional_event_bus();
-    let service = ProductCatalogSchemaService::new(db.clone(), event_bus)
-        .with_taxonomy_port(rustok_taxonomy::in_process_product_taxonomy_port(db.clone()));
+    let service = ProductCatalogSchemaService::new(db.clone(), event_bus).with_taxonomy_port(
+        rustok_taxonomy::in_process_product_taxonomy_port(db.clone()),
+    );
     let actor_id = Uuid::new_v4();
 
     let parent_input = CreateCatalogCategoryInput {

@@ -1,7 +1,7 @@
 use leptos::prelude::*;
-use rustok_ui_leptos::{RichTextEditorFrame, RichTextFrameCopy};
 use rustok_api::RichTextDocument;
 use rustok_auth_ui::ui::leptos::hooks::use_is_authenticated;
+use rustok_ui_leptos::{RichTextEditorFrame, RichTextFrameCopy};
 
 use crate::core::{CommentComposerValidationError, validate_comment_submission};
 

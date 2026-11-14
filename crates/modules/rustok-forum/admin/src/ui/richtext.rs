@@ -1,6 +1,6 @@
 use leptos::prelude::*;
-use rustok_ui_leptos::{RichTextEditorFrame, localized_richtext_frame_copy};
 use rustok_api::RichTextDocument;
+use rustok_ui_leptos::{RichTextEditorFrame, localized_richtext_frame_copy};
 
 use crate::i18n::t;
 

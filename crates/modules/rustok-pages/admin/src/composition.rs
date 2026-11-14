@@ -23,13 +23,12 @@ use rustok_page_builder::runtime_scenario_release::{
 use rustok_page_builder::{RuntimeContextExamplePolicy, RuntimeContextScenario};
 use rustok_page_builder_admin::{
     DraftSessionOwner, PageBuilderAdmin, PageBuilderAdminFacade, PageBuilderAdminHostContext,
-    PageBuilderAdminProviderStatus, SsrDraftRenderBinding, SsrDraftSessionError, SsrDraftSessionSnapshot,
-    SsrDraftSessionStore,
+    PageBuilderAdminProviderStatus, SsrDraftRenderBinding, SsrDraftSessionError,
+    SsrDraftSessionSnapshot, SsrDraftSessionStore,
 };
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use serde_json::{Value, json};
 use std::sync::Arc;
-
 
 /// The server state of one open page, as a `Resource` can carry.
 ///
@@ -303,26 +302,90 @@ pub fn PagesAdmin() -> impl IntoView {
 }
 
 #[component]
-fn CreatePageCard(refresh_generation: RwSignal<u64>, starter_generation: RwSignal<u64>, default_locale: String) -> impl IntoView {
+fn CreatePageCard(
+    refresh_generation: RwSignal<u64>,
+    starter_generation: RwSignal<u64>,
+    default_locale: String,
+) -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
     let query_writer = use_route_query_writer();
-    let starter_label = t(Some(&default_locale), "pages.starter.label", "Starter template");
-    let starter_loading = t(Some(&default_locale), "pages.starter.loading", "Loading starters...");
-    let starter_unavailable = t(Some(&default_locale), "pages.starter.unavailable", "Starter catalog unavailable");
-    let starter_selection_error = t(Some(&default_locale), "pages.starter.selectionError", "Starter catalog is unavailable or the selection changed. Reload and try again.");
-    let starter_prepare_error = t(Some(&default_locale), "pages.starter.prepareError", "Failed to prepare starter");
-    let starter_layout_hint = t(Some(&default_locale), "pages.starter.layoutHint", "Suggested layout (not applied automatically)");
-    let starter_context_error = t(Some(&default_locale), "pages.starter.contextError", "Session or tenant changed. Reload and try again.");
+    let starter_label = t(
+        Some(&default_locale),
+        "pages.starter.label",
+        "Starter template",
+    );
+    let starter_loading = t(
+        Some(&default_locale),
+        "pages.starter.loading",
+        "Loading starters...",
+    );
+    let starter_unavailable = t(
+        Some(&default_locale),
+        "pages.starter.unavailable",
+        "Starter catalog unavailable",
+    );
+    let starter_selection_error = t(
+        Some(&default_locale),
+        "pages.starter.selectionError",
+        "Starter catalog is unavailable or the selection changed. Reload and try again.",
+    );
+    let starter_prepare_error = t(
+        Some(&default_locale),
+        "pages.starter.prepareError",
+        "Failed to prepare starter",
+    );
+    let starter_layout_hint = t(
+        Some(&default_locale),
+        "pages.starter.layoutHint",
+        "Suggested layout (not applied automatically)",
+    );
+    let starter_context_error = t(
+        Some(&default_locale),
+        "pages.starter.contextError",
+        "Session or tenant changed. Reload and try again.",
+    );
     let layout_label = t(Some(&default_locale), "pages.layout.label", "Page layout");
-    let layout_loading = t(Some(&default_locale), "pages.layout.loading", "Loading layouts...");
-    let layout_unavailable = t(Some(&default_locale), "pages.layout.unavailable", "Layout catalog unavailable");
-    let layout_selection_error = t(Some(&default_locale), "pages.layout.selectionError", "Choose a layout available for this locale. Reload the catalog if needed.");
-    let layout_refresh_label = t(Some(&default_locale), "pages.layout.reload", "Reload layouts");
-    let layout_permissions_hint = t(Some(&default_locale), "pages.layout.permissionsHint", "Non-default layouts require pages:manage for builder composition.");
-    let layout_available_label = t(Some(&default_locale), "pages.layout.suggestionAvailable", "Available to you for this locale");
-    let layout_missing_label = t(Some(&default_locale), "pages.layout.suggestionMissing", "Not available to you for this locale");
-    let layout_context_after_create = t(Some(&default_locale), "pages.layout.contextAfterCreate", "Session, tenant or locale changed while creating the page. The page may have been created in the previous context; check before retrying.");
+    let layout_loading = t(
+        Some(&default_locale),
+        "pages.layout.loading",
+        "Loading layouts...",
+    );
+    let layout_unavailable = t(
+        Some(&default_locale),
+        "pages.layout.unavailable",
+        "Layout catalog unavailable",
+    );
+    let layout_selection_error = t(
+        Some(&default_locale),
+        "pages.layout.selectionError",
+        "Choose a layout available for this locale. Reload the catalog if needed.",
+    );
+    let layout_refresh_label = t(
+        Some(&default_locale),
+        "pages.layout.reload",
+        "Reload layouts",
+    );
+    let layout_permissions_hint = t(
+        Some(&default_locale),
+        "pages.layout.permissionsHint",
+        "Non-default layouts require pages:manage for builder composition.",
+    );
+    let layout_available_label = t(
+        Some(&default_locale),
+        "pages.layout.suggestionAvailable",
+        "Available to you for this locale",
+    );
+    let layout_missing_label = t(
+        Some(&default_locale),
+        "pages.layout.suggestionMissing",
+        "Not available to you for this locale",
+    );
+    let layout_context_after_create = t(
+        Some(&default_locale),
+        "pages.layout.contextAfterCreate",
+        "Session, tenant or locale changed while creating the page. The page may have been created in the previous context; check before retrying.",
+    );
     let title = RwSignal::new(String::new());
     let slug = RwSignal::new(String::new());
     let slug_touched = RwSignal::new(false);
@@ -360,7 +423,8 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, starter_generation: RwSigna
         },
         move |(token, tenant, locale, generation)| async move {
             let result = transport::fetch_template_keys(token, tenant.clone(), locale.clone())
-                .await.map_err(|error| error.to_string());
+                .await
+                .map_err(|error| error.to_string());
             (tenant, locale, generation, result)
         },
     );
@@ -385,7 +449,9 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, starter_generation: RwSigna
         let starter_id_value = selected_starter_id.get_untracked();
         let template_value = selected_template.get_untracked();
         if core::missing_required_page_field(&title_value, &slug_value).is_some() {
-            error.set(Some("Title and slug are required to create a page.".to_string()));
+            error.set(Some(
+                "Title and slug are required to create a page.".to_string(),
+            ));
             return;
         }
 
@@ -422,8 +488,14 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, starter_generation: RwSigna
         let layout_context_after_create = layout_context_after_create.clone();
         spawn_local(async move {
             let document = match transport::instantiate_page_starter(
-                token.clone(), tenant.clone(), selected.key, selected.revision, locale_value.clone(),
-            ).await {
+                token.clone(),
+                tenant.clone(),
+                selected.key,
+                selected.revision,
+                locale_value.clone(),
+            )
+            .await
+            {
                 Ok(document) => document,
                 Err(starter_error) => {
                     error.set(Some(format!("{starter_prepare_error}: {starter_error}")));
@@ -438,7 +510,13 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, starter_generation: RwSigna
             }
             // Recheck the exact-locale catalog just before creation; this is not a
             // transaction with the subsequent create mutation.
-            let keys = match transport::fetch_template_keys(token.clone(), tenant.clone(), locale_value.clone()).await {
+            let keys = match transport::fetch_template_keys(
+                token.clone(),
+                tenant.clone(),
+                locale_value.clone(),
+            )
+            .await
+            {
                 Ok(keys) => keys,
                 Err(problem) => {
                     error.set(Some(format!("{layout_unavailable}: {problem}")));
@@ -446,7 +524,8 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, starter_generation: RwSigna
                     return;
                 }
             };
-            if token_signal.get_untracked() != token || tenant_signal.get_untracked() != tenant
+            if token_signal.get_untracked() != token
+                || tenant_signal.get_untracked() != tenant
                 || core::ui_text_or_default(&locale.get_untracked()) != locale_value
             {
                 error.set(Some(starter_context_error));
@@ -461,15 +540,19 @@ fn CreatePageCard(refresh_generation: RwSignal<u64>, starter_generation: RwSigna
                 busy.set(false);
                 return;
             }
-            let draft = core::build_create_page_draft(core::PageDraftFormInput {
-                locale: &locale_value,
-                title: &title_value,
-                slug: &slug_value,
-                channel_slugs: &channels_value,
-                template: Some(&template_value),
-            }, document);
+            let draft = core::build_create_page_draft(
+                core::PageDraftFormInput {
+                    locale: &locale_value,
+                    title: &title_value,
+                    slug: &slug_value,
+                    channel_slugs: &channels_value,
+                    template: Some(&template_value),
+                },
+                document,
+            );
             let result = transport::create_page(token.clone(), tenant.clone(), draft).await;
-            if token_signal.get_untracked() != token || tenant_signal.get_untracked() != tenant
+            if token_signal.get_untracked() != token
+                || tenant_signal.get_untracked() != tenant
                 || core::ui_text_or_default(&locale.get_untracked()) != locale_value
             {
                 error.set(Some(layout_context_after_create));
@@ -858,7 +941,10 @@ fn PageWorkspace(
         spawn_local(async move {
             match transport::duplicate_page(token, tenant, page_id).await {
                 Ok(duplicated) => {
-                    writer.update(core::page_selection_query_update(Some(duplicated.id.clone())), true);
+                    writer.update(
+                        core::page_selection_query_update(Some(duplicated.id.clone())),
+                        true,
+                    );
                     refresh_generation
                         .update(|generation| *generation = generation.wrapping_add(1));
                 }
@@ -1002,19 +1088,28 @@ fn SaveStarterFromPage(
     starter_generation: RwSignal<u64>,
 ) -> impl IntoView {
     let user = use_current_user();
-    let allowed = Signal::derive(move || user.get().is_some_and(|user|
-        crate::access::effective_permissions_grant(&user.permissions, "pages:manage")));
+    let allowed = Signal::derive(move || {
+        user.get().is_some_and(|user| {
+            crate::access::effective_permissions_grant(&user.permissions, "pages:manage")
+        })
+    });
     let ui_locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
     let text = |key, fallback| t(ui_locale.as_deref(), key, fallback);
     let heading = text("pages.starter.saveTitle", "Save saved page as starter");
-    let warning = text("pages.starter.savedWarning", "Uses the saved working copy in the selected locale, not unsaved editor changes. Existing starter keys cannot be replaced here.");
+    let warning = text(
+        "pages.starter.savedWarning",
+        "Uses the saved working copy in the selected locale, not unsaved editor changes. Existing starter keys cannot be replaced here.",
+    );
     let key_label = text("pages.starter.key", "Starter key");
     let name_label = text("pages.starter.name", "Starter name");
     let category_label = text("pages.starter.category", "Category");
     let locale_label = text("pages.starter.sourceLocale", "Source locale");
     let saved_label = text("pages.starter.saved", "Saved from");
     let submit_label = text("pages.starter.saveAction", "Save starter");
-    let context_error = text("pages.starter.contextError", "Session or tenant changed. Reload and try again.");
+    let context_error = text(
+        "pages.starter.contextError",
+        "Session or tenant changed. Reload and try again.",
+    );
     let key = RwSignal::new(String::new());
     let name = RwSignal::new(String::new());
     let category = RwSignal::new("custom".to_string());
@@ -1023,7 +1118,9 @@ fn SaveStarterFromPage(
     let feedback = RwSignal::new(None::<(bool, String)>);
     let submit = Callback::new(move |event: SubmitEvent| {
         event.prevent_default();
-        if busy.get_untracked() || !allowed.get_untracked() { return; }
+        if busy.get_untracked() || !allowed.get_untracked() {
+            return;
+        }
         let token_value = token.get_untracked();
         let tenant_value = tenant.get_untracked();
         let page_id = page_id.clone();
@@ -1036,13 +1133,31 @@ fn SaveStarterFromPage(
         busy.set(true);
         feedback.set(None);
         spawn_local(async move {
-            let result = transport::save_starter_from_page(token_value.clone(), tenant_value.clone(), page_id, locale, key_value, name_value, category_value).await;
+            let result = transport::save_starter_from_page(
+                token_value.clone(),
+                tenant_value.clone(),
+                page_id,
+                locale,
+                key_value,
+                name_value,
+                category_value,
+            )
+            .await;
             if token.get_untracked() != token_value || tenant.get_untracked() != tenant_value {
                 feedback.set(Some((false, context_error)));
             } else {
                 match result {
                     Ok(snapshot) => {
-                        feedback.set(Some((true, format!("{}: {} / {} / {}", saved_label, snapshot.source_locale, snapshot.source_state, snapshot.source_revision))));
+                        feedback.set(Some((
+                            true,
+                            format!(
+                                "{}: {} / {} / {}",
+                                saved_label,
+                                snapshot.source_locale,
+                                snapshot.source_state,
+                                snapshot.source_revision
+                            ),
+                        )));
                         starter_generation.update(|value| *value = value.wrapping_add(1));
                     }
                     Err(error) => feedback.set(Some((false, error.to_string()))),
@@ -1457,13 +1572,17 @@ fn PagesFlyBuilder(
     // Bind browser requests to exactly the snapshot rendered below, not an
     // independently cached generation from sessionStorage.
     provide_context(SsrDraftRenderBinding {
-        session: route_draft.as_ref().map(|draft| (draft.token.clone(), draft.generation)),
+        session: route_draft
+            .as_ref()
+            .map(|draft| (draft.token.clone(), draft.generation)),
     });
     let stale_draft = route_draft
         .as_ref()
         .is_some_and(|draft| draft.controller.revision_id() != revision_id);
     let recovery_project = if stale_draft {
-        route_draft.as_ref().map(|draft| draft_recovery_project(&draft.controller))
+        route_draft
+            .as_ref()
+            .map(|draft| draft_recovery_project(&draft.controller))
     } else {
         None
     };
@@ -1655,7 +1774,9 @@ fn PagesFlyBuilder(
 }
 
 /// Export the complete draft project, not only the currently selected Fly page.
-fn draft_recovery_project(controller: &rustok_page_builder_admin::AdminCanvasController) -> Result<String, String> {
+fn draft_recovery_project(
+    controller: &rustok_page_builder_admin::AdminCanvasController,
+) -> Result<String, String> {
     let project = fly::GrapesJsCodec::encode_value(controller.editor().document())
         .map_err(|error| format!("Could not encode draft project: {error}"))?;
     serde_json::to_string_pretty(&project)
@@ -1819,14 +1940,18 @@ mod tests {
     #[test]
     fn stale_draft_recovery_exports_the_entire_project_without_rebasing() {
         let mut controller = AdminCanvasController::new(
-            "home", "rev-1", json!({"pages": [
+            "home",
+            "rev-1",
+            json!({"pages": [
                 {"id": "home", "component": {"id": "root", "type": "wrapper"}},
                 {"id": "about", "component": {"id": "about-root", "type": "wrapper"}}
             ]}),
-        ).expect("controller");
+        )
+        .expect("controller");
         let before = controller.editor().revision().project_hash;
         assert!(mark_stale_draft_conflict(&mut controller, "rev-2").unwrap());
-        let export: Value = serde_json::from_str(&draft_recovery_project(&controller).unwrap()).unwrap();
+        let export: Value =
+            serde_json::from_str(&draft_recovery_project(&controller).unwrap()).unwrap();
         assert_eq!(export["pages"].as_array().unwrap().len(), 2);
         assert_eq!(controller.editor().revision().project_hash, before);
         assert_eq!(controller.revision_id(), "rev-1");

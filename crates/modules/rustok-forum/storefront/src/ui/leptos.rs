@@ -1,9 +1,9 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use rustok_ui_leptos::RichTextHtml;
 use leptos_ui_routing::read_route_query_value;
 use rustok_api::normalize_locale_tag;
 use rustok_ui_core::UiRouteContext;
+use rustok_ui_leptos::RichTextHtml;
 
 use super::category_overview::CategoryOverview;
 use super::composer::{ComposerSignal, ForumComposer};

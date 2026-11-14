@@ -601,7 +601,28 @@ function dropOverlayRect(rect, position) {
   };
 }
 
-export class FlyBrowserAdapter {
+export function updateNetworkIndicator(root, status, detail = null) {
+  if (!root || !root.dispatchEvent) return;
+  root.dispatchEvent(
+    new CustomEvent("fly:network-status", {
+      bubbles: true,
+      detail: { status, detail },
+    }),
+  );
+  const indicator = root.querySelector ? root.querySelector("[data-fly-network-indicator]") : null;
+  if (indicator) {
+    indicator.dataset.flyStatus = status;
+    if (status === "saving") {
+      indicator.textContent = indicator.dataset.flyLabelSaving || "Saving...";
+    } else if (status === "saved") {
+      indicator.textContent = indicator.dataset.flyLabelSaved || "Saved";
+    } else if (status === "error") {
+      indicator.textContent = indicator.dataset.flyLabelError || "Save error";
+    }
+  }
+}
+
+class FlyBrowserAdapter {
   constructor(root, options = {}) {
     if (!(root instanceof Element)) {
       throw new TypeError("Fly browser root must be an Element");

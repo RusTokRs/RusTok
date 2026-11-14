@@ -445,10 +445,8 @@ where
         return Ok(HashMap::new());
     }
 
-    let path_to_id: HashMap<String, Uuid> = rows
-        .iter()
-        .map(|row| (row.path.clone(), row.id))
-        .collect();
+    let path_to_id: HashMap<String, Uuid> =
+        rows.iter().map(|row| (row.path.clone(), row.id)).collect();
 
     let mut parent_map = HashMap::with_capacity(rows.len());
     for row in &rows {

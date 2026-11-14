@@ -5,17 +5,16 @@ use chrono::Utc;
 use rustok_api::{PortActor, PortCallPolicy, PortContext, PortError, PortErrorKind};
 use rustok_product::{
     ProductCatalogCommandPort, ProductCatalogReadPort, ProductCatalogReadRuntime,
-    ProductFulfillmentRequirement, ProductProjectionRequest, ProductVariantIdentitiesRequest,
-    ProductVariantIdentityListRequest, ProductVariantIdentityReadPort,
-    ProductVariantIdentitySnapshot, PublishedProductsRequest, StorefrontProductList,
-    StorefrontProductListItem, StorefrontVariantProductProjectionRequest,
+    ProductFulfillmentRequirement, ProductProjectionRequest, ProductStatus,
+    ProductVariantIdentitiesRequest, ProductVariantIdentityListRequest,
+    ProductVariantIdentityReadPort, ProductVariantIdentitySnapshot, PublishedProductsRequest,
+    StorefrontProductList, StorefrontProductListItem, StorefrontVariantProductProjectionRequest,
     VariantProductProjectionRequest,
     dto::{
         AddProductImageInput, CreateProductInput, CreateVariantInput, ProductImageResponse,
         ProductResponse, SetVariantAxesInput, UpdateProductImageInput, UpdateProductInput,
         UpdateVariantInput, VariantAxesPreviewResponse, VariantAxisConfigResponse, VariantResponse,
     },
-    ProductStatus,
 };
 use rustok_product_ports::grpc::{
     GrpcProductCatalogCommandProvider, GrpcProductCatalogReadProvider,

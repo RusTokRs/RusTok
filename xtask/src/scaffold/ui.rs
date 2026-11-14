@@ -580,9 +580,11 @@ mod tests {
             );
         }
         assert!(files.iter().any(|(p, _)| p.ends_with("src/ui/leptos.rs")));
-        assert!(files
-            .iter()
-            .any(|(p, _)| p.ends_with("src/transport/mod.rs")));
+        assert!(
+            files
+                .iter()
+                .any(|(p, _)| p.ends_with("src/transport/mod.rs"))
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use crate::{
-    strategy::{DeltaOfDeltaDecoder, DeltaOfDeltaEncoder},
     ColumnAttr, ColumnarError,
+    strategy::{DeltaOfDeltaDecoder, DeltaOfDeltaEncoder},
 };
 
 use super::ColumnTrait;

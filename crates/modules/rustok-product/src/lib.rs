@@ -14,11 +14,11 @@
 //! custom attribute schemas, faceted search projections, and media attachments.
 
 pub use async_trait::async_trait;
-pub use rustok_product_ports::*;
 pub use rustok_events::{
     PRODUCT_INDEX_LOCALE_REFRESH_REQUESTED_EVENT_TYPE,
     PRODUCT_INDEX_VARIANT_REFRESH_REQUESTED_EVENT_TYPE,
 };
+pub use rustok_product_ports::*;
 
 mod catalog_command_port;
 mod catalog_schema_read_port;
@@ -90,13 +90,13 @@ pub use runtime::{
 pub use services::catalog::concurrency::next_revision as next_product_revision;
 pub use services::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, AdminProductListQueryExt,
-    CatalogService,
-    MAX_CATALOG_FACET_VALUES, MAX_CATALOG_FACETS, MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE,
-    MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE, MAX_PRODUCT_SALES_CHANNEL_CONVERGENCE_ERROR_BYTES,
-    MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS, MAX_PRODUCT_SALES_CHANNEL_RELATION_PAGE,
-    MAX_PRODUCT_SALES_CHANNEL_RELATION_TARGETS, MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES,
-    ProductAttributeFilter, ProductAttributeFilterSelection, ProductAttributeTermError,
-    ProductAttributeTermExpr, ProductCatalogSchemaService, ProductImageTranslationExactLocaleApply,
+    CatalogService, MAX_CATALOG_FACET_VALUES, MAX_CATALOG_FACETS,
+    MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE, MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE,
+    MAX_PRODUCT_SALES_CHANNEL_CONVERGENCE_ERROR_BYTES, MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS,
+    MAX_PRODUCT_SALES_CHANNEL_RELATION_PAGE, MAX_PRODUCT_SALES_CHANNEL_RELATION_TARGETS,
+    MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES, ProductAttributeFilter,
+    ProductAttributeFilterSelection, ProductAttributeTermError, ProductAttributeTermExpr,
+    ProductCatalogSchemaService, ProductImageTranslationExactLocaleApply,
     ProductImageTranslationExactLocaleApplyReceipt, ProductImageTranslationExactLocaleError,
     ProductImageTranslationExactLocaleRecord, ProductImageTranslationExactLocaleResult,
     ProductImageTranslationExactLocaleSnapshot, ProductIndexLocaleRefreshRecord,
@@ -125,12 +125,13 @@ pub use services::{
     ProductVariantTranslationExactLocaleResult, ProductVariantTranslationExactLocaleSnapshot,
     StorefrontCatalogFacet, StorefrontCatalogFacetValue, StorefrontProductList,
     StorefrontProductListImage, StorefrontProductListItem, StorefrontProductListPrice,
-    StorefrontProductListQuery, StorefrontProductListQueryExt, StorefrontProductSortBy, StorefrontProductSortDirection,
-    group_product_attribute_filters, product_attribute_boolean_term, product_attribute_date_term,
-    product_attribute_datetime_term, product_attribute_decimal_term,
-    product_attribute_integer_term, product_attribute_localized_presence_term,
-    product_attribute_localized_text_expr, product_attribute_localized_text_term,
-    product_attribute_option_term, product_attribute_text_term,
+    StorefrontProductListQuery, StorefrontProductListQueryExt, StorefrontProductSortBy,
+    StorefrontProductSortDirection, group_product_attribute_filters,
+    product_attribute_boolean_term, product_attribute_date_term, product_attribute_datetime_term,
+    product_attribute_decimal_term, product_attribute_integer_term,
+    product_attribute_localized_presence_term, product_attribute_localized_text_expr,
+    product_attribute_localized_text_term, product_attribute_option_term,
+    product_attribute_text_term,
 };
 pub use shipping_profile::ProductShippingProfilePort;
 pub use storefront_http_read_port::{

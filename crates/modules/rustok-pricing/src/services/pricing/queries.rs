@@ -225,10 +225,9 @@ impl PricingService {
         context: PriceResolutionContext,
     ) -> Result<PriceResolutionBatch, ResolutionError> {
         if tenant_id.is_nil() {
-            return Err(CommerceError::Validation(
-                "tenant_id must not be a nil UUID".to_string(),
-            )
-            .into());
+            return Err(
+                CommerceError::Validation("tenant_id must not be a nil UUID".to_string()).into(),
+            );
         }
         let context = context.normalized()?;
         let txn = match self.db.get_database_backend() {

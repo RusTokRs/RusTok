@@ -158,8 +158,16 @@ pub fn AdminCanvas(
         .and_then(|binding| binding.session)
         .map(|(token, generation)| (Some(token), Some(generation.to_string())))
         .unwrap_or((None, None));
-    let draft_recovery_message = t(locale.as_deref(), "page_builder.draftRecovery.message", "The editor does not match its draft session. Editing is stopped. Restore the draft before continuing; it may expire.");
-    let draft_recovery_link = t(locale.as_deref(), "page_builder.draftRecovery.link", "Restore draft or reload this address");
+    let draft_recovery_message = t(
+        locale.as_deref(),
+        "page_builder.draftRecovery.message",
+        "The editor does not match its draft session. Editing is stopped. Restore the draft before continuing; it may expire.",
+    );
+    let draft_recovery_link = t(
+        locale.as_deref(),
+        "page_builder.draftRecovery.link",
+        "Restore draft or reload this address",
+    );
     let adapter_runtime = runtime.clone();
     let adapter_assembly = contribution_assembly.clone();
     let canvas_runtime = runtime.clone();

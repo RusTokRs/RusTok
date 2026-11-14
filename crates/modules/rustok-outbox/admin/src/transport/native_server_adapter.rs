@@ -13,7 +13,10 @@ fn require_outbox_admin_tenant_scope(
     auth_tenant_id: uuid::Uuid,
     resolved_tenant_id: uuid::Uuid,
 ) -> Result<(), ServerFnError> {
-    if auth_tenant_id == resolved_tenant_id && !auth_tenant_id.is_nil() && !resolved_tenant_id.is_nil() {
+    if auth_tenant_id == resolved_tenant_id
+        && !auth_tenant_id.is_nil()
+        && !resolved_tenant_id.is_nil()
+    {
         return Ok(());
     }
 

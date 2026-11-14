@@ -184,14 +184,14 @@ pub use notification_recipient::{
     ForumNotificationRecipientContextPort, ForumNotificationRecipientContextRequest,
     ForumNotificationRecipientContextResolver, SharedForumNotificationRecipientContextPort,
 };
-pub use reaction_subject::{
-    FORUM_REACTION_SOURCE, FORUM_REACTION_V1_KEY, FORUM_REPLY_REACTION_KIND,
-    FORUM_TOPIC_REACTION_KIND, ForumReactionSubjectProviderFactory,
-};
 pub use ports::{
     AsForumTaxonomyConnection, ForumTaxonomyCategoryLocaleCopy, ForumTaxonomyCategorySnapshot,
     ForumTaxonomyConnection, ForumTaxonomyPlacement, ForumTaxonomyPort, ForumTaxonomyRouteMatch,
     ForumTaxonomySyncCategoryInput, NoopForumTaxonomyPort,
+};
+pub use reaction_subject::{
+    FORUM_REACTION_SOURCE, FORUM_REACTION_V1_KEY, FORUM_REPLY_REACTION_KIND,
+    FORUM_TOPIC_REACTION_KIND, ForumReactionSubjectProviderFactory,
 };
 pub use reply_create_transport::{ForumReplyCreateTransport, reply_create_audience_port_context};
 pub use reply_read_transport::{

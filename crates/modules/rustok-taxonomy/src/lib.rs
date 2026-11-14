@@ -9,11 +9,11 @@ mod category_presentation;
 pub mod dto;
 pub mod entities;
 pub mod error;
+pub mod groups_taxonomy_port;
 pub mod migrations;
 mod module_term_lookup;
 pub mod module_term_mutation;
 mod normalization;
-pub mod groups_taxonomy_port;
 mod owner_category_hierarchy_mutation;
 mod owner_category_read;
 mod owner_category_revision;
@@ -44,6 +44,7 @@ pub use dto::{
     TaxonomyTermResponse, TaxonomyTranslationApplyResult, UpdateTaxonomyTermInput,
 };
 pub use error::{TaxonomyError, TaxonomyResult};
+pub use groups_taxonomy_port::{TaxonomyGroupTaxonomyPortAdapter, in_process_group_taxonomy_port};
 pub use module_term_lookup::TaxonomyModuleRouteMatch;
 pub use module_term_mutation::{
     ModuleTermCreateInput, ModuleTermMutationResult, ModuleTermUpdateInput,
@@ -68,9 +69,6 @@ pub use owner_category_route_sync::{
 };
 pub use owner_category_sync::{
     SyncModuleCategoryInput, SyncModuleCategoryResult, sync_module_category_in_tx,
-};
-pub use groups_taxonomy_port::{
-    TaxonomyGroupTaxonomyPortAdapter, in_process_group_taxonomy_port,
 };
 pub use owner_identity::taxonomy_term_identity_exists;
 pub use owner_read::{TaxonomyOwnerReader, TaxonomyOwnerTerm, TaxonomyOwnerTermNames};

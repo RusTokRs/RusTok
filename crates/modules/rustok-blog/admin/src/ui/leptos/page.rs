@@ -1,11 +1,11 @@
 use super::*;
 use leptos::prelude::*;
-use rustok_ui_leptos::{Alert, Button};
 use rustok_forms_leptos::{
     Form, FormCheckbox, FormError, FormField, FormInput, FormLabel, FormMessage, FormSelect,
     FormTextarea, SubmitButton,
 };
 use rustok_ui_forms::{DirtyTracker, FormState};
+use rustok_ui_leptos::{Alert, Button};
 
 pub(super) struct BlogAdminPageState {
     pub(super) ui_locale: Option<String>,
@@ -19,8 +19,7 @@ pub(super) struct BlogAdminPageState {
     pub(super) reset_current_post: Callback<()>,
     pub(super) list_locale: ReadSignal<String>,
     pub(super) set_list_locale: WriteSignal<String>,
-    pub(super) posts_resource:
-        Resource<Result<crate::model::BlogPostList, transport::ApiError>>,
+    pub(super) posts_resource: Resource<Result<crate::model::BlogPostList, transport::ApiError>>,
     pub(super) posts_rows: RwSignal<Vec<crate::model::BlogPostListItem>>,
     pub(super) posts_next_cursor: RwSignal<Option<String>>,
     pub(super) posts_load_more_error: RwSignal<Option<String>>,

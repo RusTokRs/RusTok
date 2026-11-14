@@ -23,8 +23,8 @@ use transaction::ScaffoldWorkspace;
 
 #[allow(unused_imports)]
 pub use options::{
-    default_title_from_slug, is_valid_slug, parse_options, print_scaffold_usage, ScaffoldOptions,
-    ScaffoldProfile, ScaffoldUi,
+    ScaffoldOptions, ScaffoldProfile, ScaffoldUi, default_title_from_slug, is_valid_slug,
+    parse_options, print_scaffold_usage,
 };
 
 pub(crate) fn scaffold_command(args: &[String]) -> Result<()> {
@@ -243,13 +243,17 @@ fn scaffold_in_workspace(
     // There is no safe generic owner schema or UI business contract. Fail
     // before writing anything instead of registering fake storage or routes.
     if options.with_db {
-        anyhow::bail!("--with-db requires an actual owner schema and migration contract; native scaffolding currently supports --no-db only");
+        anyhow::bail!(
+            "--with-db requires an actual owner schema and migration contract; native scaffolding currently supports --no-db only"
+        );
     }
     // Generating an editable Leptos FFA package is not publishing a working
     // UI. Requested crates join Cargo workspace only; host mounting and
     // manifest [provides.*_ui] metadata are deferred to module owners.
     if options.ui != ScaffoldUi::None {
-        println!("  [DRAFT FFA] Creating Leptos package skeletons: future_ui / not_started; no host route or CRUD");
+        println!(
+            "  [DRAFT FFA] Creating Leptos package skeletons: future_ui / not_started; no host route or CRUD"
+        );
     }
 
     let preview_guard = if options.dry_run {
@@ -277,7 +281,9 @@ fn scaffold_in_workspace(
         println!("  [DRY-RUN] Target directory: {}", module_dir.display());
         preview::write_preview(&mut preview_output, root, &plan)?;
         preview_output.flush()?;
-        println!("\n  [DRY-RUN] Preview includes source files and every registration manifest; no files were changed.");
+        println!(
+            "\n  [DRY-RUN] Preview includes source files and every registration manifest; no files were changed."
+        );
         return Ok(());
     }
 
@@ -303,7 +309,9 @@ fn scaffold_in_workspace(
 
     match validation {
         ScaffoldValidation::Verified => {
-            println!("\n  SCAFFOLDED: Module '{slug}' registered; architecture lint and publish metadata checks passed. Business/UI readiness remains not_started.");
+            println!(
+                "\n  SCAFFOLDED: Module '{slug}' registered; architecture lint and publish metadata checks passed. Business/UI readiness remains not_started."
+            );
             println!("  Next steps:");
             println!("    cargo check -p {crate_name}");
             if options.ui.has_admin() {
@@ -328,8 +336,8 @@ fn scaffold_in_workspace(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_scaffold_plan, scaffold, PlannedFile, ScaffoldOptions, ScaffoldProfile,
-        ScaffoldTransaction, ScaffoldUi,
+        PlannedFile, ScaffoldOptions, ScaffoldProfile, ScaffoldTransaction, ScaffoldUi,
+        build_scaffold_plan, scaffold,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -418,10 +426,12 @@ mod tests {
         let index_change = plan.iter().find(|file| file.path == index).unwrap();
         assert!(!index_change.content.ends_with('\n'));
         assert!(index_change.content.contains("\r\n"));
-        assert!(index_change
-            .content
-            .split_inclusive('\n')
-            .all(|line| !line.ends_with('\n') || line.ends_with("\r\n")));
+        assert!(
+            index_change
+                .content
+                .split_inclusive('\n')
+                .all(|line| !line.ends_with('\n') || line.ends_with("\r\n"))
+        );
         let render = || {
             let mut output = Vec::new();
             super::scaffold_in_workspace(&root, &options, &mut output, |_, _| {
@@ -733,9 +743,11 @@ mod tests {
         let parsed: toml::Value = toml::from_str(planned).unwrap();
         assert!(parsed["modules"].get("example").is_some());
         assert!(parsed["modules"].get("some_example").is_some());
-        assert!(!fs::read_to_string(manifest)
-            .unwrap()
-            .contains("crate = \"rustok-example\""));
+        assert!(
+            !fs::read_to_string(manifest)
+                .unwrap()
+                .contains("crate = \"rustok-example\"")
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -785,14 +797,46 @@ mod tests {
     #[test]
     fn toml_conflicts_fail_before_apply_even_when_validation_is_skipped() {
         for (relative, input, reason) in [
-            ("modules.toml", "schema = 2\nmodules = { other = { crate = 'rustok-example' } }", "already claims crate"),
-            ("modules.toml", "schema = 2\n[modules.other]\ncrate = 'rustok-other'\npath = './crates/modules/../modules/rustok-example'", "already claims crate"),
-            ("Cargo.toml", "workspace = { members = ['crates/modules/*'], exclude = ['crates/modules/rustok-example/admin/Cargo.toml'], dependencies = {} }", "excludes requested module path"),
-            ("Cargo.toml", "workspace = { members = ['crates/modules/rustok-example', './crates/modules/rustok-example'], dependencies = {} }", "Duplicate Cargo workspace member"),
-            ("Cargo.toml", "[workspace]\nmembers = []\n[workspace.dependencies]\n'rustok-example' = '1'", "already occupied"),
-            (super::registration_toml::SERVER, "features = { 'mod-example' = ['dep:rustok-example'] }\ndependencies = {}", "already occupied"),
-            (super::registration_toml::DISTRIBUTION, "features = {}\ndependencies.rustok-example.workspace = true", "already occupied"),
-            (super::registration_toml::DISTRIBUTION, "[dependencies\n", "TOML parse error"),
+            (
+                "modules.toml",
+                "schema = 2\nmodules = { other = { crate = 'rustok-example' } }",
+                "already claims crate",
+            ),
+            (
+                "modules.toml",
+                "schema = 2\n[modules.other]\ncrate = 'rustok-other'\npath = './crates/modules/../modules/rustok-example'",
+                "already claims crate",
+            ),
+            (
+                "Cargo.toml",
+                "workspace = { members = ['crates/modules/*'], exclude = ['crates/modules/rustok-example/admin/Cargo.toml'], dependencies = {} }",
+                "excludes requested module path",
+            ),
+            (
+                "Cargo.toml",
+                "workspace = { members = ['crates/modules/rustok-example', './crates/modules/rustok-example'], dependencies = {} }",
+                "Duplicate Cargo workspace member",
+            ),
+            (
+                "Cargo.toml",
+                "[workspace]\nmembers = []\n[workspace.dependencies]\n'rustok-example' = '1'",
+                "already occupied",
+            ),
+            (
+                super::registration_toml::SERVER,
+                "features = { 'mod-example' = ['dep:rustok-example'] }\ndependencies = {}",
+                "already occupied",
+            ),
+            (
+                super::registration_toml::DISTRIBUTION,
+                "features = {}\ndependencies.rustok-example.workspace = true",
+                "already occupied",
+            ),
+            (
+                super::registration_toml::DISTRIBUTION,
+                "[dependencies\n",
+                "TOML parse error",
+            ),
         ] {
             let root = temp_root();
             copy_scaffold_inputs(&root);
@@ -802,10 +846,15 @@ mod tests {
             request.ui = ScaffoldUi::Admin;
             request.skip_validate = true;
             let originals = super::registration::registration_target_paths(&root, &request)
-                .into_iter().map(|path| (fs::read(&path).unwrap(), path)).collect::<Vec<_>>();
+                .into_iter()
+                .map(|path| (fs::read(&path).unwrap(), path))
+                .collect::<Vec<_>>();
             let module = root.join("crates/modules/rustok-example");
             let error = build_scaffold_plan(&root, &module, &request, "Example").unwrap_err();
-            assert!(format!("{error:#}").contains(reason), "{relative}: {error:#}");
+            assert!(
+                format!("{error:#}").contains(reason),
+                "{relative}: {error:#}"
+            );
             for (before, path) in originals {
                 assert_eq!(fs::read(path).unwrap(), before);
             }
@@ -908,16 +957,30 @@ mod tests {
     #[test]
     fn occupied_document_and_rust_identities_fail_preflight() {
         for (relative, before, after, reason) in [
-            (super::registration_docs::INDEX,
-             "| `rustok-content` |", "|`rustok-example`   |", "already registered"),
-            (super::registration_docs::PLANS,
-             "## Live plans", "## Live plans\n\n## *Live plans*", "Ambiguous Markdown section"),
-            (super::registration_rust::DISTRIBUTION_SOURCE,
-             "    generated_promotions::register_promoted_modules(registry)",
-             "    let registry = registry.register(rustok_example :: ExampleModule);\n    generated_promotions::register_promoted_modules(registry)", "already uses feature"),
-            (super::registration_rust::DISTRIBUTION_SOURCE,
-             "    generated_promotions::register_promoted_modules(registry)",
-             "    // generated_promotions::register_promoted_modules(registry)\n    registry", "promotion tail"),
+            (
+                super::registration_docs::INDEX,
+                "| `rustok-content` |",
+                "|`rustok-example`   |",
+                "already registered",
+            ),
+            (
+                super::registration_docs::PLANS,
+                "## Live plans",
+                "## Live plans\n\n## *Live plans*",
+                "Ambiguous Markdown section",
+            ),
+            (
+                super::registration_rust::DISTRIBUTION_SOURCE,
+                "    generated_promotions::register_promoted_modules(registry)",
+                "    let registry = registry.register(rustok_example :: ExampleModule);\n    generated_promotions::register_promoted_modules(registry)",
+                "already uses feature",
+            ),
+            (
+                super::registration_rust::DISTRIBUTION_SOURCE,
+                "    generated_promotions::register_promoted_modules(registry)",
+                "    // generated_promotions::register_promoted_modules(registry)\n    registry",
+                "promotion tail",
+            ),
         ] {
             let root = temp_root();
             copy_scaffold_inputs(&root);
@@ -931,7 +994,10 @@ mod tests {
             request.skip_validate = true;
             let modules = fs::read(root.join("modules.toml")).unwrap();
             let error = build_scaffold_plan(&root, &module, &request, "Example").unwrap_err();
-            assert!(format!("{error:#}").contains(reason), "{relative}: {error:#}");
+            assert!(
+                format!("{error:#}").contains(reason),
+                "{relative}: {error:#}"
+            );
             assert_eq!(fs::read_to_string(&path).unwrap(), occupied);
             assert_eq!(fs::read(root.join("modules.toml")).unwrap(), modules);
             assert!(!module.exists());
@@ -1009,10 +1075,12 @@ mod tests {
     fn database_requests_fail_even_in_preview_mode() {
         let mut request = options();
         request.with_db = true;
-        assert!(scaffold(&request, std::io::sink())
-            .unwrap_err()
-            .to_string()
-            .contains("--with-db"));
+        assert!(
+            scaffold(&request, std::io::sink())
+                .unwrap_err()
+                .to_string()
+                .contains("--with-db")
+        );
     }
 
     #[test]
@@ -1022,9 +1090,11 @@ mod tests {
             request.ui = mode;
             let planned = super::ui::render_ui_templates(&request, "Example");
             assert!(!planned.is_empty());
-            assert!(planned
-                .iter()
-                .any(|(path, _)| path.ends_with("src/ui/leptos.rs")));
+            assert!(
+                planned
+                    .iter()
+                    .any(|(path, _)| path.ends_with("src/ui/leptos.rs"))
+            );
             assert!(
                 scaffold(&request, std::io::sink()).is_ok(),
                 "dry-run must preview every UI mode"

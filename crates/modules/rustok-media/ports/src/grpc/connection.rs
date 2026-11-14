@@ -124,8 +124,10 @@ impl GrpcMediaPublicImageConnectionConfig {
     #[cfg(feature = "grpc-client")]
     pub async fn connect(
         &self,
-    ) -> Result<super::public_image_client::GrpcMediaPublicImageProvider, GrpcMediaPublicImageConnectionError>
-    {
+    ) -> Result<
+        super::public_image_client::GrpcMediaPublicImageProvider,
+        GrpcMediaPublicImageConnectionError,
+    > {
         let validated = self.validated()?;
         let mut endpoint = Endpoint::from_shared(validated.endpoint)
             .map_err(|_| GrpcMediaPublicImageConnectionError::InvalidEndpoint)?
@@ -145,10 +147,12 @@ impl GrpcMediaPublicImageConnectionConfig {
         let inner = super::client::GrpcMediaProvider::connect(endpoint)
             .await
             .map_err(GrpcMediaPublicImageConnectionError::Connection)?;
-        Ok(super::public_image_client::GrpcMediaPublicImageProvider::new(
-            inner,
-            validated.public_origin,
-        ))
+        Ok(
+            super::public_image_client::GrpcMediaPublicImageProvider::new(
+                inner,
+                validated.public_origin,
+            ),
+        )
     }
 }
 
@@ -280,4 +284,3 @@ pub fn is_loopback_host(host: Option<Host<&str>>) -> bool {
         None => false,
     }
 }
-

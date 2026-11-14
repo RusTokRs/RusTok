@@ -754,18 +754,18 @@ pub async fn validate_persisted_role_grant_on(
         // exception for its canonical seed grants, but never let an edited
         // customer role smuggle in additional permissions.
         if builtin_role.as_ref() == Some(&UserRole::Customer)
-            && rustok_core::Rbac::permissions_for_role(&UserRole::Customer)
-                .contains(&permission)
+            && rustok_core::Rbac::permissions_for_role(&UserRole::Customer).contains(&permission)
         {
             continue;
         }
         if !crate::has_effective_permission_in_set(actor_permissions, &permission) {
             return match builtin_role {
-                Some(role) => Err(RbacRoleMutationPolicyError::RequestAuthorityCeiling {
-                    role,
-                    permission,
+                Some(role) => {
+                    Err(
+                        RbacRoleMutationPolicyError::RequestAuthorityCeiling { role, permission }
+                            .into(),
+                    )
                 }
-                .into()),
                 None => Err(RbacRoleMutationPolicyError::CustomRequestAuthorityCeiling {
                     role_slug: slug.clone(),
                     permission,

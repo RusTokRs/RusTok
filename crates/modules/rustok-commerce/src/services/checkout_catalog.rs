@@ -6,9 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use rustok_cart::{CartLineFulfillmentRequirement, CartLineItemResponse, CartResponse};
-use rustok_product::{
-    ProductFulfillmentRequirement, ProductStatus, dto::ProductResponse,
-};
+use rustok_product::{ProductFulfillmentRequirement, ProductStatus, dto::ProductResponse};
 use uuid::Uuid;
 
 use crate::storefront_channel::is_metadata_visible_for_public_channel;

@@ -193,7 +193,8 @@ fn promotion_request_context_facts(
 }
 
 fn parse_cart_id(value: &str) -> Result<uuid::Uuid, ServerFnError> {
-    let parsed = uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new("Invalid cart_id"))?;
+    let parsed =
+        uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new("Invalid cart_id"))?;
     if parsed.is_nil() {
         return Err(ServerFnError::new("cart_id must not be nil UUID"));
     }

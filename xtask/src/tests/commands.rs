@@ -160,9 +160,11 @@ fn module_publish_command_requires_slug() {
     let error = module_publish_command(&[])
         .expect_err("publish command without slug should fail immediately");
 
-    assert!(error
-        .to_string()
-        .contains("module publish requires a module slug"));
+    assert!(
+        error
+            .to_string()
+            .contains("module publish requires a module slug")
+    );
 }
 
 #[test]
@@ -174,9 +176,11 @@ fn module_publish_command_live_requires_registry_url() {
     let error = module_publish_command(&args)
         .expect_err("live publish should require registry url before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module publish requires --registry-url"));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module publish requires --registry-url")
+    );
 }
 
 #[test]
@@ -191,9 +195,11 @@ fn module_publish_command_live_requires_auth_token() {
     let error = module_publish_command(&args)
         .expect_err("live publish should require auth token before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module publish requires --auth-token <token>"));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module publish requires --auth-token <token>")
+    );
 }
 
 #[test]
@@ -204,9 +210,11 @@ fn module_publish_command_rejects_unknown_slug() {
     let error = module_publish_command(&args)
         .expect_err("unknown slug should fail before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Unknown module slug 'missing-module'"));
+    assert!(
+        error
+            .to_string()
+            .contains("Unknown module slug 'missing-module'")
+    );
 }
 
 #[test]
@@ -214,9 +222,11 @@ fn module_test_command_requires_slug() {
     let error =
         module_test_command(&[]).expect_err("module test without slug should fail immediately");
 
-    assert!(error
-        .to_string()
-        .contains("module test requires a module slug"));
+    assert!(
+        error
+            .to_string()
+            .contains("module test requires a module slug")
+    );
 }
 
 #[test]
@@ -379,9 +389,11 @@ fn module_stage_command_rejects_unknown_status() {
 
     let error = module_stage_command(&args).expect_err("unsupported stage status must fail");
 
-    assert!(error
-        .to_string()
-        .contains("module stage status 'skipped' is invalid"));
+    assert!(
+        error
+            .to_string()
+            .contains("module stage status 'skipped' is invalid")
+    );
 }
 
 #[test]
@@ -391,9 +403,11 @@ fn module_stage_command_requires_request_stage_and_status() {
     let error = module_stage_command(&args)
         .expect_err("stage command without full argument set should fail immediately");
 
-    assert!(error
-        .to_string()
-        .contains("module stage requires a request id, stage key, and status"));
+    assert!(
+        error
+            .to_string()
+            .contains("module stage requires a request id, stage key, and status")
+    );
 }
 
 #[test]
@@ -408,9 +422,11 @@ fn module_stage_command_rejects_requeue_without_queued_status() {
     let error =
         module_stage_command(&args).expect_err("requeue should only be accepted for queued status");
 
-    assert!(error
-        .to_string()
-        .contains("module stage --requeue requires status 'queued'"));
+    assert!(
+        error
+            .to_string()
+            .contains("module stage --requeue requires status 'queued'")
+    );
 }
 
 #[test]
@@ -424,9 +440,11 @@ fn module_stage_command_rejects_empty_request_id() {
     let error = module_stage_command(&args)
         .expect_err("empty request id should fail before any registry lookup");
 
-    assert!(error
-        .to_string()
-        .contains("module stage requires a non-empty request id"));
+    assert!(
+        error
+            .to_string()
+            .contains("module stage requires a non-empty request id")
+    );
 }
 
 #[test]
@@ -440,9 +458,11 @@ fn module_stage_command_rejects_empty_stage_key() {
     let error = module_stage_command(&args)
         .expect_err("empty stage key should fail before any registry lookup");
 
-    assert!(error
-        .to_string()
-        .contains("module stage requires a non-empty stage key"));
+    assert!(
+        error
+            .to_string()
+            .contains("module stage requires a non-empty stage key")
+    );
 }
 
 #[test]
@@ -456,9 +476,11 @@ fn module_stage_command_live_requires_registry_url() {
     let error = module_stage_command(&args)
         .expect_err("live stage update should require registry url before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module stage requires --registry-url"));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module stage requires --registry-url")
+    );
 }
 
 #[test]
@@ -474,9 +496,11 @@ fn module_stage_command_live_requires_auth_token() {
     let error = module_stage_command(&args)
         .expect_err("live stage update should require auth token before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module stage requires --auth-token <token>"));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module stage requires --auth-token <token>")
+    );
 }
 
 #[test]
@@ -493,9 +517,11 @@ fn module_stage_run_command_live_requires_auth_token() {
     let error = module_stage_run_command(&args)
         .expect_err("live stage-run should require auth token before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module stage-run requires --auth-token <token>"));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module stage-run requires --auth-token <token>")
+    );
 }
 
 #[test]
@@ -615,9 +641,11 @@ fn module_request_changes_command_live_requires_auth_token() {
     let error = module_request_changes_command(&args)
         .expect_err("live request-changes should require auth token before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module request-changes requires --auth-token <token>"));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module request-changes requires --auth-token <token>")
+    );
 }
 
 #[test]
@@ -635,9 +663,11 @@ fn module_hold_command_live_requires_reason_code() {
     let error = module_hold_command(&args)
         .expect_err("live hold should require reason code before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module hold requires --reason-code"));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module hold requires --reason-code")
+    );
 }
 
 #[test]
@@ -655,9 +685,11 @@ fn module_resume_command_live_requires_reason() {
     let error = module_resume_command(&args)
         .expect_err("live resume should require reason before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module resume requires --reason <text>"));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module resume requires --reason <text>")
+    );
 }
 
 #[test]
@@ -669,9 +701,11 @@ fn positive_u64_argument_rejects_zero_values() {
     )
     .expect_err("zero interval must fail");
 
-    assert!(error
-        .to_string()
-        .contains("module runner flag --poll-interval-ms expects a positive integer"));
+    assert!(
+        error
+            .to_string()
+            .contains("module runner flag --poll-interval-ms expects a positive integer")
+    );
 }
 
 #[test]
@@ -679,9 +713,11 @@ fn module_runner_command_requires_runner_id() {
     let error =
         module_runner_command(&[]).expect_err("runner command without id should fail early");
 
-    assert!(error
-        .to_string()
-        .contains("module runner requires a non-empty runner id"));
+    assert!(
+        error
+            .to_string()
+            .contains("module runner requires a non-empty runner id")
+    );
 }
 
 #[test]
@@ -725,9 +761,11 @@ fn reason_code_argument_rejects_unknown_values() {
     let error = reason_code_argument(&["--reason-code".to_string(), "surprise".to_string()])
         .expect_err("unknown yank reason code must fail");
 
-    assert!(error
-        .to_string()
-        .contains("--reason-code 'surprise' is invalid"));
+    assert!(
+        error
+            .to_string()
+            .contains("--reason-code 'surprise' is invalid")
+    );
 }
 
 #[test]
@@ -737,9 +775,11 @@ fn module_owner_transfer_command_rejects_empty_new_owner_user_id() {
     let error = module_owner_transfer_command(&args)
         .expect_err("empty new owner user id must fail before manifest lookup");
 
-    assert!(error
-        .to_string()
-        .contains("module owner-transfer requires a non-empty new owner user id"));
+    assert!(
+        error
+            .to_string()
+            .contains("module owner-transfer requires a non-empty new owner user id")
+    );
 }
 
 #[test]
@@ -749,9 +789,11 @@ fn module_owner_transfer_command_requires_slug_and_new_owner_user_id() {
     let error = module_owner_transfer_command(&args)
         .expect_err("owner-transfer command without new owner user id should fail immediately");
 
-    assert!(error
-        .to_string()
-        .contains("module owner-transfer requires a module slug and new owner user id"));
+    assert!(
+        error
+            .to_string()
+            .contains("module owner-transfer requires a module slug and new owner user id")
+    );
 }
 
 #[test]
@@ -769,9 +811,11 @@ fn module_owner_transfer_command_live_requires_reason() {
     let error = module_owner_transfer_command(&args)
         .expect_err("live owner-transfer should require reason before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module owner-transfer requires --reason <text>"));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module owner-transfer requires --reason <text>")
+    );
 }
 
 #[test]
@@ -790,9 +834,11 @@ fn module_owner_transfer_command_live_requires_registry_url() {
     let error = module_owner_transfer_command(&args)
         .expect_err("live owner-transfer should require registry url before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module owner-transfer requires --registry-url"));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module owner-transfer requires --registry-url")
+    );
 }
 
 #[test]
@@ -812,9 +858,11 @@ fn module_owner_transfer_command_live_requires_auth_token() {
     let error = module_owner_transfer_command(&args)
         .expect_err("live owner-transfer should require auth token before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module owner-transfer requires --auth-token <token>"));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module owner-transfer requires --auth-token <token>")
+    );
 }
 
 #[test]
@@ -834,9 +882,11 @@ fn module_yank_command_live_requires_reason() {
     let error = module_yank_command(&args)
         .expect_err("live yank should require reason before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module yank requires --reason <text>"));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module yank requires --reason <text>")
+    );
 }
 
 #[test]
@@ -846,9 +896,11 @@ fn module_yank_command_requires_slug_and_version() {
     let error = module_yank_command(&args)
         .expect_err("yank command without version should fail immediately");
 
-    assert!(error
-        .to_string()
-        .contains("module yank requires a module slug and version"));
+    assert!(
+        error
+            .to_string()
+            .contains("module yank requires a module slug and version")
+    );
 }
 
 #[test]
@@ -869,9 +921,11 @@ fn module_yank_command_live_requires_registry_url() {
     let error = module_yank_command(&args)
         .expect_err("live yank should require registry url before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module yank requires --registry-url"));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module yank requires --registry-url")
+    );
 }
 
 #[test]
@@ -891,9 +945,11 @@ fn module_yank_command_live_requires_auth_token() {
     let error = module_yank_command(&args)
         .expect_err("live yank should require auth token before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module yank requires --auth-token <token>"));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module yank requires --auth-token <token>")
+    );
 }
 
 #[test]
@@ -914,12 +970,16 @@ fn module_yank_command_live_requires_reason_code() {
     let error = module_yank_command(&args)
         .expect_err("live yank should require reason code before any network call");
 
-    assert!(error
-        .to_string()
-        .contains("Live module yank requires --reason-code"));
-    assert!(error
-        .to_string()
-        .contains(&REGISTRY_YANK_REASON_CODES.join("|")));
+    assert!(
+        error
+            .to_string()
+            .contains("Live module yank requires --reason-code")
+    );
+    assert!(
+        error
+            .to_string()
+            .contains(&REGISTRY_YANK_REASON_CODES.join("|"))
+    );
 }
 
 #[test]

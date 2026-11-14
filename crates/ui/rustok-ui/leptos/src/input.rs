@@ -30,11 +30,13 @@ pub fn Input(
     /// operator's edits laid over it. `value` stays `ReadSignal` because that is what an owned cell
     /// is; a derived value has no cell to hand over, and a `ReadSignal` cannot be built from a
     /// closure.
-    #[prop(optional)] derived_value: Option<Signal<String>>,
+    #[prop(optional)]
+    derived_value: Option<Signal<String>>,
     /// The setter for the field. A form owns a `WriteSignal`; a caller writing into a projection
     /// passes `SignalSetter::map(..)`, which is the type Leptos has for "any setter" — the write
     /// face of a value that is not an owned cell.
-    #[prop(optional, into)] set_value: Option<SignalSetter<String>>,
+    #[prop(optional, into)]
+    set_value: Option<SignalSetter<String>>,
     #[prop(optional, into)] prefix: Option<AnyView>,
     #[prop(optional, into)] suffix: Option<AnyView>,
     #[prop(optional, into)] class: String,

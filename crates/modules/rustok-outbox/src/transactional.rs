@@ -40,10 +40,7 @@ impl TransactionalEventBus {
 
     /// Persists an already-created root envelope without changing its identity.
     /// The owner can return or reference the same envelope after the transaction commits.
-    pub async fn publish_root_envelope_in_tx<C>(
-        txn: &C,
-        envelope: EventEnvelope,
-    ) -> Result<Uuid>
+    pub async fn publish_root_envelope_in_tx<C>(txn: &C, envelope: EventEnvelope) -> Result<Uuid>
     where
         C: ConnectionTrait,
     {

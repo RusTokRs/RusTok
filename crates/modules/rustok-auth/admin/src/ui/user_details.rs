@@ -2,10 +2,10 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::{use_navigate, use_params};
 use leptos_router::params::Params;
-use rustok_ui_leptos::{Select, SelectOption};
 use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 use rustok_ui_forms::FormState;
+use rustok_ui_leptos::{Select, SelectOption};
 
 use crate::core::{graphql_user_view, prepare_update_user_input};
 use crate::i18n::{auth_transport_error_message, t};

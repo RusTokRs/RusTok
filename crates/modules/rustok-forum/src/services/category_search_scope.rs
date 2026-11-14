@@ -72,8 +72,8 @@ pub struct ForumSearchCategoryScope {
     pub expanded_category_ids: Vec<Uuid>,
 }
 
-use std::sync::Arc;
 use crate::ports::taxonomy::{ForumTaxonomyPort, NoopForumTaxonomyPort};
+use std::sync::Arc;
 
 /// Resolves bounded, visibility-aware Forum category subtrees for Search callers.
 pub struct ForumSearchCategoryScopeService {
@@ -134,11 +134,7 @@ impl ForumSearchCategoryScopeService {
             .collect::<Vec<_>>();
         let parent_by_id = self
             .port
-            .load_category_parents(
-                (&self.db).into(),
-                tenant_id,
-                &tenant_category_ids,
-            )
+            .load_category_parents((&self.db).into(), tenant_id, &tenant_category_ids)
             .await?;
 
         let hierarchy = CategoryHierarchy::from_ordered_nodes(

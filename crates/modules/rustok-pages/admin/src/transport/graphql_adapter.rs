@@ -456,32 +456,55 @@ pub async fn fetch_page_starters(
     token: Option<String>,
     tenant_slug: Option<String>,
 ) -> Result<Vec<crate::model::PageStarterSummary>, ApiError> {
-    let response: PageStartersResponse =
-        request(PAGE_STARTERS_QUERY, serde_json::json!({}), token, tenant_slug).await?;
+    let response: PageStartersResponse = request(
+        PAGE_STARTERS_QUERY,
+        serde_json::json!({}),
+        token,
+        tenant_slug,
+    )
+    .await?;
     Ok(response.page_starters)
 }
 
 pub async fn update_starter_metadata(
-    token: Option<String>, tenant_slug: Option<String>, input: crate::model::PageStarterMetadataUpdate,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    input: crate::model::PageStarterMetadataUpdate,
 ) -> Result<String, ApiError> {
     let response: UpdateStarterMetadataResponse = request(
-        UPDATE_STARTER_METADATA_MUTATION, serde_json::json!({"input": input}), token, tenant_slug,
-    ).await?;
+        UPDATE_STARTER_METADATA_MUTATION,
+        serde_json::json!({"input": input}),
+        token,
+        tenant_slug,
+    )
+    .await?;
     Ok(response.revision)
 }
 
 pub async fn delete_starter(
-    token: Option<String>, tenant_slug: Option<String>, key: String, expected_revision: String,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    key: String,
+    expected_revision: String,
 ) -> Result<bool, ApiError> {
     let response: DeleteStarterResponse = request(
-        DELETE_STARTER_MUTATION, serde_json::json!({"key": key, "expectedRevision": expected_revision}), token, tenant_slug,
-    ).await?;
+        DELETE_STARTER_MUTATION,
+        serde_json::json!({"key": key, "expectedRevision": expected_revision}),
+        token,
+        tenant_slug,
+    )
+    .await?;
     Ok(response.deleted)
 }
 
 pub async fn save_starter_from_page(
-    token: Option<String>, tenant_slug: Option<String>, page_id: String,
-    locale: String, key: String, name: String, category: String,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    page_id: String,
+    locale: String,
+    key: String,
+    name: String,
+    category: String,
 ) -> Result<crate::model::SavedStarterSnapshot, ApiError> {
     let response: SaveStarterFromPageResponse = request(
         SAVE_STARTER_FROM_PAGE_MUTATION,
@@ -500,14 +523,23 @@ pub async fn instantiate_page_starter(
 ) -> Result<Value, ApiError> {
     let response: InstantiatePageStarterResponse = request(
         INSTANTIATE_PAGE_STARTER_MUTATION,
-        InstantiatePageStarterVariables { key, expected_revision, locale },
+        InstantiatePageStarterVariables {
+            key,
+            expected_revision,
+            locale,
+        },
         token,
         tenant_slug,
-    ).await?;
-    let document: Value = serde_json::from_str(&response.instantiate_page_starter)
-        .map_err(|error| GraphqlHttpError::Graphql(format!("Invalid instantiated starter JSON: {error}")))?;
+    )
+    .await?;
+    let document: Value =
+        serde_json::from_str(&response.instantiate_page_starter).map_err(|error| {
+            GraphqlHttpError::Graphql(format!("Invalid instantiated starter JSON: {error}"))
+        })?;
     if !document.is_object() {
-        return Err(GraphqlHttpError::Graphql("The starter returned an invalid document".to_string()));
+        return Err(GraphqlHttpError::Graphql(
+            "The starter returned an invalid document".to_string(),
+        ));
     }
     Ok(document)
 }

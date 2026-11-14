@@ -56,13 +56,11 @@ impl ForumHttpRuntime {
     }
 
     pub(crate) fn category_service(&self) -> crate::CategoryService {
-        crate::CategoryService::new(self.db_clone())
-            .with_taxonomy_port(self.taxonomy_port.clone())
+        crate::CategoryService::new(self.db_clone()).with_taxonomy_port(self.taxonomy_port.clone())
     }
 
     pub(crate) fn category_route_service(&self) -> crate::ForumCategoryRouteService {
-        crate::ForumCategoryRouteService::new(self.db_clone())
-            .with_port(self.taxonomy_port.clone())
+        crate::ForumCategoryRouteService::new(self.db_clone()).with_port(self.taxonomy_port.clone())
     }
 
     fn read_model_service(&self) -> crate::ForumReadModelService {

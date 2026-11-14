@@ -1,6 +1,6 @@
-use fly::{DocumentKind, GrapesJsCodec, ProjectDocument};
 #[cfg(test)]
 use fly::UniqueIdGenerator;
+use fly::{DocumentKind, GrapesJsCodec, ProjectDocument};
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,23 +62,30 @@ fn page_starters() -> Vec<PageStarterDescriptor> {
 /// Server-owned built-ins formerly used only by the Leptos create form.
 /// Their text is an editable starting point, not a substitution into tenant content.
 pub(super) fn catalog() -> crate::error::PagesResult<Vec<super::page_starter::PageStarterRecord>> {
-    page_starters().into_iter().map(|starter| {
-        let document = build_starter_preset(&starter.id, "New Page")
-            .map_err(|error| crate::error::PagesError::validation(format!("Invalid built-in starter: {error}")))?;
-        let content = GrapesJsCodec::encode_value(&document)
-            .map_err(|error| crate::error::PagesError::validation(format!("Cannot encode built-in starter: {error}")))?;
-        Ok(super::page_starter::PageStarterRecord {
-            id: uuid::Uuid::nil(),
-            key: starter.id,
-            category: starter.category,
-            name: starter.title,
-            description: Some(starter.description),
-            thumbnail_url: None,
-            default_template_key: starter.template_key,
-            content,
-            revision: None,
+    page_starters()
+        .into_iter()
+        .map(|starter| {
+            let document = build_starter_preset(&starter.id, "New Page").map_err(|error| {
+                crate::error::PagesError::validation(format!("Invalid built-in starter: {error}"))
+            })?;
+            let content = GrapesJsCodec::encode_value(&document).map_err(|error| {
+                crate::error::PagesError::validation(format!(
+                    "Cannot encode built-in starter: {error}"
+                ))
+            })?;
+            Ok(super::page_starter::PageStarterRecord {
+                id: uuid::Uuid::nil(),
+                key: starter.id,
+                category: starter.category,
+                name: starter.title,
+                description: Some(starter.description),
+                thumbnail_url: None,
+                default_template_key: starter.template_key,
+                content,
+                revision: None,
+            })
         })
-    }).collect()
+        .collect()
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -117,7 +124,6 @@ fn instantiate_starter_preset(starter_id: &str, title: &str) -> Result<Value, St
     let page_doc = preset.clone_as_page(&mut generator)?;
     Ok(GrapesJsCodec::encode_value(&page_doc)?)
 }
-
 
 fn wrap_page_document(title: &str, components: Vec<Value>) -> fly::FlyResult<ProjectDocument> {
     let val = json!({
@@ -708,10 +714,7 @@ mod tests {
                     let has_raw_tag = ["<span", "<strong", "<h1", "<p"]
                         .iter()
                         .any(|tag| content.contains(tag));
-                    assert!(
-                        !has_raw_tag,
-                        "starter content contains raw HTML: {content}"
-                    );
+                    assert!(!has_raw_tag, "starter content contains raw HTML: {content}");
                     assert!(
                         !content.contains(" style="),
                         "starter content contains an inline style attribute: {content}"
@@ -756,8 +759,7 @@ mod tests {
     fn each_starter_preset_validates_as_valid_fly_document() {
         let registries = RegistrySet::with_builtins();
         for starter in page_starters() {
-            let doc = build_starter_preset(&starter.id, "Test Title")
-                .expect("starter must decode");
+            let doc = build_starter_preset(&starter.id, "Test Title").expect("starter must decode");
             assert_eq!(doc.document_kind(), DocumentKind::StarterPreset);
             let report = validate_project(&doc, &registries, ValidationLimits::default());
             assert!(

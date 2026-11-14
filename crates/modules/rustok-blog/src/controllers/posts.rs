@@ -22,9 +22,7 @@ use utoipa::ToSchema;
 
 use crate::dto::BulkOperationResult;
 use crate::state_machine::BlogPostStatus;
-use crate::{
-    ArchivePostInput, CreatePostInput, PostListQuery, PostResponse, UpdatePostInput,
-};
+use crate::{ArchivePostInput, CreatePostInput, PostListQuery, PostResponse, UpdatePostInput};
 
 /// List blog posts
 #[utoipa::path(

@@ -25,7 +25,9 @@ use crate::entities::{
     forum_topic_translation,
 };
 use crate::error::{ForumError, ForumResult};
-use crate::ports::taxonomy::{ForumTaxonomyCategorySnapshot, ForumTaxonomyPort, NoopForumTaxonomyPort};
+use crate::ports::taxonomy::{
+    ForumTaxonomyCategorySnapshot, ForumTaxonomyPort, NoopForumTaxonomyPort,
+};
 use crate::services::engagement_mode::ForumSettingsProviders;
 use crate::services::rbac::enforce_scope;
 use crate::services::subscription::SubscriptionService;

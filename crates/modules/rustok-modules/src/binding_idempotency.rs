@@ -474,7 +474,10 @@ mod tests {
             .expect("expire advisory lease");
 
         assert_eq!(
-            store.claim(&expired_request).await.expect("expired retry blocked"),
+            store
+                .claim(&expired_request)
+                .await
+                .expect("expired retry blocked"),
             ArtifactBindingIdempotencyClaim::ReconciliationRequired
         );
         let row = store

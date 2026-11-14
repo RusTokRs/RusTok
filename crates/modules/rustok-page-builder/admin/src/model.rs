@@ -102,15 +102,16 @@ impl AdminCanvasController {
     pub fn active_page_project(&self) -> fly::FlyResult<Value> {
         let index = self.active_page_index();
         let mut document = self.editor.document().clone();
-        let page = document
-            .project
-            .pages
-            .get(index)
-            .cloned()
-            .ok_or(fly::FlyError::InvalidPageIndex {
-                index,
-                len: document.project.pages.len(),
-            })?;
+        let page =
+            document
+                .project
+                .pages
+                .get(index)
+                .cloned()
+                .ok_or(fly::FlyError::InvalidPageIndex {
+                    index,
+                    len: document.project.pages.len(),
+                })?;
         document.project.pages = vec![page];
         GrapesJsCodec::encode_value(&document)
     }

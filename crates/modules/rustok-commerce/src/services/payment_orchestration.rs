@@ -77,7 +77,9 @@ impl PaymentOrchestrationService {
             return Err(PaymentError::Validation("tenant_id must not be nil".to_string()).into());
         }
         if collection_id.is_nil() {
-            return Err(PaymentError::Validation("collection_id must not be nil".to_string()).into());
+            return Err(
+                PaymentError::Validation("collection_id must not be nil".to_string()).into(),
+            );
         }
         input
             .validate()
@@ -201,7 +203,9 @@ impl PaymentOrchestrationService {
             return Err(PaymentError::Validation("tenant_id must not be nil".to_string()).into());
         }
         if collection_id.is_nil() {
-            return Err(PaymentError::Validation("collection_id must not be nil".to_string()).into());
+            return Err(
+                PaymentError::Validation("collection_id must not be nil".to_string()).into(),
+            );
         }
         let collection = self
             .payment_service
@@ -311,7 +315,9 @@ impl PaymentOrchestrationService {
             return Err(PaymentError::Validation("tenant_id must not be nil".to_string()).into());
         }
         if collection_id.is_nil() {
-            return Err(PaymentError::Validation("collection_id must not be nil".to_string()).into());
+            return Err(
+                PaymentError::Validation("collection_id must not be nil".to_string()).into(),
+            );
         }
         let collection = self
             .payment_service
@@ -437,7 +443,9 @@ impl PaymentOrchestrationService {
             return Err(PaymentError::Validation("tenant_id must not be nil".to_string()).into());
         }
         if collection_id.is_nil() {
-            return Err(PaymentError::Validation("collection_id must not be nil".to_string()).into());
+            return Err(
+                PaymentError::Validation("collection_id must not be nil".to_string()).into(),
+            );
         }
         let collection = self
             .payment_service

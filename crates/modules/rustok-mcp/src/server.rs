@@ -287,9 +287,7 @@ impl RusToKMcpServer {
         }
     }
 
-    async fn resolve_live_binding(
-        &self,
-    ) -> Result<Option<McpRuntimeBinding>, rmcp::ErrorData> {
+    async fn resolve_live_binding(&self) -> Result<Option<McpRuntimeBinding>, rmcp::ErrorData> {
         let Some(resolver) = &self.access_resolver else {
             return Ok(None);
         };

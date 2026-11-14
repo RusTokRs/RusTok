@@ -382,7 +382,6 @@ impl From<sea_orm::DbErr> for ForumError {
     }
 }
 
-
 impl From<ForumError> for rustok_core::Error {
     fn from(error: ForumError) -> Self {
         match error {

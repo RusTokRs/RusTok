@@ -383,9 +383,11 @@ mod scaffold_registration_tests {
                 "missing planned update: {expected}"
             );
         }
-        assert!(changes.iter().any(|change| change
-            .content
-            .contains("example = { crate = \"rustok-example\"")));
+        assert!(changes.iter().any(|change| {
+            change
+                .content
+                .contains("example = { crate = \"rustok-example\"")
+        }));
         assert_eq!(
             fs::read_to_string(root.join("Cargo.toml")).unwrap(),
             before_cargo

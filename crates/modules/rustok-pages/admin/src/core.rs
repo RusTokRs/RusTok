@@ -229,8 +229,14 @@ mod tests {
         assert_eq!(project["pages"][0]["component"]["id"], "root");
         assert!(project["pages"][0].get("frames").is_none());
         let rendered = serde_json::to_string(&project).expect("project JSON");
-        assert!(!rendered.contains("<h1>"), "content must use typed components");
-        assert!(!rendered.contains("<p>"), "content must use typed components");
+        assert!(
+            !rendered.contains("<h1>"),
+            "content must use typed components"
+        );
+        assert!(
+            !rendered.contains("<p>"),
+            "content must use typed components"
+        );
     }
 
     #[test]

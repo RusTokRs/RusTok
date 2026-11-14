@@ -369,7 +369,10 @@ mod tests {
         let start = source
             .find("const __flyApplyPreview")
             .expect("preview binding");
-        let end = start + source[start..].find("adapter.root.addEventListener").expect("binding end");
+        let end = start
+            + source[start..]
+                .find("adapter.root.addEventListener")
+                .expect("binding end");
         let binding = &source[start..end];
         assert!(
             binding.contains("frame.hasAttribute(\"src\")"),

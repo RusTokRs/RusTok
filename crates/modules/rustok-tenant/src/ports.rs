@@ -352,7 +352,9 @@ mod tests {
             include_inactive: false,
         };
         assert_eq!(
-            validate_tenant_read_request(&empty_slug_req).unwrap_err().code,
+            validate_tenant_read_request(&empty_slug_req)
+                .unwrap_err()
+                .code,
             "tenant.slug_empty"
         );
 
@@ -361,7 +363,9 @@ mod tests {
             include_inactive: false,
         };
         assert_eq!(
-            validate_tenant_read_request(&empty_domain_req).unwrap_err().code,
+            validate_tenant_read_request(&empty_domain_req)
+                .unwrap_err()
+                .code,
             "tenant.domain_empty"
         );
     }

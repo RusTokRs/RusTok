@@ -2,11 +2,11 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_query_map};
-use rustok_ui_leptos::{Badge, BadgeVariant};
 use leptos_use::use_debounce_fn;
 use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
+use rustok_ui_leptos::{Badge, BadgeVariant};
 
 use crate::core::{
     CreateUserInputError, GraphqlUserViewModel, filter_users, graphql_user_view,

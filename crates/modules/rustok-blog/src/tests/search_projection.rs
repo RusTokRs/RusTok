@@ -81,11 +81,7 @@ async fn walk(source: &BlogSearchProjectionSource, tenant_id: Uuid, page_size: u
 async fn pinning_a_post_between_pages_does_not_skip_it() {
     let (db, event_bus) = setup_hardening_schema().await;
     let tenant_id = Uuid::new_v4();
-    let source = BlogSearchProjectionSource::new(
-        db.clone(),
-        None,
-        Arc::new(NoopBlogTaxonomyPort),
-    );
+    let source = BlogSearchProjectionSource::new(db.clone(), None, Arc::new(NoopBlogTaxonomyPort));
 
     let first = publish(&db, &event_bus, tenant_id, "first").await;
     let second = publish(&db, &event_bus, tenant_id, "second").await;
@@ -142,11 +138,7 @@ async fn pinning_a_post_between_pages_does_not_skip_it() {
 async fn a_published_post_without_a_publication_timestamp_is_not_projectable() {
     let (db, event_bus) = setup_hardening_schema().await;
     let tenant_id = Uuid::new_v4();
-    let source = BlogSearchProjectionSource::new(
-        db.clone(),
-        None,
-        Arc::new(NoopBlogTaxonomyPort),
-    );
+    let source = BlogSearchProjectionSource::new(db.clone(), None, Arc::new(NoopBlogTaxonomyPort));
 
     let healthy = publish(&db, &event_bus, tenant_id, "healthy").await;
     let damaged = publish(&db, &event_bus, tenant_id, "damaged").await;

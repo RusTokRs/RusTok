@@ -7,8 +7,8 @@ use rustok_api::{
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
-use crate::{PageStarterRecord, PageStarterService, PagesError, SavePageStarterInput};
 use crate::services::page_starter::{SavePageStarterFromPageInput, UpdatePageStarterMetadataInput};
+use crate::{PageStarterRecord, PageStarterService, PagesError, SavePageStarterInput};
 
 fn starter_error(error: PagesError) -> async_graphql::Error {
     let code = match &error {
@@ -166,13 +166,25 @@ impl PageStarterMutation {
         require_module_enabled(ctx, "pages").await?;
         let (tenant_id, security) = scope(ctx, tenant_id, Permission::PAGES_MANAGE)?;
         let snapshot = PageStarterService::new(ctx.data::<DatabaseConnection>()?.clone())
-            .save_from_page(tenant_id, &security, SavePageStarterFromPageInput {
-                page_id: input.page_id, locale: input.locale, key: input.key,
-                category: input.category, name: input.name, description: input.description,
-            }).await.map_err(starter_error)?;
+            .save_from_page(
+                tenant_id,
+                &security,
+                SavePageStarterFromPageInput {
+                    page_id: input.page_id,
+                    locale: input.locale,
+                    key: input.key,
+                    category: input.category,
+                    name: input.name,
+                    description: input.description,
+                },
+            )
+            .await
+            .map_err(starter_error)?;
         Ok(GqlSavedPageStarterSnapshot {
-            starter: snapshot.starter.into(), source_locale: snapshot.source_locale,
-            source_state: snapshot.source_state, source_revision: snapshot.source_revision,
+            starter: snapshot.starter.into(),
+            source_locale: snapshot.source_locale,
+            source_state: snapshot.source_state,
+            source_revision: snapshot.source_revision,
         })
     }
 
@@ -217,11 +229,20 @@ impl PageStarterMutation {
         require_module_enabled(ctx, "pages").await?;
         let (tenant_id, security) = scope(ctx, tenant_id, Permission::PAGES_MANAGE)?;
         PageStarterService::new(ctx.data::<DatabaseConnection>()?.clone())
-            .update_metadata(tenant_id, &security, UpdatePageStarterMetadataInput {
-                key: input.key, category: input.category, name: input.name,
-                description: input.description, default_template_key: input.default_template_key,
-                expected_revision: input.expected_revision,
-            }).await.map_err(starter_error)
+            .update_metadata(
+                tenant_id,
+                &security,
+                UpdatePageStarterMetadataInput {
+                    key: input.key,
+                    category: input.category,
+                    name: input.name,
+                    description: input.description,
+                    default_template_key: input.default_template_key,
+                    expected_revision: input.expected_revision,
+                },
+            )
+            .await
+            .map_err(starter_error)
     }
 
     /// Deletes a tenant override only if its observed revision still matches.

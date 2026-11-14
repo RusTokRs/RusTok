@@ -30,4 +30,3 @@ pub use public_image_client::GrpcMediaPublicImageProvider;
 #[cfg(feature = "grpc-server")]
 pub use server::MediaGrpcService;
 pub use tonic::transport::ClientTlsConfig;
-

@@ -7,9 +7,7 @@ use rustok_api::{AuthContext, TenantContext, has_any_effective_permission};
 use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
-use crate::{
-    CategoryTopicPolicyResponse, ForumError, UpdateCategoryTopicPolicyInput,
-};
+use crate::{CategoryTopicPolicyResponse, ForumError, UpdateCategoryTopicPolicyInput};
 
 #[utoipa::path(
     get,

@@ -13,9 +13,9 @@ use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::{
-    CategoryListItem, CategoryResponse, CreateCategoryInput,
-    ForumCategoryAudienceReadService, ForumCategoryReadOperation, ForumCategoryReadTransport,
-    UpdateCategoryInput, category_read_audience_port_context,
+    CategoryListItem, CategoryResponse, CreateCategoryInput, ForumCategoryAudienceReadService,
+    ForumCategoryReadOperation, ForumCategoryReadTransport, UpdateCategoryInput,
+    category_read_audience_port_context,
 };
 
 #[derive(Debug, Deserialize, IntoParams)]

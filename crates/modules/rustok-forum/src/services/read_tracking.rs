@@ -404,11 +404,7 @@ async fn category_subtree_ids_with_port_in_tx(
 
     let category_ids = categories.iter().map(|c| c.id).collect::<Vec<_>>();
     let parents = port
-        .load_category_parents(
-            txn.into(),
-            tenant_id,
-            &category_ids,
-        )
+        .load_category_parents(txn.into(), tenant_id, &category_ids)
         .await?;
     let mut children = HashMap::<Uuid, Vec<Uuid>>::new();
     for (term_id, parent_id) in parents {

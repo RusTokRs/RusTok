@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
-use crate::event_timeline::MarketplaceSellerEventTimeline;
 use crate::core::MarketplaceSellerAdminTransportProfile;
+use crate::event_timeline::MarketplaceSellerEventTimeline;
 use crate::transport::{
     MarketplaceSellerAdminTransportContext, load_marketplace_seller_event_history,
 };

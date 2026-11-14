@@ -1,6 +1,6 @@
 use crate::{
-    strategy::{BoolRleDecoder, BoolRleEncoder},
     ColumnAttr, ColumnarError,
+    strategy::{BoolRleDecoder, BoolRleEncoder},
 };
 
 use super::ColumnTrait;

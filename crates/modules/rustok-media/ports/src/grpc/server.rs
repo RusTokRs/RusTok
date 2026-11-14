@@ -440,9 +440,7 @@ fn port_error_to_status(error: PortError) -> Status {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        MediaGrpcOperation, TrustedMediaAuthority, parse_id, trusted_context,
-    };
+    use super::{MediaGrpcOperation, TrustedMediaAuthority, parse_id, trusted_context};
     use rustok_api::{PortActor, PortContext};
     use tonic::Request;
     use uuid::Uuid;
@@ -465,28 +463,15 @@ mod tests {
         request.extensions_mut().insert(authority);
 
         let matching_ctx = PortContext::new(&tenant_id, actor.clone(), "en", "corr-1");
-        assert!(
-            trusted_context(&request, matching_ctx, MediaGrpcOperation::GetAsset).is_ok()
-        );
+        assert!(trusted_context(&request, matching_ctx, MediaGrpcOperation::GetAsset).is_ok());
 
-        let mismatch_ctx = PortContext::new(
-            Uuid::new_v4().to_string(),
-            actor,
-            "en",
-            "corr-1",
-        );
-        assert!(
-            trusted_context(&request, mismatch_ctx, MediaGrpcOperation::GetAsset).is_err()
-        );
+        let mismatch_ctx = PortContext::new(Uuid::new_v4().to_string(), actor, "en", "corr-1");
+        assert!(trusted_context(&request, mismatch_ctx, MediaGrpcOperation::GetAsset).is_err());
 
-        let disallowed_op_ctx = PortContext::new(&tenant_id, PortActor::service("test"), "en", "corr-1");
+        let disallowed_op_ctx =
+            PortContext::new(&tenant_id, PortActor::service("test"), "en", "corr-1");
         assert!(
-            trusted_context(
-                &request,
-                disallowed_op_ctx,
-                MediaGrpcOperation::DeleteAsset
-            )
-            .is_err()
+            trusted_context(&request, disallowed_op_ctx, MediaGrpcOperation::DeleteAsset).is_err()
         );
     }
 }

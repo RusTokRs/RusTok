@@ -1,11 +1,11 @@
 use leptos::prelude::*;
-use rustok_ui_leptos::{Button, ButtonVariant, Input, Select, SelectOption, Size};
 use rustok_api::RichTextDocument;
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
 use rustok_seo_panel::SeoEntityPanel;
 use rustok_seo_targets::SeoTargetSlug;
 use rustok_ui_core::UiRouteContext;
+use rustok_ui_leptos::{Button, ButtonVariant, Input, Select, SelectOption, Size};
 
 use crate::core;
 use crate::i18n::t;

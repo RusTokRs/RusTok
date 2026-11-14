@@ -18,11 +18,16 @@ pub(crate) fn StarterCatalogManager(
     let token = use_token();
     let tenant = use_tenant();
     let user = use_current_user();
-    let allowed = Signal::derive(move || user.get().is_some_and(|user|
-        effective_permissions_grant(&user.permissions, "pages:manage")));
+    let allowed = Signal::derive(move || {
+        user.get()
+            .is_some_and(|user| effective_permissions_grant(&user.permissions, "pages:manage"))
+    });
     let text = |key, fallback| t(Some(&default_locale), key, fallback);
     let title = text("pages.starter.manageTitle", "Manage starter catalog");
-    let hint = text("pages.starter.manageHint", "Only tenant starters can be changed. The document and thumbnail are preserved; suggested layouts are not applied automatically.");
+    let hint = text(
+        "pages.starter.manageHint",
+        "Only tenant starters can be changed. The document and thumbnail are preserved; suggested layouts are not applied automatically.",
+    );
     let built_in = text("pages.starter.builtin", "Built-in (read only)");
     let tenant_label = text("pages.starter.tenant", "Tenant starter");
     let edit_label = text("pages.starter.edit", "Edit");
@@ -32,15 +37,24 @@ pub(crate) fn StarterCatalogManager(
     let layout_label = text("pages.starter.layoutKey", "Suggested layout key");
     let save_label = text("pages.starter.saveChanges", "Save changes");
     let delete_label = text("pages.starter.delete", "Delete starter");
-    let delete_warning = text("pages.starter.deleteWarning", "Delete this tenant starter? If it overrides a built-in, the built-in will become visible again.");
+    let delete_warning = text(
+        "pages.starter.deleteWarning",
+        "Delete this tenant starter? If it overrides a built-in, the built-in will become visible again.",
+    );
     let confirm_label = text("pages.starter.confirmDelete", "Confirm deletion");
     let cancel_label = text("pages.starter.cancel", "Cancel");
     let reload_label = text("pages.starter.reload", "Reload catalog and discard edits");
-    let context_error = text("pages.starter.contextError", "Session or tenant changed. Reload and try again.");
+    let context_error = text(
+        "pages.starter.contextError",
+        "Session or tenant changed. Reload and try again.",
+    );
     let saved_message = text("pages.starter.updated", "Starter updated");
     let deleted_message = text("pages.starter.deleted", "Starter deleted");
     let not_deleted = text("pages.starter.notDeleted", "Starter was not deleted");
-    let operation_error = text("pages.starter.operationError", "Changes were not applied. Edits are retained; reload the catalog to resolve a revision conflict.");
+    let operation_error = text(
+        "pages.starter.operationError",
+        "Changes were not applied. Edits are retained; reload the catalog to resolve a revision conflict.",
+    );
     let loading = text("pages.starter.loading", "Loading starters...");
     let unavailable = text("pages.starter.unavailable", "Starter catalog unavailable");
 
@@ -54,10 +68,19 @@ pub(crate) fn StarterCatalogManager(
     let feedback = RwSignal::new(None::<(bool, String)>);
 
     let catalog = Resource::new(
-        move || (token.get(), tenant.get(), starter_generation.get(), allowed.get()),
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                starter_generation.get(),
+                allowed.get(),
+            )
+        },
         move |(token, tenant, generation, allowed)| async move {
             let result: Result<Vec<PageStarterSummary>, String> = if allowed {
-                transport::fetch_page_starters(token, tenant.clone()).await.map_err(|err| err.to_string())
+                transport::fetch_page_starters(token, tenant.clone())
+                    .await
+                    .map_err(|err| err.to_string())
             } else {
                 Ok(Vec::new())
             };
@@ -70,15 +93,22 @@ pub(crate) fn StarterCatalogManager(
         let operation_error = operation_error.clone();
         move |event: SubmitEvent| {
             event.prevent_default();
-            if busy.get_untracked() || !allowed.get_untracked() { return; }
-            let Some((key, revision, chosen_token, chosen_tenant)) = selection.get_untracked() else { return; };
+            if busy.get_untracked() || !allowed.get_untracked() {
+                return;
+            }
+            let Some((key, revision, chosen_token, chosen_tenant)) = selection.get_untracked()
+            else {
+                return;
+            };
             if token.get_untracked() != chosen_token || tenant.get_untracked() != chosen_tenant {
                 feedback.set(Some((false, context_error.clone())));
                 return;
             }
             let description_value = description.get_untracked();
             let input = PageStarterMetadataUpdate {
-                key, expected_revision: revision, name: name.get_untracked(),
+                key,
+                expected_revision: revision,
+                name: name.get_untracked(),
                 category: category.get_untracked(),
                 description: (!description_value.trim().is_empty()).then_some(description_value),
                 default_template_key: layout.get_untracked(),
@@ -89,8 +119,14 @@ pub(crate) fn StarterCatalogManager(
             busy.set(true);
             feedback.set(None);
             spawn_local(async move {
-                let result = transport::update_starter_metadata(chosen_token.clone(), chosen_tenant.clone(), input).await;
-                if token.get_untracked() != chosen_token || tenant.get_untracked() != chosen_tenant {
+                let result = transport::update_starter_metadata(
+                    chosen_token.clone(),
+                    chosen_tenant.clone(),
+                    input,
+                )
+                .await;
+                if token.get_untracked() != chosen_token || tenant.get_untracked() != chosen_tenant
+                {
                     feedback.set(Some((false, context_error)));
                 } else {
                     match result {
@@ -98,9 +134,12 @@ pub(crate) fn StarterCatalogManager(
                             selection.set(None);
                             confirming.set(false);
                             feedback.set(Some((true, saved_message)));
-                            starter_generation.update(|generation| *generation = generation.wrapping_add(1));
+                            starter_generation
+                                .update(|generation| *generation = generation.wrapping_add(1));
                         }
-                        Err(error) => feedback.set(Some((false, format!("{operation_error}: {error}")))),
+                        Err(error) => {
+                            feedback.set(Some((false, format!("{operation_error}: {error}"))))
+                        }
                     }
                 }
                 busy.set(false);
@@ -112,8 +151,13 @@ pub(crate) fn StarterCatalogManager(
         let context_error = context_error.clone();
         let operation_error = operation_error.clone();
         move |()| {
-            if busy.get_untracked() || !allowed.get_untracked() || !confirming.get_untracked() { return; }
-            let Some((key, revision, chosen_token, chosen_tenant)) = selection.get_untracked() else { return; };
+            if busy.get_untracked() || !allowed.get_untracked() || !confirming.get_untracked() {
+                return;
+            }
+            let Some((key, revision, chosen_token, chosen_tenant)) = selection.get_untracked()
+            else {
+                return;
+            };
             if token.get_untracked() != chosen_token || tenant.get_untracked() != chosen_tenant {
                 feedback.set(Some((false, context_error.clone())));
                 return;
@@ -125,8 +169,15 @@ pub(crate) fn StarterCatalogManager(
             busy.set(true);
             feedback.set(None);
             spawn_local(async move {
-                let result = transport::delete_starter(chosen_token.clone(), chosen_tenant.clone(), key, revision).await;
-                if token.get_untracked() != chosen_token || tenant.get_untracked() != chosen_tenant {
+                let result = transport::delete_starter(
+                    chosen_token.clone(),
+                    chosen_tenant.clone(),
+                    key,
+                    revision,
+                )
+                .await;
+                if token.get_untracked() != chosen_token || tenant.get_untracked() != chosen_tenant
+                {
                     feedback.set(Some((false, context_error)));
                 } else {
                     match result {
@@ -134,10 +185,13 @@ pub(crate) fn StarterCatalogManager(
                             selection.set(None);
                             confirming.set(false);
                             feedback.set(Some((true, deleted_message)));
-                            starter_generation.update(|generation| *generation = generation.wrapping_add(1));
+                            starter_generation
+                                .update(|generation| *generation = generation.wrapping_add(1));
                         }
                         Ok(false) => feedback.set(Some((false, not_deleted))),
-                        Err(error) => feedback.set(Some((false, format!("{operation_error}: {error}")))),
+                        Err(error) => {
+                            feedback.set(Some((false, format!("{operation_error}: {error}"))))
+                        }
                     }
                 }
                 busy.set(false);

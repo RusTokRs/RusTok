@@ -8,8 +8,8 @@ use rustok_web::{HttpError, HttpResult};
 use uuid::Uuid;
 
 use crate::{
-    ForumError, MoveCategoryInput, MoveCategoryResponse,
-    ReorderCategorySiblingsInput, ReorderCategorySiblingsResponse,
+    ForumError, MoveCategoryInput, MoveCategoryResponse, ReorderCategorySiblingsInput,
+    ReorderCategorySiblingsResponse,
 };
 
 #[utoipa::path(

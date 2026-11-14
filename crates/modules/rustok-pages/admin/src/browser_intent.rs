@@ -698,7 +698,9 @@ fn request_effects(result: &BrowserIntentDispatchResult) -> Vec<PageBuilderCapab
 pub enum PagesBrowserIntentError {
     #[error("Pages document was not found")]
     PageNotFound,
-    #[error("Draft session is unavailable or expired; open the saved page in a private window using an address without fly_draft")]
+    #[error(
+        "Draft session is unavailable or expired; open the saved page in a private window using an address without fly_draft"
+    )]
     DraftUnavailable,
     #[error("{}", crate::core::DOCUMENT_UNAVAILABLE_MESSAGE)]
     DocumentUnavailable,
@@ -916,7 +918,13 @@ mod tests {
         use rustok_page_builder_admin::InMemorySsrDraftSessionStore;
         let store = InMemorySsrDraftSessionStore::editor_default();
         let initial = store
-            .commit_with_context(None, None, dirty_controller(), json!({"locale": "en"}), None)
+            .commit_with_context(
+                None,
+                None,
+                dirty_controller(),
+                json!({"locale": "en"}),
+                None,
+            )
             .expect("create draft");
         let mut stale = store.load(&initial.token, "home", None).unwrap().unwrap();
         let original_hash = stale.controller.editor().revision().project_hash;
@@ -924,25 +932,42 @@ mod tests {
         assert!(mark_stale_draft_conflict(&mut stale.controller, "rev-2").unwrap());
         assert!(!mark_stale_draft_conflict(&mut stale.controller, "rev-2").unwrap());
         assert_eq!(stale.controller.revision_id(), "rev-1");
-        assert_eq!(stale.controller.editor().revision().project_hash, original_hash);
+        assert_eq!(
+            stale.controller.editor().revision().project_hash,
+            original_hash
+        );
         assert!(stale.controller.editor().revision().dirty);
         assert!(stale.controller.editor().revision().save_conflict);
 
         // A concurrent session writer wins the store CAS; stale handling must not
         // remove or overwrite the newer generation.
-        let concurrent = store.commit_with_context(
-            Some(&initial.token), Some(initial.generation), dirty_controller(),
-            json!({"locale": "ru"}), None,
-        ).unwrap();
+        let concurrent = store
+            .commit_with_context(
+                Some(&initial.token),
+                Some(initial.generation),
+                dirty_controller(),
+                json!({"locale": "ru"}),
+                None,
+            )
+            .unwrap();
         let rejected = store.commit_with_context(
-            Some(&stale.token), Some(stale.generation), stale.controller,
-            stale.runtime_context, None,
+            Some(&stale.token),
+            Some(stale.generation),
+            stale.controller,
+            stale.runtime_context,
+            None,
         );
-        assert!(matches!(rejected, Err(SsrDraftSessionError::GenerationConflict { .. })));
+        assert!(matches!(
+            rejected,
+            Err(SsrDraftSessionError::GenerationConflict { .. })
+        ));
         let retained = store.load(&initial.token, "home", None).unwrap().unwrap();
         assert_eq!(retained.generation, concurrent.generation);
         assert_eq!(retained.runtime_context, json!({"locale": "ru"}));
-        assert_eq!(retained.controller.editor().revision().project_hash, original_hash);
+        assert_eq!(
+            retained.controller.editor().revision().project_hash,
+            original_hash
+        );
     }
 
     #[tokio::test]
@@ -952,13 +977,23 @@ mod tests {
         let mut envelope = form_envelope("select", json!({"component_id": "hero"}));
         envelope.draft_token = Some("gone-token".to_string());
         let snapshot = PagesBuilderSaveSnapshot {
-            token: None, tenant_slug: None, page_id: "home".to_string(),
-            default_locale: "en".to_string(), owner: None,
+            token: None,
+            tenant_slug: None,
+            page_id: "home".to_string(),
+            default_locale: "en".to_string(),
+            owner: None,
         };
         let result = dispatch_pages_browser_intent_with_store(
-            snapshot, envelope, &store, CapabilityState::full(),
-        ).await;
-        assert!(matches!(result, Err(PagesBrowserIntentError::DraftUnavailable)));
+            snapshot,
+            envelope,
+            &store,
+            CapabilityState::full(),
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(PagesBrowserIntentError::DraftUnavailable)
+        ));
     }
 
     #[test]

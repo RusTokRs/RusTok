@@ -194,7 +194,12 @@ impl CategoryVisibilitySnapshot {
     where
         C: ConnectionTrait,
     {
-        Self::load_with_port(&crate::ports::taxonomy::NoopForumTaxonomyPort, db, tenant_id).await
+        Self::load_with_port(
+            &crate::ports::taxonomy::NoopForumTaxonomyPort,
+            db,
+            tenant_id,
+        )
+        .await
     }
 
     async fn load_with_port<C>(

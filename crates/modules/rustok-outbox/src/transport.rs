@@ -197,7 +197,9 @@ impl OutboxTransport {
         payload: serde_json::Value,
     ) -> Result<entity::ActiveModel> {
         if id.is_nil() {
-            return Err(Error::Validation("outbox event id must not be nil".to_string()));
+            return Err(Error::Validation(
+                "outbox event id must not be nil".to_string(),
+            ));
         }
         if event_type.trim().is_empty() || event_type.len() > 255 {
             return Err(Error::Validation(
@@ -290,7 +292,9 @@ impl EventTransport for OutboxTransport {
 
     async fn acknowledge(&self, event_id: uuid::Uuid) -> Result<()> {
         if event_id.is_nil() {
-            return Err(Error::Validation("outbox event_id must not be nil".to_string()));
+            return Err(Error::Validation(
+                "outbox event_id must not be nil".to_string(),
+            ));
         }
         let mut model: entity::ActiveModel = entity::Entity::find_by_id(event_id)
             .one(&self.db)

@@ -27,22 +27,41 @@ pub async fn fetch_page_starters(
 }
 
 pub async fn update_starter_metadata(
-    token: Option<String>, tenant_slug: Option<String>, input: crate::model::PageStarterMetadataUpdate,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    input: crate::model::PageStarterMetadataUpdate,
 ) -> Result<String, TransportError> {
     graphql_adapter::update_starter_metadata(token, tenant_slug, input).await
 }
 
 pub async fn delete_starter(
-    token: Option<String>, tenant_slug: Option<String>, key: String, expected_revision: String,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    key: String,
+    expected_revision: String,
 ) -> Result<bool, TransportError> {
     graphql_adapter::delete_starter(token, tenant_slug, key, expected_revision).await
 }
 
 pub async fn save_starter_from_page(
-    token: Option<String>, tenant_slug: Option<String>, page_id: String,
-    locale: String, key: String, name: String, category: String,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    page_id: String,
+    locale: String,
+    key: String,
+    name: String,
+    category: String,
 ) -> Result<crate::model::SavedStarterSnapshot, TransportError> {
-    graphql_adapter::save_starter_from_page(token, tenant_slug, page_id, locale, key, name, category).await
+    graphql_adapter::save_starter_from_page(
+        token,
+        tenant_slug,
+        page_id,
+        locale,
+        key,
+        name,
+        category,
+    )
+    .await
 }
 
 pub async fn instantiate_page_starter(
@@ -52,7 +71,8 @@ pub async fn instantiate_page_starter(
     expected_revision: Option<String>,
     locale: String,
 ) -> Result<Value, TransportError> {
-    graphql_adapter::instantiate_page_starter(token, tenant_slug, key, expected_revision, locale).await
+    graphql_adapter::instantiate_page_starter(token, tenant_slug, key, expected_revision, locale)
+        .await
 }
 
 pub async fn fetch_pages(

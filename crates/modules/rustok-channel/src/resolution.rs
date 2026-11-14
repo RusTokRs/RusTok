@@ -352,7 +352,11 @@ impl ChannelResolver {
                 continue;
             }
 
-            let detail = match self.service.get_channel_detail(rule.action_channel_id).await {
+            let detail = match self
+                .service
+                .get_channel_detail(rule.action_channel_id)
+                .await
+            {
                 Ok(detail) => detail,
                 Err(crate::ChannelError::NotFound(_)) => {
                     trace.push(ResolutionTraceStep {

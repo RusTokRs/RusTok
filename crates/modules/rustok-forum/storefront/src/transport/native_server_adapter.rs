@@ -5,9 +5,9 @@ use crate::model::StorefrontForumData;
 
 #[cfg(feature = "ssr")]
 use crate::model::{
-    bounded_forum_read_limit, ForumCategoryConnection, ForumCategoryListItem, ForumMemberCard,
-    ForumMemberProfileSummary, ForumMemberStats, ForumReplyDetail, ForumReplyPage,
-    ForumTopicDetail, ForumTopicListItem, ForumTopicPage,
+    ForumCategoryConnection, ForumCategoryListItem, ForumMemberCard, ForumMemberProfileSummary,
+    ForumMemberStats, ForumReplyDetail, ForumReplyPage, ForumTopicDetail, ForumTopicListItem,
+    ForumTopicPage, bounded_forum_read_limit,
 };
 
 /// Storefront channel policy applies to guests and authenticated readers alike.

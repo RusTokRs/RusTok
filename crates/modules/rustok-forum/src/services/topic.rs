@@ -731,7 +731,13 @@ impl TopicService {
 
         let resolved_names = self
             .taxonomy_port
-            .resolve_term_names((&self.db).into(), tenant_id, &term_ids, locale, fallback_locale)
+            .resolve_term_names(
+                (&self.db).into(),
+                tenant_id,
+                &term_ids,
+                locale,
+                fallback_locale,
+            )
             .await?;
         let mut tags = term_ids
             .into_iter()
@@ -776,7 +782,13 @@ impl TopicService {
         let all_term_ids: Vec<Uuid> = all_term_ids.into_iter().collect();
         let resolved_names = self
             .taxonomy_port
-            .resolve_term_names((&self.db).into(), tenant_id, &all_term_ids, locale, fallback_locale)
+            .resolve_term_names(
+                (&self.db).into(),
+                tenant_id,
+                &all_term_ids,
+                locale,
+                fallback_locale,
+            )
             .await?;
         let mut result: HashMap<Uuid, Vec<String>> = HashMap::new();
         for topic_id in topic_ids {
@@ -957,12 +969,7 @@ impl TopicService {
 
         let term_ids = self
             .taxonomy_port
-            .ensure_tags_in_tx(
-                txn,
-                tenant_id,
-                locale,
-                tags,
-            )
+            .ensure_tags_in_tx(txn, tenant_id, locale, tags)
             .await?;
         let now = Utc::now();
 

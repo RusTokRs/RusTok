@@ -231,9 +231,11 @@ impl PricingService {
         channel_id: Option<Uuid>,
         channel_slug: Option<String>,
     ) -> CommerceResult<PriceAdjustmentPreview> {
-        if tenant_id.is_nil() || actor_id.is_nil() || variant_id.is_nil() || price_list_id.is_nil() {
+        if tenant_id.is_nil() || actor_id.is_nil() || variant_id.is_nil() || price_list_id.is_nil()
+        {
             return Err(CommerceError::Validation(
-                "tenant_id, actor_id, variant_id, and price_list_id must not be nil UUIDs".to_string(),
+                "tenant_id, actor_id, variant_id, and price_list_id must not be nil UUIDs"
+                    .to_string(),
             ));
         }
         self.ensure_variant_tenant(tenant_id, variant_id).await?;

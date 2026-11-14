@@ -392,8 +392,8 @@ impl CategoryService {
             }
         }
 
-        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
         use crate::entities::forum_category;
+        use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
         let existing = forum_category::Entity::find()
             .filter(forum_category::Column::TenantId.eq(tenant_id))

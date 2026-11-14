@@ -1,7 +1,7 @@
 //! Local source provenance and process orchestration. Executable composition
 //! and PostgreSQL semantics belong to rustok-migrations.
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -89,8 +89,12 @@ pub fn run(args: &[String]) -> Result<()> {
 
 fn help() -> Result<()> {
     println!("cargo xtask migrations plan --reference REF [--output target/migrations/RUN]");
-    println!("cargo xtask migrations verify-fresh --plan FILE --verifier FILE --pg-dump FILE --admin-url-env ENV");
-    println!("These commands produce scoped evidence. Replacement admission remains blocked until every release, upgrade and recovery gate is implemented.");
+    println!(
+        "cargo xtask migrations verify-fresh --plan FILE --verifier FILE --pg-dump FILE --admin-url-env ENV"
+    );
+    println!(
+        "These commands produce scoped evidence. Replacement admission remains blocked until every release, upgrade and recovery gate is implemented."
+    );
     Ok(())
 }
 
@@ -1044,16 +1048,20 @@ mod tests {
             assert!(safe_relative(path).is_err(), "{path}");
         }
         assert!(safe_relative("src/migrations/schema/tables.rs").is_ok());
-        assert!(parse_options(
-            &["--plan".into(), "--verifier".into()],
-            &["--plan", "--verifier"]
-        )
-        .is_err());
-        assert!(parse_options(
-            &["--plan".into(), "a".into(), "--plan".into(), "b".into()],
-            &["--plan"]
-        )
-        .is_err());
+        assert!(
+            parse_options(
+                &["--plan".into(), "--verifier".into()],
+                &["--plan", "--verifier"]
+            )
+            .is_err()
+        );
+        assert!(
+            parse_options(
+                &["--plan".into(), "a".into(), "--plan".into(), "b".into()],
+                &["--plan"]
+            )
+            .is_err()
+        );
     }
     #[test]
     fn source_digest_binds_paths_modes_and_bytes() {

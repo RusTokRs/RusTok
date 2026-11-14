@@ -51,7 +51,9 @@ pub struct SharedAiProductCatalogReadPort(pub Arc<dyn rustok_product::ProductCat
 
 /// Host-composed owner port for product catalog commands (e.g. AI product copy).
 #[derive(Clone)]
-pub struct SharedAiProductCatalogCommandPort(pub Arc<dyn rustok_product::ProductCatalogCommandPort>);
+pub struct SharedAiProductCatalogCommandPort(
+    pub Arc<dyn rustok_product::ProductCatalogCommandPort>,
+);
 
 /// Host-composed retrieval provider used only when a task profile enables RAG.
 #[derive(Clone)]

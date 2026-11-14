@@ -4,8 +4,8 @@ pub mod delta_rle;
 pub mod rle;
 pub mod serde_impl;
 
-use crate::{columnar_internal::ColumnarEncoder, ColumnarDecoder, ColumnarError};
 use crate::{BoolRleColumn, DeltaOfDeltaColumn, DeltaRleColumn, DeltaRleable, RleColumn, Rleable};
+use crate::{ColumnarDecoder, ColumnarError, columnar_internal::ColumnarEncoder};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::ops::DerefMut;

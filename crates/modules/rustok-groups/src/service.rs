@@ -490,7 +490,9 @@ impl GroupsService {
         let items = models
             .into_iter()
             .map(|model| {
-                let category = model.category_id.and_then(|id| categories.get(&id).cloned());
+                let category = model
+                    .category_id
+                    .and_then(|id| categories.get(&id).cloned());
                 self.map_summary(
                     context,
                     model,

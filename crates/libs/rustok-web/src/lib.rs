@@ -351,10 +351,8 @@ mod tests {
             "The requested service is temporarily unavailable"
         );
 
-        let blank_code = port_error_to_http_error(PortError::validation(
-            "   ",
-            "validation failed",
-        ));
+        let blank_code =
+            port_error_to_http_error(PortError::validation("   ", "validation failed"));
         assert_eq!(blank_code.code, "port_error");
     }
 

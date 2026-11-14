@@ -22,8 +22,7 @@ use rustok_media::{
     migrations::Migrator as MediaMigrator,
 };
 use rustok_media_ports::grpc::{
-    MediaGrpcBearerInterceptor, MediaGrpcService,
-    proto::media_service_server::MediaServiceServer,
+    MediaGrpcBearerInterceptor, MediaGrpcService, proto::media_service_server::MediaServiceServer,
 };
 use rustok_outbox::{SysEvents, SysEventsMigration};
 use rustok_storage::{LocalStorageConfig, StorageRuntime};
@@ -133,8 +132,10 @@ impl ServiceConfig {
         }
 
         let bearer_token = RedactedSecret::new(required_secret_env(BEARER_TOKEN_ENV)?);
-        let trusted_service_actor =
-            validate_service_actor(optional_env(TRUSTED_SERVICE_ACTOR_ENV).unwrap_or_else(|| "service:rustok-media-service".to_string()))?;
+        let trusted_service_actor = validate_service_actor(
+            optional_env(TRUSTED_SERVICE_ACTOR_ENV)
+                .unwrap_or_else(|| "service:rustok-media-service".to_string()),
+        )?;
         let storage_root = optional_env(STORAGE_ROOT_ENV)
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(DEFAULT_STORAGE_ROOT));
@@ -367,8 +368,8 @@ fn optional_path_env(name: &str) -> Option<PathBuf> {
 }
 
 fn required_secret_env(name: &str) -> Result<String> {
-    let value = env::var(name)
-        .map_err(|_| anyhow!("missing required environment variable `{name}`"))?;
+    let value =
+        env::var(name).map_err(|_| anyhow!("missing required environment variable `{name}`"))?;
     if value.is_empty() || value != value.trim() {
         bail!("{name} must be non-empty and have no surrounding whitespace");
     }
@@ -474,8 +475,8 @@ async fn shutdown_signal() {
 #[cfg(test)]
 mod tests {
     use super::{
-        REQUIRED_SCHEMA_TABLES, RedactedSecret, ServiceTransport,
-        validate_database_url, validate_service_actor, validate_transport_security,
+        REQUIRED_SCHEMA_TABLES, RedactedSecret, ServiceTransport, validate_database_url,
+        validate_service_actor, validate_transport_security,
     };
     use std::{net::SocketAddr, path::PathBuf};
 
@@ -549,4 +550,3 @@ mod tests {
         assert!(validate_service_actor("caller service".to_string()).is_err());
     }
 }
-

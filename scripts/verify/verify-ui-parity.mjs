@@ -93,7 +93,7 @@ if (!existsSync(flutterTokensPath)) {
 }
 
 // 4. Verify Component Variant Parity (Button)
-const rustTypesPath = resolve(rootDir, 'UI/leptos/src/types.rs');
+const rustTypesPath = resolve(rootDir, 'crates/ui/rustok-ui/src/types.rs');
 const reactButtonPath = resolve(rootDir, 'apps/next-admin/src/shared/ui/shadcn/button.tsx');
 
 if (existsSync(rustTypesPath) && existsSync(reactButtonPath)) {

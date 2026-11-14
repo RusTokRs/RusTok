@@ -76,7 +76,8 @@ impl CategoryService {
         tenant_id: Uuid,
         record: &crate::import_write_preparation::ForumPreparedImportCategory,
     ) -> ForumResult<()> {
-        Self::insert_import_category_with_port_in_tx(&NoopForumTaxonomyPort, txn, tenant_id, record).await
+        Self::insert_import_category_with_port_in_tx(&NoopForumTaxonomyPort, txn, tenant_id, record)
+            .await
     }
 
     pub(crate) async fn insert_import_category_with_port_in_tx(

@@ -105,7 +105,11 @@ impl PageService {
                 )));
             }
         }
-        if checked_layout && body.as_ref().is_some_and(|body| body.locale != response_locale) {
+        if checked_layout
+            && body
+                .as_ref()
+                .is_some_and(|body| body.locale != response_locale)
+        {
             return Err(PagesError::validation(
                 "Catalog layout and body locales must match",
             ));

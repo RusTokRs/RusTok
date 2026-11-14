@@ -221,7 +221,11 @@ impl ForumSearchProjectionSource {
                 None,
             )
             .await
-            .map_err(|e| Error::External(format!("Forum Search Taxonomy category projection failed: {e}")))?;
+            .map_err(|e| {
+                Error::External(format!(
+                    "Forum Search Taxonomy category projection failed: {e}"
+                ))
+            })?;
         let projection_by_taxonomy_id = projections
             .into_iter()
             .map(|projection| (projection.id, projection))
@@ -560,7 +564,11 @@ impl ForumSearchProjectionSource {
                         None,
                     )
                     .await
-                    .map_err(|e| Error::External(format!("Forum Search Taxonomy category projection failed: {e}")))?;
+                    .map_err(|e| {
+                        Error::External(format!(
+                            "Forum Search Taxonomy category projection failed: {e}"
+                        ))
+                    })?;
                 let projection = projections.pop().ok_or_else(|| {
                     Error::External(format!(
                         "Forum Search category {entity_id} Taxonomy Category projection is missing"
@@ -844,8 +852,8 @@ pub(crate) async fn load_topic_tags_for_topics_with_port(
     locale: &str,
     fallback_locale: Option<&str>,
 ) -> Result<HashMap<Uuid, Vec<String>>> {
-    use std::collections::{HashMap, HashSet};
     use sea_orm::ColumnTrait;
+    use std::collections::{HashMap, HashSet};
 
     if topic_ids.is_empty() {
         return Ok(HashMap::new());
@@ -864,12 +872,21 @@ pub(crate) async fn load_topic_tags_for_topics_with_port(
     let mut topic_to_terms: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
     let mut all_term_ids = HashSet::new();
     for row in rows {
-        topic_to_terms.entry(row.topic_id).or_default().push(row.term_id);
+        topic_to_terms
+            .entry(row.topic_id)
+            .or_default()
+            .push(row.term_id);
         all_term_ids.insert(row.term_id);
     }
     let all_term_ids: Vec<Uuid> = all_term_ids.into_iter().collect();
     let resolved = port
-        .resolve_term_names((db).into(), tenant_id, &all_term_ids, locale, fallback_locale)
+        .resolve_term_names(
+            (db).into(),
+            tenant_id,
+            &all_term_ids,
+            locale,
+            fallback_locale,
+        )
         .await
         .map_err(|e| Error::External(format!("Forum Search taxonomy batch failed: {e}")))?;
     let mut result: HashMap<Uuid, Vec<String>> = HashMap::new();

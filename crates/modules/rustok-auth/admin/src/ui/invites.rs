@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use rustok_ui_leptos::{Badge, BadgeVariant};
 use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
+use rustok_ui_leptos::{Badge, BadgeVariant};
 
 use crate::i18n::{auth_transport_error_message, t};
 use crate::model::{IssueUserInviteInput, IssuedUserInvite};

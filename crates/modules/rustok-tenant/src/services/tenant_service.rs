@@ -39,8 +39,9 @@ impl TenantService {
 
     #[instrument(skip(self, input), fields(slug = %input.slug))]
     pub async fn create_tenant(&self, input: CreateTenantInput) -> TenantResult<TenantResponse> {
-        let slug = rustok_core::tenant_validation::TenantIdentifierValidator::validate_slug(&input.slug)
-            .map_err(|e| TenantError::Validation(e.to_string()))?;
+        let slug =
+            rustok_core::tenant_validation::TenantIdentifierValidator::validate_slug(&input.slug)
+                .map_err(|e| TenantError::Validation(e.to_string()))?;
         let name = input.name.trim().to_string();
         if name.is_empty() {
             return Err(TenantError::Validation(
@@ -58,7 +59,10 @@ impl TenantService {
                 if trimmed.is_empty() {
                     None
                 } else {
-                    let valid = rustok_core::tenant_validation::TenantIdentifierValidator::validate_host(trimmed)
+                    let valid =
+                        rustok_core::tenant_validation::TenantIdentifierValidator::validate_host(
+                            trimmed,
+                        )
                         .map_err(|e| TenantError::Validation(e.to_string()))?;
                     Some(valid)
                 }
@@ -128,8 +132,9 @@ impl TenantService {
         &self,
         input: CreateTenantInput,
     ) -> TenantResult<(TenantResponse, bool)> {
-        let slug = rustok_core::tenant_validation::TenantIdentifierValidator::validate_slug(&input.slug)
-            .map_err(|e| TenantError::Validation(e.to_string()))?;
+        let slug =
+            rustok_core::tenant_validation::TenantIdentifierValidator::validate_slug(&input.slug)
+                .map_err(|e| TenantError::Validation(e.to_string()))?;
         tracing::debug!(slug = %slug, "ensuring tenant");
 
         if let Some(existing) = tenant::Entity::find()
@@ -256,7 +261,10 @@ impl TenantService {
             if trimmed.is_empty() {
                 active.domain = Set(None);
             } else {
-                let valid = rustok_core::tenant_validation::TenantIdentifierValidator::validate_host(trimmed)
+                let valid =
+                    rustok_core::tenant_validation::TenantIdentifierValidator::validate_host(
+                        trimmed,
+                    )
                     .map_err(|e| TenantError::Validation(e.to_string()))?;
                 active.domain = Set(Some(valid));
             }
@@ -935,7 +943,10 @@ mod tests {
             .update_tenant_module_settings(tenant_id, "seo", json!(["invalid_array"]))
             .await
             .expect_err("non-object settings must be rejected");
-        assert!(matches!(invalid_schema_err, TenantError::InvalidSettingsSchema(_)));
+        assert!(matches!(
+            invalid_schema_err,
+            TenantError::InvalidSettingsSchema(_)
+        ));
     }
 
     #[tokio::test]

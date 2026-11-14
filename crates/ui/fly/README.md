@@ -8,19 +8,16 @@ rendering, with zero UI-framework coupling.
 
 ## Status
 
-Read this before planning against the architecture diagram below: the layers differ sharply in maturity.
-
 | Package | Path | Status | What exists today |
 |---|---|---|---|
 | `fly` | `.` | **Stable** | Project model, lossless GrapesJS codec, commands, history, registries, validation, SSR renderer, dynamic/binding/context runtime |
 | `fly-ui` | `ui/` | **Stable** | `FlyUiStateMachine`, intents/effects, keymaps, capability policy, contribution model |
-| `fly-web` | `web/` | **Beta** | Geometry, hit-testing, iframe bridge, real-DOM inline grants, cleanup registry |
-| `fly-browser` | `browser/` | **Beta** | SSR JS bridge (`assets/fly-browser.js`) and its Rust-side config contract |
-| `fly-leptos` | `leptos/` | **Foundation only** | Four layout shells (`FlyFullEditor`, `FlyInlineEditor`, `FlyPreview`, `FlyReadOnly`) that render a `<section>` wrapper, plus re-exports of `fly-web`. **No canvas, drag & drop, panels or state wiring.** |
-| `fly-dioxus` | `dioxus/` | **Foundation only** | The same four layout shells for Dioxus 0.7. **No canvas, drag & drop, panels or state wiring.** |
+| `fly-web` | `web/` | **Stable** | Geometry, hit-testing, coordinate transforms, iframe origin validation, real-DOM inline grants, cleanup registry |
+| `fly-browser` | `browser/` | **Stable** | SSR JS bridge (`assets/fly-browser.js`, `assets/fly-actions.js`), CSRF derivation, `BrowserIntentEnvelope` contract |
+| `fly-leptos` | `leptos/` | **Stable** | `FlyEditorWorkspace`, full authoring panels (`FlyPalette`, `FlyLayerTree`, `FlyCanvasPreview`, `FlyPageProperties`, `FlyComponentProperties`, `FlyStyleRules`, `FlyAssets`, `FlyThemeTokens`), dual runtime support (`ssr + browser-js` default, opt-in `wasm-client`) |
+| `fly-dioxus` | `dioxus/` | **Foundation only** | Four layout shells for Dioxus 0.7 (`FlyFullEditor`, `FlyInlineEditor`, `FlyPreview`, `FlyReadOnly`), plus re-exports of `fly-web`. Full workspace parity scheduled for future release. |
 
-Authoring surfaces that need a working editor today drive `fly` and `fly-ui` directly and render
-through SSR plus `fly-browser`; see `crates/modules/rustok-page-builder/admin`.
+Authoring surfaces in RusToK Admin (`crates/modules/rustok-page-builder/admin`) leverage `fly-leptos` and `fly-browser` in the canonical `ssr + browser-js` runtime.
 
 ### Extraction readiness
 

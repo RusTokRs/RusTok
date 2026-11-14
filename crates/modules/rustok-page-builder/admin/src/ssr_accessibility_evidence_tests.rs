@@ -53,11 +53,20 @@ fn browser_canvas_binds_the_rendered_draft_generation() {
         provide_context(PageBuilderAdminHostContext::new(controller()));
         view! { <PageBuilderAdmin /> }.to_html()
     });
-    assert!(html.contains("data-fly-draft-contract=\"rendered\""), "{html}");
+    assert!(
+        html.contains("data-fly-draft-contract=\"rendered\""),
+        "{html}"
+    );
     assert!(html.contains("data-fly-draft-recovery-link="), "{html}");
     assert!(html.contains("data-fly-draft-recovery-message="), "{html}");
-    assert!(html.contains("data-fly-rendered-draft-token=\"draft-1\""), "{html}");
-    assert!(html.contains("data-fly-rendered-draft-generation=\"42\""), "{html}");
+    assert!(
+        html.contains("data-fly-rendered-draft-token=\"draft-1\""),
+        "{html}"
+    );
+    assert!(
+        html.contains("data-fly-rendered-draft-generation=\"42\""),
+        "{html}"
+    );
 }
 
 fn element_containing<'a>(

@@ -495,8 +495,7 @@ fn service(ctx: &Context<'_>) -> Result<GroupsService> {
         <FieldError as GraphQLError>::internal_error("Groups runtime is not registered")
     })?;
     let mut service = GroupsService::new(runtime.db_clone());
-    if let Some(port) =
-        runtime.shared_get::<std::sync::Arc<dyn crate::ports::GroupTaxonomyPort>>()
+    if let Some(port) = runtime.shared_get::<std::sync::Arc<dyn crate::ports::GroupTaxonomyPort>>()
     {
         service = service.with_taxonomy_port(port);
     }

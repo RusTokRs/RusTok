@@ -1,7 +1,8 @@
 //! Starter templates catalog (presets) for quick page creation.
 use chrono::Utc;
 use sea_orm::{
-    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    ActiveValue::Set,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     sea_query::{Expr, OnConflict},
 };
 use serde::{Deserialize, Serialize};
@@ -10,10 +11,12 @@ use uuid::Uuid;
 use rustok_api::{Action, Resource};
 use rustok_core::{PermissionScope, SecurityContext};
 
+use super::page::{
+    content_has_symbol_instances, normalize_locale, replace_symbol_block, resolve_content_symbols,
+};
 use crate::entities::{page, page_body, page_body_draft, page_starter, site_symbol};
-use crate::services::rbac::can_read_page_source;
-use super::page::{content_has_symbol_instances, normalize_locale, replace_symbol_block, resolve_content_symbols};
 use crate::error::{PagesError, PagesResult};
+use crate::services::rbac::can_read_page_source;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PageStarterRecord {
@@ -170,11 +173,14 @@ impl PageStarterService {
         let locale = normalize_locale(&input.locale)?;
         let key = input.key.trim();
         if builtin_starters()?.iter().any(|starter| starter.key == key) {
-            return Err(PagesError::validation("Choose a key that does not belong to a built-in starter"));
+            return Err(PagesError::validation(
+                "Choose a key that does not belong to a built-in starter",
+            ));
         }
         let page = page::Entity::find_by_id(input.page_id)
             .filter(page::Column::TenantId.eq(tenant_id))
-            .one(&self.db).await?
+            .one(&self.db)
+            .await?
             .ok_or_else(|| PagesError::validation("Source page not found"))?;
         if !can_read_page_source(security, page.author_id) {
             return Err(PagesError::forbidden("Permission denied"));
@@ -183,36 +189,65 @@ impl PageStarterService {
             .filter(page_body_draft::Column::TenantId.eq(tenant_id))
             .filter(page_body_draft::Column::PageId.eq(page.id))
             .filter(page_body_draft::Column::Locale.eq(&locale))
-            .one(&self.db).await?;
+            .one(&self.db)
+            .await?;
         let (content, format, revision, state) = if let Some(body) = draft {
-            (body.content, body.format, body.updated_at.to_string(), "draft")
+            (
+                body.content,
+                body.format,
+                body.updated_at.to_string(),
+                "draft",
+            )
         } else {
             let body = page_body::Entity::find()
                 .filter(page_body::Column::TenantId.eq(tenant_id))
                 .filter(page_body::Column::PageId.eq(page.id))
                 .filter(page_body::Column::Locale.eq(&locale))
-                .one(&self.db).await?
+                .one(&self.db)
+                .await?
                 .ok_or_else(|| PagesError::validation("No saved page document for this locale"))?;
-            (body.content, body.format, body.updated_at.to_string(), "current")
+            (
+                body.content,
+                body.format,
+                body.updated_at.to_string(),
+                "current",
+            )
         };
         if format != rustok_page_builder::PAGE_BUILDER_DOCUMENT_FORMAT {
-            return Err(PagesError::validation("Source is not a Page Builder document"));
+            return Err(PagesError::validation(
+                "Source is not a Page Builder document",
+            ));
         }
         let mut content: serde_json::Value = serde_json::from_str(&content)
             .map_err(|error| PagesError::validation(format!("Invalid source document: {error}")))?;
-        let object = content.as_object_mut()
+        let object = content
+            .as_object_mut()
             .ok_or_else(|| PagesError::validation("Invalid source document"))?;
         // Symbol definitions are shared authoring data, not part of the starter's authority.
         // Keep references only; instantiation resolves against the target locale.
         object.remove("flySymbols");
         object.remove("flySymbolsRevision");
-        let starter = self.save(tenant_id, security, SavePageStarterInput {
-            key: input.key, category: input.category, name: input.name,
-            description: input.description, thumbnail_url: None,
-            default_template_key: Some(page.template), content, expected_revision: None,
-        }).await?;
+        let starter = self
+            .save(
+                tenant_id,
+                security,
+                SavePageStarterInput {
+                    key: input.key,
+                    category: input.category,
+                    name: input.name,
+                    description: input.description,
+                    thumbnail_url: None,
+                    default_template_key: Some(page.template),
+                    content,
+                    expected_revision: None,
+                },
+            )
+            .await?;
         Ok(SavedPageStarterSnapshot {
-            starter, source_locale: locale, source_state: state.to_string(), source_revision: revision,
+            starter,
+            source_locale: locale,
+            source_state: state.to_string(),
+            source_revision: revision,
         })
     }
 
@@ -230,18 +265,23 @@ impl PageStarterService {
 
         let category = input.category.trim();
         let name = input.name.trim();
-        let default_template_key = input.default_template_key.as_deref().unwrap_or("default").trim();
+        let default_template_key = input
+            .default_template_key
+            .as_deref()
+            .unwrap_or("default")
+            .trim();
         validate_metadata(category, name, default_template_key)?;
 
         // A decodable document can still have ambiguous identities and cannot be cloned.
         // Reject it before replacing a usable starter in the tenant catalog.
-        let decoded =
-            fly::GrapesJsCodec::decode_value(input.content.clone()).map_err(|error| {
-                PagesError::validation(format!("Invalid starter content document: {error}"))
-            })?;
+        let decoded = fly::GrapesJsCodec::decode_value(input.content.clone()).map_err(|error| {
+            PagesError::validation(format!("Invalid starter content document: {error}"))
+        })?;
         decoded
             .clone_as_page(&mut fly::UniqueIdGenerator::new("page"))
-            .map_err(|error| PagesError::validation(format!("Cannot instantiate starter: {error}")))?;
+            .map_err(|error| {
+                PagesError::validation(format!("Cannot instantiate starter: {error}"))
+            })?;
 
         let now = Utc::now();
         let revision = Uuid::new_v4();
@@ -254,12 +294,27 @@ impl PageStarterService {
                 .await?
                 .ok_or_else(starter_conflict)?;
             let result = page_starter::Entity::update_many()
-                .col_expr(page_starter::Column::Category, Expr::value(category.to_string()))
+                .col_expr(
+                    page_starter::Column::Category,
+                    Expr::value(category.to_string()),
+                )
                 .col_expr(page_starter::Column::Name, Expr::value(name.to_string()))
-                .col_expr(page_starter::Column::Description, Expr::value(input.description.clone()))
-                .col_expr(page_starter::Column::ThumbnailUrl, Expr::value(input.thumbnail_url.clone()))
-                .col_expr(page_starter::Column::DefaultTemplateKey, Expr::value(default_template_key.to_string()))
-                .col_expr(page_starter::Column::Content, Expr::value(input.content.clone()))
+                .col_expr(
+                    page_starter::Column::Description,
+                    Expr::value(input.description.clone()),
+                )
+                .col_expr(
+                    page_starter::Column::ThumbnailUrl,
+                    Expr::value(input.thumbnail_url.clone()),
+                )
+                .col_expr(
+                    page_starter::Column::DefaultTemplateKey,
+                    Expr::value(default_template_key.to_string()),
+                )
+                .col_expr(
+                    page_starter::Column::Content,
+                    Expr::value(input.content.clone()),
+                )
                 .col_expr(page_starter::Column::Revision, Expr::value(revision))
                 .col_expr(page_starter::Column::UpdatedAt, Expr::value(now))
                 .filter(page_starter::Column::TenantId.eq(tenant_id))
@@ -288,9 +343,12 @@ impl PageStarterService {
                 updated_at: Set(now.into()),
             })
             .on_conflict(
-                OnConflict::columns([page_starter::Column::TenantId, page_starter::Column::StarterKey])
-                    .do_nothing()
-                    .to_owned(),
+                OnConflict::columns([
+                    page_starter::Column::TenantId,
+                    page_starter::Column::StarterKey,
+                ])
+                .do_nothing()
+                .to_owned(),
             )
             .exec_without_returning(&self.db)
             .await?;
@@ -331,16 +389,26 @@ impl PageStarterService {
         validate_metadata(category, name, layout)?;
         let revision = Uuid::new_v4();
         let result = page_starter::Entity::update_many()
-            .col_expr(page_starter::Column::Category, Expr::value(category.to_string()))
+            .col_expr(
+                page_starter::Column::Category,
+                Expr::value(category.to_string()),
+            )
             .col_expr(page_starter::Column::Name, Expr::value(name.to_string()))
-            .col_expr(page_starter::Column::Description, Expr::value(input.description))
-            .col_expr(page_starter::Column::DefaultTemplateKey, Expr::value(layout.to_string()))
+            .col_expr(
+                page_starter::Column::Description,
+                Expr::value(input.description),
+            )
+            .col_expr(
+                page_starter::Column::DefaultTemplateKey,
+                Expr::value(layout.to_string()),
+            )
             .col_expr(page_starter::Column::Revision, Expr::value(revision))
             .col_expr(page_starter::Column::UpdatedAt, Expr::value(Utc::now()))
             .filter(page_starter::Column::TenantId.eq(tenant_id))
             .filter(page_starter::Column::StarterKey.eq(key))
             .filter(page_starter::Column::Revision.eq(input.expected_revision))
-            .exec(&self.db).await?;
+            .exec(&self.db)
+            .await?;
         if result.rows_affected != 1 {
             return Err(starter_conflict());
         }
@@ -383,7 +451,9 @@ impl PageStarterService {
         locale: &str,
     ) -> PagesResult<String> {
         let locale = normalize_locale(locale)?;
-        let starter = self.get(tenant_id, security, key).await?
+        let starter = self
+            .get(tenant_id, security, key)
+            .await?
             .ok_or_else(|| PagesError::validation("Starter preset not found"))?;
         if starter.revision != expected_revision {
             return Err(starter_conflict());
@@ -391,13 +461,18 @@ impl PageStarterService {
         let document = Self::instantiate_starter(&starter)?;
         if !content_has_symbol_instances(&document)? {
             // A catalog embedded in a starter is not authority to modify site symbols.
-            let mut value: serde_json::Value = serde_json::from_str(&document)
-                .map_err(|error| PagesError::validation(format!("Invalid instantiated document: {error}")))?;
-            let object = value.as_object_mut().ok_or_else(|| PagesError::validation("Invalid instantiated document"))?;
+            let mut value: serde_json::Value =
+                serde_json::from_str(&document).map_err(|error| {
+                    PagesError::validation(format!("Invalid instantiated document: {error}"))
+                })?;
+            let object = value
+                .as_object_mut()
+                .ok_or_else(|| PagesError::validation("Invalid instantiated document"))?;
             object.remove("flySymbols");
             object.remove("flySymbolsRevision");
-            return serde_json::to_string(&value)
-                .map_err(|error| PagesError::validation(format!("Cannot serialize instantiated page: {error}")));
+            return serde_json::to_string(&value).map_err(|error| {
+                PagesError::validation(format!("Cannot serialize instantiated page: {error}"))
+            });
         }
         // The response contains the full site catalog, whose authoring API requires manage.
         // Do not disclose it through the starter read endpoint to read-only principals.
@@ -408,7 +483,9 @@ impl PageStarterService {
             .order_by_asc(site_symbol::Column::SymbolId)
             .all(&self.db)
             .await?
-            .into_iter().map(|row| row.content).collect();
+            .into_iter()
+            .map(|row| row.content)
+            .collect();
         let document = replace_symbol_block(&document, symbols)?;
         // Validate references without replacing linked instances in the authoring document.
         resolve_content_symbols(&document)?;
@@ -437,10 +514,14 @@ impl PageStarterService {
 
 fn validate_metadata(category: &str, name: &str, layout: &str) -> PagesResult<()> {
     if category.is_empty() || category.len() > 64 {
-        return Err(PagesError::validation("Category must be between 1 and 64 characters"));
+        return Err(PagesError::validation(
+            "Category must be between 1 and 64 characters",
+        ));
     }
     if name.is_empty() || name.len() > 255 {
-        return Err(PagesError::validation("Name must be between 1 and 255 characters"));
+        return Err(PagesError::validation(
+            "Name must be between 1 and 255 characters",
+        ));
     }
     fly::validate_identifier(layout)
         .map_err(|err| PagesError::validation(format!("Invalid default template key: {err}")))?;
@@ -452,7 +533,9 @@ fn starter_conflict() -> PagesError {
 }
 
 fn require_scope(security: &SecurityContext, action: Action) -> PagesResult<()> {
-    if security.is_public_read() || security.get_scope(Resource::Pages, action) != PermissionScope::All {
+    if security.is_public_read()
+        || security.get_scope(Resource::Pages, action) != PermissionScope::All
+    {
         return Err(PagesError::forbidden(
             "Starter catalog requires tenant-wide Pages permission",
         ));

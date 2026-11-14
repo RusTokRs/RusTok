@@ -77,17 +77,17 @@ pub use err::ColumnarError;
 use std::ops::DerefMut;
 mod column;
 pub use column::{
+    ColumnAttr, ColumnTrait, GenericColumn,
     bool_rle::BoolRleColumn,
     delta_of_delta::DeltaOfDeltaColumn,
     delta_rle::{DeltaRleColumn, DeltaRleable},
     rle::{RleColumn, Rleable},
-    ColumnAttr, ColumnTrait, GenericColumn,
 };
 mod columnar_internal;
 pub use columnar_internal::{ColumnarDecoder, ColumnarEncoder};
 pub mod iterable;
 mod row;
-pub use itertools::{izip, Itertools, MultiUnzip};
+pub use itertools::{Itertools, MultiUnzip, izip};
 pub use row::{KeyRowDe, KeyRowSer, RowDe, RowSer};
 use serde::{Deserialize, Serialize};
 mod strategy;

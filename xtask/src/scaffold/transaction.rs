@@ -1,5 +1,5 @@
-use super::{ensure_no_symlink_ancestors, PlannedFile};
-use anyhow::{bail, ensure, Context, Result};
+use super::{PlannedFile, ensure_no_symlink_ancestors};
+use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -152,7 +152,7 @@ impl ScaffoldWorkspace {
                     Ok(()) => {}
                     Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
                     Err(error) => {
-                        return Err(error).context("Cannot create scaffold control directory")
+                        return Err(error).context("Cannot create scaffold control directory");
                     }
                 }
             }
@@ -187,8 +187,13 @@ impl ScaffoldWorkspace {
         };
         match result {
             Ok(()) => {}
-            Err(fs::TryLockError::WouldBlock) => bail!("Scaffold workspace is busy; another process holds {}. Retry after it finishes; do not delete the lock file", path.display()),
-            Err(fs::TryLockError::Error(error)) => return Err(error).context("Filesystem cannot acquire the scaffold lock"),
+            Err(fs::TryLockError::WouldBlock) => bail!(
+                "Scaffold workspace is busy; another process holds {}. Retry after it finishes; do not delete the lock file",
+                path.display()
+            ),
+            Err(fs::TryLockError::Error(error)) => {
+                return Err(error).context("Filesystem cannot acquire the scaffold lock");
+            }
         }
         Ok(Self {
             root: root.to_path_buf(),
@@ -206,7 +211,11 @@ impl ScaffoldWorkspace {
             None
         };
         for name in ["preparing", "active", "retired"] {
-            ensure!(!present(&state.join(name))?, "Scaffold recovery is pending at {}; dry-run never performs recovery. Run scaffold --recover", state.display());
+            ensure!(
+                !present(&state.join(name))?,
+                "Scaffold recovery is pending at {}; dry-run never performs recovery. Run scaffold --recover",
+                state.display()
+            );
         }
         Ok(guard)
     }
@@ -408,7 +417,7 @@ impl ScaffoldWorkspace {
                 while !remaining.is_empty() {
                     match write(&mut file, remaining) {
                         Ok(0) => {
-                            return Err(std::io::Error::from(std::io::ErrorKind::WriteZero).into())
+                            return Err(std::io::Error::from(std::io::ErrorKind::WriteZero).into());
                         }
                         Ok(count) => remaining = &remaining[count..],
                         Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
@@ -437,7 +446,7 @@ impl ScaffoldWorkspace {
                     Ok(()) => Err(error),
                     Err(cleanup) => Err(error)
                         .context(format!("Scaffold preparation cleanup failed: {cleanup}")),
-                }
+                };
             }
         };
         #[cfg(test)]
@@ -466,7 +475,11 @@ impl ScaffoldWorkspace {
             "Invalid scaffold claim marker; preserve the journal for reconciliation"
         );
         if present(&module_dir)? {
-            ensure!(claimed.as_deref() == Some(b"claimed"), "Ambiguous module directory claim; preserve {} and reconcile before scaffold --recover", module_dir.display());
+            ensure!(
+                claimed.as_deref() == Some(b"claimed"),
+                "Ambiguous module directory claim; preserve {} and reconcile before scaffold --recover",
+                module_dir.display()
+            );
             self.inspect_module(journal, &module_dir)?;
         }
         for entry in &journal.files {

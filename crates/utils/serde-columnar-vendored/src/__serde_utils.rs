@@ -1,6 +1,6 @@
 use serde::{
-    de::{Error, Unexpected, Visitor},
     Deserializer,
+    de::{Error, Unexpected, Visitor},
 };
 use std::borrow::Cow;
 

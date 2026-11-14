@@ -340,8 +340,7 @@ async fn load_category_response_impl<C: ConnectionTrait>(
     }
     let parent_id = canonical.parent_id;
     validate_persisted_category_settings(&category.settings)?;
-    let (locale, effective_locale) =
-        (canonical.requested_locale, canonical.effective_locale);
+    let (locale, effective_locale) = (canonical.requested_locale, canonical.effective_locale);
 
     Ok(CategoryResponse {
         id: category.id,

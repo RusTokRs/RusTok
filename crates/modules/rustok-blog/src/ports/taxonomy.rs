@@ -725,7 +725,13 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
             let update_tr = Statement::from_sql_and_values(
                 backend,
                 r#"UPDATE taxonomy_term_translations SET name = $1, slug = $2, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = $3 AND term_id = $4 AND locale = $5"#,
-                vec![name.into(), slug.into(), tenant_id.into(), tag_id.into(), input.locale.clone().into()],
+                vec![
+                    name.into(),
+                    slug.into(),
+                    tenant_id.into(),
+                    tag_id.into(),
+                    input.locale.clone().into(),
+                ],
             );
             let _ = txn.execute_raw(update_tr).await;
         }

@@ -217,7 +217,13 @@ pub(crate) async fn load_category_ancestor_ids<C>(
 where
     C: ConnectionTrait,
 {
-    load_category_ancestor_ids_with_port(&crate::ports::taxonomy::NoopForumTaxonomyPort, db, tenant_id, category_id).await
+    load_category_ancestor_ids_with_port(
+        &crate::ports::taxonomy::NoopForumTaxonomyPort,
+        db,
+        tenant_id,
+        category_id,
+    )
+    .await
 }
 
 pub(crate) async fn load_category_ancestor_ids_with_port<C>(

@@ -91,7 +91,8 @@ impl ForumGraphqlRuntimeData {
     }
 
     pub(crate) fn read_model_service(&self, db: DatabaseConnection) -> ForumReadModelService {
-        let mut service = ForumReadModelService::new(db).with_settings_providers(self.settings_providers.clone());
+        let mut service =
+            ForumReadModelService::new(db).with_settings_providers(self.settings_providers.clone());
         if let Some(taxonomy) = self.taxonomy_port.clone() {
             service = service.with_taxonomy_port(taxonomy);
         }

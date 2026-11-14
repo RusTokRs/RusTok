@@ -381,7 +381,10 @@ mod tests {
         let error = PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::DraftUnavailable);
         let problem = PagesBrowserIntentProblem::from(&error);
         assert_eq!(problem.status, HTTP_CONFLICT);
-        assert_eq!(problem.code.as_deref(), Some(BROWSER_DRAFT_UNAVAILABLE_CODE));
+        assert_eq!(
+            problem.code.as_deref(),
+            Some(BROWSER_DRAFT_UNAVAILABLE_CODE)
+        );
     }
 
     #[test]

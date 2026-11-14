@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::{

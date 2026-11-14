@@ -12,4 +12,3 @@ pub mod grpc;
 pub use dto::*;
 pub use ports::*;
 pub use types::*;
-
