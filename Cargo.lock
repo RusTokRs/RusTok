@@ -8749,20 +8749,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "leptos-ui"
-version = "0.1.0"
-dependencies = [
- "js-sys",
- "leptos",
- "rustok-api",
- "rustok-ui",
- "rustok-ui-leptos",
- "serde_json",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
 name = "leptos-ui-routing"
 version = "0.1.0"
 dependencies = [

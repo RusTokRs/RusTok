@@ -99,7 +99,7 @@ Variant-axis policy authoring and atomic sparse Product creation are implemented
 including the mounted `ui/product_editor.rs` path. The first untouched category draft seeds
 required/default axes; subsequent category/value edits preserve rows and require explicit
 correction. `core/initial_catalog.rs` owns selection/assignment/scalar validation, and
-`ui/initial_variants.rs` uses the canonical `leptos-ui` controls. The existing Product create
+`ui/initial_variants.rs` uses the canonical `rustok-ui-leptos` controls. The existing Product create
 command receives the exact selected axes/SKUs, not a temporary default SKU followed by writes.
 
 Standalone SKU creation/recovery is mounted through `ProductVariantCreateSection` outside the

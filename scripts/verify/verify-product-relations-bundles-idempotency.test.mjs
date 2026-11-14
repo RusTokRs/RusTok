@@ -54,8 +54,14 @@ const verifierInputs = [
   "crates/modules/rustok-product/docs/implementation-plan.md",
 ];
 
-const source = (relative) =>
-  fs.readFileSync(path.join(repoRoot, relative), "utf8").replace(/\r\n/g, "\n");
+const source = (relative) => {
+  const resolved =
+    relative === "crates/modules/rustok-product-relations/src/dto.rs" &&
+    !fs.existsSync(path.join(repoRoot, relative))
+      ? "crates/modules/rustok-product-relations/src/dto/mod.rs"
+      : relative;
+  return fs.readFileSync(path.join(repoRoot, resolved), "utf8").replace(/\r\n/g, "\n");
+};
 
 const writeFixture = (overrides = {}) => {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "verify-catalog-idem-"));
@@ -490,7 +496,7 @@ test("deployed Product receipt keys cannot silently switch to the framed key for
 });
 
 test("deployed Relation receipt keys cannot silently switch to the framed key formula", () => {
-  const relative = "crates/modules/rustok-product-relations/src/lib.rs";
+  const relative = "crates/modules/rustok-product-relations/src/services/receipts.rs";
   const fixtureRoot = writeFixture({
     [relative]: replaceRequired(
       relative,

@@ -75,7 +75,7 @@ The scaffold's direct backend dependencies are `rustok-core`, `async-trait` and
 | Backend contracts and runtime | `rustok-api` for typed context/errors/ports, `rustok-runtime` for runtime composition, `rustok-web` only at HTTP adapters, `rustok-fba` for descriptors |
 | Events and observability | `rustok-events`, `rustok-outbox`, `rustok-telemetry` |
 | FFA commands, routes and transport | Pure owner core/model, `rustok-ui-core`, `leptos-ui-routing`, `rustok-ui-transport`, `rustok-graphql` for an implemented headless adapter |
-| Visual controls, forms and tables | Canonical `rustok-ui`/`leptos-ui`, grid and forms libraries, design tokens and UI Workbench |
+| Visual controls, forms and tables | Canonical `rustok-ui`/`rustok-ui-leptos`, grid and forms libraries, design tokens and UI Workbench |
 | Localization | `rustok-ui-i18n` for interface catalogs; `rustok-api` locale types and tenant-owned locale policy for runtime/content provenance |
 
 The [backend foundations](../../docs/backend/module-backend-architecture.md),

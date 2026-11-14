@@ -65,7 +65,7 @@ evidence; sanitizing a nested selection is not permission to rotate an unresolve
   - `serde`, `serde_json`: Universal serialization support.
   - `url`: Canonical URL parsing and parameter encoding.
 - **Downstream Consumers**:
-  - `rustok-ui-forms`, `rustok-grid`, `leptos-ui`, `rustok-ui-dioxus`, `rustok-ui-leptos`.
+  - `rustok-ui-forms`, `rustok-grid`, `rustok-ui-dioxus`, `rustok-ui-leptos`.
   - All module UI packages (`crates/modules/*/admin`, `crates/modules/*/storefront`).
 - **Boundary Rules**:
   - UI framework adapters must only wrap or bind these models to framework signals/hooks.

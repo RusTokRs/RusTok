@@ -57,7 +57,7 @@
   - `unic-langid`: Language identifier handling.
   - `tracing`: Structured logging and diagnostic spans.
 - **Downstream Consumers**:
-  - `leptos-ui`, `rustok-ui-leptos`, `rustok-ui-dioxus`.
+  - `rustok-ui-leptos`, `rustok-ui-dioxus`.
   - Admin dashboards, storefront applications, and module UI packages.
 - **Boundary Rules**:
   - UI framework adapters (Leptos/Dioxus) provide reactive signal wrappers over `UiLocaleTranslator`.

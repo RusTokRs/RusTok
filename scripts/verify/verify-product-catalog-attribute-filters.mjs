@@ -25,10 +25,12 @@ function requireAll(source, markers, description) {
   }
 }
 
+const portsTypesPath = "crates/modules/rustok-product/ports/src/types.rs";
 const types =
   read("crates/modules/rustok-product/src/services/catalog/types.rs") +
-  "\n" +
-  read("crates/modules/rustok-product/ports/src/types.rs");
+  (existsSync(path.join(repoRoot, portsTypesPath))
+    ? "\n" + readFileSync(path.join(repoRoot, portsTypesPath), "utf8")
+    : "");
 const execution = read("crates/modules/rustok-product/src/services/catalog/attribute_filters.rs");
 const storefrontQuery = read("crates/modules/rustok-product/src/services/catalog/queries.rs");
 const adminQuery = read("crates/modules/rustok-product/src/services/catalog/admin_queries.rs");

@@ -27,7 +27,7 @@ fn loaded_resource<S, Fut, T>(
 where
     S: PartialEq + Clone + Send + Sync + 'static,
     Fut: std::future::Future<Output = T> + Send + 'static,
-    T: Send + Sync + 'static,
+    T: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + Sync + 'static,
 {
     Resource::new(source, fetcher)
 }
@@ -316,7 +316,7 @@ pub fn CommentsAdmin() -> impl IntoView {
 
             {let paging_threads = threads;
             let view_threads = threads;
-            let view_detail = detail;
+            let _view_detail = detail;
             view! { <div class="grid gap-6 xl:grid-cols-[1.1fr_1.3fr]">
                 <section class="rounded-2xl border border-border bg-card p-6 shadow-sm">
                     <div class="mb-4 flex items-center justify-between gap-4">

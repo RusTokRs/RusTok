@@ -67,7 +67,7 @@ leptos.workspace = true
 rustok-api = { workspace = true, default-features = false }
 rustok-ui-core.workspace = true
 rustok-ui-i18n.workspace = true
-leptos-ui.workspace = true
+rustok-ui-leptos.workspace = true
 leptos-ui-routing.workspace = true
 serde.workspace = true
 ```
@@ -90,7 +90,7 @@ Documented native-only operator/bootstrap exceptions do not need `rustok-graphql
 
 **Reality check:** You **cannot run** a module UI package as a standalone app (it has no `main.rs`, no routing, no shell). But you **can** compile and test it independently for development/CI verification.
 
-**Common mistake:** Assuming that if `apps/admin` depends on `leptos-ui`, then module packages automatically get it. They don't — you must declare it explicitly in module's `Cargo.toml`.
+**Common mistake:** Assuming that if `apps/admin` depends on `rustok-ui-leptos`, then module packages automatically get it. They don't — you must declare it explicitly in module's `Cargo.toml`.
 
 Use `core/` subdirectory instead of `core.rs` when the core layer grows to multiple
 subdomains (`view_model`, `policy`, `error`, `ports`, `identifiers`).
@@ -317,7 +317,7 @@ pub fn BlogAdmin() -> impl IntoView {
 
 | Crate | What it provides | When to use |
 |---|---|---|
-| `leptos-ui` | `Button`, `Input`, `Badge`, `Alert`, `Card`, `CardHeader`, `CardContent`, `CardFooter`, `Label`, `Separator`, `Spinner`, `Progress`, `Checkbox`, `Switch`, `Textarea`, `Select`, `LanguageToggle` | Always — check before writing any primitive component |
+| `rustok-ui-leptos` | `Button`, `Input`, `Badge`, `Alert`, `Card`, `CardHeader`, `CardContent`, `CardFooter`, `Label`, `Separator`, `Spinner`, `Progress`, `Checkbox`, `Switch`, `Textarea`, `Select`, `LanguageToggle` | Always — check before writing any primitive component |
 | `leptos-ui-routing` | Leptos query readers/writers and route query policy integration on top of `rustok-ui-core` | All Leptos route/query state binding, including `RouteQueryWriter::apply_query_intent`; never invent a local helper |
 | `rustok-auth-ui` | Auth hooks and session context | Auth-gated operations |
 
@@ -389,9 +389,9 @@ Before duplicating code, check:
 When creating a new shared library, decide upfront:
 
 **Framework-specific (Leptos-only):**
-- Name: `crates/ui/leptos-<name>/`
+- Name: `crates/ui/rustok-ui/leptos/` (`rustok-ui-leptos`)
 - Can use `leptos::*` imports
-- Example: `leptos-ui`
+- Example: `rustok-ui-leptos`
 - **Future:** Will need Dioxus equivalent or migration to framework-agnostic
 
 **Framework-agnostic (FFA-compatible, permanent):**
@@ -556,7 +556,7 @@ parent module crate. Verify with `cargo xtask module validate <slug>`.
 | `auto_select_first` as selection source of truth | Causes stale state bugs |
 | Raw HTTP client instead of platform GraphQL client | Unmanaged transport; bypasses platform patterns (use `rustok-graphql`) |
 | Reimplementing portable form, pagination, sorting, filtering, or selection state locally | Duplicates `rustok-ui-forms` / `rustok-ui-core` contracts |
-| Writing `leptos-ui` primitives locally | Duplicates the Leptos design-system adapter |
+| Writing `rustok-ui-leptos` primitives locally | Duplicates the Leptos design-system adapter |
 | Domain business UI placed inside `apps/admin/src/` | Host becomes domain owner |
 | Duplicating code across 2+ modules | Violates DRY; extract to shared library instead (see extraction decision matrix above) |
 | New locale files without `rustok-module.toml` declaration | Breaks i18n verification |

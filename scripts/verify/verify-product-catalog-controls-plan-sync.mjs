@@ -51,7 +51,8 @@ const adminSliceComplete = [
   complete("crates/modules/rustok-product/admin/src/catalog_transport.rs", ["use_context::<ProductAdminListInput>()", "admin_catalog_native::fetch_products", "admin_catalog_graphql::fetch_products"]),
   complete("crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs", ["AdminProductListQuery::try_from_transport", "list_admin_products_with_query"]),
   complete("crates/modules/rustok-product/admin/src/transport/admin_catalog_graphql.rs", ["AdminProductCatalogFilter", "categoryId", "sortBy", "sortDirection"]),
-  complete("crates/modules/rustok-product/src/services/catalog/admin_queries.rs", ["Status.eq(status)", "PrimaryCategoryId.eq(category_id)", "order_by_asc", "order_by_desc"]),
+  (complete("crates/modules/rustok-product/src/services/catalog/admin_queries.rs", ["Column::Status.eq(", "PrimaryCategoryId.eq(category_id)", "order_by_asc", "order_by_desc"]) ||
+   complete("crates/modules/rustok-product/src/services/catalog/admin_queries.rs", ["Status.eq(status)", "PrimaryCategoryId.eq(category_id)", "order_by_asc", "order_by_desc"])),
 ].every(Boolean);
 
 const attributeFiltersComplete = [
@@ -63,7 +64,15 @@ const attributeFiltersComplete = [
   complete("crates/modules/rustok-product/admin/src/ui/catalog_admin.rs", ['read_route_query_value(&route_context, "attribute_filters")', 'name="attribute_filters"']),
   complete("crates/modules/rustok-product/admin/src/transport/admin_catalog_native.rs", ["try_from_transport_with_attribute_filters", "attribute_filters: Vec<String>"]),
   complete("crates/modules/rustok-product/admin/src/transport/admin_catalog_graphql.rs", ["attributeFilters", "attribute_filters: controls.attribute_filters"]),
-  complete("crates/modules/rustok-product/src/services/catalog/types.rs", ["pub struct ProductAttributeFilter", "attribute_filters: Vec<ProductAttributeFilter>", "MAX_ATTRIBUTE_FILTERS"]),
+  (["pub struct ProductAttributeFilter", "attribute_filters: Vec<ProductAttributeFilter>", "MAX_ATTRIBUTE_FILTERS"].every((m) =>
+    (
+      read("crates/modules/rustok-product/src/services/catalog/types.rs") +
+      "\n" +
+      (existsSync(path.join(repoRoot, "crates/modules/rustok-product/ports/src/types.rs"))
+        ? read("crates/modules/rustok-product/ports/src/types.rs")
+        : "")
+    ).includes(m)
+  )),
   complete("crates/modules/rustok-product/src/services/catalog/attribute_filters.rs", ["is_filterable = TRUE", "pav.detached_at IS NULL", "product_attribute_value_translations", "product_attribute_value_options"]),
   complete("crates/modules/rustok-product/src/services/catalog/queries.rs", ["load_catalog_attribute_filter_conditions", "list_query.attribute_filters"]),
   complete("crates/modules/rustok-product/src/services/catalog/admin_queries.rs", ["load_catalog_attribute_filter_conditions", "list_query.attribute_filters"]),
