@@ -312,7 +312,9 @@ async fn handle_graphql_ws(
         protocol,
     )
     .on_connection_init(move |payload| {
-        let _ = connection_init_received_for_init.set(());
+        if connection_init_received_for_init.set(()).is_err() {
+            tracing::debug!("GraphQL WebSocket connection init was already recorded");
+        }
         bounded_ws_connection_init(
             build_ws_connection_data(
                 runtime_ctx_for_init.clone(),
@@ -360,7 +362,7 @@ async fn handle_graphql_ws(
             Some(lease) => match lease.revalidate(&auth_runtime).await {
                 Ok(scope) => Some(scope),
                 Err(_) => {
-                    let _ = close_ws_for_auth_change(&mut sink).await;
+                    close_ws_for_auth_change_observed(&mut sink).await;
                     break;
                 }
             },
@@ -377,7 +379,7 @@ async fn handle_graphql_ws(
                 if !timed_out {
                     continue;
                 }
-                let _ = close_ws(
+                close_ws_observed(
                     &mut sink,
                     WS_CONNECTION_INIT_TIMEOUT_CLOSE,
                     WS_CONNECTION_INIT_TIMEOUT_REASON,
@@ -390,12 +392,12 @@ async fn handle_graphql_ws(
                     tokio::time::sleep(lease.remaining()).await;
                 }
             }, if auth_lease.get().is_some() => {
-                let _ = close_ws_for_auth_change(&mut sink).await;
+                close_ws_for_auth_change_observed(&mut sink).await;
                 break;
             }
             reason = close_rx.recv() => {
                 if let Some(reason) = reason {
-                    let _ = close_ws(&mut sink, reason.code, reason.message).await;
+                    close_ws_observed(&mut sink, reason.code, reason.message).await;
                 }
                 break;
             }
@@ -403,7 +405,7 @@ async fn handle_graphql_ws(
                 if let Some(lease) = auth_lease.get()
                     && lease.revalidate(&auth_runtime).await.is_err()
                 {
-                    let _ = close_ws_for_auth_change(&mut sink).await;
+                    close_ws_for_auth_change_observed(&mut sink).await;
                     break;
                 }
                 continue;
@@ -413,7 +415,7 @@ async fn handle_graphql_ws(
         // Admission may reject an input while the protocol engine also has a
         // ready output. Prioritize the close over that output.
         if let Ok(reason) = close_rx.try_recv() {
-            let _ = close_ws(&mut sink, reason.code, reason.message).await;
+            close_ws_observed(&mut sink, reason.code, reason.message).await;
             break;
         }
         let Some(message) = next_message else {
@@ -423,7 +425,7 @@ async fn handle_graphql_ws(
         if let Some(lease) = auth_lease.get()
             && lease.revalidate(&auth_runtime).await.is_err()
         {
-            let _ = close_ws_for_auth_change(&mut sink).await;
+            close_ws_for_auth_change_observed(&mut sink).await;
             break;
         }
 
@@ -526,6 +528,28 @@ where
     close_ws(sink, WS_CLOSE_UNAUTHORIZED, WS_AUTHORITY_CHANGED_REASON).await
 }
 
+/// A peer that has already gone away cannot fail the host shutdown path, but a
+/// missed close frame must stay observable instead of being silently discarded.
+async fn close_ws_observed<S>(sink: &mut S, code: u16, reason: &'static str)
+where
+    S: futures_util::Sink<Message> + Unpin,
+{
+    if !close_ws(sink, code, reason).await {
+        tracing::debug!(
+            code,
+            reason,
+            "GraphQL WebSocket close frame was not delivered"
+        );
+    }
+}
+
+async fn close_ws_for_auth_change_observed<S>(sink: &mut S)
+where
+    S: futures_util::Sink<Message> + Unpin,
+{
+    close_ws_observed(sink, WS_CLOSE_UNAUTHORIZED, WS_AUTHORITY_CHANGED_REASON).await;
+}
+
 #[derive(Clone, Copy, Debug)]
 struct WsCloseReason {
     code: u16,
@@ -584,7 +608,12 @@ impl futures_util::Stream for WsAdmissionStream {
             // The one-slot channel has a single sender and this stream stops
             // after its first rejection. Waking the receiver lets the host send
             // the intended close frame instead of handing invalid input to the engine.
-            let _ = this.close_tx.try_send(reason);
+            if let Err(error) = this.close_tx.try_send(reason) {
+                tracing::debug!(
+                    ?error,
+                    "GraphQL WebSocket admission close signal could not be queued"
+                );
+            }
             return std::task::Poll::Pending;
         }
         std::task::Poll::Ready(Some(text))

@@ -385,6 +385,9 @@ for (const service of [
   const production = read(service).split("#[cfg(test)]")[0];
   for (const snippet of [
     "flex::validate_field_definition_create",
+    "flex::validate_field_definition_key",
+    "flex::validate_field_definition_reorder_request",
+    "flex::validate_field_definition_reorder_coverage",
     "flex::field_definition_position_or_next",
     "flex::field_definition_type_name",
     "flex::field_definition_label_json",
@@ -398,8 +401,9 @@ for (const service of [
       failures.push(`${service}: expected attached field-definition adapter delegation to ${snippet}`);
     }
   }
+  // The field-key format rule is owned by `flex::validate_field_definition_create`;
+  // the server adapter must delegate instead of re-implementing the guard.
   for (const snippet of [
-    "is_valid_field_key",
     "DomainEvent::FieldDefinition",
     "EventEnvelope::new(",
     "serde_json::to_value(input.field_type)",

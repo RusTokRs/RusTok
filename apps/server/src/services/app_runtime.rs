@@ -69,7 +69,7 @@ pub async fn bootstrap_app_runtime(
     // Cache parsed settings so per-request middleware avoids repeated JSON deserialization.
     runtime_ctx.shared_insert(SharedRustokSettings(Arc::new(settings.clone())));
 
-    init_marketplace_catalog(&runtime_ctx);
+    init_marketplace_catalog(&runtime_ctx)?;
 
     let manifest = if settings.runtime.is_registry_only() {
         ManifestManager::load().map_err(|error| {
@@ -284,7 +284,7 @@ async fn initialize_module_work_runtime(
         host
     };
     let host =
-        crate::services::commerce_provider_runtime::attach_commerce_provider_registries(host, ctx);
+        crate::services::commerce_provider_runtime::attach_commerce_provider_registries(host, ctx)?;
     #[cfg(feature = "mod-alloy")]
     let host = if let Some(alloy_runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() {
         host.with_shared_value(alloy_runtime)
@@ -337,11 +337,11 @@ async fn init_storage(ctx: &ServerRuntimeContext) -> Result<()> {
     Ok(())
 }
 
-fn init_marketplace_catalog(ctx: &ServerRuntimeContext) {
+fn init_marketplace_catalog(ctx: &ServerRuntimeContext) -> Result<()> {
     let mut providers: Vec<Arc<dyn MarketplaceCatalogProvider>> =
         vec![Arc::new(LocalManifestMarketplaceProvider)];
     providers.extend(
-        HardenedRegistryMarketplaceProvider::from_env()
+        HardenedRegistryMarketplaceProvider::from_env()?
             .into_iter()
             .map(|provider| Arc::new(provider) as Arc<dyn MarketplaceCatalogProvider>),
     );
@@ -351,6 +351,7 @@ fn init_marketplace_catalog(ctx: &ServerRuntimeContext) {
         "Initialized bounded marketplace catalog provider chain"
     );
     ctx.shared_insert(SharedMarketplaceCatalogService(marketplace_catalog));
+    Ok(())
 }
 
 async fn init_alloy_runtime(

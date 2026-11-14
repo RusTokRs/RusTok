@@ -298,6 +298,13 @@ Server work for that plan is:
 - supply database, OCI, trust, events, audit, clock, and other infrastructure
   adapters; module-build scheduling and execution run in their separate
   dispatcher and worker deployments;
+- obtain every control-plane service through `ModuleControlPlane` instead of
+  constructing owner types in the host. The RBAC permission-ownership map is the
+  one host adapter that previously built `ModuleDefinitionCatalog` directly
+  (`services/rbac_module_availability.rs`); it now derives the same catalog from
+  `ModuleControlPlane::new(db).catalog(registry)`. The map is memoized in the
+  runtime context, so the added control-plane handle costs one construction per
+  process;
 - migrate platform composition, build enqueue, registry governance, effective
   policy, GraphQL, and native adapters to owner operations;
 - keep production release admission, desired/observed rollout, activation, and

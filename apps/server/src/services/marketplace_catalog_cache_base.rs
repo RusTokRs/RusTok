@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use url::Url;
 
+use crate::error::Error;
 use crate::modules::{CatalogManifestModule, CatalogModuleVersion, ModulesManifest};
 use crate::services::marketplace_catalog::{
     MarketplaceCatalogProvider, MarketplaceCatalogQuery, MarketplaceProviderHealthSnapshot,
@@ -80,15 +81,16 @@ pub struct HardenedRegistryMarketplaceProvider {
 }
 
 impl HardenedRegistryMarketplaceProvider {
-    pub fn from_env() -> Vec<Self> {
+    pub fn from_env() -> Result<Vec<Self>, Error> {
         let Some(encoded_configs) = std::env::var("RUSTOK_MARKETPLACE_REGISTRIES")
             .ok()
             .filter(|value| !value.trim().is_empty())
         else {
-            return Vec::new();
+            return Ok(Vec::new());
         };
-        let configs = parse_marketplace_registry_configs(&encoded_configs)
-            .unwrap_or_else(|error| panic!("invalid RUSTOK_MARKETPLACE_REGISTRIES: {error}"));
+        let configs = parse_marketplace_registry_configs(&encoded_configs).map_err(|error| {
+            Error::Message(format!("invalid RUSTOK_MARKETPLACE_REGISTRIES: {error}"))
+        })?;
 
         let timeout_ms = positive_env_u64(
             "RUSTOK_MARKETPLACE_REGISTRY_TIMEOUT_MS",
@@ -114,10 +116,12 @@ impl HardenedRegistryMarketplaceProvider {
             .timeout(Duration::from_millis(timeout_ms))
             .redirect(reqwest::redirect::Policy::none())
             .build()
-            .unwrap_or_else(|error| {
-                panic!("failed to construct bounded marketplace registry client: {error}")
-            });
-        configs
+            .map_err(|error| {
+                Error::Message(format!(
+                    "failed to construct bounded marketplace registry client: {error}"
+                ))
+            })?;
+        Ok(configs
             .into_iter()
             .map(|(registry_id, registry_url)| {
                 Self::new_with_identity(
@@ -130,7 +134,7 @@ impl HardenedRegistryMarketplaceProvider {
                     max_concurrent_fetches,
                 )
             })
-            .collect()
+            .collect())
     }
 
     #[cfg(test)]

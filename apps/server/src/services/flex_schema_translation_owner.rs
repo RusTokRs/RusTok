@@ -689,17 +689,12 @@ fn hash_json(hasher: &mut Sha256, value: &JsonValue) {
         }
         JsonValue::Object(values) => {
             hash_str(hasher, "object");
-            let mut keys = values.keys().collect::<Vec<_>>();
-            keys.sort();
-            hash_len(hasher, keys.len());
-            for key in keys {
+            let mut entries = values.iter().collect::<Vec<_>>();
+            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+            hash_len(hasher, entries.len());
+            for (key, value) in entries {
                 hash_str(hasher, key);
-                hash_json(
-                    hasher,
-                    values
-                        .get(key)
-                        .expect("canonical JSON object key must resolve"),
-                );
+                hash_json(hasher, value);
             }
         }
     }

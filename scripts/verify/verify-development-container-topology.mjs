@@ -103,21 +103,44 @@ requireMarkers("crates/utils/rustok-migrations/Cargo.toml", [
   'path = "src/bin/rustok_migrate.rs"',
   "tokio.workspace = true",
 ]);
+// The CLI delegates step execution to `StepRunner`, which owns the advisory
+// lock, the journal-prefix checks before and after every step, and the
+// no-reconnect rule. Requiring the old inline loop here would force the CLI to
+// duplicate (and drift from) those guarantees, so the markers pin the
+// delegated contract instead: bounded non-destructive commands, a runner that
+// refuses to continue past a failed step, and explicit cleanup on every path.
 requireMarkers("crates/utils/rustok-migrations/src/bin/rustok_migrate.rs", [
   "enum Command",
-  "Up,",
+  "Up { phase: Option<PathBuf> },",
   "Status,",
   'command == "up"',
   'command == "status"',
   "only up and status are allowed",
   'env::var("DATABASE_URL")',
-  "loop {",
-  "Migrator::get_pending_migrations(&database).await?",
-  "let migration_name = next.name().to_string();",
-  "Migrator::up(&database, Some(1)).await",
-  "migration {migration_name} failed",
+  "StepRunner::connect(&database_url, inventory.into_migrations()).await?",
+  "StepRunner::connect_phase(",
+  "while let Some(name) = runner.apply_next().await?",
+  "let close = runner.close().await;",
+  "<Migrator as MigratorTrait>::get_pending_migrations_read_only(&database).await?",
+  '"{APPLIED_STEP_PREFIX}{name}"',
   'for forbidden in ["down", "fresh", "reset", "refresh"]',
 ]);
+// The delegated runner is the only place that may apply steps, so its
+// serialization and journal invariants are guarded directly here: a single
+// backend with reconnects forbidden, an advisory lock, and a journal-prefix
+// check around every step.
+requireMarkers("crates/utils/rustok-migrations/src/execution.rs", [
+  "pub struct StepRunner",
+  "pg_try_advisory_lock(hashtext('rustok-migrate'), 1)",
+  "migration session lost; reconnect forbidden",
+  "verify_prefix(&migrations, &applied, applied.len())?",
+  "verify_prefix(&self.migrations, &read_journal(&self.database).await?, next)?",
+  "verify_prefix(",
+  "ExecutionError::ConcurrentWriter",
+  "ExecutionError::JournalOutsidePhase",
+  "ExecutionError::UnsupportedRecovery(step.name().into())",
+]);
+
 forbidMarkers("crates/utils/rustok-migrations/src/bin/rustok_migrate.rs", [
   "Migrator::down",
   "Migrator::fresh",

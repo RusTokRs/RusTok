@@ -524,7 +524,7 @@ pub fn compose_application_router(
         }
     };
     let server_fn_runtime_ctx =
-        attach_commerce_provider_registries(server_fn_runtime_ctx, &middleware_runtime_ctx);
+        attach_commerce_provider_registries(server_fn_runtime_ctx, &middleware_runtime_ctx)?;
     #[cfg(feature = "mod-alloy")]
     let server_fn_runtime_ctx = if let Some(alloy_runtime) =
         middleware_runtime_ctx.shared_get::<alloy::SharedAlloyRuntime>()

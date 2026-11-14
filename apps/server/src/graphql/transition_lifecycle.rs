@@ -38,8 +38,13 @@ pub struct ModuleTransitionCheckpointGql {
     pub updated_at: String,
 }
 
-impl From<ModuleTransitionCheckpointView> for ModuleTransitionCheckpointGql {
-    fn from(checkpoint: ModuleTransitionCheckpointView) -> Self {
+/// Converting an owner view must stay fallible: identifier fields are plain
+/// strings on the read contract, so a malformed value is an owner consistency
+/// failure that must surface as a sanitized GraphQL error rather than a panic.
+impl TryFrom<ModuleTransitionCheckpointView> for ModuleTransitionCheckpointGql {
+    type Error = FieldError;
+
+    fn try_from(checkpoint: ModuleTransitionCheckpointView) -> Result<Self, Self::Error> {
         let state_for_details = checkpoint.state;
         let state = match checkpoint.state {
             ModuleTransitionStateView::Preflighting => ModuleTransitionStateGql::Preflighting,
@@ -56,18 +61,25 @@ impl From<ModuleTransitionCheckpointView> for ModuleTransitionCheckpointGql {
                 ModuleTransitionStateGql::InterventionRequired
             }
         };
-        Self {
-            operation_id: checkpoint
-                .operation_id
-                .parse()
-                .expect("owner transition view contains a UUID operation identity"),
+        let operation_id = parse_owner_identity(
+            &checkpoint.operation_id,
+            "Module transition checkpoint operation identity is unavailable",
+        )?;
+        let tenant_id = checkpoint
+            .tenant_id
+            .as_deref()
+            .map(|tenant_id| {
+                parse_owner_identity(
+                    tenant_id,
+                    "Module transition checkpoint tenant identity is unavailable",
+                )
+            })
+            .transpose()?;
+        Ok(Self {
+            operation_id,
             revision: checkpoint.revision,
             module_slug: checkpoint.module_slug,
-            tenant_id: checkpoint
-                .tenant_id
-                .map(|tenant_id| tenant_id.parse())
-                .transpose()
-                .expect("owner transition view contains a UUID tenant identity"),
+            tenant_id,
             predecessor_digest: checkpoint.predecessor_digest,
             candidate_digest: checkpoint.candidate_digest,
             state,
@@ -76,8 +88,18 @@ impl From<ModuleTransitionCheckpointView> for ModuleTransitionCheckpointGql {
             recovery_attempt_count: checkpoint.recovery_attempt_count,
             created_at: checkpoint.created_at,
             updated_at: checkpoint.updated_at,
-        }
+        })
     }
+}
+
+/// Reads a UUID that the owner read contract exposes as an opaque string. A
+/// malformed value is reported as an internal consistency failure; the offending
+/// value never reaches the client or a panic hook.
+fn parse_owner_identity(value: &str, message: &str) -> Result<Uuid, FieldError> {
+    Uuid::parse_str(value).map_err(|error| {
+        tracing::error!(%error, "owner read contract carried a malformed UUID identity");
+        <FieldError as GraphQLError>::internal_error(message)
+    })
 }
 
 fn sanitize_state_details(
@@ -237,18 +259,20 @@ pub struct RetentionHoldGql {
     pub created_at: String,
 }
 
-impl From<ModuleRetentionHoldView> for RetentionHoldGql {
-    fn from(record: ModuleRetentionHoldView) -> Self {
-        Self {
-            hold_id: record
-                .hold_id
-                .parse()
-                .expect("owner retention hold view contains a UUID hold identity"),
+impl TryFrom<ModuleRetentionHoldView> for RetentionHoldGql {
+    type Error = FieldError;
+
+    fn try_from(record: ModuleRetentionHoldView) -> Result<Self, Self::Error> {
+        Ok(Self {
+            hold_id: parse_owner_identity(
+                &record.hold_id,
+                "Module retention hold identity is unavailable",
+            )?,
             target_type: record.target_type,
             target_identity: record.target_identity,
             kind: record.kind,
             created_at: record.created_at,
-        }
+        })
     }
 }
 
@@ -299,6 +323,45 @@ mod tests {
             "Automatic transition recovery limit was exhausted"
         );
         assert!(!error.message.contains("database password=secret"));
+    }
+
+    #[test]
+    fn malformed_owner_identity_is_a_sanitized_graphql_error() {
+        let error = super::ModuleTransitionCheckpointGql::try_from(
+            rustok_api::ModuleTransitionCheckpointView {
+                operation_id: "not-a-uuid".to_string(),
+                revision: 1,
+                module_slug: "rustok-blog".to_string(),
+                tenant_id: None,
+                predecessor_digest: None,
+                candidate_digest: "digest".to_string(),
+                state: ModuleTransitionStateView::Fenced,
+                state_details: None,
+                security_epoch: 1,
+                recovery_attempt_count: 0,
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+                updated_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+        )
+        .expect_err("malformed owner identity must not panic or be projected");
+        assert_eq!(
+            error.message,
+            "Module transition checkpoint operation identity is unavailable"
+        );
+        assert!(!error.message.contains("not-a-uuid"));
+
+        let hold_error = super::RetentionHoldGql::try_from(rustok_api::ModuleRetentionHoldView {
+            hold_id: "still-not-a-uuid".to_string(),
+            target_type: "artifact".to_string(),
+            target_identity: "identity".to_string(),
+            kind: "cas".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        })
+        .expect_err("malformed retention hold identity must not panic or be projected");
+        assert_eq!(
+            hold_error.message,
+            "Module retention hold identity is unavailable"
+        );
     }
 
     #[test]

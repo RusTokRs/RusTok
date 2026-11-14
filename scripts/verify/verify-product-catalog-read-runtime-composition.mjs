@@ -77,7 +77,7 @@ requireAll(httpPort, [
   "impl ProductStorefrontHttpReadPort for CatalogService",
   "MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100",
   "context.require_policy(PortCallPolicy::read())?",
-  "rustok_inventory::is_metadata_visible_for_public_channel(",
+  "crate::services::catalog::helpers::is_metadata_visible_for_public_channel(",
   ".load_product_tag_map(tenant_id, &products, locale, Some(fallback_locale))",
 ], "Product optional Storefront HTTP capability");
 requireAll(tagPort, [
@@ -90,7 +90,9 @@ requireAll(host, [
   "host.shared_get::<rustok_product::ProductCatalogReadRuntime>()",
   "server.shared_get::<rustok_product::ProductCatalogReadRuntime>()",
   "rustok_product::ProductCatalogReadRuntime::in_process",
-  "ProductCatalogReadRuntime must be initialized before marketplace listing",
+  "require_shared::<rustok_product::ProductCatalogReadRuntime>",
+  '"ProductCatalogReadRuntime"',
+  '"MarketplaceListingRuntime"',
   "preserves_host_selected_external_product_catalog_runtime",
   "ProductCatalogReadProfile::External",
 ], "host composition");
@@ -102,6 +104,16 @@ forbid(
   host,
   "let product_reader: Arc<dyn rustok_product::ProductCatalogReadPort> = Arc::new(",
   "host composition must not construct a parallel Marketplace Product provider",
+);
+forbid(
+  host,
+  '.expect("ProductCatalogReadRuntime must be initialized',
+  "host composition must report a missing Product Catalog read runtime as a typed error",
+);
+forbid(
+  host,
+  "ProductCatalogReadRuntime must be initialized before marketplace listing",
+  "host composition must not abort the process when the Product Catalog read runtime is missing",
 );
 forbid(
   host,

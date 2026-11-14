@@ -415,7 +415,11 @@ where
         sea_orm::DatabaseBackend::Sqlite | sea_orm::DatabaseBackend::MySql => {
             "INSERT INTO oauth_app_translation_change_journal (operation_id, tenant_id, app_id, resource_revision, lifecycle) VALUES (?, ?, ?, ?, ?)"
         }
-        _ => unreachable!("unsupported SeaORM database backend"),
+        backend => {
+            return Err(DbErr::Custom(format!(
+                "unsupported SeaORM database backend for OAuth translation change journal: {backend:?}"
+            )));
+        }
     };
     db.execute_raw(Statement::from_sql_and_values(
         backend,

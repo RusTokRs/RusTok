@@ -69,6 +69,9 @@ impl ProductFieldService {
         actor_id: Option<Uuid>,
         input: CreateFieldDefinitionInput,
     ) -> Result<(Model, EventEnvelope), FlexError> {
+        // The field-key format rule belongs to Flex; delegating it here rejects a
+        // malformed key before this adapter opens a transaction or reads state.
+        flex::validate_field_definition_key(&input.field_key)?;
         let txn = db
             .begin()
             .await
@@ -264,6 +267,8 @@ impl ProductFieldService {
         tenant_id: Uuid,
         ids: &[Uuid],
     ) -> Result<Vec<Model>, FlexError> {
+        flex::validate_field_definition_reorder_request(ids)?;
+
         let txn = db
             .begin()
             .await
@@ -282,7 +287,7 @@ impl ProductFieldService {
             .iter()
             .map(|row| row.id)
             .collect::<std::collections::HashSet<_>>();
-        flex::validate_field_definition_reorder(ids, &existing_ids)?;
+        flex::validate_field_definition_reorder_coverage(ids, &existing_ids)?;
 
         let mut rows_by_id = rows
             .into_iter()
@@ -290,9 +295,10 @@ impl ProductFieldService {
             .collect::<std::collections::HashMap<_, _>>();
         let mut result = Vec::with_capacity(ids.len());
         for (position, id) in ids.iter().copied().enumerate() {
-            let row = rows_by_id
-                .remove(&id)
-                .expect("requested ids were validated against the locked definition set");
+            let Some(row) = rows_by_id.remove(&id) else {
+                // Coverage validation above proved the id is in the locked set.
+                return Err(FlexError::NotFound(id));
+            };
             let mut model: ActiveModel = row.into();
             model.position = Set(position as i32);
             let updated = model
@@ -441,12 +447,27 @@ mod tests {
         let partial = ProductFieldService::reorder(&db, tenant_id, &[ids[0]])
             .await
             .expect_err("partial reorder must not leave position collisions");
-        assert!(matches!(partial, FlexError::InvalidFieldKey(_)));
+        assert!(
+            matches!(partial, FlexError::InvalidFieldKey(_)),
+            "partial reorder must be reported as a malformed request: {partial:?}"
+        );
 
         let duplicate = ProductFieldService::reorder(&db, tenant_id, &[ids[0], ids[0], ids[2]])
             .await
             .expect_err("duplicate reorder ids must be rejected");
-        assert!(matches!(duplicate, FlexError::InvalidFieldKey(_)));
+        assert!(
+            matches!(duplicate, FlexError::InvalidFieldKey(_)),
+            "duplicate reorder ids must be reported as a malformed request: {duplicate:?}"
+        );
+
+        let unknown =
+            ProductFieldService::reorder(&db, tenant_id, &[ids[0], ids[1], Uuid::new_v4()])
+                .await
+                .expect_err("a reorder naming an unknown definition must be rejected");
+        assert!(
+            matches!(unknown, FlexError::NotFound(_)),
+            "an unknown identifier is a missing definition, not a malformed request: {unknown:?}"
+        );
 
         let unchanged = ProductFieldService::list_all(&db, tenant_id)
             .await
@@ -502,18 +523,23 @@ mod tests {
         let db = test_db().await;
         let tenant_id = Uuid::new_v4();
 
-        let err = ProductFieldService::create(
-            &db,
-            tenant_id,
-            Some(Uuid::new_v4()),
-            create_input("invalid-key"),
-        )
-        .await
-        .expect_err("invalid field key should fail before db access");
+        // No tenant row is inserted: reaching the database lookup would surface
+        // `NotFound(tenant_id)` instead of the owner-owned key validation error.
+        let too_long = "a".repeat(129);
+        for invalid_key in ["", "Invalid", "1leading", "has-dash", too_long.as_str()] {
+            let err = ProductFieldService::create(
+                &db,
+                tenant_id,
+                Some(Uuid::new_v4()),
+                create_input(invalid_key),
+            )
+            .await
+            .expect_err("invalid field key should fail before db access");
 
-        match err {
-            FlexError::InvalidFieldKey(key) => assert_eq!(key, "invalid-key"),
-            other => panic!("unexpected error: {other:?}"),
+            match err {
+                FlexError::InvalidFieldKey(key) => assert_eq!(key, invalid_key),
+                other => panic!("unexpected error for {invalid_key:?}: {other:?}"),
+            }
         }
     }
 
