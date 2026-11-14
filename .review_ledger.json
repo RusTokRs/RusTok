@@ -911,9 +911,9 @@
       "category": "modules",
       "files": 123,
       "loc": 39760,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: document size and preview runtime limits, static publish policy allowlists, SHA-256 integrity proofs, stack-based non-recursive tree traversal, capability guards with write idempotency and read deadline policies; verified with cargo check -p rustok-page-builder and all 19 FBA baseline verification suites"
     },
     "crates/modules/rustok-page-builder/admin": {
       "name": "admin",
@@ -921,9 +921,9 @@
       "category": "modules",
       "files": 67,
       "loc": 22326,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: Leptos SSR visual editor, sandboxed canvas postMessage sequencing, session owner verification (DraftSessionOwner) preventing draft token hijacking, memory/disk limits (MAX_DRAFT_SESSION_RECORD_BYTES 20MB, MAX_DRAFT_SESSIONS_PER_OWNER 8), format versioning and migration compatibility; verified with cargo check -p rustok-page-builder-admin --features ssr"
     },
     "crates/modules/rustok-pages": {
       "name": "rustok-pages",
@@ -2346,9 +2346,9 @@
       "category": "modules",
       "files": 7,
       "loc": 1846,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: Leptos SSR storefront page renderer, @scope CSS containment, CSP nonce forwarding, data-fly-action script attachment, accessible bridge feedback and alert roles without panic branches; verified with cargo check -p rustok-page-builder-storefront --features ssr"
     },
     "apps/next-admin/packages/forms": {
       "name": "forms",
