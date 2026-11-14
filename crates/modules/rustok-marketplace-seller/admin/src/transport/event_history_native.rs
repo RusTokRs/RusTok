@@ -116,6 +116,11 @@ fn ensure_tenant(
     auth: &rustok_api::AuthContext,
     tenant: &rustok_api::TenantContext,
 ) -> Result<(), ServerFnError> {
+    if auth.tenant_id.is_nil() || tenant.id.is_nil() {
+        return Err(ServerFnError::new(
+            "Permission denied: tenant_id cannot be nil UUID",
+        ));
+    }
     if auth.tenant_id != tenant.id {
         return Err(ServerFnError::new(
             "Permission denied: marketplace seller tenant mismatch",
