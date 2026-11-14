@@ -66,10 +66,10 @@ The Prometheus family `rustok_module_errors_total` records the same bounded dire
 - The outer main-server security middleware inserts the nonce into request extensions and uses the same value in enforced and report-only headers.
 - Embedded admin processing applies the nonce only to script and style elements in the immutable bundled `index.html`; it is never applied to tenant or user-authored HTML.
 - Storefront processing applies the nonce only to the exact JSON-LD opening tag emitted by the typed SEO renderer.
-- The standalone admin middleware inserts the same nonce type into Axum request extensions, copies it into the Leptos render context and applies it to the transitional auth bootstrap script.
+- The standalone admin middleware inserts the same nonce type into Axum request extensions and copies it into the Leptos render context through the UI nonce contract. Its SSR shell intentionally contains no transitional auth bootstrap or hydration script; module-owned server-preview and inline elements consume the context nonce, and browser hydrate/CSR reads the nonce from the trusted script that booted it.
 - The classic standalone admin shell intentionally contains no `HydrationScripts`, `AutoReload` or inline style element producer.
 - Missing nonce state fails closed to the API deny policy rather than restoring a blanket `unsafe-inline` source.
-- Next source contains no runtime `<style>` element under the reviewed source roots; the runtime-style-element ratchet is zero.
+- The Next storefront proxy issues one request-local nonce per HTML response from 16 Web Crypto random bytes (128 bits); framework scripts, published landing CSS and JSON-LD use the same value. `apps/next-frontend` locks nonce generation, validation and strict-policy construction with `npm run test:csp`; after a production build, `npm run test:csp-runtime` checks SSR/policy nonce agreement, per-response uniqueness, spoof resistance, no-store caching, plain and dotted HTML 404s, and cacheable Next static assets over HTTP. Browser visual/interaction smoke remains required separately. The only reviewed Next runtime `<style>` element is the nonce-bearing published-landing stylesheet; the runtime-style-element ratchet is one.
 
 ## Connection Profile Boundary
 
@@ -93,13 +93,13 @@ The strict parent-document policy is therefore the current executable behavior, 
 
 ### Next/React boundary
 
-`docs/security/csp-next-style-exceptions.json` is empty. Its gate observes exactly:
+`docs/security/csp-next-style-exceptions.json` registers exactly one runtime stylesheet element in `PageBuilderContent`. Its gate currently observes:
 
-- **0 JSX style props across 0 registered files**;
-- **0 runtime style elements**;
+- **0 JSX style props across 1 registered source file**;
+- **1 nonce-bearing runtime style element**;
 - **0 direct DOM style writes**.
 
-The gate scans every `.tsx` and `.jsx` file under `apps/next-admin` and `apps/next-frontend`, rejects unregistered source sites and protects all completed migrations with explicit required/forbidden markers.
+The request-local policy is enforced on the Next storefront in production (or with `RUSTOK_STRICT_CSP=1`); Next admin is not yet part of this proxy integration. The gate scans every `.tsx` and `.jsx` file under `apps/next-admin` and `apps/next-frontend`, rejects unregistered source sites and protects the reviewed boundary with explicit required/forbidden markers. The landing style-element exception is temporary and should return to zero when a same-origin stylesheet route is implemented.
 
 ### Classic admin boundary
 
@@ -109,9 +109,9 @@ The bundled classic admin bootstrap no longer writes `document.documentElement.s
 
 Browser smoke runs use the current default enforced policy directly; there is no executable `RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES` switch in the current hosts.
 
-The main server and standalone admin both enforce `style-src-attr 'none'` by default, preserve per-response nonces for trusted script/style elements, keep production connections on HTTPS/WSS, and retain the dedicated isolated richtext-frame exception. Browser smoke should therefore exercise the production-equivalent default rather than a separate opt-in policy.
+The main server and standalone admin enforce `style-src-attr 'none'` by default, preserve per-response nonces for trusted script/style elements, keep production connections on HTTPS/WSS, and retain the dedicated isolated richtext-frame exception. The Next storefront now enforces its request-local policy in production (or when `RUSTOK_STRICT_CSP=1`); Next admin has not yet been confirmed against this new host boundary. Browser smoke must exercise each surface's production-equivalent policy rather than a simulated opt-in policy.
 
-The report-only policy remains independently bounded and continues to surface unexplained `style-src` or `style-src-attr` dependencies without weakening enforced policy. Global security-policy changes should occur only after cross-stack browser smoke evidence confirms the current default across embedded admin, standalone admin, Next admin and storefront journeys.
+The report-only policy remains independently bounded and continues to surface unexplained `style-src` or `style-src-attr` dependencies without weakening enforced policy. Cross-stack browser evidence remains required across embedded admin, standalone admin, Next admin and storefront journeys; local source gates and the production HTTP nonce test do not satisfy this requirement.
 
 ### Required smoke evidence
 
@@ -158,15 +158,15 @@ Rollback for a smoke environment should use the last known reviewed release/poli
 8. Never add a nonce through blanket post-processing of tenant or user-authored HTML.
 9. Do not advertise a report endpoint from a deployment process that does not own the bounded collector.
 10. Do not add a new Rust-hosted `style=` source site; its ratchet is zero.
-11. Do not add a Next JSX style prop, runtime style element or direct DOM style write; all three ratchets are zero.
+11. Do not add Next JSX style props or direct DOM style writes; keep both ratchets at zero. The sole registered nonce-bearing landing style element is capped at one pending a same-origin stylesheet route; do not add another.
 
-## Enforcement Exit Criteria
+## Cross-Stack CSP Acceptance Criteria
 
-The default enforced policy may be promoted to `style-src-attr 'none'` only when:
+The enforced policy is already active on the Rust-hosted surfaces, and request-local strict CSP is active on the Next storefront in production (or with `RUSTOK_STRICT_CSP=1`). Remaining acceptance work is evidence and boundary completion, not promotion from a report-only style-attribute mode:
 
-- browser smoke runs with `RUSTOK_CSP_STRICT_STYLE_ATTRIBUTES=true` for embedded admin, standalone admin, Next admin and storefront produce no unexplained `style-src-attr` or `style-src` violations;
-- both exception registers remain empty;
-- both source gates observe zero style attributes/props and the Next gate observes zero runtime style elements and zero DOM style writes;
+- browser smoke for embedded admin, standalone admin, Next admin and storefront produces no unexplained `style-src`, `style-src-elem` or `style-src-attr` violations and no visual or interaction regression;
+- the Rust style-attribute register remains empty and its source gate remains at zero;
+- the Next gate observes zero JSX style props and direct DOM style writes, and exactly one registered, nonce-bearing landing style element until a same-origin stylesheet route replaces it;
 - no production code path requires `eval` or equivalent string compilation;
 - the observed external-origin set matches this inventory;
 - the CSP reporting endpoint remains bounded and unauthenticated without inheriting tenant context;

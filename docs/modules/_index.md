@@ -48,7 +48,7 @@ Module local documentation lives inside the crates themselves at
 | `rustok-runtime` | [docs](../../crates/libs/rustok-runtime/docs/README.md) | [plan](../../crates/libs/rustok-runtime/docs/implementation-plan.md) |
 | `rustok-modules` | [docs](../../crates/modules/rustok-modules/docs/README.md) | [plan](../../crates/modules/rustok-modules/docs/implementation-plan.md) |
 | `rustok-verification-transport` | [docs](../../crates/workers/rustok-verification-transport/docs/README.md) | gRPC transport contract is recorded in the crate README. |
-| `rustok-media-transport` | [docs](../../crates/modules/rustok-media-transport/docs/README.md) | Loopback-verified gRPC adapter for Media-owned read/write ports. |
+| `rustok-media/ports` | [docs](../../crates/modules/rustok-media/ports/README.md) | Media-owned gRPC contracts and adapters for read/write ports. |
 | `rustok-verification-worker` | [docs](../../crates/workers/rustok-verification-worker/docs/README.md) | Worker rollout is recorded in the module control-plane plan. |
 | `rustok-artifact-node-transport` | [docs](../../crates/workers/rustok-artifact-node-transport/docs/README.md) | Current-only mTLS node-agent transport is recorded in the module control-plane plan. |
 | `rustok-artifact-node-controller` | [docs](../../crates/workers/rustok-artifact-node-controller/docs/README.md) | Independent mTLS owner-port composition is recorded in the module control-plane plan. |

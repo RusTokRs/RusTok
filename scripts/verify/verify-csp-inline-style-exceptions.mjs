@@ -371,6 +371,38 @@ forbidMarkers("apps/admin/src/features/modules/components/modules_list.rs", [
   "style=progress_width",
 ]);
 
+// Starter/default documents describe text through Fly components. Raw HTML in
+// `content` is escaped by the renderer, and an inline `style=` attribute there
+// would become visible text that a strict CSP cannot style.
+requireMarkers("crates/modules/rustok-pages/admin/src/starters.rs", [
+  "fn price_node(",
+  "\"tagName\": \"strong\"",
+  "\"tagName\": \"span\"",
+  "\"content\": amount",
+  "\"content\": \" / month\"",
+  "fn assert_no_raw_html_content",
+]);
+forbidMarkers("crates/modules/rustok-pages/admin/src/starters.rs", [
+  "<span style=",
+  "<strong>{}</strong>",
+  "<h1>{}</h1>",
+  "<p>Build this page with Fly.</p>",
+  "fn escape_html",
+  "escape_html(title)",
+]);
+requireMarkers("crates/modules/rustok-pages/admin/src/core.rs", [
+  "\"tagName\": \"h1\"",
+  "\"tagName\": \"p\"",
+  "\"content\": title",
+  "\"content\": \"Build this page with Fly.\"",
+]);
+forbidMarkers("crates/modules/rustok-pages/admin/src/core.rs", [
+  "<h1>{}</h1>",
+  "<p>Build this page with Fly.</p>",
+  "fn escape_html",
+  "escape_html(title)",
+]);
+
 for (const file of [
   "apps/server/src/middleware/security_headers.rs",
   "apps/admin/src/app/security.rs",

@@ -17,6 +17,7 @@ import {
 } from "@/shared/api/modules";
 import { buildSeoMetadata } from "@/shared/seo/metadata";
 import { resolveSeoPageContextForRoute } from "@/shared/seo/runtime";
+import { getRequestCspNonce } from "@/shared/security/nonce";
 import { fetchPublishedPage, PageBuilderContent } from "@rustok/pages-frontend";
 
 // `generateMetadata` and the page render the same page: one read per request.
@@ -84,10 +85,11 @@ export default async function StorefrontCustomPage({
   if (!landing) {
     notFound();
   }
+  const nonce = await getRequestCspNonce();
 
   return (
     <main className="rustok-page-wrapper min-h-screen">
-      <PageBuilderContent html={landing.html} css={landing.css} />
+      <PageBuilderContent html={landing.html} css={landing.css} nonce={nonce} />
     </main>
   );
 }

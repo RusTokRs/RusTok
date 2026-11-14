@@ -154,13 +154,15 @@ pub fn default_project_data(title: &str) -> Value {
                     "components": [
                         {
                             "id": "heading",
-                            "type": "text",
-                            "content": format!("<h1>{}</h1>", escape_html(title))
+                            "type": "heading",
+                            "tagName": "h1",
+                            "content": title
                         },
                         {
                             "id": "intro",
                             "type": "text",
-                            "content": "<p>Build this page with Fly.</p>"
+                            "tagName": "p",
+                            "content": "Build this page with Fly."
                         }
                     ]
                 }
@@ -201,15 +203,6 @@ fn project_to_pretty_json(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string())
 }
 
-fn escape_html(input: &str) -> String {
-    input
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,6 +212,9 @@ mod tests {
         let project = default_project_data("Landing");
         assert_eq!(project["pages"][0]["component"]["id"], "root");
         assert!(project["pages"][0].get("frames").is_none());
+        let rendered = serde_json::to_string(&project).expect("project JSON");
+        assert!(!rendered.contains("<h1>"), "content must use typed components");
+        assert!(!rendered.contains("<p>"), "content must use typed components");
     }
 
     #[test]
