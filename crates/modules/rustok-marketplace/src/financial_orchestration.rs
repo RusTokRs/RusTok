@@ -240,6 +240,11 @@ fn validate_context(context: &PortContext) -> MarketplaceFinancialOrchestrationR
             "tenant_id must not be nil".to_string(),
         ));
     }
+    if context.correlation_id.trim().is_empty() {
+        return Err(MarketplaceFinancialOrchestrationError::Validation(
+            "correlation_id must not be empty".to_string(),
+        ));
+    }
     Ok(())
 }
 
