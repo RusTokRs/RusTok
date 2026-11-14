@@ -931,9 +931,9 @@
       "category": "modules",
       "files": 205,
       "loc": 60760,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: page version monotonic increments and optimistic locking, strict tenant-scoped cascade deletions in transaction, state machine lifecycle transitions (draft -> published -> unpublished -> archived) with CAS guards, scheduled publication worker with lease reaper and tenant fairness cursor; verified with cargo check -p rustok-pages and verify-pages-* verification scripts"
     },
     "crates/modules/rustok-pages/admin": {
       "name": "admin",
@@ -941,9 +941,9 @@
       "category": "modules",
       "files": 28,
       "loc": 9748,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: Leptos SSR page admin and visual navigator, fixed closure type inference for on_select callback and borrow of moved value in layout options, role=alert error status display, full keyboard and ARIA navigation; verified with cargo check -p rustok-pages-admin --features ssr"
     },
     "crates/modules/rustok-pages/storefront": {
       "name": "storefront",
@@ -951,9 +951,9 @@
       "category": "modules",
       "files": 18,
       "loc": 5076,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: Leptos SSR storefront rendering, scoped CSS encapsulation, localized routing, CSP nonce propagation, error boundary fallback; verified with cargo check -p rustok-pages-storefront --features ssr"
     },
     "crates/modules/rustok-payment": {
       "name": "rustok-payment",
