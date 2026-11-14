@@ -297,7 +297,22 @@ Server work for that plan is:
   not read lifecycle, admission, or outbox tables directly;
 - supply database, OCI, trust, events, audit, clock, and other infrastructure
   adapters; module-build scheduling and execution run in their separate
-  dispatcher and worker deployments;
+  dispatcher and worker deployments. The server queues and streams build
+  events and requests builds through `PlatformCompositionBuildService`, but it
+  does not own a build executor. `services/build_executor.rs` was an
+  installer-era wrapper that no longer had a caller after the release
+  activation hook moved into the owner; it also hard-wired
+  `NoopBuildEventPublisher`, so keeping it would have advertised a build path
+  that silently published nothing. It is removed, and the only remaining
+  `BuildExecutionService` composition is the CLI worker
+  (`crates/utils/rustok-cli-platform/src/rebuild.rs`);
+- keep MCP stdio out of the host. `DbBackedMcpRuntimeBridge` exposed
+  `bind_stdio_config`, an unused helper that implied the host could assemble a
+  stdio MCP session; the module plan states generic stdio is a library/CLI
+  surface and that tenant-owned tools are reachable only through the
+  authenticated JSON/SSE remote transport. The helper had no caller and is
+  removed, so the host has exactly one MCP path (remote bootstrap + tool
+  transport) and no second, unaudited composition to drift from it;
 - obtain every control-plane service through `ModuleControlPlane` instead of
   constructing owner types in the host. The RBAC permission-ownership map is the
   one host adapter that previously built `ModuleDefinitionCatalog` directly
