@@ -17,23 +17,24 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 pub fn attach_commerce_provider_registries(
     host: HostRuntimeContext,
     server: &ServerRuntimeContext,
-) -> HostRuntimeContext {
+) -> crate::error::Result<HostRuntimeContext> {
+    // `server` is only read by the feature-gated provider blocks below; keep the
+    // parameter usage explicit so a build without those features stays warning-free.
     let _ = server;
     #[cfg(feature = "mod-payment")]
     let host = {
-        let registry = server
-            .shared_get::<rustok_payment::providers::PaymentProviderRegistry>()
-            .unwrap_or_else(|| {
-                let registry =
-                    crate::services::payment_provider_runtime::build_payment_provider_registry(
-                        server,
-                    )
-                    .unwrap_or_else(|error| {
-                        panic!("payment provider runtime initialization failed: {error}")
-                    });
-                server.shared_insert(registry.clone());
-                registry
-            });
+        let registry =
+            match server.shared_get::<rustok_payment::providers::PaymentProviderRegistry>() {
+                Some(registry) => registry,
+                None => {
+                    let registry =
+                        crate::services::payment_provider_runtime::build_payment_provider_registry(
+                            server,
+                        )?;
+                    server.shared_insert(registry.clone());
+                    registry
+                }
+            };
         host.with_shared_value(registry)
     };
 
@@ -124,54 +125,74 @@ pub fn attach_commerce_provider_registries(
 
     #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
     let host = {
-        let runtime = host
+        let runtime = match host
             .shared_get::<rustok_commerce::graphql_runtime::CommercePaymentReadRuntime>()
             .or_else(|| {
                 server.shared_get::<rustok_commerce::graphql_runtime::CommercePaymentReadRuntime>()
-            })
-            .unwrap_or_else(|| {
-                let admin_reads = server
-                    .shared_get::<rustok_payment::PaymentAdminReadRuntime>()
-                    .expect("PaymentAdminReadRuntime must be initialized before CommercePaymentReadRuntime");
-                let order_reads = server
-                    .shared_get::<rustok_payment::PaymentOrderReadRuntime>()
-                    .expect("PaymentOrderReadRuntime must be initialized before CommercePaymentReadRuntime");
-                let cart_reads = server
-                    .shared_get::<rustok_payment::PaymentCartReadRuntime>()
-                    .expect("PaymentCartReadRuntime must be initialized before CommercePaymentReadRuntime");
+            }) {
+            Some(runtime) => runtime,
+            None => {
+                let admin_reads = require_shared::<rustok_payment::PaymentAdminReadRuntime>(
+                    server,
+                    "PaymentAdminReadRuntime",
+                    "CommercePaymentReadRuntime",
+                )?;
+                let order_reads = require_shared::<rustok_payment::PaymentOrderReadRuntime>(
+                    server,
+                    "PaymentOrderReadRuntime",
+                    "CommercePaymentReadRuntime",
+                )?;
+                let cart_reads = require_shared::<rustok_payment::PaymentCartReadRuntime>(
+                    server,
+                    "PaymentCartReadRuntime",
+                    "CommercePaymentReadRuntime",
+                )?;
                 rustok_commerce::graphql_runtime::CommercePaymentReadRuntime::new(
                     admin_reads,
                     order_reads,
                     cart_reads,
                 )
-            });
+            }
+        };
         server.shared_insert(runtime.clone());
         host.with_shared_value(runtime)
     };
 
     #[cfg(all(feature = "mod-commerce", feature = "mod-payment"))]
     let host = {
-        let runtime = host
+        let runtime = match host
             .shared_get::<rustok_commerce::graphql_runtime::CommercePaymentCommandRuntime>()
             .or_else(|| {
-                server.shared_get::<rustok_commerce::graphql_runtime::CommercePaymentCommandRuntime>()
-            })
-            .unwrap_or_else(|| {
-                let collection_create_or_reuse = server
-                    .shared_get::<rustok_payment::PaymentCollectionRuntime>()
-                    .expect("PaymentCollectionRuntime must be initialized before CommercePaymentCommandRuntime");
-                let collection_commands = server
-                    .shared_get::<rustok_payment::PaymentAdminCollectionCommandRuntime>()
-                    .expect("PaymentAdminCollectionCommandRuntime must be initialized before CommercePaymentCommandRuntime");
-                let refund_commands = server
-                    .shared_get::<rustok_payment::PaymentAdminRefundCommandRuntime>()
-                    .expect("PaymentAdminRefundCommandRuntime must be initialized before CommercePaymentCommandRuntime");
+                server
+                    .shared_get::<rustok_commerce::graphql_runtime::CommercePaymentCommandRuntime>()
+            }) {
+            Some(runtime) => runtime,
+            None => {
+                let collection_create_or_reuse =
+                    require_shared::<rustok_payment::PaymentCollectionRuntime>(
+                        server,
+                        "PaymentCollectionRuntime",
+                        "CommercePaymentCommandRuntime",
+                    )?;
+                let collection_commands =
+                    require_shared::<rustok_payment::PaymentAdminCollectionCommandRuntime>(
+                        server,
+                        "PaymentAdminCollectionCommandRuntime",
+                        "CommercePaymentCommandRuntime",
+                    )?;
+                let refund_commands =
+                    require_shared::<rustok_payment::PaymentAdminRefundCommandRuntime>(
+                        server,
+                        "PaymentAdminRefundCommandRuntime",
+                        "CommercePaymentCommandRuntime",
+                    )?;
                 rustok_commerce::graphql_runtime::CommercePaymentCommandRuntime::new(
                     collection_create_or_reuse,
                     collection_commands,
                     refund_commands,
                 )
-            });
+            }
+        };
         server.shared_insert(runtime.clone());
         host.with_shared_value(runtime)
     };
@@ -233,18 +254,19 @@ pub fn attach_commerce_provider_registries(
 
     #[cfg(all(feature = "mod-commerce", feature = "mod-order"))]
     let host = {
-        let runtime = host
+        let runtime = match host
             .shared_get::<rustok_commerce::graphql_runtime::CommerceOrderReadRuntime>()
             .or_else(|| {
                 server.shared_get::<rustok_commerce::graphql_runtime::CommerceOrderReadRuntime>()
-            })
-            .unwrap_or_else(|| {
+            }) {
+            Some(runtime) => runtime,
+            None => {
                 let event_bus = host
                     .shared_get::<rustok_outbox::TransactionalEventBus>()
                     .or_else(|| server.shared_get::<rustok_outbox::TransactionalEventBus>())
-                    .expect(
-                        "TransactionalEventBus must be initialized before CommerceOrderReadRuntime",
-                    );
+                    .ok_or_else(|| {
+                        composition_unavailable("TransactionalEventBus", "CommerceOrderReadRuntime")
+                    })?;
                 let runtime =
                     rustok_commerce::graphql_runtime::CommerceOrderReadRuntime::in_process(
                         server.db_clone(),
@@ -252,7 +274,8 @@ pub fn attach_commerce_provider_registries(
                     );
                 server.shared_insert(runtime.clone());
                 runtime
-            });
+            }
+        };
         host.with_shared_value(runtime)
     };
 
@@ -470,24 +493,29 @@ pub fn attach_commerce_provider_registries(
         feature = "mod-product"
     ))]
     let host = {
-        let runtime = server
+        let runtime = match server
             .shared_get::<rustok_marketplace_listing::MarketplaceListingRuntime>()
-            .unwrap_or_else(|| {
-                let event_bus = server
-                    .shared_get::<rustok_outbox::TransactionalEventBus>()
-                    .expect("TransactionalEventBus must be initialized before marketplace listing");
-                let seller_reader = server
-                    .shared_get::<rustok_marketplace_seller::MarketplaceSellerRuntime>()
-                    .expect(
-                        "MarketplaceSellerRuntime must be initialized before marketplace listing",
-                    )
+        {
+            Some(runtime) => runtime,
+            None => {
+                let event_bus = require_shared::<rustok_outbox::TransactionalEventBus>(
+                    server,
+                    "TransactionalEventBus",
+                    "MarketplaceListingRuntime",
+                )?;
+                let seller_reader =
+                    require_shared::<rustok_marketplace_seller::MarketplaceSellerRuntime>(
+                        server,
+                        "MarketplaceSellerRuntime",
+                        "MarketplaceListingRuntime",
+                    )?
                     .shared_read_port();
-                let product_reader = server
-                    .shared_get::<rustok_product::ProductCatalogReadRuntime>()
-                    .expect(
-                        "ProductCatalogReadRuntime must be initialized before marketplace listing",
-                    )
-                    .read_port();
+                let product_reader = require_shared::<rustok_product::ProductCatalogReadRuntime>(
+                    server,
+                    "ProductCatalogReadRuntime",
+                    "MarketplaceListingRuntime",
+                )?
+                .read_port();
                 let ports = Arc::new(rustok_marketplace_listing::MarketplaceListingService::new(
                     server.db_clone(),
                     event_bus,
@@ -497,7 +525,8 @@ pub fn attach_commerce_provider_registries(
                 let runtime = rustok_marketplace_listing::MarketplaceListingRuntime::new(ports);
                 server.shared_insert(runtime.clone());
                 runtime
-            });
+            }
+        };
         host.with_shared_value(runtime)
     };
 
@@ -549,7 +578,35 @@ pub fn attach_commerce_provider_registries(
         host
     };
 
-    host
+    Ok(host)
+}
+
+/// Reads one boot-owned runtime value that a composite runtime requires.
+///
+/// A missing dependency is a deployment defect that must surface as a startup
+/// error instead of aborting the process from a request path.
+fn require_shared<T: Clone + Send + Sync + 'static>(
+    server: &ServerRuntimeContext,
+    dependency: &'static str,
+    consumer: &'static str,
+) -> crate::error::Result<T> {
+    server
+        .shared_get::<T>()
+        .ok_or_else(|| composition_unavailable(dependency, consumer))
+}
+
+fn composition_unavailable(
+    dependency: &'static str,
+    consumer: &'static str,
+) -> crate::error::Error {
+    tracing::error!(
+        dependency,
+        consumer,
+        "required boot-owned commerce runtime is missing"
+    );
+    crate::error::Error::Message(format!(
+        "cannot compose {consumer}: required {dependency} was not initialized"
+    ))
 }
 
 #[cfg(all(test, feature = "mod-commerce", feature = "mod-order"))]
@@ -572,7 +629,8 @@ mod host_event_bus_tests {
         let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
         let host = rustok_api::HostRuntimeContext::new(db).with_shared_value(event_bus);
 
-        let attached = attach_commerce_provider_registries(host, &server);
+        let attached = attach_commerce_provider_registries(host, &server)
+            .expect("commerce provider registries must compose for the test");
 
         assert!(
             attached
@@ -614,9 +672,11 @@ mod tests {
         let first = attach_commerce_provider_registries(
             rustok_api::HostRuntimeContext::new(db.clone()),
             &server,
-        );
+        )
+        .expect("commerce provider registries must compose for the test");
         let second =
-            attach_commerce_provider_registries(rustok_api::HostRuntimeContext::new(db), &server);
+            attach_commerce_provider_registries(rustok_api::HostRuntimeContext::new(db), &server)
+                .expect("commerce provider registries must compose for the test");
 
         let first_payment = first
             .shared_get::<rustok_payment::providers::PaymentProviderRegistry>()
@@ -697,7 +757,8 @@ mod order_status_port_tests {
         ))));
 
         let host =
-            attach_commerce_provider_registries(rustok_api::HostRuntimeContext::new(db), &server);
+            attach_commerce_provider_registries(rustok_api::HostRuntimeContext::new(db), &server)
+                .expect("commerce provider registries must compose for the test");
         assert!(
             host.shared_get::<rustok_ai::SharedAiOrderStatusPort>()
                 .is_some()
@@ -767,7 +828,8 @@ mod product_catalog_read_port_tests {
         ))));
 
         let host =
-            attach_commerce_provider_registries(rustok_api::HostRuntimeContext::new(db), &server);
+            attach_commerce_provider_registries(rustok_api::HostRuntimeContext::new(db), &server)
+                .expect("commerce provider registries must compose for the test");
         assert!(
             host.shared_get::<rustok_product::ProductCatalogReadRuntime>()
                 .is_some()
@@ -792,7 +854,8 @@ mod product_catalog_read_port_tests {
         ));
         let host = rustok_api::HostRuntimeContext::new(db).with_shared_value(external);
 
-        let attached = attach_commerce_provider_registries(host, &server);
+        let attached = attach_commerce_provider_registries(host, &server)
+            .expect("commerce provider registries must compose for the test");
         let runtime = attached
             .shared_get::<rustok_product::ProductCatalogReadRuntime>()
             .expect("external product runtime should remain attached");

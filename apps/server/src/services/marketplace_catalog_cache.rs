@@ -84,7 +84,7 @@ pub struct HardenedRegistryMarketplaceProvider {
 }
 
 impl HardenedRegistryMarketplaceProvider {
-    pub fn from_env() -> Vec<Self> {
+    pub fn from_env() -> Result<Vec<Self>, crate::error::Error> {
         let positive_ttl = Duration::from_secs(positive_env_u64(
             "RUSTOK_MARKETPLACE_REGISTRY_CACHE_TTL_SECS",
             60,
@@ -100,10 +100,10 @@ impl HardenedRegistryMarketplaceProvider {
             "RUSTOK_MARKETPLACE_REGISTRY_DETAIL_CACHE_MAX_BYTES",
             DEFAULT_REGISTRY_DETAIL_CACHE_MAX_WEIGHT_BYTES,
         );
-        base::HardenedRegistryMarketplaceProvider::from_env()
+        Ok(base::HardenedRegistryMarketplaceProvider::from_env()?
             .into_iter()
             .map(|inner| Self::with_inner(inner, positive_ttl, negative_ttl, maximum_weight))
-            .collect()
+            .collect())
     }
 
     fn with_inner(

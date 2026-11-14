@@ -1,5 +1,5 @@
 use super::options::{ScaffoldOptions, ScaffoldUi};
-use crate::docs_markdown::{Document, MODULE_COLUMNS, OPTIONAL_MODULES, Section};
+use crate::docs_markdown::{Document, Section, MODULE_COLUMNS, OPTIONAL_MODULES};
 use anyhow::{Context, Result};
 use pulldown_cmark::HeadingLevel::{H2, H3};
 use std::{fs, ops::Range, path::Path};

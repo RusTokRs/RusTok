@@ -129,9 +129,50 @@ mod tests {
 
         let error = port
             .port()
-            .update(Uuid::new_v4(), None, json!({ "mode": "memcached" }), 0)
+            .update(
+                Uuid::new_v4(),
+                Some(Uuid::new_v4()),
+                json!({ "mode": "memcached" }),
+                0,
+            )
             .await
             .expect_err("unknown mode must not be persisted");
         assert!(error.contains("mode"), "unexpected error: {error}");
+    }
+
+    #[tokio::test]
+    async fn anonymous_cache_settings_write_is_rejected_before_persisting() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let port = ServerCacheSettingsAdmin::shared(&ctx);
+        let tenant_id = Uuid::new_v4();
+
+        let before = port
+            .port()
+            .read(tenant_id)
+            .await
+            .expect("cache settings read");
+        let error = port
+            .port()
+            .update(
+                tenant_id,
+                None,
+                json!({ "mode": "redis", "redis_url": "redis://localhost:6379" }),
+                before.schema_version,
+            )
+            .await
+            .expect_err("a settings write without an actor must be rejected");
+        assert!(
+            error.contains("requires an authenticated actor"),
+            "unexpected error: {error}"
+        );
+
+        // Nothing was written: the rejection happens before the transaction.
+        let after = port
+            .port()
+            .read(tenant_id)
+            .await
+            .expect("cache settings read");
+        assert_eq!(after.schema_version, before.schema_version);
     }
 }

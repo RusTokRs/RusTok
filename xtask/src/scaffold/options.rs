@@ -1,5 +1,5 @@
 use crate::module_cli_args::cli_option_value;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use std::collections::HashSet;
 
 /// Architectural roles are distinct even when their output is a Rust crate.

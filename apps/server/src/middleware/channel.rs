@@ -516,19 +516,18 @@ fn channel_slug_from_query(query: Option<&str>) -> Option<String> {
     let mut selected: Option<String> = None;
     for (key, value) in url::form_urlencoded::parse(query.as_bytes()) {
         if key == "channel" {
-            let parsed = bounded_channel_selector(value.as_ref());
-            if parsed.is_none() {
+            let Some(parsed) = bounded_channel_selector(value.as_ref()) else {
                 continue;
-            }
+            };
             if let Some(existing) = &selected {
-                if existing != parsed.as_ref().unwrap() {
+                if *existing != parsed {
                     tracing::warn!(
                         "Conflicting duplicate channel query parameters detected; failing closed"
                     );
                     return None;
                 }
             } else {
-                selected = parsed;
+                selected = Some(parsed);
             }
         }
     }

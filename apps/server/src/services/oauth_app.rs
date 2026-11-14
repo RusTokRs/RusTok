@@ -118,6 +118,11 @@ impl OAuthAppService {
             &input.grant_types,
             &granted_permissions,
         )?;
+        validate_app_display_fields(&input.name, Some(&input.slug), input.icon_url.as_deref())?;
+        // `(tenant_id, slug)` is a unique index. Probing first turns a colliding
+        // slug into a 409 the caller can act on, instead of a 500 raised from a
+        // constraint violation deep inside the insert transaction.
+        ensure_slug_available(db, tenant_id, &input.slug).await?;
 
         let client_id = Uuid::new_v4();
         let client_secret_plain = generate_client_secret()?;
@@ -193,6 +198,8 @@ impl OAuthAppService {
             &input.grant_types,
             &granted_permissions,
         )?;
+        // `slug` is not editable after creation, so only name/icon are rechecked.
+        validate_app_display_fields(&input.name, None, input.icon_url.as_deref())?;
 
         // Go through the ActiveModel wrapper: name/description are
         // translation-owned (`#[sea_orm(ignore)]` here) and its update
@@ -313,10 +320,19 @@ impl OAuthAppService {
         })
     }
 
-    /// Revoke an app — deactivate and revoke all its tokens
-    pub async fn revoke_app(db: &DatabaseConnection, app_id: Uuid) -> Result<oauth_apps::Model> {
+    /// Revoke an app — deactivate and revoke all its tokens.
+    ///
+    /// Tenancy is part of the lookup, not something the caller is trusted to
+    /// have checked first: a revoke keyed on a bare `app_id` would let any
+    /// tenant deactivate another tenant's app and invalidate its issued tokens.
+    pub async fn revoke_app(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        app_id: Uuid,
+    ) -> Result<oauth_apps::Model> {
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
         let app = OAuthApps::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
             .one(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?
@@ -347,7 +363,10 @@ impl OAuthAppService {
             .map_err(|_| Error::InternalServerError)?
             .ok_or_else(|| Error::NotFound)?;
 
-        // Revoke all active tokens for this app
+        // Revoke all active tokens for this app. `app` was loaded under the
+        // tenant filter above, so `app_id` is already tenant-owned; the extra
+        // tenant predicate keeps this statement correct even if a future caller
+        // reaches it without that lookup.
         use sea_orm::sea_query::Expr;
         oauth_tokens::Entity::update_many()
             .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
@@ -355,6 +374,7 @@ impl OAuthAppService {
             .filter(
                 sea_orm::Condition::all()
                     .add(oauth_tokens::Column::AppId.eq(app_id))
+                    .add(oauth_tokens::Column::TenantId.eq(tenant_id))
                     .add(oauth_tokens::Column::RevokedAt.is_null()),
             )
             .exec(&tx)
@@ -1210,6 +1230,92 @@ async fn replace_oauth_secret_if_current(
         .await
         .map_err(|_| Error::InternalServerError)?;
     Ok(result.rows_affected == 1)
+}
+
+/// Column widths the schema enforces for OAuth application display fields.
+///
+/// `name` is translation-owned and lands in `oauth_app_translations.name`
+/// (`varchar(255)`); `slug` and `icon_url` are plain `oauth_apps` columns
+/// (`varchar(100)` and `varchar(500)`). Validating here keeps an over-long value
+/// a client error instead of letting the write fail: those paths map database
+/// errors to a generic 500, so a 300-character name would otherwise be reported
+/// as a server fault for a purely user-made mistake.
+const OAUTH_APP_NAME_MAX_LEN: usize = 255;
+const OAUTH_APP_SLUG_MAX_LEN: usize = 100;
+const OAUTH_APP_ICON_URL_MAX_LEN: usize = 500;
+
+/// Reject a slug that is already taken within the tenant.
+///
+/// The uniqueness rule lives in `idx_oauth_apps_tenant_slug`; checking it up
+/// front keeps the failure a `Conflict` (409) rather than a generic 500 derived
+/// from the constraint violation, and the message tells the operator which
+/// field collided. The check is advisory: the unique index remains the
+/// authority, so a race between two concurrent creates still cannot persist a
+/// duplicate.
+async fn ensure_slug_available(db: &DatabaseConnection, tenant_id: Uuid, slug: &str) -> Result<()> {
+    let taken = OAuthApps::find()
+        .filter(
+            sea_orm::Condition::all()
+                .add(oauth_apps::Column::TenantId.eq(tenant_id))
+                .add(oauth_apps::Column::Slug.eq(slug)),
+        )
+        .one(db)
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                error = %error,
+                "Failed to check OAuth app slug availability"
+            );
+            Error::InternalServerError
+        })?
+        .is_some();
+
+    if taken {
+        return Err(Error::Conflict(format!(
+            "OAuth app slug `{slug}` is already in use for this tenant"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_app_display_fields(
+    name: &str,
+    slug: Option<&str>,
+    icon_url: Option<&str>,
+) -> Result<()> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(Error::BadRequest(
+            "OAuth app name must not be empty".to_string(),
+        ));
+    }
+    if name.chars().count() > OAUTH_APP_NAME_MAX_LEN {
+        return Err(Error::BadRequest(format!(
+            "OAuth app name must be at most {OAUTH_APP_NAME_MAX_LEN} characters"
+        )));
+    }
+    if let Some(slug) = slug {
+        let slug = slug.trim();
+        if slug.is_empty() {
+            return Err(Error::BadRequest(
+                "OAuth app slug must not be empty".to_string(),
+            ));
+        }
+        if slug.chars().count() > OAUTH_APP_SLUG_MAX_LEN {
+            return Err(Error::BadRequest(format!(
+                "OAuth app slug must be at most {OAUTH_APP_SLUG_MAX_LEN} characters"
+            )));
+        }
+    }
+    if let Some(icon_url) = icon_url
+        && icon_url.chars().count() > OAUTH_APP_ICON_URL_MAX_LEN
+    {
+        return Err(Error::BadRequest(format!(
+            "OAuth app icon URL must be at most {OAUTH_APP_ICON_URL_MAX_LEN} characters"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_manual_app_configuration(
@@ -2309,6 +2415,55 @@ mod tests {
         );
     }
 
+    #[test]
+    fn app_display_fields_are_rejected_beyond_their_column_widths() {
+        use super::{
+            OAUTH_APP_ICON_URL_MAX_LEN, OAUTH_APP_NAME_MAX_LEN, OAUTH_APP_SLUG_MAX_LEN,
+            validate_app_display_fields,
+        };
+
+        // At the boundary the value is accepted: the schema allows it.
+        let at_name_limit = "n".repeat(OAUTH_APP_NAME_MAX_LEN);
+        let at_slug_limit = "s".repeat(OAUTH_APP_SLUG_MAX_LEN);
+        let at_icon_limit = "i".repeat(OAUTH_APP_ICON_URL_MAX_LEN);
+        assert!(
+            validate_app_display_fields(&at_name_limit, Some(&at_slug_limit), Some(&at_icon_limit))
+                .is_ok(),
+            "values exactly at the column width must pass"
+        );
+
+        // One character past it must be a client error, not a database failure.
+        let over_name = "n".repeat(OAUTH_APP_NAME_MAX_LEN + 1);
+        let over_slug = "s".repeat(OAUTH_APP_SLUG_MAX_LEN + 1);
+        let over_icon = "i".repeat(OAUTH_APP_ICON_URL_MAX_LEN + 1);
+        for (label, result) in [
+            ("name", validate_app_display_fields(&over_name, None, None)),
+            (
+                "slug",
+                validate_app_display_fields("name", Some(&over_slug), None),
+            ),
+            (
+                "icon_url",
+                validate_app_display_fields("name", None, Some(&over_icon)),
+            ),
+        ] {
+            assert!(
+                matches!(result, Err(Error::BadRequest(_))),
+                "{label} beyond its column width must be a BadRequest"
+            );
+        }
+
+        // Blank display fields are meaningless and must not be stored.
+        assert!(matches!(
+            validate_app_display_fields("   ", None, None),
+            Err(Error::BadRequest(_))
+        ));
+        assert!(matches!(
+            validate_app_display_fields("name", Some("  "), None),
+            Err(Error::BadRequest(_))
+        ));
+    }
+
     #[tokio::test]
     #[serial]
     async fn manual_app_crud_and_token_revocation_round_trip() {
@@ -2445,7 +2600,7 @@ mod tests {
         .await
         .expect("insert oauth token");
 
-        let revoked = OAuthAppService::revoke_app(&db, created.app.id)
+        let revoked = OAuthAppService::revoke_app(&db, created.app.tenant_id, created.app.id)
             .await
             .expect("revoke app");
         assert!(!revoked.is_active);
@@ -2516,7 +2671,7 @@ mod tests {
         .await;
         assert!(edit_result.is_err());
 
-        let revoke_result = OAuthAppService::revoke_app(&db, managed.id).await;
+        let revoke_result = OAuthAppService::revoke_app(&db, tenant.id, managed.id).await;
         assert!(revoke_result.is_err());
 
         let other_tenant =

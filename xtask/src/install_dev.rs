@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use postgres::{Client, NoTls};
 use std::collections::BTreeMap;
 use std::fs;

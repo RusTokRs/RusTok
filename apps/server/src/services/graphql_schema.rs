@@ -70,7 +70,7 @@ pub fn init_graphql_schema(ctx: &ServerRuntimeContext) -> Result<Arc<AppSchema>>
         .with_shared_value(transactional_event_bus.clone())
         .with_shared_value(registry);
     let host_runtime = runtime_extensions.apply_to_host_runtime(host_runtime);
-    let host_runtime = attach_commerce_provider_registries(host_runtime, ctx);
+    let host_runtime = attach_commerce_provider_registries(host_runtime, ctx)?;
     let host_runtime = host_runtime.with_shared_value(marketplace_catalog);
     #[cfg(any(feature = "mod-media", feature = "mod-translation"))]
     let host_runtime = attach_storage_runtime(host_runtime, ctx);

@@ -85,7 +85,20 @@ pub fn build_cors_layer(is_production: bool, allowed_origins: Option<&[String]>)
         configured
             .iter()
             .map(|origin| normalize_host_origin(origin))
-            .filter_map(|origin| origin.parse::<HeaderValue>().ok())
+            .filter_map(|origin| match origin.parse::<HeaderValue>() {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    // Dropping an origin silently would narrow the allow-list
+                    // without any operator-visible signal.
+                    tracing::error!(
+                        %origin,
+                        %error,
+                        "Configured CORS origin is not a valid header value; \
+                         requests from it will be denied"
+                    );
+                    None
+                }
+            })
             .collect()
     } else {
         Vec::new()
@@ -93,6 +106,18 @@ pub fn build_cors_layer(is_production: bool, allowed_origins: Option<&[String]>)
 
     if origins.is_empty() {
         if is_production {
+            // Falling back to a loopback origin in production means the
+            // deployment supplied no usable allow-list. Serving traffic with
+            // this silently would look healthy while every real browser origin
+            // is rejected, and it would also be trusted by mistake if a proxy
+            // ever fronted the listener on 127.0.0.1.
+            tracing::error!(
+                fallback_origin = DEFAULT_PRODUCTION_ORIGIN,
+                configured = allowed_origins.map(<[String]>::len).unwrap_or(0),
+                "No usable CORS origin configured in production; the allow-list \
+                 falls back to a loopback origin and browser clients will be rejected. \
+                 Set the allowed origins explicitly."
+            );
             origins.push(HeaderValue::from_static(DEFAULT_PRODUCTION_ORIGIN));
         } else {
             origins.extend(
@@ -228,26 +253,117 @@ mod tests {
         }
     }
 
-    #[test]
-    fn development_cors_uses_restricted_dev_origins() {
-        let cors = build_cors_layer(false, None);
-        assert!(format!("{cors:?}").contains("CorsLayer"));
+    /// Sends a preflight and returns the `access-control-allow-origin` header the
+    /// layer produced, if any. This is the only assertion surface that reflects
+    /// what a browser will actually be permitted to do: a `Debug` rendering of
+    /// the layer proves nothing about the resolved policy.
+    async fn preflight_allowed_origin(
+        is_production: bool,
+        configured: Option<&[String]>,
+        origin: &str,
+    ) -> Option<String> {
+        use axum::body::Body;
+        use axum::http::{Method, Request, header};
+        use tower::ServiceExt;
+
+        let app = axum::Router::new()
+            .route("/probe", axum::routing::get(|| async { "" }))
+            .layer(build_cors_layer(is_production, configured));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::OPTIONS)
+                    .uri("/probe")
+                    .header(header::ORIGIN, origin)
+                    .header(header::ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                    .body(Body::empty())
+                    .expect("preflight request"),
+            )
+            .await
+            .expect("preflight response");
+
+        response
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .map(|value| value.to_str().expect("allow-origin utf8").to_string())
     }
 
-    #[test]
-    fn production_cors_with_configured_origins() {
+    #[tokio::test]
+    async fn development_cors_allows_configured_local_origin_and_denies_others() {
+        // The development policy is a fixed local allow-list. It must admit a
+        // listed admin origin and reject an unrelated public site.
+        assert_eq!(
+            preflight_allowed_origin(false, None, "http://localhost:5173").await,
+            Some("http://localhost:5173".to_string())
+        );
+        assert_eq!(
+            preflight_allowed_origin(false, None, "https://attacker.example.com").await,
+            None,
+            "development mode must not admit arbitrary origins"
+        );
+    }
+
+    #[tokio::test]
+    async fn production_cors_with_configured_origins() {
         let origins = vec![
             "https://admin.example.com".to_string(),
             "https://store.example.com".to_string(),
         ];
-        let cors = build_cors_layer(true, Some(&origins));
-        assert!(format!("{cors:?}").contains("CorsLayer"));
+        for origin in ["https://admin.example.com", "https://store.example.com"] {
+            assert_eq!(
+                preflight_allowed_origin(true, Some(&origins), origin).await,
+                Some(origin.to_string()),
+                "{origin} is configured and must be allowed"
+            );
+        }
+        assert_eq!(
+            preflight_allowed_origin(true, Some(&origins), "https://unconfigured.example.com")
+                .await,
+            None,
+            "production must deny origins that are not explicitly configured"
+        );
+    }
+
+    #[tokio::test]
+    async fn production_cors_fallback_is_not_wildcard() {
+        // With nothing configured, production falls back to the single primary
+        // server origin. The fallback must never become `*` (which combined with
+        // credentials would let any site drive an authenticated session).
+        let allowed = preflight_allowed_origin(true, None, DEFAULT_PRODUCTION_ORIGIN).await;
+        assert_eq!(
+            allowed,
+            Some(DEFAULT_PRODUCTION_ORIGIN.to_string()),
+            "the operator-visible fallback origin must stay usable"
+        );
+        assert_ne!(allowed.as_deref(), Some("*"));
+
+        assert_eq!(
+            preflight_allowed_origin(true, None, "https://attacker.example.com").await,
+            None,
+            "the production fallback must not admit an arbitrary origin"
+        );
     }
 
     #[test]
-    fn production_cors_fallback_is_not_wildcard() {
-        let cors = build_cors_layer(true, None);
-        assert!(format!("{cors:?}").contains("CorsLayer"));
+    fn unparseable_configured_origins_are_dropped_not_trusted() {
+        // A CR/LF cannot appear in a header value. The configured origin must be
+        // rejected; before the explicit logging branch it was silently dropped,
+        // which made a misconfiguration indistinguishable from "no origins".
+        let origins = vec![
+            "https://good.example.com".to_string(),
+            "https://evil.example.com\r\nX-Injected: 1".to_string(),
+        ];
+        let cors = build_cors_layer(true, Some(&origins));
+        let debug = format!("{cors:?}");
+        assert!(
+            debug.contains("good.example.com"),
+            "the valid origin must be kept: {debug}"
+        );
+        assert!(
+            !debug.contains("evil.example.com"),
+            "the unparseable origin must never enter the allow-list: {debug}"
+        );
     }
 
     #[test]

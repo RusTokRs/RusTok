@@ -163,6 +163,16 @@ fn admin_asset_response(
         raw_bytes
     };
 
+    // Serving a static asset must never panic on a malformed header value.
+    // `mime_guess` only yields valid ASCII types and `cache_control` is one of
+    // the two constants below, so these are defensive fallbacks rather than an
+    // expected branch.
+    fn header_value(raw: &str, fallback: &'static str) -> axum::http::HeaderValue {
+        axum::http::HeaderValue::from_str(raw)
+            .or_else(|_| axum::http::HeaderValue::from_str(fallback))
+            .unwrap_or_else(|_| axum::http::HeaderValue::from_static("application/octet-stream"))
+    }
+
     let mime = mime_guess::from_path(path).first_or_octet_stream();
     let cache_control = if is_document {
         "no-cache"
@@ -184,13 +194,10 @@ fn admin_asset_response(
                 let headers = response.headers_mut();
                 headers.insert(
                     CONTENT_TYPE,
-                    mime.as_ref().parse().expect("cache content-type header"),
+                    header_value(mime.as_ref(), "application/octet-stream"),
                 );
-                headers.insert(
-                    CACHE_CONTROL,
-                    cache_control.parse().expect("cache-control header"),
-                );
-                headers.insert(ETAG, etag.parse().expect("etag header"));
+                headers.insert(CACHE_CONTROL, header_value(cache_control, "no-cache"));
+                headers.insert(ETAG, header_value(&etag, "\"0\""));
                 return response;
             }
         }
@@ -204,13 +211,10 @@ fn admin_asset_response(
         let headers = response.headers_mut();
         headers.insert(
             CONTENT_TYPE,
-            mime.as_ref().parse().expect("cache content-type header"),
+            header_value(mime.as_ref(), "application/octet-stream"),
         );
-        headers.insert(
-            CACHE_CONTROL,
-            cache_control.parse().expect("cache-control header"),
-        );
-        headers.insert(ETAG, etag.parse().expect("etag header"));
+        headers.insert(CACHE_CONTROL, header_value(cache_control, "no-cache"));
+        headers.insert(ETAG, header_value(&etag, "\"0\""));
         return response;
     }
 
@@ -223,12 +227,9 @@ fn admin_asset_response(
     let headers = response.headers_mut();
     headers.insert(
         CONTENT_TYPE,
-        mime.as_ref().parse().expect("document content-type header"),
+        header_value(mime.as_ref(), "text/html; charset=utf-8"),
     );
-    headers.insert(
-        CACHE_CONTROL,
-        cache_control.parse().expect("cache-control header"),
-    );
+    headers.insert(CACHE_CONTROL, header_value(cache_control, "no-cache"));
     response
 }
 
@@ -524,7 +525,7 @@ pub fn compose_application_router(
         }
     };
     let server_fn_runtime_ctx =
-        attach_commerce_provider_registries(server_fn_runtime_ctx, &middleware_runtime_ctx);
+        attach_commerce_provider_registries(server_fn_runtime_ctx, &middleware_runtime_ctx)?;
     #[cfg(feature = "mod-alloy")]
     let server_fn_runtime_ctx = if let Some(alloy_runtime) =
         middleware_runtime_ctx.shared_get::<alloy::SharedAlloyRuntime>()
@@ -884,7 +885,7 @@ mod tests {
     #[test]
     fn admin_asset_response_supports_if_none_match() {
         use super::admin_asset_response;
-        use axum::http::header::ETAG;
+        use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG};
 
         let content = b"console.log('asset');";
         let ok_res = admin_asset_response(
@@ -905,6 +906,65 @@ mod tests {
             false,
         );
         assert_eq!(not_modified_res.status(), StatusCode::NOT_MODIFIED);
+        // Both responses must carry the caching contract a CDN relies on: a
+        // content type, an immutable cache policy for hashed assets and a
+        // validator. Before the header helper existed these were `expect()`
+        // calls on the request path.
+        for response in [&ok_res, &not_modified_res] {
+            let headers = response.headers();
+            assert!(headers.get(CONTENT_TYPE).is_some());
+            assert_eq!(
+                headers.get(CACHE_CONTROL).unwrap().to_str().unwrap(),
+                "public, max-age=31536000, immutable"
+            );
+            assert_eq!(headers.get(ETAG).unwrap().to_str().unwrap(), etag);
+        }
+    }
+
+    #[cfg(feature = "embed-admin-assets")]
+    #[test]
+    fn document_asset_response_is_never_cached_and_typed_as_html() {
+        use super::admin_asset_response;
+        use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, ETAG};
+
+        let response = admin_asset_response(
+            "index.html",
+            std::borrow::Cow::Borrowed(b"<html></html>".as_slice()),
+            None,
+            None,
+            false,
+        );
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let headers = response.headers();
+        assert!(
+            headers
+                .get(CONTENT_TYPE)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with("text/html")
+        );
+        assert_eq!(
+            headers.get(CACHE_CONTROL).unwrap().to_str().unwrap(),
+            "no-cache"
+        );
+        // Documents are revalidated on every load and carry no content hash.
+        assert!(headers.get(ETAG).is_none());
+    }
+
+    #[cfg(feature = "embed-admin-assets")]
+    #[test]
+    fn malformed_header_input_falls_back_instead_of_panicking() {
+        use super::header_value;
+
+        // A CR/LF inside a header value is invalid; the helper must return a
+        // usable value rather than unwinding on the request path.
+        let value = header_value("text/plain\r\nX-Injected: 1", "application/octet-stream");
+        assert_eq!(value.to_str().unwrap(), "application/octet-stream");
+
+        let valid = header_value("text/css", "application/octet-stream");
+        assert_eq!(valid.to_str().unwrap(), "text/css");
     }
 
     #[cfg(feature = "embed-admin-assets")]
