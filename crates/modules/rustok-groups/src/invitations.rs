@@ -382,16 +382,6 @@ async fn authorize_invitation_management<C: sea_orm::ConnectionTrait>(
     }
 }
 
-async fn authorize_invitation_management_in_transaction(
-    transaction: &DatabaseTransaction,
-    context: &PortContext,
-    tenant_id: Uuid,
-    group_id: Uuid,
-    actor_user_id: Uuid,
-) -> GroupsResult<()> {
-    authorize_invitation_management(transaction, context, tenant_id, group_id, actor_user_id).await
-}
-
 async fn find_group_for_update(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,

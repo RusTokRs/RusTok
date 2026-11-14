@@ -539,9 +539,9 @@
       "category": "modules",
       "files": 117,
       "loc": 34525,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Phase FS-05 in progress"
     },
     "crates/modules/rustok-groups/admin": {
       "name": "admin",
@@ -549,9 +549,9 @@
       "category": "modules",
       "files": 35,
       "loc": 9142,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Phase FS-05 in progress"
     },
     "crates/modules/rustok-groups/storefront": {
       "name": "storefront",
@@ -559,9 +559,9 @@
       "category": "modules",
       "files": 18,
       "loc": 3357,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Phase FS-05 in progress"
     },
     "crates/modules/rustok-iggy": {
       "name": "rustok-iggy",

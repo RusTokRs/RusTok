@@ -104,6 +104,7 @@ async fn groups_admin_directory_native(
                 per_page,
                 search: filters.search,
                 include_non_public: filters.include_non_public,
+                category_id: None,
             },
         )
         .await

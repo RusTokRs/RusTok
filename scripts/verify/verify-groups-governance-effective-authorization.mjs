@@ -21,7 +21,7 @@ for (const marker of [
   "lock_ownership_memberships",
   "user_ids.sort_unstable()",
   "membership_ids.sort_unstable()",
-  "membership_enforcement::Entity::find_by_id",
+  "membership_enforcement::Entity::find",
   "resolve_group_membership_enforcement",
   "GroupMembershipEffectiveStatus::Suspended",
   "GroupMembershipEffectiveStatus::LegacyBanned",

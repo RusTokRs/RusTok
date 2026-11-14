@@ -85,6 +85,7 @@ async fn groups_storefront_directory_native(
                 per_page: filters.per_page.clamp(1, 100),
                 search: filters.search,
                 include_non_public: false,
+                category_id: None,
             },
         )
         .await
