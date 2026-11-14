@@ -781,9 +781,9 @@
       "category": "modules",
       "files": 40,
       "loc": 10727,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards across tenant_id, case_id, report_id, decision_id, actor_id; complete lifecycle state machines for reports (Submitted, Attached, Dismissed, Closed), cases (Open, Assigned, Investigating, AwaitingEvidence, Decided, ApplyingDecision, Closed, Escalated), and durable operations (Pending, Applying, Retryable, Applied, Rejected, OperatorReview); optimistic concurrency CAS on expected_revision with checked_add(1); atomic decision application with immutable SHA-256 decision hash, lease timeout CAS, and audit trail events (case_opened, reports_attached, case_assigned, case_decided, application_attempt_claimed, application_applied, case_closed, case_escalated); administrative recovery and legacy-reconciliation with operator review gates; neutral SPI contracts and registries; verified with cargo check -p rustok-moderation (default and --no-default-features) and 15 verification scripts."
     },
     "crates/modules/rustok-modules": {
       "name": "rustok-modules",

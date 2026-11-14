@@ -21,6 +21,10 @@ function requireText(source, needle, message) {
   if (!source.includes(needle)) throw new Error(message);
 }
 
+const normalizedProfiles = profiles
+  .replace(/\s+/g, " ")
+  .replace(/\(\s+/g, "(")
+  .replace(/\s+\)/g, ")");
 for (const marker of [
   "moderation_without_forum_materializes_an_empty_subject_registry",
   "assert!(subjects.is_empty())",
@@ -32,7 +36,7 @@ for (const marker of [
   "Moderation feature is selected but ModerationModule is missing from ModuleRegistry",
   "build_shared_runtime_extensions_with_host_providers",
 ]) {
-  requireText(profiles, marker, `Moderation composition profile evidence is missing ${marker}`);
+  requireText(normalizedProfiles, marker, `Moderation composition profile evidence is missing ${marker}`);
 }
 
 for (const marker of [

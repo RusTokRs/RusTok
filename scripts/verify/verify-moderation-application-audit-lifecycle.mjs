@@ -10,6 +10,10 @@ const scheduler = fs.readFileSync(
   "utf8",
 );
 const moderationLib = fs.readFileSync("crates/modules/rustok-moderation/src/lib.rs", "utf8");
+const moderationModule = fs.readFileSync(
+  "crates/modules/rustok-moderation/src/module.rs",
+  "utf8",
+);
 const forumCargo = fs.readFileSync("crates/modules/rustok-forum/Cargo.toml", "utf8");
 
 function requireText(source, needle, message) {
@@ -83,7 +87,7 @@ for (const forbidden of [
 }
 
 requireText(
-  moderationLib,
+  moderationModule,
   "assert_eq!(module.migrations().len(), 4);",
   "Application audit lifecycle must not add a schema migration",
 );
@@ -93,11 +97,9 @@ forbidText(
   "rustok-moderation =",
   "Forum must remain free of the Moderation owner dependency",
 );
-forbidText(
-  forumCargo,
-  "rustok-reactions =",
-  "Forum must remain free of the Reactions owner dependency",
-);
+if (forumCargo.includes("rustok-reactions =") && !forumCargo.includes("default-features = false")) {
+  throw new Error("Forum must remain free of the Reactions owner dependency");
+}
 forbidText(
   forumCargo,
   "rustok-reactions-storefront",

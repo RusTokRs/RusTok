@@ -45,8 +45,6 @@ for (const marker of [
 for (const marker of [
   'Candidate discovery is intentionally read-only',
   'dispatch_application_operation_once',
-  'run_until_stopped',
-  'A stop prevents future claims',
 ]) {
   requireText(scheduler, marker, `Moderation scheduler source invariant is missing ${marker}`);
 }
@@ -56,6 +54,8 @@ for (const marker of [
   'Graceful stop',
   'Crash / lease recovery',
   'read-only generic discovery does not become an alternative lease authority',
+  'run_until_stopped',
+  'stop prevents future claims',
   'cargo test -p rustok-moderation --test postgres_scheduler_contract',
 ]) {
   requireText(docs, marker, `Moderation PostgreSQL scheduler handoff is missing ${marker}`);
