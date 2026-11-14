@@ -8,8 +8,9 @@
 //! - **Scoped CSS Containment**: Every surface wraps project CSS in a native `@scope` rule rooted at the
 //!   landing body element it renders (`LANDING_SCOPE_SELECTOR`) and remaps root selectors
 //!   (`body`, `html`, `:root`) to `:scope`.
-//! - **Direct SSR & Fast Re-hydration**: Renders pre-compiled landing artifacts directly without iframe overhead.
-//! - **Event & Navigation Bridge**: Bridges `fly:action` custom events to platform commerce actions.
+//! - **Direct SSR**: Renders pre-compiled landing artifacts without an iframe. Mounted hydration and
+//!   client navigation still require host-level verification.
+//! - **Event & Navigation Bridge**: Validates Product buyer handoffs and requests host-owned Cart actions.
 
 pub mod core;
 mod css_scope;
@@ -42,6 +43,7 @@ use leptos::prelude::*;
 use rustok_page_builder::render::{
     PageBuilderRuntimeRenderRequest, PageBuilderRuntimeRenderResponse, render_page_builder_runtime,
 };
+use rustok_ui_core::{UiCspNonce, UiRouteContext};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -132,6 +134,31 @@ pub fn render_storefront_page_with_context(
     Ok(StorefrontRuntimePageOutput { result })
 }
 
+// Fixed host-owned selectors only. A nonce-bearing style element works with style-src-attr
+// 'none', unlike a style attribute on the wrapper. Authored CSS is scoped separately below.
+const LANDING_CONTAINMENT_CSS: &str = "section[data-rustok-page-builder-storefront],section[data-rustok-page-builder-inline-storefront]{isolation:isolate;contain:style layout}\n";
+
+fn storefront_scoped_css(css: &str) -> String {
+    format!(
+        "{LANDING_CONTAINMENT_CSS}{}",
+        scope_landing_css(css, LANDING_SCOPE_SELECTOR)
+    )
+}
+
+fn storefront_csp_nonce() -> Option<String> {
+    use_context::<UiCspNonce>().map(|nonce| nonce.as_str().to_string())
+}
+
+#[component]
+fn LandingBridgeFeedback() -> impl IntoView {
+    let route = use_context::<UiRouteContext>().unwrap_or_default();
+    let messages = core::landing_bridge_messages(route.locale.as_deref());
+    view! {
+        <p data-fly-bridge-error="buyer_handoff_invalid" role="alert" hidden>{messages.buyer_handoff_error}</p>
+        <p data-fly-bridge-error="cart_unavailable" role="alert" hidden>{messages.cart_unavailable}</p>
+    }
+}
+
 /// Renders sanitized Fly HTML and scoped project CSS into a read-only storefront surface.
 ///
 /// `inner_html` is safe here because the string is produced exclusively by Fly's sanitizer,
@@ -172,25 +199,28 @@ pub fn PageBuilderStorefront(
 
     match rendered {
         Ok((page, diagnostic_count, repeated_nodes)) => {
-            let scoped_css = scope_landing_css(&page.css, LANDING_SCOPE_SELECTOR);
+            let scoped_css = storefront_scoped_css(&page.css);
             let html = page.html;
             let page_id = page.page_id.unwrap_or_default();
             let has_actions = html.contains("data-fly-action");
+            let style_nonce = storefront_csp_nonce();
+            let runtime_nonce = style_nonce.clone();
+            let bridge_nonce = style_nonce.clone();
             view! {
                 <section
                     class=class
-                    style="isolation: isolate; contain: style layout;"
                     data-rustok-page-builder-storefront="true"
                     data-page-id=page_id
                     data-runtime-diagnostics=diagnostic_count
                     data-repeated-nodes=repeated_nodes
                 >
-                    <style data-fly-project-styles="true">{scoped_css}</style>
+                    <style data-fly-project-styles="true" nonce=style_nonce>{scoped_css}</style>
                     <div data-fly-page-body="true" inner_html=html></div>
+                    <LandingBridgeFeedback />
                     {has_actions.then(|| view! {
-                        <script data-fly-actions="true" inner_html=fly_browser::FLY_ACTIONS_JS></script>
+                        <script data-fly-actions="true" nonce=runtime_nonce inner_html=fly_browser::FLY_ACTIONS_JS></script>
                     })}
-                    <script data-fly-storefront-bridge="true" inner_html=FLY_STOREFRONT_BRIDGE_JS></script>
+                    <script data-fly-storefront-bridge="true" nonce=bridge_nonce inner_html=FLY_STOREFRONT_BRIDGE_JS></script>
                 </section>
             }
             .into_any()
@@ -209,77 +239,9 @@ pub fn PageBuilderStorefront(
     }
 }
 
-/// Standalone action bridge script that bridges `fly:action` CustomEvents (e.g. `add_to_cart`,
-/// `buy_now`, `navigate`) to the host storefront environment and intercepts internal in-page hash links.
-pub const FLY_STOREFRONT_BRIDGE_JS: &str = r##"
-(function () {
-  "use strict";
-  if (window.__rustok_fly_bridge_installed) return;
-  window.__rustok_fly_bridge_installed = true;
-
-  window.addEventListener("fly:action", function (e) {
-    var detail = e.detail || {};
-    var event = detail.event || detail.action || "";
-    var data = detail.payload || detail.input || {};
-
-    if (event === "add_to_cart" || event === "cart:add" || event === "buy_now") {
-      var variantId = data.variantId || data.productId || data.id;
-      var quantity = Number(data.quantity) || 1;
-      if (variantId) {
-        window.dispatchEvent(new CustomEvent("rustok:cart:add", {
-          bubbles: true,
-          detail: { variantId: String(variantId), quantity: quantity, openDrawer: true }
-        }));
-      }
-    } else if (event === "cart:open" || event === "open_cart") {
-      window.dispatchEvent(new CustomEvent("rustok:cart:open", { bubbles: true }));
-    } else if (event === "cart:close" || event === "close_cart") {
-      window.dispatchEvent(new CustomEvent("rustok:cart:close", { bubbles: true }));
-    } else if (event === "cart:toggle" || event === "toggle_cart") {
-      window.dispatchEvent(new CustomEvent("rustok:cart:toggle", { bubbles: true }));
-    } else if (event === "navigate") {
-      var href = data.href || data.url;
-      if (href && typeof href === "string") {
-        window.location.assign(href);
-      }
-    }
-  });
-
-  document.addEventListener("click", function (e) {
-    var target = e.target;
-    if (!target || typeof target.closest !== "function") return;
-    if (target.closest("[data-fly-island='cart_trigger']")) {
-      e.preventDefault();
-      window.dispatchEvent(new CustomEvent("rustok:cart:toggle", { bubbles: true }));
-      return;
-    }
-    var anchor = target.closest("a");
-    if (!anchor) return;
-    if (anchor.target === "_blank" || anchor.hasAttribute("download") || anchor.hasAttribute("data-fly-action")) return;
-    var href = anchor.getAttribute("href");
-    if (!href) return;
-    if (href.startsWith("#") && href.length > 1) {
-      try {
-        var el = document.querySelector(href);
-        if (el) {
-          e.preventDefault();
-          el.scrollIntoView({ behavior: "smooth" });
-        }
-      } catch (_) {}
-    }
-  });
-
-  window.addEventListener("rustok:cart:updated", function (e) {
-    var count = e.detail && (typeof e.detail.count !== "undefined" ? e.detail.count : e.detail.itemCount);
-    if (typeof count !== "undefined") {
-      var counters = document.querySelectorAll("[data-fly-island='cart_count']");
-      for (var i = 0; i < counters.length; i++) {
-        counters[i].textContent = String(count);
-      }
-    }
-  });
-})();
-"##;
+/// Browser bridge for validated Product handoffs, Cart control requests and landing-local anchors.
+/// Cart requests require an acknowledging host consumer; this asset never performs a Cart mutation.
+pub const FLY_STOREFRONT_BRIDGE_JS: &str = include_str!("../assets/fly-storefront-bridge.js");
 
 /// Renders a pre-compiled, verified static landing artifact (SSR HTML and scoped CSS)
 /// into a read-only storefront surface without an iframe.
@@ -297,21 +259,24 @@ pub fn StaticLandingStorefront(
     let class = class.unwrap_or_else(|| "rustok-page-builder-storefront".to_string());
     let page_id = page_id.unwrap_or_default();
     let has_actions = html.contains("data-fly-action");
-    let scoped_css = scope_landing_css(&css, LANDING_SCOPE_SELECTOR);
+    let scoped_css = storefront_scoped_css(&css);
+    let style_nonce = storefront_csp_nonce();
+    let runtime_nonce = style_nonce.clone();
+    let bridge_nonce = style_nonce.clone();
     view! {
         <section
             class=class
-            style="isolation: isolate; contain: style layout;"
             data-rustok-page-builder-storefront="true"
             data-page-id=page_id
             data-page-builder-body="artifact"
         >
-            <style data-fly-project-styles="true">{scoped_css}</style>
+            <style data-fly-project-styles="true" nonce=style_nonce>{scoped_css}</style>
             <div data-fly-page-body="true" inner_html=html></div>
+            <LandingBridgeFeedback />
             {has_actions.then(|| view! {
-                <script data-fly-actions="true" inner_html=fly_browser::FLY_ACTIONS_JS></script>
+                <script data-fly-actions="true" nonce=runtime_nonce inner_html=fly_browser::FLY_ACTIONS_JS></script>
             })}
-            <script data-fly-storefront-bridge="true" inner_html=FLY_STOREFRONT_BRIDGE_JS></script>
+            <script data-fly-storefront-bridge="true" nonce=bridge_nonce inner_html=FLY_STOREFRONT_BRIDGE_JS></script>
         </section>
     }
 }

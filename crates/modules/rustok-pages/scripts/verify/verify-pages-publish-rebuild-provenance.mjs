@@ -168,7 +168,7 @@ for (const marker of [
   "same owner transaction",
   "Existing publish operations and legacy artifacts are not backfilled",
   "never update the damaged artifact in place",
-  "automatic repair or rebuild is not added",
+  "Automatic repair or rebuild is not added.",
 ]) {
   need(sources.packet, marker, "packet");
 }

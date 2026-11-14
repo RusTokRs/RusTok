@@ -58,6 +58,7 @@ mod keyring_schedule_postgres_audited_trigger;
 #[path = "comments_provider_runtime_keyring_schedule_trigger_guard.rs"]
 mod keyring_schedule_trigger_guard;
 
+pub(crate) use base::CommentsTcpListenerTask;
 pub use base::{
     COMMENTS_PROVIDER_MODE_ENV, COMMENTS_TCP_BEARER_TOKEN_ENV, COMMENTS_TCP_BIND_ENV,
     COMMENTS_TCP_DELEGATION_REPLAY_CAPACITY_ENV, COMMENTS_TCP_DELEGATION_SECRET_ENV,

@@ -314,10 +314,181 @@ fn map_consent_error(error: crate::error::Error) -> AuthAdminMutationError {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::{
-        clamp_oauth_guard_list_limit, internal_oauth_guard_error, validate_grant_dependencies,
+        GuardedOAuthAdminProvider, clamp_oauth_guard_list_limit, internal_oauth_guard_error,
+        validate_grant_dependencies,
     };
-    use rustok_auth::AuthAdminMutationError;
+    use crate::models::{oauth_apps, tenants};
+    use crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider;
+    use crate::services::oauth_app::{
+        CreateOAuthAppInput, OAuthAppService, scope_runtime_copy_locale,
+    };
+    use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
+    use rustok_api::Permission;
+    use rustok_auth::{AuthAdminMutationContext, AuthAdminMutationError, OAuthAdminPort};
+    use rustok_core::UserRole;
+    use rustok_migrations::SqliteTestMigrator as Migrator;
+    use rustok_test_utils::db::setup_test_db_with_migrations;
+    use sea_orm::{ActiveModelTrait, EntityTrait};
+    use serial_test::serial;
+    use uuid::Uuid;
+
+    #[tokio::test]
+    #[serial]
+    async fn guarded_secret_rotation_checks_tenant_and_delegated_permission_ceiling() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new(
+            "OAuth guard tenant",
+            &format!("oauth-guard-{}", Uuid::new_v4()),
+        )
+        .insert(&db)
+        .await
+        .expect("insert tenant");
+        let actor_id = Uuid::new_v4();
+        let context = AuthAdminMutationContext {
+            actor_id,
+            tenant_id: tenant.id,
+            request_id: None,
+            locale: Some("en".to_string()),
+            principal_kind: Some(rustok_api::AuthPrincipalKind::DirectUser),
+        };
+        let created = scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::create_app(
+                &db,
+                tenant.id,
+                CreateOAuthAppInput {
+                    name: "Admin client".to_string(),
+                    slug: "admin-client".to_string(),
+                    description: None,
+                    app_type: "third_party".to_string(),
+                    icon_url: None,
+                    redirect_uris: vec!["https://client.example/callback".to_string()],
+                    scopes: vec!["profile".to_string()],
+                    grant_types: vec!["authorization_code".to_string()],
+                    granted_permissions: vec![Permission::MODULES_MANAGE.to_string()],
+                },
+            ),
+        )
+        .await
+        .expect("create OAuth app");
+        let original_secret = created.client_secret;
+        let app_id = created.app.id;
+        let inner = Arc::new(ServerAuthAdminMutationProvider::new(
+            db.clone(),
+            crate::auth::AuthConfig::new("test-secret".to_string()),
+        ));
+        let guarded = GuardedOAuthAdminProvider::new(db.clone(), inner);
+
+        let no_admin_scope = RbacRequestScope::new(
+            tenant.id,
+            actor_id,
+            Vec::new(),
+            UserRole::Customer,
+        );
+        let no_admin_access = with_rbac_request_scope(Some(no_admin_scope), async {
+            guarded.rotate_oauth_app_secret(&context, app_id).await
+        })
+        .await;
+        assert!(matches!(
+            no_admin_access,
+            Err(AuthAdminMutationError::Forbidden(_))
+        ));
+
+        let insufficient_scope = RbacRequestScope::new(
+            tenant.id,
+            actor_id,
+            vec![Permission::SETTINGS_MANAGE],
+            UserRole::Admin,
+        );
+        let denied = with_rbac_request_scope(Some(insufficient_scope), async {
+            guarded.rotate_oauth_app_secret(&context, app_id).await
+        })
+        .await;
+        assert!(matches!(denied, Err(AuthAdminMutationError::Forbidden(_))));
+
+        let unchanged = oauth_apps::Entity::find_by_id(app_id)
+            .one(&db)
+            .await
+            .expect("reload OAuth app after denied rotation")
+            .expect("OAuth app remains present");
+        assert!(OAuthAppService::verify_client_secret(
+            &original_secret,
+            unchanged
+                .client_secret_hash
+                .as_deref()
+                .expect("existing secret hash"),
+        )
+        .expect("verify original secret after denied attempt"));
+
+        let other_tenant = tenants::ActiveModel::new(
+            "Other tenant",
+            &format!("oauth-guard-{}", Uuid::new_v4()),
+        )
+        .insert(&db)
+        .await
+        .expect("insert another tenant");
+        let other_context = AuthAdminMutationContext {
+            tenant_id: other_tenant.id,
+            ..context.clone()
+        };
+        let other_tenant_scope = RbacRequestScope::new(
+            other_tenant.id,
+            actor_id,
+            vec![Permission::SETTINGS_MANAGE, Permission::MODULES_MANAGE],
+            UserRole::Admin,
+        );
+        let cross_tenant = with_rbac_request_scope(Some(other_tenant_scope), async {
+            guarded
+                .rotate_oauth_app_secret(&other_context, app_id)
+                .await
+        })
+        .await;
+        assert!(matches!(
+            cross_tenant,
+            Err(AuthAdminMutationError::NotFound(_))
+        ));
+        let after_cross_tenant_attempt = oauth_apps::Entity::find_by_id(app_id)
+            .one(&db)
+            .await
+            .expect("reload OAuth app after cross-tenant rotation attempt")
+            .expect("OAuth app remains present");
+        assert!(OAuthAppService::verify_client_secret(
+            &original_secret,
+            after_cross_tenant_attempt
+                .client_secret_hash
+                .as_deref()
+                .expect("existing secret hash"),
+        )
+        .expect("verify cross-tenant attempt did not rotate the secret"));
+
+        let sufficient_scope = RbacRequestScope::new(
+            tenant.id,
+            actor_id,
+            vec![Permission::SETTINGS_MANAGE, Permission::MODULES_MANAGE],
+            UserRole::Admin,
+        );
+        let rotated = with_rbac_request_scope(Some(sufficient_scope), async {
+            guarded.rotate_oauth_app_secret(&context, app_id).await
+        })
+        .await
+        .expect("authorized secret rotation");
+        let persisted = oauth_apps::Entity::find_by_id(app_id)
+            .one(&db)
+            .await
+            .expect("load rotated OAuth app")
+            .expect("OAuth app remains present");
+        let persisted_hash = persisted
+            .client_secret_hash
+            .as_deref()
+            .expect("rotated secret hash");
+        assert!(OAuthAppService::verify_client_secret(&rotated.client_secret, persisted_hash)
+            .expect("verify rotated client secret"));
+        assert!(!OAuthAppService::verify_client_secret(&original_secret, persisted_hash)
+            .expect("verify old secret is rejected"));
+    }
 
     #[test]
     fn refresh_grant_requires_authorization_code() {

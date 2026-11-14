@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 use leptos_ui::{Alert, Button};
+use rustok_auth_ui::ui::leptos::hooks::{use_current_user, use_tenant, use_token};
 use rustok_forms_leptos::{
     Form, FormError, FormField, FormInput, FormLabel, FormMessage, FormSelect, FormTextarea,
     SubmitButton,
@@ -10,7 +10,7 @@ use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 use rustok_ui_forms::{DirtyTracker, FieldOption, FormState};
 
-use super::components::local_resource;
+use super::components::loaded_resource;
 use crate::i18n::t;
 use crate::model::BlogCategoryDetail;
 use crate::{core, transport};
@@ -44,10 +44,18 @@ pub fn BlogCategoriesAdmin() -> impl IntoView {
     let copy = move |key: &str, fallback: &str| {
         locale.with_value(|value| t(value.as_deref(), key, fallback))
     };
-    let categories = local_resource(
-        move || (token.get(), tenant.get(), refresh.get()),
-        move |(token, tenant, _)| async move {
-            transport::fetch_category_details(token, tenant, locale.get_value()).await
+    let category_locale = locale.get_value();
+    let categories = loaded_resource(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                refresh.get(),
+                category_locale.clone(),
+            )
+        },
+        move |(token, tenant, _, locale)| async move {
+            transport::fetch_category_details(token, tenant, locale).await
         },
     );
     let rows = Signal::derive(move || {

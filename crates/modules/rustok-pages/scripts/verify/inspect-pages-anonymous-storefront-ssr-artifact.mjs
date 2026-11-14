@@ -26,6 +26,15 @@ function usage(message) {
 }
 
 const args = process.argv.slice(2);
+// This is a maintainer inspector, not a tree gate: it needs the built SSR artifact and a packet
+// path to inspect, so a bare run has nothing to evaluate. Say so instead of failing the sweep.
+if (args.length === 0) {
+  console.log(
+    "[inspect-pages-anonymous-storefront-ssr-artifact] skipped " +
+      "(maintainer inspector: needs --artifact <file> --output <packet.json>)",
+  );
+  process.exit(0);
+}
 const artifacts = [];
 let outputPath = null;
 let profile = "host-storefront-ssr";

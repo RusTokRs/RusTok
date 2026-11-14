@@ -227,6 +227,7 @@ page_builder-ssrInspector-runtimeContextHelp = The context is stored in the serv
 page_builder-ssrInspector-savePageMetadata = Save page metadata
 page_builder-ssrInspector-title = Classic SSR inspector
 page_builder-ssrInspector-valuePlaceholder = Value
+page_builder-serverPreview-render = Render preview
 page_builder-status-dirty = Unsaved changes
 page_builder-status-dragging = Choose a drop position in the canvas
 page_builder-status-saveFailed = Save failed

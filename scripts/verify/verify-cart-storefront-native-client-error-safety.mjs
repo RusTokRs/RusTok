@@ -223,7 +223,7 @@ for (const marker of [
   "pub async fn fetch_cart(",
   "pub async fn decrement_line_item(",
   "pub async fn remove_line_item(",
-  "client = leptos_auth::AuthorizedBrowserClient",
+  "client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient",
 ])
   requireText(native, marker, "common native adapter contract");
 for (const operation of [

@@ -6,10 +6,6 @@ on:
       - main
     paths:
       - ".github/workflows/pages-page-builder-parity.yml"
-      - "docs/modules/pages-page-builder-parity-continuation-plan.md"
-      - "docs/modules/page-builder-implementation-plan.md"
-      - "docs/modules/page-builder-admin-accessibility-actualization-2026-08-10.md"
-      - "docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md"
       - "crates/modules/rustok-page-builder/docs/implementation-plan.md"
       - "crates/modules/rustok-page-builder/admin/src/editor/**"
       - "crates/modules/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs"
@@ -29,10 +25,6 @@ on:
       - "**"
     paths:
       - ".github/workflows/pages-page-builder-parity.yml"
-      - "docs/modules/pages-page-builder-parity-continuation-plan.md"
-      - "docs/modules/page-builder-implementation-plan.md"
-      - "docs/modules/page-builder-admin-accessibility-actualization-2026-08-10.md"
-      - "docs/modules/pages-page-builder-parity-accessibility-actualization-2026-08-12.md"
       - "crates/modules/rustok-page-builder/docs/implementation-plan.md"
       - "crates/modules/rustok-page-builder/admin/src/editor/**"
       - "crates/modules/rustok-page-builder/admin/src/ssr_accessibility_evidence_tests.rs"

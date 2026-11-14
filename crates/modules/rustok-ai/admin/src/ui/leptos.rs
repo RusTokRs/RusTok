@@ -17,8 +17,8 @@ use crate::transport;
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
@@ -52,16 +52,21 @@ use crate::transport::graphql_adapter::{
     connection_init_message, graphql_ws_url_from_location, session_events_subscribe_message,
 };
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -218,12 +223,12 @@ pub fn AiAdmin() -> impl IntoView {
 
     let reply_message = RwSignal::new(String::new());
 
-    let bootstrap = local_resource(
+    let bootstrap = loaded_resource(
         move || refresh_nonce.get(),
         move |_| async move { transport::fetch_bootstrap().await },
     );
 
-    let session_detail = local_resource(
+    let session_detail = loaded_resource(
         move || (selected_session.get(), refresh_nonce.get()),
         move |(session_id, _)| async move {
             match session_id {

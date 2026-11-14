@@ -66,22 +66,30 @@ pub trait FieldDefinitionSource {
 
 pub fn field_definition_from_source<T: FieldDefinitionSource>(
     source: &T,
-) -> Option<FieldDefinition> {
-    let field_type: FieldType =
-        serde_json::from_value(JsonValue::String(source.field_type().to_string())).ok()?;
+) -> Result<FieldDefinition, String> {
+    let field_type: FieldType = serde_json::from_value(JsonValue::String(source.field_type().to_string()))
+        .map_err(|error| format!("unknown persisted field type `{}`: {error}", source.field_type()))?;
 
-    let label: HashMap<String, String> =
-        serde_json::from_value(source.label().clone()).unwrap_or_default();
+    let label: HashMap<String, String> = serde_json::from_value(source.label().clone())
+        .map_err(|error| format!("persisted field label is invalid: {error}"))?;
 
     let description: Option<HashMap<String, String>> = source
         .description()
-        .and_then(|value| serde_json::from_value(value.clone()).ok());
+        .map(|value| {
+            serde_json::from_value(value.clone())
+                .map_err(|error| format!("persisted field description is invalid: {error}"))
+        })
+        .transpose()?;
 
     let validation: Option<ValidationRule> = source
         .validation()
-        .and_then(|value| serde_json::from_value(value.clone()).ok());
+        .map(|value| {
+            serde_json::from_value(value.clone())
+                .map_err(|error| format!("persisted field validation is invalid: {error}"))
+        })
+        .transpose()?;
 
-    Some(FieldDefinition {
+    Ok(FieldDefinition {
         field_key: source.field_key().to_string(),
         field_type,
         label,
@@ -367,6 +375,7 @@ pub trait FieldDefinitionService: Send + Sync {
         id: Uuid,
     ) -> Result<Option<FieldDefinitionView>, FlexError>;
 
+    /// Reorder the complete tenant/entity definition set; `ids` must be a permutation of it.
     async fn reorder(
         &self,
         db: &DatabaseConnection,
@@ -374,6 +383,8 @@ pub trait FieldDefinitionService: Send + Sync {
         ids: &[Uuid],
     ) -> Result<Vec<FieldDefinitionView>, FlexError>;
 
+    /// Mutate the definition and durably persist its returned envelope in the same transaction.
+    /// Callers must not publish the returned envelope a second time.
     async fn create(
         &self,
         db: &DatabaseConnection,
@@ -382,6 +393,7 @@ pub trait FieldDefinitionService: Send + Sync {
         input: CreateFieldDefinitionCommand,
     ) -> Result<(FieldDefinitionView, rustok_events::EventEnvelope), FlexError>;
 
+    /// Update the definition and persist the returned event in the same transaction.
     async fn update(
         &self,
         db: &DatabaseConnection,
@@ -391,6 +403,7 @@ pub trait FieldDefinitionService: Send + Sync {
         input: UpdateFieldDefinitionCommand,
     ) -> Result<(FieldDefinitionView, rustok_events::EventEnvelope), FlexError>;
 
+    /// Deactivate the definition and persist its event in the same transaction.
     async fn deactivate(
         &self,
         db: &DatabaseConnection,
@@ -427,5 +440,66 @@ impl FieldDefRegistry {
             .get(entity_type)
             .cloned()
             .ok_or_else(|| FlexError::UnknownEntityType(entity_type.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod persisted_definition_tests {
+    use super::*;
+
+    struct Source {
+        field_type: String,
+        label: JsonValue,
+        description: Option<JsonValue>,
+        validation: Option<JsonValue>,
+    }
+
+    impl FieldDefinitionSource for Source {
+        fn field_key(&self) -> &str { "custom_field" }
+        fn field_type(&self) -> &str { &self.field_type }
+        fn label(&self) -> &JsonValue { &self.label }
+        fn description(&self) -> Option<&JsonValue> { self.description.as_ref() }
+        fn is_localized(&self) -> bool { false }
+        fn is_required(&self) -> bool { false }
+        fn default_value(&self) -> Option<&JsonValue> { None }
+        fn validation(&self) -> Option<&JsonValue> { self.validation.as_ref() }
+        fn position(&self) -> i32 { 0 }
+        fn is_active(&self) -> bool { true }
+    }
+
+    fn source() -> Source {
+        Source {
+            field_type: "text".to_string(),
+            label: serde_json::json!({ "en": "Custom field" }),
+            description: None,
+            validation: None,
+        }
+    }
+
+    #[test]
+    fn persisted_field_conversion_fails_on_unknown_type() {
+        let mut source = source();
+        source.field_type = "future_unknown_type".to_string();
+        assert!(field_definition_from_source(&source)
+            .expect_err("unknown type must not drop the definition")
+            .contains("unknown persisted field type"));
+    }
+
+    #[test]
+    fn persisted_field_conversion_fails_on_malformed_label() {
+        let mut source = source();
+        source.label = serde_json::json!(["not", "a", "label-map"]);
+        assert!(field_definition_from_source(&source)
+            .expect_err("invalid label must not become an empty map")
+            .contains("persisted field label is invalid"));
+    }
+
+    #[test]
+    fn persisted_field_conversion_fails_on_malformed_validation() {
+        let mut source = source();
+        source.validation = Some(serde_json::json!({ "min": "not-a-number" }));
+        assert!(field_definition_from_source(&source)
+            .expect_err("invalid validation must not be dropped")
+            .contains("persisted field validation is invalid"));
     }
 }

@@ -44,7 +44,7 @@ the generated client and HTTP dispatcher. Form encoding cannot represent this
 contract without losing explicit null or the difference between JSON numbers
 and strings. Native acknowledgement regressions exercise the dispatcher with
 the same JSON content type; a separate failed refresh is still a read failure.
-Generated browser calls use `leptos-auth::AuthorizedBrowserClient`, so current
+Generated browser calls use `rustok_auth_ui::ui::leptos::AuthorizedBrowserClient`, so current
 auth and tenant metadata come from the canonical browser session, not the
 serialized command. SSR dispatch still consumes host-validated request context.
 

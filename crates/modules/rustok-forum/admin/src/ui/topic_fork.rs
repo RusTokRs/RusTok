@@ -1,8 +1,8 @@
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_api::normalize_locale_tag;
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::t;
@@ -96,27 +96,39 @@ pub fn ForumTopicForkAdmin() -> impl IntoView {
         "Fork committed",
     );
 
-    let candidates = LocalResource::new(move || {
-        refresh_nonce.track();
-        let token = token.get();
-        let tenant = tenant.get();
-        let locale = candidates_locale.clone();
-        async move { transport::fetch_topic_fork_candidates(token, tenant, locale).await }
-    });
+    // Resolved by the request: the fork panel is served from an `Async` admin route, so a
+    // `LocalResource` here leaves the reader with the `Suspense` fallback.
+    let candidates = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                candidates_locale.clone(),
+                refresh_nonce.get(),
+            )
+        },
+        move |(token, tenant, locale, _generation)| async move {
+            transport::fetch_topic_fork_candidates(token, tenant, locale).await
+        },
+    );
 
-    let replies = LocalResource::new(move || {
-        let source_topic_id = source_topic_id.get();
-        let token = token.get();
-        let tenant = tenant.get();
-        let locale = replies_locale.clone();
-        async move {
+    let replies = Resource::new(
+        move || {
+            (
+                source_topic_id.get(),
+                token.get(),
+                tenant.get(),
+                replies_locale.clone(),
+            )
+        },
+        move |(source_topic_id, token, tenant, locale)| async move {
             if source_topic_id.trim().is_empty() {
                 Ok(ForumTopicForkReplyPage { items: Vec::new() })
             } else {
                 transport::fetch_topic_fork_replies(token, tenant, source_topic_id, locale).await
             }
-        }
-    });
+        },
+    );
 
     let submit = move |event: SubmitEvent| {
         event.prevent_default();

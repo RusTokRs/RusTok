@@ -1,8 +1,10 @@
 //! Cart buyer lifecycle and command planning, independent of the rendering framework.
 
 use super::{
-    CartAddVariantRequest, CartCreateRequest, add_variant_request, buyer_cart_context_matches,
-    create_cart_request,
+    CartAddVariantRequest, CartCreateRequest, CartLineItemDecrementRequest,
+    CartLineItemMutationRequest, add_variant_request, build_decrement_line_item_request,
+    build_remove_line_item_request, buyer_cart_context_matches, create_cart_request,
+    parse_line_item_id,
 };
 use crate::i18n::t;
 use crate::model::StorefrontCart;
@@ -14,6 +16,7 @@ pub enum BuyerCartPhase {
     Restoring,
     Empty,
     Ready,
+    Unavailable,
     AuthRefused,
     RestoreFailed,
     ContextMismatch,
@@ -40,6 +43,18 @@ pub enum BuyerCartError {
 pub enum BuyerCartPlan {
     Create(CartCreateRequest),
     Add(CartAddVariantRequest),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BuyerCartLineAction {
+    Decrement,
+    Remove,
+}
+
+#[derive(Clone, Debug)]
+pub enum BuyerCartLinePlan {
+    Decrement(CartLineItemDecrementRequest),
+    Remove(CartLineItemMutationRequest),
 }
 
 impl BuyerCartSession {
@@ -108,6 +123,36 @@ impl BuyerCartSession {
     pub fn can_inspect(&self) -> bool {
         self.cart_id.is_some() && self.phase != BuyerCartPhase::Restoring
     }
+
+    /// A badge is an owner observation, not an inference from a missing local reference.
+    /// Unknown, malformed, or unconfirmed projections must never be published as zero.
+    pub fn confirmed_item_count(&self) -> Option<u64> {
+        const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+        if !matches!(
+            self.phase,
+            BuyerCartPhase::Ready | BuyerCartPhase::ContextMismatch | BuyerCartPhase::Added
+        ) {
+            return None;
+        }
+        let cart = self.cart.as_ref()?;
+        if self.cart_id.as_deref() != Some(cart.id.as_str()) || cart.status != "active" {
+            return None;
+        }
+        let mut ids = std::collections::BTreeSet::new();
+        cart.line_items.iter().try_fold(0_u64, |count, item| {
+            let (normalized, _) = parse_line_item_id(item.id.clone()).ok()?;
+            if normalized != item.id || !ids.insert(normalized) {
+                return None;
+            }
+            let quantity = u64::try_from(item.quantity)
+                .ok()
+                .filter(|quantity| *quantity > 0)?;
+            count
+                .checked_add(quantity)
+                .filter(|sum| *sum <= MAX_SAFE_INTEGER)
+        })
+    }
+
     pub fn fail(&mut self, error: BuyerCartError) {
         self.phase = match error {
             BuyerCartError::Context => BuyerCartPhase::ContextMismatch,
@@ -149,11 +194,48 @@ impl BuyerCartSession {
             Err(BuyerCartError::Restore)
         }
     }
+    /// Derive line commands only from the current owner observation, never from stale DOM values.
+    pub fn plan_line_change(
+        &self,
+        line_id: String,
+        action: BuyerCartLineAction,
+    ) -> Result<BuyerCartLinePlan, BuyerCartError> {
+        if !self.permits_write() {
+            return Err(BuyerCartError::Restore);
+        }
+        let cart = self.cart.as_ref().ok_or(BuyerCartError::Restore)?;
+        if self.cart_id.as_deref() != Some(cart.id.as_str()) || cart.status != "active" {
+            return Err(BuyerCartError::Restore);
+        }
+        let (normalized, _) =
+            parse_line_item_id(line_id.clone()).map_err(|_| BuyerCartError::Invalid)?;
+        if normalized != line_id {
+            return Err(BuyerCartError::Invalid);
+        }
+        let mut matching = cart.line_items.iter().filter(|item| item.id == line_id);
+        let item = matching.next().ok_or(BuyerCartError::Invalid)?;
+        if matching.next().is_some() || item.quantity < 1 {
+            return Err(BuyerCartError::Invalid);
+        }
+        Ok(match action {
+            BuyerCartLineAction::Decrement => BuyerCartLinePlan::Decrement(
+                build_decrement_line_item_request(cart.id.clone(), line_id, item.quantity),
+            ),
+            BuyerCartLineAction::Remove => {
+                BuyerCartLinePlan::Remove(build_remove_line_item_request(cart.id.clone(), line_id))
+            }
+        })
+    }
+
     pub fn notice(&self, locale: Option<&str>) -> Option<String> {
         let (key, fallback) = match self.phase {
             BuyerCartPhase::Restoring => (
                 "cart.buyer.restoring",
                 "Restoring the cart before enabling purchases.",
+            ),
+            BuyerCartPhase::Unavailable => (
+                "cart.buyer.unavailable",
+                "Cart is unavailable for this storefront. Purchases are disabled.",
             ),
             BuyerCartPhase::AuthRefused => (
                 "cart.buyer.authRefused",
@@ -181,6 +263,15 @@ impl BuyerCartSession {
     }
 }
 
+/// Display an unknown observation distinctly from a confirmed empty cart.
+pub fn buyer_cart_badge(count: Option<u64>) -> String {
+    match count {
+        None => "—".into(),
+        Some(count) if count > 99 => "99+".into(),
+        Some(count) => count.to_string(),
+    }
+}
+
 /// Browser-owned recovery hints only. Neither a UUID nor a cleared warning proves owner access.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -200,21 +291,53 @@ impl BuyerCartCheckpoint {
     }
 }
 
-/// A public tenant and opaque SHA-256 actor fingerprint scope local recovery, never authorization.
-/// No bearer token, cart customer data or guest capability is persisted in the checkpoint.
-pub fn buyer_cart_storage_key(tenant: &str, token: Option<&str>) -> Result<String, BuyerCartError> {
+fn fingerprint(value: &str) -> String {
     use sha2::{Digest, Sha256};
-    if tenant.trim().is_empty() || tenant.len() > 255 {
+    Sha256::digest(value.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Prefix of the earlier token-scoped hint namespace, used only for conservative migration.
+pub fn legacy_buyer_cart_storage_prefix(tenant: &str) -> Result<String, BuyerCartError> {
+    if tenant.trim().is_empty() || tenant != tenant.trim() || tenant.len() > 255 {
         return Err(BuyerCartError::Restore);
     }
-    let digest = |value: &str| {
-        Sha256::digest(value.as_bytes())
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>()
+    Ok(format!("rustok_cart_buyer:{}:", fingerprint(tenant)))
+}
+
+pub fn legacy_buyer_cart_storage_key(
+    tenant: &str,
+    token: Option<&str>,
+) -> Result<String, BuyerCartError> {
+    let prefix = legacy_buyer_cart_storage_prefix(tenant)?;
+    let actor = token.map(fingerprint).unwrap_or_else(|| "guest".into());
+    Ok(format!("{prefix}{actor}"))
+}
+
+/// An opaque hash of the tenant and stable auth session lineage scopes recovery hints only;
+/// it never proves owner access. Never persist the bearer, session id, guest capability or user.
+/// A malformed/missing authenticated lineage must be refused by the caller, not mapped to guest.
+pub fn buyer_cart_storage_key(
+    tenant: &str,
+    session_id: Option<&str>,
+) -> Result<String, BuyerCartError> {
+    legacy_buyer_cart_storage_prefix(tenant)?;
+    let actor = match session_id {
+        None => "guest".to_string(),
+        Some(id) => {
+            let parsed = uuid::Uuid::parse_str(id).map_err(|_| BuyerCartError::Restore)?;
+            if parsed.is_nil() || parsed.to_string() != id {
+                return Err(BuyerCartError::Restore);
+            }
+            fingerprint(&format!("session:{id}"))
+        }
     };
-    let actor = token.map(digest).unwrap_or_else(|| "guest".to_string());
-    Ok(format!("rustok_cart_buyer:{}:{actor}", digest(tenant)))
+    Ok(format!(
+        "rustok_cart_buyer:v2:{}:{actor}",
+        fingerprint(tenant)
+    ))
 }
 
 #[cfg(test)]
@@ -291,18 +414,70 @@ mod tests {
         );
     }
     #[test]
+    fn count_requires_an_active_confirmed_owner_projection() {
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut observed = cart(&id, "active");
+        let line = |quantity| {
+            serde_json::from_value(serde_json::json!({
+                "id": uuid::Uuid::new_v4().to_string(), "title": "Cup", "sku": null,
+                "quantity": quantity, "unit_price": "1", "total_price": "1",
+                "currency_code": "EUR", "fulfillment_requirement": "physical",
+                "shipping_profile_slug": null, "seller_id": null
+            }))
+            .unwrap()
+        };
+        observed.line_items = vec![line(2), line(3)];
+        let mut session = BuyerCartSession::restoring(Some(id));
+        assert_eq!(session.confirmed_item_count(), None);
+        session.adopt(observed, false).unwrap();
+        assert_eq!(session.confirmed_item_count(), Some(5));
+        let line_id = session.cart.as_ref().unwrap().line_items[0].id.clone();
+        assert!(matches!(
+            session.plan_line_change(line_id, BuyerCartLineAction::Decrement),
+            Ok(BuyerCartLinePlan::Decrement(request)) if request.current_quantity == 2
+        ));
+        assert!(
+            session
+                .plan_line_change(
+                    uuid::Uuid::new_v4().to_string(),
+                    BuyerCartLineAction::Remove
+                )
+                .is_err()
+        );
+        session.phase = BuyerCartPhase::Unconfirmed;
+        assert_eq!(session.confirmed_item_count(), None);
+        session.phase = BuyerCartPhase::Ready;
+        let duplicate = session.cart.as_ref().unwrap().line_items[0].clone();
+        session.cart.as_mut().unwrap().line_items.push(duplicate);
+        assert_eq!(session.confirmed_item_count(), None);
+        session.cart.as_mut().unwrap().line_items.pop();
+        session.cart.as_mut().unwrap().line_items.push(line(-1));
+        assert_eq!(session.confirmed_item_count(), None);
+        assert_eq!(BuyerCartSession::empty().confirmed_item_count(), None);
+        assert_eq!(buyer_cart_badge(None), "—");
+        assert_eq!(buyer_cart_badge(Some(0)), "0");
+        assert_eq!(buyer_cart_badge(Some(100)), "99+");
+    }
+
+    #[test]
     fn checkpoint_scopes_are_opaque_strict_hints_not_credentials_or_authority() {
-        let key = buyer_cart_storage_key("shop", Some("private-bearer")).unwrap();
-        assert!(!key.contains("private-bearer"));
+        let lineage = uuid::Uuid::new_v4().to_string();
+        let other = uuid::Uuid::new_v4().to_string();
+        let key = buyer_cart_storage_key("shop", Some(&lineage)).unwrap();
+        assert!(!key.contains(&lineage));
+        assert_eq!(key, buyer_cart_storage_key("shop", Some(&lineage)).unwrap());
         assert_ne!(
             key,
-            buyer_cart_storage_key("other-shop", Some("private-bearer")).unwrap()
+            buyer_cart_storage_key("other-shop", Some(&lineage)).unwrap()
         );
-        assert_ne!(
-            key,
-            buyer_cart_storage_key("shop", Some("rotated-bearer")).unwrap()
-        );
+        assert_ne!(key, buyer_cart_storage_key("shop", Some(&other)).unwrap());
         assert_ne!(key, buyer_cart_storage_key("shop", None).unwrap());
+        assert_ne!(
+            key,
+            legacy_buyer_cart_storage_key("shop", Some("private-bearer")).unwrap()
+        );
+        assert!(buyer_cart_storage_key("shop", Some("private-bearer")).is_err());
+        assert!(buyer_cart_storage_key("shop", Some(&uuid::Uuid::nil().to_string())).is_err());
         assert!(buyer_cart_storage_key(" ", None).is_err());
         let pending = BuyerCartCheckpoint {
             cart_id: None,

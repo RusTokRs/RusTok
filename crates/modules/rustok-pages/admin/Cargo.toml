@@ -19,25 +19,28 @@ crate-type = ["rlib"]
 default = ["ssr"]
 csr = [
   "leptos/csr",
-  "leptos-auth/csr",
+  "rustok-auth-ui/csr",
   "rustok-page-builder-admin/csr",
 ]
 hydrate = [
   "leptos/hydrate",
-  "leptos-auth/hydrate",
+  "rustok-auth-ui/hydrate",
   "rustok-page-builder-admin/hydrate",
   "rustok-media-admin/hydrate",
 ]
 inline-edit-launch = ["dep:url", "dep:uuid"]
 ssr = [
   "leptos/ssr",
-  "leptos-auth/ssr",
+  "rustok-auth-ui/ssr",
   "rustok-page-builder/server",
   "rustok-page-builder-admin/ssr",
   "rustok-page-builder-admin/browser-js",
   "rustok-media-admin/ssr",
   "dep:async-trait",
   "dep:rustok-api",
+  "dep:axum",
+  "dep:base64",
+  "dep:sha2",
 ]
 
 [dependencies]
@@ -46,7 +49,7 @@ fly-browser = { path = "../../../ui/fly/browser" }
 fly-ui = { path = "../../../ui/fly/ui" }
 rustok-ui-core.workspace = true
 leptos.workspace = true
-leptos-auth.workspace = true
+rustok-auth-ui.workspace = true
 rustok-graphql.workspace = true
 rustok-page-builder = { path = "../../rustok-page-builder", default-features = false }
 rustok-page-builder-admin = { path = "../../rustok-page-builder/admin", default-features = false }
@@ -54,6 +57,10 @@ rustok-media-admin = { path = "../../rustok-media/admin", default-features = fal
 rustok-ui-i18n.workspace = true
 leptos-ui-routing.workspace = true
 async-trait = { workspace = true, optional = true }
+# The preview response is served with a policy derived from the document it carries (§737).
+axum = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
 rustok-api = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

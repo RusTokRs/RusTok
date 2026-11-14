@@ -173,9 +173,16 @@ pub fn PageBuilderContributionScope(
 
     #[cfg(feature = "ssr")]
     {
-        let permissions = LocalResource::new(move || {
-            page_builder_contribution_permissions(required_permissions.clone())
-        });
+        // A `Resource`, not a `LocalResource`: the latter is `pending().await` under `ssr`, so the
+        // editor's contribution scope could only render its placeholder in a response. The server
+        // function this awaits runs in-process during SSR, so the future is `Send` there; on the
+        // client the framework's own call future is `Send` as well.
+        let permissions = Resource::new(
+            move || required_permissions.clone(),
+            |required_permissions: Vec<String>| async move {
+                page_builder_contribution_permissions(required_permissions).await
+            },
+        );
         let children_for_result = children.clone();
 
         view! {
@@ -210,8 +217,8 @@ pub fn PageBuilderContributionScope(
 
     #[cfg(not(feature = "ssr"))]
     {
-        let current_user = leptos_auth::hooks::use_current_user();
-        let is_loading = leptos_auth::hooks::use_is_loading();
+        let current_user = rustok_auth_ui::ui::leptos::hooks::use_current_user();
+        let is_loading = rustok_auth_ui::ui::leptos::hooks::use_is_loading();
         let children_for_result = children.clone();
 
         view! {
@@ -300,7 +307,7 @@ fn ResolvedPageBuilderContributionScope(
         );
     }
     if enabled_modules.contains("blog") {
-        extensions.push(blog::extension(leptos_auth::use_auth()));
+        extensions.push(blog::extension(rustok_auth_ui::ui::leptos::use_auth()));
     }
 
     match PageBuilderContributionHostContext::new(extensions) {

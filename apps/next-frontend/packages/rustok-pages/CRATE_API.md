@@ -16,13 +16,13 @@
 ### Components
 
 - `PageBuilderContent({ html, css, className }: PageBuilderContentProps)`:
-  - Renders the scoped landing page HTML markup and injects scoped CSS.
+  - Renders the scoped landing page HTML markup and injects scoped CSS. The inline `<style>` and wrapper style attributes have no host nonce here; strict Next CSP support remains open.
   - Wraps content in `<div className="fly-page-container" style={{ isolation: "isolate", contain: "style layout" }}>`.
   - Mounts the client `<FlyActionBridge />` island for handling interactive triggers.
 - `FlyActionBridge()`:
   - Client component (`"use client"`) that side-effect imports the canonical `fly-actions.js` runtime asset (a byte-exact copy of `crates/ui/fly/browser/assets/fly-actions.js`, the same script the Rust storefront inlines) and listens for `fly:action` CustomEvents.
-  - Bridges actions (`add_to_cart`, `cart:add`, `buy_now`, `cart:open`, `cart:close`, `cart:toggle`, `navigate`) to `@rustok/cart-frontend` and Next.js `useRouter`.
-  - Dynamically updates cart counter islands (`[data-fly-island="cart_count"]`) and intercepts relative same-origin link clicks for client-side SPA routing.
+  - Interprets host `emit_event` actions; provider actions stay provider-owned. Cart controls use `@rustok/cart-frontend`, while purchases use the validated [shared Product handoff](README.md#shared-purchase-handoff) and Next.js `useRouter`, never a direct Cart mutation.
+  - Synchronizes landing-local `cart_count` islands, including replaced markup, and intercepts safe root-relative links for client-side routing. A disabled, failed or unconfirmed Cart displays an unknown count instead of a fabricated zero.
 
 ### Data Fetching & Parsers
 
@@ -72,17 +72,17 @@ Unlike legacy iframe-based embedding, `@rustok/pages-frontend` renders published
 - Non-matching or invalid selectors in link clicks (e.g. invalid hash syntax) are caught and ignored safely without throwing runtime unhandled exceptions.
 
 ### 3. State Transition Integrity
-- `FlyActionBridge` coordinates with `@rustok/cart-frontend` state: `addItem` returns a promise, opening the cart drawer on success.
+- `FlyActionBridge` reads Cart's capability and observation, and requests open/close/toggle only when enabled. Purchases go to Product for SKU validation and a fresh Pricing observation; the user confirms there.
 - The storefront has no draft or preview state: a page is either published with a landing (rendered) or absent (`notFound()`).
 - `generateMetadata` and the page component share one page read per request (React `cache`), so the metadata and the rendered landing describe the same snapshot.
 
 ### 4. Side-Effect Completeness
-- Event listeners for `fly:action` and document `click` are cleanly unregistered in `FlyActionBridge`'s `useEffect` cleanup hook.
+- Landing-local `fly:action` and `click` listeners and the counter mutation observer are removed in `FlyActionBridge`'s `useEffect` cleanup. A co-located Fly action owns its click, so a Cart island cannot toggle twice.
 - The `fly-actions` runtime asset self-starts idempotently on import: it keys the installed listener adapter on a document symbol (`Symbol.for("fly.actions.adapter")`), so hydration re-imports or dual mounting attach delegation exactly once per document lifecycle, and it is SSR-safe (`typeof document` guards).
 
 ### 5. Calculation & Algorithmic Correctness
 - `scopeLandingCss` tokenizes the stylesheet as the CSS Syntax specification does and follows the resulting block structure: `{}`/`()`/`[]` blocks, strings with backslash escapes (an unescaped newline ends a string, backslash + CR LF continues it), comments, names with escapes, hash/at-keyword/numeric tokens and `url()` tokens. A `url()` token is recognised only where the tokenizer starts one (`url(`, `u\72l(`), never inside a longer token (`#url(`, `@url(`, `myurl(`, `3url(`), and only CSS whitespace counts as whitespace. Root selectors are remapped only in selector position — not in declarations, attribute selectors, at-rule preludes (`@keyframes body`) or `url()` — and only on identifier boundaries (`tbody` or `.some-body` are never mistaken for `body`).
-- Quantity parsing in `handleFlyAction` sanitizes string inputs to positive numbers (`Number(data.quantity) || 1`).
+- Handoff quantity is an integer from 1 through 2,147,483,647; only omission defaults to 1. Malformed, zero, negative and conflicting selections are rejected with feedback, not silently coerced.
 
 ### 6. Order of Operations & Concurrency
 - Same-origin internal link clicks are intercepted synchronously before navigation initiates, routing via Next.js client router without full page reloads.
@@ -92,7 +92,8 @@ Unlike legacy iframe-based embedding, `@rustok/pages-frontend` renders published
 
 ## 5. Verification & Testing
 
-- **Contract Unit Tests**: `apps/next-frontend/packages/rustok-pages/src/pages-frontend.test.mjs` (16 unit tests, including the GraphQL landing selection checked against the server type, fly-actions asset parity and the CSS scoping vectors shared with the Leptos storefront, `crates/modules/rustok-page-builder/contracts/landing-css-scope-parity.json`).
+- **Contract Unit Tests**: `apps/next-frontend/packages/rustok-pages/src/pages-frontend.test.mjs`, including the GraphQL landing selection, action-asset parity, buyer-handoff validation and CSS scoping vectors shared with Leptos.
+- **Targeted browser tests**: `tests/e2e/fly-actions.spec.ts`, `fly-storefront-bridge.spec.ts`, and `fly-react-integration.spec.ts` exercise shipped browser assets and real React Cart/PageBuilder components with fake router, translations and GraphQL. They are not mounted-host or deployment evidence.
 - **Execution Command**:
   ```bash
   npm --prefix apps/next-frontend run test:pages

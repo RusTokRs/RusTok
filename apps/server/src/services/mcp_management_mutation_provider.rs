@@ -45,17 +45,19 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
         context: &McpManagementContext,
         client_id: uuid::Uuid,
     ) -> Result<Option<McpClientDetailsRecord>, McpManagementMutationError> {
-        McpManagementService::get_client_details(&self.db, context.tenant_id, client_id)
+        let details = McpManagementService::get_client_details(&self.db, context.tenant_id, client_id)
             .await
+            .map_err(mutation_error)?;
+        details
             .map(|details| {
-                details.map(|details| McpClientDetailsRecord {
+                Ok(McpClientDetailsRecord {
                     client: client_record(&details.client),
-                    policy: details.policy.as_ref().map(policy_record),
+                    policy: details.policy.as_ref().map(policy_record).transpose()?,
                     tokens: details.tokens.iter().map(token_record).collect(),
                     effective_access_context: details.effective_access_context,
                 })
             })
-            .map_err(mutation_error)
+            .transpose()
     }
 
     async fn list_audit_events(
@@ -130,7 +132,7 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
 
         Ok(McpTokenSecretResult {
             client: client_record(&result.client),
-            policy: Some(policy_record(&result.policy)),
+            policy: Some(policy_record(&result.policy)?),
             token: token_record(&result.token),
             plaintext_token: result.plaintext_token,
         })
@@ -185,7 +187,7 @@ impl McpManagementPort for ServerMcpManagementMutationProvider {
         .await
         .map_err(mutation_error)?;
 
-        Ok(policy_record(&policy))
+        policy_record(&policy)
     }
 
     async fn revoke_token(
@@ -301,19 +303,33 @@ fn client_record(client: &crate::models::mcp_clients::Model) -> McpClientRecord 
     }
 }
 
-fn policy_record(policy: &crate::models::mcp_policies::Model) -> McpPolicyRecord {
-    McpPolicyRecord {
+fn policy_record(
+    policy: &crate::models::mcp_policies::Model,
+) -> Result<McpPolicyRecord, McpManagementMutationError> {
+    let decoded = (|| {
+        Ok::<_, String>((
+            policy.allowed_tools_list()?,
+            policy.denied_tools_list()?,
+            policy.granted_permissions_list()?,
+            policy.granted_scopes_list()?,
+        ))
+    })()
+    .map_err(|error| {
+        tracing::error!(%error, client_id = %policy.client_id, "Persisted MCP policy is invalid");
+        mutation_error(ServerError::InternalServerError)
+    })?;
+    Ok(McpPolicyRecord {
         id: policy.id,
         client_id: policy.client_id,
-        allowed_tools: policy.allowed_tools_list(),
-        denied_tools: policy.denied_tools_list(),
-        granted_permissions: policy.granted_permissions_list(),
-        granted_scopes: policy.granted_scopes_list(),
+        allowed_tools: decoded.0,
+        denied_tools: decoded.1,
+        granted_permissions: decoded.2,
+        granted_scopes: decoded.3,
         metadata: policy.metadata.clone(),
         updated_by: policy.updated_by,
         created_at: policy.created_at.into(),
         updated_at: policy.updated_at.into(),
-    }
+    })
 }
 
 fn token_record(token: &crate::models::mcp_tokens::Model) -> McpTokenRecord {

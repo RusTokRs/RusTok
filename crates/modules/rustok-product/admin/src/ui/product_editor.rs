@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::use_navigate;
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 
 use super::leptos::{ProductAttributeValuesSection, ProductVariantsPanel};
@@ -164,11 +164,15 @@ pub fn ProductEditorPage(
 
     // Categories list resource
     let cat_locale = locale.clone();
-    let categories_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let loc = cat_locale.clone().unwrap_or_default();
-        async move {
+    let categories_resource = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                cat_locale.clone().unwrap_or_default(),
+            )
+        },
+        move |(tok, ten, loc)| async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
@@ -181,14 +185,13 @@ pub fn ProductEditorPage(
             .await
             .map_err(|e| e.to_string())?;
             Ok::<Vec<CatalogCategorySummary>, String>(res.items)
-        }
-    });
+        },
+    );
 
     // Shipping profiles resource
-    let shipping_profiles_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        async move {
+    let shipping_profiles_resource = Resource::new(
+        move || (token.get(), tenant.get()),
+        move |(tok, ten)| async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
@@ -197,23 +200,29 @@ pub fn ProductEditorPage(
                     .await
                     .map_err(|e| e.to_string())?;
             Ok::<Vec<crate::model::ShippingProfile>, String>(res.items)
-        }
-    });
+        },
+    );
 
     // Effective Category Form resource
     let form_locale = locale.clone();
     let form_pid = product_id.clone();
-    let effective_form_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let loc = form_locale.clone().unwrap_or_default();
-        let cat_id = primary_category_id.get();
-        let pid = form_pid.clone().filter(|_| {
-            loaded_product.get().is_some_and(|product| {
-                product.primary_category_id.as_deref() == Some(cat_id.as_str())
-            })
-        });
-        async move {
+    let effective_form_resource = Resource::new(
+        move || {
+            let cat_id = primary_category_id.get();
+            let pid = form_pid.clone().filter(|_| {
+                loaded_product.get().is_some_and(|product| {
+                    product.primary_category_id.as_deref() == Some(cat_id.as_str())
+                })
+            });
+            (
+                token.get(),
+                tenant.get(),
+                form_locale.clone().unwrap_or_default(),
+                cat_id,
+                pid,
+            )
+        },
+        move |(tok, ten, loc, cat_id, pid)| async move {
             if cat_id.is_empty() {
                 return Ok(None);
             }
@@ -231,8 +240,8 @@ pub fn ProductEditorPage(
             .await
             .map_err(|e| e.to_string())?;
             Ok::<Option<ProductEffectiveForm>, String>(form)
-        }
-    });
+        },
+    );
 
     // Load existing product if in Edit mode
     let target_id = product_id.clone();
@@ -459,11 +468,10 @@ pub fn ProductEditorPage(
         }
     };
 
-    let variant_bootstrap = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        async move { catalog_transport::fetch_bootstrap(tok, ten).await }
-    });
+    let variant_bootstrap = Resource::new(
+        move || (token.get(), tenant.get()),
+        move |(tok, ten)| async move { catalog_transport::fetch_bootstrap(tok, ten).await },
+    );
     let variant_reload_locale = locale.clone();
     let refresh_variant_projection = Callback::new(move |product_id: String| {
         let tok = token.get_untracked();

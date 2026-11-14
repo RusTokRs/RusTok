@@ -21,7 +21,7 @@ pub use model::FormSubmission;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use uuid::Uuid;
 
 /// Inbox listing form submissions with triage actions.
@@ -34,18 +34,20 @@ pub fn FormsAdmin() -> impl IntoView {
     let error = RwSignal::new(None::<String>);
     let fetch_token = token;
     let fetch_tenant = tenant;
-    let submissions = LocalResource::new(move || {
-        let token = fetch_token.get();
-        let tenant = fetch_tenant.get();
-        async move {
+    // Resolved by the request: the form inbox mounts inside the `Async` admin layout, so a
+    // `LocalResource` here leaves the reader with the `Suspense` fallback.
+    let submissions = Resource::new(
+        move || (fetch_token.get(), fetch_tenant.get()),
+        move |(token, tenant)| async move {
             transport::fetch_form_submissions(token, tenant)
                 .await
                 .map_err(|failure| failure.to_string())
-        }
-    });
+        },
+    );
 
     let action_token = token;
     let action_tenant = tenant;
+    let transition_submissions = submissions;
     let transition = Callback::new(move |(id, state): (Uuid, String)| {
         let token = action_token.get_untracked();
         let tenant = action_tenant.get_untracked();
@@ -53,7 +55,7 @@ pub fn FormsAdmin() -> impl IntoView {
         error.set(None);
         spawn_local(async move {
             match transport::set_form_submission_state(token, tenant, id, &state).await {
-                Ok(_) => submissions.refetch(),
+                Ok(_) => transition_submissions.refetch(),
                 Err(failure) => error.set(Some(failure.to_string())),
             }
             busy.set(false);
@@ -81,9 +83,10 @@ pub fn FormsAdmin() -> impl IntoView {
             }>
                 {
                     let empty_text = labels.empty.clone();
+                    let view_submissions = submissions;
                     move || {
                         let empty_text = empty_text.clone();
-                        submissions.get().map(|result| match result {
+                        view_submissions.get().map(|result| match result {
                             Ok(rows) if rows.is_empty() => view! {
                                 <p class="text-sm text-muted-foreground">
                                     {empty_text}

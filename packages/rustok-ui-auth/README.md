@@ -8,7 +8,7 @@ and browser-session metadata helpers for RusToK frontend hosts.
 - `@rustok/ui-auth/browser` is the browser adapter used by the Next storefront.
 - Rust framework-neutral auth contracts live in `crates/ui/rustok-ui-auth`.
 - Leptos signals, contexts, guards, and native server functions remain in
-  `crates/ui/leptos-auth`.
+  `crates/modules/rustok-auth/ui`.
 - Server authentication, authorization, token issuance, and tenant authority
   remain owned by the Auth and RBAC modules.
 

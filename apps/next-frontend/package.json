@@ -27,6 +27,8 @@
     "test:seo": "node --experimental-strip-types --test packages/rustok-seo/src/seo-frontend.test.mjs",
     "test:search": "node --experimental-strip-types --test packages/search/src/search-frontend.test.mjs",
     "test:e2e": "playwright test",
+    "test:e2e:fly": "playwright test --config playwright.fly.config.ts",
+    "test:e2e:fly-host": "playwright test --config playwright.fly-host.config.ts",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:install": "playwright install chromium",
     "verify:seo-runtime-fixtures": "node scripts/verify-seo-runtime-fixtures.mjs && node scripts/verify-forum-route-fixture.mjs",

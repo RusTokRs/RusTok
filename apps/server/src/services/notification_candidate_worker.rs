@@ -100,6 +100,10 @@ impl NotificationCandidateWorkerHandle {
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self._handle.await
     }
+
+    pub(crate) fn into_task(self) -> JoinHandle<()> {
+        self._handle
+    }
 }
 
 pub fn start_notification_candidate_worker_if_ready(ctx: &ServerRuntimeContext) -> Result<()> {

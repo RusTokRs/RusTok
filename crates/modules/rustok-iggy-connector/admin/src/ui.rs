@@ -1,22 +1,70 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{CONNECTOR_MODES, is_known_mode, parse_addresses};
 use crate::model::IggyConnectorForm;
 use crate::transport;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
+}
+
+/// The connector fields the operator has changed. `None` means "unchanged", so the value the
+/// backend resolved is what the form shows.
+#[derive(Clone, Debug, Default)]
+struct ConnectorEdits {
+    mode: Option<String>,
+    addresses: Option<String>,
+    username: Option<String>,
+    password_resolver: Option<String>,
+    password_key: Option<String>,
+    tls_enabled: Option<bool>,
+    tls_domain: Option<String>,
+}
+
+fn backend_addresses(current: &crate::model::IggyConnectorConfiguration) -> String {
+    current.external_addresses.join("\n")
+}
+
+fn backend_mode(current: &crate::model::IggyConnectorConfiguration) -> String {
+    if is_known_mode(&current.desired_mode) {
+        current.desired_mode.clone()
+    } else {
+        "bundled".to_string()
+    }
+}
+
+/// A `deployment` resolver is owned by the deployment, not the operator: the form has always shown
+/// the resolver menu's `env` value and an empty secret key for it, and still saves that back.
+fn backend_password_resolver(current: &crate::model::IggyConnectorConfiguration) -> String {
+    if current.password_resolver == "deployment" {
+        "env".to_string()
+    } else {
+        current.password_resolver.clone()
+    }
+}
+
+fn backend_password_key(current: &crate::model::IggyConnectorConfiguration) -> String {
+    if current.password_resolver == "deployment" {
+        String::new()
+    } else {
+        current.password_key.clone()
+    }
 }
 
 #[component]
@@ -27,40 +75,63 @@ pub fn IggyConnectorAdmin() -> impl IntoView {
     let is_ru = locale.starts_with("ru");
     let token = use_token();
     let tenant = use_tenant();
-    let configuration = local_resource(
+    let configuration = loaded_resource(
         move || (token.get(), tenant.get()),
         move |(token, tenant)| async move { transport::fetch_configuration(token, tenant).await },
     );
 
-    let (mode, set_mode) = signal("bundled".to_string());
-    let (addresses, set_addresses) = signal(String::new());
-    let (username, set_username) = signal(String::new());
-    let (password_resolver, set_password_resolver) = signal("env".to_string());
-    let (password_key, set_password_key) = signal(String::new());
-    let (tls_enabled, set_tls_enabled) = signal(false);
-    let (tls_domain, set_tls_domain) = signal(String::new());
-    let (loaded, set_loaded) = signal(false);
+    // The form is the resolved configuration with the operator's edits laid over it, not a set of
+    // cells an `Effect` fills after the first render. An `Effect` is not driven before the server
+    // produces the response, so a form built that way arrives empty.
+    let (edits, set_edits) = signal(ConnectorEdits::default());
     let (saving, set_saving) = signal(false);
     let (save_result, set_save_result) = signal(Option::<Result<String, String>>::None);
 
-    Effect::new(move |_| {
-        if loaded.get_untracked() {
-            return;
-        }
-        if let Some(Ok(current)) = configuration.get() {
-            if is_known_mode(&current.desired_mode) {
-                set_mode.set(current.desired_mode);
-            }
-            set_addresses.set(current.external_addresses.join("\n"));
-            set_username.set(current.external_username);
-            if current.password_resolver != "deployment" {
-                set_password_resolver.set(current.password_resolver);
-                set_password_key.set(current.password_key);
-            }
-            set_tls_enabled.set(current.tls_enabled);
-            set_tls_domain.set(current.tls_domain.unwrap_or_default());
-            set_loaded.set(true);
-        }
+    let resolved = move || configuration.get().and_then(Result::ok);
+    // `Copy`, not `move`: every input captures it, and a moved closure would be `FnOnce`.
+    let field = |read: fn(&ConnectorEdits) -> Option<String>,
+                 backend: fn(&crate::model::IggyConnectorConfiguration) -> String| {
+        let edited = edits.get();
+        read(&edited).or_else(|| resolved().map(|current| backend(&current)))
+    };
+
+    let mode = Signal::derive(move || {
+        let edited = edits.get();
+        edited
+            .mode
+            .clone()
+            .or_else(|| resolved().map(|current| backend_mode(&current)))
+            .unwrap_or_else(|| "bundled".to_string())
+    });
+    let addresses =
+        Signal::derive(move || field(|edits| edits.addresses.clone(), backend_addresses));
+    let username = Signal::derive(move || {
+        field(
+            |edits| edits.username.clone(),
+            |current| current.external_username.clone(),
+        )
+    });
+    let password_resolver = Signal::derive(move || {
+        field(
+            |edits| edits.password_resolver.clone(),
+            backend_password_resolver,
+        )
+        .unwrap_or_else(|| "env".to_string())
+    });
+    let password_key =
+        Signal::derive(move || field(|edits| edits.password_key.clone(), backend_password_key));
+    let tls_enabled = Signal::derive(move || {
+        let edited = edits.get();
+        edited
+            .tls_enabled
+            .or_else(|| resolved().map(|current| current.tls_enabled))
+            .unwrap_or(false)
+    });
+    let tls_domain = Signal::derive(move || {
+        field(
+            |edits| edits.tls_domain.clone(),
+            |current| current.tls_domain.clone().unwrap_or_default(),
+        )
     });
 
     let save = move |_| {
@@ -134,7 +205,9 @@ pub fn IggyConnectorAdmin() -> impl IntoView {
                                                 "rounded-xl border border-border bg-background p-4 text-left hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50"
                                             }
                                             on:click=move |_| {
-                                                set_mode.set(value.to_string());
+                                                set_edits.update(|edits| {
+                                                    edits.mode = Some(value.to_string());
+                                                });
                                                 set_save_result.set(None);
                                             }
                                         >
@@ -177,7 +250,7 @@ pub fn IggyConnectorAdmin() -> impl IntoView {
                             class="min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm"
                             placeholder="iggy.example.com:8090"
                             prop:value=move || addresses.get()
-                            on:input=move |event| set_addresses.set(event_target_value(&event))
+                            on:input=move |event| set_edits.update(|edits| edits.addresses = Some(event_target_value(&event)))
                         />
                         <span class="block text-xs text-muted-foreground">"One host:port per line."</span>
                     </label>
@@ -186,7 +259,7 @@ pub fn IggyConnectorAdmin() -> impl IntoView {
                         <input
                             class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                             prop:value=move || username.get()
-                            on:input=move |event| set_username.set(event_target_value(&event))
+                            on:input=move |event| set_edits.update(|edits| edits.username = Some(event_target_value(&event)))
                         />
                     </label>
                     <label class="space-y-2">
@@ -194,7 +267,7 @@ pub fn IggyConnectorAdmin() -> impl IntoView {
                         <select
                             class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                             prop:value=move || password_resolver.get()
-                            on:change=move |event| set_password_resolver.set(event_target_value(&event))
+                            on:change=move |event| set_edits.update(|edits| edits.password_resolver = Some(event_target_value(&event)))
                         >
                             <option value="env">"Environment variable"</option>
                             <option value="mounted_file">"Mounted file"</option>
@@ -206,7 +279,7 @@ pub fn IggyConnectorAdmin() -> impl IntoView {
                             class="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-sm"
                             placeholder="RUSTOK_IGGY_PASSWORD"
                             prop:value=move || password_key.get()
-                            on:input=move |event| set_password_key.set(event_target_value(&event))
+                            on:input=move |event| set_edits.update(|edits| edits.password_key = Some(event_target_value(&event)))
                         />
                         <span class="block text-xs text-muted-foreground">
                             "Only the reference is stored. The password value never enters the database or UI."
@@ -216,7 +289,7 @@ pub fn IggyConnectorAdmin() -> impl IntoView {
                         <input
                             type="checkbox"
                             prop:checked=move || tls_enabled.get()
-                            on:change=move |event| set_tls_enabled.set(event_target_checked(&event))
+                            on:change=move |event| set_edits.update(|edits| edits.tls_enabled = Some(event_target_checked(&event)))
                         />
                         <span class="text-sm font-medium">"Enable TLS"</span>
                     </label>
@@ -226,7 +299,7 @@ pub fn IggyConnectorAdmin() -> impl IntoView {
                             <input
                                 class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                                 prop:value=move || tls_domain.get()
-                                on:input=move |event| set_tls_domain.set(event_target_value(&event))
+                                on:input=move |event| set_edits.update(|edits| edits.tls_domain = Some(event_target_value(&event)))
                             />
                         </label>
                     </Show>

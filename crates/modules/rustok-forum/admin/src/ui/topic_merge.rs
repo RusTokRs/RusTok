@@ -1,7 +1,7 @@
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::t;
@@ -96,16 +96,26 @@ pub fn ForumTopicMergeAdmin() -> impl IntoView {
         "Choose the retained target topic.",
     );
 
-    let candidates = LocalResource::new(move || {
-        refresh_nonce.track();
-        let token = token.get();
-        let tenant = tenant.get();
-        let locale = requested_locale.clone();
-        async move { transport::fetch_topic_merge_candidates(token, tenant, locale).await }
-    });
+    // Resolved by the request: the merge panel is served from an `Async` admin route, so a
+    // `LocalResource` here leaves the reader with the `Suspense` fallback. Each closure below
+    // reads the handle by its own name, so the swap does not depend on capture order.
+    let candidates = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                requested_locale.clone(),
+                refresh_nonce.get(),
+            )
+        },
+        move |(token, tenant, locale, _generation)| async move {
+            transport::fetch_topic_merge_candidates(token, tenant, locale).await
+        },
+    );
 
+    let solution_choice_candidates = candidates;
     let solution_choice_required = Signal::derive(move || {
-        let Some(Ok(items)) = candidates.get() else {
+        let Some(Ok(items)) = solution_choice_candidates.get() else {
             return false;
         };
         let source = items.iter().find(|item| item.id == source_topic_id.get());
@@ -113,6 +123,7 @@ pub fn ForumTopicMergeAdmin() -> impl IntoView {
         matches!((source, target), (Some(source), Some(target)) if forum_topic_merge_requires_solution_choice(source, target))
     });
 
+    let submit_candidates = candidates;
     let submit = {
         let error_candidates_label = error_candidates_label.clone();
         let error_source_label = error_source_label.clone();
@@ -120,7 +131,7 @@ pub fn ForumTopicMergeAdmin() -> impl IntoView {
         move |event: SubmitEvent| {
             event.prevent_default();
             set_error.set(None);
-            let Some(Ok(items)) = candidates.get_untracked() else {
+            let Some(Ok(items)) = submit_candidates.get_untracked() else {
                 set_error.set(Some(error_candidates_label.clone()));
                 return;
             };
@@ -206,7 +217,8 @@ pub fn ForumTopicMergeAdmin() -> impl IntoView {
             <form class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]" on:submit=submit>
                 <section class="rounded-[1.75rem] border border-border bg-card p-6 shadow-sm">
                     <Suspense fallback=move || view! { <div class="h-44 animate-pulse rounded-2xl bg-muted"></div> }>
-                        {move || candidates.get().map(|result| match result {
+                        {let view_candidates = candidates;
+                        move || view_candidates.get().map(|result| match result {
                             Ok(items) if items.len() >= 2 => view! {
                                 <div class="grid gap-5 md:grid-cols-2">
                                     <label class="space-y-2 text-sm font-medium text-foreground">

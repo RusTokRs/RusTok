@@ -1,4 +1,5 @@
 use leptos::prelude::ServerFnError;
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -7,7 +8,7 @@ const INVENTORY_ADMIN_CLIENT_BOUNDARY: &str = "inventory_admin_client_transport"
 const INVENTORY_ADMIN_CLIENT_PUBLIC_MESSAGE: &str =
     "Inventory admin request could not be completed";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InventoryTransportError {
     ServerFn,
 }

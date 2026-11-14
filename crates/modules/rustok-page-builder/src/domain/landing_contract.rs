@@ -1,6 +1,9 @@
 use crate::{
     LandingPropertyValidationReport, LandingReadinessPolicy, LandingReadinessReport,
-    domain::landing_readiness::materialize_landing_structural_document, evaluate_landing_readiness,
+    domain::landing_readiness::{
+        evaluate_materialized_landing_readiness, materialize_landing_structural_document,
+    },
+    evaluate_landing_readiness,
 };
 use fly::{
     ComponentNode, ComponentObject, FlyError, FlyResult, PageHead, PageSelection, ProjectDocument,
@@ -585,11 +588,56 @@ pub fn build_static_landing_artifact_with_renderer<R>(
 where
     R: LandingRenderer + ?Sized,
 {
+    build_static_landing_artifact_impl(
+        document,
+        registries,
+        readiness_policy,
+        render_policy,
+        renderer,
+        false,
+    )
+}
+
+pub(crate) fn build_materialized_static_landing_artifact_with_renderer<R>(
+    document: &ProjectDocument,
+    registries: &RegistrySet,
+    readiness_policy: LandingReadinessPolicy,
+    render_policy: &RenderPolicy,
+    renderer: &R,
+) -> FlyResult<StaticLandingBuildResult>
+where
+    R: LandingRenderer + ?Sized,
+{
+    build_static_landing_artifact_impl(
+        document,
+        registries,
+        readiness_policy,
+        render_policy,
+        renderer,
+        true,
+    )
+}
+
+fn build_static_landing_artifact_impl<R>(
+    document: &ProjectDocument,
+    registries: &RegistrySet,
+    readiness_policy: LandingReadinessPolicy,
+    render_policy: &RenderPolicy,
+    renderer: &R,
+    already_materialized: bool,
+) -> FlyResult<StaticLandingBuildResult>
+where
+    R: LandingRenderer + ?Sized,
+{
     let registry = ComponentRegistryManifest::for_document(document, registries);
     let registry_compatibility = registry.compatibility_with(registries);
     let landing_sections = LandingSectionValidationReport::for_document(document)?;
     let landing_properties = LandingPropertyValidationReport::for_document(document);
-    let readiness = evaluate_landing_readiness(document, readiness_policy);
+    let readiness = if already_materialized {
+        evaluate_materialized_landing_readiness(document, readiness_policy)
+    } else {
+        evaluate_landing_readiness(document, readiness_policy)
+    };
     let ready = readiness.ready
         && registry_compatibility.compatible
         && landing_sections.valid
@@ -617,10 +665,17 @@ where
         &render_policy_hash,
     ))?;
 
-    let mut structural_issues = Vec::new();
-    let render_document = materialize_landing_structural_document(document, &mut structural_issues);
+    let render_document = if already_materialized {
+        std::borrow::Cow::Borrowed(document)
+    } else {
+        let mut structural_issues = Vec::new();
+        std::borrow::Cow::Owned(materialize_landing_structural_document(
+            document,
+            &mut structural_issues,
+        ))
+    };
     let mut pages = Vec::with_capacity(render_document.project.pages.len());
-    for page_index in 0..render_document.project.pages.len() {
+    for (page_index, _) in render_document.project.pages.iter().enumerate() {
         let rendered = renderer.render_page(&render_document, page_index, render_policy)?;
         if rendered.page_index != page_index {
             return Err(FlyError::Encode(format!(
@@ -811,6 +866,54 @@ mod tests {
         assert!(first.pages[0].document_html.contains("<title>Home</title>"));
         assert!(first.pages[0].body_html.contains("Stable landing"));
         first.verify_integrity().expect("valid artifact");
+    }
+
+    #[test]
+    fn static_artifact_keeps_sections_on_their_own_pages() {
+        let project = GrapesJsCodec::decode_value(json!({
+            "pages": [{
+                "id": "home",
+                "flyPageMeta": { "title": "Home", "description": "Home page", "slug": "home" },
+                "component": {
+                    "id": "home-root", "type": "wrapper",
+                    "components": [{ "id": "home-title", "type": "heading", "tagName": "h1", "content": "Home" }]
+                }
+            }, {
+                "id": "about",
+                "flyPageMeta": { "title": "About", "description": "About page", "slug": "about" },
+                "component": {
+                    "id": "about-root", "type": "wrapper",
+                    "components": [builtin_section(LandingSectionKind::Hero)]
+                }
+            }]
+        }))
+        .expect("project");
+        let result = build_static_landing_artifact(
+            &project,
+            &RegistrySet::with_builtins(),
+            LandingReadinessPolicy::default(),
+            &RenderPolicy::default(),
+        )
+        .expect("build");
+        assert!(result.ready, "{:?}", result.readiness.issues);
+        let artifact = result.artifact.expect("artifact");
+        assert_eq!(artifact.pages.len(), 2);
+        for (index, page) in artifact.pages.iter().enumerate() {
+            assert_eq!(page.page_index, index);
+            assert_eq!(
+                page.landing_sections,
+                result.landing_sections.pages[index].sections
+            );
+        }
+        assert_eq!(artifact.pages[0].page_id.as_deref(), Some("home"));
+        assert!(artifact.pages[0].landing_sections.is_empty());
+        assert_eq!(artifact.pages[1].page_id.as_deref(), Some("about"));
+        assert_eq!(artifact.pages[1].landing_sections.len(), 1);
+        assert_eq!(
+            artifact.pages[1].landing_sections[0].kind,
+            LandingSectionKind::Hero
+        );
+        artifact.verify_integrity().expect("valid artifact");
     }
 
     #[derive(Debug, Clone, Copy)]

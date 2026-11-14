@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui::{Badge, BadgeVariant};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 
 use crate::i18n::{auth_transport_error_message, t};
@@ -47,12 +47,14 @@ pub fn UserInvites() -> impl IntoView {
     let tenant = use_tenant();
 
     let (refresh_counter, set_refresh_counter) = signal(0u32);
-    let invites_resource = LocalResource::new(move || {
-        let token_value = token.get();
-        let tenant_value = tenant.get();
-        let _ = refresh_counter.get();
-        async move { fetch_user_invites(token_value, tenant_value).await }
-    });
+    // Resolved by the request: the auth pages mount inside the `Async` admin layout, so a
+    // `LocalResource` here leaves the reader with the `Suspense` fallback.
+    let invites_resource = Resource::new(
+        move || (token.get(), tenant.get(), refresh_counter.get()),
+        move |(token_value, tenant_value, _generation)| async move {
+            fetch_user_invites(token_value, tenant_value).await
+        },
+    );
 
     let (show_invite_modal, set_show_invite_modal) = signal(false);
     let (invite_email, set_invite_email) = signal(String::new());
@@ -159,7 +161,8 @@ pub fn UserInvites() -> impl IntoView {
             <Suspense fallback=move || {
                 view! { <div class="h-10 animate-pulse rounded-lg bg-muted"></div> }
             }>
-                {move || match invites_resource.get() {
+                {let view_invites = invites_resource;
+                move || match view_invites.get() {
                     None => {
                         view! { <div class="h-10 animate-pulse rounded-lg bg-muted"></div> }
                             .into_any()

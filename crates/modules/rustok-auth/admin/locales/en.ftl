@@ -155,6 +155,7 @@ security-sessionIp = IP
 security-sessionsSubtitle = Review devices that are currently signed in.
 security-sessionsTitle = Active sessions
 security-signOutAll = Sign out all sessions
+security-signOutAllFailed = Sign-out could not be confirmed. Check active sessions or retry from the account menu.
 security-subtitle = Monitor active sessions and keep credentials secure.
 security-title = Security & sessions
 users-access-hint = REST /api/auth/me requires a Bearer token. GraphQL users needs users:list permission.

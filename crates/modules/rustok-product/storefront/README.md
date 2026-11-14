@@ -97,3 +97,11 @@ The buyer source now selects real axis tuples, binds SKU/quantity to fresh autho
 and hands exact ordinary context to Commerce/Cart. The historical pending description above is
 superseded at the source level, not by runtime certification. See the [current Product plan](../docs/implementation-plan.md#buyer-source-implementation-and-handoff-2026-10-30)
 for contracts, bounds, recovery semantics, build instructions and unexecuted release gates.
+
+**Open verification blocker:** the host now injects the same reactive Cart capability/controller
+into Product and the drawer in source; a detached buyer remains read-only. Product quote and add
+cycles are fenced against input, auth, Cart policy and route changes, while server admission remains
+independent. The host returns the effective selection URL, retaining the current Cart reference and
+the selected handle (including catalog auto-selection) rather than reusing a stale snapshot. Locked
+native/WASM builds and mounted capability, actor, navigation, in-flight and
+real-service evidence are still required before release. See the [shared storefront continuation](../../../../docs/modules/page-builder-backlog.md#storefront-and-identity-continuation-2026-11-13--open).

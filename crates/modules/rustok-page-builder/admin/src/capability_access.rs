@@ -168,6 +168,10 @@ fn intent_requirements(
         // publish capability stays reserved for the real publication
         // flow, which the editor does not trigger via `save`.
         BrowserIntentKind::Save => vec![EditorCapability::Edit],
+        // A preview renders the draft the caller is already editing, so it is an authoring
+        // concern like `save`: it needs the edit capability and grants nothing beyond it. It is
+        // deliberately not `Publish` — a preview never publishes and never advances a revision.
+        BrowserIntentKind::RenderServerPreview => vec![EditorCapability::Edit],
         BrowserIntentKind::BeginPaletteDrag
         | BrowserIntentKind::BeginSelectedMove
         | BrowserIntentKind::Drop

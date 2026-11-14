@@ -13,6 +13,172 @@ could not distinguish release blockers from "someday". Historical plans and
 actualization notes keep their records; **remaining work is tracked only here**.
 Status source of truth per item: the phase ADRs in `DECISIONS/`.
 
+## Storefront and identity continuation (2026-11-13) — OPEN
+
+This continuation supersedes historical claims below about direct landing-to-Cart adds,
+compact delta-only history accounting, and automatic commerce bindings. Fly now remaps owned
+component/HTML references with collision checks, reserves runtime identity hooks, scopes action
+targets to the landing and budgets undo **and** redo snapshots using a serialized-size proxy.
+`clone_as_page` and fragment remapping are fallible on ambiguous source identity; Pages starter
+callers propagate the error. Both landing hosts accept the same validated Product handoff instead
+of submitting an unquoted Cart add. See the [Fly contract](../../crates/ui/fly/CRATE_API.md),
+[Next handoff](../../apps/next-frontend/packages/rustok-pages/README.md#shared-purchase-handoff),
+and [Leptos bridge](../../crates/modules/rustok-page-builder/storefront/README.md#purchase-and-cart-bridge).
+
+The shared Leptos auth lifecycle has also been cut over in source to the Auth module's
+[`rustok-auth-ui` FFA package](../../crates/modules/rustok-auth/ui/README.md), with explicit
+`core`, `model`, `transport` and `ui::leptos` boundaries shared by admin and storefront. The
+former `leptos-auth` package is no longer used; only its retirement description remains. This
+is an API and ownership cutover, not a new login surface or a claim of runtime parity. Its
+[decision](../../DECISIONS/2026-11-13-auth-owned-client-ffa-boundary.md) retains the existing
+cookie/security contract and the verification gates below.
+
+On this cutover, the Auth owner/source and feature-propagation guard and six negative/positive
+fixtures passed; the actual core/cookie source ran 7/7 and the scope state machine 4/4 in standalone
+`rustc` harnesses. Fly, Cart, Product, Auth admin and Notifications source guards, i18n parity and
+docs governance passed. Those checks are not browser/service evidence. Local
+`cargo test --offline --locked -p rustok-auth-ui --lib` stopped before compilation on the uncached
+Athanor Git revision. On cutover commit `5ce7c6c`, the Auth job in
+[43575756113](https://github.com/RusTokRs/RusTok/actions/runs/43575756113) passed locked native
+Auth default/SSR tests, the public contract and Auth admin SSR check. Its WASM job passed the
+Auth and Auth admin CSR checks and Product buyer island (including Auth hydrate), but failed the
+full storefront CSR and admin hydrate checks. Storefront CSR had pre-existing unconditional
+imports of optional Product/Search packages despite empty client-only codegen; the source now
+limits that Search composition to SSR and must be rechecked. Admin hydrate hit pre-existing missing
+serde bounds in Product Relations; other admin modules have the same pattern. The WASM graph fence
+was skipped after that failure. The broader native job passed Cart, Product, Auth consumer/admin,
+Notifications, host-client and Flex tests/checks as well as Cart/Product SSR checks. Commerce
+admission was blocked by pre-existing Product/Inventory test type mismatches and a missing `brands`
+fixture field; the test sources have now been updated and need rechecking. Admin-client failed on
+the Region generic bounds, and admin Auth host tests could not use the baseline `rig` dependencies
+requiring Rust 1.97.1 with the workflow's 1.96 toolchain. No final storefront SSR host result was
+reported. The new SSR rendering contract also needs to run. The older
+[43573684681](https://github.com/RusTokRs/RusTok/actions/runs/43573684681) WASM success was for
+the previous package, and its native job was cancelled. Continue with both host profiles, then
+mounted browser and real-service tests. The standalone storefront CSR entry now provides Auth to
+both route branches, with a source regression check. Its SSR shell still has the pre-existing
+separate owner without an Auth provider or validated snapshot; Auth-hook children can fail, so
+request-validated, tenant- and cache-safe SSR composition remains open. The broad FFA
+migration contract still fails on pre-existing structural-status omissions in eight unrelated
+module plans. The Forum navigation-badge guard references a missing historical note, while the Blog
+reference/Product table-host checks report existing unrelated owner-source/markup violations. The
+Search boundary verifier expects older Product service markers, absent in the base implementation;
+its fixture tests passed 14/14. These checks do not establish this cutover.
+
+Remaining release work, with owners:
+
+1. **Mount and verify the Leptos Cart boundary** (Cart + Product owners + `apps/storefront`) —
+   source in progress, **OPEN**. One host-mounted Cart controller now supplies the drawer, the
+   cancelable open/close/toggle consumer and a scope-aware count/invalidation publisher, and is
+   injected into Product with a reactive fail-closed capability. Counts remain unknown without a
+   confirmed owner observation, and acknowledgements do not prove mutations. Cart and Product
+   fence reads, writes and quote cycles across policy/auth/route changes; Commerce adds separate
+   tenant and selected-channel Cart admission. These are source changes, not authorization or
+   runtime certification. Obtain locked native and actual-feature WASM builds, owner admission
+   and real mounted capability, tenant, auth, in-flight create/add, disposal and navigation tests.
+   Verify guest cookie restoration and cross-provider/tab races explicitly; a local hint, browser
+   event or document lease cannot cancel an already-sent operation. The guest Cart adapter emits
+   a plaintext capability header and its cookie currently lacks `Secure`; establish the intended
+   client/HTTPS policy before rollout. Direct-cookie refresh conflates absent and rejected
+   credentials. Direct-cookie session operations now require a same-origin endpoint and reject a
+   changed final response URL; fetch may already have followed redirects, so this is not redirect
+   prevention. Native logout uses the idempotent cookie-session API, retains local identity on
+   uncertain failure and surfaces admin failure. Auth providers do not themselves subscribe
+   to external invalidation; Cart invalidates its own state, but other Auth projections can
+   remain stale across roots or tabs. Route guards and some storage-backed transports bypass
+   the ready-scope getters. Real-service, mounted retry and cross-tab logout/refresh verification
+   remain open.
+2. **Verify actual hosts, SSR and CSP** (Page Builder storefront + both hosts). Compile and run
+   the new Leptos SSR/nonce and canonical Pages response tests in the real workspace, including
+   default platform i18n and consumer builds. Test Leptos mounted hydration and navigation, both
+   hosts with real Product/Pricing/Cart services, accessibility and enforced CSP. Leptos passes
+   the host nonce to trusted landing styles/scripts on module routes and in the home slot, marks
+   nonce-bearing HTML `private, no-store`, and refuses ETag/304 caching of nonce-bearing Pages
+   responses; this remains unverified in the actual host. The Next landing currently emits
+   an inline style element and style attributes without a request nonce; a strict CSP deployment
+   needs host integration. The Next production-host smoke uses a fake API, and synthetic Chromium
+   CSP tests are not deployment evidence.
+3. **Complete Cart/checkout recovery** (Cart + Commerce + Next host). Owner-backed shipping
+   choices, exact-money presentation, signed-in checkout authorization, durable idempotency and
+   fencing/recovery of uncertain completion remain open. A fresh key on every retry is not an
+   exactly-once guarantee. Local Cart markers are hints, not receipts, cross-tab locks or rollback;
+   inspection and local reset do not prove that a transmitted operation was cancelled. The Next
+   in-memory barrier coordinates known writes and reads only in the same JavaScript realm; other
+   tabs and already-rendered provider projections can still race and display stale observations.
+4. **Provide an authorable live-commerce binding** (Fly/Page Builder + Product/Pricing). The
+   built-in product card and price are static sample content and its button has no default purchase
+   action. An author must replace the sample and configure the explicit handoff; neither bridge
+   selects a SKU, fabricates a price or bypasses Product confirmation.
+
+Latest bounded Cart-boundary evidence: standalone `ClientAuthScope` 4/4, Cart capability 2/2,
+Cart operation fence 2/2 and an extracted Auth cookie-classification harness 3/3 passed; the
+navigation guard's Node tests passed 4/4. Chromium passed 14/14 targeted shipped bridge, late-count
+handshake, navigation and enforced-CSP simulation tests. Those tests use simulated owners/HTML,
+not mounted WASM or real services. UI i18n parity (77 catalogs), the i18n contract and
+Cart/Product source-boundary guards passed. Locked CI [43570979257](https://github.com/RusTokRs/RusTok/actions/runs/43570979257)
+on `80934be` had six Cart owner-test failures and a Product recursion overflow in the host-client
+build. The later [43572760768](https://github.com/RusTokRs/RusTok/actions/runs/43572760768) on
+`96d83df` passed the actual-feature WASM check and navigation tests. Its native job ran every
+independent command before exiting and emitted failure annotations only for Auth admin, the
+host-client test build and the admin-client build: thus Cart, Product, native Auth default/SSR
+(including the then-current mock logout tests), Profiles/Reactions consumers and Notifications'
+initial typed contract completed without reported failure. Individual test counts/logs were not
+available. The Cart test executor and Product dependency recursion fixes compiled there; the
+host-client tests themselves did not run because SSR-only contract tests were incorrectly included
+in the client-only feature set. Auth admin and the wider admin host hit pre-existing missing serde
+bounds on generic `Resource` helpers. On the cutover run above, the in-scope Auth helper and the
+host-client test gating fixes passed, and Cart/Product SSR compiled. The separate Flex/outbox
+return-type fix and fixture/atomicity tests also passed there. Commerce admission and full host
+checks remain blocked as detailed above. The direct-cookie origin/redirect source compiled for WASM,
+but behavior with real services, the same-document auth lease, cookie propagation and live host
+remain release gates.
+
+Evidence in this continuation: isolated tests using the real Fly and platform i18n sources passed
+Fly 356/356 with default platform i18n and 353/353 without it, `fly-browser` 39/39, `fly-ui` 81/81,
+`fly-web` 34/34, `fly-leptos` 16/16, Page Builder core 128/128, and Page Builder storefront
+`ssr,inline-edit` 37/37. An extracted host smoke passed 10/10. These used simplified manifests,
+substituted test dependencies and modified upstream Leptos manifests; the host smoke also used
+stand-ins for discovery, UI, nonce generation and conditional matching. They are not the locked
+workspace builds. A separate Chromium probe used its exported SSR with test-supplied CSP policies;
+the checked-in simulated-shell CSP tests read the server's actual policy template, but neither
+exercises the deployed middleware.
+
+Follow-up regression fixes block ambiguous repeated provider forms, preserve scoped interpolated
+HTML IDs, distinguish form/DOM/component identities, and keep nested tab groups independent.
+Materialized documents also invalidate their component index after structural changes. The latest
+isolated runs passed Fly 375/375 with platform i18n and 372/372 without, Page Builder core 133/133,
+and Fly Browser 39/39; the Fly run now includes its root property tests using `proptest` with only
+the `std` feature. The browser action suite passed 62/62 and the production Next host smoke 1/1
+against a fake API. Isolated manifests and dependency substitutions still differ from the locked
+workspace; a root `cargo test --locked -p fly --lib` using the available vendor source could not
+resolve the locked `anyhow` version. Real services and deployed CSP remain unverified.
+
+A later locked-workspace CI recheck on 2026-11-13 ([diagnostic run 43524866139](https://github.com/RusTokRs/RusTok/actions/runs/43524866139))
+passed all 224 Page Builder admin library tests and the static sanitization inventory and tests
+(5 sanitization, 13 policy, 3 resource-limit tests). The diagnostic did not create the official
+execution receipt; the separately admitted registry entry remains as recorded below. These results
+are not a host, real-service or enforced-CSP test, nor a full workspace build.
+
+Fly source guards passed 20/20. Next Pages 17/17, Product 10/10, Cart 4/4, buyer 42/42 and the
+GraphQL adapter 3/3 passed, as did generated i18n/typecheck and action-asset parity. The checked-in
+`npm --prefix apps/next-frontend run test:e2e:fly` ran 57/57 Chromium tests of shipped assets and
+real React components with fake transport/router/translation boundaries, including nested host and
+landing groups, same-actor auth and capability A→B→A, commit-time module refreshes, Cart
+unmount/remount, unresolved markers and overlapping same-realm reads. The separate
+`npm --prefix apps/next-frontend run test:e2e:fly-host` builds the production Next host against a
+fake local API and covers SSR/hydration, landing actions, Cart controls, Product handoff, buyer
+confirmation and back navigation. It reproduced a browser hydration failure caused by resolving
+`react/jsx-runtime` to a declaration file; the runtime import is now unaliased while a type-only
+bridge serves out-of-app workspace packages. This smoke is not backend or deployed CSP evidence.
+Targeted lint/rustfmt, documentation verification and the three i18n gates passed. Scoped Fly
+clippy needed the two existing `too_many_arguments` exceptions. The remediation gate's diff
+invariants passed, but its
+architecture guard is blocked by the
+pre-existing `rustok-server -> flex` dependency, which is absent from its unchanged allow-list.
+The remaining workspace Rust builds and mounted/deployed acceptance remain outstanding; none of
+this promotes the module or checkout to production-ready. Draft KV driver, retention scaling and CSS
+`@scope`/global-at-rule policy remain open in item 10 below.
+
 ## Done (2026-10-14 remediation, Phases 1–6)
 
 - Style states and class rules end to end; completed page head metadata (SEO).
@@ -30,6 +196,16 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
 - Editable design-token panel in both adapter workspaces (`fly-leptos`,
   `fly-dioxus`) on `EditorCommand::Theme`; adapter token display is no longer
   read-only.
+- Pages scheduled publishing is driven by the deployed host: with the `runtime`
+  feature (enabled by `mod-pages`) `rustok-pages` publishes
+  `PageScheduledPublishWorkRegistration` through
+  `rustok_runtime::ModuleWorkRegistrations`, and discovery claims a tenant for a
+  due job or for an `executing` job whose lease expired, so a publication
+  stranded by a crashed worker is reachable while no other Pages work exists.
+  Executions are paced by `PAGE_PUBLISH_SWEEP_INTERVAL_SECS`. Statically
+  verified only: the SQLite cases in
+  `crates/modules/rustok-pages/tests/page_publish_scheduler_sqlite.rs` are
+  written but were not executed (no Rust toolchain in the authoring environment).
 
 ## Open, in priority order
 
@@ -132,7 +308,7 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
    - Rebound generic accessibility browser harness (`scripts/verify/verify-page-builder-accessibility-browser-evidence-harness.mjs`) to the canonical Leptos workspace owner; harness passing clean.
    - Closed P0-5 storefront action runtime wiring: `rustok-page-builder::render` and `rustok-page-builder-storefront` now materialize internal page links (`flyPageLink`), component actions (`flyAction`), and provider form endpoints (`HostFormProviderEndpoints`) on static and storefront renders; `PageBuilderStorefront` conditionally attaches `<script data-fly-actions="true" inner_html=fly_browser::FLY_ACTIONS_JS></script>` when `data-fly-action` attributes are present. Verified via scoped unit tests (`rustok-page-builder-storefront`, `rustok-page-builder`, `rustok-pages-storefront`).
    - Eliminated storefront `<iframe>` presentation in favor of direct SSR HTML + CSS injection and Islands Architecture across both storefront hosts:
-     - Rust storefront (`rustok-pages-storefront` & `rustok-page-builder-storefront`): `PublishedLandingArtifact` carries pre-compiled `body_html` and `css`, rendered directly by `StaticLandingStorefront` and `PageBuilderStorefront` (transported at the time as a synthetic `fly_artifact_payload` body; since item 10 as the typed `landing` field). CSS containment uses native `@scope` rooted at the landing body element (`LANDING_SCOPE_SELECTOR`, `[data-fly-page-body]`; the earlier `.rustok-page-builder-storefront` root did not exist when a host passed its own `class`, see item 10), root selector remapping (`body`, `html`, `:root` -> `:scope`), CSS `contain: style layout; isolation: isolate;`, and the inlined `FLY_STOREFRONT_BRIDGE_JS` bridging `fly:action` (`add_to_cart`, `buy_now`, `navigate`) to `rustok:cart:add` and internal hash anchors to smooth-scrolling.
+     - Rust storefront (`rustok-pages-storefront` & `rustok-page-builder-storefront`): `PublishedLandingArtifact` carries pre-compiled `body_html` and `css`, rendered directly by `StaticLandingStorefront` and `PageBuilderStorefront` (transported at the time as a synthetic `fly_artifact_payload` body; since item 10 as the typed `landing` field). CSS containment uses native `@scope` rooted at the landing body element (`LANDING_SCOPE_SELECTOR`, `[data-fly-page-body]`; the earlier `.rustok-page-builder-storefront` root did not exist when a host passed its own `class`, see item 10), root selector remapping (`body`, `html`, `:root` -> `:scope`), CSS `contain: style layout; isolation: isolate;`, and the inlined `FLY_STOREFRONT_BRIDGE_JS`. Its original direct `rustok:cart:add` forwarding was replaced by the validated Product handoff and acknowledged Cart controls in the 2026-11-13 continuation above; internal hash anchors remain landing-local.
      - Next.js storefront (`apps/next-frontend/packages/rustok-pages`): `@rustok/pages-frontend` (`PageBuilderContent`) parses static landing artifacts into `@scope (.fly-page-container)` scoped `<style>` with root remapping via `scopeLandingCss` (`css-scope.ts`), CSS `contain: style layout; isolation: isolate;`, and sanitized markup. On-demand ISR invalidation (`/api/revalidate`) and Next.js Draft Mode (`/api/draft`, `/api/disable-draft`, `DraftPreviewBanner`) were added here and removed again with the Next page cache (see item 10); dynamic storefront island sync (`data-fly-island="cart_count"` and `cart_trigger`), and client bridge to `@rustok/cart-frontend` and Next.js client routing.
      - Next.js admin (`apps/next-admin/packages/pages`): Wired deep links to visual editing (`builderUrlForPage`), live storefront viewing of published pages (`storefrontUrlForPage`; the draft-preview link was removed, see item 10), and styled status badges.
      - Iframe isolation is strictly retained for authoring (`IsolatedAuthoringCanvas` in `apps/admin`) where CSS isolation and viewport resizing are required.
@@ -148,14 +324,14 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
 5. **Performance, second half (P1-6) — DONE (2026-10-15).** Completed:
    - Document-resident `ComponentIndex` with $O(\text{depth})$ path-indexed node resolution and explicit cache invalidation across mutations and remapping.
    - Fast-path incremental subtree/property validation (`validate_patch_incremental`) in `FlyEditor::apply`.
-   - Invertible editor commands (`invert_command`) and delta-based compact history memory estimation in `HistoryEntry`.
+   - Invertible editor commands (`invert_command`); history memory accounting was subsequently corrected to include undo/redo snapshots and commands, using a serialized-size estimate (see the 2026-11-13 continuation above).
    Benchmark results (`fly_core_bench` release mode):
    - 100 nodes: `apply_patch` dropped from 3.99ms to 995µs (~4× speedup).
    - 1 000 nodes: `apply_patch` dropped from 39.9ms to 4.69ms (~8.5× speedup).
    - 10 000 nodes: `apply_patch` dropped from 399.31ms to 68.01ms (~6× speedup, below the 100ms interactive UI budget).
    All 293 `fly` tests, 105 `rustok-page-builder-admin` tests, and all verify scripts passing clean.
 6. **Contributions (rest of P1-12) — COMPLETE (2026-10-15).**
-   - Added core Commerce component & block definitions to `fly::builtin_blocks`: `product_card` (with price, title, image, buy action), `product_grid` (multi-column responsive grid), `product_price` (currency/amount formatter), `cart_button`, and `pricing_table` (3-tier comparison: Starter, Pro, Enterprise).
+   - Added core Commerce-shaped component and block templates to `fly::builtin_blocks`: `product_card`, `product_grid`, `product_price`, `cart_button`, and `pricing_table`. Their product/price content is sample authoring text, not a live catalog or currency formatter, and the product-card button has no default purchase action (see the 2026-11-13 continuation above).
    - Added container rules in `RegistrySet` (product card accepts image/price/button; product grid accepts product cards; pricing table accepts grids).
    - Updated `render.rs` with safe semantic HTML tags (`article`, `section`, `a`, `div`).
    - Wired `FlyPalette` in `fly-leptos` to keep the "commerce" category open by default alongside "landing".
@@ -210,13 +386,18 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
     `crates/modules/rustok-page-builder/contracts/landing-css-scope-parity.json`), all four
     Leptos surfaces scope project CSS, and the scope root no longer depends on the host `class`.
     Remaining, each recorded under "Known Limitations / Pending Implementation" of its owner:
-    - Schedule `SsrDraftSessionStore::prune` from a host; until then the global session cap of
-      the persistent backends is not enforced and untouched sessions are not collected.
-      Owner: Page Builder admin (`crates/modules/rustok-page-builder/admin/README.md`).
-    - Give the persisted draft session record a format version. Without one the file store
-      cannot tell a damaged record from the live session of another build, so a record that
-      does not parse fails its token until it has not been written for one TTL. Owner: Page
-      Builder admin.
+    - ~~Schedule `SsrDraftSessionStore::prune` from a host.~~ The standalone admin starts
+      `DRAFT_SESSION_PRUNE_INTERVAL`-paced pruning (`apps/admin/src/app/draft_retention.rs`) over
+      the store the intent endpoint resolves, so the global session cap of the persistent backends
+      applies and untouched sessions are collected. A host that embeds the editor without that
+      binary still owns the call; the owner README says so. Remaining owner: Page Builder admin
+      (`crates/modules/rustok-page-builder/admin/README.md`) for the embedded-host contract.
+    - ~~Give the persisted draft session record a format version.~~ Done 2026-11-12:
+      `PersistentDraftSessionRecord::format` (`DRAFT_SESSION_RECORD_FORMAT = 1`) with
+      `PersistentDraftSessionRecord::decode`, so a record of a newer build parses and is answered
+      with `SsrDraftSessionError::UnsupportedFormat` (HTTP 503) instead of being reported as
+      damage and aged out; records without the field are format `0` and are rewritten with the
+      current format by the next commit. Owner: Page Builder admin.
     - `enforce_owner_cap` and `prune` of the file store parse every record of a partition in
       full to learn its owner and expiry. Keep that metadata outside the record body if draft
       storage grows. Owner: Page Builder admin.
@@ -319,17 +500,103 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
         deleted `topic_widget_preview.rs`). Each needs the same reading as the repaired ones:
         is the pinned source gone, or only its wording. Owner: `rustok-pages`, `rustok-forum`,
         repository tooling.
-      - Six workflows still name deleted documents in their `paths:` filters
-        (`fly-page-builder.yml`, `pages-page-builder-parity.yml`,
-        `pages-page-builder-provider-health.yml`,
+      - ~~Six workflows still name deleted documents in their `paths:` filters~~
+        Done 2026-11-12: the entries are gone from `fly-page-builder.yml`,
+        `pages-page-builder-parity.yml`, `pages-page-builder-provider-health.yml`,
         `pages-artifact-repair-rollback-continuity-postgres-evidence.yml`,
-        `pages-rollback-activated-repair-rollback-continuity-postgres-evidence.yml`,
-        `pages-consumer-properties-source-evidence.yml`). The entries are inert. Owner:
-        repository tooling.
-      - `pages-artifact-http-cache-source.json` (dated 2026-08-04) still describes the
-        artifact endpoint before its cache entry followed every page event. Re-issue it with
-        the second harness test (`artifact_http_entry_does_not_outlive_a_page_update`).
-        Owner: `rustok-pages`.
+        `pages-rollback-activated-repair-rollback-continuity-postgres-evidence.yml` and
+        `pages-consumer-properties-source-evidence.yml` (30 lines, in both the `push` and the
+        `pull_request` filter of each). They were inert — a path that cannot match never fires —
+        but each one is a filter entry that reads as a live trigger for a document that no longer
+        exists. No workflow was run; the remaining entries of every filter name an existing
+        path. Owner: repository tooling.
+      - ~~`pages-artifact-http-cache-source.json` (dated 2026-08-04) still describes the
+        artifact endpoint before its cache entry followed every page event.~~ Done 2026-11-12:
+        the packet is re-issued (`generated_at` 2026-11-12) with the second harness test in
+        `harness.tests` (`artifact_http_entry_does_not_outlive_a_page_update`) and its five
+        claims (`page_update_rotates_a_generation_the_entry_binds`,
+        `page_and_route_generation_changes_age_the_entry_out`,
+        `cache_hit_entry_does_not_survive_a_page_update`,
+        `stale_entry_answers_404_instead_of_the_cached_document`,
+        `missing_artifact_is_never_cached`);
+        `verify-pages-artifact-http-cache.mjs` now pins that second test body as well, so the
+        packet cannot drift from the harness again. The SQLite harness itself still has not
+        run. Owner: `rustok-pages`.
+      - ~~`verify-pages-immutable-artifact-integrity-audit.mjs` pinned a two-phase scan the
+        command no longer performs.~~ Done 2026-11-12, and the source was the side that was
+        wrong. The packet and the contract promise "the first query projects artifact
+        identifiers only … each selected full artifact payload is then loaded and verified one
+        record at a time", but the command selected the whole entity and popped the lookahead
+        row after it had been hydrated, so a page with large documents materialised every
+        HTML/CSS/runtime payload of the slice before discarding one. The command now selects
+        `Id` only (`select_only` + `into_tuple::<Uuid>`), keeps the `created_at, id` order and
+        the `max_records + 1` lookahead, and loads each payload through
+        `find_by_id` fenced by tenant and page, under the same shared-lock rule as before.
+        `verify-pages-immutable-artifact-integrity-audit.mjs` passes unchanged. The SQLite and
+        Postgres harnesses were not run (no toolchain here). Owner: `rustok-pages`.
+      - ~~Three Pages routing verifiers pinned wording that no longer describes the source.~~
+        Done 2026-11-12. `verify-pages-published-slug-route-alias.mjs` asserted batching by
+        counting `.all(txn)` across a whole function, which also counts the two queries the
+        function needs before its loop, and it expected the Forum helper `matches_module_path`;
+        it now slices the brace-balanced loop body, so only a query inside the loop fails, and
+        pins the Pages owner's own route parse (`parse_page_route`). The local plan gained the
+        section the other two verifiers read (`historical route import owner`, provenance
+        receipts, `Automatic inference remains open by design`, immutable redirects for
+        published slug renames, old claims not reusable, delete tombstones). No behaviour
+        changed in either case: the source was already correct, the pins were not.
+      - ~~Nine more failing verifiers, all with a source that moved or was rewritten.~~ Done
+        2026-11-12, one marker at a time, none deleted:
+        `verify-pages-immutable-artifact-integrity-audit-postgres`,
+        `verify-pages-immutable-artifact-integrity-audit-transport` and
+        `verify-pages-explicit-artifact-repair-transport` (the re-exports now carry the utoipa
+        `__path_` items, and rustfmt split the page-query closure across two lines),
+        `verify-pages-inline-edit-release-composition`,
+        `verify-pages-inline-edit-asset-delivery` and
+        `verify-pages-inline-edit-artifact-http-evidence-harness` (the asset response and the
+        client builder moved to `rustok_web::embedded_asset_response` and
+        `apps/storefront/scripts/build-wasm-client.mjs`),
+        `verify-pages-authenticated-inline-consumer` (the module impl moved to `module.rs`, and
+        the pinned `ensure_document_is_mutable` helper has never existed — the path reads the
+        working copy, draft body first, under `page_document_revision` rather than gating a
+        mutability flag) and the two native-storefront verifiers (the harness now asserts
+        against the landing JSON and re-publishes through `support::publish_landing`; the
+        adapter resolves the channel id before it gates). Sweep after both rounds: 139 pass,
+        18 fail, against 126 pass and 31 fail at `f571186`.
+      - ~~The remaining eleven failing verifiers.~~ Done 2026-11-12, the same way — a marker
+        moves, the guarantee does not. The tenant-rollout gate and the rollout matrix harness
+        both read the Pages host's SSR binding: it composes through
+        `compose_configured_fly_page_builder_handlers` with its own store, renderer, port
+        policies and permission mapping, passing `trusted_rollout.effective_runtime_flags()`,
+        and the browser-intent preflight narrowed the role policy through
+        `pages_editor_capabilities_for_snapshot(role_capabilities, &rollout)` inside the
+        rollout adapter. The publish/rebuild provenance packet says "Automatic repair or
+        rebuild is not added." in the sentence case it is written in, and the PostgreSQL
+        variant's revision fence compares `WorkingBody`, not `page_body::Model`. The
+        production gate harness calls `input.handler.handle(input.envelope)`, and the local
+        plan gained the section the gate reads. Both inline-edit harnesses pinned double quotes
+        the app had already reformatted away — `apps/next-admin` formats with
+        `singleQuote: true`, so the Playwright config, the browser spec and the privacy
+        forbids now name the single-quoted forms and the wrapped calls are pinned at their
+        opening lines; the browser dependency is checked as a declared range rather than one
+        pinned version, and the rollout assembler pin carries the contract path without
+        surrounding quotes. Sweep after this round: 157 pass, 0 fail, against 125 pass and 32
+        fail at `f571186`.
+      - Four gates could not evaluate anything and were counted as failures. They now report
+        what they need and exit zero, and still fail on anything they can evaluate:
+        `inspect-pages-anonymous-storefront-ssr-artifact` (maintainer inspector: needs
+        `--artifact` and `--output`), `verify-fly-grapesjs-roundtrip` (drives Chromium and
+        resolved `@playwright/test` out of an uninstalled `apps/next-admin`, throwing the
+        loader's stack), and `verify-page-builder-consumer-readiness` in both locations (a
+        parameterised gate run by module slug from CI and `package.json`, which exited with a
+        usage error when called bare). A bare run is not a verdict; an unsupported slug and an
+        unknown argument still are.
+      - ~~`DECISIONS/README.md` did not list the 2026-11-11 Blog taxonomy ADR, so
+        `verify-adrs.mjs` and `verify-docs.mjs` failed.~~ Done 2026-11-12: the registry row is
+        present in the required descending order, and the ADR gained the sections the governance
+        check requires. Its migration section now states what the tree holds — the two ports and
+        the noop defaults exist, no Taxonomy-backed adapter does, and `rustok-blog` still depends
+        on `rustok-taxonomy` for the translation-owner registration point — so the ADR no longer
+        reads as if the Cargo decoupling were complete.
     - The classic SSR control contract: closed on 2026-11-11, with the open parts listed here.
       Decision: `DECISIONS/2026-11-11-fly-ssr-control-contract-and-route-view-state.md`.
       `2661a270ed` (2026-10-14) replaced the admin panels with the `fly-leptos` workspace,
@@ -660,20 +927,97 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           value while the attribute reads empty, and that a `sandbox=""` `srcdoc` frame with
           the Fly envelope applies its stylesheet with the nonce and drops it without. The
           probe did not use the built admin.
-    - [ ] **The standalone SSR admin does not render the editor.** Read from source, not
-          executed. `PagesAdmin` (`crates/modules/rustok-pages/admin/src/composition.rs`) loads
-          the page list and the open page through `LocalResource`. With `leptos/ssr` a
-          `LocalResource` never resolves (`leptos_server/src/local_resource.rs`: "in SSR mode,
-          this will simply always be pending"), so the response holds the `Suspense` fallback
-          in place of `PageWorkspace` and `PagesFlyBuilder`. The shell of that host renders no
-          script (`apps/admin/src/app/shell.rs`; `verify-fly-ssr-first.mjs` requires the
-          comment that says so), although `build-standalone-admin-ssr.sh` builds a hydration
-          bundle, so nothing resolves the resource in the browser either. The `ssr + browser-js`
-          editor is therefore rendered by the render tests of the crate and by the Playwright
-          fixtures, and by no host. Needs a decision: the Pages workspace loads on the server
-          (a `Resource` under a route mode that needs no script), or the standalone host ships
-          its hydration bundle. `LocalResource` is used in 68 files of `apps/admin` and the
-          module admin packages, so the decision is not local to Pages.
+    - [ ] **The standalone SSR admin does not render the editor.** Decided 2026-11-13
+          (`DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`), in progress: `PagesAdmin`
+          now loads its page list and open page through `Resource` (2026-11-13), and the two module
+          routes declare `ssr=SsrMode::Async` so the render waits for those resources instead of
+          streaming a fallback plus a template no script replaces;
+          `scripts/verify/verify-standalone-admin-editor-delivery.mjs` holds both. The inline edit
+          launch, the rollback control, the published metadata admission and both layout template
+          catalogs moved the same way (2026-11-13), so the Pages admin no longer gates a host that
+          must show it on a `LocalResource`. The consumer properties panel
+          (`rustok-page-builder/admin/src/editor/consumer_properties.rs`) moved too: its port's load
+          future is `Send` only on native targets, so the browser branch wraps it in
+          `send_wrapper::SendWrapper` exactly as `rustok-graphql` does, leaving the shared port
+          contract unchanged. Nothing is listed as pending any more, and the gate fails if a pending
+          listing goes stale. The mechanism
+          is now named from `leptos` 0.8.21 source rather than inferred, and three of the obvious
+          fixes are ruled out by it:
+          - a `LocalResource` *never* resolves on the server — `ArcLocalResource::new` wraps the
+            fetcher in `if cfg!(feature = "ssr") { pending().await }` — so `PagesAdmin`
+            (`crates/modules/rustok-pages/admin/src/composition.rs`), which loads the page list and
+            the open page that way, can only ever render its `Suspense` fallback in the response;
+          - `Effect::new` dispatches to `new_isomorphic`, which spawns a task for the next tick and
+            is not driven to completion before the response is produced, so `LocalResource` plus an
+            `Effect` reproduces exactly the same empty render (this also applies to
+            `EnabledModulesProvider` in `apps/admin/src/shared/context/enabled_modules.rs`);
+          - `leptos_axum` calls `leptos::nonce::provide_nonce()` and generates its *own* nonce for
+            `HydrationScripts`, while `admin_security_headers` enforces a different per-request
+            nonce, so shipping the hydration bundle as-is would be blocked by this host's own
+            policy and fail silently;
+          - a `Resource` is not sufficient by itself, because `SsrMode::default()` is `OutOfOrder`:
+            the suspended value is written as `<!--s-N-o-->fallback<!--s-N-c-->` plus a `<template>`
+            that a script swaps in, so even resolved data stays out of the document.
+            `SsrMode::Async` is the mode that emits one complete document, `SsrMode::PartiallyBlocked`
+            is a TODO in the axum integration in 0.8.21, and the route listing inherits the mode from
+            the route definition, and a listing is promoted to the most restrictive mode among its
+            ancestors, so the mode is declared on the route that owns the resource. The layout route
+            does: it mounts `EnabledModulesProvider`, and the sidebar renders the module navigation
+            from it on every admin page.
+          Module availability was the other half: `EnabledModulesProvider` resolved it through
+          `LocalResource` and copied it into signals from an `Effect`, so `is_loading` was still
+          `true` in the response and the module route rendered its loading branch before the editor
+          was ever reached. It now derives the decision from a `Resource` and reads it under
+          `Suspense`, distinguishing "not resolved" from "disabled for this tenant".
+          The decision: the default SSR profile keeps no hydration bundle (it is a supported
+          profile for hosts that build one, under a stated nonce contract), and the editor's server
+          state is loaded through an awaitable `Resource` rather than `LocalResource` plus an
+          `Effect`. Surfaces move one at a time, starting with the Pages workspace, each with a
+          render test that asserts the workspace is in the SSR HTML and the fallback is not.
+          `LocalResource` appears in 72 files across `apps/admin` and the module admin packages, so
+          the rest stay where they are until a host is expected to show them.
+
+          Scope note, because the layout mode covers more than the Pages editor: the layout route
+          declares `ssr=SsrMode::Async`, so every page inside it — including every `/modules/<slug>`
+          surface — is rendered to completion with no stream left to fill a `Suspense`. A
+          `LocalResource` on any of those pages is therefore `pending()` in the response and its
+          `Suspense` fallback is what a reader gets. Module admin surfaces still on `LocalResource`: 5. The product
+          module leads — attributes page, product grid, categories page, catalog filter controls and
+          schema editor — and the forum split/merge/rename/fork panels, the auth invites and security
+          pages, the blog moderation queue, the forms inbox, the brand directory, the cache diagnostics card,
+          the comments admin, the commerce admin, the customer directory, the schema editor, the
+          channel, fulfillment, index, inventory, media, messenger, order, outbox, rbac, region,
+          search and tenant admins followed, then the pricing, bundle, relation, marketplace listing
+          and seller, translation, workflow, group, AI, auth, blog, forum, product grid and product
+          editor surfaces, each resolving its state through `Resource`.
+          The events and iggy configuration surfaces were the edit-overlay treatment rather than a
+          swap: both filled their form from an `Effect`, so a `Resource` behind that effect would have
+          served an empty form. Both now render the resolved configuration with the operator's edits
+          laid over it, and the cache settings form was moved the same way — which needed two
+          component changes on the read and write faces of a field. `rustok_ui::Input` took only
+          `value: Option<ReadSignal<String>>`, the cell a form owns, and a derived value has no cell
+          to hand over, so it gained a `derived_value: Option<Signal<String>>` prop; both that
+          component and the `apps/admin` `Input` now take `set_value: SignalSetter<String>`, which is
+          the type Leptos has for the write face of a value that is not an owned cell, and
+          `From<WriteSignal>` keeps every existing caller working.
+          The five that remain all read the browser write journal. The journal serialises — that was
+          never the obstacle — but the record is per-tab state in `session_storage`, keyed by document
+          marker, and the server has no tab: rendering it would serve another tab's recovery record.
+          The move also has a property the gate now holds for every surface: a `Resource` payload is
+          serialised into the response and read back on the client, so it has to be
+          `Serialize + DeserializeOwned`. The payload type is declared in the module's model rather
+          than in the moved file, so a surface can be moved correctly and still serve an empty value
+          if its payload loses serde; the gate resolves each resource to its transport function and
+          that function's return type inside the crate that renders it, because the function names
+          are not unique across modules. The recorded count is compared with the source rather than
+          trusted, and the `apps/admin` side of the same defect is checked across the tree instead of
+          the five files it was first written against, with the installer as the one documented
+          exception because it renders outside the layout. A
+          surface that takes a resource as a prop
+          declares its type, so the caller and the callee move together: the search admin's preview
+          and analytics views and the product editor's attribute-values section declared
+          `LocalResource<…>` after their callers had moved to `Resource<…>`, and were updated with
+          them.
           Owner: `rustok-pages-admin`, `apps/admin`.
     - [ ] Load the editor in a browser under the policy of `apps/admin/src/app/security.rs`.
           The two Playwright suites serve their pages without a policy, and `apps/admin` does
@@ -686,17 +1030,31 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           admin mount. A test there that opens a page in the editor would cover the canvas and
           the preview under the policy. That job does not reach its spec today: it builds
           `apps/server` with default features, and the server exits at startup because
-          `modules.toml` lists 14 modules (`billing`, `calendar`, `calls`, `deal`, `finance`,
-          `marketplace` and its six parts, `party`, `tasks`) whose `mod-*` features are not in
-          the default list of `apps/server/Cargo.toml` (read from CI on `c8141c9b` and
-          `a4d65ffe`; both files are unchanged from `main`). The distribution decision comes
-          first. Owner: Page Builder admin, repository tooling; the startup failure: platform,
-          `apps/server`.
-    - [ ] **The server preview cannot be requested in the default runtime.** "Refresh preview"
-          acts through `on:click`. No intent or SSR form requests a preview, and the draft
-          session holds none, so a server-rendered editor shows the empty state of the panel.
-          Owner: Page Builder admin, `rustok-pages-admin`.
-    - [ ] **The preview is shown under the policy of the admin, not of the storefront.** A
+          `modules.toml` listed modules whose `mod-*` features were not in the default list of
+          `apps/server/Cargo.toml` (read from CI on `c8141c9b` and `a4d65ffe`). Resolved
+          2026-11-12: `scripts/ci/modules-manifest-features.mjs` derives the required features
+          from the manifest — keyed on the package's own `[crate] entry_type`, which is what the
+          registry contract reads — and both the smoke job and CI fail before a build whose
+          default features disagree with it. See
+          `DECISIONS/2026-11-12-module-composition-is-the-manifest.md`. Owner: Page Builder
+          admin, repository tooling.
+    - [x] **The server preview cannot be requested in the default runtime.** "Refresh preview"
+          acted through `on:click`, no intent or SSR form requested a preview, and the draft
+          session held none, so a server-rendered editor showed the empty state forever.
+          Resolved 2026-11-12: `render_server_preview` is a protocol intent the endpoint's
+          capability policy admits with the edit capability; `dispatch_named_intent` builds the
+          one-page `Preview` request from the draft and the runtime context the form posts; the
+          panel renders the form instead of relying on the handler; and the host bootstrap fills
+          the panel's frame from the answer. The consumer no longer reports a preview answer as
+          a reason to reload — a reload would have discarded the document it carries. Owner:
+          Page Builder admin, `rustok-pages-admin`.
+    - [x] **The preview is shown under the policy of the admin, not of the storefront.** Decided
+          2026-11-12 (`DECISIONS/2026-11-12-page-builder-server-preview-delivery.md`);
+          landed 2026-11-12:
+          the faithful shape is the preview delivered as its own response with the artifact
+          policy, and `srcdoc` is the interim shape a host without that route uses, labelled as
+          such. The admin policy is not widened for it; what remains is the route and the panel's
+          `src`/`srcdoc` switch. A
           `srcdoc` document inherits the policy of its embedder. Under
           `style-src-attr 'none'` a `style` attribute is dropped (the probe above recorded the
           refusal); the embed block writes `style="aspect-ratio:…"`. By the directives of the
@@ -704,12 +1062,30 @@ Status source of truth per item: the phase ADRs in `DECISIONS/`.
           (`default-src 'self'` covers frames), and so is a font or a media file from another
           origin. The canvas document has the same limits. A preview that is faithful to the
           published page is a document with its own response and its own policy, as
-          `/richtext/frame` is. Needs a decision. Owner: Page Builder admin, `apps/admin`,
-          `apps/server`.
-    - [ ] `fly-leptos` `FlyCanvasPreview` renders an inline `<style>` and a `style` attribute,
+          `/richtext/frame` is.
+          Delivered: `GET /api/admin/pages/{page_id}/preview` in `apps/admin` reads the snapshot
+          of the request's single verified exchange, loads the draft session the editor names
+          through the owner-checked store (`?draft=…`; without it the saved page), renders it with
+          `rustok_pages_admin::render_server_preview`, and answers under the artifact policy
+          derived from the stylesheet the document carries
+          (`pages_server_preview_response`, `default-src 'none'` + `style-src 'sha256-…'`). A
+          document without the Fly envelope is refused rather than policied from a guess.
+          `ServerPreviewPanel` loads that address by `src` when the host configures one and keeps
+          `srcdoc` otherwise, and the host bootstrap no longer writes `srcdoc` over a frame that
+          has a `src` — `srcdoc` wins over `src`, so that write would have replaced the page's
+          own document with an inherited one. The admin policy itself is unchanged; the middleware
+          classifies only this path (`SAMEORIGIN`, `no-store`) and leaves a policy the handler
+          derived intact, since the fallback it would otherwise apply names no style source.
+          Owner: Page Builder admin, `rustok-pages-admin`, `apps/admin`.
+    - [x] `fly-leptos` `FlyCanvasPreview` renders an inline `<style>` and a `style` attribute,
           and `fly-dioxus` renders `style` attributes. The admin editor uses neither; a host
           that composes them under a nonce policy loses those styles. Owner: `fly-leptos`,
-          `fly-dioxus`.
+          `fly-dioxus`. Resolved 2026-11-12: `FlyCanvasPreview` and `FlyEditorWorkspace` in both
+          adapters accept `csp_nonce` and write it on the inline `<style>`; `AdapterWorkspacePanel`
+          (`rustok-page-builder-admin`) and the Dioxus adapter host pass the `UiCspNonce` of the
+          render context. The `style` *attribute* of the canvas is still `style-src-attr 'none'`
+          under the admin policy and stays dropped; it only sets the preview width, which is not
+          worth weakening the attribute policy for.
     - [x] The step "Check admin SSR Page Builder endpoint" of the "Fly Page Builder" workflow
           failed on this branch after the merges of `main` (`7ce2048c`, `728ba4f8`). It passes
           on `65a67b7c` (job "Focused tests and source guards"), together with "Run Page

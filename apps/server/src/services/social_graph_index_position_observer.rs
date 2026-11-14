@@ -29,6 +29,10 @@ impl SocialGraphIndexPositionObserverHandle {
     pub fn is_finished(&self) -> bool {
         self._handle.is_finished()
     }
+
+    pub(crate) fn into_task(self) -> JoinHandle<()> {
+        self._handle
+    }
 }
 
 /// Starts a read-only position observer for the explicitly enabled durable consumer.

@@ -2,7 +2,7 @@
 
 ## Platform Capability Bindings
 - Implements Leptos FFA UI components for the Model Context Protocol (MCP) server control plane.
-- Integrates with `leptos`, `leptos-auth`, and `rustok-api`.
+- Integrates with `leptos`, `rustok-auth-ui`, and `rustok-api`.
 
 ## Domain Collaborations
 - Collaborates with `rustok-mcp` for registered MCP tools, resources, prompts, and server instances.

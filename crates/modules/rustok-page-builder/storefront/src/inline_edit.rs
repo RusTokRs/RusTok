@@ -1,3 +1,4 @@
+use crate::LandingBridgeFeedback;
 use fly::{
     ComponentNode, ComponentObject, ComponentPatch, EditorCommand, FlyEditor, GrapesJsCodec,
     PageSelection, ProjectDocument, ProjectHash, RegistrySet, RenderPolicy, RenderedPage,
@@ -496,9 +497,13 @@ pub fn PageBuilderAuthenticatedInlineStorefront(
 
     match rendered {
         Ok((page, diagnostic_count, repeated_nodes)) => {
-            let scoped_css = crate::scope_landing_css(&page.css, crate::LANDING_SCOPE_SELECTOR);
+            let scoped_css = crate::storefront_scoped_css(&page.css);
             let html = page.html;
+            let has_actions = html.contains("data-fly-action");
             let page_id = page.page_id.unwrap_or_default();
+            let style_nonce = crate::storefront_csp_nonce();
+            let runtime_nonce = style_nonce.clone();
+            let bridge_nonce = style_nonce.clone();
             view! {
                 <section
                     id=root_id
@@ -510,8 +515,13 @@ pub fn PageBuilderAuthenticatedInlineStorefront(
                     data-runtime-diagnostics=diagnostic_count
                     data-repeated-nodes=repeated_nodes
                 >
-                    <style data-fly-project-styles="true">{scoped_css}</style>
+                    <style data-fly-project-styles="true" nonce=style_nonce>{scoped_css}</style>
                     <div data-fly-page-body="true" inner_html=html></div>
+                    <LandingBridgeFeedback />
+                    {has_actions.then(|| view! {
+                        <script data-fly-actions="true" nonce=runtime_nonce inner_html=fly_browser::FLY_ACTIONS_JS></script>
+                    })}
+                    <script data-fly-storefront-bridge="true" nonce=bridge_nonce inner_html=crate::FLY_STOREFRONT_BRIDGE_JS></script>
                 </section>
             }
             .into_any()
@@ -582,7 +592,8 @@ mod tests {
                         "content": "Go"
                     }, {
                         "id": "composite",
-                        "type": "text",
+                        "type": "container",
+                        "tagName": "p",
                         "content": "Parent",
                         "components": [{ "id": "static-child", "type": "text", "content": "Child" }]
                     }, {
@@ -751,6 +762,44 @@ mod tests {
         );
         assert!(!root_id.contains(grant.session_id()));
         assert!(!root_id.contains("signed-proof"));
+    }
+
+    #[cfg(feature = "ssr")]
+    #[test]
+    fn authenticated_inline_ssr_nonces_only_trusted_assets() {
+        use rustok_ui_core::UiCspNonce;
+
+        let mut project = project();
+        project["pages"][0]["component"]["components"][3]["flyAction"] =
+            json!({"kind": "emit_event", "event": "cart:open"});
+        let grant = grant(&project);
+        let html = Owner::new().with(|| {
+            provide_context(UiCspNonce::new("inline_nonce_123").expect("nonce"));
+            view! {
+                <PageBuilderAuthenticatedInlineStorefront
+                    project_data=project
+                    grant=grant
+                    on_request=Callback::new(|_: AuthenticatedInlineEditRequest| ())
+                    on_error=Callback::new(|_: String| ())
+                />
+            }
+            .to_html()
+        });
+        assert!(!html.contains("data-render-error=\"true\""), "{html}");
+        assert!(!html.contains("signed-proof"));
+        for marker in [
+            "data-fly-project-styles=\"true\"",
+            "data-fly-actions=\"true\"",
+            "data-fly-storefront-bridge=\"true\"",
+        ] {
+            let at = html.find(marker).expect("element marker");
+            let start = html[..at].rfind('<').expect("element start");
+            let end = at + html[at..].find('>').expect("element end");
+            assert!(
+                html[start..=end].contains("nonce=\"inline_nonce_123\""),
+                "{marker}: {html}"
+            );
+        }
     }
 
     #[test]

@@ -17,9 +17,10 @@ crate-type = ["rlib"]
 
 [features]
 default = []
-hydrate = ["leptos/hydrate"]
+hydrate = ["leptos/hydrate", "rustok-auth-ui/hydrate"]
 ssr = [
     "leptos/ssr",
+  "rustok-auth-ui/ssr",
     "dep:leptos_axum",
     "dep:rustok-cart",
     "dep:rustok-core",
@@ -33,7 +34,7 @@ ssr = [
 rustok-ui-core.workspace = true
 leptos = { workspace = true, features = ["csr"] }
 leptos_axum = { workspace = true, optional = true }
-leptos-auth.workspace = true
+rustok-auth-ui.workspace = true
 rustok-graphql.workspace = true
 rustok-cart = { workspace = true, optional = true }
 rustok-api = { workspace = true, default-features = false }

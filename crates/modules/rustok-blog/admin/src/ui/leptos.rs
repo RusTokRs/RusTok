@@ -5,16 +5,16 @@ use page::BlogAdminPageState;
 use leptos::either::Either;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{RichTextDocument, WritePathIssue};
+use rustok_auth_ui::ui::leptos::hooks::{use_current_user, use_tenant, use_token};
 use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use super::components::{
     BlogEditBanner, BlogPostFormSetters, BlogPostSeoPanel, BlogPostsList, BlogPostsListHeader,
     BlogPostsPageHeader, BlogPreviewTokenBanner, BlogSeoConfigError, apply_pending_creation,
-    apply_post_to_form, blog_form_copy_view_model, blog_form_view_model, local_resource,
+    apply_post_to_form, blog_form_copy_view_model, blog_form_view_model, loaded_resource,
     reset_form,
 };
 use super::richtext::BlogRichTextEditor;
@@ -169,7 +169,7 @@ pub fn BlogAdmin() -> impl IntoView {
 
     // Categories are loaded from the same selected owner transport as post edits.
     // A failed lookup remains visible; the editor never silently replaces a category.
-    let categories_resource = local_resource(
+    let categories_resource = loaded_resource(
         move || (token.get(), tenant.get(), locale.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, locale_value, _)| async move {
             transport::fetch_categories(
@@ -189,7 +189,7 @@ pub fn BlogAdmin() -> impl IntoView {
     // The sort is part of the request source, so changing it reloads page one instead of
     // reordering the rows already on screen.
     let posts_sort = RwSignal::new(core::BlogPostAdminSort::default());
-    let posts_resource = local_resource(
+    let posts_resource = loaded_resource(
         move || {
             (
                 token.get(),

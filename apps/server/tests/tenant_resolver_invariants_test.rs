@@ -363,7 +363,9 @@ async fn slug_cache_invalidation_refreshes_deactivated_tenant_state() {
     assert_eq!(stale_status, StatusCode::OK);
     assert_eq!(stale_slug.as_deref(), Some("resolver-deactivate-cache"));
 
-    tenant::invalidate_tenant_cache_by_slug(&runtime_ctx, "resolver-deactivate-cache").await;
+    tenant::invalidate_tenant_cache_by_slug(&runtime_ctx, "resolver-deactivate-cache")
+        .await
+        .expect("tenant cache invalidation must succeed");
 
     let (refreshed_status, refreshed_slug) =
         request_tenant_slug(&app, "resolver-deactivate-cache").await;
@@ -390,7 +392,9 @@ async fn slug_negative_cache_invalidation_allows_created_tenant_to_resolve() {
     assert_eq!(cached_miss_status, StatusCode::NOT_FOUND);
     assert_eq!(cached_miss_slug, None);
 
-    tenant::invalidate_tenant_cache_by_slug(&runtime_ctx, "resolver-created-after-miss").await;
+    tenant::invalidate_tenant_cache_by_slug(&runtime_ctx, "resolver-created-after-miss")
+        .await
+        .expect("tenant cache invalidation must succeed");
 
     let (refreshed_status, refreshed_slug) =
         request_tenant_slug(&app, "resolver-created-after-miss").await;
@@ -434,8 +438,12 @@ async fn host_cache_invalidation_refreshes_domain_change() {
     assert_eq!(stale_old_status, StatusCode::OK);
     assert_eq!(stale_old_slug.as_deref(), Some("resolver-domain-change"));
 
-    tenant::invalidate_tenant_cache_by_host(&runtime_ctx, "old-domain.example.test").await;
-    tenant::invalidate_tenant_cache_by_host(&runtime_ctx, "new-domain.example.test").await;
+    tenant::invalidate_tenant_cache_by_host(&runtime_ctx, "old-domain.example.test")
+        .await
+        .expect("old-host cache invalidation must succeed");
+    tenant::invalidate_tenant_cache_by_host(&runtime_ctx, "new-domain.example.test")
+        .await
+        .expect("new-host cache invalidation must succeed");
 
     let (old_refreshed_status, old_refreshed_slug) =
         request_host_tenant_slug(&app, "old-domain.example.test").await;
@@ -474,7 +482,9 @@ async fn uuid_cache_invalidation_refreshes_updated_tenant_state() {
         .await
         .expect("tenant update should persist");
 
-    tenant::invalidate_tenant_cache_by_uuid(&runtime_ctx, tenant_id).await;
+    tenant::invalidate_tenant_cache_by_uuid(&runtime_ctx, tenant_id)
+        .await
+        .expect("tenant cache invalidation must succeed");
 
     let (refreshed_status, refreshed_slug) =
         request_tenant_slug(&app, &tenant_id.to_string()).await;

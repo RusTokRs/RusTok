@@ -12,6 +12,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "@rustok/next-fluent";
 import {
   AlertCircle,
   ArrowLeft,
@@ -44,7 +45,9 @@ export function CheckoutView({
   tenantSlug = null,
 }: CheckoutViewProps) {
   const isRu = locale.toLowerCase().startsWith("ru");
-  const { cart, isLoading, clearCart, selectShippingOption } = useCart();
+  const messages = useTranslations("Cart");
+  const { enabled, cart, isLoading, isUpdating, actionError, openCart, clearCart, selectShippingOption } = useCart();
+  const uncertain = !enabled || actionError === "auth" || actionError === "restore" || actionError === "unconfirmed";
 
   // Form State
   const [formData, setFormData] = useState<CustomerShippingAddress>({
@@ -153,6 +156,11 @@ export function CheckoutView({
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    // A stale or currently mutating Cart observation is not a checkout authorization.
+    if (uncertain || isLoading || isUpdating) {
+      setErrorMessage(messages("stateUnknown"));
+      return;
+    }
     if (!cart?.id || !cart.lineItems || cart.lineItems.length === 0) {
       setErrorMessage(
         isRu
@@ -380,8 +388,25 @@ export function CheckoutView({
     );
   }
 
-  // 2. Loading state
-  if (isLoading && !cart) {
+  // 2. A failed restore or unconfirmed mutation is not an empty/checkout-ready cart.
+  if (uncertain) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-4 px-4 py-24 text-center">
+        <p role="alert">
+          {messages(!enabled ? "disabledError" : actionError === "auth" ? "authError" :
+            actionError === "restore" ? "restoreError" : "unconfirmedError")}
+        </p>
+        {enabled && (
+          <button type="button" onClick={openCart} className="rounded-lg border border-border px-4 py-2">
+            {messages("inspect")}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // 3. Loading state, including a Cart mutation whose result has not arrived yet.
+  if (isLoading || isUpdating) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-24 text-center">
         <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
@@ -392,7 +417,7 @@ export function CheckoutView({
     );
   }
 
-  // 3. Empty cart view
+  // 4. Empty cart view
   if (!cart || !cart.lineItems || cart.lineItems.length === 0) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center">
@@ -422,7 +447,7 @@ export function CheckoutView({
     );
   }
 
-  // 4. Main Checkout Form
+  // 5. Main Checkout Form
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       {/* Top Navigation & Title */}

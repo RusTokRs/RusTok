@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::components::A;
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
 
@@ -15,16 +15,21 @@ use crate::i18n::t;
 use crate::model::{WorkflowSummary, WorkflowTemplateDto};
 use crate::transport;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -62,14 +67,12 @@ pub fn WorkflowAdmin() -> impl IntoView {
     let nav =
         workflow_admin_nav_view_model(route_context.route_segment.as_deref(), showing_templates);
 
-    let workflows_resource = local_resource(
-        move || {
-            (
-                workflow_admin_transport_context(token.get(), tenant.get()),
-                refresh_nonce.get(),
-            )
+    let workflows_resource = loaded_resource(
+        move || (token.get(), tenant.get(), refresh_nonce.get()),
+        move |(token_value, tenant_value, _)| async move {
+            transport::fetch_workflows(workflow_admin_transport_context(token_value, tenant_value))
+                .await
         },
-        move |(context, _)| async move { transport::fetch_workflows(context).await },
     );
 
     view! {
@@ -380,14 +383,12 @@ fn TemplateGallery(
 
     let token_for_templates = token.clone();
     let tenant_for_templates = tenant_slug.clone();
-    let templates_resource = local_resource(
-        move || {
-            workflow_admin_transport_context(
-                token_for_templates.clone(),
-                tenant_for_templates.clone(),
-            )
+    let templates_resource = loaded_resource(
+        move || (token_for_templates.clone(), tenant_for_templates.clone()),
+        move |(token_value, tenant_value)| async move {
+            transport::fetch_templates(workflow_admin_transport_context(token_value, tenant_value))
+                .await
         },
-        move |context| async move { transport::fetch_templates(context).await },
     );
 
     view! {

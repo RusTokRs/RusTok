@@ -12,8 +12,8 @@ use crate::transport::ApiError;
 pub(crate) fn PricingDetailSection(
     ui_locale: Option<String>,
     effective_locale: Option<String>,
-    bootstrap: LocalResource<Result<PricingAdminBootstrap, ApiError>>,
-    context_active_price_lists: LocalResource<Result<Vec<PricingPriceListOption>, ApiError>>,
+    bootstrap: Resource<Result<PricingAdminBootstrap, ApiError>>,
+    context_active_price_lists: Resource<Result<Vec<PricingPriceListOption>, ApiError>>,
     selected: Signal<Option<PricingProductDetail>>,
     applied_resolution_context: Signal<Option<PricingResolutionContext>>,
     resolution_currency: ReadSignal<String>,

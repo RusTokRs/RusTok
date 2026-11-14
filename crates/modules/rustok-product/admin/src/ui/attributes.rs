@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
@@ -227,13 +227,19 @@ pub fn AttributesPage() -> impl IntoView {
     let (schema_code, set_schema_code) = signal(String::new());
     let (schema_desc, set_schema_desc) = signal(String::new());
 
-    // Load attributes resource
-    let attributes_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let loc = locale_store.get_value().unwrap_or_default();
-        refresh_nonce.track();
-        async move {
+    // Loaded by the request, not by the browser: the surface is served from an `Async` admin route
+    // that waits for the render, and a `LocalResource` is `pending()` on the server, so the tabs
+    // arrived with no rows. See DECISIONS/2026-11-13-standalone-admin-editor-delivery.md.
+    let attributes_resource = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                locale_store.get_value().unwrap_or_default(),
+                refresh_nonce.get(),
+            )
+        },
+        move |(tok, ten, loc, _generation)| async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
@@ -246,16 +252,19 @@ pub fn AttributesPage() -> impl IntoView {
             .await
             .map_err(|e| e.to_string())?;
             Ok::<Vec<ProductAttributeSummary>, String>(res.items)
-        }
-    });
+        },
+    );
 
-    // Load schemas resource
-    let schemas_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let loc = locale_store.get_value().unwrap_or_default();
-        refresh_nonce.track();
-        async move {
+    let schemas_resource = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                locale_store.get_value().unwrap_or_default(),
+                refresh_nonce.get(),
+            )
+        },
+        move |(tok, ten, loc, _generation)| async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
@@ -268,8 +277,8 @@ pub fn AttributesPage() -> impl IntoView {
             .await
             .map_err(|e| e.to_string())?;
             Ok::<Vec<ProductAttributeSchemaSummary>, String>(res.items)
-        }
-    });
+        },
+    );
 
     // Auto-generate code from label
     let on_label_input = move |val: String| {

@@ -8,7 +8,7 @@ use axum::{
 use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::extractors::{
     rbac::{RequireMcpManage, RequireMcpRead},
     tenant::CurrentTenant,
@@ -69,7 +69,7 @@ async fn bootstrap_remote_session(
 
     let bridge = ctx
         .shared_get::<std::sync::Arc<DbBackedMcpRuntimeBridge>>()
-        .unwrap_or_else(|| DbBackedMcpRuntimeBridge::shared(ctx.db_clone()));
+        .unwrap_or_else(|| DbBackedMcpRuntimeBridge::shared(ctx.clone()));
 
     let response = bridge
         .bootstrap_remote_session(
@@ -147,7 +147,7 @@ async fn execute_remote_tool_call(
 
     let bridge = ctx
         .shared_get::<std::sync::Arc<DbBackedMcpRuntimeBridge>>()
-        .unwrap_or_else(|| DbBackedMcpRuntimeBridge::shared(ctx.db_clone()));
+        .unwrap_or_else(|| DbBackedMcpRuntimeBridge::shared(ctx.clone()));
     let binding = bridge.resolve_binding_for_token(&plaintext_token).await?;
     let audit_metadata = remote_tool_audit_metadata(&input.tool_name, input.metadata.clone());
 
@@ -743,7 +743,7 @@ async fn create_client(
 
     Ok(Json(CreateMcpClientResponse {
         client: map_client_summary(result.client),
-        policy: map_policy(result.policy),
+        policy: map_policy(result.policy)?,
         token: map_token(result.token),
         plaintext_token: result.plaintext_token,
     }))
@@ -828,7 +828,7 @@ async fn update_policy(
     )
     .await?;
 
-    Ok(Json(map_policy(policy)))
+    Ok(Json(map_policy(policy)?))
 }
 
 async fn revoke_token_by_id(
@@ -1080,15 +1080,27 @@ fn map_client_summary(model: crate::models::mcp_clients::Model) -> McpClientSumm
     }
 }
 
-fn map_policy(model: crate::models::mcp_policies::Model) -> McpPolicyResponse {
-    McpPolicyResponse {
-        allowed_tools: model.allowed_tools_list(),
-        denied_tools: model.denied_tools_list(),
-        granted_permissions: model.granted_permissions_list(),
-        granted_scopes: model.granted_scopes_list(),
+fn map_policy(model: crate::models::mcp_policies::Model) -> Result<McpPolicyResponse> {
+    let decoded = (|| {
+        Ok::<_, String>((
+            model.allowed_tools_list()?,
+            model.denied_tools_list()?,
+            model.granted_permissions_list()?,
+            model.granted_scopes_list()?,
+        ))
+    })()
+    .map_err(|error| {
+        tracing::error!(%error, client_id = %model.client_id, "Persisted MCP policy is invalid");
+        Error::InternalServerError
+    })?;
+    Ok(McpPolicyResponse {
+        allowed_tools: decoded.0,
+        denied_tools: decoded.1,
+        granted_permissions: decoded.2,
+        granted_scopes: decoded.3,
         metadata: model.metadata,
         updated_at: model.updated_at.into(),
-    }
+    })
 }
 
 fn map_token(model: crate::models::mcp_tokens::Model) -> McpTokenResponse {

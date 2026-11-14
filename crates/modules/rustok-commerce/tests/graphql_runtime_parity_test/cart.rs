@@ -1,6 +1,58 @@
 use super::*;
 
 #[tokio::test]
+async fn storefront_cart_admission_requires_both_owners_without_hiding_product_catalog() {
+    let (db, _, _) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    seed_tenant_context(&db, tenant_id).await;
+    let schema = build_schema(
+        &db,
+        tenant_context(tenant_id),
+        request_context(tenant_id, "en"),
+        None,
+    );
+    db.execute_unprepared("UPDATE tenant_modules SET enabled = 0 WHERE module_slug = 'cart'")
+        .await
+        .unwrap();
+    for operation in [
+        storefront_cart_query(tenant_id, Uuid::new_v4()),
+        storefront_cart_flow_mutation(tenant_id),
+        storefront_cart_add_line_item_mutation(tenant_id, Uuid::new_v4(), Uuid::new_v4()),
+    ] {
+        let result = schema.execute(Request::new(operation)).await;
+        assert_eq!(result.errors.len(), 1, "{:#?}", result.errors);
+        assert_eq!(
+            result.errors[0].message,
+            "Cart is not available in this storefront scope"
+        );
+    }
+    let catalog = schema
+        .execute(Request::new(
+            "query { storefrontProducts(locale: \"en\") { total } }",
+        ))
+        .await;
+    assert!(catalog.errors.is_empty(), "{:#?}", catalog.errors);
+
+    db.execute_unprepared("UPDATE tenant_modules SET enabled = 1 WHERE module_slug = 'cart'")
+        .await
+        .unwrap();
+    db.execute_unprepared("UPDATE tenant_modules SET enabled = 0 WHERE module_slug = 'commerce'")
+        .await
+        .unwrap();
+    let result = schema
+        .execute(Request::new(storefront_cart_query(
+            tenant_id,
+            Uuid::new_v4(),
+        )))
+        .await;
+    assert_eq!(result.errors.len(), 1, "{:#?}", result.errors);
+    assert_eq!(
+        result.errors[0].message,
+        "Cart is not available in this storefront scope"
+    );
+}
+
+#[tokio::test]
 async fn storefront_graphql_read_path_is_stable_after_cart_snapshot_creation() {
     let (db, catalog, cart_service) = setup().await;
     let tenant_id = Uuid::new_v4();

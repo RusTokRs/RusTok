@@ -310,8 +310,9 @@ RusToK provides a sandboxed, extensible module runtime supporting native Rust cr
 - For infrastructure/capability crates see `crates/modules/*`
   and `docs/modules/crates-registry.md`.
 - For UI libraries use `crates/ui/leptos-*`, `crates/ui/leptos-ui`,
-  `crates/ui/leptos-auth`, `crates/ui/leptos-ui-routing`,
-  `crates/ui/rustok-ui-*` and `crates/ui/rustok-graphql`.
+  `crates/ui/leptos-ui-routing`,
+  `crates/ui/rustok-ui-*` and `crates/ui/rustok-graphql`; Auth client lifecycle
+  is owned by `crates/modules/rustok-auth/ui`.
 - Every crate must have an up-to-date `README.md`,
   and `docs/` if needed.
 

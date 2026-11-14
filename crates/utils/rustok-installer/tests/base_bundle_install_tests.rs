@@ -78,10 +78,11 @@ impl InstallPersistencePort<()> for TestPorts {
     async fn create_session(
         &self,
         _runtime: &(),
+        session_id: Uuid,
         _plan: &InstallPlan,
     ) -> Result<InstallSessionRecord, InstallExecutionError> {
         Ok(InstallSessionRecord {
-            id: Uuid::from_u128(100),
+            id: session_id,
             tenant_id: *self.tenant_id.lock().unwrap(),
             lock_owner: self.lock_owner.lock().unwrap().clone(),
             lock_expires_at: None,
@@ -336,13 +337,16 @@ async fn test_base_bundle_install_happy_path_and_candidate_role_prestaging() {
 
     let ports = TestPorts::default();
     let plan = sample_plan(&temp);
-    let options = InstallApplyOptions::default();
+    let session_id = Uuid::new_v4();
+    let mut options = InstallApplyOptions::default();
+    options.session_id = Some(session_id);
 
     let output = execute_install_apply(&ports, plan, options)
         .await
         .expect("First-install apply must succeed");
 
     assert_eq!(output.status, "completed");
+    assert_eq!(output.session_id, session_id);
     assert_eq!(output.tenant_id, Some(Uuid::from_u128(200)));
 
     // Verify candidate role deployment and health observations

@@ -63,7 +63,7 @@ const required = [
 for (const relative of required) requireFile(relative);
 
 requireMarkers("crates/modules/rustok-groups/storefront/Cargo.toml", [
-  "leptos-auth.workspace = true",
+  "rustok-auth-ui.workspace = true",
   "leptos-ui-routing.workspace = true",
   "dep:rustok-groups",
 ]);
@@ -131,7 +131,7 @@ requireMarkers("crates/modules/rustok-groups/storefront/src/ui/mod.rs", [
   "pub mod invitation_acceptance;",
 ]);
 requireMarkers("crates/modules/rustok-groups/storefront/src/ui/leptos.rs", [
-  "leptos_auth::AuthContext",
+  "rustok_auth_ui::ui::leptos::AuthContext",
   "use_context::<AuthContext>()",
   "AuthContext::get_token",
   "AuthContext::get_tenant",

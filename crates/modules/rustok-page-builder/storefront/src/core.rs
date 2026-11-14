@@ -33,6 +33,27 @@ pub fn page_builder_view_model(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LandingBridgeMessages {
+    pub buyer_handoff_error: String,
+    pub cart_unavailable: String,
+}
+
+pub fn landing_bridge_messages(locale: Option<&str>) -> LandingBridgeMessages {
+    LandingBridgeMessages {
+        buyer_handoff_error: crate::i18n::t(
+            locale,
+            "page_builder-buyer_handoff_error",
+            "This purchase link is incomplete or invalid. Please contact the store or open the product page.",
+        ),
+        cart_unavailable: crate::i18n::t(
+            locale,
+            "page_builder-cart_unavailable",
+            "The shopping cart is not available on this storefront.",
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -18,9 +18,6 @@ on:
       - "scripts/verify/verify-fly-*.mjs"
       - "scripts/verify/verify-pages-current-only.mjs"
       - ".github/workflows/fly-page-builder.yml"
-      - "docs/modules/pages-page-builder-parity-continuation-plan.md"
-      - "docs/modules/page-builder-parity-actualization-2026-08-06-inline-edit.md"
-      - "docs/modules/pages-page-builder-authenticated-inline-edit-adapter-packet-2026-08-06.md"
       - "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs"
       - "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-runtime-context.mjs"
       - "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs"
@@ -45,9 +42,6 @@ on:
       - "scripts/verify/verify-fly-*.mjs"
       - "scripts/verify/verify-pages-current-only.mjs"
       - ".github/workflows/fly-page-builder.yml"
-      - "docs/modules/pages-page-builder-parity-continuation-plan.md"
-      - "docs/modules/page-builder-parity-actualization-2026-08-06-inline-edit.md"
-      - "docs/modules/pages-page-builder-authenticated-inline-edit-adapter-packet-2026-08-06.md"
       - "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-authenticated-inline-edit-adapter.mjs"
       - "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-runtime-context.mjs"
       - "crates/modules/rustok-page-builder/scripts/verify/verify-page-builder-consumer-readiness.mjs"
@@ -70,6 +64,9 @@ jobs:
     name: Focused formatting
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # rust-toolchain.toml selects stable; use the toolchain installed by this job.
+      RUSTUP_TOOLCHAIN: "1.96.0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
@@ -96,6 +93,9 @@ jobs:
     name: Focused tests and source guards
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # rust-toolchain.toml selects stable; use the toolchain installed by this job.
+      RUSTUP_TOOLCHAIN: "1.96.0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8

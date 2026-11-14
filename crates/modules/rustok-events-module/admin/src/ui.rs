@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 
 use crate::core::{
     EventDeliverySummaryViewModel, EventsAdminLabels, KNOWN_PROFILES, ProfileSelectionDecision,
@@ -8,44 +8,52 @@ use crate::core::{
 };
 use crate::transport;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
 pub fn EventsAdmin() -> impl IntoView {
     let token = use_token();
     let tenant = use_tenant();
-    let configuration = local_resource(
+    let configuration = loaded_resource(
         move || (token.get(), tenant.get()),
         move |(token, tenant)| async move { transport::fetch_configuration(token, tenant).await },
     );
-    let (selected_profile, set_selected_profile) = signal(String::from("outbox"));
-    let (loaded, set_loaded) = signal(false);
+    // The operator's choice is an edit laid over the resolved configuration, not a signal an
+    // `Effect` copies it into: an `Effect` is not driven before the response, so the form would be
+    // served showing a profile nobody selected. The profile shown is the edit when there is one and
+    // the backend's desired profile otherwise.
+    let (profile_edit, set_profile_edit) = signal(Option::<String>::None);
     let (saving, set_saving) = signal(false);
     let (save_result, set_save_result) = signal(Option::<Result<String, String>>::None);
     let (show_iggy_dialog, set_show_iggy_dialog) = signal(false);
 
     let labels = EventsAdminLabels::resolve(None);
 
-    Effect::new(move |_| {
-        if loaded.get_untracked() {
-            return;
+    let selected_profile = Signal::derive(move || {
+        if let Some(edited) = profile_edit.get() {
+            return edited;
         }
-        if let Some(Ok(configuration)) = configuration.get() {
-            if is_known_profile(&configuration.desired_profile) {
-                set_selected_profile.set(configuration.desired_profile);
-            }
-            set_loaded.set(true);
-        }
+        configuration
+            .get()
+            .and_then(Result::ok)
+            .map(|configuration| configuration.desired_profile)
+            .filter(|profile| is_known_profile(profile))
+            .unwrap_or_else(|| String::from("outbox"))
     });
 
     let select_profile = move |profile: String| {
@@ -59,7 +67,7 @@ pub fn EventsAdmin() -> impl IntoView {
                 set_show_iggy_dialog.set(true);
             }
             ProfileSelectionDecision::Select(p) => {
-                set_selected_profile.set(p);
+                set_profile_edit.set(Some(p));
                 set_save_result.set(None);
             }
         }

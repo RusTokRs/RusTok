@@ -98,8 +98,11 @@ fn map_error(error: AuthAdminMutationError) -> FieldError {
         AuthAdminMutationError::Forbidden(message) => {
             <FieldError as GraphQLError>::permission_denied(&message)
         }
-        AuthAdminMutationError::Validation(message) | AuthAdminMutationError::Conflict(message) => {
+        AuthAdminMutationError::Validation(message) => {
             <FieldError as GraphQLError>::bad_user_input(&message)
+        }
+        AuthAdminMutationError::Conflict(message) => {
+            <FieldError as GraphQLError>::conflict(&message)
         }
         AuthAdminMutationError::CustomFieldsValidation(fields) => {
             <FieldError as GraphQLError>::bad_user_input(&fields.to_string())
@@ -123,6 +126,32 @@ fn unauthenticated_auth_error(message: &str) -> FieldError {
             rustok_api::graphql::ErrorCode::Unauthenticated.as_str(),
         );
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use async_graphql::ErrorExtensions;
+
+    use crate::AuthAdminMutationError;
+
+    use super::map_error;
+
+    #[test]
+    fn oauth_mutation_conflicts_keep_the_conflict_error_code() {
+        let error = map_error(AuthAdminMutationError::Conflict(
+            "secret changed concurrently".to_string(),
+        ))
+        .extend();
+        let code = error
+            .extensions
+            .as_ref()
+            .and_then(|extensions| extensions.get("code"))
+            .cloned()
+            .and_then(|value| value.into_json().ok())
+            .and_then(|value| value.as_str().map(ToOwned::to_owned));
+
+        assert_eq!(code.as_deref(), Some("CONFLICT"));
+    }
 }
 
 fn map_auth_lifecycle_error(ctx: &Context<'_>, error: AuthLifecycleMutationError) -> FieldError {

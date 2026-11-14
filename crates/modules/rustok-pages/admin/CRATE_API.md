@@ -11,10 +11,10 @@
 
 ## Platform Capability Bindings
 
-- **`fly` / `fly_ui` / `fly_browser`**: Browser intent protocol, canvas controller, CSRF token validation (`derive_csrf_token`, `verify_csrf_token`), contribution manifests, and capability state resolution.
+- **`fly` / `fly_ui` / `fly_browser`**: Browser intent protocol, canvas controller, CSRF token validation (`derive_csrf_token`, `verify_csrf_token`), contribution manifests, and capability state resolution. The CSRF secret is derived by one rule on both sides of the protocol: `csrf_secret_from_access_token` takes the token's `session_id` claim, the page renderer embeds `derive_csrf_token(secret)`, and the host endpoint verifies the same pair. A token without that claim embeds nothing and the endpoint answers 403 rather than deriving from a rotating access token.
 - **`rustok-page-builder` & `rustok-page-builder-admin`**: `PageBuilderAdmin`, `ConsumerPropertyEditorRuntime`, `SsrDraftSessionStore`, `DurableSsrDraftSessionStore`, and document format constants.
 - **`rustok-ui-core`**: `AdminQueryKey::PageId`, `UiRouteContext`, `status_badge_class`, `parse_ui_csv`, `normalize_ui_text`.
-- **`leptos-auth`**: Session tokens (`use_token`), tenant context (`use_tenant`), and authenticated user claims (`use_current_user`).
+- **`rustok-auth-ui`**: Session tokens (`use_token`), tenant context (`use_tenant`), and authenticated user claims (`use_current_user`).
 
 ## Domain Collaborations
 
@@ -73,6 +73,7 @@
 - **Zero UI Framework Leakage in Core**: `src/core.rs` contains zero imports from `leptos`, `dioxus`, or any UI rendering framework.
 - **Role Fail-Closed Security**: Unauthenticated, customer, or unrecognized roles receive strictly read-only capabilities (`CapabilityState::read_only()`). Only `super_admin` and `admin` receive publication capabilities.
 - **Draft Session Scoping**: SSR draft sessions are bound to a specific `page_id` and verified against the page's persisted revision. Revision mismatches automatically prune the stale session and reseed from persisted state. Sessions are also owner-bound (`DraftSessionOwner`): attributed records reject loads, commits, and removals from any other user or tenant with `OwnerMismatch`, and callers without the edit capability never create or mutate a session at all.
+- **One Attributed Writer**: `dispatch_pages_browser_intent` is the only path that creates, commits or removes a draft session, and it takes the owner from the verified caller. `PagesBuilderSaveSnapshot::owner` is `None` in the composition root on purpose: the facade serves the capability and preview calls, which read no session, and the editor loads its route draft with an owner built from the current user and the tenant. Adding an owner to the facade snapshot must not become a second attribution path.
 - **No Stand-In Document**: The starter document is opened only for a page whose document the principal may read and which has none yet. When `PageDetail.document_readable` is `false`, the workspace shows "Document not available", the browser intent endpoint answers `DOCUMENT_UNAVAILABLE`, and `PagesPageBuilderProjectStore::load_project` and `save_project` fail with `Forbidden` before the document is loaded or a revision is compared (one gate, `ensure_document_readable`).
 - **Restore Needs The Save Grant**: The revision history offers "Restore" only when the permission snapshot of the signed-in principal grants `pages:update` (`pages_can_restore_body_revision`); a principal that reads the history with `pages:publish` alone is not offered it. An empty snapshot hides the action.
 - **Symbol Referential Integrity**: Reusable site symbols cannot be deleted without warning if referenced by any template or page.

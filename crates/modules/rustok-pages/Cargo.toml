@@ -16,6 +16,10 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 default = []
 inline-edit-assets = []
+# Host scheduler integration: publishes the scheduled-publish queue through
+# `rustok-runtime`'s `ModuleWorkRegistrations`. The module never names its host,
+# so the composition root is the only place that knows which binary enables it.
+runtime = ["rustok-api/runtime", "dep:rustok-runtime"]
 
 [dependencies]
 anyhow.workspace = true
@@ -31,6 +35,7 @@ rustok-events.workspace = true
 rustok-content.workspace = true
 rustok-outbox.workspace = true
 rustok-page-builder = { path = "../rustok-page-builder", default-features = false }
+rustok-runtime = { workspace = true, optional = true }
 rustok-seo-targets = { workspace = true, features = ["server"] }
 rustok-translation-targets.workspace = true
 rustok-telemetry.workspace = true

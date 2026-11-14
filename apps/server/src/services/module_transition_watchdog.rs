@@ -32,6 +32,10 @@ impl ModuleTransitionWatchdogHandle {
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self.join_handle.await
     }
+
+    pub(crate) fn into_task(self) -> JoinHandle<()> {
+        self.join_handle
+    }
 }
 
 pub fn spawn_module_transition_watchdog_handle(

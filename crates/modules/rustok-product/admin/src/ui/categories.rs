@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
@@ -190,12 +190,18 @@ pub fn CategoriesPage() -> impl IntoView {
 
     // Load categories
     let res_locale = locale.clone();
-    let categories_resource = LocalResource::new(move || {
-        let tok = token.get();
-        let ten = tenant.get();
-        let loc = res_locale.clone().unwrap_or_default();
-        refresh_nonce.track();
-        async move {
+    // Resolved by the request: the page is served from an `Async` admin route, and a
+    // `LocalResource` is `pending()` on the server, so the reader got the fallback.
+    let categories_resource = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                res_locale.clone().unwrap_or_default(),
+                refresh_nonce.get(),
+            )
+        },
+        move |(tok, ten, loc, _generation)| async move {
             let bootstrap = catalog_transport::fetch_bootstrap(tok.clone(), ten.clone())
                 .await
                 .map_err(|e| e.to_string())?;
@@ -208,8 +214,8 @@ pub fn CategoriesPage() -> impl IntoView {
             .await
             .map_err(|e| e.to_string())?;
             Ok::<Vec<CatalogCategorySummary>, String>(res.items)
-        }
-    });
+        },
+    );
 
     // Auto-generate slug and code from name
     let on_name_input = move |val: String| {

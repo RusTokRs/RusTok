@@ -23,11 +23,27 @@ pub fn GroupsAdmin() -> impl IntoView {
     let transport = transport_context(profile);
     let directory_transport = transport.clone();
     let filters = default_groups_admin_filters();
-    let directory = LocalResource::new(move || {
-        let context = directory_transport.clone();
-        let request = filters.clone();
-        async move { load_groups_admin_directory(context, request).await }
-    });
+    // The transport context carries no `serde` impl, so the source is the pair of values it is
+    // rebuilt from and the fetcher assembles it. See
+    // `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+    let directory_selection = (
+        directory_transport.profile,
+        directory_transport.access_token.clone(),
+        directory_transport.tenant_slug.clone(),
+    );
+    let directory = Resource::new(
+        move || directory_selection.clone(),
+        move |(profile, access_token, tenant_slug)| {
+            let request = filters.clone();
+            async move {
+                load_groups_admin_directory(
+                    transport_context_for(profile, access_token, tenant_slug),
+                    request,
+                )
+                .await
+            }
+        },
+    );
 
     let (role_group_id, set_role_group_id) = signal(String::new());
     let (target_user_id, set_target_user_id) = signal(String::new());
@@ -452,5 +468,21 @@ fn transport_context(profile: GroupsAdminTransportProfile) -> GroupsAdminTranspo
             None,
             option_env!("RUSTOK_TENANT_SLUG").map(str::to_string),
         ),
+    }
+}
+
+/// Rebuilds the context inside the fetcher from the values the resource source carries, because
+/// the context itself is not `serde`. A native context keeps no credentials, exactly as
+/// `transport_context` returns them.
+fn transport_context_for(
+    profile: GroupsAdminTransportProfile,
+    access_token: Option<String>,
+    tenant_slug: Option<String>,
+) -> GroupsAdminTransportContext {
+    match profile {
+        GroupsAdminTransportProfile::Native => GroupsAdminTransportContext::native(),
+        GroupsAdminTransportProfile::Graphql => {
+            GroupsAdminTransportContext::graphql(access_token, tenant_slug)
+        }
     }
 }

@@ -7,10 +7,11 @@ use rustok_forum::{
     ForumNotificationRecipientContextPort, ForumNotificationRecipientContextRequest,
     SharedForumNotificationRecipientContextPort,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use crate::models::_entities::users;
 use crate::services::rbac_service::RbacService;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const MAX_RECIPIENT_PERMISSION_CLAIMS: usize = 512;
 const RECIPIENT_UNAVAILABLE_CODE: &str = "forum.notification_recipient_context.unavailable";
@@ -22,16 +23,18 @@ const RECIPIENT_DEPENDENCY_CODE: &str =
 /// only one validated, tenant-bound `PortContext` snapshot.
 #[derive(Clone)]
 pub(crate) struct ServerForumNotificationRecipientContextPort {
-    db: DatabaseConnection,
+    runtime_ctx: ServerRuntimeContext,
 }
 
 impl ServerForumNotificationRecipientContextPort {
-    pub(crate) fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    pub(crate) fn new(runtime_ctx: ServerRuntimeContext) -> Self {
+        Self { runtime_ctx }
     }
 
-    pub(crate) fn shared(db: DatabaseConnection) -> SharedForumNotificationRecipientContextPort {
-        Arc::new(Self::new(db))
+    pub(crate) fn shared(
+        runtime_ctx: ServerRuntimeContext,
+    ) -> SharedForumNotificationRecipientContextPort {
+        Arc::new(Self::new(runtime_ctx))
     }
 }
 
@@ -44,24 +47,47 @@ impl ForumNotificationRecipientContextPort for ServerForumNotificationRecipientC
     ) -> Result<PortContext, PortError> {
         validate_request(&caller_context, &request)?;
 
+        let db = self.runtime_ctx.db();
         let active_recipient = users::Entity::find()
             .filter(users::Column::TenantId.eq(request.tenant_id))
             .filter(users::Column::Id.eq(request.recipient_id))
             .filter(users::Column::Status.eq(UserStatus::Active))
-            .one(&self.db)
+            .one(db)
             .await
             .map_err(|_| dependency_unavailable())?;
         if active_recipient.is_none() {
             return Err(recipient_unavailable());
         }
 
-        let permissions =
-            RbacService::get_user_permissions(&self.db, &request.tenant_id, &request.recipient_id)
-                .await
-                .map_err(|_| dependency_unavailable())?;
-        let role = RbacService::get_user_role(&self.db, &request.tenant_id, &request.recipient_id)
-            .await
-            .map_err(|_| dependency_unavailable())?;
+        let permissions = RbacService::get_user_permissions_authoritative(
+            db,
+            &request.tenant_id,
+            &request.recipient_id,
+        )
+        .await
+        .map_err(|_| dependency_unavailable())?;
+        let availability = crate::services::rbac_module_availability::permission_availability_for(
+            &self.runtime_ctx,
+            request.tenant_id,
+        )
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                %error,
+                tenant_id = %request.tenant_id,
+                recipient_id = %request.recipient_id,
+                "Forum recipient module permission availability failed"
+            );
+            dependency_unavailable()
+        })?;
+        let permissions = filter_active_permissions(permissions, availability);
+        let role = RbacService::get_user_role_authoritative(
+            db,
+            &request.tenant_id,
+            &request.recipient_id,
+        )
+        .await
+        .map_err(|_| dependency_unavailable())?;
 
         build_recipient_context(&caller_context, &request, role, permissions)
     }
@@ -94,6 +120,16 @@ fn validate_request(
         ));
     }
     Ok(())
+}
+
+fn filter_active_permissions(
+    permissions: Vec<Permission>,
+    availability: Option<rustok_rbac::PermissionAvailability>,
+) -> Vec<Permission> {
+    match availability {
+        Some(snapshot) => snapshot.active_permissions(&permissions),
+        None => permissions,
+    }
 }
 
 fn build_recipient_context(
@@ -195,6 +231,65 @@ mod tests {
         assert_eq!(result.traceparent, caller.traceparent);
         assert_eq!(result.deadline_ms, caller.deadline_ms);
         assert!(result.idempotency_key.is_none());
+    }
+
+    #[test]
+    fn recipient_context_does_not_reactivate_disabled_forum_grants() {
+        let tenant_id = uuid::Uuid::new_v4();
+        let request =
+            ForumNotificationRecipientContextRequest::new(tenant_id, uuid::Uuid::new_v4())
+                .expect("request should be valid");
+        let availability = rustok_rbac::PermissionAvailability::new(
+            std::collections::BTreeMap::from([(
+                "forum_topics:read".to_string(),
+                "forum".to_string(),
+            )]),
+            std::collections::BTreeSet::new(),
+        );
+        let permissions = filter_active_permissions(
+            vec![Permission::FORUM_TOPICS_READ],
+            Some(availability),
+        );
+        let error = build_recipient_context(
+            &caller_context(tenant_id),
+            &request,
+            UserRole::Customer,
+            permissions,
+        )
+        .expect_err("disabled module permissions must not authorize recipients");
+
+        assert_eq!(error.kind, PortErrorKind::Forbidden);
+    }
+
+    #[test]
+    fn recipient_context_does_not_preserve_disabled_moderation_grants() {
+        let tenant_id = uuid::Uuid::new_v4();
+        let recipient_id = uuid::Uuid::new_v4();
+        let request = ForumNotificationRecipientContextRequest::new(tenant_id, recipient_id)
+            .expect("request should be valid");
+        let availability = rustok_rbac::PermissionAvailability::new(
+            std::collections::BTreeMap::from([(
+                "forum_topics:moderate".to_string(),
+                "forum".to_string(),
+            )]),
+            std::collections::BTreeSet::new(),
+        );
+        let permissions = filter_active_permissions(
+            vec![Permission::FORUM_TOPICS_MODERATE, Permission::USERS_READ],
+            Some(availability),
+        );
+        let result = build_recipient_context(
+            &caller_context(tenant_id),
+            &request,
+            UserRole::Customer,
+            permissions,
+        )
+        .expect("other active permissions may remain in the context");
+
+        assert!(result.claims.contains(&Permission::USERS_READ.to_string()));
+        assert!(!result
+            .claims
+            .contains(&Permission::FORUM_TOPICS_MODERATE.to_string()));
     }
 
     #[test]

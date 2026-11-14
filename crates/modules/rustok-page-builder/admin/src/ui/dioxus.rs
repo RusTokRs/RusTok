@@ -11,7 +11,7 @@ use fly_ui::{
     UiIntent,
 };
 use rustok_page_builder::{RuntimeContextScenario, RuntimePublishGatePolicy};
-use rustok_ui_core::UiRouteContext;
+use rustok_ui_core::{UiCspNonce, UiRouteContext};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -147,6 +147,11 @@ impl PartialEq for PageBuilderAdminWithControllerProps {
 pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps) -> Element {
     let route_context = use_context::<Option<UiRouteContext>>().unwrap_or_default();
     let locale = route_context.locale;
+    // The workspace renders the project stylesheet inline; without the request nonce the host's
+    // policy drops it and the canvas renders unstyled.
+    let workspace_csp_nonce = use_context::<Option<UiCspNonce>>()
+        .flatten()
+        .map(|nonce| nonce.as_str().to_string());
     let mut session = use_signal(|| {
         let mut s = EditorSessionState::new(
             props.controller.clone(),
@@ -255,6 +260,7 @@ pub fn PageBuilderAdminWithController(props: PageBuilderAdminWithControllerProps
                             on_intent: Some(on_workspace_intent),
                             on_change: None,
                             messages: workspace_messages.clone(),
+                            csp_nonce: workspace_csp_nonce.clone(),
                         }
                     },
                     false => rsx! {

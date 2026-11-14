@@ -1,5 +1,7 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use tokio::task::JoinHandle;
 
 use axum::{
     extract::{Request, State},
@@ -24,6 +26,38 @@ pub use base::{
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter, SharedSearchRateLimiter,
     extract_client_id_pub, rate_limit_middleware,
 };
+
+/// Runtime-owned handles for rate-limit maintenance loops.
+#[derive(Clone, Default)]
+pub(crate) struct RateLimitCleanupTaskRegistry(Arc<Mutex<Vec<JoinHandle<()>>>>);
+
+impl RateLimitCleanupTaskRegistry {
+    pub(crate) fn register(&self, task: JoinHandle<()>) {
+        match self.0.lock() {
+            Ok(mut tasks) => tasks.push(task),
+            Err(error) => {
+                tracing::error!(
+                    %error,
+                    "rate-limit cleanup task registry is poisoned; aborting untracked task"
+                );
+                task.abort();
+            }
+        }
+    }
+
+    pub(crate) fn take_tasks(&self) -> Vec<JoinHandle<()>> {
+        match self.0.lock() {
+            Ok(mut tasks) => std::mem::take(&mut *tasks),
+            Err(error) => {
+                tracing::error!(
+                    %error,
+                    "rate-limit cleanup task registry is poisoned during shutdown"
+                );
+                std::mem::take(&mut *error.into_inner())
+            }
+        }
+    }
+}
 
 /// Host-internal header populated only after applying the configured proxy trust policy.
 /// Incoming values are always removed before a trusted value is inserted.

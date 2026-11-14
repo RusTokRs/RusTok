@@ -93,7 +93,9 @@ pub fn build_starter_preset(starter_id: &str, title: &str) -> ProjectDocument {
 pub fn instantiate_starter_preset(starter_id: &str, title: &str) -> Result<Value, String> {
     let preset = build_starter_preset(starter_id, title);
     let mut generator = UniqueIdGenerator::new("page");
-    let page_doc = preset.clone_as_page(&mut generator);
+    let page_doc = preset
+        .clone_as_page(&mut generator)
+        .map_err(|err| err.to_string())?;
     GrapesJsCodec::encode_value(&page_doc).map_err(|err| err.to_string())
 }
 

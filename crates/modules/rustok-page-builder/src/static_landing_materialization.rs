@@ -201,7 +201,11 @@ pub fn compile_materialized_static_landing(
         );
     }
 
-    let artifact = compiler.compile_prepared_document(&materialized.document)?;
+    // These authoring definitions have already run against the reviewed context. Their source
+    // targets may intentionally no longer exist after a repeater or condition. Keep them in the
+    // build's source identity, but validate and render the lowered tree without running bindings
+    // or provider routing a second time.
+    let artifact = compiler.compile_materialized_document(&materialized.document)?;
     let runtime_context_hash = stable_hash(&runtime.context)?;
     let runtime_snapshot_hash = stable_hash(&runtime_snapshots)?;
     let static_build_hash = artifact.identity.build_hash.clone();
@@ -371,6 +375,20 @@ mod tests {
                 .as_deref(),
             Some(preview_document_hash.as_str())
         );
+        // Retain the previously materialized source in the build identity, including its
+        // authoring definitions, so compatible retained artifacts remain reproducible.
+        let prepared = StaticLandingCompiler::default()
+            .prepare_document(&project())
+            .unwrap();
+        let lowered = materialize_project_with_runtime_context_with_providers(
+            &prepared,
+            &json!({ "page": { "title": "Scenario title" } }),
+            &HostFormProviderEndpoints,
+        );
+        assert_eq!(
+            result.artifact.identity.source_hash,
+            stable_hash(&lowered.document).unwrap()
+        );
         assert_eq!(result.identity.runtime_context_hash.len(), 64);
         assert_eq!(result.identity.runtime_snapshot_hash.len(), 64);
         assert_eq!(result.identity.materialization_hash.len(), 64);
@@ -433,6 +451,177 @@ mod tests {
             diagnostic.code == "landing_insecure_resource_url"
                 && diagnostic.path.ends_with("attributes.src")
         }));
+    }
+
+    #[test]
+    fn static_publish_rejects_an_unexpanded_repeater_containing_a_form() {
+        let project = json!({
+            "pages": [{
+                "id": "home", "flyPageMeta": {"title": "Home", "description": "Landing", "slug": "home"},
+                "component": {"id": "root", "type": "wrapper", "components": [
+                    {"id": "title", "type": "heading", "tagName": "h1", "content": "Home"},
+                    {"id": "card", "type": "section", "components": [
+                        {"id": "name", "type": "text", "content": "{{item.name}}"},
+                        {"id": "form", "type": "form", "flyForm": {"id": "contact", "action_url": "/contact"}}
+                    ]}
+                ]}
+            }],
+            "flyRuntimeRepeaters": [{"id": "items", "component_id": "card", "path": "items"}]
+        });
+        let context = json!({"items": [{"name": "Apple"}, {"name": "Pear"}]});
+        let document = fly::GrapesJsCodec::decode_value(project.clone()).unwrap();
+        let readiness = crate::evaluate_landing_readiness_with_context(
+            &document,
+            Some(&context),
+            crate::LandingReadinessPolicy::default(),
+        );
+        assert!(!readiness.ready);
+        assert!(readiness.issues.iter().any(|issue| issue.diagnostic.code
+            == "runtime_repeater_form_identity_ambiguous"
+            && issue.diagnostic.severity == ValidationSeverity::Error));
+        let gate = crate::evaluate_runtime_publish_gate(
+            &document,
+            Some(&context),
+            &[],
+            &crate::RuntimePublishGatePolicy {
+                readiness: Some(crate::LandingReadinessPolicy::default()),
+                ..Default::default()
+            },
+        );
+        assert!(!gate.allowed);
+        let error = compile_materialized_static_landing(
+            &project,
+            PageBuilderPreviewRuntime::new(context, Some("reviewed".to_string())),
+        )
+        .expect_err("unexpanded runtime templates must not become static artifacts");
+        assert!(
+            matches!(error, PageBuilderStaticLandingMaterializationError::RuntimeDiagnostics { codes }
+            if codes.iter().any(|code| code == "runtime_repeater_form_identity_ambiguous"))
+        );
+    }
+
+    #[test]
+    fn static_publish_keeps_one_conditionally_visible_repeater_form() {
+        let project = json!({
+            "pages": [{
+                "id": "home", "flyPageMeta": {"title": "Home", "description": "Landing", "slug": "home"},
+                "component": {"id": "root", "type": "wrapper", "components": [
+                    {"id": "title", "type": "heading", "tagName": "h1", "content": "Home"},
+                    {"id": "card", "type": "section", "components": [
+                        {"id": "name", "type": "text", "content": "{{item.name}}"},
+                        {"id": "form", "type": "form", "flyForm": {"id": "contact", "provider": "forms", "action": "submit"}}
+                    ]}
+                ]}
+            }],
+            "flyRuntimeConditions": [{"id": "show-form", "component_id": "form", "path": "item.showForm", "operator": "truthy"}],
+            "flyRuntimeRepeaters": [{"id": "items", "component_id": "card", "path": "items"}]
+        });
+        let context = json!({"items": [
+            {"name": "Apple", "showForm": true}, {"name": "Pear", "showForm": false}
+        ]});
+        let result = compile_materialized_static_landing(
+            &project,
+            PageBuilderPreviewRuntime::new(context, Some("reviewed".to_string())),
+        )
+        .expect("the reviewed runtime emits exactly one provider form");
+        let html = &result.artifact.pages[0].document_html;
+        assert!(html.contains("Apple") && html.contains("Pear"), "{html}");
+        assert!(!html.contains("{{item.name}}"), "{html}");
+        assert_eq!(html.matches(" id=\"contact\"").count(), 1, "{html}");
+        assert!(
+            html.contains("action=\"/api/forms/contact/submit/form\""),
+            "{html}"
+        );
+        assert_eq!(result.runtime_snapshots[0].cases[0].blocking_diagnostics, 0);
+        result
+            .verify_integrity()
+            .expect("runtime snapshot matches published HTML");
+    }
+
+    #[test]
+    fn static_publish_preserves_dynamic_ids_and_external_literal_links() {
+        let project = json!({
+            "pages": [{
+                "id": "home", "flyPageMeta": {"title": "Home", "description": "Landing", "slug": "home"},
+                "component": {"id": "root", "type": "wrapper", "components": [
+                    {"id": "title", "type": "heading", "tagName": "h1", "content": "Home"},
+                    {"id": "outside", "type": "section", "attributes": {"id": "item-apple"}},
+                    {"id": "item", "type": "section", "components": [
+                        {"id": "external-link", "type": "link", "attributes": {"href": "#item-apple"}, "content": "External"},
+                        {"id": "local-link", "type": "link", "attributes": {"href": "#item-{{item.slug}}"}, "content": "Local"},
+                        {"id": "target", "type": "section", "attributes": {"id": "item-{{item.slug}}"}}
+                    ]}
+                ]}
+            }],
+            "flyRuntimeRepeaters": [{"id": "items", "component_id": "item", "path": "items"}]
+        });
+        let result = compile_materialized_static_landing(
+            &project,
+            PageBuilderPreviewRuntime::new(
+                json!({"items": [{"slug": "apple"}, {"slug": "apple"}, {"slug": "яблоко"}]}),
+                None,
+            ),
+        )
+        .expect("dynamic ids and references should survive publication");
+        let html = &result.artifact.pages[0].document_html;
+        assert_eq!(html.matches("href=\"#item-apple\"").count(), 3, "{html}");
+        for suffix in ["0", "1"] {
+            let id = format!("item-apple--items-{suffix}");
+            assert!(html.contains(&format!("id=\"{id}\"")), "{html}");
+            assert!(html.contains(&format!("href=\"#{id}\"")), "{html}");
+        }
+        assert!(html.contains("id=\"item-яблоко\""), "{html}");
+        assert!(html.contains("href=\"#item-яблоко\""), "{html}");
+        result
+            .verify_integrity()
+            .expect("runtime snapshot matches published HTML");
+    }
+
+    #[test]
+    fn runtime_bindings_are_not_applied_again_to_the_static_artifact() {
+        let project = json!({
+            "pages": [{
+                "id": "home", "flyPageMeta": {"title": "Home", "description": "Landing", "slug": "home"},
+                "component": {"id": "root", "type": "wrapper", "components": [
+                    {"id": "title", "type": "heading", "tagName": "h1", "content": "Draft"}
+                ]}
+            }],
+            "flyRuntimeBindings": [{"id": "title-binding", "component_id": "title", "path": "title", "target": "field", "name": "content", "fallback": "Fallback"}]
+        });
+        let result = compile_materialized_static_landing(
+            &project,
+            PageBuilderPreviewRuntime::new(json!({"title": "Reviewed"}), None),
+        )
+        .expect("the reviewed context is the only binding input");
+        let html = &result.artifact.pages[0].document_html;
+        assert!(html.contains("Reviewed"), "{html}");
+        assert!(!html.contains("Fallback"), "{html}");
+        result
+            .verify_integrity()
+            .expect("preview and static output match");
+    }
+
+    #[test]
+    fn static_publish_accepts_forms_with_distinct_materialized_ids() {
+        let project = json!({
+            "pages": [{
+                "id": "home", "flyPageMeta": {"title": "Home", "description": "Landing", "slug": "home"},
+                "component": {"id": "root", "type": "wrapper", "components": [
+                    {"id": "title", "type": "heading", "tagName": "h1", "content": "Home"},
+                    {"id": "first", "type": "form", "attributes": {"id": "lead"}, "flyForm": {"id": "signup", "action_url": "/signup"}},
+                    {"id": "second", "type": "form", "flyForm": {"id": "lead", "action_url": "/lead"}}
+                ]}
+            }]
+        });
+        let result = compile_materialized_static_landing(
+            &project,
+            PageBuilderPreviewRuntime::new(json!({}), None),
+        )
+        .expect("the overwritten draft id is not an HTML conflict");
+        let html = &result.artifact.pages[0].document_html;
+        assert_eq!(html.matches(" id=\"signup\"").count(), 1);
+        assert_eq!(html.matches(" id=\"lead\"").count(), 1);
+        result.verify_integrity().expect("artifact integrity");
     }
 
     #[test]

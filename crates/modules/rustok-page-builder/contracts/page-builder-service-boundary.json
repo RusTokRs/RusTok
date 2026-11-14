@@ -100,7 +100,7 @@
       "capability_required_server_order": [
         "pages_request_page_id(&request)?",
         "ensure_requested_page(&snapshot",
-        "leptos_auth::transport::fetch_current_user",
+        "rustok_auth_ui::transport::fetch_current_user",
         "PageBuilderRequestAuth::new",
         "PortContext::new",
         ".with_deadline(PAGE_BUILDER_PORT_DEADLINE)",
@@ -182,12 +182,15 @@
         ],
         "surface_markers": [
           "request_server_preview()",
-          "server_preview_html.get()",
+          "data-fly-intent-form=\"render_server_preview\"",
+          "server_preview_html",
           "data-page-builder-server-preview-frame",
-          "srcdoc=embedded_preview_document(html, csp_nonce.as_ref())",
+          "srcdoc=",
+          "src=preview_endpoint.as_ref()",
+          "embedded_preview_document(html, csp_nonce.as_ref())",
           "fly::document_html_with_style_nonce("
         ],
-        "host_marker": "<ServerPreviewPanel\n                runtime=server_preview_runtime\n                provider_status=server_preview_provider_status\n            />"
+        "host_marker": "<ServerPreviewPanel\n                runtime=server_preview_runtime\n                provider_status=server_preview_provider_status\n                preview_endpoint=preview_endpoint.clone()\n            />"
       }
     }
   },

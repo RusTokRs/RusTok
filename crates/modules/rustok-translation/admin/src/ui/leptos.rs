@@ -1,11 +1,11 @@
 use leptos::task::spawn_local;
 use leptos::{html, prelude::*};
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui::{
     Alert, AlertVariant, Badge, BadgeVariant, Button, ButtonVariant, Card, CardContent,
     CardDescription, CardHeader, CardTitle, Checkbox, Input, Label, Select, SelectOption, Textarea,
 };
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::DataGrid;
 use rustok_ui_core::UiRouteContext;
@@ -196,10 +196,12 @@ fn OverviewTab(
     locale: Option<String>,
 ) -> impl IntoView {
     let locale_for_resource = locale.clone();
-    let bootstrap = LocalResource::new(move || {
-        let context =
-            core::transport_context(token.get(), tenant.get(), locale_for_resource.clone());
-        async move {
+    // Resolved by the request: the module admin mounts inside the `Async` admin layout, so a
+    // `LocalResource` here leaves the reader with the `Suspense` fallback.
+    let bootstrap = Resource::new(
+        move || (token.get(), tenant.get(), locale_for_resource.clone()),
+        move |(token_value, tenant_value, locale_value)| async move {
+            let context = core::transport_context(token_value, tenant_value, locale_value);
             let policy = transport::execute(context.clone(), TranslationAdminOperation::ReadPolicy)
                 .await
                 .map_err(|error| error.to_string())?;
@@ -214,8 +216,8 @@ fn OverviewTab(
                 ) => Ok((policy, targets)),
                 _ => Err("Translation bootstrap returned an unexpected response".to_string()),
             }
-        }
-    });
+        },
+    );
 
     let loading = t(
         locale.as_deref(),
@@ -1564,12 +1566,18 @@ fn GlossariesTab(
     let (active_key, set_active_key) = signal(core::new_idempotency_key("set-glossary-active"));
 
     let locale_for_resource = locale.clone();
-    let glossaries = LocalResource::new(move || {
-        refresh_revision.get();
-        let context =
-            core::transport_context(token.get(), tenant.get(), locale_for_resource.clone());
-        let selected = selected_glossary_id.get();
-        async move {
+    let glossaries = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                locale_for_resource.clone(),
+                refresh_revision.get(),
+                selected_glossary_id.get(),
+            )
+        },
+        move |(token_value, tenant_value, locale_value, _revision, selected)| async move {
+            let context = core::transport_context(token_value, tenant_value, locale_value);
             let list = transport::execute(
                 context.clone(),
                 TranslationAdminOperation::ListGlossaries { limit: 200 },
@@ -1601,8 +1609,8 @@ fn GlossariesTab(
                 None => None,
             };
             Ok::<(Vec<GlossarySummary>, Option<Glossary>), String>((list, selected))
-        }
-    });
+        },
+    );
 
     Effect::new(move |_| {
         if let Some(Ok((_, selected))) = glossaries.get() {
@@ -2052,18 +2060,38 @@ fn MemoryTab(
     let (purge_key, set_purge_key) = signal(core::new_idempotency_key("purge-memory-entry"));
 
     let locale_for_resource = locale.clone();
-    let memory_entries = LocalResource::new(move || {
-        refresh_revision.get();
-        let context =
-            core::transport_context(token.get(), tenant.get(), locale_for_resource.clone());
-        let selected = selected_memory_entry_id.get();
-        let list_operation = core::list_memory_entries_operation(
-            &list_source_locale.get(),
-            &list_target_locale.get(),
-            include_tombstoned.get(),
-            &list_limit.get(),
-        );
-        async move {
+    let memory_entries = Resource::new(
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                locale_for_resource.clone(),
+                refresh_revision.get(),
+                selected_memory_entry_id.get(),
+                list_source_locale.get(),
+                list_target_locale.get(),
+                include_tombstoned.get(),
+                list_limit.get(),
+            )
+        },
+        move |(
+            token_value,
+            tenant_value,
+            locale_value,
+            _revision,
+            selected,
+            source_locale,
+            target_locale,
+            include_tombstoned_value,
+            limit_value,
+        )| async move {
+            let context = core::transport_context(token_value, tenant_value, locale_value);
+            let list_operation = core::list_memory_entries_operation(
+                &source_locale,
+                &target_locale,
+                include_tombstoned_value,
+                &limit_value,
+            );
             let list = transport::execute(
                 context.clone(),
                 list_operation.map_err(|error| error.to_string())?,
@@ -2095,8 +2123,8 @@ fn MemoryTab(
                 None => None,
             };
             Ok::<(Vec<MemoryEntry>, Option<MemoryEntry>), String>((list, selected))
-        }
-    });
+        },
+    );
 
     Effect::new(move |_| {
         if let Some(Ok((_, selected))) = memory_entries.get() {

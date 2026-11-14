@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 
 use crate::features::modules::transport::{finalize_module_transition, rollback_module_transition};
 use rustok_api::{

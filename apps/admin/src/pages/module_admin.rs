@@ -5,7 +5,7 @@ use leptos_router::params::Params;
 
 use crate::app::modules::{AdminPageLookup, lookup_page_for_route_segment};
 use crate::app::page_builder_contributions::PageBuilderContributionScope;
-use crate::app::providers::enabled_modules::use_enabled_modules_context;
+use crate::app::providers::enabled_modules::use_enabled_modules_resource;
 use crate::shared::context::module_request::ModuleRequestProvider;
 use crate::use_admin_locale;
 
@@ -19,7 +19,7 @@ struct ModuleAdminParams {
 pub fn ModuleAdminPage() -> impl IntoView {
     let i18n = use_admin_locale();
     let params = use_params::<ModuleAdminParams>();
-    let enabled_modules = use_enabled_modules_context();
+    let enabled_modules = use_enabled_modules_resource();
 
     let route_segment = Signal::derive(move || {
         params.with(|params| {
@@ -41,36 +41,39 @@ pub fn ModuleAdminPage() -> impl IntoView {
         })
     });
 
-    let page_lookup = Signal::derive(move || {
-        let enabled = enabled_modules.modules.get();
-        lookup_page_for_route_segment(&route_segment.get(), Some(&enabled))
-    });
-    let is_loading = Signal::derive(move || enabled_modules.is_loading.get());
-
     view! {
         <section class="flex flex-1 flex-col p-4 md:px-6">
+            // The decision is a resource the request resolves, so it is read inside `Suspense`: the
+            // response then carries the decision instead of a loading state that no host in this
+            // profile ever replaces. `Async` route mode waits for it, so the fallback is only what
+            // a reader sees if the request produced nothing at all.
+            <Suspense fallback=|| view! {
+                <div class="space-y-4">
+                    <div class="h-10 w-64 animate-pulse rounded-xl bg-muted"></div>
+                    <div class="h-64 animate-pulse rounded-xl bg-muted"></div>
+                </div>
+            }>
             {move || {
-                let loading = is_loading.get();
-                leptos::logging::log!("ModuleAdminPage view closure: is_loading={}", loading);
-                if loading {
+                let Some(enabled) = enabled_modules.modules() else {
+                    let message = enabled_modules
+                        .error()
+                        .unwrap_or_else(|| "Module availability was not resolved".to_string());
                     return view! {
-                        <div class="space-y-4">
-                            <div class="h-10 w-64 animate-pulse rounded-xl bg-muted"></div>
-                            <div class="h-64 animate-pulse rounded-xl bg-muted"></div>
+                        <div class="rounded-xl border border-destructive/30 bg-destructive/10 px-5 py-5 text-sm text-destructive" role="alert">
+                            {message}
                         </div>
                     }
                     .into_any();
-                }
+                };
 
                 let seg = route_segment.get();
                 let sub = module_subpath.get();
                 leptos::logging::log!("ModuleAdminPage view closure: seg={:?}, sub={:?}", seg, sub);
-                match page_lookup.get() {
+                match lookup_page_for_route_segment(&seg, Some(&enabled)) {
                     AdminPageLookup::Found(page) => {
                         let route_segment_value = route_segment.get();
                         let subpath_value = module_subpath.get();
                         let page_for_render = page.clone();
-                        let enabled = enabled_modules.modules.get();
                         let pages_route = page.module_slug == "pages";
                         view! {
                             <div class="space-y-6">
@@ -129,6 +132,7 @@ pub fn ModuleAdminPage() -> impl IntoView {
                     .into_any(),
                 }
             }}
+            </Suspense>
         </section>
     }
 }

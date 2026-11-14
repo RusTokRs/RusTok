@@ -30,16 +30,21 @@ use policy_set_card::PolicySetCard;
 use policy_workbench::PolicyWorkbench;
 use runtime_context::RuntimeContext;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -48,8 +53,8 @@ pub fn ChannelAdmin() -> impl IntoView {
     let ui_locale = route_context.locale.clone();
     let selected_channel_query = use_route_query_value(AdminQueryKey::ChannelId.as_str());
     let query_writer = use_route_query_writer();
-    let token = leptos_auth::hooks::use_token();
-    let tenant = leptos_auth::hooks::use_tenant();
+    let token = rustok_auth_ui::ui::leptos::hooks::use_token();
+    let tenant = rustok_auth_ui::ui::leptos::hooks::use_tenant();
     let badge_label = t(ui_locale.as_deref(), "channel.badge", "Experimental Core");
     let title_label = t(ui_locale.as_deref(), "channel.title", "Channel Management");
     let subtitle_label = t(
@@ -102,7 +107,7 @@ pub fn ChannelAdmin() -> impl IntoView {
     let create_name = RwSignal::new(String::new());
     let create_busy = RwSignal::new(false);
 
-    let bootstrap = local_resource(
+    let bootstrap = loaded_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             transport::fetch_bootstrap(token_value, tenant_value).await

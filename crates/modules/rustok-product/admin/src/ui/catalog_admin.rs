@@ -1,6 +1,6 @@
 use leptos::prelude::*;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::read_route_query_value;
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::catalog_controls::{
@@ -44,12 +44,12 @@ pub fn ProductAdmin() -> impl IntoView {
 
     let labels = build_product_admin_catalog_controls_labels(locale.as_deref());
     let options_locale = locale.clone().unwrap_or_default();
-    let catalog_options = LocalResource::new(move || {
-        let token = token.get();
-        let tenant = tenant.get();
-        let locale = options_locale.clone();
-        async move { catalog_transport::fetch_catalog_search_options(token, tenant, locale).await }
-    });
+    let catalog_options = Resource::new(
+        move || (token.get(), tenant.get(), options_locale.clone()),
+        move |(token, tenant, locale)| async move {
+            catalog_transport::fetch_catalog_search_options(token, tenant, locale).await
+        },
+    );
 
     view! {
         <section class="space-y-6">

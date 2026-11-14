@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-04",
+  "generated_at": "2026-11-12",
   "status": "pages_artifact_http_cache_source_unvalidated",
-  "scope": "Pages Axum artifact HTTP generation miss, owner read, cache refill, hit and conditional 304",
+  "scope": "Pages Axum artifact HTTP generation miss, owner read, cache refill, hit and conditional 304, and its invalidation by a page or route generation change",
   "source_contract": {
     "sqlite_router_harness_added": true,
     "real_pages_module_migrations_used": true,
@@ -35,6 +35,11 @@
     "conditional_304_body_empty": true,
     "etag_stable_across_generation_change": true,
     "cache_ttl_contract_retained": true,
+    "page_update_rotates_a_generation_the_entry_binds": true,
+    "page_and_route_generation_changes_age_the_entry_out": true,
+    "cache_hit_entry_does_not_survive_a_page_update": true,
+    "stale_entry_answers_404_instead_of_the_cached_document": true,
+    "missing_artifact_is_never_cached": true,
     "test_only_tower_dependency_added": true,
     "production_artifact_behavior_changed": false,
     "production_cache_behavior_changed": false,
@@ -48,6 +53,10 @@
   "harness": {
     "path": "crates/modules/rustok-pages/tests/artifact_http_cache_sqlite.rs",
     "test": "artifact_http_misses_refills_hits_and_returns_conditional_304_across_generation_change",
+    "tests": [
+      "artifact_http_misses_refills_hits_and_returns_conditional_304_across_generation_change",
+      "artifact_http_entry_does_not_outlive_a_page_update"
+    ],
     "backend": "sqlite_in_memory",
     "route": "/api/pages/{id}/artifact?locale=en"
   },

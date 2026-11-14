@@ -70,17 +70,35 @@ pub struct UpdateOAuthAppInput {
 }
 
 /// Result of creating an OAuth app — includes the plaintext secret shown once
-#[derive(Debug)]
 pub struct CreateOAuthAppResult {
     pub app: oauth_apps::Model,
     pub client_secret: String,
 }
 
+impl std::fmt::Debug for CreateOAuthAppResult {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CreateOAuthAppResult")
+            .field("app", &self.app)
+            .field("client_secret", &"<redacted>")
+            .finish()
+    }
+}
+
 /// Result of rotating an OAuth app's secret
-#[derive(Debug)]
 pub struct RotateSecretResult {
     pub app: oauth_apps::Model,
     pub client_secret: String,
+}
+
+impl std::fmt::Debug for RotateSecretResult {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RotateSecretResult")
+            .field("app", &self.app)
+            .field("client_secret", &"<redacted>")
+            .finish()
+    }
 }
 
 pub struct OAuthAppService;
@@ -245,9 +263,11 @@ impl OAuthAppService {
     /// Rotate client_secret — generates a new secret, returns plaintext once
     pub async fn rotate_secret(
         db: &DatabaseConnection,
+        tenant_id: Uuid,
         app_id: Uuid,
     ) -> Result<RotateSecretResult> {
         let app = OAuthApps::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
             .one(db)
             .await
             .map_err(|_| Error::InternalServerError)?
@@ -259,27 +279,34 @@ impl OAuthAppService {
             ));
         }
 
+        let expected_hash = app
+            .client_secret_hash
+            .clone()
+            .ok_or_else(|| Error::BadRequest("This OAuth app has no rotatable secret".to_string()))?;
         let new_secret = generate_client_secret()?;
         let new_hash = auth::hash_password_async(new_secret.clone()).await?;
+        let updated_at = Utc::now();
 
-        // Column-scoped write for the same reason as in update_app:
-        // never rewrite unrelated fields from a stale read.
-        oauth_apps::Entity::update_many()
-            .col_expr(
-                oauth_apps::Column::ClientSecretHash,
-                Expr::value(Some(new_hash)),
-            )
-            .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(Utc::now()))
-            .filter(oauth_apps::Column::Id.eq(app_id))
-            .exec(db)
-            .await
-            .map_err(|_| Error::InternalServerError)?;
+        // Compare-and-swap the hash so concurrent rotations cannot both report
+        // success for a plaintext that did not become the stored credential.
+        if !replace_oauth_secret_if_current(
+            db,
+            tenant_id,
+            app_id,
+            &expected_hash,
+            &new_hash,
+            updated_at.clone(),
+        )
+        .await?
+        {
+            return Err(Error::Conflict(
+                "OAuth client secret changed during rotation; retry the operation".to_string(),
+            ));
+        }
 
-        let updated = OAuthApps::find_by_id(app_id)
-            .one(db)
-            .await
-            .map_err(|_| Error::InternalServerError)?
-            .ok_or_else(|| Error::NotFound)?;
+        let mut updated = app;
+        updated.client_secret_hash = Some(new_hash);
+        updated.updated_at = updated_at.into();
 
         Ok(RotateSecretResult {
             app: updated,
@@ -417,6 +444,14 @@ impl OAuthAppService {
     pub fn verify_pkce(code_challenge: &str, code_verifier: &str) -> bool {
         use base64::{Engine as _, engine::general_purpose};
         use sha2::{Digest, Sha256};
+
+        if !(43..=128).contains(&code_verifier.len())
+            || !code_verifier
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"-._~".contains(&byte))
+        {
+            return false;
+        }
 
         let mut hasher = Sha256::new();
         hasher.update(code_verifier.as_bytes());
@@ -746,13 +781,18 @@ pub async fn sync_app_connections(
         active_slugs.insert(slug);
     }
 
-    // 4. Deactivate orphaned auto-created apps and revoke their outstanding
-    // refresh credentials in one database transaction. A failed write must
+    // 4. Deactivate orphaned apps owned by this manifest entry set and revoke
+    // their outstanding OAuth tokens in one database transaction. A failed write must
     // never produce a successful sync response while orphaned clients remain
     // active, and a token revocation failure must roll back deactivation.
     let orphaned = existing
         .iter()
-        .filter(|app| app.auto_created && app.is_active() && !active_slugs.contains(&app.slug))
+        .filter(|app| {
+            app.auto_created
+                && app.manifest_ref.as_deref() == Some(app.slug.as_str())
+                && app.is_active()
+                && !active_slugs.contains(&app.slug)
+        })
         .collect::<Vec<_>>();
     if !orphaned.is_empty() {
         let tx = db.begin().await.map_err(|error| {
@@ -767,7 +807,10 @@ pub async fn sync_app_connections(
                 .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now))
                 .filter(oauth_apps::Column::Id.eq(app.id))
                 .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+                .filter(oauth_apps::Column::Slug.eq(app.slug.clone()))
+                .filter(oauth_apps::Column::AppType.eq(app.app_type.clone()))
                 .filter(oauth_apps::Column::AutoCreated.eq(true))
+                .filter(oauth_apps::Column::ManifestRef.eq(Some(app.slug.clone())))
                 .filter(oauth_apps::Column::IsActive.eq(true))
                 .exec(&tx)
                 .await
@@ -830,6 +873,22 @@ pub async fn sync_manifest_managed_apps_for_all_tenants(
     Ok(())
 }
 
+fn ensure_manifest_app_ownership(
+    app: &oauth_apps::Model,
+    slug: &str,
+    expected_app_type: &str,
+) -> Result<()> {
+    if !app.auto_created
+        || app.manifest_ref.as_deref() != Some(slug)
+        || app.app_type != expected_app_type
+    {
+        return Err(Error::Conflict(format!(
+            "OAuth app slug `{slug}` is occupied by an app not owned by the matching manifest entry"
+        )));
+    }
+    Ok(())
+}
+
 /// Upsert an embedded app (no credentials needed)
 async fn upsert_embedded_app(
     db: &DatabaseConnection,
@@ -856,21 +915,40 @@ async fn upsert_embedded_app(
         })?;
 
     if let Some(app) = existing {
-        // Re-activate if it was deactivated
+        ensure_manifest_app_ownership(&app, slug, "embedded")?;
+        // Reactivate with a column-scoped write so a stale read cannot overwrite
+        // unrelated runtime-owned fields such as last_used_at.
         if !app.is_active {
-            let mut active: OAuthAppActiveModel = app.into();
-            active.is_active = Set(true);
-            active.revoked_at = Set(None);
-            active.updated_at = Set(Utc::now().into());
-            active.update(db).await.map_err(|error| {
-                tracing::error!(
-                    tenant_id = %tenant_id,
-                    slug = slug,
-                    error = %error,
-                    "Failed to reactivate embedded OAuth app during manifest sync"
-                );
-                Error::InternalServerError
-            })?;
+            let now = Utc::now();
+            let updated = oauth_apps::Entity::update_many()
+                .col_expr(oauth_apps::Column::IsActive, Expr::value(true))
+                .col_expr(
+                    oauth_apps::Column::RevokedAt,
+                    Expr::value(None::<sea_orm::prelude::DateTimeWithTimeZone>),
+                )
+                .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now))
+                .filter(oauth_apps::Column::Id.eq(app.id))
+                .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+                .filter(oauth_apps::Column::AppType.eq("embedded"))
+                .filter(oauth_apps::Column::AutoCreated.eq(true))
+                .filter(oauth_apps::Column::ManifestRef.eq(Some(slug.to_string())))
+                .filter(oauth_apps::Column::IsActive.eq(false))
+                .exec(db)
+                .await
+                .map_err(|error| {
+                    tracing::error!(
+                        tenant_id = %tenant_id,
+                        slug = slug,
+                        error = %error,
+                        "Failed to reactivate embedded OAuth app during manifest sync"
+                    );
+                    Error::InternalServerError
+                })?;
+            if updated.rows_affected != 1 {
+                return Err(Error::Conflict(format!(
+                    "embedded OAuth app `{slug}` changed during manifest sync"
+                )));
+            }
         }
     } else {
         let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
@@ -956,32 +1034,19 @@ async fn upsert_first_party_app(
         })?;
 
     if let Some(app) = existing {
-        // Re-activate if deactivated; update scopes/grant_types
-        let mut active: OAuthAppActiveModel = app.into();
-        active.is_active = Set(true);
-        active.revoked_at = Set(None);
-        active.name = Set(name.to_string());
-        active.description = Set(Some(format!("Auto-created for {slug}")));
-        active.scopes =
-            Set(serde_json::to_value(&scopes_vec).map_err(|_| Error::InternalServerError)?);
-        active.grant_types =
-            Set(serde_json::to_value(&grant_types_vec).map_err(|_| Error::InternalServerError)?);
-        active.granted_permissions = Set(to_json_array(&granted_permissions_vec)?);
-        active.redirect_uris =
-            Set(serde_json::to_value(redirect_uris).map_err(|_| Error::InternalServerError)?);
-        active.metadata = Set(build_manifest_managed_metadata(public_url));
-        active.manifest_ref = Set(Some(slug.to_string()));
-        active.auto_created = Set(true);
-        active.updated_at = Set(Utc::now().into());
-        active.update(db).await.map_err(|error| {
-            tracing::error!(
-                tenant_id = %tenant_id,
-                slug = slug,
-                error = %error,
-                "Failed to update first-party OAuth app during manifest sync"
-            );
-            Error::InternalServerError
-        })?;
+        update_first_party_app_from_manifest(
+            db,
+            &app,
+            tenant_id,
+            slug,
+            name,
+            public_url,
+            redirect_uris,
+            &scopes_vec,
+            &grant_types_vec,
+            &granted_permissions_vec,
+        )
+        .await?;
     } else {
         let client_secret_plain = generate_client_secret()?;
         let client_secret_hash = auth::hash_password(&client_secret_plain)?;
@@ -1036,6 +1101,80 @@ async fn upsert_first_party_app(
     Ok(())
 }
 
+async fn update_first_party_app_from_manifest(
+    db: &DatabaseConnection,
+    app: &oauth_apps::Model,
+    tenant_id: Uuid,
+    slug: &str,
+    name: &str,
+    public_url: &str,
+    redirect_uris: &[String],
+    scopes: &[String],
+    grant_types: &[String],
+    granted_permissions: &[String],
+) -> Result<()> {
+    ensure_manifest_app_ownership(app, slug, "first_party")?;
+    let scopes_json = serde_json::to_value(scopes).map_err(|_| Error::InternalServerError)?;
+    let grant_types_json =
+        serde_json::to_value(grant_types).map_err(|_| Error::InternalServerError)?;
+    let redirect_uris_json =
+        serde_json::to_value(redirect_uris).map_err(|_| Error::InternalServerError)?;
+    let now = Utc::now();
+    let updated = oauth_apps::Entity::update_many()
+        .col_expr(oauth_apps::Column::IsActive, Expr::value(true))
+        .col_expr(
+            oauth_apps::Column::RevokedAt,
+            Expr::value(None::<sea_orm::prelude::DateTimeWithTimeZone>),
+        )
+        .col_expr(oauth_apps::Column::Name, Expr::value(name.to_string()))
+        .col_expr(
+            oauth_apps::Column::Description,
+            Expr::value(Some(format!("Auto-created for {slug}"))),
+        )
+        .col_expr(oauth_apps::Column::Scopes, Expr::value(scopes_json))
+        .col_expr(oauth_apps::Column::GrantTypes, Expr::value(grant_types_json))
+        .col_expr(
+            oauth_apps::Column::GrantedPermissions,
+            Expr::value(to_json_array(granted_permissions)?),
+        )
+        .col_expr(
+            oauth_apps::Column::RedirectUris,
+            Expr::value(redirect_uris_json),
+        )
+        .col_expr(
+            oauth_apps::Column::Metadata,
+            Expr::value(build_manifest_managed_metadata(public_url)),
+        )
+        .col_expr(
+            oauth_apps::Column::ManifestRef,
+            Expr::value(Some(slug.to_string())),
+        )
+        .col_expr(oauth_apps::Column::AutoCreated, Expr::value(true))
+        .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(now))
+        .filter(oauth_apps::Column::Id.eq(app.id))
+        .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+        .filter(oauth_apps::Column::AppType.eq("first_party"))
+        .filter(oauth_apps::Column::AutoCreated.eq(true))
+        .filter(oauth_apps::Column::ManifestRef.eq(Some(slug.to_string())))
+        .exec(db)
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                slug = slug,
+                error = %error,
+                "Failed to update first-party OAuth app during manifest sync"
+            );
+            Error::InternalServerError
+        })?;
+    if updated.rows_affected != 1 {
+        return Err(Error::Conflict(format!(
+            "first-party OAuth app `{slug}` changed ownership during manifest sync"
+        )));
+    }
+    Ok(())
+}
+
 /// Generate a client secret with `sk_live_` prefix
 fn generate_client_secret() -> Result<String> {
     // Keep the prefix stable while using more than 256 bits of entropy so
@@ -1046,6 +1185,29 @@ fn generate_client_secret() -> Result<String> {
         auth::generate_refresh_token()?
     );
     Ok(format!("sk_live_{token}"))
+}
+
+async fn replace_oauth_secret_if_current(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    app_id: Uuid,
+    expected_hash: &str,
+    new_hash: &str,
+    updated_at: chrono::DateTime<Utc>,
+) -> Result<bool> {
+    let result = oauth_apps::Entity::update_many()
+        .col_expr(
+            oauth_apps::Column::ClientSecretHash,
+            Expr::value(Some(new_hash.to_string())),
+        )
+        .col_expr(oauth_apps::Column::UpdatedAt, Expr::value(updated_at))
+        .filter(oauth_apps::Column::Id.eq(app_id))
+        .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+        .filter(oauth_apps::Column::ClientSecretHash.eq(Some(expected_hash.to_string())))
+        .exec(db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    Ok(result.rows_affected == 1)
 }
 
 fn validate_manual_app_configuration(
@@ -1617,14 +1779,14 @@ mod tests {
         use base64::{Engine as _, engine::general_purpose};
         use sha2::{Digest, Sha256};
 
-        let verifier = "a]b[c}d{e~f.g_h-i+j=k";
+        let verifier = "a~b.c_d-e~f.g_h-i".repeat(3);
         let mut hasher = Sha256::new();
         hasher.update(verifier.as_bytes());
         let hash = hasher.finalize();
         let challenge = general_purpose::URL_SAFE_NO_PAD.encode(hash);
 
         // verify_pkce should accept the correctly generated challenge
-        assert!(OAuthAppService::verify_pkce(&challenge, verifier));
+        assert!(OAuthAppService::verify_pkce(&challenge, &verifier));
     }
 
     #[test]
@@ -1675,6 +1837,22 @@ mod tests {
     #[test]
     fn rfc7636_empty_verifier() {
         assert!(!OAuthAppService::verify_pkce("some_challenge", ""));
+    }
+
+    #[test]
+    fn rfc7636_rejects_verifier_outside_length_and_character_bounds() {
+        use base64::{Engine as _, engine::general_purpose};
+        use sha2::{Digest, Sha256};
+
+        for verifier in [
+            "a".repeat(42),
+            "a".repeat(129),
+            format!("{}+", "a".repeat(42)),
+        ] {
+            let challenge =
+                general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+            assert!(!OAuthAppService::verify_pkce(&challenge, &verifier));
+        }
     }
 
     // ===================================================================
@@ -2162,6 +2340,14 @@ mod tests {
         assert!(created.app.can_rotate_secret());
         assert!(created.app.can_revoke());
         assert!(created.client_secret.starts_with("sk_live_"));
+        let created_debug = format!("{created:?}");
+        assert!(created_debug.contains("<redacted>"));
+        assert!(!created_debug.contains(&created.client_secret));
+        let stale_secret_hash = created
+            .app
+            .client_secret_hash
+            .clone()
+            .expect("created app secret hash");
         assert_eq!(
             created.app.redirect_uris_list(),
             vec!["https://partner.example.com/callback".to_string()]
@@ -2197,9 +2383,12 @@ mod tests {
         );
         assert_eq!(updated.scopes_list(), vec!["catalog:*".to_string()]);
 
-        let rotated = OAuthAppService::rotate_secret(&db, created.app.id)
+        let rotated = OAuthAppService::rotate_secret(&db, tenant.id, created.app.id)
             .await
             .expect("rotate secret");
+        let rotated_debug = format!("{rotated:?}");
+        assert!(rotated_debug.contains("<redacted>"));
+        assert!(!rotated_debug.contains(&rotated.client_secret));
         let rotated_hash = rotated
             .app
             .client_secret_hash
@@ -2208,6 +2397,19 @@ mod tests {
         assert!(
             OAuthAppService::verify_client_secret(&rotated.client_secret, rotated_hash)
                 .expect("verify rotated secret")
+        );
+        assert!(
+            !replace_oauth_secret_if_current(
+                &db,
+                tenant.id,
+                created.app.id,
+                &stale_secret_hash,
+                "stale-hash",
+                Utc::now(),
+            )
+            .await
+            .expect("stale secret compare-and-swap"),
+            "a rotation based on a stale hash must not overwrite the current credential"
         );
 
         let token_user = crate::models::users::ActiveModel::new(
@@ -2315,7 +2517,27 @@ mod tests {
         let revoke_result = OAuthAppService::revoke_app(&db, managed.id).await;
         assert!(revoke_result.is_err());
 
-        let rotated = OAuthAppService::rotate_secret(&db, managed.id)
+        let other_tenant = tenants::ActiveModel::new(
+            "Other tenant",
+            &format!("tenant-{}", Uuid::new_v4()),
+        )
+        .insert(&db)
+        .await
+        .expect("insert second tenant");
+        assert!(
+            OAuthAppService::rotate_secret(&db, other_tenant.id, managed.id)
+                .await
+                .is_err(),
+            "secret rotation must be tenant-scoped at the service boundary"
+        );
+        let unchanged = OAuthAppsEntity::find_by_id(managed.id)
+            .one(&db)
+            .await
+            .expect("reload app after cross-tenant attempt")
+            .expect("managed app remains present");
+        assert_eq!(unchanged.client_secret_hash, managed.client_secret_hash);
+
+        let rotated = OAuthAppService::rotate_secret(&db, tenant.id, managed.id)
             .await
             .expect("managed app secret rotation");
         let rotated_hash = rotated
@@ -2327,6 +2549,70 @@ mod tests {
             OAuthAppService::verify_client_secret(&rotated.client_secret, rotated_hash)
                 .expect("verify managed secret")
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn manifest_sync_refuses_to_take_over_a_manual_app_with_a_matching_slug() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let manual_secret_hash = auth::hash_password("manual-secret").expect("hash manual secret");
+        let manual = OAuthAppActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            name: Set("Operator-owned app".to_string()),
+            slug: Set("next-admin".to_string()),
+            description: Set(Some("Created manually".to_string())),
+            app_type: Set("service".to_string()),
+            icon_url: Set(None),
+            client_id: Set(Uuid::new_v4()),
+            client_secret_hash: Set(Some(manual_secret_hash.clone())),
+            redirect_uris: Set(serde_json::json!(["https://operator.example/callback"])),
+            scopes: Set(serde_json::json!(["operator:read"])),
+            grant_types: Set(serde_json::json!(["client_credentials"])),
+            granted_permissions: Set(serde_json::json!(["settings:manage"])),
+            manifest_ref: Set(None),
+            auto_created: Set(false),
+            is_active: Set(true),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            metadata: Set(serde_json::json!({"owner":"operator"})),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert manually managed app");
+
+        let mut manifest = crate::modules::ModulesManifest::default();
+        manifest.build.server.embed_admin = false;
+        manifest.build.server.embed_storefront = false;
+        manifest.build.admin.stack = "next".to_string();
+        manifest.build.admin.public_url = "https://admin.example.com".to_string();
+        manifest.build.admin.redirect_uris =
+            vec!["https://admin.example.com/auth/callback".to_string()];
+        manifest.build.storefront.clear();
+
+        assert!(
+            matches!(
+                sync_app_connections(&db, tenant.id, &manifest).await,
+                Err(Error::Conflict(_))
+            ),
+            "sync must report a conflict instead of claiming a manually created app by slug"
+        );
+
+        let persisted = OAuthAppsEntity::find_by_id(manual.id)
+            .one(&db)
+            .await
+            .expect("load manual app after failed sync")
+            .expect("manual app remains persisted");
+        assert_eq!(persisted.client_secret_hash.as_deref(), Some(manual_secret_hash.as_str()));
+        assert_eq!(persisted.granted_permissions, serde_json::json!(["settings:manage"]));
+        assert_eq!(
+            persisted.redirect_uris,
+            serde_json::json!(["https://operator.example/callback"])
+        );
+        assert!(!persisted.auto_created);
+        assert!(persisted.manifest_ref.is_none());
     }
 
     #[tokio::test]
@@ -2363,6 +2649,35 @@ mod tests {
         .insert(&db)
         .await
         .expect("insert orphan app");
+
+        let auto_created_for_another_manifest_entry = OAuthAppActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            name: Set("External generated app".to_string()),
+            slug: Set("external-generated".to_string()),
+            description: Set(None),
+            app_type: Set("service".to_string()),
+            icon_url: Set(None),
+            client_id: Set(Uuid::new_v4()),
+            client_secret_hash: Set(Some(
+                auth::hash_password("external-secret").expect("hash external app secret"),
+            )),
+            redirect_uris: Set(serde_json::json!(["https://external.example/callback"])),
+            scopes: Set(serde_json::json!(["external:read"])),
+            grant_types: Set(serde_json::json!(["client_credentials"])),
+            granted_permissions: Set(serde_json::json!([])),
+            manifest_ref: Set(Some("external-manifest-entry".to_string())),
+            auto_created: Set(true),
+            is_active: Set(true),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            metadata: Set(serde_json::json!({})),
+            created_at: Set(Utc::now().into()),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert auto-created app owned by a different manifest entry");
 
         let old_token = oauth_tokens::ActiveModel {
             id: Set(Uuid::new_v4()),
@@ -2458,6 +2773,19 @@ mod tests {
         assert!(!orphan.is_active);
         assert!(orphan.revoked_at.is_some());
 
+        let other_manifest_auto_created = OAuthAppsEntity::find_by_id(
+            auto_created_for_another_manifest_entry.id,
+        )
+        .one(&db)
+        .await
+        .expect("load app owned by another manifest entry")
+        .expect("other manifest's app remains queryable");
+        assert!(
+            other_manifest_auto_created.is_active,
+            "orphan cleanup must not deactivate an app owned by another manifest entry"
+        );
+        assert!(other_manifest_auto_created.revoked_at.is_none());
+
         let token = oauth_tokens::Entity::find_by_id(old_token.id)
             .one(&db)
             .await
@@ -2466,6 +2794,39 @@ mod tests {
         assert!(
             token.revoked_at.is_some(),
             "removed managed app must revoke its tokens"
+        );
+
+        OAuthAppService::touch_last_used(&db, next_admin.id)
+            .await
+            .expect("record first-party app use before manifest resync");
+        let last_used_before_resync = OAuthAppsEntity::find_by_id(next_admin.id)
+            .one(&db)
+            .await
+            .expect("load app usage before resync")
+            .and_then(|app| app.last_used_at);
+        let rotated = OAuthAppService::rotate_secret(&db, tenant.id, next_admin.id)
+            .await
+            .expect("rotate manifest-managed app secret");
+        sync_app_connections(&db, tenant.id, &manifest)
+            .await
+            .expect("resync manifest-managed app");
+        let resynced = OAuthAppsEntity::find_by_id(next_admin.id)
+            .one(&db)
+            .await
+            .expect("load resynced app")
+            .expect("manifest-managed app remains present");
+        assert!(OAuthAppService::verify_client_secret(
+            &rotated.client_secret,
+            resynced
+                .client_secret_hash
+                .as_deref()
+                .expect("resynced app retains its credential hash"),
+        )
+        .expect("verify rotated credential after resync"));
+        assert_eq!(
+            resynced.last_used_at,
+            last_used_before_resync,
+            "manifest sync must not overwrite runtime-owned usage timestamps"
         );
     }
 

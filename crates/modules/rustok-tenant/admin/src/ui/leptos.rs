@@ -1,19 +1,24 @@
 use leptos::prelude::*;
-use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 
 use crate::{core, i18n::t, transport};
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -22,7 +27,7 @@ pub fn TenantAdmin() -> impl IntoView {
     let tenant = use_tenant();
     let locale = use_context::<UiRouteContext>().unwrap_or_default().locale;
 
-    let bootstrap = local_resource(
+    let bootstrap = loaded_resource(
         move || (token.get(), tenant.get()),
         move |_| async move { transport::fetch_bootstrap().await },
     );
@@ -57,6 +62,7 @@ pub fn TenantAdmin() -> impl IntoView {
         "Failed to load tenant bootstrap",
     ));
 
+    let tenant_bootstrap = bootstrap;
     view! {
         <div class="space-y-6">
             <header class="rounded-2xl border border-border bg-card p-6 shadow-sm">
@@ -75,7 +81,7 @@ pub fn TenantAdmin() -> impl IntoView {
 
             <Suspense fallback=move || view! { <div class="h-32 animate-pulse rounded-2xl bg-muted"></div> }>
                 {move || {
-                    bootstrap.get().map(|result| match result {
+                    tenant_bootstrap.get().map(|result| match result {
                         Ok(bootstrap) => {
                             let info = core::info_cards(
                                 &bootstrap,

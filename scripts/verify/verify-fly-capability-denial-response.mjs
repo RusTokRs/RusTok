@@ -25,7 +25,7 @@ const rejectMarker = (key, marker, message) => {
 
 for (const marker of [
   'pub enum BrowserIntentKind',
-  'pub const ALL: [Self; 52]',
+  'pub const ALL: [Self; 53]',
   'pub fn parse(value: &str)',
   'pub const fn as_str(self)',
   'pub const fn is_mutating(self)',
@@ -94,7 +94,7 @@ for (const marker of [
   requireMarker('pagesExports', marker, `Pages admin export is missing ${marker}`);
 }
 for (const marker of [
-  'leptos_auth::transport::fetch_current_user(',
+  'rustok_auth_ui::transport::fetch_current_user(',
   'PagesBrowserIntentProblem',
   'let problem = PagesBrowserIntentProblem::from(&error);',
   'StatusCode::from_u16(problem.status)',

@@ -701,23 +701,25 @@ async fn request_verification(
 
     let user = Users::find_by_email(ctx.runtime_ctx().db(), tenant.id, email).await?;
 
-    let verification_token = if settings.features.email_verification {
+    let verification = if settings.features.email_verification {
         user.filter(|record| record.email_verified_at.is_none())
             .map(|record| {
-                encode_email_verification_token(
+                let recipient = record.email;
+                let token = encode_email_verification_token(
                     &config,
                     tenant.id,
                     record.id,
-                    &record.email,
+                    &recipient,
                     EMAIL_VERIFICATION_TOKEN_TTL_SECS,
-                )
+                )?;
+                Ok::<_, Error>((recipient, token))
             })
             .transpose()?
     } else {
         None
     };
 
-    if let Some(verification_token_value) = verification_token.as_ref() {
+    if let Some((recipient, verification_token_value)) = verification {
         let runtime_ctx = ctx.runtime_ctx();
         let email_service = match email_service_from_ctx(
             runtime_ctx,
@@ -731,8 +733,7 @@ async fn request_verification(
                 return Ok(json_response(VerificationRequestResponse { status: "ok" }));
             }
         };
-        let recipient = params.email.clone();
-        let verification_token = verification_token_value.clone();
+        let verification_token = verification_token_value;
 
         tokio::spawn(async move {
             if let Err(error) = email_service

@@ -2,8 +2,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::Utc;
+use rustok_api::Permission;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait,
+    sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -14,7 +16,12 @@ use crate::services::mcp_management::{
     ApplyMcpScaffoldDraftInput, McpManagementService, RecordMcpAuditEventInput,
     StageMcpScaffoldDraftInput,
 };
+use crate::services::mcp_management_authority::{
+    McpManagementAuthorityError, McpManagementAuthorityService,
+};
+use crate::services::server_runtime_context::ServerRuntimeContext;
 use rustok_core::ModuleRegistry;
+use rustok_rbac::PermissionAvailability;
 use rustok_mcp::{
     ApplyModuleScaffoldRequest, ApplyModuleScaffoldResponse, McpAccessContext, McpAccessPolicy,
     McpAccessResolver, McpActorType, McpAuditSink, McpIdentity, McpRuntimeBinding,
@@ -36,15 +43,17 @@ pub struct McpRemoteBootstrapResponse {
 
 pub struct DbBackedMcpRuntimeBridge {
     db: DatabaseConnection,
+    runtime_ctx: ServerRuntimeContext,
 }
 
 impl DbBackedMcpRuntimeBridge {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    pub fn new(runtime_ctx: ServerRuntimeContext) -> Self {
+        let db = runtime_ctx.db_clone();
+        Self { db, runtime_ctx }
     }
 
-    pub fn shared(db: DatabaseConnection) -> Arc<Self> {
-        Arc::new(Self::new(db))
+    pub fn shared(runtime_ctx: ServerRuntimeContext) -> Arc<Self> {
+        Arc::new(Self::new(runtime_ctx))
     }
 
     pub fn bind_stdio_config(
@@ -139,15 +148,55 @@ impl DbBackedMcpRuntimeBridge {
         let policy = mcp_policies::Entity::find_by_client(&self.db, client.id)
             .await
             .map_err(map_db_err)?;
+        if let Some(policy) = policy.as_ref() {
+            McpManagementAuthorityService::validate_runtime_policy(
+                &self.db,
+                client.tenant_id,
+                &client,
+                policy,
+            )
+            .await
+            .map_err(|error| map_runtime_policy_error(&client, error))?;
+        }
 
         touch_last_used(&self.db, &client, &token).await?;
 
+        let access_context = access_context_for_client(&client, policy.as_ref())?;
+        let access_context = self
+            .filter_active_module_permissions(client.tenant_id, access_context)
+            .await?;
+
         Ok(McpRuntimeBinding {
-            access_context: access_context_for_client(&client, policy.as_ref()),
+            access_context,
             tenant_id: Some(client.tenant_id.to_string()),
             client_id: Some(client.id.to_string()),
             token_id: Some(token.id.to_string()),
         })
+    }
+
+    async fn filter_active_module_permissions(
+        &self,
+        tenant_id: Uuid,
+        mut access_context: McpAccessContext,
+    ) -> Result<McpAccessContext> {
+        let availability = crate::services::rbac_module_availability::permission_availability_for(
+            &self.runtime_ctx,
+            tenant_id,
+        )
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                %error,
+                tenant_id = %tenant_id,
+                "MCP module permission availability failed"
+            );
+            Error::InternalServerError
+        })?;
+        access_context.granted_permissions = filter_active_module_permissions(
+            &access_context.granted_permissions,
+            availability.as_ref(),
+        );
+        Ok(access_context)
     }
 }
 
@@ -313,13 +362,45 @@ impl McpScaffoldDraftStore for DbBackedMcpRuntimeBridge {
     }
 }
 
+fn filter_active_module_permissions(
+    granted_permissions: &[String],
+    availability: Option<&PermissionAvailability>,
+) -> Vec<String> {
+    let Some(availability) = availability else {
+        return granted_permissions.to_vec();
+    };
+
+    let permissions = granted_permissions
+        .iter()
+        .filter_map(|value| value.parse::<Permission>().ok())
+        .collect::<Vec<_>>();
+    let mut active = availability.active_permissions(&permissions);
+    active.sort_by_cached_key(ToString::to_string);
+    active.dedup();
+    active
+        .into_iter()
+        .map(|permission| permission.to_string())
+        .collect()
+}
+
 fn access_context_for_client(
     client: &mcp_clients::Model,
     policy: Option<&mcp_policies::Model>,
-) -> McpAccessContext {
+) -> Result<McpAccessContext> {
     match policy {
-        Some(policy) => policy.to_access_context(client, Some(identity_for_client(client, policy))),
-        None => McpAccessContext {
+        Some(policy) => {
+            let identity = identity_for_client(client, policy).map_err(|error| {
+                tracing::error!(%error, client_id = %client.id, "Persisted MCP policy is invalid");
+                Error::InternalServerError
+            })?;
+            policy
+                .to_access_context(client, Some(identity))
+                .map_err(|error| {
+                    tracing::error!(%error, client_id = %client.id, "Persisted MCP policy is invalid");
+                    Error::InternalServerError
+                })
+        }
+        None => Ok(McpAccessContext {
             identity: Some(McpIdentity {
                 actor_id: client.id.to_string(),
                 actor_type: client.actor_type(),
@@ -333,7 +414,7 @@ fn access_context_for_client(
                 allowed_tools: Some(vec![TOOL_MCP_WHOAMI.to_string()]),
                 denied_tools: Vec::new(),
             },
-        },
+        }),
     }
 }
 
@@ -385,15 +466,18 @@ fn actor_user_id_from_access_context(access: &McpAccessContext) -> Option<Uuid> 
     })
 }
 
-fn identity_for_client(client: &mcp_clients::Model, policy: &mcp_policies::Model) -> McpIdentity {
-    McpIdentity {
+fn identity_for_client(
+    client: &mcp_clients::Model,
+    policy: &mcp_policies::Model,
+) -> Result<McpIdentity, String> {
+    Ok(McpIdentity {
         actor_id: client.id.to_string(),
         actor_type: client.actor_type(),
         tenant_id: Some(client.tenant_id.to_string()),
         delegated_user_id: client.delegated_user_id.map(|value| value.to_string()),
         display_name: Some(client.display_name.clone()),
-        scopes: policy.granted_scopes_list(),
-    }
+        scopes: policy.granted_scopes_list()?,
+    })
 }
 
 async fn touch_last_used(
@@ -401,16 +485,51 @@ async fn touch_last_used(
     client: &mcp_clients::Model,
     token: &mcp_tokens::Model,
 ) -> Result<()> {
+    if token.tenant_id != client.tenant_id || token.client_id != client.id {
+        return Err(Error::Unauthorized("MCP token binding is invalid".to_string()));
+    }
+
     let now = Utc::now();
+    let tx = db.begin().await.map_err(map_db_err)?;
 
-    let mut client_active: mcp_clients::ActiveModel = client.clone().into();
-    client_active.last_used_at = Set(Some(now.into()));
-    client_active.update(db).await.map_err(map_db_err)?;
+    // These are intentionally column-scoped conditional updates. Writing a
+    // stale ActiveModel here could restore `is_active`/`revoked_at` values if
+    // an administrator revoked the client or token after it was loaded.
+    let client_touch = mcp_clients::Entity::update_many()
+        .col_expr(mcp_clients::Column::LastUsedAt, Expr::value(Some(now)))
+        .filter(mcp_clients::Column::Id.eq(client.id))
+        .filter(mcp_clients::Column::TenantId.eq(client.tenant_id))
+        .filter(mcp_clients::Column::IsActive.eq(true))
+        .filter(mcp_clients::Column::RevokedAt.is_null())
+        .exec(&tx)
+        .await
+        .map_err(map_db_err)?;
+    if client_touch.rows_affected != 1 {
+        return Err(Error::Unauthorized("MCP client is inactive".to_string()));
+    }
 
-    let mut token_active: mcp_tokens::ActiveModel = token.clone().into();
-    token_active.last_used_at = Set(Some(now.into()));
-    token_active.update(db).await.map_err(map_db_err)?;
+    let token_touch = mcp_tokens::Entity::update_many()
+        .col_expr(mcp_tokens::Column::LastUsedAt, Expr::value(Some(now)))
+        .filter(mcp_tokens::Column::Id.eq(token.id))
+        .filter(mcp_tokens::Column::TenantId.eq(client.tenant_id))
+        .filter(mcp_tokens::Column::ClientId.eq(client.id))
+        .filter(mcp_tokens::Column::TokenHash.eq(&token.token_hash))
+        .filter(mcp_tokens::Column::RevokedAt.is_null())
+        .filter(
+            Condition::any()
+                .add(mcp_tokens::Column::ExpiresAt.is_null())
+                .add(mcp_tokens::Column::ExpiresAt.gt(now)),
+        )
+        .exec(&tx)
+        .await
+        .map_err(map_db_err)?;
+    if token_touch.rows_affected != 1 {
+        return Err(Error::Unauthorized(
+            "MCP token is invalid or expired".to_string(),
+        ));
+    }
 
+    tx.commit().await.map_err(map_db_err)?;
     Ok(())
 }
 
@@ -437,24 +556,185 @@ fn map_db_err(err: sea_orm::DbErr) -> Error {
     Error::InternalServerError
 }
 
+fn map_runtime_policy_error(
+    client: &mcp_clients::Model,
+    error: McpManagementAuthorityError,
+) -> Error {
+    tracing::warn!(
+        tenant_id = %client.tenant_id,
+        client_id = %client.id,
+        %error,
+        "MCP runtime policy is no longer authorized"
+    );
+    match error {
+        McpManagementAuthorityError::Internal(_) => Error::InternalServerError,
+        McpManagementAuthorityError::Invalid(_)
+        | McpManagementAuthorityError::Forbidden(_)
+        | McpManagementAuthorityError::NotFound(_) => {
+            Error::Unauthorized("MCP token policy is no longer valid".to_string())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::map_db_err;
+    use super::{filter_active_module_permissions, map_db_err};
     use axum::{http::StatusCode, response::IntoResponse};
 
-    use super::{access_context_for_client, actor_user_id_from_runtime_context};
-    use crate::models::{mcp_clients, mcp_policies};
+    use super::{
+        access_context_for_client, actor_user_id_from_runtime_context, touch_last_used,
+    };
+    use crate::models::{mcp_clients, mcp_policies, mcp_tokens, tenants};
     use rustok_mcp::{
         McpAccessContext, McpActorType, McpIdentity, McpScaffoldDraftRuntimeContext,
         McpSessionContext, TOOL_MCP_WHOAMI,
     };
     use sea_orm::entity::prelude::Uuid;
+    use std::collections::{BTreeMap, BTreeSet};
+    use rustok_api::Permission;
+    use rustok_rbac::PermissionAvailability;
+
+    #[test]
+    fn disabled_module_grants_are_removed_from_mcp_runtime_context() {
+        let forum_grant = Permission::FORUM_TOPICS_READ.to_string();
+        let availability = PermissionAvailability::new(
+            BTreeMap::from([(forum_grant.clone(), "forum".to_string())]),
+            BTreeSet::new(),
+        );
+
+        let active = filter_active_module_permissions(
+            &[forum_grant, Permission::MODULES_LIST.to_string()],
+            Some(&availability),
+        );
+
+        assert_eq!(active, vec![Permission::MODULES_LIST.to_string()]);
+        let access = McpAccessContext {
+            identity: None,
+            granted_permissions: active,
+            policy: Default::default(),
+        };
+        let decision = access.authorize_tool(&rustok_mcp::McpToolRequirement {
+            tool_name: "forum.read_topic".to_string(),
+            required_permissions: vec![Permission::FORUM_TOPICS_READ.to_string()],
+            required_scopes: Vec::new(),
+        });
+        assert!(!decision.allowed);
+        assert_eq!(decision.code.as_deref(), Some("missing_permissions"));
+    }
 
     #[test]
     fn database_errors_map_to_internal_server_error() {
         let response =
             map_db_err(sea_orm::DbErr::Custom("database failure".to_string())).into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn last_used_touch_cannot_resurrect_revoked_mcp_credentials() {
+        use rustok_migrations::SqliteTestMigrator as Migrator;
+        use rustok_test_utils::db::setup_test_db_with_migrations;
+        use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new(
+            "MCP touch tenant",
+            &format!("mcp-touch-{}", Uuid::new_v4()),
+        )
+        .insert(&db)
+        .await
+        .expect("insert tenant");
+        let client = mcp_clients::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            client_key: Set(Uuid::new_v4()),
+            slug: Set("touch-client".to_string()),
+            display_name: Set("Touch client".to_string()),
+            description: Set(None),
+            actor_type: Set("service_client".to_string()),
+            delegated_user_id: Set(None),
+            is_active: Set(true),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            metadata: Set(serde_json::json!({})),
+            created_by: Set(None),
+            created_at: sea_orm::ActiveValue::NotSet,
+            updated_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("insert MCP client");
+        let token = mcp_tokens::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant.id),
+            client_id: Set(client.id),
+            token_name: Set("primary".to_string()),
+            token_preview: Set("mcp_…".to_string()),
+            token_hash: Set(format!("hash-{}", Uuid::new_v4())),
+            created_by: Set(None),
+            last_used_at: Set(None),
+            expires_at: Set(None),
+            revoked_at: Set(None),
+            metadata: Set(serde_json::json!({})),
+            created_at: sea_orm::ActiveValue::NotSet,
+        }
+        .insert(&db)
+        .await
+        .expect("insert MCP token");
+
+        let stale_client = mcp_clients::Entity::find_by_id(client.id)
+            .one(&db)
+            .await
+            .expect("load client snapshot")
+            .expect("client exists");
+        let stale_token = mcp_tokens::Entity::find_by_id(token.id)
+            .one(&db)
+            .await
+            .expect("load token snapshot")
+            .expect("token exists");
+        let mut revoked: mcp_tokens::ActiveModel = token.into();
+        revoked.revoked_at = Set(Some(chrono::Utc::now().into()));
+        revoked.update(&db).await.expect("revoke token");
+
+        let error = touch_last_used(&db, &stale_client, &stale_token)
+            .await
+            .expect_err("stale token snapshot must not touch or restore a revoked token");
+        assert!(matches!(error, crate::error::Error::Unauthorized(_)));
+        let persisted = mcp_tokens::Entity::find_by_id(stale_token.id)
+            .one(&db)
+            .await
+            .expect("reload token")
+            .expect("token remains present");
+        assert!(persisted.revoked_at.is_some());
+
+        let mut reactivated_token: mcp_tokens::ActiveModel = persisted.into();
+        reactivated_token.revoked_at = Set(None);
+        let active_token = reactivated_token
+            .update(&db)
+            .await
+            .expect("prepare independent client-revocation case");
+        let stale_active_token = mcp_tokens::Entity::find_by_id(active_token.id)
+            .one(&db)
+            .await
+            .expect("load active token snapshot")
+            .expect("active token exists");
+        let mut deactivated_client: mcp_clients::ActiveModel = client.into();
+        deactivated_client.is_active = Set(false);
+        deactivated_client.revoked_at = Set(Some(chrono::Utc::now().into()));
+        deactivated_client
+            .update(&db)
+            .await
+            .expect("deactivate client");
+
+        let error = touch_last_used(&db, &stale_client, &stale_active_token)
+            .await
+            .expect_err("stale client snapshot must not restore a revoked client");
+        assert!(matches!(error, crate::error::Error::Unauthorized(_)));
+        let persisted_client = mcp_clients::Entity::find_by_id(stale_client.id)
+            .one(&db)
+            .await
+            .expect("reload client")
+            .expect("client remains present");
+        assert!(!persisted_client.is_active());
     }
 
     #[test]
@@ -477,7 +757,7 @@ mod tests {
             updated_at: chrono::Utc::now().into(),
         };
 
-        let access_context = access_context_for_client(&client, None);
+        let access_context = access_context_for_client(&client, None).expect("default policy context");
 
         assert_eq!(
             access_context.policy.allowed_tools,
@@ -519,13 +799,21 @@ mod tests {
             updated_at: chrono::Utc::now().into(),
         };
 
-        let access_context = access_context_for_client(&client, Some(&policy));
+        let access_context =
+            access_context_for_client(&client, Some(&policy)).expect("valid persisted policy");
 
         assert_eq!(
             access_context
                 .identity
                 .and_then(|identity| identity.scopes.into_iter().next()),
             Some("modules.read".to_string())
+        );
+
+        let mut corrupted_policy = policy;
+        corrupted_policy.denied_tools = serde_json::json!({ "not": "a string list" });
+        assert!(
+            access_context_for_client(&client, Some(&corrupted_policy)).is_err(),
+            "a corrupted deny-list must fail closed instead of becoming empty"
         );
     }
 

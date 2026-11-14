@@ -102,6 +102,12 @@ jobs:
           npm ci --prefix apps/next-admin --no-audit --no-fund
           (cd apps/next-admin && npx --no-install playwright install --with-deps chromium)
 
+      # The host refuses to start when a module the manifest declares is not compiled in
+      # (`validate_registry_vs_manifest`), so this check runs before the build that would hide the
+      # mismatch behind a startup panic.
+      - name: Verify the default build matches modules.toml
+        run: node scripts/ci/modules-manifest-features.mjs --check
+
       - name: Build monolith browser host
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/browser-server

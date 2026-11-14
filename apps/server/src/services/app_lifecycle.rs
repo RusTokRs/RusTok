@@ -73,7 +73,6 @@ static MODULE_WORK_SCHEDULER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 #[cfg(feature = "mod-workflow")]
 static WORKFLOW_CRON_SCHEDULER_INSTANCE_IDS: AtomicU64 = AtomicU64::new(1);
 
-const LOCAL_SQLITE_DATABASE_URI: &str = "sqlite://rustok.sqlite?mode=rwc";
 #[cfg(feature = "mod-seo")]
 const SEO_BULK_WORKER_POLL_INTERVAL_MS: u64 = 2_000;
 
@@ -143,6 +142,10 @@ impl OutboxRelayWorkerHandle {
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self._handle.await
     }
+
+    fn into_task(self) -> JoinHandle<()> {
+        self._handle
+    }
 }
 
 pub struct OutboxRetentionWorkerHandle {
@@ -161,6 +164,10 @@ impl OutboxRetentionWorkerHandle {
 
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self._handle.await
+    }
+
+    fn into_task(self) -> JoinHandle<()> {
+        self._handle
     }
 }
 
@@ -181,6 +188,10 @@ impl AuthRetentionWorkerHandle {
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self._handle.await
     }
+
+    fn into_task(self) -> JoinHandle<()> {
+        self._handle
+    }
 }
 
 pub struct RemoteExecutorReaperHandle {
@@ -199,6 +210,10 @@ impl RemoteExecutorReaperHandle {
 
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self._handle.await
+    }
+
+    fn into_task(self) -> JoinHandle<()> {
+        self._handle
     }
 }
 
@@ -221,6 +236,10 @@ impl SeoBulkWorkerHandle {
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self._handle.await
     }
+
+    fn into_task(self) -> JoinHandle<()> {
+        self._handle
+    }
 }
 
 /// Whether module-work composition registered any scheduled work. A missing
@@ -238,6 +257,15 @@ pub(crate) struct ModuleWorkSchedulerInitializationLock(
 
 impl ModuleWorkSchedulerInitializationLock {
     pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+}
+
+#[derive(Clone, Default)]
+struct ModuleArtifactMaintenanceInitializationLock(std::sync::Arc<tokio::sync::Mutex<()>>);
+
+impl ModuleArtifactMaintenanceInitializationLock {
+    fn ensure(ctx: &ServerRuntimeContext) -> Self {
         ctx.shared_get_or_insert_with(Self::default)
     }
 }
@@ -266,6 +294,10 @@ impl ModuleWorkSchedulerHandle {
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self._handle.await
     }
+
+    fn into_task(self) -> JoinHandle<()> {
+        self._handle
+    }
 }
 
 #[cfg(feature = "mod-workflow")]
@@ -293,6 +325,10 @@ impl WorkflowCronSchedulerHandle {
 
     pub async fn join(self) -> std::result::Result<(), tokio::task::JoinError> {
         self._handle.await
+    }
+
+    fn into_task(self) -> JoinHandle<()> {
+        self._handle
     }
 }
 
@@ -420,15 +456,6 @@ pub(crate) fn additional_runtime_worker_snapshots(
     ]
 }
 
-/// Resolves the local development database fallback without depending on a host config type.
-pub fn resolve_boot_database_uri(
-    database_url_present: bool,
-    configured_uri: &str,
-) -> Option<&'static str> {
-    should_use_local_sqlite_fallback(database_url_present, configured_uri)
-        .then_some(LOCAL_SQLITE_DATABASE_URI)
-}
-
 /// Start runtime workers from framework-neutral server runtime state.
 pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeContext) -> Result<()> {
     let settings = runtime_ctx.settings().clone();
@@ -454,6 +481,38 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     if stop_handle.is_stopping() {
         tracing::warn!("Shutdown already requested; skipping background worker startup");
         return Ok(());
+    }
+    // Serialize the maintenance handle's take/join/reinsert lifecycle with both
+    // concurrent startup calls and the shutdown drain.
+    let artifact_initialization =
+        ModuleArtifactMaintenanceInitializationLock::ensure(&runtime_ctx);
+    let _artifact_initialization_guard = artifact_initialization.0.lock().await;
+    if stop_handle.is_stopping() {
+        tracing::warn!("Shutdown requested while waiting for artifact maintenance initialization");
+        return Ok(());
+    }
+    let artifact_maintenance_running = match runtime_ctx
+        .shared_take::<crate::services::module_artifact_maintenance::ModuleArtifactMaintenanceHandle>()
+    {
+        Some(worker) if worker.is_finished() => {
+            if let Err(error) = worker.join().await {
+                tracing::warn!(?error, "Previous module artifact maintenance worker exited");
+            }
+            false
+        }
+        Some(worker) => {
+            runtime_ctx.shared_insert(worker);
+            true
+        }
+        None => false,
+    };
+    let durable_storage_available =
+        runtime_ctx.shared_contains::<rustok_storage::StorageRuntime>();
+    if !artifact_maintenance_running && !durable_storage_available {
+        return Err(Error::Message(
+            "Module artifact maintenance is required for background-worker hosts, but durable storage is not initialized"
+                .to_string(),
+        ));
     }
     let stop_rx = stop_handle.subscribe();
 
@@ -549,9 +608,10 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
                 );
             }
             None => {
-                tracing::error!(
-                    "Module artifact maintenance requires initialized durable storage; blob and data-object garbage collection are disabled"
-                );
+                return Err(Error::Message(
+                    "Module artifact maintenance is required for background-worker hosts, but durable storage is not initialized"
+                        .to_string(),
+                ));
             }
         }
     }
@@ -569,62 +629,51 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     let timeout_duration = Duration::from_secs(5);
 
+    let rate_limit_cleanup_drain = async {
+        if let Some(registry) = runtime_ctx
+            .shared_take::<crate::middleware::rate_limit::RateLimitCleanupTaskRegistry>()
+        {
+            let tasks = registry.take_tasks();
+            for task in &tasks {
+                task.abort();
+            }
+            await_runtime_worker_shutdown_tasks_with_timeout(
+                "Rate-limit cleanup",
+                tasks,
+                timeout_duration,
+            )
+            .await;
+        }
+    };
+
     let relay_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<OutboxRelayWorkerHandle>() {
-            match tokio::time::timeout(timeout_duration, worker.join()).await {
-                Ok(Ok(())) => tracing::info!("Outbox relay worker stopped gracefully"),
-                Ok(Err(err)) => tracing::warn!(?err, "Outbox relay worker joined with error"),
-                Err(_) => tracing::warn!("Outbox relay worker shutdown timed out after 5s"),
-            }
+            await_runtime_worker_shutdown("Outbox relay worker", Some(worker.into_task())).await;
         }
     };
 
     let retention_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<OutboxRetentionWorkerHandle>() {
-            match tokio::time::timeout(timeout_duration, worker.join()).await {
-                Ok(Ok(())) => tracing::info!("Outbox retention worker stopped gracefully"),
-                Ok(Err(err)) => tracing::warn!(?err, "Outbox retention worker joined with error"),
-                Err(_) => tracing::warn!("Outbox retention worker shutdown timed out after 5s"),
-            }
+            await_runtime_worker_shutdown("Outbox retention worker", Some(worker.into_task())).await;
         }
     };
 
     let auth_retention_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<AuthRetentionWorkerHandle>() {
-            match tokio::time::timeout(timeout_duration, worker.join()).await {
-                Ok(Ok(())) => tracing::info!("Auth retention worker stopped gracefully"),
-                Ok(Err(err)) => {
-                    tracing::warn!(?err, "Auth retention worker joined with error")
-                }
-                Err(_) => {
-                    tracing::warn!("Auth retention worker shutdown timed out after 5s")
-                }
-            }
+            await_runtime_worker_shutdown("Auth retention worker", Some(worker.into_task())).await;
         }
     };
 
     let reaper_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<RemoteExecutorReaperHandle>() {
-            match tokio::time::timeout(timeout_duration, worker.join()).await {
-                Ok(Ok(())) => tracing::info!("Remote executor reaper worker stopped gracefully"),
-                Ok(Err(err)) => {
-                    tracing::warn!(?err, "Remote executor reaper worker joined with error")
-                }
-                Err(_) => {
-                    tracing::warn!("Remote executor reaper worker shutdown timed out after 5s")
-                }
-            }
+            await_runtime_worker_shutdown("Remote executor reaper worker", Some(worker.into_task())).await;
         }
     };
 
     #[cfg(feature = "mod-seo")]
     let seo_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<SeoBulkWorkerHandle>() {
-            match tokio::time::timeout(timeout_duration, worker.join()).await {
-                Ok(Ok(())) => tracing::info!("SEO bulk worker stopped gracefully"),
-                Ok(Err(err)) => tracing::warn!(?err, "SEO bulk worker joined with error"),
-                Err(_) => tracing::warn!("SEO bulk worker shutdown timed out after 5s"),
-            }
+            await_runtime_worker_shutdown("SEO bulk worker", Some(worker.into_task())).await;
         }
     };
     #[cfg(not(feature = "mod-seo"))]
@@ -641,22 +690,19 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
             }
         };
         if let Some(worker) = worker {
-            match tokio::time::timeout_at(deadline, worker.join()).await {
-                Ok(Ok(())) => tracing::info!("Module work scheduler stopped gracefully"),
-                Ok(Err(err)) => tracing::warn!(?err, "Module work scheduler joined with error"),
-                Err(_) => tracing::warn!("Module work scheduler shutdown timed out after 5s"),
-            }
+            await_runtime_worker_shutdown_until(
+                "Module work scheduler",
+                worker.into_task(),
+                deadline,
+            )
+            .await;
         }
     };
 
     #[cfg(feature = "mod-workflow")]
     let workflow_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<WorkflowCronSchedulerHandle>() {
-            match tokio::time::timeout(timeout_duration, worker.join()).await {
-                Ok(Ok(())) => tracing::info!("Workflow cron scheduler stopped gracefully"),
-                Ok(Err(err)) => tracing::warn!(?err, "Workflow cron scheduler joined with error"),
-                Err(_) => tracing::warn!("Workflow cron scheduler shutdown timed out after 5s"),
-            }
+            await_runtime_worker_shutdown("Workflow cron scheduler", Some(worker.into_task())).await;
         }
     };
     #[cfg(not(feature = "mod-workflow"))]
@@ -664,11 +710,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     let watchdog_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle>() {
-            match tokio::time::timeout(timeout_duration, worker.join()).await {
-                Ok(Ok(())) => tracing::info!("Module transition watchdog worker stopped gracefully"),
-                Ok(Err(err)) => tracing::warn!(?err, "Module transition watchdog worker joined with error"),
-                Err(_) => tracing::warn!("Module transition watchdog worker shutdown timed out after 5s"),
-            }
+            await_runtime_worker_shutdown("Module transition watchdog", Some(worker.into_task())).await;
         }
     };
 
@@ -676,37 +718,75 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         if let Some(worker) = runtime_ctx
             .shared_take::<crate::services::module_event_dispatcher::ModuleEventDispatcherHandle>(
         ) {
-            // Request a cooperative drain first; if a handler blocks past the
-            // host deadline, abort the dispatcher task as the emergency fallback.
+            // Request a cooperative drain first; the bounded helper aborts and
+            // joins the dispatcher if an in-flight handler exceeds the deadline.
             worker.request_stop();
-            let abort_handle = worker.abort_handle();
-            match tokio::time::timeout(timeout_duration, worker.join()).await {
-                Ok(Ok(())) => tracing::info!("Module event dispatcher stopped gracefully"),
-                Ok(Err(error)) => {
-                    tracing::warn!(?error, "Module event dispatcher exited with error")
-                }
-                Err(_) => {
-                    abort_handle.abort();
-                    tracing::warn!("Module event dispatcher shutdown timed out after 5s")
-                }
-            }
+            await_runtime_worker_shutdown(
+                "Module event dispatcher",
+                Some(worker.into_task()),
+            )
+            .await;
         }
     };
 
     let module_artifact_maintenance_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<crate::services::module_artifact_maintenance::ModuleArtifactMaintenanceHandle>() {
-            match tokio::time::timeout(timeout_duration, worker.join()).await {
-                Ok(Ok(())) => tracing::info!("Module artifact maintenance worker stopped gracefully"),
-                Ok(Err(err)) => tracing::warn!(?err, "Module artifact maintenance worker joined with error"),
-                Err(_) => tracing::warn!("Module artifact maintenance worker shutdown timed out after 5s"),
+        let initialization = ModuleArtifactMaintenanceInitializationLock::ensure(runtime_ctx);
+        let deadline = tokio::time::Instant::now() + timeout_duration;
+        let worker = match tokio::time::timeout_at(deadline, initialization.0.lock()).await {
+            Ok(_guard) => runtime_ctx
+                .shared_take::<crate::services::module_artifact_maintenance::ModuleArtifactMaintenanceHandle>(),
+            Err(_) => {
+                tracing::warn!("Module artifact maintenance initialization did not stop within 5s");
+                return;
             }
+        };
+        if let Some(worker) = worker {
+            await_runtime_worker_shutdown_until(
+                "Module artifact maintenance",
+                worker.into_task(),
+                deadline,
+            )
+            .await;
         }
     };
+
+    #[cfg(feature = "mod-comments")]
+    let comments_tcp_drain = async {
+        if let Some(listener_task) = runtime_ctx.shared_take::<
+            crate::services::comments_provider_runtime::CommentsTcpListenerTask,
+        >() {
+            await_runtime_worker_shutdown(
+                "Comments TCP listener",
+                Some(listener_task.0),
+            )
+            .await;
+        }
+        runtime_ctx.shared_remove::<
+            crate::services::comments_provider_runtime::CommentsTcpListenerHandle,
+        >();
+    };
+    #[cfg(not(feature = "mod-comments"))]
+    let comments_tcp_drain = std::future::ready(());
+
+    #[cfg(feature = "mod-comments")]
+    let comments_schedule_audit_handoff_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<
+            crate::services::comments_provider_runtime::CommentsTcpDelegationScheduleAuditHandoffWorkerHandle,
+        >() {
+            await_runtime_worker_shutdown(
+                "Comments schedule audit handoff",
+                worker.take_task(),
+            )
+            .await;
+        }
+    };
+    #[cfg(not(feature = "mod-comments"))]
+    let comments_schedule_audit_handoff_drain = std::future::ready(());
 
     #[cfg(feature = "mod-commerce")]
     let paid_order_label_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle>() {
-            await_module_worker_shutdown("Paid-order label", worker.join()).await;
+            await_module_worker_shutdown("Paid-order label", worker.into_task()).await;
         }
     };
     #[cfg(not(feature = "mod-commerce"))]
@@ -715,7 +795,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "commerce-marketplace-financial")]
     let marketplace_financial_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle>() {
-            await_module_worker_shutdown("Marketplace financial", worker.join()).await;
+            await_module_worker_shutdown("Marketplace financial", worker.into_task()).await;
         }
     };
     #[cfg(not(feature = "commerce-marketplace-financial"))]
@@ -724,7 +804,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-payment")]
     let payment_provider_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle>() {
-            await_module_worker_shutdown("Payment provider event", worker.join()).await;
+            await_module_worker_shutdown("Payment provider event", worker.into_task()).await;
         }
     };
     #[cfg(not(feature = "mod-payment"))]
@@ -733,16 +813,215 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-product")]
     let product_media_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle>() {
-            await_module_worker_shutdown("Product media release", worker.join()).await;
+            await_module_worker_shutdown("Product media release", worker.into_task()).await;
         }
     };
     #[cfg(not(feature = "mod-product"))]
     let product_media_drain = std::future::ready(());
 
+    let channel_cache_invalidation_drain = async {
+        let tasks = crate::services::channel_cache_invalidation::take_listener_tasks_for_shutdown(
+            runtime_ctx,
+        )
+        .await;
+        for task in &tasks {
+            task.abort();
+        }
+        await_runtime_worker_shutdown_tasks("Channel cache invalidation", tasks).await;
+    };
+
+    let rbac_cache_invalidation_drain = async {
+        let tasks = crate::services::rbac_cache_invalidation::take_listener_tasks_for_shutdown(
+            runtime_ctx,
+        )
+        .await;
+        for task in &tasks {
+            task.abort();
+        }
+        await_runtime_worker_shutdown_tasks("RBAC cache invalidation", tasks).await;
+    };
+
+    let rbac_generation_watchdog_drain = async {
+        if let Some(task) =
+            crate::services::rbac_invalidation_generation::take_watchdog_task_for_shutdown(
+                runtime_ctx,
+            )
+            .await
+        {
+            task.abort();
+            await_runtime_worker_shutdown("RBAC invalidation generation watchdog", Some(task))
+                .await;
+        }
+    };
+
+    let event_forwarder_drain = async {
+        if let Some(task) = crate::services::event_bus::take_forwarder_task_for_shutdown(runtime_ctx)
+        {
+            task.abort();
+            await_runtime_worker_shutdown("Event forwarder", Some(task)).await;
+        }
+    };
+
+    let cache_redis_status_drain = async {
+        if let Some(task) = crate::services::cache_redis_status_monitor::take_task_for_shutdown(
+            runtime_ctx,
+        )
+        .await
+        {
+            task.abort();
+            await_runtime_worker_shutdown("Cache Redis status monitor", Some(task)).await;
+        }
+    };
+
+    let field_definition_cache_invalidation_drain = async {
+        if let Some(task) =
+            crate::services::field_definition_cache::take_invalidation_task_for_shutdown(runtime_ctx)
+        {
+            task.abort();
+            await_runtime_worker_shutdown("Field definition cache invalidation", Some(task)).await;
+        }
+    };
+
+    let field_definition_cache_reconciliation_drain = async {
+        if let Some(task) =
+            crate::services::field_definition_cache::take_task_for_shutdown(runtime_ctx)
+        {
+            task.abort();
+            await_runtime_worker_shutdown("Field definition cache reconciliation", Some(task))
+                .await;
+        }
+    };
+
+    #[cfg(feature = "mod-seo")]
+    let seo_redirect_cache_reconciliation_drain = async {
+        if let Some(task) =
+            crate::services::seo_redirect_cache_reconciliation::take_task_for_shutdown(runtime_ctx)
+        {
+            task.abort();
+            await_runtime_worker_shutdown("SEO redirect cache reconciliation", Some(task)).await;
+        }
+    };
+    #[cfg(not(feature = "mod-seo"))]
+    let seo_redirect_cache_reconciliation_drain = std::future::ready(());
+
+    let tenant_locale_generation_drain = async {
+        let tasks = crate::services::tenant_locale_generation::take_listener_tasks_for_shutdown(
+            runtime_ctx,
+        )
+        .await;
+        for task in &tasks {
+            task.abort();
+        }
+        await_runtime_worker_shutdown_tasks(
+            "Tenant locale generation listener",
+            tasks,
+        )
+        .await;
+    };
+
+    let tenant_cache_generation_drain = async {
+        let tasks = crate::services::tenant_cache_generation::take_listener_tasks_for_shutdown(
+            runtime_ctx,
+        )
+        .await;
+        for task in &tasks {
+            task.abort();
+        }
+        await_runtime_worker_shutdown_tasks(
+            "Tenant cache generation listener",
+            tasks,
+        )
+        .await;
+    };
+
+    let event_dlq_duplicate_alert_drain = async {
+        if let Some(mut worker) = runtime_ctx
+            .shared_take::<crate::services::event_dlq_duplicate_alert_observer::EventDlqDuplicateAlertObserverHandle>()
+        {
+            await_runtime_worker_shutdown(
+                "Event DLQ duplicate alert observer",
+                worker.take_task(),
+            )
+            .await;
+        }
+    };
+
+    let event_dlq_duplicate_alert_observability_drain = async {
+        if let Some(mut worker) = runtime_ctx
+            .shared_take::<crate::services::event_dlq_duplicate_alert_observability::EventDlqDuplicateAlertObservabilityHandle>()
+        {
+            await_runtime_worker_shutdown(
+                "Event DLQ duplicate alert observability",
+                worker.take_task(),
+            )
+            .await;
+        }
+    };
+
+    let product_channel_reconciliation_drain = async {
+        if let Some(worker) = runtime_ctx
+            .shared_take::<crate::services::search_product_channel_reconciliation::ProductChannelProjectionWorkerHandle>()
+        {
+            await_runtime_worker_shutdown(
+                "Product channel projection reconciliation",
+                Some(worker.into_task()),
+            )
+            .await;
+        }
+    };
+
+    let product_index_refresh_drain = async {
+        if let Some(worker) = runtime_ctx
+            .shared_take::<crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle>()
+        {
+            await_runtime_worker_shutdown(
+                "Product index refresh",
+                Some(worker.into_task()),
+            )
+            .await;
+        }
+    };
+
+    let social_graph_index_drain = async {
+        if let Some(worker) = runtime_ctx
+            .shared_take::<crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle>()
+        {
+            await_runtime_worker_shutdown(
+                "Social Graph Index consumer",
+                Some(worker.into_task()),
+            )
+            .await;
+        }
+    };
+
+    let social_graph_position_observer_drain = async {
+        if let Some(worker) = runtime_ctx
+            .shared_take::<crate::services::social_graph_index_position_observer::SocialGraphIndexPositionObserverHandle>()
+        {
+            await_runtime_worker_shutdown(
+                "Social Graph Index position observer",
+                Some(worker.into_task()),
+            )
+            .await;
+        }
+    };
+
+    let social_graph_poison_observer_drain = async {
+        if let Some(worker) = runtime_ctx
+            .shared_take::<crate::services::social_graph_index_poison_observer::SocialGraphIndexPoisonObserverHandle>()
+        {
+            await_runtime_worker_shutdown(
+                "Social Graph Index poison observer",
+                Some(worker.into_task()),
+            )
+            .await;
+        }
+    };
+
     #[cfg(feature = "mod-notifications")]
     let notification_outbox_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<crate::services::notification_outbox_intake_worker::NotificationOutboxIntakeWorkerHandle>() {
-            await_module_worker_shutdown("Notification outbox intake", worker.join()).await;
+            await_module_worker_shutdown("Notification outbox intake", worker.into_task()).await;
         }
     };
     #[cfg(not(feature = "mod-notifications"))]
@@ -751,7 +1030,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-notifications")]
     let notification_candidate_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<crate::services::notification_candidate_worker::NotificationCandidateWorkerHandle>() {
-            await_module_worker_shutdown("Notification candidate", worker.join()).await;
+            await_module_worker_shutdown("Notification candidate", worker.into_task()).await;
         }
     };
     #[cfg(not(feature = "mod-notifications"))]
@@ -760,7 +1039,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-notifications")]
     let notification_fanout_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<crate::services::notification_fanout_worker::NotificationFanoutWorkerHandle>() {
-            await_module_worker_shutdown("Notification fanout", worker.join()).await;
+            await_module_worker_shutdown("Notification fanout", worker.into_task()).await;
         }
     };
     #[cfg(not(feature = "mod-notifications"))]
@@ -769,13 +1048,23 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     #[cfg(feature = "mod-forum")]
     let forum_search_drain = async {
         if let Some(worker) = runtime_ctx.shared_take::<crate::services::forum_search_inbox_worker::ForumSearchInboxWorkerHandle>() {
-            await_module_worker_shutdown("Forum search inbox", worker.join()).await;
+            await_module_worker_shutdown("Forum search inbox", worker.into_task()).await;
         }
     };
     #[cfg(not(feature = "mod-forum"))]
     let forum_search_drain = std::future::ready(());
 
+    #[cfg(feature = "mod-forum")]
+    let forum_search_contract_consumer_drain = async {
+        if let Some(worker) = runtime_ctx.shared_take::<crate::services::forum_search_inbox_worker::ForumSearchContractConsumerWorkerHandle>() {
+            await_module_worker_shutdown("Forum Search contract consumer", worker.into_task()).await;
+        }
+    };
+    #[cfg(not(feature = "mod-forum"))]
+    let forum_search_contract_consumer_drain = std::future::ready(());
+
     tokio::join!(
+        rate_limit_cleanup_drain,
         relay_drain,
         retention_drain,
         auth_retention_drain,
@@ -786,6 +1075,25 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         watchdog_drain,
         module_event_dispatcher_drain,
         module_artifact_maintenance_drain,
+        comments_tcp_drain,
+        comments_schedule_audit_handoff_drain,
+        channel_cache_invalidation_drain,
+        rbac_cache_invalidation_drain,
+        rbac_generation_watchdog_drain,
+        event_forwarder_drain,
+        cache_redis_status_drain,
+        field_definition_cache_invalidation_drain,
+        field_definition_cache_reconciliation_drain,
+        seo_redirect_cache_reconciliation_drain,
+        tenant_locale_generation_drain,
+        tenant_cache_generation_drain,
+        event_dlq_duplicate_alert_drain,
+        event_dlq_duplicate_alert_observability_drain,
+        product_channel_reconciliation_drain,
+        product_index_refresh_drain,
+        social_graph_index_drain,
+        social_graph_position_observer_drain,
+        social_graph_poison_observer_drain,
         paid_order_label_drain,
         marketplace_financial_drain,
         payment_provider_drain,
@@ -794,39 +1102,143 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         notification_candidate_drain,
         notification_fanout_drain,
         forum_search_drain,
+        forum_search_contract_consumer_drain,
     );
 
-    // These supervisors do not consume StopHandle. Explicitly abort them even
-    // if other clones of their handles or the shared context remain alive.
-    if let Some(listener) = runtime_ctx.shared_get::<
-        crate::services::channel_cache_invalidation::ChannelCacheInvalidationListenerHandle,
-    >() {
-        listener.abort();
-        runtime_ctx.shared_remove::<
-            crate::services::channel_cache_invalidation::ChannelCacheInvalidationListenerHandle,
-        >();
+}
+
+/// Guard a task handle so cancellation of the shutdown future cannot turn a
+/// locally owned JoinHandle into a detached task.
+struct ShutdownJoinHandle(Option<JoinHandle<()>>);
+
+impl ShutdownJoinHandle {
+    fn new(task: JoinHandle<()>) -> Self {
+        Self(Some(task))
     }
-    if let Some(listener) = runtime_ctx.shared_get::<
-        crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle,
-    >() {
-        listener.abort();
-        runtime_ctx.shared_remove::<
-            crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle,
-        >();
+
+    fn handle_mut(&mut self) -> &mut JoinHandle<()> {
+        self.0.as_mut().expect("shutdown task handle is present")
     }
-    if let Some(watchdog) = runtime_ctx.shared_get::<
-        crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle,
-    >() {
-        watchdog.abort();
-        runtime_ctx.shared_remove::<
-            crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle,
-        >();
+
+    fn abort(&self) {
+        if let Some(task) = &self.0 {
+            task.abort();
+        }
     }
-    if let Some(forwarder) =
-        runtime_ctx.shared_get::<crate::services::event_bus::EventForwarderHandle>()
-    {
-        forwarder.abort();
-        runtime_ctx.shared_remove::<crate::services::event_bus::EventForwarderHandle>();
+
+    fn disarm(&mut self) {
+        self.0.take();
+    }
+}
+
+impl Drop for ShutdownJoinHandle {
+    fn drop(&mut self) {
+        if let Some(task) = &self.0 {
+            task.abort();
+        }
+    }
+}
+
+/// Drain runtime-owned tasks after broadcasting stop. On timeout, abort and
+/// join them so dropping the runtime context cannot detach them.
+fn await_runtime_worker_shutdown(
+    worker: &'static str,
+    task: Option<JoinHandle<()>>,
+) -> impl std::future::Future<Output = ()> {
+    await_runtime_worker_shutdown_tasks(worker, task.into_iter().collect())
+}
+
+fn await_runtime_worker_shutdown_tasks(
+    worker: &'static str,
+    tasks: Vec<JoinHandle<()>>,
+) -> impl std::future::Future<Output = ()> {
+    await_runtime_worker_shutdown_tasks_with_timeout(worker, tasks, Duration::from_secs(5))
+}
+
+fn await_runtime_worker_shutdown_with_timeout(
+    worker: &'static str,
+    task: Option<JoinHandle<()>>,
+    timeout_duration: Duration,
+) -> impl std::future::Future<Output = ()> {
+    await_runtime_worker_shutdown_tasks_with_timeout(
+        worker,
+        task.into_iter().collect(),
+        timeout_duration,
+    )
+}
+
+fn await_runtime_worker_shutdown_until(
+    worker: &'static str,
+    task: JoinHandle<()>,
+    deadline: tokio::time::Instant,
+) -> impl std::future::Future<Output = ()> {
+    let mut task = ShutdownJoinHandle::new(task);
+    async move {
+        match tokio::time::timeout_at(deadline, task.handle_mut()).await {
+            Ok(Ok(())) => task.disarm(),
+            Ok(Err(error)) if error.is_cancelled() => task.disarm(),
+            Ok(Err(error)) => {
+                task.disarm();
+                tracing::warn!(worker, ?error, "Runtime worker exited with error");
+            }
+            Err(_) => {
+                tracing::warn!(worker, "Runtime worker shutdown timed out; aborting");
+                task.abort();
+                if let Err(error) = task.handle_mut().await {
+                    if !error.is_cancelled() {
+                        tracing::warn!(worker, ?error, "Runtime worker failed after abort");
+                    }
+                }
+                task.disarm();
+            }
+        }
+    }
+}
+
+fn await_runtime_worker_shutdown_tasks_with_timeout(
+    worker: &'static str,
+    tasks: Vec<JoinHandle<()>>,
+    timeout_duration: Duration,
+) -> impl std::future::Future<Output = ()> {
+    let tasks: Vec<ShutdownJoinHandle> = tasks.into_iter().map(ShutdownJoinHandle::new).collect();
+    async move {
+        let deadline = tokio::time::Instant::now() + timeout_duration;
+        let mut remaining = tasks.into_iter();
+        while let Some(mut task) = remaining.next() {
+            match tokio::time::timeout_at(deadline, task.handle_mut()).await {
+                Ok(Ok(())) => task.disarm(),
+                Ok(Err(error)) if error.is_cancelled() => task.disarm(),
+                Ok(Err(error)) => {
+                    task.disarm();
+                    tracing::warn!(worker, ?error, "Runtime worker exited with error");
+                }
+                Err(_) => {
+                    tracing::warn!(worker, "Runtime worker shutdown timed out; aborting remaining tasks");
+                    task.abort();
+                    if let Err(error) = task.handle_mut().await {
+                        if !error.is_cancelled() {
+                            tracing::warn!(worker, ?error, "Runtime worker failed after abort");
+                        }
+                    }
+                    task.disarm();
+
+                    let remaining: Vec<_> = remaining.collect();
+                    for task in &remaining {
+                        task.abort();
+                    }
+                    for mut task in remaining {
+                        if let Err(error) = task.handle_mut().await {
+                            if !error.is_cancelled() {
+                                tracing::warn!(worker, ?error, "Runtime worker failed after abort");
+                            }
+                        }
+                        task.disarm();
+                    }
+                    return;
+                }
+            }
+        }
+        tracing::info!(worker, "Runtime worker task drain completed");
     }
 }
 
@@ -842,14 +1254,40 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     feature = "mod-notifications",
     feature = "mod-forum"
 ))]
-async fn await_module_worker_shutdown(
+fn await_module_worker_shutdown(
     worker: &'static str,
-    join: impl std::future::Future<Output = std::result::Result<(), tokio::task::JoinError>>,
-) {
-    match tokio::time::timeout(Duration::from_secs(5), join).await {
-        Ok(Ok(())) => tracing::info!(worker, "Module worker stopped gracefully"),
-        Ok(Err(error)) => tracing::warn!(worker, ?error, "Module worker exited with error"),
-        Err(_) => tracing::warn!(worker, "Module worker shutdown timed out after 5s"),
+    task: JoinHandle<()>,
+) -> impl std::future::Future<Output = ()> {
+    await_module_worker_shutdown_with_timeout(worker, task, Duration::from_secs(5))
+}
+
+fn await_module_worker_shutdown_with_timeout(
+    worker: &'static str,
+    task: JoinHandle<()>,
+    timeout_duration: Duration,
+) -> impl std::future::Future<Output = ()> {
+    let mut task = ShutdownJoinHandle::new(task);
+    async move {
+        match tokio::time::timeout(timeout_duration, task.handle_mut()).await {
+            Ok(Ok(())) => {
+                task.disarm();
+                tracing::info!(worker, "Module worker stopped gracefully");
+            }
+            Ok(Err(error)) => {
+                task.disarm();
+                tracing::warn!(worker, ?error, "Module worker exited with error");
+            }
+            Err(_) => {
+                tracing::warn!(worker, "Module worker shutdown timed out; aborting");
+                task.abort();
+                if let Err(error) = task.handle_mut().await {
+                    if !error.is_cancelled() {
+                        tracing::warn!(worker, ?error, "Module worker failed after abort");
+                    }
+                }
+                task.disarm();
+            }
+        }
     }
 }
 
@@ -1152,18 +1590,10 @@ async fn seo_worker_loop(
     }
 }
 
-fn should_use_local_sqlite_fallback(database_url_present: bool, current_uri: &str) -> bool {
-    !database_url_present
-        && (current_uri.is_empty()
-            || current_uri.contains("localhost:5432")
-            || current_uri.contains("db:5432"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, connect_runtime_workers_with_runtime,
-        resolve_boot_database_uri, should_use_local_sqlite_fallback,
     };
     use crate::common::settings::RustokSettings;
     use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -1176,6 +1606,25 @@ mod tests {
     use crate::services::event_transport_factory::{
         EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig,
     };
+
+    #[tokio::test]
+    async fn background_worker_startup_fails_when_required_durable_storage_is_missing() {
+        use crate::common::settings::RuntimeHostMode;
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(db, settings);
+
+        let error = connect_runtime_workers_with_runtime(ctx)
+            .await
+            .expect_err("worker host must not start without required durable storage");
+        assert!(
+            error
+                .to_string()
+                .contains("durable storage is not initialized")
+        );
+    }
 
     #[tokio::test]
     async fn additional_workers_respect_host_modes_and_auth_retention_config() {
@@ -1210,37 +1659,97 @@ mod tests {
         assert!(!auth.required);
     }
 
-    #[test]
-    fn uses_sqlite_fallback_when_database_url_is_missing_and_uri_is_empty() {
-        assert!(should_use_local_sqlite_fallback(false, ""));
-        assert_eq!(
-            resolve_boot_database_uri(false, ""),
-            Some("sqlite://rustok.sqlite?mode=rwc")
-        );
+    #[tokio::test]
+    async fn shutdown_aborts_and_joins_rate_limit_cleanup_tasks() {
+        use crate::middleware::rate_limit::RateLimitCleanupTaskRegistry;
+
+        struct NotifyDrop(Option<tokio::sync::oneshot::Sender<()>>);
+        impl Drop for NotifyDrop {
+            fn drop(&mut self) {
+                if let Some(sender) = self.0.take() {
+                    let _ = sender.send(());
+                }
+            }
+        }
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let (stopped_tx, stopped_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _notify_drop = NotifyDrop(Some(stopped_tx));
+            std::future::pending::<()>().await;
+        });
+        let registry = RateLimitCleanupTaskRegistry::default();
+        registry.register(task);
+        ctx.shared_insert(registry);
+
+        super::shutdown_runtime_workers(&ctx).await;
+
+        stopped_rx
+            .await
+            .expect("cleanup worker must be dropped by shutdown");
+        assert!(!ctx.shared_contains::<RateLimitCleanupTaskRegistry>());
     }
 
-    #[test]
-    fn uses_sqlite_fallback_when_database_url_is_missing_and_uri_points_to_local_postgres() {
-        assert!(should_use_local_sqlite_fallback(
-            false,
-            "postgres://postgres:postgres@localhost:5432/rustok"
-        ));
-        assert!(should_use_local_sqlite_fallback(
-            false,
-            "postgres://postgres:postgres@db:5432/rustok"
-        ));
+    #[tokio::test]
+    async fn runtime_worker_drain_aborts_and_joins_after_timeout() {
+        struct NotifyDrop(Option<tokio::sync::oneshot::Sender<()>>);
+        impl Drop for NotifyDrop {
+            fn drop(&mut self) {
+                if let Some(sender) = self.0.take() {
+                    let _ = sender.send(());
+                }
+            }
+        }
+
+        let (stopped_tx, stopped_rx) = tokio::sync::oneshot::channel();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _notify_drop = NotifyDrop(Some(stopped_tx));
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        });
+        started_rx.await.expect("worker must start before timeout");
+
+        super::await_runtime_worker_shutdown_with_timeout(
+            "test runtime worker",
+            Some(task),
+            Duration::from_millis(1),
+        )
+        .await;
+
+        stopped_rx
+            .await
+            .expect("timed-out worker must be aborted and joined");
     }
 
-    #[test]
-    fn skips_sqlite_fallback_when_database_url_exists_or_uri_is_remote() {
-        assert!(!should_use_local_sqlite_fallback(
-            true,
-            "postgres://postgres:postgres@localhost:5432/rustok"
-        ));
-        assert!(!should_use_local_sqlite_fallback(
-            false,
-            "postgres://postgres:postgres@prod-db.internal:5432/rustok"
-        ));
+    #[cfg(feature = "mod-comments")]
+    #[tokio::test]
+    async fn shutdown_joins_comments_tcp_listener_after_broadcasting_stop() {
+        use crate::services::comments_provider_runtime::{
+            CommentsTcpListenerHandle, CommentsTcpListenerTask,
+        };
+
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let mut stop = super::StopHandle::ensure(&ctx).subscribe();
+        let (stopped_tx, stopped_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            if stop.changed().await.is_ok() && *stop.borrow() {
+                let _ = stopped_tx.send(());
+            }
+        });
+        ctx.shared_insert(CommentsTcpListenerHandle {
+            instance_id: 1,
+            local_addr: std::net::SocketAddr::from(([127, 0, 0, 1], 9000)),
+        });
+        ctx.shared_insert(CommentsTcpListenerTask(task));
+
+        super::shutdown_runtime_workers(&ctx).await;
+
+        stopped_rx.await.expect("listener must receive shutdown");
+        assert!(!ctx.shared_contains::<CommentsTcpListenerHandle>());
+        assert!(!ctx.shared_contains::<CommentsTcpListenerTask>());
     }
 
     #[tokio::test]
@@ -1315,6 +1824,7 @@ mod tests {
         });
         let runtime_ctx = ServerRuntimeContext::new(db, RustokSettings::default());
         runtime_ctx.shared_insert(runtime);
+        runtime_ctx.shared_insert(rustok_storage::StorageRuntime::in_memory());
 
         connect_runtime_workers_with_runtime(runtime_ctx.clone())
             .await
@@ -1467,6 +1977,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancelled_shutdown_drain_aborts_its_owned_task() {
+        struct NotifyDrop(Option<tokio::sync::oneshot::Sender<()>>);
+        impl Drop for NotifyDrop {
+            fn drop(&mut self) {
+                if let Some(sender) = self.0.take() {
+                    let _ = sender.send(());
+                }
+            }
+        }
+
+        let (stopped_tx, stopped_rx) = tokio::sync::oneshot::channel();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _notify_drop = NotifyDrop(Some(stopped_tx));
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        });
+        started_rx.await.expect("worker must start");
+
+        let mut drain = Box::pin(super::await_runtime_worker_shutdown(
+            "cancelled test worker",
+            Some(task),
+        ));
+        tokio::select! {
+            _ = &mut drain => panic!("pending worker unexpectedly completed"),
+            _ = tokio::time::sleep(Duration::from_millis(1)) => {}
+        }
+        drop(drain);
+
+        stopped_rx
+            .await
+            .expect("dropping the drain must abort the owned worker");
+    }
+
+    #[tokio::test]
     async fn module_worker_join_finishes_after_watched_shutdown() {
         let (stop, mut rx) = super::StopHandle::new();
         let complete = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1480,6 +2025,38 @@ mod tests {
         stop.stop().await;
         super::await_module_worker_shutdown("shutdown-regression", handle).await;
         assert!(complete.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn module_worker_drain_aborts_and_joins_after_timeout() {
+        struct NotifyDrop(Option<tokio::sync::oneshot::Sender<()>>);
+        impl Drop for NotifyDrop {
+            fn drop(&mut self) {
+                if let Some(sender) = self.0.take() {
+                    let _ = sender.send(());
+                }
+            }
+        }
+
+        let (stopped_tx, stopped_rx) = tokio::sync::oneshot::channel();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _notify_drop = NotifyDrop(Some(stopped_tx));
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        });
+        started_rx.await.expect("module worker must start");
+
+        super::await_module_worker_shutdown_with_timeout(
+            "test module worker",
+            task,
+            Duration::from_millis(1),
+        )
+        .await;
+
+        stopped_rx
+            .await
+            .expect("timed-out module worker must be aborted and joined");
     }
 
     #[cfg(feature = "mod-payment")]

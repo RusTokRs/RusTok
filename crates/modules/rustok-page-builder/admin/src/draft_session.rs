@@ -43,8 +43,24 @@ pub struct SsrDraftSessionSnapshot {
     pub owner: Option<DraftSessionOwner>,
 }
 
+/// Current on-disk shape of a persisted draft session record.
+///
+/// A record written by an older build is upgraded in place on read (its missing `format` is
+/// `0`) and rewritten with this value on the next commit, so a rollback is served rather than
+/// refused. Bump it only together with a migration for the previous value.
+pub const DRAFT_SESSION_RECORD_FORMAT: u32 = 1;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PersistentDraftSessionRecord {
+    /// Shape of this record; absent in records written before the field existed, which is the
+    /// format `0` this build still reads.
+    ///
+    /// Without it the store could not tell the record of another build from a damaged file: both
+    /// fail to parse, and both were left in place until the file had not been written for a whole
+    /// TTL, so an editor holding the token of such a session got an error for every action for up
+    /// to a TTL. See [`Self::decode`].
+    #[serde(default)]
+    pub format: u32,
     pub token: String,
     pub generation: u64,
     pub controller: AdminCanvasController,
@@ -52,6 +68,36 @@ pub struct PersistentDraftSessionRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<DraftSessionOwner>,
     pub expires_at_unix_secs: u64,
+}
+
+impl PersistentDraftSessionRecord {
+    /// Reads a stored record, forgiving the shapes this build still understands.
+    ///
+    /// * A record with the current format is returned as stored.
+    /// * A record without a `format` field was written before the field existed (format `0`); it
+    ///   is understood and upgraded on the next write.
+    /// * A record of a **newer** format is refused with [`SsrDraftSessionError::UnsupportedFormat`]
+    ///   instead of a parse error: it parses cleanly, so treating it as damaged would hide the
+    ///   real cause (a build ahead of this binary writing the same store) and the editor would
+    ///   keep retrying a session that cannot be served.
+    pub fn decode(bytes: &[u8]) -> Result<Self, SsrDraftSessionError> {
+        let value: Value = serde_json::from_slice(bytes)
+            .map_err(|error| SsrDraftSessionError::Serialization(error.to_string()))?;
+        let format = value.get("format").and_then(Value::as_u64).unwrap_or(0);
+        if format > u64::from(DRAFT_SESSION_RECORD_FORMAT) {
+            return Err(SsrDraftSessionError::UnsupportedFormat {
+                found: u32::try_from(format).unwrap_or(u32::MAX),
+                supported: DRAFT_SESSION_RECORD_FORMAT,
+            });
+        }
+        serde_json::from_value(value)
+            .map_err(|error| SsrDraftSessionError::Serialization(error.to_string()))
+    }
+
+    /// Reads a record from text; see [`Self::decode`].
+    pub fn decode_str(content: &str) -> Result<Self, SsrDraftSessionError> {
+        Self::decode(content.as_bytes())
+    }
 }
 
 pub trait SsrDraftSessionStore: Send + Sync {
@@ -828,8 +874,13 @@ impl FileSsrDraftSessionStore {
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
                 Err(err) => return Err(SsrDraftSessionError::Io(err.to_string())),
             };
-            let record = match serde_json::from_str::<PersistentDraftSessionRecord>(&content) {
+            let record = match PersistentDraftSessionRecord::decode_str(&content) {
                 Ok(record) => record,
+                // A record of a newer format parses: a live deployment wrote it, so the file is
+                // not damage and must not be aged out or deleted. The caller gets a typed error.
+                Err(error @ SsrDraftSessionError::UnsupportedFormat { .. }) => {
+                    return Err(error);
+                }
                 Err(error) => {
                     if !file_is_older_than(&file_path, self.ttl) {
                         return Err(SsrDraftSessionError::Serialization(error.to_string()));
@@ -884,12 +935,12 @@ impl FileSsrDraftSessionStore {
         }
         let outcome = self.with_lock(token, || {
             let dead = match fs::read_to_string(path) {
-                Ok(content) => {
-                    match serde_json::from_str::<PersistentDraftSessionRecord>(&content) {
-                        Ok(record) => record.expires_at_unix_secs <= current_unix_secs(),
-                        Err(_) => file_is_older_than(path, self.ttl),
-                    }
-                }
+                Ok(content) => match PersistentDraftSessionRecord::decode_str(&content) {
+                    Ok(record) => record.expires_at_unix_secs <= current_unix_secs(),
+                    // Another build owns this record; only its own expiry can retire it.
+                    Err(SsrDraftSessionError::UnsupportedFormat { .. }) => false,
+                    Err(_) => file_is_older_than(path, self.ttl),
+                },
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
                     return Ok(DeadRecord::Left);
                 }
@@ -971,9 +1022,10 @@ impl FileSsrDraftSessionStore {
             if !file_name.ends_with(".json") {
                 continue;
             }
-            let Some(record) = fs::read_to_string(&path).ok().and_then(|content| {
-                serde_json::from_str::<PersistentDraftSessionRecord>(&content).ok()
-            }) else {
+            let Some(record) = fs::read_to_string(&path)
+                .ok()
+                .and_then(|content| PersistentDraftSessionRecord::decode_str(&content).ok())
+            else {
                 continue;
             };
             if record.owner.as_ref() == Some(owner) && record.token != keep_token {
@@ -1000,6 +1052,7 @@ impl FileSsrDraftSessionStore {
     ) -> Result<(), SsrDraftSessionError> {
         Self::validate_token(&snapshot.token)?;
         let record = PersistentDraftSessionRecord {
+            format: DRAFT_SESSION_RECORD_FORMAT,
             token: snapshot.token.clone(),
             generation: snapshot.generation,
             controller: snapshot.controller.clone(),
@@ -1165,7 +1218,7 @@ impl FileSsrDraftSessionStore {
             };
             let record = fs::read_to_string(&path)
                 .ok()
-                .and_then(|c| serde_json::from_str::<PersistentDraftSessionRecord>(&c).ok());
+                .and_then(|c| PersistentDraftSessionRecord::decode_str(&c).ok());
             match record {
                 Some(record) if record.expires_at_unix_secs > now => {
                     let age = record_age(&path, record.expires_at_unix_secs);
@@ -1562,8 +1615,7 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
             };
             // A record that cannot be parsed is reported, not deleted: the
             // driver removes it when the TTL it was stored with runs out.
-            let record: PersistentDraftSessionRecord = serde_json::from_slice(&bytes)
-                .map_err(|e| SsrDraftSessionError::Serialization(e.to_string()))?;
+            let record = PersistentDraftSessionRecord::decode(&bytes)?;
             if record.expires_at_unix_secs > current_unix_secs() {
                 return Ok(Some(record));
             }
@@ -1648,9 +1700,12 @@ impl PersistentDraftSessionBackend for ExternalKvDraftSessionBackend {
         let mut scanned: HashMap<String, u64> = HashMap::new();
 
         for key in keys {
-            let record = self.driver.get(&key).ok().flatten().and_then(|bytes| {
-                serde_json::from_slice::<PersistentDraftSessionRecord>(&bytes).ok()
-            });
+            let record = self
+                .driver
+                .get(&key)
+                .ok()
+                .flatten()
+                .and_then(|bytes| PersistentDraftSessionRecord::decode(&bytes).ok());
             if let Some(record) = record {
                 scanned.insert(key.clone(), record.generation);
                 if record.expires_at_unix_secs <= now_unix_secs {
@@ -1942,6 +1997,7 @@ impl DurableSsrDraftSessionStore {
             owner,
         )?;
         let record = PersistentDraftSessionRecord {
+            format: DRAFT_SESSION_RECORD_FORMAT,
             token: committed.token.clone(),
             generation: committed.generation,
             controller: committed.controller.clone(),
@@ -2539,7 +2595,15 @@ pub enum SsrDraftSessionError {
     Poisoned,
     #[error("SSR draft session belongs to page `{expected}`, not `{actual}`")]
     PageMismatch { expected: String, actual: String },
-    #[error("SSR draft session generation conflict: expected `{expected}`, received `{actual}`")]
+    /// A commit carried a generation that is not the one the session holds.
+    ///
+    /// The field names read as a validation pair, so read them with the message: `expected` is
+    /// the generation the **stored record** holds (what the store expected the caller to send)
+    /// and `actual` is the generation the **caller** sent. Every constructor in this crate and in
+    /// its consumers uses that order; the values are diagnostics only (the browser receives
+    /// `DRAFT_GENERATION_CONFLICT`), so a swap would not mis-behave, it would only mislead an
+    /// operator reading the log line.
+    #[error("SSR draft session generation conflict: stored `{expected}`, caller sent `{actual}`")]
     GenerationConflict { expected: u64, actual: u64 },
     #[error("SSR draft session token `{0}` is invalid")]
     InvalidToken(String),
@@ -2555,6 +2619,13 @@ pub enum SsrDraftSessionError {
     Io(String),
     #[error("SSR draft session serialization error: {0}")]
     Serialization(String),
+    /// The stored record was written by a build with a newer record format. The record parses, so
+    /// this is not damage: it is a deployment that has to be completed (or rolled back) before
+    /// the session can be served.
+    #[error(
+        "SSR draft session record format {found} is newer than the supported format {supported}"
+    )]
+    UnsupportedFormat { found: u32, supported: u32 },
 }
 
 #[cfg(test)]
@@ -3590,11 +3661,119 @@ mod tests {
         assert_eq!(reseeded.runtime_context["pod"], "pod-1");
     }
 
+    fn record_json(token: &str, generation: u64, expires_at_unix_secs: u64) -> serde_json::Value {
+        let record = PersistentDraftSessionRecord {
+            format: DRAFT_SESSION_RECORD_FORMAT,
+            token: token.to_string(),
+            generation,
+            controller: controller("home"),
+            runtime_context: json!({}),
+            owner: None,
+            expires_at_unix_secs,
+        };
+        serde_json::to_value(&record).expect("json")
+    }
+
+    /// Records written before the format field existed must keep working: they are format `0`,
+    /// read as-is, and rewritten with the current format by the next commit.
+    #[test]
+    fn a_record_without_a_format_is_read_as_the_legacy_shape() {
+        let mut legacy = record_json("tokLegacy01", 3, 4_000_000_000);
+        legacy
+            .as_object_mut()
+            .expect("object")
+            .remove("format")
+            .expect("the current shape carries a format");
+        let record =
+            PersistentDraftSessionRecord::decode(&serde_json::to_vec(&legacy).expect("json"))
+                .expect("legacy record");
+        assert_eq!(record.format, 0);
+        assert_eq!(record.token, "tokLegacy01");
+        assert_eq!(record.generation, 3);
+
+        // A current record round-trips with its format.
+        let current = PersistentDraftSessionRecord {
+            format: DRAFT_SESSION_RECORD_FORMAT,
+            token: "tokLegacy01".to_string(),
+            generation: 4,
+            controller: controller("home"),
+            runtime_context: json!({}),
+            owner: None,
+            expires_at_unix_secs: 4_000_000_000,
+        };
+        let decoded =
+            PersistentDraftSessionRecord::decode(&serde_json::to_vec(&current).expect("json"))
+                .expect("current record");
+        assert_eq!(decoded, current);
+    }
+
+    /// A future format parses cleanly, so it must not be reported — or treated — as damage. The
+    /// error names the versions, and the record stays in storage: the build that wrote it is
+    /// still serving the same store.
+    #[test]
+    fn a_record_of_a_newer_format_is_refused_without_being_treated_as_damage() {
+        let mut future = record_json("tokFuture01", 1, 4_000_000_000);
+        future
+            .as_object_mut()
+            .expect("object")
+            .insert("format".to_string(), json!(DRAFT_SESSION_RECORD_FORMAT + 1));
+        let error =
+            PersistentDraftSessionRecord::decode(&serde_json::to_vec(&future).expect("json"))
+                .expect_err("a newer format is refused");
+        assert!(matches!(
+            error,
+            SsrDraftSessionError::UnsupportedFormat { found, supported }
+                if found == DRAFT_SESSION_RECORD_FORMAT + 1
+                    && supported == DRAFT_SESSION_RECORD_FORMAT
+        ));
+
+        let truncated = PersistentDraftSessionRecord::decode(b"{ not json")
+            .expect_err("damaged bytes are a serialization error");
+        assert!(matches!(truncated, SsrDraftSessionError::Serialization(_)));
+    }
+
+    /// A newer record must survive a load attempt unchanged: the store may not delete what it
+    /// cannot serve, and it must not age it out either.
+    #[test]
+    fn a_newer_record_is_neither_served_nor_collected() {
+        let temp_dir =
+            std::env::temp_dir().join(format!("rustok_draft_test_{}", Uuid::new_v4().simple()));
+        let store = FileSsrDraftSessionStore::new(&temp_dir, Duration::from_secs(3600), 100)
+            .expect("store");
+        let mut future = record_json("tokFuture02", 1, 1);
+        future
+            .as_object_mut()
+            .expect("object")
+            .insert("format".to_string(), json!(DRAFT_SESSION_RECORD_FORMAT + 1));
+        let partition = temp_dir.join(UNATTRIBUTED_PARTITION);
+        fs::create_dir_all(&partition).expect("partition");
+        let path = partition.join("tokFuture02.json");
+        fs::write(&path, serde_json::to_vec(&future).expect("json")).expect("write");
+
+        let error = store
+            .load("tokFuture02", "home", None)
+            .expect_err("a newer record cannot be served");
+        assert!(matches!(
+            error,
+            SsrDraftSessionError::UnsupportedFormat { .. }
+        ));
+        assert!(
+            path.exists(),
+            "a record of a newer build must not be deleted by an older one"
+        );
+
+        // `prune` leaves it too, whatever its expiry says.
+        let _ = store.prune().expect("prune");
+        assert!(path.exists());
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
     #[test]
     fn kv_backend_compare_and_save_record_enforces_expected() {
         let driver = Arc::new(MemoryKvDriver::new());
         let backend = ExternalKvDraftSessionBackend::new(driver, Duration::from_secs(3600), 100);
         let base = |generation: u64| PersistentDraftSessionRecord {
+            format: DRAFT_SESSION_RECORD_FORMAT,
             token: "tokCAS01".to_string(),
             generation,
             controller: controller("home"),
@@ -3643,6 +3822,7 @@ mod tests {
             .expect("store");
         let base =
             |generation: u64, owner: Option<DraftSessionOwner>| PersistentDraftSessionRecord {
+                format: DRAFT_SESSION_RECORD_FORMAT,
                 token: "tokCAS01".to_string(),
                 generation,
                 controller: controller("home"),
@@ -4752,6 +4932,7 @@ mod tests {
     /// yet for a record that is already past its deadline.
     fn kv_put(driver: &MemoryKvDriver, token: &str, generation: u64, expires_at_unix_secs: u64) {
         let record = PersistentDraftSessionRecord {
+            format: DRAFT_SESSION_RECORD_FORMAT,
             token: token.to_string(),
             generation,
             controller: controller("home"),

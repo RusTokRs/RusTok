@@ -53,7 +53,7 @@ async fn outbox_bootstrap_native() -> Result<OutboxAdminBootstrap, ServerFnError
 `,
     "crates/modules/rustok-outbox/admin/src/ui/leptos.rs": `
 use leptos::prelude::*;
-use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_api::UiRouteContext;
 use crate::core::{outbox_info_cards, OutboxAdminShellText};
 use crate::transport;

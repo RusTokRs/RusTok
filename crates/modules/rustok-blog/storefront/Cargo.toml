@@ -16,6 +16,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 default = []
 hydrate = [
   "leptos/hydrate",
+  "rustok-auth-ui/hydrate",
   "rustok-comments-storefront-support/hydrate",
   "rustok-search-storefront/hydrate",
   "rustok-reactions-storefront/hydrate",
@@ -25,6 +26,7 @@ comment-island = [
 ]
 ssr = [
   "leptos/ssr",
+  "rustok-auth-ui/ssr",
   "dep:leptos_axum",
   "dep:rustok-channel",
   "dep:rustok-blog",
@@ -42,7 +44,7 @@ ssr = [
 [dependencies]
 rustok-ui-core.workspace = true
 leptos.workspace = true
-leptos-auth.workspace = true
+rustok-auth-ui.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-graphql.workspace = true
 rustok-ui-transport.workspace = true

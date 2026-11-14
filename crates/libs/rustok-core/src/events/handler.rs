@@ -435,6 +435,12 @@ impl RunningDispatcher {
     pub async fn join(self) -> Result<(), tokio::task::JoinError> {
         self.handle.await
     }
+
+    /// Transfer the task handle to a host that must bound the join and retain
+    /// abort-on-drop ownership while shutdown itself may be cancelled.
+    pub fn into_join_handle(self) -> JoinHandle<()> {
+        self.handle
+    }
 }
 
 pub struct HandlerBuilder<F, Fut, P>

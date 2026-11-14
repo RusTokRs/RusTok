@@ -167,12 +167,15 @@ for (const marker of [
   "PermissionScope::All",
   "let fetch_limit = u64::from(max_records).saturating_add(1);",
   ".limit(fetch_limit)",
-  "let truncated = records.len() > max_records as usize;",
-  "records.pop();",
+  "let truncated = artifact_ids.len() > max_records as usize;",
+  "artifact_ids.pop();",
   "PAGE_ARTIFACT_INTEGRITY_INVALID",
   '"Stored landing materialization evidence is partial"',
   "hex_sha256(record.locale.as_bytes())",
-  "artifact_record_identity_hash(record)?",
+  "artifact_record_identity_hash(&record)?",
+  // The payload pass reads one selected record at a time, fenced by tenant and page.
+  "page_static_landing_artifact::Entity::find_by_id(*artifact_id)",
+  "for artifact_id in &artifact_ids",
   "hex_sha256(error.to_string().as_bytes())",
 ]) requireText(owner, marker, "audit owner contract");
 requireOrder(owner, [

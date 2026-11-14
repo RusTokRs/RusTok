@@ -9,12 +9,10 @@ pub mod model;
 pub mod transport;
 mod ui;
 
-pub use ui::leptos::{
-    CartCheckoutHandoffCard, CartDrawer, CartDrawerState, CartFloatingTrigger, CartHeaderTrigger,
-    CartView, use_cart_drawer,
-};
+pub use ui::CartClient;
+pub use ui::leptos::{CartCheckoutHandoffCard, CartHeaderTrigger, CartView};
 
 #[cfg(test)]
 mod contract_tests;
 
-pub use ui::buyer::{BuyerCartController, use_buyer_cart};
+pub use ui::buyer::{BuyerCartController, CartCapability, use_buyer_cart};

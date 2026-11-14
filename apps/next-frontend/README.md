@@ -36,10 +36,9 @@
   queries, so a tenant that configured a page size is not overridden by the package. A feed shows one
   server page and offers no paging control. A GraphQL-level failure (denied field, validation,
   authorization) is reported in a localized banner with a retry action instead of rendering as an
-  empty forum or a missing topic. A transport failure stays indistinguishable from an empty result:
-  `src/shared/lib/graphql.ts` maps only `graphQLErrors` into `GraphqlResponse.errors` and drops
-  `networkError`, so surfacing connection failures is an app-shell change that affects every module
-  package and needs its own decision.
+  empty forum or a missing topic. The shared Apollo 4 adapter maps both GraphQL and non-GraphQL
+  `result.error` values into `GraphqlResponse.errors`; exceptions thrown by the transport also
+  propagate. Each caller remains responsible for displaying an appropriate failure state.
 - `packages/rustok-forum` opens the post a link addressed: `?reply=<uuid>` on `/modules/forum`
   (notification and mention links) or on the canonical topic route (search results) scrolls to that
   reply and marks it, paging forward through the owner cursor within 20 pages, and the surface says
@@ -47,7 +46,22 @@
   prefix `src/app/[locale]/forum/t/[...slug]`: the owner publishes that path in search documents, SEO
   targets and canonical redirects, so mounting it under `modules/` instead 404s every such link.
 - Composes search storefront controls through host-owned `src/features/search`: product-owned catalog metadata is loaded via `packages/rustok-product` and passed to the search package as safe option props with the route locale.
-- `packages/rustok-pages` (`@rustok/pages-frontend`) renders published Page Builder landing pages directly through Server Components (`PageBuilderContent`) with inline scoped `<style>` and sanitized HTML without an `<iframe>`. Interactive actions (`data-fly-action`) are handled by `FlyActionBridge` (Islands Architecture), bridging custom `fly:action` events into `@rustok/cart-frontend` (`addItem`/`openCart`) and Next.js client-side navigation. Canonical route lives at `src/app/[locale]/pages/[slug]/page.tsx` with dynamic SEO metadata resolution (`resolveSeoPageContextForRoute`).
+- `packages/rustok-pages` (`@rustok/pages-frontend`) renders published Page Builder landings directly with scoped CSS and sanitized HTML. `FlyActionBridge` confines host actions to the landing, requests Cart controls only when enabled and navigates purchases to the Product buyer instead of calling `addItem` without a quote. Refreshed enabled-module props take effect before child components commit; a new authoritative prop also resets local overrides even when its values are unchanged. The [package contract](packages/rustok-pages/README.md#shared-purchase-handoff) describes the shared Next/Leptos payload. The Pages route is `src/app/[locale]/pages/[slug]/page.tsx`.
+
+## Fly browser checks
+
+`npm run test:e2e:fly` runs the focused asset and mounted-component contracts. The separate
+`npm run test:e2e:fly-host` builds the production Next app and exercises landing SSR/hydration,
+Cart controls, Product handoff and confirmation, and back navigation in Chromium against a fake
+local API. Install Playwright's Chromium first, or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to a
+compatible browser. The host check rebuilds `.next`; do not run it concurrently with another build
+or dev server. It uses ports 3311 and 3301 by default; override them with `FLY_HOST_API_PORT` and
+`FLY_HOST_NEXT_PORT` if needed. It does not test the real backend, deployment, or CSP.
+
+The workspace JSX type bridge in `src/types/react-jsx-runtime.d.ts` exposes the installed React
+types to packages outside this app's `node_modules`. Keep `react/jsx-runtime` itself unaliased in
+`tsconfig.json`: pointing that runtime specifier at a declaration file can build successfully but
+produce a broken browser bundle.
 
 ## Docs
 

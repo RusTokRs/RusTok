@@ -13,9 +13,9 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
-hydrate = ["leptos-auth/hydrate", "leptos/hydrate", "rustok-cart-storefront/hydrate", "rustok-pricing-storefront/hydrate", "rustok-ui-leptos/hydrate"]
+hydrate = ["rustok-auth-ui/hydrate", "leptos/hydrate", "rustok-cart-storefront/hydrate", "rustok-pricing-storefront/hydrate", "rustok-ui-leptos/hydrate"]
 ssr = [
-  "leptos-auth/ssr",
+  "rustok-auth-ui/ssr",
   "leptos/ssr",
   "rustok-cart-storefront/ssr",
   "rustok-pricing-storefront/ssr",
@@ -31,7 +31,7 @@ ssr = [
 ]
 
 [dependencies]
-leptos-auth.workspace = true
+rustok-auth-ui.workspace = true
 rustok-ui-core.workspace = true
 rustok-ui.workspace = true
 rustok-ui-leptos = { path = "../../../ui/rustok-ui/leptos", default-features = false }

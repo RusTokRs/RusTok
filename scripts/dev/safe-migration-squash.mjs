@@ -9,7 +9,7 @@
  *  3. Checks the recognized subset of source syntax:
  *     - Every entity table exists in migrations.
  *     - Every entity column exists in the migration table.
- *     - Nullability match: non-Option<T> must be NOT NULL, Option<T> must be NULLable.
+ *     - Nullability match: non-Option<T> must be NOT NULL, Option<T> must allow NULL.
  *     - Primary keys match.
  *  4. Validates migration registry (`src/migrations/mod.rs`):
  *     - All files on disk are registered.

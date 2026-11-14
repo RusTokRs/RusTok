@@ -1374,15 +1374,16 @@ async fn load_topic_custom_fields_schema(
 
     let definitions = rows
         .into_iter()
-        .filter_map(topic_field_definition_from_row)
-        .collect();
+        .map(topic_field_definition_from_row)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(ForumError::Validation)?;
 
     Ok(CustomFieldsSchema::new(definitions))
 }
 
 fn topic_field_definition_from_row(
     row: topic_field_definitions_storage::Model,
-) -> Option<FieldDefinition> {
+) -> Result<FieldDefinition, String> {
     field_definition_from_source(&row)
 }
 

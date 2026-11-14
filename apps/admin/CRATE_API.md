@@ -34,6 +34,6 @@
 
 ## Dependencies & Boundaries
 
-- **Upstream UI Primitives & Systems:** Depends on `leptos`, `leptos-router`, `leptos-auth`, `leptos-ui`, `leptos-ui-routing`, `rustok-ui`, `rustok-ui-core`, `rustok-ui-i18n`, `rustok-ui-transport`, `rustok-graphql`, `rustok-web`.
+- **Upstream UI Primitives & Systems:** Depends on `leptos`, `leptos-router`, `rustok-auth-ui`, `leptos-ui`, `leptos-ui-routing`, `rustok-ui`, `rustok-ui-core`, `rustok-ui-i18n`, `rustok-ui-transport`, `rustok-graphql`, `rustok-web`.
 - **Module Admin Packages:** Composes module admin crates (`rustok-*-admin`) via registered entrypoints and route manifests.
 - **Zero Cross-Module Direct Access:** Never accesses internal databases or private module tables directly; all operations execute through public module endpoints or GraphQL queries.

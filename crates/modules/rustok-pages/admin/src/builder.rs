@@ -194,6 +194,17 @@ async fn pages_page_builder_capability(
     }
 }
 
+/// The preview capability of this consumer, for a caller that has already resolved the principal.
+///
+/// The intent endpoint and the host preview route both reach the same render through this, so a
+/// preview they answer cannot differ in policy, rollout gating or authorization.
+pub(crate) async fn execute_preview_capability(
+    snapshot: PagesBuilderSaveSnapshot,
+    input: PreviewPageBuilderInput,
+) -> Result<PageBuilderCapabilityResponse, PageBuilderAdminFacadeError> {
+    execute_preview(snapshot, input).await
+}
+
 async fn execute_preview(
     snapshot: PagesBuilderSaveSnapshot,
     input: PreviewPageBuilderInput,
@@ -285,7 +296,7 @@ async fn dispatch_pages_page_builder_capability(
         )));
     }
     let verified_user =
-        leptos_auth::transport::fetch_current_user(token.clone(), tenant_slug.clone())
+        rustok_auth_ui::transport::fetch_current_user(token.clone(), tenant_slug.clone())
             .await
             .map_err(|error| PageBuilderAdminFacadeError::new(error.to_string()))?
             .ok_or_else(|| PageBuilderAdminFacadeError::new("Authenticated user was not found"))?;

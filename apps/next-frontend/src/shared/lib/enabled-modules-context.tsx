@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React from 'react';
 
@@ -26,33 +26,50 @@ export function EnabledModulesClientProvider({
     () => normalizeModules(initialModules),
     [initialModules]
   );
-  const [enabledModules, setEnabledModules] = React.useState(
-    normalizedInitialModules
-  );
-
-  React.useEffect(() => {
-    setEnabledModules(normalizedInitialModules);
-  }, [normalizedInitialModules]);
+  // A new server prop remains authoritative even if its values happen to match the old
+  // prop: local overrides must not survive a refresh. Compare the prop, not the memoized
+  // normalization (whose cache React may discard). Reset during render because an effect
+  // would commit the old capability once after new props arrive.
+  const [snapshot, setSnapshot] = React.useState(() => ({
+    initialModules,
+    enabledModules: normalizedInitialModules
+  }));
+  const enabledModules = snapshot.initialModules === initialModules
+    ? snapshot.enabledModules
+    : normalizedInitialModules;
+  if (snapshot.initialModules !== initialModules) {
+    setSnapshot({ initialModules, enabledModules });
+  }
 
   const value = React.useMemo<EnabledModulesContextValue>(
     () => ({
       enabledModules,
       setModuleEnabled: (slug, enabled) => {
-        setEnabledModules((prev) => {
-          const next = new Set(prev);
+        setSnapshot((prev) => {
+          const next = new Set(
+            prev.initialModules === initialModules
+              ? prev.enabledModules
+              : normalizedInitialModules
+          );
           if (enabled) {
             next.add(slug);
           } else {
             next.delete(slug);
           }
-          return normalizeModules(Array.from(next));
+          return {
+            initialModules,
+            enabledModules: normalizeModules(Array.from(next))
+          };
         });
       },
       replaceEnabledModules: (modules) => {
-        setEnabledModules(normalizeModules(modules));
+        setSnapshot({
+          initialModules,
+          enabledModules: normalizeModules(modules)
+        });
       }
     }),
-    [enabledModules]
+    [enabledModules, initialModules, normalizedInitialModules]
   );
 
   return (

@@ -133,6 +133,83 @@ async fn audit_accepts_canonical_and_rebuilt_records_and_truncates_at_requested_
 }
 
 #[tokio::test]
+async fn audit_reads_identifiers_before_payloads_and_never_scans_another_page() -> TestResult<()> {
+    let tenant_id = Uuid::new_v4();
+    let db = setup_db(tenant_id).await?;
+    let service = page_service(&db);
+    let fixture = publish_fixture_for(&service, &db, tenant_id, "audited").await?;
+    let other = publish_fixture_for(&service, &db, tenant_id, "neighbour").await?;
+
+    // Both pages hold a canonical artifact. The audit of one page is bounded by that page: the
+    // identifier pass runs first, so a foreign artifact of the same tenant is never selected, let
+    // alone hydrated.
+    let result = service
+        .audit_immutable_artifact_integrity(
+            tenant_id,
+            SecurityContext::system(),
+            fixture.page_id,
+            AuditPageArtifactsInput {
+                max_records: Some(1),
+            },
+        )
+        .await?;
+    assert_eq!(result.scanned_artifact_count, 1);
+    assert_eq!(result.valid_artifact_count, 1);
+    assert!(!result.truncated);
+    assert_eq!(result.audit_hash.len(), 64);
+
+    let neighbour = service
+        .audit_immutable_artifact_integrity(
+            tenant_id,
+            SecurityContext::system(),
+            other.page_id,
+            AuditPageArtifactsInput {
+                max_records: Some(1),
+            },
+        )
+        .await?;
+    assert_eq!(neighbour.scanned_artifact_count, 1);
+    assert_eq!(neighbour.valid_artifact_count, 1);
+    // The audit hash binds the page, so two pages with the same shape do not share a receipt.
+    assert_ne!(result.audit_hash, neighbour.audit_hash);
+    Ok(())
+}
+
+#[tokio::test]
+async fn audit_of_a_page_without_artifacts_reports_an_empty_complete_slice() -> TestResult<()> {
+    let tenant_id = Uuid::new_v4();
+    let db = setup_db(tenant_id).await?;
+    let service = page_service(&db);
+    let fixture = publish_fixture(&service, &db, tenant_id).await?;
+
+    // The identifier pass decides what the payload pass reads. With no identifier to select the
+    // audit is complete and empty, which is different from truncated, and different again from the
+    // fail-closed error the command raises when a selected payload is no longer readable.
+    page_static_landing_artifact::Entity::delete_by_id(fixture.source.artifact_id)
+        .exec(&db)
+        .await?;
+
+    let result = service
+        .audit_immutable_artifact_integrity(
+            tenant_id,
+            SecurityContext::system(),
+            fixture.page_id,
+            AuditPageArtifactsInput {
+                max_records: Some(1),
+            },
+        )
+        .await?;
+    assert_eq!(result.scanned_artifact_count, 0);
+    assert_eq!(result.valid_artifact_count, 0);
+    assert_eq!(result.invalid_artifact_count, 0);
+    assert!(!result.truncated);
+    assert!(!result.findings_truncated);
+    assert!(result.findings.is_empty());
+    assert_eq!(result.audit_hash.len(), 64);
+    Ok(())
+}
+
+#[tokio::test]
 async fn audit_reports_corrupted_immutable_payload_with_hashed_finding() -> TestResult<()> {
     let tenant_id = Uuid::new_v4();
     let db = setup_db(tenant_id).await?;
@@ -219,17 +296,26 @@ async fn publish_fixture(
     db: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> TestResult<PublishedFixture> {
+    publish_fixture_for(service, db, tenant_id, "home").await
+}
+
+async fn publish_fixture_for(
+    service: &PageService,
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    slug: &str,
+) -> TestResult<PublishedFixture> {
     let reviewed = PageBuilderReviewedPublishRuntime::new(
         "immutable-artifact-audit-sqlite",
         json!({ "surface": "storefront", "channel": "web" }),
     )?;
     let project = json!({
         "pages": [{
-            "id": "home",
+            "id": slug,
             "flyPageMeta": {
                 "title": "Immutable artifact audit",
                 "description": "SQLite audit regression",
-                "slug": "home"
+                "slug": slug
             },
             "component": {
                 "id": "root",
@@ -251,7 +337,7 @@ async fn publish_fixture(
                 translations: vec![PageTranslationInput {
                     locale: "en".to_string(),
                     title: "Immutable artifact audit".to_string(),
-                    slug: Some("home".to_string()),
+                    slug: Some(slug.to_string()),
                     meta_title: None,
                     meta_description: None,
                 }],
@@ -282,7 +368,7 @@ async fn publish_fixture(
                     locale: "en".to_string(),
                     revision,
                 }],
-                idempotency_key: "artifact-audit-publish-v1".to_string(),
+                idempotency_key: format!("artifact-audit-publish-v1-{slug}"),
                 runtime: reviewed_input(&reviewed),
             },
         )

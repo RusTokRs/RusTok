@@ -20,6 +20,8 @@ mod rollback;
 mod route;
 mod route_history_import;
 mod schedule;
+#[cfg(feature = "runtime")]
+mod schedule_worker;
 mod symbols;
 pub(crate) use symbols::{
     lock_site_symbol_catalog_in_tx, symbol_used_by_any_page, template_symbol_ids,
@@ -86,9 +88,12 @@ pub use route_history_import::{
 pub use schedule::{
     MAX_PAGE_PUBLISH_JOB_ATTEMPTS, MAX_PAGE_PUBLISH_JOBS_PER_SWEEP, PAGE_PUBLISH_JOB_LEASE_EXPIRED,
     PAGE_PUBLISH_JOB_LEASE_SECS, PAGE_PUBLISH_SCHEDULE_NOT_CANCELABLE,
-    PAGE_PUBLISH_SCHEDULE_NOT_FOUND, PAGE_PUBLISH_SCHEDULE_TIME_INVALID, PagePublishReapOutcome,
+    PAGE_PUBLISH_SCHEDULE_NOT_FOUND, PAGE_PUBLISH_SCHEDULE_TIME_INVALID,
+    PAGE_PUBLISH_SWEEP_INTERVAL_SECS, PAGE_SCHEDULED_PUBLISH_WORKER, PagePublishReapOutcome,
     PagePublishScheduler, PagePublishSchedulerMetricsSnapshot, PagePublishSweepOutcome,
 };
+#[cfg(feature = "runtime")]
+pub use schedule_worker::{PageScheduledPublishWorkAdapter, PageScheduledPublishWorkRegistration};
 pub(crate) use translation_apply::ApplyExactPageMetadataTranslationInput;
 
 pub(super) const PAGE_KIND: &str = "page";

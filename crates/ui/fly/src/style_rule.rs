@@ -1,6 +1,7 @@
 use crate::{FlyError, FlyResult, ProjectDocument};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+use std::collections::BTreeMap;
 
 pub const FLY_COMPONENT_RULE_FIELD: &str = "flyComponentId";
 pub const FLY_RULE_ID_FIELD: &str = "flyRuleId";
@@ -219,6 +220,54 @@ impl StyleRuleIdentity {
     /// Whether this rule targets `component_id` in `scope`.
     pub fn targets(&self, component_id: &str, scope_key: &str) -> bool {
         self.component_id.as_deref() == Some(component_id) && self.scope.stable_key() == scope_key
+    }
+}
+
+/// Reissue a component-bound rule, including GrapesJS ID selectors. Class selectors and
+/// provider fields remain untouched. A copied rule cannot keep the old rule id: raw upserts
+/// otherwise replace the original rule instead of adding the copy.
+pub(crate) fn remap_component_style_rule(raw: &mut Value, mapping: &BTreeMap<String, String>) {
+    let Some(target) = StyleRuleIdentity::from_value(raw)
+        .and_then(|identity| identity.component_id)
+        .and_then(|source| mapping.get(&source).cloned())
+    else {
+        return;
+    };
+    let Some(object) = raw.as_object_mut() else {
+        return;
+    };
+    object.insert(FLY_COMPONENT_RULE_FIELD.to_string(), Value::String(target));
+    object.remove(FLY_RULE_ID_FIELD);
+    object.remove("id");
+
+    fn remap_selector_name(name: &mut String, mapping: &BTreeMap<String, String>) {
+        let id = name.trim_start_matches('#');
+        if let Some(replacement) = mapping.get(id) {
+            let prefix = &name[..name.len() - id.len()];
+            *name = format!("{prefix}{replacement}");
+        }
+    }
+
+    match object.get_mut("selectors") {
+        Some(Value::String(selector)) if selector.starts_with('#') => {
+            remap_selector_name(selector, mapping);
+        }
+        Some(Value::Array(selectors)) => {
+            for selector in selectors {
+                let Some(selector) = selector.as_object_mut() else {
+                    continue;
+                };
+                let is_id = selector.get("type").and_then(Value::as_u64) == Some(2)
+                    || selector
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .is_some_and(|name| name.starts_with('#'));
+                if is_id && let Some(Value::String(name)) = selector.get_mut("name") {
+                    remap_selector_name(name, mapping);
+                }
+            }
+        }
+        _ => {}
     }
 }
 

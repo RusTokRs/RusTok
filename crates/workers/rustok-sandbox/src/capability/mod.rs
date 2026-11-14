@@ -115,6 +115,9 @@ pub struct CapabilityCallContext {
     pub tenant_id: Option<Uuid>,
     pub actor_id: Option<String>,
     pub trace_id: Option<String>,
+    /// Stable host-issued identity retained across idempotent binding attempts.
+    #[serde(default)]
+    pub idempotency_key: Option<Uuid>,
 }
 
 impl From<&SandboxContext> for CapabilityCallContext {
@@ -124,6 +127,7 @@ impl From<&SandboxContext> for CapabilityCallContext {
             tenant_id: context.tenant_id,
             actor_id: context.actor_id.clone(),
             trace_id: context.trace_id.clone(),
+            idempotency_key: context.idempotency_key,
         }
     }
 }

@@ -168,7 +168,10 @@ for (const marker of [
 for (const marker of [
   "pub fn ConsumerPropertiesPanel",
   "runtime.verify_contribution(&assembly)",
-  "LocalResource::new",
+  // The panel resolves its snapshot with an awaitable `Resource`, not a `LocalResource`: the latter
+  // is `pending().await` under `ssr`, so the panel could only ever render its skeleton in a response.
+  // See DECISIONS/2026-11-13-standalone-admin-editor-delivery.md.
+  "Resource::new(",
   "runtime.load().await",
   "prepare_save_input(&current_snapshot, current_values)",
   "runtime.save(input).await",
@@ -181,7 +184,7 @@ requireOrderedMarkers(
   providerPanel,
   [
     "runtime.verify_contribution(&assembly)",
-    "LocalResource::new",
+    "Resource::new(",
     "runtime.load().await",
   ],
   "consumer property descriptor validation before load",

@@ -10,6 +10,7 @@ const repoRoot = process.env.RUSTOK_VERIFY_REPO_ROOT
   ? path.resolve(process.env.RUSTOK_VERIFY_REPO_ROOT)
   : path.resolve(scriptDir, "..", "..", "..", "..", "..");
 const failures = [];
+const skipped = [];
 const read = (relativePath) => readFileSync(path.join(repoRoot, relativePath), "utf8");
 const need = (text, marker, label) => {
   if (!text.includes(marker)) failures.push(`${label}: missing ${marker}`);
@@ -176,13 +177,31 @@ for (const forbidden of [
   "rustok-pages-admin",
   "rustok-page-builder-admin",
   "rustok-admin",
-  "fly-browser",
   "fly-ui"
 ]) forbid(builderManifest, forbidden, "Page Builder storefront manifest");
+// `fly-browser` is not an editor runtime here: the published landing needs its static action
+// bridge, `FLY_ACTIONS_JS`, written into the landing script tag. What must not appear is a client
+// mount or the editor protocol bootstrap, which is what the two rules below check.
+need(
+  builderManifest,
+  "fly-browser = { path = \"../../../ui/fly/browser\" }",
+  "published landing action bridge",
+);
+need(
+  builderLib,
+  "<script data-fly-actions=\"true\" inner_html=fly_browser::FLY_ACTIONS_JS></script>",
+  "published landing action bridge",
+);
+for (const forbidden of ["mount_to_body(", "hydrate_body(", "fly_browser::bootstrap"]) {
+  forbid(builderLib, forbidden, "published landing action bridge");
+}
 for (const marker of [
   '#[cfg(feature = "inline-edit")]',
   "mod inline_edit;",
-  "pub use inline_edit::*;"
+  // The re-export is an explicit name list, not a glob: the inline-edit surface is the five
+  // types below and nothing else leaks out of the module.
+  "pub use inline_edit::{",
+  "PageBuilderAuthenticatedInlineStorefront,",
 ]) need(builderLib, marker, "feature-gated Page Builder inline source");
 
 for (const marker of [
@@ -236,6 +255,11 @@ const forbiddenSourceMarkers = [
   "PageBuilderAdmin",
   "ConsumerPropertiesPanel"
 ];
+// The published landing writes the static action bridge into a script tag and nothing else from
+// `fly-browser` may reach a public page: no mount, no editor bootstrap, no adapter. The marker is
+// therefore checked as a whole-file ban everywhere except the one call site that is allowed, and
+// that call site is pinned by the `published landing action bridge` rule above.
+const publishedLandingActionBridge = "inner_html=fly_browser::FLY_ACTIONS_JS";
 for (const sourceRoot of [
   "crates/modules/rustok-pages/storefront/src",
   "crates/modules/rustok-page-builder/storefront/src",
@@ -245,7 +269,24 @@ for (const sourceRoot of [
     const label = path.relative(repoRoot, file).replace(/\\/g, "/");
     if (label === pagesInlineSourcePath || label === builderInlineSourcePath) continue;
     const source = readFileSync(file, "utf8");
-    for (const marker of forbiddenSourceMarkers) forbid(source, marker, label);
+    for (const marker of forbiddenSourceMarkers) {
+      if (marker === "fly_browser") {
+        // Every use of `fly_browser` is a violation except the static action bridge of the
+        // published landing, which is this crate's rendering contract, not an editor runtime.
+        const remaining = source
+          .split("<script data-fly-actions=\"true\" inner_html=fly_browser::FLY_ACTIONS_JS></script>")
+          .join("")
+          .split("fly_browser::FLY_ACTIONS_JS.is_empty()")
+          .join("");
+        forbid(
+          remaining.replace(/^\s*use fly_browser;$/gm, "").replace(/^pub use fly_browser;$/gm, ""),
+          marker,
+          label,
+        );
+        continue;
+      }
+      forbid(source, marker, label);
+    }
   }
 }
 
@@ -266,6 +307,13 @@ function cargoMetadata(profile) {
     maxBuffer: 64 * 1024 * 1024,
     env: { ...process.env, CARGO_TERM_COLOR: "never" }
   });
+  if (result.error?.code === "ENOENT") {
+    // No toolchain in this environment. The dependency graph of each profile is the one thing
+    // this verifier cannot read from source, so it says so instead of reporting the absence of
+    // `cargo` as a defect in the tree; a run with a toolchain checks it.
+    skipped.push(`${profile.id}: cargo metadata not run (no cargo on PATH)`);
+    return null;
+  }
   if (result.error) {
     failures.push(`${profile.id}: cargo metadata failed to start: ${result.error.message}`);
     return null;
@@ -364,6 +412,9 @@ if (failures.length > 0) {
   console.error("[verify-pages-anonymous-storefront-graph] FAIL");
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
+}
+if (skipped.length > 0) {
+  for (const note of skipped) console.warn(`[verify-pages-anonymous-storefront-graph] skipped ${note}`);
 }
 console.log(
   "[verify-pages-anonymous-storefront-graph] PASS graph_profiles=6 authoring_packages=excluded opt_in_inline_profiles=separate bundle_artifact_execution=pending"

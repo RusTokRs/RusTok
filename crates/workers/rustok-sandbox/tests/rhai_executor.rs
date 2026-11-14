@@ -94,6 +94,27 @@ fn workspace_request(workspace: RhaiWorkspace) -> SandboxRequest {
 }
 
 #[tokio::test]
+async fn exposes_host_idempotency_key_as_read_only_rhai_constant() {
+    let key = Uuid::new_v4();
+    let mut keyed_request = request("IDEMPOTENCY_KEY");
+    keyed_request.context.idempotency_key = Some(key);
+    let outcome = runtime()
+        .execute(keyed_request)
+        .await
+        .expect("execute with key");
+    assert_eq!(
+        RhaiBindingOutput::decode(outcome.output)
+            .expect("versioned Rhai output")
+            .output,
+        json!(key.to_string())
+    );
+
+    let mut forged = request("IDEMPOTENCY_KEY = \"guest-chosen\"; IDEMPOTENCY_KEY");
+    forged.context.idempotency_key = Some(key);
+    assert!(runtime().execute(forged).await.is_err());
+}
+
+#[tokio::test]
 async fn executes_alloy_draft_through_neutral_runtime() {
     let outcome = runtime()
         .execute(request("input.left + input.right"))

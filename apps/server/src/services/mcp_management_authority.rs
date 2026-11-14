@@ -68,6 +68,44 @@ impl McpManagementAuthorityService {
         )
     }
 
+    /// Revalidate persisted delegated permissions when a token is used. A
+    /// policy was constrained at creation/update time, but the delegated user
+    /// may since have been disabled or had permissions removed.
+    pub async fn validate_runtime_policy(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        client: &mcp_clients::Model,
+        policy: &mcp_policies::Model,
+    ) -> Result<(), McpManagementAuthorityError> {
+        if client.tenant_id != tenant_id
+            || policy.tenant_id != tenant_id
+            || policy.client_id != client.id
+        {
+            return Err(McpManagementAuthorityError::Forbidden(
+                "MCP policy does not match its tenant-bound client".to_string(),
+            ));
+        }
+
+        let delegated = delegated_permissions(
+            db,
+            tenant_id,
+            client.actor_type(),
+            client.delegated_user_id,
+        )
+        .await?;
+        if let Some(delegated) = delegated {
+            let granted_permissions = policy.granted_permissions_list().map_err(|error| {
+                internal_error("decode persisted MCP granted permissions", error)
+            })?;
+            validate_grants(
+                &granted_permissions,
+                &delegated,
+                "current delegated MCP user",
+            )?;
+        }
+        Ok(())
+    }
+
     pub async fn validate_token_rotation(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -88,8 +126,11 @@ impl McpManagementAuthorityService {
                     "MCP policy belongs to another tenant".to_string(),
                 ));
             }
+            let granted_permissions = policy.granted_permissions_list().map_err(|error| {
+                internal_error("decode persisted MCP granted permissions", error)
+            })?;
             validate_all_authorities(
-                &policy.granted_permissions_list(),
+                &granted_permissions,
                 manager_permissions,
                 delegated.as_deref(),
             )?;
@@ -208,5 +249,24 @@ mod tests {
         let error = validate_grants(&["not-a-permission".to_string()], &[], "manager")
             .expect_err("malformed permission must fail");
         assert!(matches!(error, McpManagementAuthorityError::Invalid(_)));
+    }
+
+    #[test]
+    fn runtime_revalidation_rejects_policy_grants_after_delegated_authority_is_removed() {
+        let persisted_grants = vec![Permission::MODULES_MANAGE.to_string()];
+        validate_grants(
+            &persisted_grants,
+            &[Permission::MODULES_MANAGE],
+            "current delegated MCP user",
+        )
+        .expect("current delegated authority admits the stored policy");
+
+        let error = validate_grants(
+            &persisted_grants,
+            &[Permission::MODULES_READ],
+            "current delegated MCP user",
+        )
+        .expect_err("a later permission downgrade must invalidate the stored grant");
+        assert!(matches!(error, McpManagementAuthorityError::Forbidden(_)));
     }
 }

@@ -77,7 +77,7 @@ requireMarkers('appsAdminMain', [
   '#[tokio::main]',
   'generate_route_list(App)',
   '/api/admin/pages/{page_id}/builder/intents',
-  'leptos_auth::transport::fetch_current_user(',
+  'rustok_auth_ui::transport::fetch_current_user(',
   'dispatch_pages_browser_intent_with_capabilities(',
   'PagesBrowserIntentProblem',
   'let problem = PagesBrowserIntentProblem::from(&error);',
@@ -110,7 +110,7 @@ for (const forbidden of ['wasm-bindgen', 'wasm_bindgen', 'web-sys', 'web_sys']) 
 requireMarkers('flyBrowserLib', [
   'FLY_BROWSER_ADAPTER_JS',
   'pub enum BrowserIntentKind',
-  'pub const ALL: [Self; 52]',
+  'pub const ALL: [Self; 53]',
   'pub struct BrowserIntentEnvelope',
   'pub fn kind(&self) -> Option<BrowserIntentKind>',
   'pub fn is_mutating(&self)',
@@ -119,6 +119,25 @@ requireMarkers('flyBrowserLib', [
   'Self::SelectAsset => "select_asset"',
   'intent_kind_names_are_unique_and_round_trip',
 ], 'framework-neutral typed browser protocol');
+// The `ALL` array's length is part of the protocol vocabulary, so it is a byte-exact marker. That
+// makes it possible for the marker to disagree with the enum it describes — a variant added without
+// the count updated, or the count padded to make the marker pass. Derive the count from the enum
+// body itself so the marker cannot be maintained by hand into a lie.
+const intentVocabulary = /pub enum BrowserIntentKind \{([\s\S]*?)\n\}/.exec(source.flyBrowserLib);
+const derivedIntentKinds = intentVocabulary
+  ? intentVocabulary[1]
+      .split('\n')
+      .filter((line) => /^ {4}[A-Z][A-Za-z]*,$/.test(line))
+      .length
+  : 0;
+if (derivedIntentKinds === 0) {
+  failures.push('the browser intent vocabulary cannot be read from `BrowserIntentKind`');
+} else if (!source.flyBrowserLib.includes(`pub const ALL: [Self; ${derivedIntentKinds}]`)) {
+  failures.push(
+    `\`BrowserIntentKind::ALL\` is not declared with the ${derivedIntentKinds} variants the enum has`,
+  );
+}
+
 requireMarkers('flyBrowserJs', [
   'export class FlyBrowserAdapter',
   'event.source !== this.iframe.contentWindow',
@@ -408,13 +427,68 @@ for (const forbidden of ['<style>{}{}</style>', '<script>{script}</script>']) {
   );
 }
 
-// The server preview is a second `srcdoc` document. It arrives composed, so the nonce is put on
-// the stylesheet of its envelope by the function that owns the envelope.
+// The server preview has two shapes, and the guarantee differs by shape.
+//
+// A host without a preview route embeds the composed document through `srcdoc`, so it inherits the
+// console's policy and its stylesheet must carry the console's nonce — written by the function that
+// owns the envelope. A host with a preview route loads the document by `src`, so it is governed by
+// the policy of that response (`rustok-pages-admin`'s preview policy) and needs no nonce at all.
 requireMarkers('adminServerPreview', [
   'use_context::<UiCspNonce>()',
-  'srcdoc=embedded_preview_document(html, csp_nonce.as_ref())',
+  'srcdoc=',
+  'preview_endpoint',
   'fly::document_html_with_style_nonce(',
-], 'Page Builder server preview nonce');
+], 'Page Builder server preview transport');
+
+// The attributes are what the browser executes, so the markers above are only half the guarantee.
+// Derive both branches from the rendered view, so neither can be dropped while the other keeps the
+// markers green.
+//
+// `src`: a host that serves a preview document must be reachable — a panel that never loads one by
+// address cannot show a faithful preview even where the host provides the route (§737).
+if (!/\bsrc=/.test(source.adminServerPreview)) {
+  failures.push(
+    'Page Builder server preview never loads a host-served document by `src`, so a faithful ' +
+      'preview cannot be shown even by a host that serves one',
+  );
+}
+for (const reference of source.adminServerPreview.matchAll(/\bsrc=([\w.]+)/g)) {
+  if (!/preview_endpoint/.test(reference[1])) {
+    failures.push(
+      `Page Builder server preview binds \`src\` to \`${reference[1]}\`, which is not the host's ` +
+        'preview endpoint',
+    );
+  }
+}
+
+// `srcdoc`: the composed document and its nonce come from one binding. An attribute bound to the
+// rendered document directly is the regression this catches, and a marker on the attribute name
+// cannot see it.
+const previewSrcdocBindings = [];
+for (const match of source.adminServerPreview.matchAll(/let (\w+) = ([\s\S]*?);\n/g)) {
+  // The `;` has to end the statement, not a nested expression, so the body is read to the next
+  // statement boundary: a binding that happens to sit after the call is not the call's result.
+  const body = match[2];
+  if (!/embedded_preview_document\s*\(/.test(body)) continue;
+  if (!/csp_nonce/.test(body)) continue;
+  previewSrcdocBindings.push(match[1]);
+}
+// The attribute may be bound directly or through an expression that chooses between the two
+// shapes; either way, every identifier it names has to be one the envelope function produced.
+const srcdocExpression = /srcdoc=([^\n]*(?:\n(?!\s*(?:src|srcdoc|hidden|sandbox|title|class|data-)[\w-]*=)[^\n]*)*)/.exec(
+  source.adminServerPreview,
+)?.[1];
+if (!srcdocExpression) {
+  failures.push('Page Builder server preview does not bind its frame\'s `srcdoc` to a value');
+} else {
+  const documentBinding = srcdocExpression.match(/\b(preview_srcdoc|\w*document\w*)\b/)?.[1];
+  if (!documentBinding || !previewSrcdocBindings.includes(documentBinding)) {
+    failures.push(
+      'Page Builder server preview binds `srcdoc` to a document that never passed through ' +
+        '`embedded_preview_document` with the host nonce',
+    );
+  }
+}
 requireMarkers('flyRender', [
   'pub fn document_html_with_style_nonce(',
   'html.push_str(DOCUMENT_STYLE_OPEN);',

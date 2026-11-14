@@ -171,6 +171,30 @@ crates/ui/fly/
 - **Rendering escapes at every sink.** HTML text, attribute values, CSS attribute selectors and the
   `<style>` element body each have their own escape; URLs are filtered by `RenderPolicy`.
 
+## Identity and history contracts
+
+`ProjectDocument::clone_as_page` and `ProjectFragment::remap_ids` return `FlyResult`; callers
+must handle ambiguous source IDs instead of assuming a copy succeeded. Component IDs and authored
+HTML IDs are reissued separately, along with their recognized references and component-bound
+style rules. Provider form IDs remain the provider's endpoint identity. A duplicate HTML ID within
+one page, a form ID owned by another HTML node, or a duplicate component/form ID prevents an
+ambiguous copy; HTML IDs can repeat on separate pages. Arbitrary provider payloads, assets and
+independent symbol definitions are not recursively rewritten. For form-vs-node conflict checks,
+a valid `flyForm` replaces its own authored HTML `id` when materialized. Duplicate authored
+HTML IDs can still make re-identification ambiguous even when a later lowering would replace them.
+
+Runtime repeaters interpolate HTML ID templates in each item's scope and keep local HTML/ARIA
+references aligned if a collision requires a fresh ID; literal references to outside nodes are not
+retargeted. Resolved HTML IDs may contain Unicode but not whitespace, controls or unresolved
+expressions. Form IDs also identify provider resources and are never silently reissued: a
+repeater that may produce the same form more than once is left unexpanded with a blocking error.
+Scoped conditions, including those in nested repeaters, can prove that at most one copy survives.
+Consumers must honor runtime error diagnostics before publishing.
+
+History budgets both undo and redo snapshots plus commands using a serialized-size estimate. It
+preserves one oversized entry, and recomputes the accounting after deserialization. The estimate
+is not an exact heap measurement and may count shared snapshots more than once.
+
 ## Site symbols
 
 `SymbolDescriptor` definitions are stored in `project.extensions.flySymbols`; a
@@ -197,6 +221,11 @@ the owner of the missing half.
   policy (`DANGEROUS_COMPONENT_TYPES` in `rustok-page-builder`). The palette block is labelled
   `Raw HTML (escaped as text)` and validation reports `raw_html_not_rendered` (warning) for a
   document that carries visible content in one.
+- **Commerce templates are authoring placeholders, not live catalog bindings.** The built-in
+  `product_price` contains sample text and the `product_card` button has no default purchase
+  action. Authors must replace sample data and configure an explicit Product handoff; the current
+  blocks do not select a real SKU or obtain a Pricing quote. See the
+  [storefront handoff contract](../../modules/rustok-page-builder/storefront/README.md#purchase-and-cart-bridge).
 - **Provider interaction capabilities are a contract the host fills.** `fly` ships
   `InteractionCapabilityRegistry`, `evaluate_runtime_publish_gate_with_capabilities` and
   `FormProviderEndpointResolver`; a bare `fly` consumer keeps `InteractionCapabilityPolicy::Allow`
@@ -216,6 +245,9 @@ the owner of the missing half.
   `fly:action`; without the asset the buttons stay inert by design. Interactive primitives
   such as tabs (`switch_tab`), accordion (`toggle_accordion`), and slider / carousel (`switch_slide`
   with swipe/touch gestures and dot indicators) are implemented in `builtin_blocks` and `fly-actions.js`.
+  Runtime target lookup stays inside the nearest landing body (or `body` for a standalone
+  document) and prefers renderer-owned component hooks over an authored HTML ID. Custom actions
+  prevent accidental form submit/reset; native actions retain their own browser behavior.
 - **Rich text renders through the host's capability, not Fly's fallback.** A component carrying
   `flyRichText` stores a `RichTextPayload`; `fly` validates its shape, projects plain text, and
   can render a conservative escaped fallback. Production HTML must come from the host binding

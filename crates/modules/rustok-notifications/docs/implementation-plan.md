@@ -549,6 +549,11 @@ delivery transports, and PostgreSQL cross-consumer evidence remain open.
 - one context snapshot is reused for exact unread count and the first bounded summary page;
 - auth-scope changes clear prior mutation feedback without polling or shadow client state.
 
+The original `FORUM-20AO` checks were not run by the implementation agent. The typed Auth
+projection contract does not demonstrate a mounted reactive refetch; the current Cart/Auth
+continuation and remaining browser/service evidence are tracked in the
+[Page Builder backlog](../../../../docs/modules/page-builder-backlog.md).
+
 ### `FORUM-20AP`
 
 - active initially non-public topic-created descriptors materialize only when the host publishes

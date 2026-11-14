@@ -12,6 +12,7 @@ Leptos admin UI adapter package for the `rustok-auth` module.
 ## Responsibilities
 
 - Exposes authentication and user-management admin pages used by `apps/admin`.
+- Consumes the shared Auth-owned [`rustok-auth-ui`](../ui/README.md) lifecycle; it does not own a second provider.
 - Keeps auth-specific UI, view models, transport DTOs, and translation lookup inside the module package.
 - Participates in manifest-driven admin UI composition through `rustok-module.toml`.
 - Keeps the admin surface in FFA shape: Leptos-free `core.rs`, module-owned `transport/` facade, and explicit `ui/leptos.rs` render adapter.
@@ -33,6 +34,10 @@ Leptos admin UI adapter package for the `rustok-auth` module.
 - Calls server auth, user, and OAuth app endpoints through module-owned transport adapters while keeping host routing outside the package.
 - Native user and OAuth server functions use `HostRuntimeContext` for DB access and the host-provided `ModuleRuntimeExtensions` handle for owner mutation runtimes; the package has no host-framework dependency.
 - The fast boundary contract is `npm run verify:auth:admin-boundary`.
+- The security page checks the confirmed revoke-other-sessions response and rechecks the captured
+  auth scope before signing out the current session. Failures are displayed and remain retryable;
+  other tabs and an already-sent request are not serialized by this client fence. Mounted UI and
+  real-service behavior remain unverified.
 
 ## Documentation
 

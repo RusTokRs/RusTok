@@ -31,12 +31,15 @@ six-dimension audit. The reviewed baseline was
 ### Unclosed architectural and runtime gates
 
 - **Installer:** the HTTP job still uses an in-process `tokio::spawn`.
-  A process crash can strand a `running` job. A safe recovery/fencing
-  design must reconcile immutable receipts and actual side effects
-  before taking over a lease; do not automatically delete or expire
-  `running` rows. Add a multi-replica PostgreSQL contention test and
-  crash/restart recovery evidence. PostgreSQL support for the new
-  index must be verified before deployment.
+  A process crash can strand a `running` job. HTTP now assigns a stable
+  session ID before spawning and stores it on the job row, and the executor
+  creates that session with the same ID. The executor still has no resume entry
+  point; the redacted session plan and receipts do not prove whether an
+  unreceipted external effect completed. A safe recovery/fencing design must
+  reconcile immutable receipts and actual side effects before taking over; do
+  not automatically delete, expire, or replay `running` rows. Add a multi-replica
+  PostgreSQL contention test and crash/restart recovery evidence. PostgreSQL
+  support for the new index must be verified before deployment.
 - **OAuth:** implement a single versioned, serialized per-tenant
   reconciliation transaction that covers all upserts and deactivations,
   with explicit revocation fences for previously minted access tokens.
@@ -129,11 +132,16 @@ router composition, endpoint resolution, listener bind, and serving errors as we
 as successful serving, preserving the original result. Shutdown also explicitly
 aborts the channel/RBAC invalidation listeners, RBAC generation watchdog, and
 in-memory event forwarder even if other handle clones remain. Aborts are requested,
-not joined. This is not cancellation- or panic-safe, and not every detached or
-stop-signal-only task is tracked and drained (including rate-limit cleanup and the
-Comments TCP listener); an expired drain deadline can leave other work running.
-Direct users of the lower-level bootstrap APIs remain responsible for shutdown.
-The new host and supervisor regression tests have not been compiled or executed.
+not joined. An RAII guard schedules the bounded shutdown when the host lifecycle
+future is cancelled or unwinds, but that cleanup is detached: the cancelling caller
+cannot await confirmation, and runtime teardown/process abort can still prevent it
+from completing. Not every detached or stop-signal-only task is tracked and drained;
+an expired drain deadline can leave other work running. Rate-limit cleanup loops
+and the Comments TCP listener are now stored in runtime-owned registries and
+included in the bounded host drain. Direct users of the lower-level bootstrap APIs
+remain responsible for shutdown. The host, listener, rate-limit, and supervisor
+regression tests added in the latest source continuation have not been compiled or
+executed.
 
 The pre-existing RBAC source-guard mismatch exposed a rejected-read fallback in
 the owner resolver. The owner now returns a typed consistency error after
@@ -673,6 +681,50 @@ cargo test -p rustok-server --lib controllers::graphql
 cargo test -p rustok-server --lib extractors::auth
 ```
 
+
+## Runtime task drain completion (2026-11-12)
+
+Scope: close confirmed shutdown gaps in runtime-owned tasks that subscribe to
+the host stop signal or have an explicit runtime handle. This is not a
+repository-wide detached-task audit; test-only spawns, supervisors whose
+abort-on-drop ownership already bounds lifetime, and unrelated service
+lifecycle work are outside this batch.
+
+- Host shutdown now takes and joins the physical Event DLQ duplicate-alert
+  observer and its observability projection, Product channel reconciliation,
+  Product Index refresh, and Social Graph Index consumer/position/poison
+  observer handles, and the Comments schedule-audit handoff worker after
+  broadcasting stop. Both Forum Search workers (inbox and typed-contract
+  consumer) are drained too. Tenant cache-generation listeners now retain every
+  spawned local/Redis/reconciliation task for the same drain. Tenant locale
+  listener tasks, previously cancelled only when their abort-on-drop handle was
+  dropped, are also explicitly cancelled and joined by host shutdown. The same
+  explicit drain also covers Channel/RBAC invalidation listeners, the RBAC
+  generation watchdog, Event forwarder, Cache Redis status monitor,
+  field-definition cache invalidation/reconciliation workers, and the
+  feature-gated SEO redirect-cache reconciler. Their abort-on-drop wrappers
+  remain as a fallback.
+- Module-worker drains now retain abort-on-drop `JoinHandle`s through timeout;
+  if a worker exceeds the deadline, shutdown aborts it and awaits cancellation
+  instead of dropping the join future and detaching the task. If the host drain
+  itself is cancelled, the local guards still abort owned tasks.
+- The Forum Search typed-contract consumer handle is included alongside the
+  inbox worker; it was previously absent from the host drain.
+- The Outbox relay supervisor uses a `JoinSet` for its inner processing task:
+  shutdown aborts and joins it, and dropping the supervisor aborts children
+  instead of detaching them.
+- Each drain is bounded to five seconds. If a task does not cooperate, shutdown
+  aborts it and awaits the join result rather than dropping the JoinHandle and
+  leaving the task detached.
+- Added a regression test for the timeout abort-and-join fallback. Existing
+  signal/handle shutdown tests continue to cover the previously fixed listener
+  and rate-limit cleanup tasks.
+- The one-shot installer HTTP execution task remains outside this worker-drain
+  batch. Its durable `running` row is protected by a cross-replica unique index,
+  so stale-job recovery/shutdown handling needs a separate ownership and
+  recovery design; it must not be cleared by a blind startup sweep.
+- Cargo is unavailable in this environment, so compilation and Rust tests remain
+  unverified; `git diff --check` is the available whitespace check.
 
 ## P5 dispatcher cooperative-drain batch (2026-11-01)
 

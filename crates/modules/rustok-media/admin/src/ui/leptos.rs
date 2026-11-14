@@ -2,8 +2,8 @@ use leptos::ev::SubmitEvent;
 use leptos::html;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 use crate::core::{
@@ -17,16 +17,21 @@ use crate::model::{MediaListItem, MediaUsageSnapshot};
 use crate::transport;
 use crate::transport::ApiError;
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[component]
@@ -120,21 +125,21 @@ pub fn MediaAdmin() -> impl IntoView {
     let route_effect_locale = ui_locale.clone();
     let file_input: NodeRef<html::Input> = NodeRef::new();
 
-    let library = local_resource(
+    let library = loaded_resource(
         move || (token.get(), tenant.get(), page.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, page_value, _)| async move {
             transport::fetch_media_library(page_value, 12, token_value, tenant_value).await
         },
     );
 
-    let usage = local_resource(
+    let usage = loaded_resource(
         move || (token.get(), tenant.get(), refresh_nonce.get()),
         move |(token_value, tenant_value, _)| async move {
             transport::fetch_media_usage(token_value, tenant_value).await
         },
     );
 
-    let detail = local_resource(
+    let detail = loaded_resource(
         move || {
             (
                 token.get(),
@@ -153,7 +158,7 @@ pub fn MediaAdmin() -> impl IntoView {
         },
     );
 
-    let translations = local_resource(
+    let translations = loaded_resource(
         move || {
             (
                 token.get(),

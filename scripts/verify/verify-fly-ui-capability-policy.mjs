@@ -70,7 +70,7 @@ const flattenKeys = (value, prefix = '') => Object.entries(value).flatMap(([key,
 
 requireMarkers('vocabulary', [
   'pub enum BrowserIntentKind',
-  'pub const ALL: [Self; 52]',
+  'pub const ALL: [Self; 53]',
   'pub fn parse(value: &str)',
   'pub const fn as_str(self)',
   'pub const fn is_mutating(self)',
@@ -279,7 +279,7 @@ requireMarkers('pagesLib', [
 ], 'Pages public access and problem exports');
 
 requireMarkers('adminMain', [
-  'leptos_auth::transport::fetch_current_user(',
+  'rustok_auth_ui::transport::fetch_current_user(',
   'pages_editor_capability_policy_from_effective(&verified_user.permissions)',
   'PagesBrowserIntentProblem',
   'let problem = PagesBrowserIntentProblem::from(&error);',

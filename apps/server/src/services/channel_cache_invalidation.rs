@@ -24,26 +24,53 @@ const CHANNEL_RESOLUTION_RECONCILE_INTERVAL: Duration = Duration::from_secs(5);
 const CHANNEL_RESOLUTION_WORKER_RESTART_DELAY: Duration = Duration::from_secs(1);
 
 struct AbortOnDropInvalidationTask {
-    task: JoinHandle<()>,
+    task: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl AbortOnDropInvalidationTask {
     fn new(task: JoinHandle<()>) -> Self {
-        Self { task }
+        Self {
+            task: Mutex::new(Some(task)),
+        }
     }
 
     fn is_running(&self) -> bool {
-        !self.task.is_finished()
+        self.task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|task| !task.is_finished())
     }
 
     fn abort(&self) {
-        self.task.abort();
+        if let Some(task) = self
+            .task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            task.abort();
+        }
+    }
+
+    fn take_task(&self) -> Option<JoinHandle<()>> {
+        self.task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 }
 
 impl Drop for AbortOnDropInvalidationTask {
     fn drop(&mut self) {
-        self.task.abort();
+        if let Some(task) = self
+            .task
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            task.abort();
+        }
     }
 }
 
@@ -95,6 +122,21 @@ impl ChannelCacheInvalidationRuntime {
         self.reconcile.abort();
         self.health.mark_failed();
     }
+
+    fn take_tasks(&self) -> Vec<JoinHandle<()>> {
+        let mut tasks = Vec::with_capacity(3);
+        if let Some(task) = self.local.take_task() {
+            tasks.push(task);
+        }
+        if let Some(task) = self.redis.as_ref().and_then(AbortOnDropInvalidationTask::take_task) {
+            tasks.push(task);
+        }
+        if let Some(task) = self.reconcile.take_task() {
+            tasks.push(task);
+        }
+        self.health.mark_failed();
+        tasks
+    }
 }
 
 #[derive(Clone)]
@@ -141,6 +183,10 @@ impl ChannelCacheInvalidationListenerHandle {
 
     pub(crate) fn abort(&self) {
         self.0.abort();
+    }
+
+    pub(crate) fn take_tasks(&self) -> Vec<JoinHandle<()>> {
+        self.0.take_tasks()
     }
 }
 
@@ -504,6 +550,12 @@ pub async fn start_channel_cache_invalidation_listener(
             Error::Cache("channel invalidation start lock is unavailable".to_string())
         })?;
     let _start_guard = start_lock.0.lock().await;
+    if ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
+    {
+        return Ok(());
+    }
 
     if let Some(existing) = ctx.shared_get::<ChannelCacheInvalidationListenerHandle>() {
         if existing.is_running() {
@@ -511,6 +563,17 @@ pub async fn start_channel_cache_invalidation_listener(
         }
         tracing::warn!("Channel cache invalidation runtime stopped; replacing workers");
         existing.abort();
+        let tasks = existing.take_tasks();
+        for task in &tasks {
+            task.abort();
+        }
+        for task in tasks {
+            if let Err(error) = task.await {
+                if !error.is_cancelled() {
+                    tracing::warn!(?error, "Old channel invalidation worker failed while being replaced");
+                }
+            }
+        }
     }
 
     let health = Arc::new(ChannelCacheInvalidationHealth::default());
@@ -522,6 +585,12 @@ pub async fn start_channel_cache_invalidation_listener(
         && !is_missing_generation_state(&error)
     {
         tracing::warn!(%error, "Initial channel cache generation recovery deferred");
+    }
+    if ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
+    {
+        return Ok(());
     }
 
     let first_local = Arc::new(Mutex::new(Some(initial_local)));
@@ -565,6 +634,22 @@ pub async fn start_channel_cache_invalidation_listener(
         health,
     ));
     Ok(())
+}
+
+pub(crate) async fn take_listener_tasks_for_shutdown(
+    ctx: &ServerRuntimeContext,
+) -> Vec<JoinHandle<()>> {
+    let start_lock = ctx.shared_get_or_insert_with(ChannelCacheInvalidationListenerStartLock::default);
+    let _start_guard = match tokio::time::timeout(Duration::from_secs(5), start_lock.0.lock()).await {
+        Ok(guard) => guard,
+        Err(_) => {
+            tracing::warn!("Timed out waiting for channel invalidation startup during shutdown");
+            return Vec::new();
+        }
+    };
+    ctx.shared_take::<ChannelCacheInvalidationListenerHandle>()
+        .map(|listener| listener.take_tasks())
+        .unwrap_or_default()
 }
 
 fn is_missing_generation_state(error: &Error) -> bool {

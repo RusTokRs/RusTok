@@ -24,7 +24,9 @@ struct EnabledModulesResponse {
 
 #[derive(Clone)]
 pub struct EnabledModulesContext {
-    pub modules: RwSignal<HashSet<String>>,
+    // All replacements go through the methods below so independent client islands are fenced
+    // synchronously, before the new projection becomes visible to host UI.
+    modules: RwSignal<HashSet<String>>,
 }
 
 impl EnabledModulesContext {
@@ -41,17 +43,20 @@ impl EnabledModulesContext {
     where
         I: IntoIterator<Item = String>,
     {
-        self.modules.set(modules.into_iter().collect());
+        let modules = modules.into_iter().collect::<HashSet<_>>();
+        crate::enabled_module_events::publish(&modules);
+        self.modules.set(modules);
     }
 
     pub fn set_module_enabled(&self, slug: &str, enabled: bool) {
-        self.modules.update(|modules| {
-            if enabled {
-                modules.insert(slug.to_string());
-            } else {
-                modules.remove(slug);
-            }
-        });
+        let mut modules = self.modules.get_untracked();
+        if enabled {
+            modules.insert(slug.to_string());
+        } else {
+            modules.remove(slug);
+        }
+        crate::enabled_module_events::publish(&modules);
+        self.modules.set(modules);
     }
 }
 

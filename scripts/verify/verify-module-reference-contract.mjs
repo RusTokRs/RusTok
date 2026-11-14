@@ -677,7 +677,7 @@ for (const path of [
     if (!/\binput\s*=\s*leptos::server_fn::codec::Json\b/.test(attributes)) {
       fail(`${path}: native admin inputs must preserve JSON null, number and string types`);
     }
-    if (!/\bclient\s*=\s*leptos_auth::AuthorizedBrowserClient\b/.test(attributes)) {
+    if (!/\bclient\s*=\s*rustok_auth_ui::ui::leptos::AuthorizedBrowserClient\b/.test(attributes)) {
       fail(`${path}: native admin browser calls must use canonical auth metadata`);
     }
   }

@@ -66,7 +66,11 @@ pub fn Button(
 #[component]
 pub fn Input(
     #[prop(into)] value: Signal<String>,
-    #[prop(into)] set_value: WriteSignal<String>,
+    /// The setter for the field. A form owns a `WriteSignal`; a caller writing into a projection
+    /// passes `SignalSetter::map(..)`, which is the type Leptos has for "any setter" — the write
+    /// face of a value that is not an owned cell.
+    #[prop(into)]
+    set_value: SignalSetter<String>,
     #[prop(into)] placeholder: TextProp,
     #[prop(default = "text")] type_: &'static str,
     #[prop(default = String::new().into(), into)] label: TextProp,

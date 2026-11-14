@@ -2,6 +2,8 @@ use std::error::Error;
 use std::sync::Arc;
 
 use chrono::{Duration as ChronoDuration, Utc};
+#[cfg(feature = "runtime")]
+use rustok_api::{ModuleWorkItem, ModuleWorkOutcome, ModuleWorkSource};
 use rustok_channel::ChannelModule;
 use rustok_core::{MigrationSource, SecurityContext};
 use rustok_outbox::{OutboxTransport, SysEventsMigration, TransactionalEventBus};
@@ -12,9 +14,12 @@ use rustok_pages::dto::{
     ReviewedPagePublishRuntimeInput, SavePageDocumentInput, SchedulePagePublishInput,
 };
 use rustok_pages::entities::{page, page_publish_job};
+#[cfg(feature = "runtime")]
+use rustok_pages::services::PageScheduledPublishWorkAdapter;
 use rustok_pages::services::{
-    MAX_PAGE_PUBLISH_JOB_ATTEMPTS, PAGE_PUBLISH_JOB_LEASE_EXPIRED, PagePublishScheduler,
-    PageService,
+    MAX_PAGE_PUBLISH_JOB_ATTEMPTS, PAGE_PUBLISH_JOB_LEASE_EXPIRED,
+    PAGE_PUBLISH_SCHEDULE_NOT_CANCELABLE, PAGE_PUBLISH_SWEEP_INTERVAL_SECS,
+    PAGE_SCHEDULED_PUBLISH_WORKER, PagePublishScheduler, PageService,
 };
 use sea_orm::{
     ColumnTrait, ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend,
@@ -272,6 +277,107 @@ async fn canceled_schedule_never_executes() -> TestResult<()> {
     assert_eq!(published, 0);
     let job = fixture.job(page_id).await?;
     assert_eq!(job.state, "canceled");
+    Ok(())
+}
+
+/// A page can hold terminal job rows newer than its live schedule. Reading "the newest row of any
+/// state" then reports the finished publication, so the editor sees a past schedule and
+/// cancellation rejects a job that is still going to fire.
+#[tokio::test]
+async fn a_second_schedule_is_not_shadowed_by_the_published_job() -> TestResult<()> {
+    let fixture = fixture().await?;
+    let (page_id, revision, version) = fixture
+        .create_draft_page("Rescheduled after publish")
+        .await?;
+    let first_publish_at = (Utc::now() + ChronoDuration::hours(1)).to_rfc3339();
+    fixture
+        .service
+        .schedule_publish(
+            fixture.tenant_id,
+            SecurityContext::system(),
+            page_id,
+            fixture.schedule_input(&first_publish_at, page_id, &revision, version),
+        )
+        .await?;
+
+    let due = (Utc::now() + ChronoDuration::hours(2)).into();
+    assert_eq!(
+        fixture
+            .service
+            .process_due_publish_jobs_as_of(due, 10)
+            .await?,
+        1
+    );
+    let published = fixture.job(page_id).await?;
+    assert_eq!(published.state, "published");
+
+    // The page now holds a terminal row older than the schedule that follows it.
+    let second_publish_at = (Utc::now() + ChronoDuration::hours(3)).to_rfc3339();
+    fixture
+        .service
+        .schedule_publish(
+            fixture.tenant_id,
+            SecurityContext::system(),
+            page_id,
+            fixture.schedule_input(&second_publish_at, page_id, &revision, version),
+        )
+        .await?;
+
+    let schedule = fixture
+        .service
+        .page_publish_schedule(fixture.tenant_id, SecurityContext::system(), page_id)
+        .await?
+        .ok_or_else(|| std::io::Error::other("the page has a schedule"))?;
+    assert_eq!(schedule.state.as_str(), "scheduled");
+    assert_ne!(schedule.id, published.id);
+
+    let canceled = fixture
+        .service
+        .cancel_scheduled_publish(fixture.tenant_id, SecurityContext::system(), page_id)
+        .await?;
+    assert_eq!(canceled.id, schedule.id);
+    assert_eq!(canceled.state.as_str(), "canceled");
+    Ok(())
+}
+
+/// A page with a finished job and no pending one reports the finished job and refuses the cancel
+/// with its state, instead of claiming the page was never scheduled.
+#[tokio::test]
+async fn cancel_without_a_pending_job_reports_the_last_state() -> TestResult<()> {
+    let fixture = fixture().await?;
+    let (page_id, revision, version) = fixture.create_draft_page("Nothing pending").await?;
+    let publish_at = (Utc::now() + ChronoDuration::hours(1)).to_rfc3339();
+    fixture
+        .service
+        .schedule_publish(
+            fixture.tenant_id,
+            SecurityContext::system(),
+            page_id,
+            fixture.schedule_input(&publish_at, page_id, &revision, version),
+        )
+        .await?;
+    fixture
+        .service
+        .cancel_scheduled_publish(fixture.tenant_id, SecurityContext::system(), page_id)
+        .await?;
+
+    let schedule = fixture
+        .service
+        .page_publish_schedule(fixture.tenant_id, SecurityContext::system(), page_id)
+        .await?
+        .ok_or_else(|| std::io::Error::other("the canceled job is history"))?;
+    assert_eq!(schedule.state.as_str(), "canceled");
+
+    let error = fixture
+        .service
+        .cancel_scheduled_publish(fixture.tenant_id, SecurityContext::system(), page_id)
+        .await
+        .expect_err("a canceled schedule cannot be canceled again");
+    let rich: rustok_core::error::RichError = error.into();
+    assert_eq!(
+        rich.error_code.as_deref(),
+        Some(PAGE_PUBLISH_SCHEDULE_NOT_CANCELABLE)
+    );
     Ok(())
 }
 
@@ -741,6 +847,162 @@ async fn scheduler_metrics_count_sweeps_and_strand_recoveries() -> TestResult<()
     let metrics = scheduler.metrics();
     assert_eq!(metrics.sweeps_total, 2);
     assert_eq!(metrics.requeued_total, 1);
+    Ok(())
+}
+
+/// Discovery has to reach a stranded `executing` job: with the job claimed and its lease expired
+/// there is no due `scheduled` row, so a claim that only looked for due work would leave that
+/// publication unreachable. The adapter is the only path from the host scheduler into this queue.
+#[cfg(feature = "runtime")]
+#[tokio::test]
+async fn scheduler_adapter_claims_stranded_jobs_and_publishes_them() -> TestResult<()> {
+    let fixture = fixture().await?;
+    // Pacing exists to keep a 1s host poll from burning the attempt budget; it is not part of
+    // discovery semantics, so the claim assertions run unpaced.
+    let adapter = PageScheduledPublishWorkAdapter::new(fixture.service.clone())
+        .with_sweep_interval(std::time::Duration::ZERO);
+
+    assert_eq!(
+        adapter.claim(PAGE_SCHEDULED_PUBLISH_WORKER).await?,
+        None,
+        "an empty queue claims nothing"
+    );
+    assert_eq!(
+        adapter.claim("another_module_worker").await?,
+        None,
+        "the adapter answers only for its own worker slug"
+    );
+
+    let (page_id, revision, version) = fixture.create_draft_page("Adapter claim").await?;
+    let publish_at = (Utc::now() + ChronoDuration::hours(1)).to_rfc3339();
+    fixture
+        .service
+        .schedule_publish(
+            fixture.tenant_id,
+            SecurityContext::system(),
+            page_id,
+            fixture.schedule_input(&publish_at, page_id, &revision, version),
+        )
+        .await?;
+
+    // A future schedule is not runnable yet: nothing is due and no lease is stranded.
+    assert_eq!(
+        adapter.claim(PAGE_SCHEDULED_PUBLISH_WORKER).await?,
+        None,
+        "a schedule that is not due yet is not claimed"
+    );
+
+    // A worker that died mid-publish leaves the job `executing` with an expired lease.
+    strand_job(
+        &fixture,
+        page_id,
+        1,
+        Some((Utc::now() - ChronoDuration::minutes(5)).into()),
+    )
+    .await?;
+    let item = adapter
+        .claim(PAGE_SCHEDULED_PUBLISH_WORKER)
+        .await?
+        .ok_or_else(|| std::io::Error::other("a stranded job must be claimed"))?;
+    assert_eq!(item.tenant_id, fixture.tenant_id);
+    assert_eq!(item.id, fixture.tenant_id);
+
+    // The sweep reaps the stranded row and returns it to `scheduled`; `publish_at` is still in
+    // the future, so that is the whole outcome of one execution.
+    let outcome = adapter.execute(item).await?;
+    assert_eq!(outcome, ModuleWorkOutcome::Completed);
+    let job = fixture.job(page_id).await?;
+    assert_eq!(job.state, "scheduled");
+    assert_eq!(
+        job.last_error_code.as_deref(),
+        Some(PAGE_PUBLISH_JOB_LEASE_EXPIRED)
+    );
+    assert!(job.lease_until.is_none());
+
+    // A due job is published by the same adapter.
+    page_publish_job::Entity::update_many()
+        .col_expr(
+            page_publish_job::Column::PublishAt,
+            Expr::value((Utc::now() - ChronoDuration::minutes(1)).into()),
+        )
+        .filter(page_publish_job::Column::TenantId.eq(fixture.tenant_id))
+        .filter(page_publish_job::Column::PageId.eq(page_id))
+        .exec(&fixture.db)
+        .await?;
+    let item = adapter
+        .claim(PAGE_SCHEDULED_PUBLISH_WORKER)
+        .await?
+        .ok_or_else(|| std::io::Error::other("a due job must be claimed"))?;
+    adapter.execute(item).await?;
+    let job = fixture.job(page_id).await?;
+    assert_eq!(job.state, "published");
+    assert!(job.publish_operation_id.is_some());
+    Ok(())
+}
+
+/// The default cadence is what keeps a per-second host poll from spending a transiently failing
+/// job's whole attempt budget in seconds. This pins the pace to the claim path.
+#[cfg(feature = "runtime")]
+#[tokio::test]
+async fn scheduler_adapter_paces_executions_at_the_default_interval() -> TestResult<()> {
+    let fixture = fixture().await?;
+    let adapter = PageScheduledPublishWorkAdapter::new(fixture.service.clone());
+    // The pace must outlast a few host polls, otherwise `MAX_PAGE_PUBLISH_JOB_ATTEMPTS` covers
+    // seconds of outage instead of minutes.
+    assert!(PAGE_PUBLISH_SWEEP_INTERVAL_SECS >= 10);
+
+    let (page_id, revision, version) = fixture.create_draft_page("Adapter pace").await?;
+    let publish_at = (Utc::now() - ChronoDuration::minutes(1)).to_rfc3339();
+    fixture
+        .service
+        .schedule_publish(
+            fixture.tenant_id,
+            SecurityContext::system(),
+            page_id,
+            fixture.schedule_input(&publish_at, page_id, &revision, version),
+        )
+        .await?;
+
+    let first = adapter
+        .claim(PAGE_SCHEDULED_PUBLISH_WORKER)
+        .await?
+        .ok_or_else(|| std::io::Error::other("a due job must be claimed"))?;
+    adapter.execute(first).await?;
+    assert!(
+        adapter
+            .claim(PAGE_SCHEDULED_PUBLISH_WORKER)
+            .await?
+            .is_none(),
+        "a claim immediately after an execution must wait out the pace window"
+    );
+    Ok(())
+}
+
+#[cfg(feature = "runtime")]
+#[tokio::test]
+async fn scheduler_adapter_rejects_an_envelope_that_is_not_its_own() -> TestResult<()> {
+    let fixture = fixture().await?;
+    let adapter = PageScheduledPublishWorkAdapter::new(fixture.service.clone());
+    let foreign = ModuleWorkItem {
+        id: Uuid::new_v4(),
+        tenant_id: Uuid::new_v4(),
+        worker_slug: "blog_scheduled_publish".to_string(),
+        lease_token: Uuid::new_v4().to_string(),
+        payload: json!({}),
+    };
+    assert!(adapter.execute(foreign).await.is_err());
+
+    let mismatched = ModuleWorkItem {
+        id: Uuid::new_v4(),
+        tenant_id: Uuid::new_v4(),
+        worker_slug: PAGE_SCHEDULED_PUBLISH_WORKER.to_string(),
+        lease_token: Uuid::new_v4().to_string(),
+        payload: json!({ "tenant_id": Uuid::new_v4().to_string() }),
+    };
+    assert!(
+        adapter.execute(mismatched).await.is_err(),
+        "the payload tenant must be the envelope tenant"
+    );
     Ok(())
 }
 

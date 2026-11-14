@@ -56,6 +56,13 @@ cart-drawer-discount = Discount
 cart-drawer-shipping = Shipping
 cart-drawer-total = Total
 cart-trigger-label = Cart
+cart-drawer-noReference = No cart is selected yet.
+cart-drawer-viewCart = View cart
+cart-drawer-decrease = Decrease quantity
+cart-drawer-remove = Remove item
+cart-drawer-inspect = Inspect cart
+cart-drawer-resetReference = Reset cart reference
+cart-count-unknown = Cart count is unknown
 cart-handoff-title = Checkout & Delivery
 cart-handoff-subtitle = Select shipping method and enter contact information
 cart-handoff-ownership = Aggregate checkout execution in commerce
@@ -75,6 +82,7 @@ cart-handoff-success = Order placed successfully! Order reference:
 
 
 cart-buyer-restoring = Restoring the cart before enabling purchases.
+cart-buyer-unavailable = Cart is unavailable for this storefront. Purchases are disabled.
 cart-buyer-restoreFailed = The saved cart could not be verified. Inspect it, or explicitly reset its local reference.
 cart-buyer-contextMismatch = Cart currency, region, channel or locale differs from the quote. Use the cart context and request a new quote. A global cart may not be quotable on a channel-bound storefront.
 cart-buyer-unconfirmed = The operation is unconfirmed and will not be retried automatically. Inspect the cart before adding again. Resetting its reference does not cancel an operation.

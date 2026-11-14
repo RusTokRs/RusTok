@@ -227,6 +227,7 @@ page_builder-ssrInspector-runtimeContextHelp = Контекст хранится
 page_builder-ssrInspector-savePageMetadata = Сохранить метаданные страницы
 page_builder-ssrInspector-title = Классический SSR-инспектор
 page_builder-ssrInspector-valuePlaceholder = Значение
+page_builder-serverPreview-render = Показать предпросмотр
 page_builder-status-dirty = Есть несохранённые изменения
 page_builder-status-dragging = Выберите позицию вставки на холсте
 page_builder-status-saveFailed = Ошибка сохранения

@@ -24,26 +24,53 @@ struct FieldDefinitionCacheGenerationState {
 }
 
 struct AbortOnDropFieldDefinitionCacheGenerationTask {
-    task: JoinHandle<()>,
+    task: std::sync::Mutex<Option<JoinHandle<()>>>,
 }
 
 impl AbortOnDropFieldDefinitionCacheGenerationTask {
     fn new(task: JoinHandle<()>) -> Self {
-        Self { task }
+        Self {
+            task: std::sync::Mutex::new(Some(task)),
+        }
     }
 
     fn is_running(&self) -> bool {
-        !self.task.is_finished()
+        self.task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|task| !task.is_finished())
     }
 
     fn abort(&self) {
-        self.task.abort();
+        if let Some(task) = self
+            .task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            task.abort();
+        }
+    }
+
+    fn take_task(&self) -> Option<JoinHandle<()>> {
+        self.task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 }
 
 impl Drop for AbortOnDropFieldDefinitionCacheGenerationTask {
     fn drop(&mut self) {
-        self.task.abort();
+        if let Some(task) = self
+            .task
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            task.abort();
+        }
     }
 }
 
@@ -77,6 +104,10 @@ impl FieldDefinitionCacheGenerationReconciliationHandle {
         self.task.abort();
         self.state.healthy.store(false, Ordering::Release);
     }
+
+    pub(crate) fn take_task(&self) -> Option<JoinHandle<()>> {
+        self.task.take_task()
+    }
 }
 
 pub fn start_field_definition_cache_generation_reconciliation(
@@ -106,6 +137,12 @@ fn start_field_definition_cache_generation_reconciliation_with_timing(
         .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
+    {
+        return;
+    }
 
     if let Some(existing) = ctx.shared_get::<FieldDefinitionCacheGenerationReconciliationHandle>() {
         if existing.is_running() {
@@ -134,6 +171,16 @@ fn start_field_definition_cache_generation_reconciliation_with_timing(
     ctx.shared_insert(FieldDefinitionCacheGenerationReconciliationHandle::new(
         state, task,
     ));
+}
+
+pub(crate) fn take_task_for_shutdown(ctx: &ServerRuntimeContext) -> Option<JoinHandle<()>> {
+    let start_lock = ctx.shared_get_or_insert_with(FieldDefinitionCacheGenerationStartLock::default);
+    let _start_guard = start_lock
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    ctx.shared_take::<FieldDefinitionCacheGenerationReconciliationHandle>()
+        .and_then(|worker| worker.take_task())
 }
 
 async fn supervise_field_definition_cache_generation(

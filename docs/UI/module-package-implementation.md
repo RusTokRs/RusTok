@@ -319,7 +319,7 @@ pub fn BlogAdmin() -> impl IntoView {
 |---|---|---|
 | `leptos-ui` | `Button`, `Input`, `Badge`, `Alert`, `Card`, `CardHeader`, `CardContent`, `CardFooter`, `Label`, `Separator`, `Spinner`, `Progress`, `Checkbox`, `Switch`, `Textarea`, `Select`, `LanguageToggle` | Always — check before writing any primitive component |
 | `leptos-ui-routing` | Leptos query readers/writers and route query policy integration on top of `rustok-ui-core` | All Leptos route/query state binding, including `RouteQueryWriter::apply_query_intent`; never invent a local helper |
-| `leptos-auth` | Auth hooks and session context | Auth-gated operations |
+| `rustok-auth-ui` | Auth hooks and session context | Auth-gated operations |
 
 ### Platform crates
 
@@ -328,7 +328,7 @@ pub fn BlogAdmin() -> impl IntoView {
 | `rustok-api` | Host/API contracts, permissions, locale primitives, ports and server/runtime context. It does not own UI route/query helpers or UI i18n helpers. |
 | `rustok-ui-core` | **Framework-agnostic UI contracts:** route/query context and intents, table/list pagination, sorting, filtering, selection, presentation policy, input normalization, and busy-key helpers. |
 | `rustok-graphql` | **GraphQL core client:** `GraphqlRequest`, `GraphqlHttpError`, `execute`, `persisted_query_extension` (use in `graphql_adapter.rs`) |
-| `rustok-ui-auth` | **Framework-agnostic client auth:** `AuthUser`, `AuthSession`, expiry policy, and typed client auth errors. Leptos lifecycle bindings remain in `leptos-auth`. |
+| `rustok-ui-auth` | **Framework-agnostic client auth:** `AuthUser`, `AuthSession`, expiry policy, and typed client auth errors. Leptos lifecycle bindings remain in `rustok-auth-ui`. |
 | `rustok-ui-forms` | **Framework-agnostic form state:** submission lifecycle, validation engine, field descriptors, and dirty tracking. Companion adapter: `rustok-forms-leptos`. |
 | `rustok-ui-i18n` | **Framework-agnostic UI i18n:** `UiMessages` (Project Fluent `.ftl` catalogs), `declare_module_i18n!`, `t_for_locale`, `normalize_admin_locale`, parameter formatting. Do not import it through `rustok-api`. |
 | `rustok-ui-transport` | **Framework-agnostic FFA transport evidence:** shared transport path, selected-path error/result types and build-profile transport selection helpers for native server + GraphQL facades. |
@@ -362,7 +362,7 @@ Cross-framework component API (props, variants, CSS variables):
 | Leptos routing/query adapter helpers | `crates/ui/leptos-ui-routing/` | `use_route_query_value`, `use_route_query_writer`, `use_route_locale` |
 | Framework-agnostic FFA transport result evidence and build-profile transport selection | `crates/ui/rustok-ui-transport/` | `UiTransportError`, `UiTransportPath`, `UiTransportResult`, `execute_selected_transport` |
 | Framework-agnostic GraphQL transport client | `crates/ui/rustok-graphql/` | GraphQL request/response/error types and HTTP execution |
-| Auth/session hooks | `crates/ui/leptos-auth/` | Auth state, session context |
+| Auth/session hooks | `crates/modules/rustok-auth/ui/` | Auth state, session context |
 | Framework-agnostic auth values and expiry policy | `crates/ui/rustok-ui-auth/` | `AuthUser`, `AuthSession`, `AuthError` |
 | Framework-agnostic form/validation-result state | `crates/ui/rustok-ui-forms/` | `FormState`, `FieldError`, `ValidationIssue`, `FormValidator`, `DirtyTracker` |
 | Framework-agnostic table/list state | `crates/ui/rustok-ui-core/` | `UiPaginationState`, `UiSortState`, `UiFilterRule`, `UiSelectionState` |
@@ -394,7 +394,7 @@ When creating a new shared library, decide upfront:
 **Framework-specific (Leptos-only):**
 - Name: `crates/ui/leptos-<name>/`
 - Can use `leptos::*` imports
-- Example: `leptos-ui`, `leptos-auth`
+- Example: `leptos-ui`
 - **Future:** Will need Dioxus equivalent or migration to framework-agnostic
 
 **Framework-agnostic (FFA-compatible, permanent):**

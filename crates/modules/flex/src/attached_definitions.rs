@@ -10,8 +10,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use sea_orm::entity::prelude::*;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -166,14 +166,19 @@ impl GenericAttachedFieldDefinitionService {
             .map_err(database_error)?;
         let definitions = rows
             .iter()
-            .filter_map(field_definition_from_source)
-            .collect();
+            .map(field_definition_from_source)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                FlexError::Database(format!(
+                    "invalid persisted attached field definition: {error}"
+                ))
+            })?;
         Ok(CustomFieldsSchema::new(definitions))
     }
 
-    async fn find_scoped(
+    async fn find_scoped<C: ConnectionTrait>(
         &self,
-        db: &DatabaseConnection,
+        db: &C,
         tenant_id: Uuid,
         id: Uuid,
     ) -> Result<Option<Model>, FlexError> {
@@ -183,6 +188,24 @@ impl GenericAttachedFieldDefinitionService {
             .one(db)
             .await
             .map_err(database_error)
+    }
+
+    async fn find_scoped_for_update<C: ConnectionTrait>(
+        &self,
+        txn: &C,
+        tenant_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<Model>, FlexError> {
+        let query = Entity::find_by_id(id)
+            .filter(Column::TenantId.eq(tenant_id))
+            .filter(Column::EntityType.eq(self.entity_type));
+        match txn.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => {
+                query.lock_exclusive().one(txn).await
+            }
+            _ => query.one(txn).await,
+        }
+        .map_err(database_error)
     }
 }
 
@@ -227,26 +250,51 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
     ) -> Result<Vec<FieldDefinitionView>, FlexError> {
         let unique = ids.iter().copied().collect::<HashSet<_>>();
         if unique.len() != ids.len() {
-            return Err(FlexError::Database(
+            return Err(FlexError::InvalidFieldKey(
                 "attached field-definition reorder contains duplicate ids".to_string(),
             ));
         }
 
         let txn = db.begin().await.map_err(database_error)?;
+        let query = Entity::find()
+            .filter(Column::TenantId.eq(tenant_id))
+            .filter(Column::EntityType.eq(self.entity_type))
+            .order_by_asc(Column::Id);
+        let definitions = match db.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => {
+                query.lock_exclusive().all(&txn).await
+            }
+            _ => query.all(&txn).await,
+        }
+        .map_err(database_error)?;
+        let existing_ids = definitions
+            .iter()
+            .map(|definition| definition.id)
+            .collect::<HashSet<_>>();
+        if let Some(missing_id) = unique.difference(&existing_ids).next() {
+            return Err(FlexError::NotFound(*missing_id));
+        }
+        if unique != existing_ids {
+            return Err(FlexError::InvalidFieldKey(
+                "attached field-definition reorder must include every definition exactly once"
+                    .to_string(),
+            ));
+        }
+
+        let mut definitions_by_id = definitions
+            .into_iter()
+            .map(|definition| (definition.id, definition))
+            .collect::<std::collections::HashMap<_, _>>();
         let mut rows = Vec::with_capacity(ids.len());
         for (position, id) in ids.iter().copied().enumerate() {
-            let row = Entity::find_by_id(id)
-                .filter(Column::TenantId.eq(tenant_id))
-                .filter(Column::EntityType.eq(self.entity_type))
-                .one(&txn)
-                .await
-                .map_err(database_error)?
-                .ok_or(FlexError::NotFound(id))?;
-            let mut active: ActiveModel = row.into();
+            let definition = definitions_by_id
+                .remove(&id)
+                .expect("requested ids were validated against the locked definition set");
+            let mut active: ActiveModel = definition.into();
             active.position = Set(position as i32);
             active.updated_at = Set(Utc::now().fixed_offset());
-            let row = active.update(&txn).await.map_err(database_error)?;
-            rows.push(FieldDefinitionView::from_source(&row));
+            let definition = active.update(&txn).await.map_err(database_error)?;
+            rows.push(FieldDefinitionView::from_source(&definition));
         }
         txn.commit().await.map_err(database_error)?;
         Ok(rows)
@@ -259,18 +307,28 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
         actor_id: Option<Uuid>,
         input: CreateFieldDefinitionCommand,
     ) -> Result<(FieldDefinitionView, EventEnvelope), FlexError> {
+        let txn = db.begin().await.map_err(database_error)?;
+        // Lock the durable generation row before counting so concurrent field
+        // creates for this tenant/entity cannot both pass the maximum guard.
+        let _schema_lease =
+            crate::attached_translation_guard::lock_attached_translation_schema_in_tx(
+                &txn,
+                tenant_id,
+                self.entity_type,
+            )
+            .await?;
         let existing = Entity::find()
             .filter(Column::TenantId.eq(tenant_id))
             .filter(Column::EntityType.eq(self.entity_type))
             .filter(Column::FieldKey.eq(&input.field_key))
-            .one(db)
+            .one(&txn)
             .await
             .map_err(database_error)?;
         let active_count = Entity::find()
             .filter(Column::TenantId.eq(tenant_id))
             .filter(Column::EntityType.eq(self.entity_type))
             .filter(Column::IsActive.eq(true))
-            .count(db)
+            .count(&txn)
             .await
             .map_err(database_error)?;
 
@@ -311,7 +369,7 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
             created_at: Set(now),
             updated_at: Set(now),
         }
-        .insert(db)
+        .insert(&txn)
         .await;
 
         let row = match insert {
@@ -328,6 +386,8 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
             field_key,
             field_type,
         );
+        persist_attached_event(&txn, event.clone()).await?;
+        txn.commit().await.map_err(database_error)?;
         Ok((FieldDefinitionView::from_source(&row), event))
     }
 
@@ -339,8 +399,9 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
         id: Uuid,
         input: UpdateFieldDefinitionCommand,
     ) -> Result<(FieldDefinitionView, EventEnvelope), FlexError> {
+        let txn = db.begin().await.map_err(database_error)?;
         let row = self
-            .find_scoped(db, tenant_id, id)
+            .find_scoped_for_update(&txn, tenant_id, id)
             .await?
             .ok_or(FlexError::NotFound(id))?;
         let field_key = row.field_key.clone();
@@ -370,9 +431,11 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
             active.is_active = Set(is_active);
         }
         active.updated_at = Set(Utc::now().fixed_offset());
-        let row = active.update(db).await.map_err(database_error)?;
+        let row = active.update(&txn).await.map_err(database_error)?;
         let event =
             field_definition_updated_event(tenant_id, actor_id, self.entity_type, field_key);
+        persist_attached_event(&txn, event.clone()).await?;
+        txn.commit().await.map_err(database_error)?;
         Ok((FieldDefinitionView::from_source(&row), event))
     }
 
@@ -383,22 +446,37 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
         actor_id: Option<Uuid>,
         id: Uuid,
     ) -> Result<EventEnvelope, FlexError> {
+        let txn = db.begin().await.map_err(database_error)?;
         let row = self
-            .find_scoped(db, tenant_id, id)
+            .find_scoped_for_update(&txn, tenant_id, id)
             .await?
             .ok_or(FlexError::NotFound(id))?;
         let field_key = row.field_key.clone();
         let mut active: ActiveModel = row.into();
         active.is_active = Set(false);
         active.updated_at = Set(Utc::now().fixed_offset());
-        active.update(db).await.map_err(database_error)?;
-        Ok(field_definition_deleted_event(
-            tenant_id,
-            actor_id,
-            self.entity_type,
-            field_key,
-        ))
+        active.update(&txn).await.map_err(database_error)?;
+        let event =
+            field_definition_deleted_event(tenant_id, actor_id, self.entity_type, field_key);
+        persist_attached_event(&txn, event.clone()).await?;
+        txn.commit().await.map_err(database_error)?;
+        Ok(event)
     }
+}
+
+async fn persist_attached_event(
+    transaction: &sea_orm::DatabaseTransaction,
+    event: EventEnvelope,
+) -> Result<(), FlexError> {
+    rustok_outbox::TransactionalEventBus::publish_root_envelope_in_tx(transaction, event)
+        .await
+        .map(|_| ())
+        .map_err(|error| {
+            tracing::error!(%error, "Failed to persist attached field-definition event");
+            FlexError::Database(format!(
+                "failed to persist attached field-definition event: {error}"
+            ))
+        })
 }
 
 fn database_error(error: sea_orm::DbErr) -> FlexError {

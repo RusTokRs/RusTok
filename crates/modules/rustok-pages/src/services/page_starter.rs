@@ -231,7 +231,9 @@ impl PageStarterService {
                 PagesError::validation(format!("Invalid starter document: {error}"))
             })?;
         let mut generator = fly::SequentialIdGenerator::default();
-        let page_doc = document.clone_as_page(&mut generator);
+        let page_doc = document.clone_as_page(&mut generator).map_err(|error| {
+            PagesError::validation(format!("Cannot instantiate starter: {error}"))
+        })?;
         let value = fly::GrapesJsCodec::encode_value(&page_doc).map_err(|error| {
             PagesError::validation(format!("Cannot encode instantiated page: {error}"))
         })?;

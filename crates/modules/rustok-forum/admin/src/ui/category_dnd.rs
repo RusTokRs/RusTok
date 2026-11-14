@@ -1,8 +1,8 @@
 use leptos::ev::DragEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use rustok_api::normalize_locale_tag;
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 
 use crate::core::{
     ForumAdminActionButtonKind, ForumAdminCategoryRenderLabels, category_card_view_model,

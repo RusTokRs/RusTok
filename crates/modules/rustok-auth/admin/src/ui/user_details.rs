@@ -1,9 +1,9 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::{use_navigate, use_params};
 use leptos_router::params::Params;
 use leptos_ui::{Select, SelectOption};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 use rustok_ui_forms::FormState;
 
@@ -12,16 +12,21 @@ use crate::i18n::{auth_transport_error_message, t};
 use crate::transport::{delete_user_details, fetch_user, update_user_details};
 use crate::ui::components::{Button, Input, PageHeader};
 
-fn local_resource<S, Fut, T>(
-    source: impl Fn() -> S + 'static,
-    fetcher: impl Fn(S) -> Fut + 'static,
-) -> LocalResource<T>
+/// Builds a resource the response resolves.
+///
+/// The module admin mounts inside the layout route that declares `SsrMode::Async`, so a
+/// `LocalResource` here is `pending()` on the server and the reader is served the `Suspense`
+/// fallback. See `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+fn loaded_resource<S, Fut, T>(
+    source: impl Fn() -> S + Send + Sync + 'static,
+    fetcher: impl Fn(S) -> Fut + Send + Sync + 'static,
+) -> Resource<T>
 where
-    S: 'static,
-    Fut: std::future::Future<Output = T> + 'static,
-    T: 'static,
+    S: PartialEq + Clone + Send + Sync + 'static,
+    Fut: std::future::Future<Output = T> + Send + 'static,
+    T: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + 'static,
 {
-    LocalResource::new(move || fetcher(source()))
+    Resource::new(source, fetcher)
 }
 
 #[derive(Params, PartialEq)]
@@ -41,7 +46,7 @@ pub fn UserDetails() -> impl IntoView {
     let navigate = use_navigate();
     let params = use_params::<UserParams>();
 
-    let user_resource = local_resource(
+    let user_resource = loaded_resource(
         move || params.with(|params| params.as_ref().ok().and_then(|params| params.id.clone())),
         move |_| {
             let token_value = token.get();

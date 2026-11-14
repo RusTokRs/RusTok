@@ -14,10 +14,12 @@ use rustok_page_builder_admin::{
 /// Host binding only. Blog's transport independently enforces tenant/module/resource authority.
 #[derive(Clone)]
 struct BlogWidgetPort {
-    auth: leptos_auth::AuthContext,
+    auth: rustok_auth_ui::ui::leptos::AuthContext,
 }
 
-pub(super) fn extension(auth: leptos_auth::AuthContext) -> PageBuilderContributionHostExtension {
+pub(super) fn extension(
+    auth: rustok_auth_ui::ui::leptos::AuthContext,
+) -> PageBuilderContributionHostExtension {
     let port = Arc::new(BlogWidgetPort { auth });
     PageBuilderContributionHostExtension::new(
         rustok_blog_admin::blog_contribution_manifest(),

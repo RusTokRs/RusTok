@@ -121,8 +121,8 @@ where
     execute_graphql(
         &graphql_url(),
         GraphqlRequest::new(query, Some(variables)),
-        leptos_auth::storage::get_token(),
-        leptos_auth::storage::get_tenant(),
+        rustok_auth_ui::ui::leptos::storage::get_token(),
+        rustok_auth_ui::ui::leptos::storage::get_tenant(),
         None,
     )
     .await

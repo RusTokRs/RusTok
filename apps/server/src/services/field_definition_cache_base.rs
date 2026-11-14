@@ -19,13 +19,26 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const FIELD_DEFINITION_CACHE_TTL: Duration = Duration::from_secs(30);
 const FIELD_DEFINITION_CACHE_MAX_WEIGHT_BYTES: u64 = 16 * 1024 * 1024;
+const FIELD_DEFINITION_CACHE_MAX_GENERATION_KEYS: usize = 4_096;
 const FIELD_DEFINITION_INVALIDATION_RESTART_DELAY: Duration = Duration::from_secs(1);
 const FIELD_DEFINITION_INVALIDATION_CHANNEL: &str = "field_definition_cache_invalidator";
 
 #[derive(Clone)]
+struct FieldDefinitionCacheEntry {
+    generation: u64,
+    rows: Vec<FieldDefinitionView>,
+}
+
+#[derive(Default)]
+struct FieldDefinitionCacheGenerationState {
+    cache_epoch: u32,
+    keys: HashMap<(Uuid, String), u32>,
+}
+
+#[derive(Clone)]
 pub struct FieldDefinitionCache {
-    inner: Cache<(Uuid, String), Vec<FieldDefinitionView>>,
-    generations: Arc<std::sync::RwLock<HashMap<(Uuid, String), u64>>>,
+    inner: Cache<(Uuid, String), FieldDefinitionCacheEntry>,
+    generations: Arc<Mutex<FieldDefinitionCacheGenerationState>>,
 }
 
 #[derive(Clone)]
@@ -33,12 +46,19 @@ pub struct SharedFieldDefinitionCache(pub Arc<FieldDefinitionCache>);
 
 struct FieldDefinitionCacheInvalidationRuntime {
     cache: Arc<FieldDefinitionCache>,
-    task: JoinHandle<()>,
+    task: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl Drop for FieldDefinitionCacheInvalidationRuntime {
     fn drop(&mut self) {
-        self.task.abort();
+        if let Some(task) = self
+            .task
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            task.abort();
+        }
     }
 }
 
@@ -49,7 +69,7 @@ impl FieldDefinitionCacheInvalidationHandle {
     fn new(cache: Arc<FieldDefinitionCache>, task: JoinHandle<()>) -> Self {
         Self(Arc::new(FieldDefinitionCacheInvalidationRuntime {
             cache,
-            task,
+            task: Mutex::new(Some(task)),
         }))
     }
 
@@ -58,11 +78,32 @@ impl FieldDefinitionCacheInvalidationHandle {
     }
 
     pub fn is_running(&self) -> bool {
-        !self.0.task.is_finished()
+        self.0
+            .task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|task| !task.is_finished())
     }
 
     fn abort(&self) {
-        self.0.task.abort();
+        if let Some(task) = self
+            .0
+            .task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            task.abort();
+        }
+    }
+
+    pub(crate) fn take_task(&self) -> Option<JoinHandle<()>> {
+        self.0
+            .task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 
     #[cfg(test)]
@@ -94,7 +135,7 @@ impl FieldDefinitionCache {
 
         Self {
             inner,
-            generations: Arc::new(std::sync::RwLock::new(HashMap::new())),
+            generations: Arc::new(Mutex::new(FieldDefinitionCacheGenerationState::default())),
         }
     }
 
@@ -103,29 +144,53 @@ impl FieldDefinitionCache {
         tenant_id: Uuid,
         entity_type: &str,
     ) -> Option<Vec<FieldDefinitionView>> {
-        self.inner.get(&(tenant_id, entity_type.to_string())).await
+        let entry = self.inner.get(&(tenant_id, entity_type.to_string())).await?;
+        (entry.generation == self.generation(tenant_id, entity_type)).then_some(entry.rows)
     }
 
     pub async fn set(&self, tenant_id: Uuid, entity_type: &str, rows: Vec<FieldDefinitionView>) {
+        let generation = self.generation(tenant_id, entity_type);
+        self.set_at_generation(tenant_id, entity_type, rows, generation)
+            .await;
+    }
+
+    async fn set_at_generation(
+        &self,
+        tenant_id: Uuid,
+        entity_type: &str,
+        rows: Vec<FieldDefinitionView>,
+        generation: u64,
+    ) {
         self.inner
-            .insert((tenant_id, entity_type.to_string()), rows)
+            .insert(
+                (tenant_id, entity_type.to_string()),
+                FieldDefinitionCacheEntry { generation, rows },
+            )
             .await;
     }
 
     pub async fn invalidate(&self, tenant_id: Uuid, entity_type: &str) {
+        let key = (tenant_id, entity_type.to_string());
         {
-            let mut gens = self
+            let mut generations = self
                 .generations
-                .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let entry = gens
-                .entry((tenant_id, entity_type.to_string()))
-                .or_insert(0);
-            *entry = entry.wrapping_add(1);
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let must_advance_epoch = generations
+                .keys
+                .get(&key)
+                .is_some_and(|token| *token == u32::MAX)
+                || (!generations.keys.contains_key(&key)
+                    && generations.keys.len() >= FIELD_DEFINITION_CACHE_MAX_GENERATION_KEYS);
+            if must_advance_epoch {
+                generations.cache_epoch = generations.cache_epoch.wrapping_add(1);
+                generations.keys.clear();
+            } else {
+                let key_generation = generations.keys.entry(key.clone()).or_default();
+                *key_generation += 1;
+            }
         }
-        self.inner
-            .invalidate(&(tenant_id, entity_type.to_string()))
-            .await;
+        self.inner.invalidate(&key).await;
     }
 
     /// Invalidate every cached schema after the event consumer reports lag.
@@ -136,25 +201,27 @@ impl FieldDefinitionCache {
     /// full-cache invalidation.
     pub fn invalidate_all(&self) {
         {
-            let mut gens = self
+            let mut generations = self
                 .generations
-                .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            for generation in gens.values_mut() {
-                *generation = generation.wrapping_add(1);
-            }
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            generations.cache_epoch = generations.cache_epoch.wrapping_add(1);
+            generations.keys.clear();
         }
         self.inner.invalidate_all();
     }
 
     pub fn generation(&self, tenant_id: Uuid, entity_type: &str) -> u64 {
-        let gens = self
+        let generations = self
             .generations
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        gens.get(&(tenant_id, entity_type.to_string()))
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let key_generation = generations
+            .keys
+            .get(&(tenant_id, entity_type.to_string()))
             .copied()
-            .unwrap_or(0)
+            .unwrap_or_default();
+        ((generations.cache_epoch as u64) << 32) | u64::from(key_generation)
     }
 
     pub async fn set_if_generation(
@@ -164,19 +231,27 @@ impl FieldDefinitionCache {
         rows: Vec<FieldDefinitionView>,
         generation: u64,
     ) {
-        let current = self.generation(tenant_id, entity_type);
-        if current == generation {
-            self.set(tenant_id, entity_type, rows).await;
+        if self.generation(tenant_id, entity_type) != generation {
+            return;
         }
+
+        // Tag the entry with the query's starting generation. If invalidation
+        // wins during this async insert, `get` will reject the stale tag even
+        // if the cache write completes after the physical invalidation.
+        self.set_at_generation(tenant_id, entity_type, rows, generation)
+            .await;
     }
 }
 
-fn field_definition_entry_weight(key: &(Uuid, String), rows: &Vec<FieldDefinitionView>) -> u32 {
+fn field_definition_entry_weight(
+    key: &(Uuid, String),
+    entry: &FieldDefinitionCacheEntry,
+) -> u32 {
     let mut weight = std::mem::size_of::<Uuid>()
         .saturating_add(key.1.len())
-        .saturating_add(std::mem::size_of::<Vec<FieldDefinitionView>>());
+        .saturating_add(std::mem::size_of::<FieldDefinitionCacheEntry>());
 
-    for row in rows {
+    for row in &entry.rows {
         weight = weight
             .saturating_add(std::mem::size_of::<FieldDefinitionView>())
             .saturating_add(row.field_key.len())
@@ -210,6 +285,15 @@ pub fn field_definition_cache_from_context(
         .0
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if ctx
+        .shared_get::<crate::services::app_lifecycle::StopHandle>()
+        .is_some_and(|stop| stop.is_stopping())
+    {
+        return ctx
+            .shared_get::<SharedFieldDefinitionCache>()
+            .map(|shared| (*shared.0).clone())
+            .unwrap_or_else(FieldDefinitionCache::new);
+    }
 
     let cache = match ctx.shared_get::<FieldDefinitionCacheInvalidationHandle>() {
         Some(existing) if existing.is_running() => return (*existing.cache()).clone(),
@@ -232,6 +316,18 @@ pub fn field_definition_cache_from_context(
     ctx.shared_insert(SharedFieldDefinitionCache(Arc::clone(&cache)));
 
     (*cache).clone()
+}
+
+pub(crate) fn take_invalidation_task_for_shutdown(
+    ctx: &ServerRuntimeContext,
+) -> Option<JoinHandle<()>> {
+    let start_lock = ctx.shared_get_or_insert_with(FieldDefinitionCacheStartLock::default);
+    let _start_guard = start_lock
+        .0
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    ctx.shared_take::<FieldDefinitionCacheInvalidationHandle>()
+        .and_then(|worker| worker.take_task())
 }
 
 fn spawn_field_definition_cache_invalidation_consumer(
@@ -391,8 +487,11 @@ mod tests {
     #[test]
     fn entry_weight_accounts_for_dynamic_schema_payloads() {
         let tenant_id = Uuid::new_v4();
-        let rows = vec![mock_view("nickname")];
-        let weight = field_definition_entry_weight(&(tenant_id, "user".to_string()), &rows);
+        let entry = FieldDefinitionCacheEntry {
+            generation: 0,
+            rows: vec![mock_view("nickname")],
+        };
+        let weight = field_definition_entry_weight(&(tenant_id, "user".to_string()), &entry);
 
         assert!(weight as usize >= "user".len() + "nickname".len());
     }
@@ -569,6 +668,55 @@ mod tests {
         .await
         .expect("field definition invalidation supervisor should restart worker");
         supervisor.abort();
+    }
+
+    #[tokio::test]
+    async fn targeted_invalidation_keeps_unrelated_cache_entries_valid() {
+        let cache = FieldDefinitionCache::new();
+        let tenant_id = Uuid::new_v4();
+        let generation = cache.generation(tenant_id, "product");
+        cache
+            .set_if_generation(
+                tenant_id,
+                "product",
+                vec![mock_view("sku")],
+                generation,
+            )
+            .await;
+
+        cache.invalidate(tenant_id, "user").await;
+
+        assert_eq!(
+            cache
+                .get(tenant_id, "product")
+                .await
+                .expect("unrelated entry remains valid")[0]
+                .field_key,
+            "sku"
+        );
+    }
+
+    #[tokio::test]
+    async fn invalidate_all_advances_generation_for_an_unseen_cache_key() {
+        let cache = FieldDefinitionCache::new();
+        let tenant_id = Uuid::new_v4();
+        let initial_generation = cache.generation(tenant_id, "user");
+
+        cache.invalidate_all();
+
+        let current_generation = cache.generation(tenant_id, "user");
+        assert_ne!(current_generation, initial_generation);
+        // Model a delayed DB query whose cache insert completes after the
+        // full-cache invalidation has already run.
+        cache
+            .set_at_generation(
+                tenant_id,
+                "user",
+                vec![mock_view("stale")],
+                initial_generation,
+            )
+            .await;
+        assert!(cache.get(tenant_id, "user").await.is_none());
     }
 
     #[tokio::test]

@@ -14,12 +14,12 @@ use crate::shared::ui::ui_success_message as UiSuccessMessage;
 use crate::use_admin_locale;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::{use_navigate, use_query_map};
 #[cfg(target_arch = "wasm32")]
 use leptos_use::use_interval_fn;
 use rustok_api::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
 use rustok_api::{ModuleRetentionHoldView, ModuleTransitionCheckpointView};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_forms::FormState;
 use std::collections::{HashMap, HashSet};
 #[cfg(target_arch = "wasm32")]
@@ -633,15 +633,17 @@ pub fn ModulesList(
             }
         });
     };
-    let enabled_modules_for_orchestration = enabled_modules;
     let (orchestration_request, set_orchestration_request) = signal(0_u64);
+    // `EnabledModulesContext` is `Clone`, not `Copy`: it carries memos and a signal rather than
+    // plain cells. The refresh below is called from several handlers, so it clones the handle
+    // instead of taking the captured one, which would make this closure `FnOnce`.
     let refresh_orchestration_state =
         move |token_value: Option<String>,
               tenant_value: Option<String>,
               filters: CatalogFilters| {
             let request = orchestration_request.get_untracked().wrapping_add(1);
             set_orchestration_request.set(request);
-            let enabled_modules_for_refresh = enabled_modules_for_orchestration;
+            let enabled_modules_for_refresh = enabled_modules.clone();
             spawn_local(async move {
                 enabled_modules_for_refresh.refresh();
                 if let Ok(modules) =

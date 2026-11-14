@@ -394,6 +394,7 @@ async fn authorize_handler_inner(
 )]
 pub(crate) async fn authorize_browser_handler(
     State(ctx): State<ServerAuthRuntime>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     tenant_ctx: TenantContext,
     headers: HeaderMap,
     Query(req): Query<BrowserAuthorizeRequest>,
@@ -458,7 +459,14 @@ pub(crate) async fn authorize_browser_handler(
         .await
         {
             Ok(code) => {
-                redirect_with_code(&validated.redirect_uri, &code, validated.state.as_deref())
+                redirect_with_code(
+                    &validated.redirect_uri,
+                    &code,
+                    validated.state.as_deref(),
+                    &headers,
+                    addr.ip(),
+                    runtime_ctx.settings(),
+                )
                     .into_response()
             }
             Err(error) => oauth_error_response(error),
@@ -493,7 +501,14 @@ pub(crate) async fn authorize_browser_handler(
         .await
         {
             Ok(code) => {
-                redirect_with_code(&validated.redirect_uri, &code, validated.state.as_deref())
+                redirect_with_code(
+                    &validated.redirect_uri,
+                    &code,
+                    validated.state.as_deref(),
+                    &headers,
+                    addr.ip(),
+                    runtime_ctx.settings(),
+                )
                     .into_response()
             }
             Err(error) => oauth_error_response(error),
@@ -543,6 +558,7 @@ pub(crate) async fn authorize_browser_handler(
 )]
 pub(crate) async fn consent_handler(
     State(ctx): State<ServerAuthRuntime>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     tenant_ctx: TenantContext,
     headers: HeaderMap,
     Form(req): Form<ConsentRequest>,
@@ -617,6 +633,9 @@ pub(crate) async fn consent_handler(
             "access_denied",
             "The user denied the authorization request",
             validated.state.as_deref(),
+            &headers,
+            addr.ip(),
+            runtime_ctx.settings(),
         )
         .into_response();
     }
@@ -647,8 +666,15 @@ pub(crate) async fn consent_handler(
     match issue_authorization_code(runtime_ctx, tenant_ctx.id, &validated, current_user.user.id)
         .await
     {
-        Ok(code) => redirect_with_code(&validated.redirect_uri, &code, validated.state.as_deref())
-            .into_response(),
+        Ok(code) => redirect_with_code(
+            &validated.redirect_uri,
+            &code,
+            validated.state.as_deref(),
+            &headers,
+            addr.ip(),
+            runtime_ctx.settings(),
+        )
+        .into_response(),
         Err(error) => oauth_error_response(error),
     }
 }
@@ -713,6 +739,22 @@ pub(crate) async fn clear_browser_session_handler(
         .into_response()
 }
 
+fn is_valid_s256_challenge(challenge: &str) -> bool {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
+    if challenge.len() != 43
+        || !challenge
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-_".contains(&byte))
+    {
+        return false;
+    }
+
+    URL_SAFE_NO_PAD
+        .decode(challenge)
+        .is_ok_and(|digest| digest.len() == 32 && URL_SAFE_NO_PAD.encode(digest) == challenge)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn validate_authorize_request(
     ctx: &ServerRuntimeContext,
@@ -736,6 +778,12 @@ async fn validate_authorize_request(
         return Err(TokenErrorResponse {
             error: "invalid_request".to_string(),
             error_description: "code_challenge_method must be S256".to_string(),
+        });
+    }
+    if !is_valid_s256_challenge(&code_challenge) {
+        return Err(TokenErrorResponse {
+            error: "invalid_request".to_string(),
+            error_description: "code_challenge must be a 43-character base64url S256 value".to_string(),
         });
     }
 
@@ -884,11 +932,12 @@ fn clear_oauth_browser_session_cookie(
     )
 }
 
-fn clear_oauth_browser_session_cookie_for_redirect(redirect_uri: &str) -> String {
-    let secure = Url::parse(redirect_uri)
-        .map(|url| url.scheme() == "https")
-        .unwrap_or(false);
-    build_oauth_browser_session_cookie_for_secure("", secure, Some(0))
+fn clear_oauth_browser_session_cookie_for_request(
+    headers: &HeaderMap,
+    peer_ip: std::net::IpAddr,
+    settings: &RustokSettings,
+) -> String {
+    clear_oauth_browser_session_cookie(headers, peer_ip, settings)
 }
 
 fn build_oauth_browser_session_cookie_for_secure(
@@ -921,6 +970,9 @@ fn redirect_with_code(
     redirect_uri: &str,
     code: &str,
     state: Option<&str>,
+    headers: &HeaderMap,
+    peer_ip: std::net::IpAddr,
+    settings: &RustokSettings,
 ) -> (StatusCode, [(axum::http::header::HeaderName, String); 2]) {
     let mut url = match Url::parse(redirect_uri) {
         Ok(url) => url,
@@ -932,7 +984,7 @@ fn redirect_with_code(
                     (LOCATION, String::new()),
                     (
                         SET_COOKIE,
-                        clear_oauth_browser_session_cookie_for_redirect(redirect_uri),
+                        clear_oauth_browser_session_cookie_for_request(headers, peer_ip, settings),
                     ),
                 ],
             );
@@ -951,7 +1003,7 @@ fn redirect_with_code(
             (LOCATION, url.to_string()),
             (
                 SET_COOKIE,
-                clear_oauth_browser_session_cookie_for_redirect(redirect_uri),
+                clear_oauth_browser_session_cookie_for_request(headers, peer_ip, settings),
             ),
         ],
     )
@@ -962,6 +1014,9 @@ fn redirect_with_error(
     error: &str,
     description: &str,
     state: Option<&str>,
+    headers: &HeaderMap,
+    peer_ip: std::net::IpAddr,
+    settings: &RustokSettings,
 ) -> (StatusCode, [(axum::http::header::HeaderName, String); 2]) {
     let mut url = match Url::parse(redirect_uri) {
         Ok(url) => url,
@@ -973,7 +1028,7 @@ fn redirect_with_error(
                     (LOCATION, String::new()),
                     (
                         SET_COOKIE,
-                        clear_oauth_browser_session_cookie_for_redirect(redirect_uri),
+                        clear_oauth_browser_session_cookie_for_request(headers, peer_ip, settings),
                     ),
                 ],
             );
@@ -993,7 +1048,7 @@ fn redirect_with_error(
             (LOCATION, url.to_string()),
             (
                 SET_COOKIE,
-                clear_oauth_browser_session_cookie_for_redirect(redirect_uri),
+                clear_oauth_browser_session_cookie_for_request(headers, peer_ip, settings),
             ),
         ],
     )
@@ -1349,6 +1404,20 @@ pub fn router() -> crate::routes::ServerRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn s256_challenge_requires_exact_unpadded_base64url_shape() {
+        assert!(is_valid_s256_challenge(
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        ));
+        assert!(!is_valid_s256_challenge("short"));
+        assert!(!is_valid_s256_challenge(
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw+cM"
+        ));
+        assert!(!is_valid_s256_challenge(
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM="
+        ));
+    }
     use crate::common::settings::{ForwardedHeadersMode, RequestTrustSettings};
     use axum::http::{HeaderName, header::HeaderValue};
     use chrono::Utc;
@@ -1501,10 +1570,20 @@ mod tests {
 
     #[test]
     fn redirect_helpers_append_query_and_clear_cookie() {
+        let settings = trusted_settings();
+        let peer_ip = IpAddr::V4(Ipv4Addr::new(10, 1, 2, 3));
+        let mut request_headers = HeaderMap::new();
+        request_headers.insert(
+            HeaderName::from_static("x-forwarded-proto"),
+            HeaderValue::from_static("https"),
+        );
         let (status, headers) = redirect_with_code(
             "https://client.example.com/callback",
             "auth-code",
             Some("state-123"),
+            &request_headers,
+            peer_ip,
+            &settings,
         );
         assert_eq!(status, StatusCode::FOUND);
         assert_eq!(
@@ -1514,11 +1593,24 @@ mod tests {
         assert!(headers[1].1.contains("Max-Age=0"));
         assert!(headers[1].1.contains("Secure"));
 
+        let (_, loopback_headers) = redirect_with_code(
+            "http://127.0.0.1/callback",
+            "auth-code",
+            None,
+            &request_headers,
+            peer_ip,
+            &settings,
+        );
+        assert!(loopback_headers[1].1.contains("Secure"));
+
         let (status, headers) = redirect_with_error(
             "https://client.example.com/callback",
             "access_denied",
             "The user denied access",
             Some("state-123"),
+            &request_headers,
+            peer_ip,
+            &settings,
         );
         assert_eq!(status, StatusCode::FOUND);
         assert!(headers[0].1.contains("error=access_denied"));

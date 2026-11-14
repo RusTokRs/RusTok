@@ -1,54 +1,10 @@
-# leptos-auth
+# leptos-auth — no longer used
 
-For full public interface and contract definitions, see [CRATE_API.md](CRATE_API.md).
+`leptos-auth` is no longer used and is not a Cargo package or runtime. Its former
+authentication context, hooks, session, guards and transports now belong to the
+Auth module's [`rustok-auth-ui`](../../modules/rustok-auth/ui/README.md) FFA
+client boundary. There is no compatibility alias or parallel implementation.
 
-## Purpose
-
-`leptos-auth` owns the shared authentication UI/runtime boundary for Leptos-based RusToK applications.
-
-## Responsibilities
-
-- Provide auth context and route guards for Leptos hosts.
-- Expose auth hooks and session/local-storage helpers.
-- Keep native Leptos `#[server]` auth flows and GraphQL selected path on the same package boundary.
-
-## Entry points
-
-- `AuthProvider`
-- `AuthContext`
-- `ProtectedRoute`
-- `GuestRoute`
-- `RequireAuth`
-- `use_auth`
-- `transport`
-- `api` compatibility re-export for existing callers
-
-## Interactions
-
-- Used by `apps/admin` and `apps/storefront` as the shared auth UI/runtime layer.
-- Uses `rustok-graphql` for GraphQL selected-path transport.
-- Talks to `apps/server` auth endpoints and server-function surfaces without embedding server-specific policy in the UI package.
-
-## Docs
-
-- [Module docs](./docs/README.md)
-- [Implementation plan](./docs/implementation-plan.md)
-- [Platform docs index](../../../docs/index.md)
-
-## Host-resolved public tenant binding
-
-`AuthProvider` accepts optional `tenant_slug`. Before browser silent refresh, it calls
-`storage::bind_request_tenant`: a missing public tenant may populate the existing canonical
-`ADMIN_TENANT_KEY`, but a foreign existing tenant/session is never overwritten. Failed binding
-refuses restoration rather than silently borrowing a default tenant. It issues no credentials,
-creates no auth storage key/protocol and does not invent an SSR session. Browser native headers
-still read canonical auth storage; header application failures now refuse before IO. SSR hosts
-must validate and supply their own auth snapshot where required; native Product reads use the
-validated Axum request context. Browser header mutation uses the fallible
-`web_sys::Headers` obtained from the Leptos request wrapper. The gloo convenience
-setter returns unit and throws; it cannot implement this error contract.
-
-## Known Limitations / Pending Implementation
-
-Mounted request/session verification remains pending; the Blog reference plan
-records the bounded package/WASM compilation obtained during its continuation.
+This directory retains only this retirement description and pointers for readers
+of older documentation. See the [Auth implementation plan](../../modules/rustok-auth/docs/implementation-plan.md)
+for verification still required.

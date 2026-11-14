@@ -109,6 +109,10 @@ impl SocialGraphIndexWorkerHandle {
         self._handle.is_finished()
     }
 
+    pub(crate) fn into_task(self) -> JoinHandle<()> {
+        self._handle
+    }
+
     pub fn is_ready(&self) -> bool {
         !self.is_finished()
     }

@@ -15,6 +15,8 @@ mod runtime_scenario_release;
 mod runtime_scenario_render;
 mod runtime_scenario_snapshot;
 
+pub(crate) use landing_contract::build_materialized_static_landing_artifact_with_renderer;
+
 pub use context_scenario::{
     RuntimeContextScenario, RuntimeContextScenarioResult, RuntimeContextScenarioSuiteResult,
     preflight_runtime_context_scenarios, validate_runtime_context_scenarios,

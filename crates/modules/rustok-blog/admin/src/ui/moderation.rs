@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui::{Button, ButtonVariant, Size};
 use leptos_ui_routing::use_route_query_value;
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use uuid::Uuid;
 
@@ -33,15 +33,20 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
         set_page.set(1);
     });
 
-    let comments_resource = LocalResource::new(move || {
-        let post_id = selected_post_query.get();
-        let token = token.get();
-        let tenant = tenant.get();
-        let locale = resource_locale.clone();
-        let page = page.get().max(1);
-        refresh_nonce.track();
-
-        async move {
+    // Resolved by the request: the page mounts inside the `Async` admin layout, so a
+    // `LocalResource` here leaves the reader with the `Suspense` fallback.
+    let comments_resource = Resource::new(
+        move || {
+            (
+                selected_post_query.get(),
+                token.get(),
+                tenant.get(),
+                resource_locale.clone(),
+                page.get().max(1),
+                refresh_nonce.get(),
+            )
+        },
+        move |(post_id, token, tenant, locale, page, _generation)| async move {
             let Some(post_id) = post_id
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
@@ -59,8 +64,8 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
             )
             .await
             .map(Some)
-        }
-    });
+        },
+    );
 
     let moderate_comment = Callback::new(
         move |(comment_id, status): (String, BlogModerationStatus)| {
@@ -127,8 +132,9 @@ pub(crate) fn BlogModerationPanel() -> impl IntoView {
                         <div class="h-20 animate-pulse rounded-xl bg-muted"></div>
                     </div>
                 }>
-                    {move || {
-                        comments_resource.get().map(|result| {
+                    {let view_comments = comments_resource;
+                    move || {
+                        view_comments.get().map(|result| {
                             match result {
                                 Ok(None) => view! {
                                     <ModerationEmptyState

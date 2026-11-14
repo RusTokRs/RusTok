@@ -34,8 +34,8 @@
 - **Locale Parity**: Storefront product copy resolves against the host's effective locale before falling back to canonical translations.
 
 ### Events / Outbox Side Effects
-- Emits analytics and product-view telemetry events.
-- Dispatches cart item additions without mutating catalog persistence.
+- The storefront package does not itself emit product-view telemetry events.
+- Explicitly confirmed cart additions are dispatched through the Cart-owned buyer controller, not by mutating catalog persistence.
 
 ### Errors / Failure Codes
 - `ProductTransportError`: typed transport error retaining failure evidence across native and GraphQL paths.
@@ -47,5 +47,9 @@
 `ProductEffectivePrice` carries `ProductPriceSource`; `ProductPricingDetail` carries
 optional owner `resolutionContext` / `resolvedAt` when a quote was requested. Both
 selected transports retain the Pricing-owned batch result. Contextual absence is not
-permission to select another currency/base price. Real sparse SKU selection and live
-buyer context/quantity refresh remain explicitly unfinished in the Product plan.
+permission to select another currency/base price. The subsequent sparse buyer source selects a real
+SKU and refreshes the quote for the buyer context and quantity; see the Product plan for its
+unverified runtime gates. The shared host now injects a Cart controller with a reactive,
+fail-closed Cart capability; a detached Product buyer cannot write. Quotes retain independent
+Product availability, but scope transitions, native/WASM builds, server admission and mounted
+behavior remain open release blockers, not guarantees of this API.

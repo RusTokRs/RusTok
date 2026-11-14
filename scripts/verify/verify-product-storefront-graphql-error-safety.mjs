@@ -152,7 +152,7 @@ for (const [value, label] of [
   ["facet_code_count", "safe facet-code count"],
   ["variant_count", "bounded SKU count"],
   [
-    "leptos_auth::storage::get_tenant()",
+    "rustok_auth_ui::ui::leptos::storage::get_tenant()",
     "actual canonical transport tenant reader",
   ],
 ])

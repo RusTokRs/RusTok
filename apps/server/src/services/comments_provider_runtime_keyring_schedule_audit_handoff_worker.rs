@@ -179,7 +179,7 @@ impl CommentsTcpDelegationScheduleAuditHandoffWorkerConfig {
 
 struct CommentsTcpDelegationScheduleAuditHandoffWorkerRuntime {
     instance_id: u64,
-    task: JoinHandle<()>,
+    task: std::sync::Mutex<Option<JoinHandle<()>>>,
 }
 
 #[derive(Clone)]
@@ -193,7 +193,20 @@ impl CommentsTcpDelegationScheduleAuditHandoffWorkerHandle {
     }
 
     pub fn is_finished(&self) -> bool {
-        self.0.task.is_finished()
+        self.0
+            .task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map_or(true, JoinHandle::is_finished)
+    }
+
+    pub(crate) fn take_task(&self) -> Option<JoinHandle<()>> {
+        self.0
+            .task
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 }
 

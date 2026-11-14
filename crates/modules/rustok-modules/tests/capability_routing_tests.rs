@@ -28,6 +28,7 @@ fn test_call(capability: &str, input: serde_json::Value) -> CapabilityCall {
             tenant_id: Some(Uuid::new_v4()),
             actor_id: None,
             trace_id: None,
+            idempotency_key: None,
         },
         capability: CapabilityName::new(capability).expect("capability"),
         operation: "invoke".to_string(),

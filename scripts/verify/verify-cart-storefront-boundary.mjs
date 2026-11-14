@@ -312,7 +312,7 @@ assertContains(
 );
 assertContains(
   nativeServerAdapter,
-  "client = leptos_auth::AuthorizedBrowserClient",
+  "client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient",
   `${files.nativeServerAdapter}: common native contract must forward canonical auth metadata`,
 );
 assertNotContains(

@@ -22,7 +22,7 @@ expected current artifact id
 idempotency key
 ```
 
-It requires tenant-wide `pages:manage` (`PermissionScope::All`). Under the current request permission bridge effective Pages Manage resolves to `All` when present and `None` when absent; there is no current Pages Manage `Own` request state. The owner service still requires `PermissionScope::All` before input validation or writes as defense in depth.
+It requires tenant-wide `pages:manage` (`PermissionScope::All`). Under the current request permission bridge effective Pages Manage resolves to `PermissionScope::All` when present and `PermissionScope::None` when absent; there is no current Pages Manage `Own` request state. The owner service still requires `PermissionScope::All` before input validation or writes as defense in depth.
 
 The expected current artifact must be the source artifact recorded by the selected rebuild receipt. The live locale binding must still point to that exact artifact when the owner transaction acquires its lock.
 

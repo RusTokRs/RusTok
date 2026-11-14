@@ -48,6 +48,9 @@ pub fn AdminCanvas(
     on_request: Option<Callback<PageBuilderCapabilityRequest>>,
     #[prop(optional_no_strip)] browser_intent_endpoint: Option<String>,
     #[prop(optional_no_strip)] browser_csrf_token: Option<String>,
+    /// Where the host serves a preview document as its own response, if it serves one.
+    #[prop(optional_no_strip)]
+    preview_endpoint: Option<String>,
 ) -> impl IntoView {
     let route_context = use_context::<UiRouteContext>().unwrap_or_default();
     let locale = route_context.locale;
@@ -209,6 +212,7 @@ pub fn AdminCanvas(
             <ServerPreviewPanel
                 runtime=server_preview_runtime
                 provider_status=server_preview_provider_status
+                preview_endpoint=preview_endpoint.clone()
             />
             <div class="grid min-h-[680px] grid-cols-[minmax(420px,1fr)_minmax(280px,360px)] gap-3">
                 <CapabilityFieldset

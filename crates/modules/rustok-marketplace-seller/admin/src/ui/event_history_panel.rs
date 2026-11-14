@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 
 use crate::event_timeline::MarketplaceSellerEventTimeline;
+use crate::core::MarketplaceSellerAdminTransportProfile;
 use crate::transport::{
     MarketplaceSellerAdminTransportContext, load_marketplace_seller_event_history,
 };
@@ -11,11 +12,27 @@ pub fn MarketplaceSellerEventHistoryPanel(
     seller_id: String,
     #[prop(default = 100)] limit: u64,
 ) -> impl IntoView {
-    let history = LocalResource::new(move || {
-        let context = context.clone();
-        let seller_id = seller_id.clone();
-        async move { load_marketplace_seller_event_history(context, seller_id, limit).await }
-    });
+    // The transport context carries no `serde` impl, so the source is the values it is rebuilt
+    // from and the fetcher assembles it. See
+    // `DECISIONS/2026-11-13-standalone-admin-editor-delivery.md`.
+    let history = Resource::new(
+        move || {
+            (
+                context.profile,
+                context.access_token.clone(),
+                context.tenant_slug.clone(),
+                seller_id.clone(),
+            )
+        },
+        move |(profile, access_token, tenant_slug, seller_id)| async move {
+            load_marketplace_seller_event_history(
+                transport_context_for(profile, access_token, tenant_slug),
+                seller_id,
+                limit,
+            )
+            .await
+        },
+    );
 
     view! {
         <Suspense fallback=move || view! {
@@ -34,5 +51,22 @@ pub fn MarketplaceSellerEventHistoryPanel(
                     .into_any(),
             })}
         </Suspense>
+    }
+}
+
+/// Rebuilds the context inside the fetcher from the values the resource source carries, because
+/// the context itself is not `serde`.
+fn transport_context_for(
+    profile: MarketplaceSellerAdminTransportProfile,
+    access_token: Option<String>,
+    tenant_slug: Option<String>,
+) -> MarketplaceSellerAdminTransportContext {
+    match profile {
+        MarketplaceSellerAdminTransportProfile::Native => {
+            MarketplaceSellerAdminTransportContext::native()
+        }
+        MarketplaceSellerAdminTransportProfile::Graphql => {
+            MarketplaceSellerAdminTransportContext::graphql(access_token, tenant_slug)
+        }
     }
 }

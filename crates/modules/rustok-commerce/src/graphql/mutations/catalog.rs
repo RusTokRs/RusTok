@@ -2194,7 +2194,7 @@ mod product_error_outcome_tests {
 #[cfg(test)]
 mod deletion_errors {
     use super::*;
-    use rustok_inventory::CatalogDeletionBlocker;
+    use rustok_product::ProductInventoryDeletionBlocker;
 
     fn context() -> PortContext {
         PortContext::new(
@@ -2208,7 +2208,7 @@ mod deletion_errors {
     #[test]
     fn graphql_deletion_refusals_use_fixed_copy_and_current_correlation() {
         let context = context();
-        for reason in CatalogDeletionBlocker::ALL {
+        for reason in ProductInventoryDeletionBlocker::ALL {
             let mut owner = rustok_product::error::inventory_deletion_port_error(&reason);
             owner.message = "private-provider-details".into();
             let expected = rustok_product::error::inventory_deletion_public_policy(&reason);
@@ -2236,7 +2236,7 @@ mod deletion_errors {
     fn contradictory_provider_retry_hint_is_not_a_finalized_outcome() {
         let context = context();
         let mut owner = rustok_product::error::inventory_deletion_port_error(
-            &CatalogDeletionBlocker::HistoryPresent,
+            &ProductInventoryDeletionBlocker::HistoryPresent,
         );
         owner.retryable = true;
         owner.message = "private-provider-details".into();
@@ -2257,7 +2257,7 @@ mod deletion_errors {
 #[cfg(test)]
 mod quantity_errors {
     use super::*;
-    use rustok_inventory::QuantityWriteBlocker;
+    use rustok_product::ProductInventoryQuantityBlocker;
 
     fn context() -> PortContext {
         PortContext::new(
@@ -2271,7 +2271,7 @@ mod quantity_errors {
     #[test]
     fn quantity_graphql_has_fixed_copy_current_correlation_and_finite_public_code() {
         let context = context();
-        for reason in QuantityWriteBlocker::ALL {
+        for reason in ProductInventoryQuantityBlocker::ALL {
             let mut port = rustok_product::error::inventory_quantity_port_error(&reason);
             port.message = "private-provider-details".into();
             let expected = rustok_product::error::inventory_quantity_public_policy(&reason);
@@ -2299,7 +2299,7 @@ mod quantity_errors {
     fn quantity_graphql_retry_hint_does_not_certify_original_command_outcome() {
         let context = context();
         let mut port = rustok_product::error::inventory_quantity_port_error(
-            &QuantityWriteBlocker::InsufficientStock,
+            &ProductInventoryQuantityBlocker::InsufficientStock,
         );
         port.retryable = true;
         port.message = "private-provider-details".into();

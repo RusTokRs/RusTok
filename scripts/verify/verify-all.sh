@@ -127,6 +127,7 @@ SCRIPTS=(
     "verify-advisory-exceptions.mjs:Security Advisory Exceptions"
     "verify-dependency-feature-hygiene.mjs:Dependency Feature Hygiene"
     "verify-cache-clock-contract.mjs:Cache Clock Fail-closed Contract"
+    "verify-standalone-admin-editor-delivery.mjs:Standalone Admin Editor Delivery"
     "verify-csp-reporting-contract.mjs:CSP Reporting Contract"
     "verify-csp-inline-style-exceptions.mjs:Rust CSP Style Boundary"
     "verify-csp-next-style-boundary.mjs:Next CSP Style Boundary"

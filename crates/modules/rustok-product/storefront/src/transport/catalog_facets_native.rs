@@ -55,7 +55,7 @@ fn map_owner_catalog_facets(
         .collect()
 }
 
-#[server(prefix = "/api/fn", endpoint = "product/storefront/catalog-facets", client = leptos_auth::AuthorizedBrowserClient)]
+#[server(prefix = "/api/fn", endpoint = "product/storefront/catalog-facets", client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
 async fn storefront_catalog_facets_native(
     locale: Option<String>,
     search: Option<String>,

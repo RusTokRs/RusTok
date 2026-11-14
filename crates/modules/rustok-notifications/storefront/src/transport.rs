@@ -11,7 +11,7 @@ pub use native_server_adapter::{
 };
 
 use leptos::prelude::*;
-use leptos_auth::AuthContext;
+use rustok_auth_ui::ui::leptos::AuthContext;
 use rustok_ui_transport::{UiTransportPath, UiTransportResult, execute_selected_transport};
 use serde::{Deserialize, Serialize};
 
