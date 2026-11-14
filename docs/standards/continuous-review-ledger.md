@@ -36,7 +36,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (10/10 completed)
 - [x] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (24/24 completed)
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (22/37 completed)
-- [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (13/40 completed)
+- [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (17/40 completed)
 - [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (0/26 completed)
 - [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (0/26 completed)
 - [ ] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (0/19 completed)
@@ -199,10 +199,10 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[`crates/modules/rustok-notifications-api`](../../crates/modules/rustok-notifications)** (5 files, 1,196 LOC) — *(Done: verified across 6 Universal Logic Dimensions: client/runtime api contracts, keys, semantic descriptors, template data bounds (max 32 fields, max 4KB), audience page limits (max 256 recipients), reconciliation inspection port factory; verified with `cargo check -p rustok-notifications`).*
 - [x] **[`crates/modules/rustok-notifications/admin`](../../crates/modules/rustok-notifications/admin)** (6 files, 127 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, notifications admin status & phase lifecycle (SourceRegistry, Persistence, Delivery), typed item status (Ready, Unavailable, Planned) with i18n keys, Leptos admin UI components; verified with `cargo check -p rustok-notifications-admin --features ssr`).*
 - [x] **[`crates/modules/rustok-notifications/storefront`](../../crates/modules/rustok-notifications/storefront)** (16 files, 3,152 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, dual transport path (NativeServer / GraphQL), grouped notification inbox, unread badge, navigation header actions, state command dispatch (mark_read, mark_unread, archive), cursor pagination; verified with `cargo check -p rustok-notifications-storefront --features ssr`).*
-- [ ] **[`crates/modules/rustok-comments`](../../crates/modules/rustok-comments)** (39 files, 9,823 LOC)
-- [ ] **[`crates/modules/rustok-comments-api`](../../crates/modules/rustok-comments)** (3 files, 154 LOC)
-- [ ] **[`crates/modules/rustok-comments-storefront-support`](../../crates/modules/rustok-comments/storefront)** (3 files, 171 LOC)
-- [ ] **[`crates/modules/rustok-comments/admin`](../../crates/modules/rustok-comments/admin)** (8 files, 1,382 LOC)
+- [x] **[`crates/modules/rustok-comments`](../../crates/modules/rustok-comments)** (39 files, 9,823 LOC) — *(Done: verified across 6 Universal Logic Dimensions: non-nil UUID guards across tenant_id, target_id, author_id, comment_id, parent_comment_id; parent comment thread boundary validation; transactional position allocation with tenant lock and counter updates; canonical richtext validation and serialization; public approved-only read projection; target deletion event handler; verified with `cargo check -p rustok-comments` and verification scripts).*
+- [x] **[`crates/modules/rustok-comments-api`](../../crates/modules/rustok-comments)** (3 files, 154 LOC) — *(Done: verified across 6 Universal Logic Dimensions: client/runtime api contracts, DTO types (CommentRecord, CommentThreadDetail, CreateCommentInput, ListCommentsFilter), status enums, CommentsThreadPort contract; verified with `cargo check -p rustok-comments`).*
+- [x] **[`crates/modules/rustok-comments-storefront-support`](../../crates/modules/rustok-comments/storefront)** (3 files, 171 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, CommentComposer component, richtext blankness validation (empty document, whitespace-only, nested empty nodes), submission gate; verified with `cargo check -p rustok-comments-storefront-support --features ssr`).*
+- [x] **[`crates/modules/rustok-comments/admin`](../../crates/modules/rustok-comments/admin)** (8 files, 1,382 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, clamped pagination (page >= 1, per_page clamped to [1, 100]), non-nil UUID validation on thread_id and comment_id, moderation workspace for thread and comment status changes; verified with `cargo check -p rustok-comments-admin --features ssr` and verification scripts).*
 - [ ] **[`crates/modules/rustok-reactions`](../../crates/modules/rustok-reactions)** (8 files, 2,961 LOC)
 - [ ] **[`crates/modules/rustok-reactions-api`](../../crates/modules/rustok-reactions)** (3 files, 1,262 LOC)
 - [ ] **[`crates/modules/rustok-reactions-storefront`](../../crates/modules/rustok-reactions/storefront)** (6 files, 615 LOC)
@@ -398,7 +398,7 @@ The single canonical trigger to continue this audit sequence is:
 - [ ] **[`apps/next-frontend`](../../apps/next-frontend)** (156 files, 25,597 LOC)
 - [ ] **[`apps/next-frontend/packages/rustok-blog`](../../apps/next-frontend/packages/rustok-blog)** (17 files, 1,858 LOC)
 - [ ] **[`apps/next-frontend/packages/rustok-cart`](../../apps/next-frontend/packages/rustok-cart)** (7 files, 2,142 LOC)
-- [ ] **[`apps/next-frontend/packages/rustok-comments`](../../apps/next-frontend/packages/rustok-comments)** (2 files, 123 LOC)
+- [x] **[`apps/next-frontend/packages/rustok-comments`](../../apps/next-frontend/packages/rustok-comments)** (2 files, 123 LOC) — *(Done: verified across 6 Universal Logic Dimensions: dual Leptos ↔ Next.js storefront parity, CommentComposer with @rustok/richtext comment profile, commandId retry idempotency preservation on retry / invalidation on edit, auth gate; verified with Node test runner (3/3 tests passed)).*
 - [ ] **[`apps/next-frontend/packages/rustok-forum`](../../apps/next-frontend/packages/rustok-forum)** (23 files, 4,775 LOC)
 - [x] **[`apps/next-frontend/packages/rustok-notifications`](../../apps/next-frontend/packages/rustok-notifications)** (7 files, 916 LOC) — *(Done: verified across 6 Universal Logic Dimensions: dual Leptos ↔ Next.js storefront parity, GraphQL queries/mutations matching backend schema (unread count, group summaries, group items, apply group state), notification group card, item row, unread badge, inbox page; verified with Node test runner (4/4 tests passed)).*
 - [ ] **[`apps/next-frontend/packages/rustok-order`](../../apps/next-frontend/packages/rustok-order)** (5 files, 1,361 LOC)
@@ -439,7 +439,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [next-frontend](../../apps/next-frontend) | `apps` | 191 | 28,708 | None |  |
 | [ ] | [rustok-blog](../../apps/next-frontend/packages/rustok-blog) | `apps` | 22 | 2,753 | None |  |
 | [ ] | [rustok-cart](../../apps/next-frontend/packages/rustok-cart) | `apps` | 8 | 2,564 | None |  |
-| [ ] | [rustok-comments](../../apps/next-frontend/packages/rustok-comments) | `apps` | 2 | 123 | None |  |
+| [x] | [rustok-comments](../../apps/next-frontend/packages/rustok-comments) | `apps` | 2 | 123 | 2026-11-14 | Phase FS-05 in progress |
 | [ ] | [rustok-forum](../../apps/next-frontend/packages/rustok-forum) | `apps` | 23 | 4,775 | None |  |
 | [x] | [rustok-notifications](../../apps/next-frontend/packages/rustok-notifications) | `apps` | 7 | 916 | 2026-11-14 | Phase FS-05 in progress |
 | [ ] | [rustok-order](../../apps/next-frontend/packages/rustok-order) | `apps` | 5 | 1,361 | None |  |
@@ -498,9 +498,9 @@ The single canonical trigger to continue this audit sequence is:
 | [x] | [storefront](../../crates/modules/rustok-cart/storefront) | `modules` | 23 | 4,922 | 2026-11-13 | Phase FS-04 in progress |
 | [x] | [rustok-channel](../../crates/modules/rustok-channel) | `modules` | 52 | 12,916 | 2026-11-12 | Phase FS-03 completed |
 | [x] | [admin](../../crates/modules/rustok-channel/admin) | `modules` | 15 | 5,527 | 2026-11-12 | Phase FS-03 completed |
-| [ ] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 46 | 11,514 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 9 | 1,891 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-comments/storefront) | `modules` | 4 | 382 | None |  |
+| [x] | [rustok-comments](../../crates/modules/rustok-comments) | `modules` | 46 | 11,514 | 2026-11-14 | Phase FS-05 in progress |
+| [x] | [admin](../../crates/modules/rustok-comments/admin) | `modules` | 9 | 1,891 | 2026-11-14 | Phase FS-05 in progress |
+| [x] | [storefront](../../crates/modules/rustok-comments/storefront) | `modules` | 4 | 382 | 2026-11-14 | Phase FS-05 in progress |
 | [x] | [rustok-commerce](../../crates/modules/rustok-commerce) | `modules` | 323 | 155,694 | 2026-11-13 | Phase FS-04 in progress |
 | [x] | [rustok-commerce-foundation](../../crates/modules/rustok-commerce-foundation) | `modules` | 17 | 2,126 | 2026-11-13 | Phase FS-04 started |
 | [x] | [admin](../../crates/modules/rustok-commerce/admin) | `modules` | 22 | 6,412 | 2026-11-13 | Phase FS-04 in progress |

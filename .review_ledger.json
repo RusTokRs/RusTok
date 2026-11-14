@@ -333,9 +333,9 @@
       "category": "modules",
       "files": 46,
       "loc": 11514,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T08:05:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards across tenant_id, target_id, author_id, comment_id, parent_comment_id; parent comment thread boundary validation; transactional position allocation with tenant lock and counter updates; canonical richtext validation and serialization; public approved-only read projection; target deletion event handler; verified with cargo check -p rustok-comments and verification scripts."
     },
     "crates/modules/rustok-comments/admin": {
       "name": "admin",
@@ -343,9 +343,9 @@
       "category": "modules",
       "files": 9,
       "loc": 1891,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T08:05:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, clamped pagination (page >= 1, per_page clamped to [1, 100]), non-nil UUID validation on thread_id and comment_id, moderation workspace for thread and comment status changes; verified with cargo check -p rustok-comments-admin --features ssr and verification scripts."
     },
     "crates/modules/rustok-commerce": {
       "name": "rustok-commerce",
@@ -1935,9 +1935,9 @@
       "category": "apps",
       "files": 2,
       "loc": 123,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T08:05:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: dual Leptos ↔ Next.js storefront parity, CommentComposer with @rustok/richtext comment profile, commandId retry idempotency preservation on retry / invalidation on edit, auth gate; verified with Node test runner (3/3 tests passed)."
     },
     "apps/next-frontend/packages/rustok-product": {
       "name": "rustok-product",
@@ -2536,9 +2536,9 @@
       "category": "modules",
       "files": 4,
       "loc": 382,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T08:05:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, CommentComposer component, richtext blankness validation (empty document, whitespace-only, nested empty nodes), submission gate; verified with cargo check -p rustok-comments-storefront-support --features ssr."
     },
     "crates/modules/rustok-deal": {
       "name": "rustok-deal",
