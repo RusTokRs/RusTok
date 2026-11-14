@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
@@ -16,6 +17,26 @@ pub(super) async fn load_translations(
         .filter(brand_translation::Column::BrandId.eq(brand_id))
         .all(db)
         .await?)
+}
+
+/// Batch loads translations for multiple brand IDs in a single query to eliminate N+1 roundtrips.
+pub(super) async fn load_translations_batch(
+    db: &impl ConnectionTrait,
+    brand_ids: &[Uuid],
+) -> BrandResult<HashMap<Uuid, Vec<brand_translation::Model>>> {
+    if brand_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let all = brand_translation::Entity::find()
+        .filter(brand_translation::Column::BrandId.is_in(brand_ids.to_vec()))
+        .all(db)
+        .await?;
+    let mut map: HashMap<Uuid, Vec<brand_translation::Model>> =
+        HashMap::with_capacity(brand_ids.len());
+    for t in all {
+        map.entry(t.brand_id).or_default().push(t);
+    }
+    Ok(map)
 }
 
 pub(super) fn assemble_brand_dto(

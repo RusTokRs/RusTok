@@ -145,6 +145,8 @@ fn map_query_error(error: NavigationError) -> async_graphql::Error {
         {
             MENU_TRANSLATION_INTEGRITY_ERROR_CODE
         }
+        NavigationError::Conflict(_) => "CONFLICT",
+        NavigationError::Validation(_) => "BAD_REQUEST",
         NavigationError::Forbidden(_) => "NAVIGATION_PERMISSION_DENIED",
         NavigationError::Database(_) => "INTERNAL_SERVER_ERROR",
         NavigationError::Rich(rich) => rich

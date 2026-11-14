@@ -720,7 +720,7 @@ fn next_menu_translation_revision(
         })
 }
 
-fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
+pub(crate) fn is_unique_constraint(error: &sea_orm::DbErr) -> bool {
     error
         .to_string()
         .to_ascii_lowercase()

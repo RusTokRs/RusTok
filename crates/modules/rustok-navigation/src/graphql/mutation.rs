@@ -146,6 +146,8 @@ fn require_navigation_permission(ctx: &Context<'_>, permission: Permission) -> R
 fn map_error(error: NavigationError) -> async_graphql::Error {
     let code = match &error {
         NavigationError::MenuNotFound(_) => "MENU_NOT_FOUND",
+        NavigationError::Conflict(_) => "CONFLICT",
+        NavigationError::Validation(_) => "BAD_REQUEST",
         NavigationError::Forbidden(_) => "NAVIGATION_PERMISSION_DENIED",
         NavigationError::Database(_) => "INTERNAL_SERVER_ERROR",
         NavigationError::Rich(rich) => rich

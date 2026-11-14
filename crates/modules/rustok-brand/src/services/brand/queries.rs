@@ -13,7 +13,7 @@ use crate::{
 
 use super::{
     BrandService,
-    repository::{assemble_brand_dto, load_translations},
+    repository::{assemble_brand_dto, load_translations, load_translations_batch},
 };
 
 impl BrandService {
@@ -131,9 +131,13 @@ impl BrandService {
             Vec::new()
         };
 
+        let brand_ids: Vec<Uuid> = brands.iter().map(|b| b.id).collect();
+        let mut translations_by_brand =
+            load_translations_batch(&self.db, &brand_ids).await?;
+
         let mut dtos = Vec::with_capacity(brands.len());
         for brand in brands {
-            let translations = load_translations(&self.db, brand.id).await?;
+            let translations = translations_by_brand.remove(&brand.id).unwrap_or_default();
             dtos.push(assemble_brand_dto(brand, translations, locale));
         }
 
@@ -257,10 +261,14 @@ impl BrandService {
             .all(&self.db)
             .await?;
 
+        let brand_ids_vec: Vec<Uuid> = brands.iter().map(|b| b.id).collect();
+        let mut translations_by_brand =
+            load_translations_batch(&self.db, &brand_ids_vec).await?;
+
         let mut map: std::collections::HashMap<Uuid, BrandDto> =
             std::collections::HashMap::with_capacity(brands.len());
         for brand in brands {
-            let translations = load_translations(&self.db, brand.id).await?;
+            let translations = translations_by_brand.remove(&brand.id).unwrap_or_default();
             let dto = assemble_brand_dto(brand, translations, locale);
             map.insert(dto.id, dto);
         }

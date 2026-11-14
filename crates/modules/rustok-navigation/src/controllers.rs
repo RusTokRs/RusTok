@@ -303,6 +303,10 @@ fn map_error(error: NavigationError) -> HttpError {
             HttpError::internal(message)
         }
         NavigationError::MenuNotFound(_) => HttpError::not_found("menu_not_found", message),
+        NavigationError::Conflict(msg) => HttpError::conflict("navigation_conflict", msg),
+        NavigationError::Validation(msg) => {
+            HttpError::bad_request("navigation_validation_failed", msg)
+        }
         NavigationError::Forbidden(_) => {
             HttpError::forbidden("navigation_permission_denied", message)
         }

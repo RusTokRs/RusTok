@@ -12,6 +12,7 @@ use crate::dto::{ActiveMenuBindingResponse, MenuLocation, MenuResponse};
 use crate::entities::{menu, menu_binding};
 use crate::error::{NavigationError, NavigationResult};
 use crate::services::MenuService;
+use crate::services::menu::is_unique_constraint;
 use crate::services::rbac::enforce_scope;
 
 pub struct MenuBindingService {
@@ -43,12 +44,16 @@ impl MenuBindingService {
         enforce_scope(&security, Resource::Navigation, Action::Update)?;
         self.ensure_channel_scope(tenant_id, channel_id).await?;
 
+        let now = Utc::now();
+        let storage_location = menu_location_to_storage(location);
+
+        let txn = self.db.begin().await?;
+
         let menu = menu::Entity::find_by_id(menu_id)
             .filter(menu::Column::TenantId.eq(tenant_id))
-            .one(&self.db)
+            .one(&txn)
             .await?
             .ok_or_else(|| NavigationError::menu_not_found(menu_id))?;
-        let storage_location = menu_location_to_storage(location);
         if menu.location != storage_location {
             return Err(NavigationError::validation(format!(
                 "Menu `{menu_id}` belongs to location `{}` and cannot be bound to `{storage_location}`",
@@ -56,8 +61,6 @@ impl MenuBindingService {
             )));
         }
 
-        let now = Utc::now();
-        let txn = self.db.begin().await?;
         let existing = menu_binding::Entity::find()
             .filter(menu_binding::Column::TenantId.eq(tenant_id))
             .filter(menu_binding::Column::ChannelId.eq(channel_id))
@@ -71,7 +74,7 @@ impl MenuBindingService {
             active.updated_at = Set(now.into());
             active.update(&txn).await?
         } else {
-            menu_binding::ActiveModel {
+            let res = menu_binding::ActiveModel {
                 id: Set(Uuid::new_v4()),
                 tenant_id: Set(tenant_id),
                 channel_id: Set(channel_id),
@@ -81,7 +84,16 @@ impl MenuBindingService {
                 updated_at: Set(now.into()),
             }
             .insert(&txn)
-            .await?
+            .await;
+            match res {
+                Ok(inserted) => inserted,
+                Err(err) if is_unique_constraint(&err) => {
+                    return Err(NavigationError::conflict(format!(
+                        "Concurrent binding conflict for location `{storage_location}` on channel `{channel_id}`"
+                    )));
+                }
+                Err(err) => return Err(NavigationError::Database(err)),
+            }
         };
         txn.commit().await?;
 
