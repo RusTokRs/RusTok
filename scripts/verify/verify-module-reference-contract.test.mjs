@@ -98,7 +98,7 @@ const regressions = [
   {
     name: "native browser calls drop canonical authentication metadata",
     path: `${blog}/admin/src/transport/native_server_adapter.rs`,
-    before: "client = leptos_auth::AuthorizedBrowserClient",
+    before: "client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient",
     after: "client = leptos::server_fn::client::browser::BrowserClient",
     diagnostic: /native admin browser calls must use canonical auth metadata/,
   },

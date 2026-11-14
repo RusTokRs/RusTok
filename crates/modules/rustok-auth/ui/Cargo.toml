@@ -1,9 +1,9 @@
 [package]
-name = "leptos-auth"
+name = "rustok-auth-ui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Leptos authentication context, protected route wrappers, and token refresh hooks"
+description = "Auth-owned FFA client session, transport, and Leptos bindings"
 readme = "README.md"
 repository.workspace = true
 rust-version.workspace = true
@@ -14,7 +14,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
-csr = []
+csr = ["leptos/csr"]
 hydrate = ["leptos/hydrate"]
 ssr = [
   "leptos/ssr",

@@ -58,7 +58,7 @@ pub fn CartClient(
     on_ready: Callback<BuyerCartController>,
     #[prop(default = true)] show_header: bool,
 ) -> impl IntoView {
-    let source = use_context::<leptos_auth::AuthContext>()
+    let source = use_context::<rustok_auth_ui::ui::leptos::AuthContext>()
         .map(|auth| auth.scope_source().to_string())
         .unwrap_or_default();
     let controller = use_buyer_cart(

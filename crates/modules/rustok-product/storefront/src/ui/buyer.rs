@@ -18,7 +18,7 @@ pub(super) fn ProductBuyerIsland(snapshot: ProductBuyerSnapshot) -> impl IntoVie
     let tenant_slug = snapshot.tenant_slug.clone();
     view! {
         <div data-product-buyer-island="true" data-product-buyer-snapshot=encoded data-product-buyer-client-error-label=buyer::labels(locale.as_deref()).javascript>
-            <leptos_auth::AuthProvider tenant_slug=tenant_slug.clone()><ProductBuyerInteraction snapshot /></leptos_auth::AuthProvider>
+            <rustok_auth_ui::ui::leptos::AuthProvider tenant_slug=tenant_slug.clone()><ProductBuyerInteraction snapshot /></rustok_auth_ui::ui::leptos::AuthProvider>
         </div>
     }.into_any()
 }

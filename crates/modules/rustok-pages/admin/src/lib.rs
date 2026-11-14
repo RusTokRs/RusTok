@@ -36,10 +36,10 @@ use composition::PagesAdmin as PagesWorkspace;
 #[cfg(feature = "inline-edit-launch")]
 use inline_edit_launch::PagesInlineEditLaunch;
 use leptos::prelude::*;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::use_route_query_value;
 use metadata_properties::pages_metadata_property_runtime;
 use rollback_control::PagesRollbackControl;
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 use standalone_metadata::PagesPublishedMetadataSurface;
 

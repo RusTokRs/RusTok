@@ -217,7 +217,7 @@ for (const forbidden of ["/modules/notifications", "localStorage", "gloo_storage
 }
 requireText(storefrontLib, "pub use ui::navigation::NotificationNavigation;", "storefront crate must export NotificationNavigation");
 for (const marker of [
-  "leptos-auth.workspace = true",
+  "rustok-auth-ui.workspace = true",
   "rustok-graphql.workspace = true",
   "rustok-ui-core.workspace = true",
   "rustok-ui-i18n.workspace = true",

@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::components::A;
 
-use leptos_auth::hooks::{use_auth, use_current_user};
+use rustok_auth_ui::ui::leptos::hooks::{use_auth, use_current_user};
 
 use crate::use_admin_locale;
 

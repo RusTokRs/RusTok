@@ -5,7 +5,7 @@ use super::{
     CURRENT_USER_QUERY, CurrentUserResponse, FORGOT_PASSWORD_MUTATION, ForgotPasswordResponse,
     get_graphql_url, map_graphql_auth_error,
 };
-use crate::{AuthError, AuthUser};
+use crate::model::{AuthError, AuthUser};
 
 pub(super) async fn forgot_password_graphql(
     email: String,

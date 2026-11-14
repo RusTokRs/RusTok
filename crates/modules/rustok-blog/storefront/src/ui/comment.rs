@@ -3,8 +3,8 @@ use crate::{
     transport,
 };
 use leptos::prelude::*;
-use leptos_auth::hooks::use_token;
 use leptos_ui::{Button, ButtonVariant, Size};
+use rustok_auth_ui::ui::leptos::hooks::use_token;
 use rustok_comments_storefront_support::CommentComposer;
 use rustok_reactions_storefront::ReactionBar;
 use rustok_ui_core::UiRouteContext;

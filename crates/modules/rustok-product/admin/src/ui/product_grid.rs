@@ -1,6 +1,6 @@
 use leptos::prelude::*;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::use_navigate;
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
 use rustok_ui_core::UiRouteContext;
@@ -60,7 +60,13 @@ pub fn ProductGridPage() -> impl IntoView {
     // See DECISIONS/2026-11-13-standalone-admin-editor-delivery.md.
     let options_locale = locale.clone();
     let catalog_options_resource = Resource::new(
-        move || (token.get(), tenant.get(), options_locale.clone().unwrap_or_default()),
+        move || {
+            (
+                token.get(),
+                tenant.get(),
+                options_locale.clone().unwrap_or_default(),
+            )
+        },
         move |(tok, ten, loc)| async move {
             catalog_transport::fetch_catalog_search_options(tok, ten, loc).await
         },

@@ -77,6 +77,7 @@ members = [
     "crates/modules/rustok-tenant/admin",
     "crates/modules/rustok-translation/admin",
     "crates/modules/rustok-auth/admin",
+    "crates/modules/rustok-auth/ui",
     "crates/modules/rustok-rbac/admin",
     "crates/modules/rustok-workflow/admin",
     "crates/modules/rustok-marketplace-seller/admin",
@@ -103,6 +104,7 @@ members = [
 ]
 default-members = []
 exclude = [
+    "crates/ui/leptos-auth", # retired documentation-only directory
     "rustok-revisions",
     "rustok-revisions-derive",
     "rustok-revisions-cli",
@@ -250,7 +252,7 @@ unic-langid = "0.9.6"
 leptos = "=0.8.21"
 leptos_axum = "0.8.9"
 leptos_router = "0.8.13"
-leptos-auth = { path = "crates/ui/leptos-auth", default-features = false }
+rustok-auth-ui = { path = "crates/modules/rustok-auth/ui", default-features = false }
 iu-leptos = { path = "UI/leptos" }
 leptos-ui = { path = "crates/ui/leptos-ui" }
 rustok-ui = { path = "crates/ui/rustok-ui" }

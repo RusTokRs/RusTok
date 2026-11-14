@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
-use crate::context::AuthContext;
-use crate::{AuthSession, AuthUser};
+use super::context::AuthContext;
+use crate::model::{AuthSession, AuthUser};
 
 pub fn use_auth() -> AuthContext {
     use_context::<AuthContext>()

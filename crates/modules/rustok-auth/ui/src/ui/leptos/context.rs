@@ -4,9 +4,9 @@ use leptos::task::spawn_local;
 #[cfg(target_arch = "wasm32")]
 use leptos_use::use_interval_fn;
 
-use crate::storage;
+use super::storage;
+use crate::model::{AuthError, AuthSession, AuthUser, ClientAuthScope};
 use crate::transport;
-use crate::{AuthError, AuthSession, AuthUser, ClientAuthScope};
 
 /// Lifecycle-only notification. The detail contains a random provider identifier and whether
 /// the operation may change identity; it never carries a session, user, token or tenant.
@@ -69,7 +69,7 @@ fn notify_scope_change(source: &str, identity_change: bool) -> bool {
 struct ScopeTransition {
     scope: RwSignal<ClientAuthScope>,
     started_scope: ClientAuthScope,
-    realm: Option<crate::realm::RealmTransition>,
+    realm: Option<super::realm::RealmTransition>,
     source: String,
     identity_change: bool,
     completed: bool,
@@ -214,7 +214,7 @@ impl AuthContext {
         let Some(started_scope) = self.scope.try_get_untracked() else {
             return Err(AuthError::Network);
         };
-        let realm = match crate::realm::RealmTransition::acquire(&self.source) {
+        let realm = match super::realm::RealmTransition::acquire(&self.source) {
             Ok(realm) => realm,
             Err(error) => {
                 let _ = self.scope.try_update(|scope| {

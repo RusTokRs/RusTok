@@ -305,10 +305,10 @@ pub(crate) fn start() -> Result<(), JsValue> {
             }
         });
         view! {
-            <leptos_auth::AuthProvider tenant_slug=tenant.clone()>
+            <rustok_auth_ui::ui::leptos::AuthProvider tenant_slug=tenant.clone()>
                 <rustok_cart_storefront::CartClient cart_id locale tenant_slug=tenant
                     capability persist_reference=persist persist_selection on_ready show_header />
-            </leptos_auth::AuthProvider>
+            </rustok_auth_ui::ui::leptos::AuthProvider>
         }
     });
     UNMOUNT.with(|mount| *mount.borrow_mut() = Some(Box::new(move || drop(handle))));

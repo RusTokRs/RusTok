@@ -16,19 +16,19 @@ pub fn inspect_refresh_cookie_headers<'a>(
     for header in headers {
         for part in header.split(';').map(str::trim) {
             let Some((name, value)) = part.split_once('=') else {
-                if part == crate::ADMIN_REFRESH_COOKIE {
+                if part == super::ADMIN_REFRESH_COOKIE {
                     return Err(RefreshCookieError::Malformed);
                 }
                 continue;
             };
-            if name.trim() != crate::ADMIN_REFRESH_COOKIE {
+            if name.trim() != super::ADMIN_REFRESH_COOKIE {
                 continue;
             }
             if found.is_some() {
                 return Err(RefreshCookieError::Duplicate);
             }
             let (tenant, token) =
-                crate::parse_refresh_cookie_value(value).ok_or(RefreshCookieError::Malformed)?;
+                super::parse_refresh_cookie_value(value).ok_or(RefreshCookieError::Malformed)?;
             if tenant.chars().any(char::is_whitespace) || token.chars().any(char::is_whitespace) {
                 return Err(RefreshCookieError::Malformed);
             }

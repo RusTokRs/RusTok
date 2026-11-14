@@ -25,6 +25,28 @@ of submitting an unquoted Cart add. See the [Fly contract](../../crates/ui/fly/C
 [Next handoff](../../apps/next-frontend/packages/rustok-pages/README.md#shared-purchase-handoff),
 and [Leptos bridge](../../crates/modules/rustok-page-builder/storefront/README.md#purchase-and-cart-bridge).
 
+The shared Leptos auth lifecycle has also been cut over in source to the Auth module's
+[`rustok-auth-ui` FFA package](../../crates/modules/rustok-auth/ui/README.md), with explicit
+`core`, `model`, `transport` and `ui::leptos` boundaries shared by admin and storefront. The
+former `leptos-auth` package is no longer used; only its retirement description remains. This
+is an API and ownership cutover, not a new login surface or a claim of runtime parity. Its
+[decision](../../DECISIONS/2026-11-13-auth-owned-client-ffa-boundary.md) retains the existing
+cookie/security contract and the verification gates below.
+
+On this cutover, the Auth owner/source and feature-propagation guard and its five negative/positive
+fixtures passed; the actual core/cookie source ran 7/7 and the scope state machine 4/4 in standalone
+`rustc` harnesses. Fly, Cart, Product, Auth admin and Notifications source guards, i18n parity and
+docs governance passed. These are not locked package builds or browser/service evidence. Local
+`cargo test --offline --locked -p rustok-auth-ui --lib` stopped before compilation on the uncached
+Athanor Git revision. The earlier WASM success in
+[43573684681](https://github.com/RusTokRs/RusTok/actions/runs/43573684681) was for the previous
+package before this cutover; its native job was still running at the last check. Re-run the new
+package and both host profiles in CI, then mounted browser and real-service tests. The broad FFA
+migration contract still fails on pre-existing structural-status omissions in eight unrelated
+module plans. The Forum navigation-badge guard references a missing historical note, and the Blog
+reference/Product table-host checks report existing unrelated owner-source/markup violations;
+those inputs are unchanged from the branch base, so they are not evidence for this cutover.
+
 Remaining release work, with owners:
 
 1. **Mount and verify the Leptos Cart boundary** (Cart + Product owners + `apps/storefront`) —

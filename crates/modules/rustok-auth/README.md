@@ -8,6 +8,7 @@ refresh-token helpers, invite-token helpers, auth config assembly/validation, an
 ## Responsibilities
 
 - Provide `AuthModule` metadata for the runtime registry.
+- Own the shared browser/session FFA boundary in [`ui`](./ui/README.md), used by both hosts, and the admin pages in [`admin`](./admin/README.md).
 - Expose auth primitives used by `apps/server` transport adapters and lifecycle services.
 - Publish the typed `users:*` RBAC surface through `AUTH_USER_PERMISSIONS` and `RusToKModule::permissions()`.
 - Own typed `AuthLifecyclePort`, `UserAdminMutationPort`, and `OAuthAdminPort` boundaries used by GraphQL and native adapters.

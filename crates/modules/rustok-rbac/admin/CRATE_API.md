@@ -2,7 +2,7 @@
 
 ## Platform Capability Bindings
 - Implements Leptos FFA UI components for RBAC runtime overview, roles, and permissions inspection.
-- Integrates with `rustok-grid-leptos`, `rustok-ui-core`, `rustok-ui-i18n`, and `leptos-auth`.
+- Integrates with `rustok-grid-leptos`, `rustok-ui-core`, `rustok-ui-i18n`, and `rustok-auth-ui`.
 
 ## Domain Collaborations
 - Collaborates with `rustok-rbac` for system roles, permissions catalog, and policy matrices.

@@ -72,9 +72,9 @@ pub fn start_blog_comment_client() -> Result<(), wasm_bindgen::JsValue> {
     root.set_inner_html("");
     mount_to(root, move || {
         view! {
-            <leptos_auth::AuthProvider>
+            <rustok_auth_ui::ui::leptos::AuthProvider>
                 <rustok_blog_storefront::BlogDiscussion props />
-            </leptos_auth::AuthProvider>
+            </rustok_auth_ui::ui::leptos::AuthProvider>
         }
     })
     .forget();

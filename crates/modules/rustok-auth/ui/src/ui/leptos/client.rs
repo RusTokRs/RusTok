@@ -31,12 +31,12 @@ where
             // web-sys API preserves the error so malformed auth metadata fails
             // before BrowserClient sends the request.
             let headers = request.headers().into_raw();
-            if let Some(token) = crate::storage::get_token() {
+            if let Some(token) = super::storage::get_token() {
                 headers
                     .set("Authorization", format!("Bearer {token}").as_str())
                     .map_err(|_| "Authentication metadata could not be applied")?;
             }
-            if let Some(tenant) = crate::storage::get_tenant() {
+            if let Some(tenant) = super::storage::get_tenant() {
                 headers
                     .set("X-Tenant-ID", tenant.as_str())
                     .map_err(|_| "Tenant metadata could not be applied")?;

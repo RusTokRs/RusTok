@@ -5,9 +5,9 @@ use page::BlogAdminPageState;
 use leptos::either::Either;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_api::{RichTextDocument, WritePathIssue};
+use rustok_auth_ui::ui::leptos::hooks::{use_current_user, use_tenant, use_token};
 use rustok_seo_targets::{SeoTargetSlug, builtin_slug as seo_builtin_slug};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 

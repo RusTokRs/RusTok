@@ -2,7 +2,7 @@
 
 ## Platform Capability Bindings
 - Implements Leptos FFA UI components for tenant management and module enablement inspection.
-- Integrates with `rustok-ui-core`, `rustok-ui-i18n`, and `leptos-auth`.
+- Integrates with `rustok-ui-core`, `rustok-ui-i18n`, and `rustok-auth-ui`.
 
 ## Domain Collaborations
 - Collaborates with `rustok-tenant` and `rustok-modules` for tenancy lifecycle, configurations, and active module states.

@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::AuthContext;
 use leptos_ui_routing::read_route_query_value;
+use rustok_auth_ui::ui::leptos::AuthContext;
 use rustok_ui_core::UiRouteContext;
 
 use crate::core::{

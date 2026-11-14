@@ -93,7 +93,7 @@ for (const [source, name, operation, port] of [
   );
   requireText(
     source,
-    "client = leptos_auth::AuthorizedBrowserClient",
+    "client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient",
     `${name}: authenticated native client`,
   );
   if (block.indexOf("product_buyer_scope(") > block.indexOf(port))

@@ -18,7 +18,7 @@ fn selected_transport_path() -> UiTransportPath {
 }
 
 pub async fn request_password_reset(email: String, tenant: String) -> Result<String, String> {
-    leptos_auth::transport::forgot_password(email, tenant)
+    rustok_auth_ui::transport::forgot_password(email, tenant)
         .await
         .map_err(|error| error.to_string())
 }

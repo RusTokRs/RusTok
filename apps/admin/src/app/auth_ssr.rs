@@ -4,7 +4,7 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use leptos_auth::ServerAuthSnapshot;
+use rustok_auth_ui::ui::leptos::ServerAuthSnapshot;
 
 fn cookie_request_is_secure(headers: &HeaderMap) -> bool {
     let forwarded_https = headers
@@ -39,20 +39,21 @@ pub async fn verified_snapshot_from_headers(
         return (ServerAuthSnapshot::default(), None);
     };
     let Ok(Some((tenant, refresh_token))) =
-        leptos_auth::inspect_refresh_cookie_headers(cookie_headers)
+        rustok_auth_ui::core::inspect_refresh_cookie_headers(cookie_headers)
     else {
         // Invalid or duplicate credentials do not produce a verified SSR identity.
         return (ServerAuthSnapshot::default(), None);
     };
 
     let secure = cookie_request_is_secure(headers);
-    match leptos_auth::transport::exchange_refresh_token_ssr(refresh_token, tenant.clone()).await {
+    match rustok_auth_ui::transport::exchange_refresh_token_ssr(refresh_token, tenant.clone()).await
+    {
         Ok((user, session, rotated)) => (
             ServerAuthSnapshot {
                 session: Some(session),
                 user: Some(user),
             },
-            Some(leptos_auth::refresh_cookie_header(
+            Some(rustok_auth_ui::core::refresh_cookie_header(
                 &tenant, &rotated, secure,
             )),
         ),
@@ -99,7 +100,7 @@ pub fn request_auth_snapshot(parts: &axum::http::request::Parts) -> ServerAuthSn
 mod tests {
     use super::*;
     use axum::http::Request;
-    use rustok_ui_auth::{AuthSession, AuthUser};
+    use rustok_auth_ui::model::{AuthSession, AuthUser};
 
     #[test]
     fn request_snapshot_uses_trusted_host_extension() {

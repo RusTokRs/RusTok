@@ -4,8 +4,8 @@ use crate::contributions::{
 use crate::model::PageDetail;
 use crate::transport;
 use leptos::prelude::*;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::use_route_query_value;
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_page_builder_admin::{ConsumerPropertiesPanel, ConsumerPropertyEditorRuntime};
 use rustok_ui_core::AdminQueryKey;
 use std::sync::Arc;

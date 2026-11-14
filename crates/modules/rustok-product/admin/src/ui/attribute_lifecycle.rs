@@ -15,9 +15,9 @@ use crate::model::{
 use crate::transport::write_journal;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui::{Alert, AlertVariant, Button, Label, Select, SelectOption, Textarea};
 use leptos_ui_routing::use_route_query_value;
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
 
 #[derive(Clone)]

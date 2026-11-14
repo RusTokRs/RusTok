@@ -15,6 +15,25 @@ extensions through `HostRuntimeContext`, while GraphQL and REST use the same
 typed runtime contracts. The package consumes the host effective locale and
 does not create a package-local locale fallback.
 
+The shared client lifecycle is now owned by `rustok-auth/ui` (`rustok-auth-ui`):
+`core`/`model` are framework-neutral, `transport` owns native and GraphQL/cookie
+adapters, and `ui::leptos` binds one provider for admin and storefront. The former
+`leptos-auth` package has no code or compatibility alias. The server-heavy backend
+is not a dependency of the client package. This is a source cutover, not a new
+mounted storefront route or a claim of verified runtime parity.
+
+**Open client verification:** run the locked native/default and SSR Auth tests,
+CSR and hydrate WASM checks, both host builds and downstream module tests. Exercise
+real native/direct-cookie login, refresh, rejection and logout; tenant mismatch,
+multiple providers, tabs and dropped requests; SSR snapshot/hydration; and mounted
+admin/storefront/Notifications consumers. Source guards and standalone scope tests
+do not prove cookie/network behavior. A same-document lease cannot serialize tabs
+or cancel sent requests, and client scope is not authorization. The tracked historical
+Translation browser output fixture now uses the real provider instead of constructing an
+obsolete fake session; its stale generated standalone lockfile was removed and its old
+screenshot is historical, not verification of this migration. Preserve the release
+gates in the [Page Builder backlog](../../../../docs/modules/page-builder-backlog.md).
+
 ## FFA/FBA boundary
 
 - FFA status: `phase_b_ready`
@@ -149,6 +168,8 @@ does not create a package-local locale fallback.
 
 ## Verification
 
+- `npm run verify:auth:ui-boundary` and `npm run test:verify:auth:ui-boundary`
+- `cargo test --locked -p rustok-auth-ui --lib` and `--features ssr`
 - `npm run verify:auth:admin-boundary`
   (`scripts/verify/verify-auth-admin-boundary.mjs`)
 - `npm run verify:ai:fba-baseline`

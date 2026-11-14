@@ -399,7 +399,7 @@ pub async fn cancel_run(run_id: String) -> Result<AiChatRunPayload, ApiError> {
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/bootstrap",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -553,7 +553,7 @@ async fn ai_bootstrap_native() -> Result<AiAdminBootstrap, ServerFnError> {
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/put-structured-budget-policy",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_put_structured_budget_policy_native(
     currency_code: String,
@@ -591,7 +591,7 @@ async fn ai_put_structured_budget_policy_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/put-structured-provider-policy",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_put_structured_provider_policy_native(
     provider_profile_id: String,
@@ -645,7 +645,7 @@ async fn ai_put_structured_provider_policy_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/session",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_session_native(
     session_id: String,
@@ -675,7 +675,7 @@ async fn ai_session_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/create-provider",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_create_provider_native(
     slug: String,
@@ -758,7 +758,7 @@ async fn ai_create_provider_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/test-provider",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_test_provider_native(id: String) -> Result<AiProviderTestResultPayload, ServerFnError> {
     #[cfg(feature = "ssr")]
@@ -798,7 +798,7 @@ async fn ai_test_provider_native(id: String) -> Result<AiProviderTestResultPaylo
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/update-provider",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_update_provider_native(
     id: String,
@@ -872,7 +872,7 @@ async fn ai_update_provider_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/deactivate-provider",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_deactivate_provider_native(
     id: String,
@@ -904,7 +904,7 @@ async fn ai_deactivate_provider_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/create-agent-principal",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_create_agent_principal_native(
     slug: String,
@@ -949,7 +949,7 @@ async fn ai_create_agent_principal_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/update-agent-principal",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_update_agent_principal_native(
     id: String,
@@ -992,7 +992,7 @@ async fn ai_update_agent_principal_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/create-agent-model-assignment",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_create_agent_model_assignment_native(
     agent_principal_id: String,
@@ -1038,7 +1038,7 @@ async fn ai_create_agent_model_assignment_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/update-agent-model-assignment",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_update_agent_model_assignment_native(
     id: String,
@@ -1079,7 +1079,7 @@ async fn ai_update_agent_model_assignment_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/create-agent-workflow-run",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_create_agent_workflow_run_native(
     workflow_owner: String,
@@ -1157,7 +1157,7 @@ async fn ai_create_agent_workflow_run_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/create-tool-profile",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_create_tool_profile_native(
     slug: String,
@@ -1209,7 +1209,7 @@ async fn ai_create_tool_profile_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/update-tool-profile",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_update_tool_profile_native(
     id: String,
@@ -1264,7 +1264,7 @@ async fn ai_update_tool_profile_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/create-task-profile",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_create_task_profile_native(
     slug: String,
@@ -1333,7 +1333,7 @@ async fn ai_create_task_profile_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/update-task-profile",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_update_task_profile_native(
     id: String,
@@ -1405,7 +1405,7 @@ async fn ai_update_task_profile_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/start-session",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_start_session_native(
     title: String,
@@ -1463,7 +1463,7 @@ async fn ai_start_session_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/run-task-job",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_run_task_job_native(
     title: String,
@@ -1525,7 +1525,7 @@ async fn ai_run_task_job_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/send-message",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_send_message_native(
     session_id: String,
@@ -1560,7 +1560,7 @@ async fn ai_send_message_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/resume-approval",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_resume_approval_native(
     approval_id: String,
@@ -1596,7 +1596,7 @@ async fn ai_resume_approval_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/resolve-agent-workflow-stage-approval",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_resolve_agent_workflow_stage_approval_native(
     stage_id: String,
@@ -1630,7 +1630,7 @@ async fn ai_resolve_agent_workflow_stage_approval_native(
 #[server(
     prefix = "/api/fn",
     endpoint = "ai/cancel-run",
-    client = leptos_auth::AuthorizedBrowserClient
+    client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient
 )]
 async fn ai_cancel_run_native(run_id: String) -> Result<AiChatRunPayload, ServerFnError> {
     #[cfg(feature = "ssr")]

@@ -1,8 +1,8 @@
-use super::*;
+use crate::core::*;
 
 #[test]
 fn test_package_metadata_contract() {
-    assert_eq!(env!("CARGO_PKG_NAME"), "leptos-auth");
+    assert_eq!(env!("CARGO_PKG_NAME"), "rustok-auth-ui");
     assert!(!env!("CARGO_PKG_VERSION").is_empty());
     assert!(!env!("CARGO_PKG_DESCRIPTION").is_empty());
 }

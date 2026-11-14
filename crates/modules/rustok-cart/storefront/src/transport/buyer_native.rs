@@ -121,7 +121,7 @@ pub(super) fn port_context(scope: &BuyerScope, operation: &'static str) -> rusto
     context
 }
 
-#[server(prefix = "/api/fn", endpoint = "cart/storefront-create", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
+#[server(prefix = "/api/fn", endpoint = "cart/storefront-create", input = leptos::server_fn::codec::Json, client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
 async fn storefront_cart_create_native(
     request: CartCreateRequest,
 ) -> Result<StorefrontCart, ServerFnError> {
@@ -196,7 +196,7 @@ async fn storefront_cart_create_native(
     }
 }
 
-#[server(prefix = "/api/fn", endpoint = "cart/storefront-add-variant", input = leptos::server_fn::codec::Json, client = leptos_auth::AuthorizedBrowserClient)]
+#[server(prefix = "/api/fn", endpoint = "cart/storefront-add-variant", input = leptos::server_fn::codec::Json, client = rustok_auth_ui::ui::leptos::AuthorizedBrowserClient)]
 async fn storefront_cart_add_variant_native(
     request: CartAddVariantRequest,
 ) -> Result<StorefrontCart, ServerFnError> {

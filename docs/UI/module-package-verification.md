@@ -90,6 +90,20 @@ Run when:
 
 ---
 
+## Shared Auth Client Boundary (for `rustok-auth-ui`)
+
+```powershell
+npm run verify:auth:ui-boundary
+npm run test:verify:auth:ui-boundary
+cargo test --locked -p rustok-auth-ui --lib
+cargo test --locked -p rustok-auth-ui --lib --features ssr
+```
+
+Also check CSR and hydrate WASM and both real hosts; the source/metadata guard
+is not evidence of cookie, browser-provider, or service behavior.
+
+---
+
 ## Auth Admin Boundary (for `rustok-auth-admin`)
 
 ```powershell

@@ -1,8 +1,8 @@
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui_routing::{RouteQueryWriter, use_route_query_value, use_route_query_writer};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_grid::{ColumnFilters, GridPagination, RowSelection};
 use rustok_grid_leptos::prelude::*;
 use rustok_seo_panel::SeoEntityPanel;

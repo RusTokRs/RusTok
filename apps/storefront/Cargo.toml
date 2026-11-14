@@ -17,8 +17,8 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["ssr"]
-csr = ["leptos/csr"]
-hydrate = ["leptos/hydrate"]
+csr = ["leptos/csr", "rustok-auth-ui/csr"]
+hydrate = ["leptos/hydrate", "rustok-auth-ui/hydrate"]
 pages-inline-edit = [
   "dep:rustok-pages-storefront",
   "rustok-pages-storefront/inline-edit",
@@ -46,6 +46,7 @@ ssr = [
   "dep:any_spawner",
   "leptos-ui-routing/ssr",
   "leptos/ssr",
+  "rustok-auth-ui/ssr",
   "dep:leptos_axum",
   "dep:rustok-content",
   "dep:rustok-core",
@@ -112,7 +113,7 @@ tokio = { workspace = true, optional = true }
 leptos = { workspace = true }
 leptos_axum = { workspace = true, optional = true }
 leptos_router = { workspace = true }
-leptos-auth = { workspace = true }
+rustok-auth-ui = { workspace = true }
 rustok-graphql = { workspace = true }
 leptos-ui = { workspace = true }
 leptos-ui-routing.workspace = true
@@ -188,7 +189,7 @@ export = "start_product_buyer_client"
 
 [package.metadata.cargo-udeps.ignore]
 normal = [
-  "leptos-auth",
+  "rustok-auth-ui",
   "rustok-graphql",
   "rustok-ui-transport",
   "rustok-ui-forms",

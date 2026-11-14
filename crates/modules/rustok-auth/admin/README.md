@@ -12,6 +12,7 @@ Leptos admin UI adapter package for the `rustok-auth` module.
 ## Responsibilities
 
 - Exposes authentication and user-management admin pages used by `apps/admin`.
+- Consumes the shared Auth-owned [`rustok-auth-ui`](../ui/README.md) lifecycle; it does not own a second provider.
 - Keeps auth-specific UI, view models, transport DTOs, and translation lookup inside the module package.
 - Participates in manifest-driven admin UI composition through `rustok-module.toml`.
 - Keeps the admin surface in FFA shape: Leptos-free `core.rs`, module-owned `transport/` facade, and explicit `ui/leptos.rs` render adapter.

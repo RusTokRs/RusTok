@@ -14,7 +14,7 @@
 - **`fly` / `fly_ui` / `fly_browser`**: Browser intent protocol, canvas controller, CSRF token validation (`derive_csrf_token`, `verify_csrf_token`), contribution manifests, and capability state resolution. The CSRF secret is derived by one rule on both sides of the protocol: `csrf_secret_from_access_token` takes the token's `session_id` claim, the page renderer embeds `derive_csrf_token(secret)`, and the host endpoint verifies the same pair. A token without that claim embeds nothing and the endpoint answers 403 rather than deriving from a rotating access token.
 - **`rustok-page-builder` & `rustok-page-builder-admin`**: `PageBuilderAdmin`, `ConsumerPropertyEditorRuntime`, `SsrDraftSessionStore`, `DurableSsrDraftSessionStore`, and document format constants.
 - **`rustok-ui-core`**: `AdminQueryKey::PageId`, `UiRouteContext`, `status_badge_class`, `parse_ui_csv`, `normalize_ui_text`.
-- **`leptos-auth`**: Session tokens (`use_token`), tenant context (`use_tenant`), and authenticated user claims (`use_current_user`).
+- **`rustok-auth-ui`**: Session tokens (`use_token`), tenant context (`use_tenant`), and authenticated user claims (`use_current_user`).
 
 ## Domain Collaborations
 

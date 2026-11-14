@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_auth, use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_auth, use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 use rustok_ui_forms::FormState;
 
@@ -11,13 +11,13 @@ use crate::ui::components::{Button, Input, PageHeader};
 
 /// Do not sign out a newer identity when the revoke-other-sessions request completes late.
 struct SessionRevocationFence {
-    scope: leptos_auth::ClientAuthScope,
+    scope: rustok_auth_ui::model::ClientAuthScope,
     token: String,
     tenant: String,
 }
 
 impl SessionRevocationFence {
-    fn capture(auth: &leptos_auth::AuthContext) -> Option<Self> {
+    fn capture(auth: &rustok_auth_ui::ui::leptos::AuthContext) -> Option<Self> {
         let session = auth.session().try_get_untracked().flatten()?;
         let fence = Self {
             scope: auth.client_scope_untracked(),
@@ -27,7 +27,7 @@ impl SessionRevocationFence {
         fence.is_current(auth).then_some(fence)
     }
 
-    fn is_current(&self, auth: &leptos_auth::AuthContext) -> bool {
+    fn is_current(&self, auth: &rustok_auth_ui::ui::leptos::AuthContext) -> bool {
         self.scope.is_ready()
             && auth.client_scope_untracked() == self.scope
             && !auth.is_token_expired()
@@ -36,8 +36,9 @@ impl SessionRevocationFence {
                 .try_get_untracked()
                 .flatten()
                 .is_some_and(|session| session.token == self.token && session.tenant == self.tenant)
-            && leptos_auth::storage::get_token().as_deref() == Some(self.token.as_str())
-            && leptos_auth::storage::matches_request_tenant(&self.tenant)
+            && rustok_auth_ui::ui::leptos::storage::get_token().as_deref()
+                == Some(self.token.as_str())
+            && rustok_auth_ui::ui::leptos::storage::matches_request_tenant(&self.tenant)
     }
 }
 
@@ -367,11 +368,13 @@ mod session_revocation_tests {
                 "tenant": "shop"
             }))
             .unwrap();
-            leptos_auth::provide_server_auth_snapshot(leptos_auth::ServerAuthSnapshot {
-                session: Some(session),
-                user: None,
-            });
-            let auth = leptos_auth::AuthContext::new();
+            rustok_auth_ui::ui::leptos::provide_server_auth_snapshot(
+                rustok_auth_ui::ui::leptos::ServerAuthSnapshot {
+                    session: Some(session),
+                    user: None,
+                },
+            );
+            let auth = rustok_auth_ui::ui::leptos::AuthContext::new();
             let fence = SessionRevocationFence::capture(&auth).unwrap();
             assert!(fence.is_current(&auth));
             (auth, fence)
@@ -388,11 +391,13 @@ mod session_revocation_tests {
                 "tenant": "shop"
             }))
             .unwrap();
-            leptos_auth::provide_server_auth_snapshot(leptos_auth::ServerAuthSnapshot {
-                session: Some(session),
-                user: None,
-            });
-            let auth = leptos_auth::AuthContext::new();
+            rustok_auth_ui::ui::leptos::provide_server_auth_snapshot(
+                rustok_auth_ui::ui::leptos::ServerAuthSnapshot {
+                    session: Some(session),
+                    user: None,
+                },
+            );
+            let auth = rustok_auth_ui::ui::leptos::AuthContext::new();
             assert!(SessionRevocationFence::capture(&auth).is_none());
         });
     }

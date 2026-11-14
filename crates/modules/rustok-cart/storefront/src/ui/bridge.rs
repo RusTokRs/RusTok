@@ -177,7 +177,7 @@ pub(super) fn install(
             )?);
             listeners.push(Listener::new(
                 &window,
-                leptos_auth::AUTH_SCOPE_CHANGE_EVENT,
+                rustok_auth_ui::ui::leptos::AUTH_SCOPE_CHANGE_EVENT,
                 move |event| {
                     publish_count(None);
                     let detail = event
@@ -212,8 +212,8 @@ pub(super) fn install(
                     .dyn_ref::<web_sys::StorageEvent>()
                     .and_then(|event| event.key());
                 if key.as_deref().is_none_or(|key| {
-                    key == leptos_auth::AUTH_SCOPE_CHANGE_STORAGE_KEY
-                        || key == leptos_auth::ADMIN_TENANT_KEY
+                    key == rustok_auth_ui::ui::leptos::AUTH_SCOPE_CHANGE_STORAGE_KEY
+                        || key == rustok_auth_ui::core::ADMIN_TENANT_KEY
                         || controller.matches_checkpoint_key(key)
                 }) {
                     publish_count(None);

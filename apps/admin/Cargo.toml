@@ -27,6 +27,7 @@ default = ["ssr"]
 pages-inline-edit-launch = ["rustok-pages-admin/inline-edit-launch"]
 csr = [
   "leptos/csr",
+  "rustok-auth-ui/csr",
   "dep:wasm-bindgen",
   "dep:web-sys",
   "dep:console_error_panic_hook",
@@ -54,7 +55,7 @@ hydrate = [
   "dep:web-sys",
   "dep:console_error_panic_hook",
   "dep:console_log",
-  "leptos-auth/hydrate",
+  "rustok-auth-ui/hydrate",
   "rustok-ai-admin/hydrate",
   "rustok-channel-admin/hydrate",
   "rustok-comments-admin/hydrate",
@@ -123,7 +124,7 @@ ssr = [
   "dep:rustok-tenant",
   "dep:rustok-web",
   "dep:rustok-workflow",
-  "leptos-auth/ssr",
+  "rustok-auth-ui/ssr",
   "rustok-ai-admin/ssr",
   "rustok-channel-admin/ssr",
   "rustok-comments-admin/ssr",
@@ -176,7 +177,6 @@ ssr = [
 [dependencies]
 rustok-grid.workspace = true
 rustok-grid-leptos = { workspace = true, default-features = false }
-rustok-ui-auth.workspace = true
 axum = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 rustok-ui-core.workspace = true
@@ -184,7 +184,7 @@ rustok-ui-transport.workspace = true
 leptos.workspace = true
 leptos_router = { workspace = true }
 leptos_axum = { workspace = true, optional = true }
-leptos-auth = { workspace = true, default-features = false }
+rustok-auth-ui = { workspace = true, default-features = false }
 rustok-graphql = { workspace = true }
 leptos-ui-routing = { workspace = true }
 leptos-ui = { workspace = true }
@@ -291,7 +291,7 @@ lib-cargo-args = ["--locked"]
 
 [package.metadata.cargo-udeps.ignore]
 normal = [
-  "leptos-auth",
+  "rustok-auth-ui",
   "leptos_axum",
   "rustok-graphql",
   "rustok-ui-forms",

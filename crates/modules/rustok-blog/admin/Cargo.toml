@@ -14,10 +14,11 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
-csr = ["leptos/csr", "rustok-grid-leptos/csr"]
-hydrate = ["leptos/hydrate", "rustok-grid-leptos/hydrate"]
+csr = ["leptos/csr", "rustok-auth-ui/csr", "rustok-grid-leptos/csr"]
+hydrate = ["leptos/hydrate", "rustok-auth-ui/hydrate", "rustok-grid-leptos/hydrate"]
 ssr = [
   "leptos/ssr",
+  "rustok-auth-ui/ssr",
   "rustok-grid-leptos/ssr",
   "dep:leptos_axum",
   "dep:rustok-blog",
@@ -40,7 +41,7 @@ rustok-grid-leptos = { workspace = true, default-features = false }
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 leptos_router.workspace = true
-leptos-auth.workspace = true
+rustok-auth-ui.workspace = true
 rustok-graphql.workspace = true
 leptos-ui.workspace = true
 serde.workspace = true

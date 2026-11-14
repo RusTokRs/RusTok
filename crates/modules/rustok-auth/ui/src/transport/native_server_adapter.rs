@@ -6,7 +6,7 @@ use serde_json::json;
 use super::RESET_REQUEST_MESSAGE;
 use super::{NativeAuthPayload, NativeCurrentUserPayload};
 #[cfg(feature = "ssr")]
-use crate::AuthUser;
+use crate::model::AuthUser;
 
 #[cfg(feature = "ssr")]
 use super::{
@@ -59,7 +59,7 @@ fn persist_refresh_cookie(
     tenant: &str,
     refresh_token: &str,
 ) -> Result<(), ServerFnError> {
-    set_response_cookie(crate::refresh_cookie_header(
+    set_response_cookie(crate::core::refresh_cookie_header(
         tenant,
         refresh_token,
         cookie_request_is_secure(headers),
@@ -68,7 +68,7 @@ fn persist_refresh_cookie(
 
 #[cfg(feature = "ssr")]
 fn clear_refresh_cookie(headers: &axum::http::HeaderMap) -> Result<(), ServerFnError> {
-    set_response_cookie(crate::clear_refresh_cookie_header(
+    set_response_cookie(crate::core::clear_refresh_cookie_header(
         cookie_request_is_secure(headers),
     ))
 }
@@ -85,7 +85,7 @@ fn refresh_cookie_from(
                 .map_err(|_| ServerFnError::new("Invalid authentication cookie"))?,
         );
     }
-    crate::cookie::inspect_refresh_cookie_headers(values)
+    crate::core::inspect_refresh_cookie_headers(values)
         .map_err(|_| ServerFnError::new("Invalid authentication cookie"))
 }
 

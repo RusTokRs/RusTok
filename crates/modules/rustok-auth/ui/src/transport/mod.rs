@@ -5,7 +5,7 @@ mod native_server_adapter;
 use rustok_ui_transport::UiTransportPath;
 use serde::{Deserialize, Serialize};
 
-use crate::{AuthError, AuthSession, AuthUser};
+use crate::model::{AuthError, AuthSession, AuthUser};
 
 fn selected_transport_path() -> UiTransportPath {
     if cfg!(all(target_arch = "wasm32", not(feature = "hydrate"))) {

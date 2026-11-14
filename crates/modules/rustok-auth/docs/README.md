@@ -97,7 +97,7 @@ and composition, but must not duplicate auth policy or token semantics.
 - `apps/server/src/controllers/auth.rs` remains an HTTP adapter over auth-owned DTOs and lifecycle ports;
 - `apps/server` checks registry wiring and GraphQL security hints against `AUTH_USER_PERMISSIONS`, so the host layer does not diverge from the auth-owned permission surface;
 - `apps/server` implements ports on top of existing auth lifecycle/OAuth services and registers providers in shared runtime extensions; GraphQL and native `#[server]` adapters must consume one provider per boundary;
-- publishes its own UI via the sub-package `crates/modules/rustok-auth/admin` with `ui_classification = "admin_only"`;
+- publishes admin pages via `crates/modules/rustok-auth/admin` with `ui_classification = "admin_only"`; the separate [`ui` client capability](../ui/README.md) supplies one shared session boundary to both Leptos hosts without adding a storefront route;
 - email delivery and transport wiring remain the responsibility of the host layer and adjacent modules.
 
 ## Config Lifecycle Surface

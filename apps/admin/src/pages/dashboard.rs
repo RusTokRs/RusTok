@@ -1,6 +1,6 @@
 use crate::features::dashboard::transport;
 use leptos::prelude::*;
-use leptos_auth::hooks::{use_current_user, use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_current_user, use_tenant, use_token};
 
 use crate::app::modules::{AdminSlot, components_for_slot};
 use crate::app::providers::enabled_modules::use_enabled_modules;

@@ -24,7 +24,9 @@ fn bootstrap_source_tracks_reactive_auth_transport_context() {
 #[test]
 fn auth_context_exposes_reactive_read_only_session_projections() {
     use leptos::prelude::*;
-    use leptos_auth::{AuthContext, ServerAuthSnapshot, provide_server_auth_snapshot};
+    use rustok_auth_ui::ui::leptos::{
+        AuthContext, ServerAuthSnapshot, provide_server_auth_snapshot,
+    };
 
     let owner = Owner::new();
     owner.with(|| {

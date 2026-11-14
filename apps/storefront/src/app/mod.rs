@@ -18,7 +18,7 @@ fn StorefrontLayout(locale: String, body: AnyView) -> impl IntoView {
         .map(|tenant| tenant.slug)
         .unwrap_or_default();
     #[cfg(not(feature = "ssr"))]
-    let cart_tenant = leptos_auth::storage::get_tenant().unwrap_or_default();
+    let cart_tenant = rustok_auth_ui::ui::leptos::storage::get_tenant().unwrap_or_default();
     let enabled_modules = use_enabled_modules().get_untracked();
     let header_navigation_views =
         components_for_slot(StorefrontSlot::HeaderNavigation, Some(&enabled_modules))

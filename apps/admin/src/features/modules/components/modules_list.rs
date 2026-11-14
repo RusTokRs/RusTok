@@ -14,12 +14,12 @@ use crate::shared::ui::ui_success_message as UiSuccessMessage;
 use crate::use_admin_locale;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_router::hooks::{use_navigate, use_query_map};
 #[cfg(target_arch = "wasm32")]
 use leptos_use::use_interval_fn;
 use rustok_api::{MarketplaceRegistryFreshness, MarketplaceRegistryStatus};
 use rustok_api::{ModuleRetentionHoldView, ModuleTransitionCheckpointView};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_forms::FormState;
 use std::collections::{HashMap, HashSet};
 #[cfg(target_arch = "wasm32")]

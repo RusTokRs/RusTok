@@ -13,8 +13,8 @@ use crate::model::{ProductDetail, VariantCreateOutcome, VariantDraft};
 use crate::transport::write_journal;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
 use leptos_ui::{Alert, AlertVariant, Button, Input, Select, SelectOption};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 
 #[derive(Clone)]
 struct LoadedRecovery {

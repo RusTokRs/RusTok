@@ -217,8 +217,8 @@ pub fn PageBuilderContributionScope(
 
     #[cfg(not(feature = "ssr"))]
     {
-        let current_user = leptos_auth::hooks::use_current_user();
-        let is_loading = leptos_auth::hooks::use_is_loading();
+        let current_user = rustok_auth_ui::ui::leptos::hooks::use_current_user();
+        let is_loading = rustok_auth_ui::ui::leptos::hooks::use_is_loading();
         let children_for_result = children.clone();
 
         view! {
@@ -307,7 +307,7 @@ fn ResolvedPageBuilderContributionScope(
         );
     }
     if enabled_modules.contains("blog") {
-        extensions.push(blog::extension(leptos_auth::use_auth()));
+        extensions.push(blog::extension(rustok_auth_ui::ui::leptos::use_auth()));
     }
 
     match PageBuilderContributionHostContext::new(extensions) {

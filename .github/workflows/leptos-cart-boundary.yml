@@ -16,12 +16,14 @@ on:
       - "crates/modules/rustok-notifications/docs/implementation-plan.md"
       - "crates/modules/rustok-forum/contracts/forum-notification-inbox-auth-reactive-bootstrap.json"
       - "scripts/verify/verify-forum-notification-inbox-auth-reactive-bootstrap.mjs"
+      - "scripts/verify/verify-auth-ui-boundary*.mjs"
+      - "package.json"
       - "crates/modules/rustok-profiles/storefront/**"
       - "crates/modules/rustok-reactions/storefront/**"
       - "crates/modules/rustok-product/storefront/**"
       - "crates/modules/rustok-commerce/**"
       - "crates/modules/rustok-page-builder/storefront/assets/fly-storefront-bridge.js"
-      - "crates/ui/leptos-auth/**"
+      - "crates/modules/rustok-auth/ui/**"
       - "crates/ui/rustok-ui/leptos/**"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -42,10 +44,63 @@ env:
   RUSTFLAGS: "-C debuginfo=0"
 
 jobs:
+  auth-native:
+    name: Auth client owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          key: leptos-cart-native
+      - name: Auth owner architecture and feature guards
+        run: |
+          node scripts/verify/verify-auth-ui-boundary.mjs
+          node --test scripts/verify/verify-auth-ui-boundary.test.mjs
+      - name: Test the Auth owner and its SSR consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_checked() {
+            local label="$1"; shift
+            local log; log="$(mktemp)"
+            local status=0
+            "$@" >"$log" 2>&1 || status=$?
+            if [ "$status" -ne 0 ]; then
+              local diagnostics
+              diagnostics="$(awk '
+                /^---- .* stdout ----$/ { print; remaining=6; next }
+                remaining > 0 { print; remaining-- }
+              ' "$log" | head -c 1000 || true)"
+              if [ -z "$diagnostics" ]; then
+                diagnostics="$(awk '
+                  /^error(\[|:)/ { print; remaining=5; next }
+                  remaining > 0 { print substr($0, 1, 400); remaining-- }
+                ' "$log" | head -c 1000 || true)"
+              fi
+              if [ -z "$diagnostics" ]; then diagnostics="$(tail -c 1000 "$log")"; fi
+              diagnostics="$(printf '%s' "$diagnostics" | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
+              echo "::error title=$label::$diagnostics"
+              tail -n 180 "$log"
+              return "$status"
+            fi
+            tail -n 12 "$log"
+            echo "::notice title=$label::passed"
+          }
+          failed=0
+          run_checked auth-tests cargo test --locked --lib -p rustok-auth-ui || failed=1
+          run_checked auth-ssr-tests cargo test --locked --lib -p rustok-auth-ui --features ssr || failed=1
+          run_checked auth-public-contract cargo test --locked -p rustok-auth-ui --test shared_client_contract || failed=1
+          run_checked auth-admin-ssr cargo check --locked --lib -p rustok-auth-admin --features ssr || failed=1
+          if [ "$failed" -ne 0 ]; then exit "$failed"; fi
+
   native:
     name: Native Cart, Product and admission
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
@@ -93,8 +148,6 @@ jobs:
           failed=0
           run_checked modules-client cargo check --locked --lib -p rustok-cart-storefront -p rustok-product-storefront || failed=1
           run_checked auth-consumers cargo check --locked --lib -p rustok-profiles-storefront -p rustok-reactions-storefront || failed=1
-          run_checked auth-tests cargo test --locked --lib -p leptos-auth || failed=1
-          run_checked auth-ssr-tests cargo test --locked --lib -p leptos-auth --features ssr || failed=1
           run_checked auth-admin-tests cargo test --locked --lib -p rustok-auth-admin session_revocation_tests || failed=1
           run_checked notification-auth-source node scripts/verify/verify-forum-notification-inbox-auth-reactive-bootstrap.mjs || failed=1
           run_checked notification-auth-contract cargo test --locked -p rustok-notifications-storefront --test auth_reactive_bootstrap_contract || failed=1
@@ -123,23 +176,43 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           key: leptos-cart-wasm
-      - name: Check the actual client feature set
+      - name: Check Auth and actual host client features
         shell: bash
         run: |
           set -euo pipefail
-          log="$(mktemp)"
-          status=0
-          cargo check --locked --lib -p rustok-storefront --no-default-features \
-            --features product-buyer-island --target wasm32-unknown-unknown >"$log" 2>&1 || status=$?
-          if [ "$status" -ne 0 ]; then
-            diagnostics="$(awk '
-              /^error(\[|:)/ { print; remaining=5; next }
-              remaining > 0 { print substr($0, 1, 400); remaining-- }
-            ' "$log" | head -c 1000 || true)"
-            if [ -z "$diagnostics" ]; then diagnostics="$(tail -c 1000 "$log")"; fi
-            diagnostics="$(printf '%s' "$diagnostics" | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
-            echo "::error title=cart-product-wasm::$diagnostics"
-            tail -n 180 "$log"
-            exit "$status"
+          run_checked() {
+            local label="$1"; shift
+            local log; log="$(mktemp)"
+            local status=0
+            "$@" >"$log" 2>&1 || status=$?
+            if [ "$status" -ne 0 ]; then
+              local diagnostics
+              diagnostics="$(awk '
+                /^error(\[|:)/ { print; remaining=5; next }
+                remaining > 0 { print substr($0, 1, 400); remaining-- }
+              ' "$log" | head -c 1000 || true)"
+              if [ -z "$diagnostics" ]; then diagnostics="$(tail -c 1000 "$log")"; fi
+              diagnostics="$(printf '%s' "$diagnostics" | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
+              echo "::error title=$label::$diagnostics"
+              tail -n 180 "$log"
+              return "$status"
+            fi
+            tail -n 12 "$log"
+            echo "::notice title=$label::passed"
+          }
+          failed=0
+          run_checked cart-product-wasm cargo check --locked --lib -p rustok-storefront --no-default-features --features product-buyer-island --target wasm32-unknown-unknown || failed=1
+          run_checked auth-csr-wasm cargo check --locked --lib -p rustok-auth-ui --no-default-features --features csr --target wasm32-unknown-unknown || failed=1
+          run_checked auth-admin-csr-wasm cargo check --locked --lib -p rustok-auth-admin --no-default-features --features csr --target wasm32-unknown-unknown || failed=1
+          run_checked storefront-csr-wasm cargo check --locked --lib -p rustok-storefront --no-default-features --features csr --target wasm32-unknown-unknown || failed=1
+          run_checked admin-hydrate-wasm cargo check --locked --lib -p rustok-admin --no-default-features --features hydrate --target wasm32-unknown-unknown || failed=1
+          if [ "$failed" -ne 0 ]; then exit "$failed"; fi
+      - name: Verify the browser graph excludes server Auth and ORM
+        shell: bash
+        run: |
+          set -euo pipefail
+          tree="$(cargo tree --locked -p rustok-auth-ui --no-default-features --features hydrate --target wasm32-unknown-unknown --prefix none)"
+          if printf '%s\n' "$tree" | grep -Eq '^(rustok-auth|sea-orm) v[0-9]'; then
+            echo '::error::Auth client browser graph contains the server Auth package or SeaORM'
+            exit 1
           fi
-          tail -n 12 "$log"

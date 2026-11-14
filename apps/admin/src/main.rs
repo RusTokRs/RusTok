@@ -20,13 +20,14 @@ async fn main() {
     };
     use leptos::logging::log;
     use leptos::prelude::*;
-    use leptos_auth::{ServerAuthSnapshot, provide_server_auth_snapshot};
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use rustok_admin::app::{
         App, DRAFT_SESSION_PRUNE_INTERVAL, admin_security_headers, auth_ssr::verify_auth_snapshot,
         request_auth_snapshot, request_csp_nonce, shell, spawn_draft_session_prune,
         validate_admin_security_profile,
     };
+    use rustok_auth_ui::model::AuthError;
+    use rustok_auth_ui::ui::leptos::{ServerAuthSnapshot, provide_server_auth_snapshot};
     use rustok_pages_admin::{
         BrowserIntentEnvelope, DraftSessionOwner, FLY_CSRF_HEADER_NAME,
         PagesBrowserIntentAccessError, PagesBrowserIntentProblem, PagesBrowserIntentResponse,
@@ -35,7 +36,6 @@ async fn main() {
         pages_editor_capabilities_for_snapshot, pages_editor_capability_policy_from_effective,
         verify_csrf_token,
     };
-    use rustok_ui_auth::AuthError;
     use serde_json::{Value, json};
 
     async fn page_builder_intent(
@@ -101,7 +101,7 @@ async fn main() {
             }
         };
         let verified_user =
-            leptos_auth::transport::fetch_current_user(token.clone(), tenant_slug.clone())
+            rustok_auth_ui::transport::fetch_current_user(token.clone(), tenant_slug.clone())
                 .await
                 .map_err(auth_transport_error)?
                 .ok_or_else(|| {

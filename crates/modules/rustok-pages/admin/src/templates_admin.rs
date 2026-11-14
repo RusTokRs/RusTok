@@ -3,7 +3,7 @@ use crate::transport;
 use leptos::ev::SubmitEvent;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_auth::hooks::{use_tenant, use_token};
+use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TemplatesTab {

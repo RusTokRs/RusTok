@@ -416,7 +416,7 @@ fn SelectedProductCard(
     #[cfg(feature = "ssr")]
     let tenant = use_context::<rustok_api::TenantContext>().map(|tenant| tenant.slug);
     #[cfg(not(feature = "ssr"))]
-    let tenant = leptos_auth::storage::get_tenant();
+    let tenant = rustok_auth_ui::ui::leptos::storage::get_tenant();
     let buyer = selected_handle.and_then(|handle| {
         let tenant = tenant?;
         crate::core::buyer::snapshot(product.clone(), route_context.clone(), handle, tenant).ok()

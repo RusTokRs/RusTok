@@ -4,7 +4,7 @@
 //! only an in-realm consistency fence: it does not authenticate a request, coordinate tabs,
 //! cancel an already-sent request or constrain unrelated scripts that ignore the protocol.
 
-use crate::AuthError;
+use crate::model::AuthError;
 
 #[cfg(target_arch = "wasm32")]
 const REALM_TRANSITION_KEY: &str = "__rustokAuthTransition";

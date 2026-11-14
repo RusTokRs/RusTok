@@ -87,7 +87,7 @@ struct ClientScope {
     token: Option<String>,
     tenant: String,
     page_path: Option<String>,
-    auth: leptos_auth::ClientAuthScope,
+    auth: rustok_auth_ui::model::ClientAuthScope,
     capability: CartCapabilityState,
 }
 
@@ -105,9 +105,10 @@ fn browser_path() -> Option<String> {
 fn checkpoint_key(scope: &ClientScope) -> Result<String, BuyerCartError> {
     let lineage = match scope.token.as_deref() {
         None => None,
-        Some(token) if token.len() <= 16 * 1024 => {
-            Some(leptos_auth::session_id_from_access_token(token).ok_or(BuyerCartError::Restore)?)
-        }
+        Some(token) if token.len() <= 16 * 1024 => Some(
+            rustok_auth_ui::core::session_id_from_access_token(token)
+                .ok_or(BuyerCartError::Restore)?,
+        ),
         Some(_) => return Err(BuyerCartError::Restore),
     };
     buyer_cart_storage_key(&scope.tenant, lineage.as_deref())
@@ -247,7 +248,7 @@ pub struct BuyerCartController {
     bound_scope: RwSignal<Option<ClientScope>>,
     auth_loading: Signal<bool>,
     auth_refused: Signal<bool>,
-    auth_scope: Signal<leptos_auth::ClientAuthScope>,
+    auth_scope: Signal<rustok_auth_ui::model::ClientAuthScope>,
     capability: CartCapability,
     external_auth_changed: RwSignal<bool>,
     inspection_scope: RwSignal<Option<ClientScope>>,
@@ -311,8 +312,8 @@ impl BuyerCartController {
             && self.auth_scope.try_get() == Some(scope.auth)
             && (!cfg!(target_arch = "wasm32") || scope.page_path.is_some())
             && browser_path() == scope.page_path
-            && leptos_auth::storage::get_token() == scope.token
-            && leptos_auth::storage::matches_request_tenant(&scope.tenant)
+            && rustok_auth_ui::ui::leptos::storage::get_token() == scope.token
+            && rustok_auth_ui::ui::leptos::storage::matches_request_tenant(&scope.tenant)
     }
 
     /// Disposal-safe, untracked pre-send check for asynchronously scheduled Product quotes.
@@ -333,8 +334,8 @@ impl BuyerCartController {
             && self.auth_scope.try_get_untracked() == Some(scope.auth)
             && (!cfg!(target_arch = "wasm32") || scope.page_path.is_some())
             && browser_path() == scope.page_path
-            && leptos_auth::storage::get_token() == scope.token
-            && leptos_auth::storage::matches_request_tenant(&scope.tenant)
+            && rustok_auth_ui::ui::leptos::storage::get_token() == scope.token
+            && rustok_auth_ui::ui::leptos::storage::matches_request_tenant(&scope.tenant)
     }
 
     /// The host owns history writes, including selection-only changes. Its returned URL
@@ -424,8 +425,8 @@ impl BuyerCartController {
             && self.bound_scope.try_get_untracked().flatten().as_ref() == Some(scope)
             && (!cfg!(target_arch = "wasm32") || scope.page_path.is_some())
             && browser_path() == scope.page_path
-            && leptos_auth::storage::get_token() == scope.token
-            && leptos_auth::storage::matches_request_tenant(&scope.tenant)
+            && rustok_auth_ui::ui::leptos::storage::get_token() == scope.token
+            && rustok_auth_ui::ui::leptos::storage::matches_request_tenant(&scope.tenant)
     }
     fn current_generation(&self, scope: &ClientScope, generation: u64) -> bool {
         generation < u64::MAX
@@ -830,11 +831,11 @@ pub fn use_buyer_cart(
     persist_reference: Callback<Option<String>, bool>,
     persist_selection: Callback<String, Option<String>>,
 ) -> BuyerCartController {
-    let auth = use_context::<leptos_auth::AuthContext>();
+    let auth = use_context::<rustok_auth_ui::ui::leptos::AuthContext>();
     let auth_for_stamp = auth.clone();
     let auth_scope = Signal::derive(move || {
         auth_for_stamp.as_ref().map_or_else(
-            || leptos_auth::ClientAuthScope::new(false),
+            || rustok_auth_ui::model::ClientAuthScope::new(false),
             |auth| auth.client_scope(),
         )
     });
@@ -847,7 +848,7 @@ pub fn use_buyer_cart(
         page_path: page_path.clone(),
         auth: auth_scope
             .try_get()
-            .unwrap_or_else(|| leptos_auth::ClientAuthScope::new(false)),
+            .unwrap_or_else(|| rustok_auth_ui::model::ClientAuthScope::new(false)),
         capability: capability.get(),
     });
     let external_auth_changed = RwSignal::new(false);
@@ -861,7 +862,7 @@ pub fn use_buyer_cart(
                 auth.get_tenant()
                     .is_some_and(|tenant| tenant != tenant_slug)
                     || (session.is_some() && auth.is_token_expired())
-                    || !leptos_auth::storage::matches_request_tenant(&tenant_slug)
+                    || !rustok_auth_ui::ui::leptos::storage::matches_request_tenant(&tenant_slug)
             })
     });
     let auth_loading = Signal::derive(move || {
@@ -890,7 +891,7 @@ pub fn use_buyer_cart(
             || bound_scope.try_get().flatten().as_ref() != Some(&current_scope)
             || auth_scope.try_get() != Some(current_scope.auth)
             || capability.get() != current_scope.capability
-            || leptos_auth::storage::get_token() != current_scope.token
+            || rustok_auth_ui::ui::leptos::storage::get_token() != current_scope.token
         {
             return BuyerCartSession::restoring(None);
         }
@@ -1107,7 +1108,7 @@ mod tests {
         init_test_executor();
         let owner = Owner::new();
         owner.with(|| {
-            provide_context(leptos_auth::AuthContext::new());
+            provide_context(rustok_auth_ui::ui::leptos::AuthContext::new());
             let controller = use_buyer_cart(
                 None,
                 Some("en".into()),
@@ -1142,7 +1143,7 @@ mod tests {
         init_test_executor();
         let owner = Owner::new();
         let (guard, controller) = owner.with(|| {
-            provide_context(leptos_auth::AuthContext::new());
+            provide_context(rustok_auth_ui::ui::leptos::AuthContext::new());
             let state = RwSignal::new(CartOperationState::default());
             let id = state
                 .try_update(CartOperationState::begin)
@@ -1177,7 +1178,7 @@ mod tests {
         init_test_executor();
         let owner = Owner::new();
         owner.with(|| {
-            provide_context(leptos_auth::AuthContext::new());
+            provide_context(rustok_auth_ui::ui::leptos::AuthContext::new());
             let controller = use_buyer_cart(
                 None,
                 Some("en".into()),
@@ -1199,7 +1200,7 @@ mod tests {
         init_test_executor();
         let owner = Owner::new();
         owner.with(|| {
-            provide_context(leptos_auth::AuthContext::new());
+            provide_context(rustok_auth_ui::ui::leptos::AuthContext::new());
             let capability = CartCapability::new(false);
             let controller = use_buyer_cart(
                 None,
@@ -1230,7 +1231,7 @@ mod tests {
             })
         });
         owner.with(|| {
-            provide_context(leptos_auth::AuthContext::new());
+            provide_context(rustok_auth_ui::ui::leptos::AuthContext::new());
             let controller = use_buyer_cart(
                 None,
                 Some("en".into()),
@@ -1250,7 +1251,7 @@ mod tests {
         init_test_executor();
         let owner = Owner::new();
         owner.with(|| {
-            provide_context(leptos_auth::AuthContext::new());
+            provide_context(rustok_auth_ui::ui::leptos::AuthContext::new());
             let host_current = RwSignal::new(true);
             let capability = CartCapability::with_host_verifier(
                 false,

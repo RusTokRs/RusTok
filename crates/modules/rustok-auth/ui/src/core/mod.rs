@@ -1,19 +1,8 @@
-//! # Leptos Auth
-//!
-//! Shared authentication UI and runtime boundary for Leptos applications,
-//! including auth context, reactive hooks, route guards, and cookie helpers.
+//! Framework-independent Auth client scope, refresh-cookie and session helpers.
 
-mod client;
-pub mod components;
-pub mod context;
 mod cookie;
-pub mod hooks;
-mod realm;
-mod scope;
-pub mod storage;
-pub mod transport;
 
-use rustok_ui_auth::{AuthError, AuthSession, AuthUser};
+pub use cookie::{RefreshCookieError, inspect_refresh_cookie_headers};
 
 pub const ADMIN_TOKEN_KEY: &str = "rustok-admin-token";
 pub const ADMIN_TENANT_KEY: &str = "rustok-admin-tenant";
@@ -58,19 +47,6 @@ pub fn clear_refresh_cookie_header(secure: bool) -> String {
     }
     cookie
 }
-
-pub use client::AuthorizedBrowserClient;
-pub use components::{GuestRoute, ProtectedRoute, RequireAuth};
-pub use context::{
-    AUTH_SCOPE_CHANGE_EVENT, AUTH_SCOPE_CHANGE_STORAGE_KEY, AuthContext, AuthProvider,
-};
-pub use cookie::{RefreshCookieError, inspect_refresh_cookie_headers};
-pub use hooks::{
-    use_auth, use_auth_error, use_current_user, use_is_authenticated, use_is_loading,
-    use_is_token_valid, use_session, use_tenant, use_token,
-};
-pub use scope::ClientAuthScope;
-pub use storage::{ServerAuthSnapshot, provide_server_auth_snapshot};
 
 /// Extract the stable session id (`session_id` claim) from an access
 /// token WITHOUT verifying it.
@@ -125,6 +101,3 @@ fn base64url_decode(input: &str) -> Option<Vec<u8>> {
     }
     Some(output)
 }
-
-#[cfg(test)]
-mod contract_tests;

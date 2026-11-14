@@ -1,14 +1,14 @@
-use crate::{AuthError, AuthSession, AuthUser};
+use crate::model::{AuthError, AuthSession, AuthUser};
 
 #[cfg(target_arch = "wasm32")]
-use crate::{ADMIN_SESSION_KEY, ADMIN_TENANT_KEY, ADMIN_TOKEN_KEY, ADMIN_USER_KEY};
+use crate::core::{ADMIN_SESSION_KEY, ADMIN_TENANT_KEY, ADMIN_TOKEN_KEY, ADMIN_USER_KEY};
 #[cfg(target_arch = "wasm32")]
 use gloo_storage::{LocalStorage, Storage};
 
 /// Request-scoped authentication state supplied by an SSR host.
 ///
 /// The host remains responsible for validating its cookie/session and constructing this snapshot.
-/// `leptos-auth` only exposes it to existing `AuthContext` consumers, so UI modules do not branch
+/// `rustok-auth-ui` only exposes it to existing `AuthContext` consumers, so UI modules do not branch
 /// on browser vs server storage.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ServerAuthSnapshot {
@@ -39,7 +39,7 @@ pub fn provide_server_auth_snapshot(_snapshot: ServerAuthSnapshot) {}
 mod memory {
     use std::cell::RefCell;
 
-    use crate::{AuthSession, AuthUser};
+    use crate::model::{AuthSession, AuthUser};
 
     thread_local! {
         static SESSION: RefCell<Option<AuthSession>> = const { RefCell::new(None) };

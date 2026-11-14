@@ -1,7 +1,7 @@
 use leptos::prelude::*;
-use leptos_auth::hooks::{use_current_user, use_tenant};
 use leptos_router::components::A;
 use leptos_router::hooks::{use_location, use_query_map};
+use rustok_auth_ui::ui::leptos::hooks::{use_current_user, use_tenant};
 
 use crate::app::modules::module_navigation_entries;
 use crate::app::providers::enabled_modules::use_enabled_modules;

@@ -12,7 +12,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::{get_api_url, now_unix_secs};
-use crate::{AuthError, AuthSession, AuthUser};
+use crate::model::{AuthError, AuthSession, AuthUser};
 
 #[derive(Debug, Deserialize)]
 struct CookieSessionResponse {

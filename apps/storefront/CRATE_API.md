@@ -36,6 +36,6 @@
 
 ## Dependencies & Boundaries
 
-- **Upstream UI & Framework Crates:** Depends on `leptos`, `leptos_router`, `leptos_axum`, `leptos-auth`, `leptos-ui`, `leptos-ui-routing`, `rustok-ui-core`, `rustok-ui-i18n`, `rustok-ui-transport`, `rustok-graphql`, `rustok-web`.
+- **Upstream UI & Framework Crates:** Depends on `leptos`, `leptos_router`, `leptos_axum`, `rustok-auth-ui`, `leptos-ui`, `leptos-ui-routing`, `rustok-ui-core`, `rustok-ui-i18n`, `rustok-ui-transport`, `rustok-graphql`, `rustok-web`.
 - **Module Storefront Packages:** Mounts module storefront crates (`rustok-*-storefront`) via public component and page registrations.
 - **Zero Cross-Module Direct Database Queries:** Interacts with modules exclusively through public APIs, ports, or GraphQL surfaces.
