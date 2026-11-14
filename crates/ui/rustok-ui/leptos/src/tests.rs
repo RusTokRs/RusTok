@@ -296,6 +296,13 @@ fn test_render_declarative_tabs_ssr() {
     });
 
     assert!(html.contains("role=\"tablist\""));
+    assert!(html.contains("data-slot=\"tabs\""));
+    assert!(html.contains("data-slot=\"tabs-list\""));
+    assert!(html.contains("data-slot=\"tabs-trigger\""));
+    assert!(html.contains("data-slot=\"tabs-content\""));
+    assert!(html.contains("data-state=\"inactive\""));
+    assert!(html.contains("data-state=\"active\""));
+    assert!(html.contains("data-orientation=\"horizontal\""));
     assert!(html.contains("role=\"tab\""));
     assert!(html.contains("aria-selected=\"false\""));
     assert!(html.contains("aria-selected=\"true\""));

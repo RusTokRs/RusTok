@@ -69,7 +69,7 @@ pub fn Tabs(
     });
 
     view! {
-        <div class=full_class data-orientation=orientation.as_str()>
+        <div class=full_class data-slot="tabs" data-orientation=orientation.as_str()>
             {children()}
         </div>
     }
@@ -105,8 +105,9 @@ pub fn TabsList(
                 let len = tabs.length() as usize;
                 if len == 0 { return; }
 
+                let current_tab = target.closest("[role='tab']").ok().flatten().unwrap_or(target);
                 let current_index = (0..len).find(|&i| {
-                    tabs.item(i as u32).map_or(false, |node| node.is_same_node(Some(&target)))
+                    tabs.item(i as u32).map_or(false, |node| node.is_same_node(Some(&current_tab)))
                 });
 
                 let target_index = if is_home {
@@ -137,6 +138,8 @@ pub fn TabsList(
     view! {
         <div
             role="tablist"
+            data-slot="tabs-list"
+            data-orientation=effective_orientation.as_str()
             aria-orientation=effective_orientation.as_str()
             class=full_class
             on:keydown=on_keydown
@@ -180,12 +183,18 @@ pub fn TabsTrigger(
         tabs_trigger_classes(is_active.get(), disabled, (!c.is_empty()).then_some(c.as_str()))
     };
 
+    let data_state = move || if is_active.get() { "active" } else { "inactive" };
+    let orientation_str = ctx.map(|c| c.orientation.as_str()).unwrap_or("horizontal");
+
     let val_for_click = value.clone();
     view! {
         <button
             type="button"
             id=id
             role="tab"
+            data-slot="tabs-trigger"
+            data-state=data_state
+            data-orientation=orientation_str
             aria-selected=move || is_active.get().to_string()
             aria-controls=panel_id
             tabindex=move || if is_active.get() { "0" } else { "-1" }
@@ -239,12 +248,19 @@ pub fn TabsContent(
         tabs_content_classes(is_active.get(), (!c.is_empty()).then_some(c.as_str()))
     };
 
+    let data_state = move || if is_active.get() { "active" } else { "inactive" };
+    let orientation_str = ctx.map(|c| c.orientation.as_str()).unwrap_or("horizontal");
+
     view! {
         <div
             id=id
             role="tabpanel"
+            data-slot="tabs-content"
+            data-state=data_state
+            data-orientation=orientation_str
             aria-labelledby=tab_id
             tabindex="0"
+            hidden=move || (!is_active.get()).then_some("")
             class=full_class
         >
             {children()}
