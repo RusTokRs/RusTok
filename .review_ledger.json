@@ -230,9 +230,9 @@
       "category": "modules",
       "files": 225,
       "loc": 57208,
-      "completed": false,
-      "completed_at": null,
-      "notes": "",
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified 6 Universal Logic Dimensions: decoupled BlogTaxonomyPort, non-nil UUIDs, TransactionalEventBus, search projection",
       "last_audited": "2026-11-01"
     },
     "crates/modules/rustok-blog/admin": {
@@ -241,9 +241,9 @@
       "category": "modules",
       "files": 37,
       "loc": 11285,
-      "completed": false,
-      "completed_at": null,
-      "notes": "",
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified FFA separation, non-nil tenant/actor guards, RBAC gates, target-only article richtext editor",
       "last_audited": "2026-11-01"
     },
     "crates/modules/rustok-blog/storefront": {
@@ -252,9 +252,9 @@
       "category": "modules",
       "files": 27,
       "loc": 4988,
-      "completed": false,
-      "completed_at": null,
-      "notes": "",
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified FFA separation, non-nil UUIDs, comments outage disclosure, public post and comment projection",
       "last_audited": "2026-11-01"
     },
     "crates/modules/rustok-brand": {

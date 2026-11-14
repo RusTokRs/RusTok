@@ -127,7 +127,7 @@ for (const marker of [
   "target_id: None",
   "txn.commit().await",
   "blog_category::Column::TenantId.eq(tenant_id)",
-  "Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?",
+  "Self::ensure_exists_in_tx(&*self.taxonomy_port, &txn, tenant_id, parent_id).await?",
   "normalize_category_slug(input.slug.as_deref(), &name)?",
   "Slug must contain at least one routable letter or digit",
   "let per_page = filter.per_page.clamp(1, 100)",
@@ -163,7 +163,7 @@ requireBeforeWithin(
   "pub async fn delete(",
   "pub async fn list(",
   "enforce_scope(",
-  "TaxonomyService::new",
+  "BlogCategoryDeleteCleanup::new",
   `${categoryOwnerPath}: delete authorization order`,
 );
 

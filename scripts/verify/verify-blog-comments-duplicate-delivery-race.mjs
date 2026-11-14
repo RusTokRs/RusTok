@@ -22,7 +22,7 @@ function read(relativePath) {
     failures.push(`${relativePath}: expected file is missing`);
     return '';
   }
-  return readFileSync(target, 'utf8');
+  return readFileSync(target, 'utf8').replace(/\r\n/g, '\n');
 }
 
 function requireMarker(source, marker, label) {

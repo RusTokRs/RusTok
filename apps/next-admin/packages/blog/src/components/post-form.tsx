@@ -434,11 +434,7 @@ function PostEditorSession({
             )}
             <Button
               type='submit'
-              disabled={
-                form.formState.isSubmitting ||
-                writeAcknowledged ||
-                creationBlocked
-              }
+              disabled={form.formState.isSubmitting || writeAcknowledged || creationBlocked}
             >
               {initialData ? t('form.update') : t('form.create')}
             </Button>

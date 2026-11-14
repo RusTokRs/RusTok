@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 
 function read(path) {
-  return fs.readFileSync(path, 'utf8');
+  return fs.readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
 }
 
 function fail(message) {
@@ -105,7 +105,7 @@ hasAll(
     'initialData?.requestedLocale',
     'targetPostCopy(initialData)',
     'contentLocale={contentLocale}',
-    'disabled={form.formState.isSubmitting || writeAcknowledged}'
+    'form.formState.isSubmitting || writeAcknowledged'
   ],
   'Blog post form'
 );

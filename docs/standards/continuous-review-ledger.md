@@ -184,11 +184,11 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-05 — Content, Media, Social & Community Domain Modules
-*CMS articles, forum discussions, comment trees, emoji reactions, notification dispatch, media asset pipeline, moderation rules, and social network features.* (0/40 completed)
+*CMS articles, forum discussions, comment trees, emoji reactions, notification dispatch, media asset pipeline, moderation rules, and social network features.* (3/40 completed)
 
-- [ ] **[`crates/modules/rustok-blog`](../../crates/modules/rustok-blog)** (162 files, 41,138 LOC)
-- [ ] **[`crates/modules/rustok-blog/admin`](../../crates/modules/rustok-blog/admin)** (18 files, 6,400 LOC)
-- [ ] **[`crates/modules/rustok-blog/storefront`](../../crates/modules/rustok-blog/storefront)** (14 files, 3,289 LOC)
+- [x] **[`crates/modules/rustok-blog`](../../crates/modules/rustok-blog)** (162 files, 41,138 LOC) — *(Done: verified across 6 Universal Logic Dimensions: decoupled BlogTaxonomyPort architecture, non-nil UUID guards across tenant_id, category_id, post_id, author_id, tag_id, atomic TransactionalEventBus publishing, row-locked concurrent comment projections (SELECT FOR UPDATE), idempotent post updates without metadata scrubbing, CAS version check on pinned updates, search projection typed status matching; verified with `cargo check -p rustok-blog` and verification scripts).*
+- [x] **[`crates/modules/rustok-blog/admin`](../../crates/modules/rustok-blog/admin)** (18 files, 6,400 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil tenant and actor guards, RBAC permission verification across server functions (posts:list, posts:create, posts:read, posts:update, posts:publish, posts:delete), target-only article richtext editor boundary; verified with `cargo check -p rustok-blog-admin` and `cargo check -p rustok-blog-admin --features ssr`).*
+- [x] **[`crates/modules/rustok-blog/storefront`](../../crates/modules/rustok-blog/storefront)** (14 files, 3,289 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID and session resolution, public post and comment projection, cached-snapshot outage degradation disclosure in Fluent catalogs; verified with `cargo check -p rustok-blog-storefront` and `cargo check -p rustok-blog-storefront --features ssr`).*
 - [ ] **[`crates/modules/rustok-forum`](../../crates/modules/rustok-forum)** (628 files, 175,016 LOC)
 - [ ] **[`crates/modules/rustok-forum/admin`](../../crates/modules/rustok-forum/admin)** (35 files, 13,457 LOC)
 - [ ] **[`crates/modules/rustok-forum/storefront`](../../crates/modules/rustok-forum/storefront)** (26 files, 7,472 LOC)
@@ -480,10 +480,10 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [cli](../../crates/modules/rustok-auth/cli) | `modules` | 2 | 376 | None |  |
 | [ ] | [rustok-billing](../../crates/modules/rustok-billing) | `modules` | 18 | 987 | None |  |
 | [ ] | [rustok-billing-admin](../../crates/modules/rustok-billing/admin) | `modules` | 6 | 324 | None |  |
-| [ ] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 225 | 57,208 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 37 | 11,285 | None |  |
+| [x] | [rustok-blog](../../crates/modules/rustok-blog) | `modules` | 225 | 57,208 | 2026-11-14 | Verified 6 Universal Logic Dimensions: decoupled BlogTaxonomyPort, non-nil UUIDs, TransactionalEventBus, search projection |
+| [x] | [admin](../../crates/modules/rustok-blog/admin) | `modules` | 37 | 11,285 | 2026-11-14 | Verified FFA separation, non-nil tenant/actor guards, RBAC gates, target-only article richtext editor |
 | [ ] | [rustok-blog-cli](../../crates/modules/rustok-blog/cli) | `modules` | 2 | 606 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 27 | 4,988 | None |  |
+| [x] | [storefront](../../crates/modules/rustok-blog/storefront) | `modules` | 27 | 4,988 | 2026-11-14 | Verified FFA separation, non-nil UUIDs, comments outage disclosure, public post and comment projection |
 | [ ] | [rustok-brand](../../crates/modules/rustok-brand) | `modules` | 33 | 4,996 | None |  |
 | [ ] | [admin](../../crates/modules/rustok-brand/admin) | `modules` | 10 | 2,226 | None |  |
 | [ ] | [rustok-cache](../../crates/modules/rustok-cache) | `modules` | 51 | 18,760 | None |  |

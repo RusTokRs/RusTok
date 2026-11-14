@@ -84,7 +84,7 @@ for (const marker of [
   "load_post_tags_map(",
   "load_category_projections_map(",
   "crate::richtext::project_stored_article(",
-  'blog_post::Column::Status.eq("published")',
+  "blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Published))",
   "blog_post::Column::PublishedAt.is_not_null()",
   "if entity_type != BLOG_POST_ENTITY_TYPE",
   "MAX_SEARCH_PROJECTION_PAGE_SIZE",

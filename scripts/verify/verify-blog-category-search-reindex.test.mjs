@@ -96,7 +96,7 @@ function fixture({
     : "enforce_scope(&security, Resource::BlogCategories, Action::Update)?;";
   const deletePermission = "enforce_scope(&security, Resource::BlogCategories, Action::Delete)?;";
   const transaction = "let txn = self.db.begin().await;";
-  const deleteTaxonomy = "TaxonomyService::new";
+  const deleteTaxonomy = "BlogCategoryDeleteCleanup::new";
   const updateOrdered = lookupBeforeAuthorization
     ? `${transaction}\n${updatePermission}`
     : `${updatePermission}\n${transaction}`;
@@ -124,7 +124,7 @@ function fixture({
       target_id: None
       txn.commit().await
       blog_category::Column::TenantId.eq(tenant_id)
-      Self::ensure_exists_in_tx(&txn, tenant_id, parent_id).await?
+      Self::ensure_exists_in_tx(&*self.taxonomy_port, &txn, tenant_id, parent_id).await?
       normalize_category_slug(input.slug.as_deref(), &name)?
       ${missingSlugGuard ? "" : "Slug must contain at least one routable letter or digit"}
       enforce_scope(&security, Resource::BlogCategories, Action::Create)?;
