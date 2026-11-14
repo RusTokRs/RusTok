@@ -90,9 +90,9 @@
       "category": "modules",
       "files": 79,
       "loc": 25285,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T18:50:00Z",
+      "notes": "Verified Rhai sandbox runtime limits, SeaORM authoring and execution log CAS revision concurrency, scheduler evidence sweep, and static runtime contract matrix"
     },
     "crates/modules/flex": {
       "name": "flex",
@@ -100,9 +100,9 @@
       "category": "modules",
       "files": 53,
       "loc": 17299,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T18:50:00Z",
+      "notes": "Verified standalone schema and entry CAS/partitioning, attached field definition lifecycle delegations, reorder validation in owner registry, and multilingual contract boundaries"
     },
     "crates/modules/rustok-ai": {
       "name": "rustok-ai",
