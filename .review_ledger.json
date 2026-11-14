@@ -741,9 +741,9 @@
       "category": "modules",
       "files": 48,
       "loc": 14287,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards across tenant_id, asset_id, blob_id, session_id; magic-number binary MIME verification across JPEG, PNG, GIF, WebP, BMP, TIFF, AVIF, MP4, QuickTime, WebM, AVI, MP3, WAV, OGG, FLAC, AAC, PDF; 50MB size clamp; image processing pipeline with dimension, pixel, and decoded bytes limits; mandatory EXIF/metadata stripping for user privacy; atomic transactional metadata persistence with storage compensation; asset reference retention guard preventing deletion of referenced assets; verified with cargo check -p rustok-media and verification scripts"
     },
     "crates/modules/rustok-media/admin": {
       "name": "admin",
@@ -751,9 +751,9 @@
       "category": "modules",
       "files": 11,
       "loc": 2445,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, pure core view models and formatting in core.rs, busy key deduplication per media item (Delete, Upload, Translation), RBAC permission gates (media:list, media:read, media:create, media:delete), non-nil tenant and actor guards; verified with cargo check -p rustok-media-admin --features ssr and verification scripts"
     },
     "crates/modules/rustok-media/cli": {
       "name": "cli",
@@ -761,9 +761,9 @@
       "category": "modules",
       "files": 2,
       "loc": 422,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: operational command adapter for storage reconciliation, non-nil UUID validation on --tenant-id, limit validation and clamping, dry-run rejection, clean separation of CLI adapter from domain service; verified with cargo check -p rustok-media-cli"
     },
     "crates/modules/rustok-media/ports": {
       "name": "rustok-media-ports",
@@ -771,9 +771,9 @@
       "category": "modules",
       "files": 7,
       "loc": 2393,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: transport-neutral FBA read/write ports (MediaAssetReadPort, MediaAssetWritePort, MediaPublicImageReadPort), non-nil UUID guards, cursor pagination validation (after_reference_id non-nil), duplicate reference ID rejection, reconciliation and list limit clamping [1, 1000] and [1, 100], idempotency lease integration; verified with cargo check -p rustok-media-ports --all-features and verification scripts"
     },
     "crates/modules/rustok-moderation": {
       "name": "rustok-moderation",
