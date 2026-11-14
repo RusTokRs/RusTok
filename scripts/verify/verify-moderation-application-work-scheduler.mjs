@@ -2,10 +2,6 @@ import fs from "node:fs";
 
 const cargo = fs.readFileSync("crates/modules/rustok-moderation/Cargo.toml", "utf8");
 const moderationLib = fs.readFileSync("crates/modules/rustok-moderation/src/lib.rs", "utf8");
-const moderationModule = fs.readFileSync(
-  "crates/modules/rustok-moderation/src/module.rs",
-  "utf8",
-);
 const scheduler = fs.readFileSync(
   "crates/modules/rustok-moderation/src/application_scheduler.rs",
   "utf8",
@@ -26,23 +22,18 @@ function forbidText(source, needle, message) {
 }
 
 for (const marker of [
-  "rustok-runtime",
+  "rustok-runtime.workspace = true",
 ]) {
   requireText(cargo, marker, `Moderation runtime dependency is missing ${marker}`);
 }
 
-requireText(
-  moderationLib,
-  "mod application_scheduler;",
-  "Moderation module work registration is missing mod application_scheduler;",
-);
-
 for (const marker of [
+  "mod application_scheduler;",
   "rustok_runtime::ModuleWorkRegistrations",
   "ModerationApplicationWorkRegistration",
   "register_runtime_extensions",
 ]) {
-  requireText(moderationModule, marker, `Moderation module work registration is missing ${marker}`);
+  requireText(moderationLib, marker, `Moderation module work registration is missing ${marker}`);
 }
 
 for (const marker of [
@@ -108,9 +99,11 @@ forbidText(
   "rustok-moderation =",
   "Forum must remain free of the Moderation owner dependency",
 );
-if (forumCargo.includes("rustok-reactions =") && !forumCargo.includes("default-features = false")) {
-  throw new Error("Forum must remain free of the Reactions owner dependency");
-}
+forbidText(
+  forumCargo,
+  "rustok-reactions =",
+  "Forum must remain free of the Reactions owner dependency",
+);
 forbidText(
   forumCargo,
   "rustok-reactions-storefront",

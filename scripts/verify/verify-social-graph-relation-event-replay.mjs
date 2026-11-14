@@ -75,7 +75,6 @@ for (const marker of [
   "next_after_relation_id: Option<Uuid>",
   "trait SocialGraphRelationEventMaintenancePort",
   "replay_relation_state_events",
-  '"social_graph.relation_event_replay_limit_invalid"',
 ]) {
   assertContains(ports, marker, `${paths.ports}: replay port contract missing: ${marker}`);
 }
@@ -85,6 +84,7 @@ for (const marker of [
   "event_bus: TransactionalEventBus",
   "PortCallPolicy::event_replay()",
   '"social_graph.relation_event_replay_forbidden"',
+  '"social_graph.relation_event_replay_limit_invalid"',
   "relation::Column::TenantId.eq(tenant_id)",
   "order_by_asc(relation::Column::Id)",
   "relation::Column::Id.gt(after_relation_id)",
@@ -146,7 +146,7 @@ for (const marker of [
   "assert_eq!(event_count(&db).await, 0)",
   "other_tenant_id",
   "next_after_relation_id",
-  "created_at: Set(now)",
+  "created_at: Set(now.clone())",
 ]) {
   assertContains(test, marker, `${paths.test}: replay scenario missing: ${marker}`);
 }

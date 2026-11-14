@@ -87,6 +87,25 @@ impl GroupsService {
         Ok(result)
     }
 
+    async fn group_model(&self, tenant_id: Uuid, group_id: Uuid) -> GroupsResult<group::Model> {
+        if tenant_id.is_nil() {
+            return Err(GroupsError::Validation(
+                "tenant_id cannot be nil UUID".to_string(),
+            ));
+        }
+        if group_id.is_nil() {
+            return Err(GroupsError::Validation(
+                "group_id cannot be nil UUID".to_string(),
+            ));
+        }
+        group::Entity::find()
+            .filter(group::Column::TenantId.eq(tenant_id))
+            .filter(group::Column::Id.eq(group_id))
+            .one(&self.db)
+            .await?
+            .ok_or(GroupsError::NotFound)
+    }
+
     async fn membership_model(
         &self,
         tenant_id: Uuid,
@@ -286,7 +305,7 @@ impl GroupsService {
                     tenant_id,
                     &[cat_id],
                     &locale,
-                    None,
+                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
                 )
                 .await
                 .ok()
@@ -449,7 +468,7 @@ impl GroupsService {
                     tenant_id,
                     &category_ids,
                     &effective_locale,
-                    None,
+                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
                 )
                 .await
                 .unwrap_or_default()
@@ -528,7 +547,7 @@ impl GroupsService {
                     tenant_id,
                     &[cat_id],
                     effective_locale,
-                    None,
+                    Some(rustok_api::PLATFORM_FALLBACK_LOCALE),
                 )
                 .await
                 .ok()

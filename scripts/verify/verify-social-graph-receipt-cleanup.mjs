@@ -76,7 +76,6 @@ for (const marker of [
   assertContains(ports, marker, `${paths.ports}: cleanup contract missing: ${marker}`);
 }
 
-const combinedMaintenance = ports + "\n" + maintenance;
 for (const marker of [
   "PortCallPolicy::write()",
   "PortActorKind::User",
@@ -86,7 +85,7 @@ for (const marker of [
   '"social_graph.receipt_cleanup_cutoff_future"',
   "DateTime::<Utc>::from_timestamp",
   "completed_before >= Utc::now()",
-  "limit > MAX_SOCIAL_GRAPH_RECEIPT_CLEANUP_BATCH",
+  "command.limit > MAX_SOCIAL_GRAPH_RECEIPT_CLEANUP_BATCH",
   "receipts::cleanup_completed(",
   'RECEIPT_CLEANUP_OPERATION: &str = "social_graph.receipt_cleanup"',
   'target: "rustok_social_graph::operations"',
@@ -96,7 +95,7 @@ for (const marker of [
   "oldest_retained_completed_at_unix_seconds = ?oldest_retained_completed_at_unix_seconds",
   "duration_ms",
 ]) {
-  assertContains(combinedMaintenance, marker, `${paths.maintenance}: cleanup guardrail missing: ${marker}`);
+  assertContains(maintenance, marker, `${paths.maintenance}: cleanup guardrail missing: ${marker}`);
 }
 assertNotContains(maintenance, "idempotency_key =", `${paths.maintenance}: raw idempotency key must not enter telemetry`);
 assertNotContains(maintenance, "request_json =", `${paths.maintenance}: receipt payload must not enter telemetry`);
@@ -108,7 +107,7 @@ for (const marker of [
   "command_receipt::Column::SchemaVersion.eq(COMMAND_RECEIPT_SCHEMA_VERSION)",
   "command_receipt::Column::Status.eq(STATUS_COMPLETED)",
   "command_receipt::Column::CompletedAt.is_not_null()",
-  "command_receipt::Column::CompletedAt.lt(completed_before",
+  "command_receipt::Column::CompletedAt.lt(completed_before.clone())",
   ".order_by_asc(command_receipt::Column::CompletedAt)",
   ".order_by_asc(command_receipt::Column::Id)",
   ".limit(limit)",

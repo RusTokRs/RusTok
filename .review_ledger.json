@@ -539,9 +539,9 @@
       "category": "modules",
       "files": 117,
       "loc": 34525,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 in progress"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-groups/admin": {
       "name": "admin",
@@ -549,9 +549,9 @@
       "category": "modules",
       "files": 35,
       "loc": 9142,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 in progress"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-groups/storefront": {
       "name": "storefront",
@@ -559,9 +559,9 @@
       "category": "modules",
       "files": 18,
       "loc": 3357,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 in progress"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-iggy": {
       "name": "rustok-iggy",
@@ -781,9 +781,9 @@
       "category": "modules",
       "files": 40,
       "loc": 10727,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards across tenant_id, case_id, report_id, decision_id, actor_id; complete lifecycle state machines for reports (Submitted, Attached, Dismissed, Closed), cases (Open, Assigned, Investigating, AwaitingEvidence, Decided, ApplyingDecision, Closed, Escalated), and durable operations (Pending, Applying, Retryable, Applied, Rejected, OperatorReview); optimistic concurrency CAS on expected_revision with checked_add(1); atomic decision application with immutable SHA-256 decision hash, lease timeout CAS, and audit trail events (case_opened, reports_attached, case_assigned, case_decided, application_attempt_claimed, application_applied, case_closed, case_escalated); administrative recovery and legacy-reconciliation with operator review gates; neutral SPI contracts and registries; verified with cargo check -p rustok-moderation (default and --no-default-features) and 15 verification scripts."
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-modules": {
       "name": "rustok-modules",
@@ -1254,9 +1254,9 @@
       "category": "modules",
       "files": 40,
       "loc": 9812,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 in progress"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-tax": {
       "name": "rustok-tax",
@@ -2346,9 +2346,9 @@
       "category": "modules",
       "files": 64,
       "loc": 11408,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 in progress"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-messenger/admin": {
       "name": "admin",
@@ -2356,9 +2356,9 @@
       "category": "modules",
       "files": 10,
       "loc": 1226,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 in progress"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-page-builder/storefront": {
       "name": "storefront",
@@ -2416,9 +2416,9 @@
       "category": "modules",
       "files": 10,
       "loc": 1972,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 in progress"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/libs/rustok-seo-targets": {
       "name": "rustok-seo-targets",
@@ -2646,9 +2646,9 @@
       "category": "modules",
       "files": 2,
       "loc": 506,
-      "completed": true,
-      "completed_at": "2026-11-14",
-      "notes": "Phase FS-05 in progress"
+      "completed": false,
+      "completed_at": null,
+      "notes": ""
     },
     "crates/modules/rustok-tasks": {
       "name": "rustok-tasks",

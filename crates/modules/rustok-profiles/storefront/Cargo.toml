@@ -19,6 +19,7 @@ ssr = [
     "dep:rustok-media",
     "dep:rustok-outbox",
     "dep:rustok-profiles",
+    "rustok-profiles/server",
     "dep:rustok-social-graph",
     "dep:rustok-storage",
     "dep:tracing",
