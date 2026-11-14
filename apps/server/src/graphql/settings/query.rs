@@ -24,6 +24,9 @@ fn map_platform_settings_error(error: SettingsError) -> FieldError {
         SettingsError::WriteConflict => <FieldError as GraphQLError>::conflict(
             "Settings were changed concurrently; re-read the category and retry",
         ),
+        SettingsError::MissingActor => <FieldError as GraphQLError>::permission_denied(
+            "settings:manage required: settings changes must record an actor",
+        ),
         error => graphql_settings_internal_error("Platform settings are unavailable", error),
     }
 }

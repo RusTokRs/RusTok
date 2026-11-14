@@ -46,6 +46,11 @@ pub enum SettingsError {
     /// A concurrent writer changed the row while this full-document update
     /// was being prepared. The caller must re-read and retry deliberately.
     WriteConflict,
+    /// A settings write must record who changed it. The emitted
+    /// `PlatformSettingsChanged` event carries a non-nil `changed_by`, so an
+    /// anonymous write cannot be represented and must be rejected before any
+    /// row is written.
+    MissingActor,
     Db(sea_orm::DbErr),
     Json(serde_json::Error),
 }
@@ -70,6 +75,10 @@ impl std::fmt::Display for SettingsError {
             Self::WriteConflict => write!(
                 f,
                 "Settings were changed concurrently; re-read the category and retry"
+            ),
+            Self::MissingActor => write!(
+                f,
+                "Settings update requires an authenticated actor; anonymous settings writes are not representable"
             ),
             Self::Db(e) => write!(f, "Database error: {e}"),
             Self::Json(e) => write!(f, "JSON error: {e}"),
@@ -456,6 +465,13 @@ impl SettingsService {
     ) -> Result<SettingsSnapshot, SettingsError> {
         let cat = ensure_supported_category(cat)?;
 
+        // The change event requires a non-nil actor. Rejecting here keeps the
+        // failure a clear validation error instead of a mid-transaction event
+        // serialization failure after the row has been written.
+        let Some(actor_id) = actor_id else {
+            return Err(SettingsError::MissingActor);
+        };
+
         if !settings.is_object() {
             return Err(SettingsError::ValidationFailed(vec![
                 "Settings payload must be a JSON object".to_string(),
@@ -530,7 +546,7 @@ impl SettingsService {
                     updated.rows_affected == 1
                 }
                 None => {
-                    match ActiveModel::new(tenant_id, cat, settings.clone(), actor_id)
+                    match ActiveModel::new(tenant_id, cat, settings.clone(), Some(actor_id))
                         .insert(&tx)
                         .await
                     {
@@ -553,10 +569,10 @@ impl SettingsService {
                 .publish_in_tx(
                     &tx,
                     tenant_id,
-                    actor_id,
+                    Some(actor_id),
                     DomainEvent::PlatformSettingsChanged {
                         category: cat.to_string(),
-                        changed_by: actor_id.unwrap_or_default(),
+                        changed_by: actor_id,
                     },
                 )
                 .await

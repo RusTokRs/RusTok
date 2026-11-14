@@ -33,6 +33,10 @@
 - Authorization failures on the permission-availability path fail closed: a
   resolution error is returned to the caller rather than treated as "no
   module permissions".
+- A platform-settings write must record who made it. `SettingsError::MissingActor`
+  is returned before the transaction opens, because `PlatformSettingsChanged`
+  carries a non-nil `changed_by`; GraphQL maps it to a permission error rather
+  than an internal failure.
 
 ## Common AI Mistakes
 - Reintroducing framework-global context instead of passing the explicit server runtime context.
