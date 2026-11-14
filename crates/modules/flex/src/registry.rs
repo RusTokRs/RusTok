@@ -285,31 +285,6 @@ pub fn validate_field_definition_create(
     Ok(())
 }
 
-/// Validate owner-owned reorder guardrails for attached field definitions.
-pub fn validate_field_definition_reorder(
-    ids: &[Uuid],
-    existing_ids: &std::collections::HashSet<Uuid>,
-) -> Result<(), FlexError> {
-    let requested_ids = ids
-        .iter()
-        .copied()
-        .collect::<std::collections::HashSet<_>>();
-    if requested_ids.len() != ids.len() {
-        return Err(FlexError::InvalidFieldKey(
-            "field-definition reorder contains duplicate ids".to_string(),
-        ));
-    }
-    if let Some(missing_id) = requested_ids.difference(existing_ids).next() {
-        return Err(FlexError::NotFound(*missing_id));
-    }
-    if requested_ids != *existing_ids {
-        return Err(FlexError::InvalidFieldKey(
-            "field-definition reorder must include every definition exactly once".to_string(),
-        ));
-    }
-    Ok(())
-}
-
 /// Resolve explicit position or append after current active definitions.
 pub fn field_definition_position_or_next(position: Option<i32>, active_count: u64) -> i32 {
     position.unwrap_or(active_count as i32)
