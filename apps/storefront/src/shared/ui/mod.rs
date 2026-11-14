@@ -1,4 +1,4 @@
 // Re-export common UI components
-pub use leptos_ui::Button as UiButton;
-pub use leptos_ui::Input as UiInput;
+pub use rustok_ui_leptos::Button as UiButton;
+pub use rustok_ui_leptos::Input as UiInput;
 // Add other common UI if needed

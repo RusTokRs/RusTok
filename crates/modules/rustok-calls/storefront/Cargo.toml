@@ -32,7 +32,7 @@ ssr = [
 rustok-ui-core.workspace = true
 rustok-ui-transport.workspace = true
 rustok-ui-i18n.workspace = true
-leptos-ui.workspace = true
+rustok-ui-leptos.workspace = true
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-auth-ui.workspace = true
@@ -51,4 +51,4 @@ uuid = { workspace = true, features = ["serde"] }
 tracing.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
-normal = ["chrono", "rustok-auth-ui", "leptos-ui", "leptos-ui-routing", "leptos_axum", "leptos_router", "rustok-api", "rustok-calls", "rustok-core", "rustok-graphql", "rustok-ui-core", "rustok-ui-transport", "uuid"]
+normal = ["chrono", "rustok-auth-ui", "rustok-ui-leptos", "leptos-ui-routing", "leptos_axum", "leptos_router", "rustok-api", "rustok-calls", "rustok-core", "rustok-graphql", "rustok-ui-core", "rustok-ui-transport", "uuid"]

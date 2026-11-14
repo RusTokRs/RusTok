@@ -38,7 +38,7 @@ rustok-ui-transport.workspace = true
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-auth-ui.workspace = true
-leptos-ui.workspace = true
+rustok-ui-leptos.workspace = true
 rustok-graphql.workspace = true
 rustok-api = { workspace = true, default-features = false }
 rustok-core = { workspace = true, optional = true }

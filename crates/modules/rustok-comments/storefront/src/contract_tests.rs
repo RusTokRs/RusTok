@@ -114,7 +114,7 @@ fn comment_composer_copy_traits() {
         success: "Posted successfully".to_string(),
         sign_in_required: "Sign in to comment".to_string(),
         empty_error: "Body cannot be empty".to_string(),
-        richtext: leptos_ui::RichTextFrameCopy {
+        richtext: rustok_ui_leptos::RichTextFrameCopy {
             messages: serde_json::Value::Null,
             serialization_error: "Serialization error".to_string(),
             invalid_payload_error: "Invalid payload".to_string(),

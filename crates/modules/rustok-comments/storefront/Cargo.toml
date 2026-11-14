@@ -23,7 +23,7 @@ ssr = ["leptos/ssr", "rustok-auth-ui/ssr"]
 [dependencies]
 leptos.workspace = true
 rustok-auth-ui.workspace = true
-leptos-ui.workspace = true
+rustok-ui-leptos.workspace = true
 rustok-api = { workspace = true, default-features = false }
 
 [dev-dependencies]

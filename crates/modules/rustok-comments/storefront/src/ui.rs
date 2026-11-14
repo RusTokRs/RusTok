@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos_ui::{RichTextEditorFrame, RichTextFrameCopy};
+use rustok_ui_leptos::{RichTextEditorFrame, RichTextFrameCopy};
 use rustok_api::RichTextDocument;
 use rustok_auth_ui::ui::leptos::hooks::use_is_authenticated;
 

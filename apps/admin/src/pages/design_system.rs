@@ -9,7 +9,7 @@
  */
 
 use leptos::prelude::*;
-use leptos_ui::{
+use rustok_ui_leptos::{
     Alert, AlertVariant, Badge, BadgeVariant, Button, ButtonVariant, Card, CardContent,
     CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Input, Separator, Size, Switch,
     Textarea,

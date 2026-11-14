@@ -5,7 +5,7 @@ use rustok_ui_core::UiRouteContext;
 use crate::comments_pagination;
 use crate::i18n::t;
 use crate::model::{BlogCommentList, BlogCommentListItem};
-use leptos_ui::{Button, ButtonVariant, Size};
+use rustok_ui_leptos::{Button, ButtonVariant, Size};
 
 #[component]
 pub fn PublicCommentsList(
@@ -185,7 +185,7 @@ fn PublicCommentCard(
         <article class=format!("rounded-xl border border-border bg-card/50 p-4 {}", crate::core::discussion::comment_indent(depth))>
             <div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span>{locale_meta}</span>
-                <span>{"·"}</span>
+                <span>{"В·"}</span>
                 <span>{created_meta}</span>
                 {is_reply.then(|| view! {
                     <span class="rounded-full border border-border px-2 py-0.5">

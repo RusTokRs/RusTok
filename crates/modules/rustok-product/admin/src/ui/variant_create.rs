@@ -13,7 +13,7 @@ use crate::model::{ProductDetail, VariantCreateOutcome, VariantDraft};
 use crate::transport::write_journal;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_ui::{Alert, AlertVariant, Button, Input, Select, SelectOption};
+use rustok_ui_leptos::{Alert, AlertVariant, Button, Input, Select, SelectOption};
 use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 
 #[derive(Clone)]
@@ -416,7 +416,7 @@ fn CreateAssignment(
     }>{move || {
         let (label, choices) = variant_create::assignment_choices(product.get().as_ref(), &draft.get(), &id.get_value());
         let options: Vec<SelectOption> = choices.into_iter().map(|choice| {
-            let mut option = SelectOption::new(choice.id, if choice.available { choice.label } else { format!("{} · {}", crate::i18n::t(locale.get_value().as_deref(), "product-combinations-retainedAssignment", "product-combinations-retainedAssignment"), choice.label) });
+            let mut option = SelectOption::new(choice.id, if choice.available { choice.label } else { format!("{} В· {}", crate::i18n::t(locale.get_value().as_deref(), "product-combinations-retainedAssignment", "product-combinations-retainedAssignment"), choice.label) });
             option.disabled = !choice.available; option
         }).collect();
         view! { <span>{label}</span><Select options=options value=value placeholder=crate::i18n::t(locale.get_value().as_deref(), "product-variantCreate-selectValue", "product-variantCreate-selectValue") /> }

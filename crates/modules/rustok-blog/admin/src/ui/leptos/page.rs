@@ -1,6 +1,6 @@
 use super::*;
 use leptos::prelude::*;
-use leptos_ui::{Alert, Button};
+use rustok_ui_leptos::{Alert, Button};
 use rustok_forms_leptos::{
     Form, FormCheckbox, FormError, FormField, FormInput, FormLabel, FormMessage, FormSelect,
     FormTextarea, SubmitButton,

@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos_ui::{Badge, BadgeVariant, Card, CardAction, CardFooter, CardHeader, CardTitle};
+use rustok_ui_leptos::{Badge, BadgeVariant, Card, CardAction, CardFooter, CardHeader, CardTitle};
 
 #[component]
 pub fn stats_card(

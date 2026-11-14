@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::{use_navigate, use_params};
 use leptos_router::params::Params;
-use leptos_ui::{Select, SelectOption};
+use rustok_ui_leptos::{Select, SelectOption};
 use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 use rustok_ui_forms::FormState;
@@ -279,7 +279,7 @@ pub fn UserDetails() -> impl IntoView {
                             if let Some(user) = response.user {
                                 let user = graphql_user_view(
                                     user,
-                                    t_local("users.placeholderDash", "—"),
+                                    t_local("users.placeholderDash", "вЂ”"),
                                 );
                                 let email = user.email;
                                 let name_display = user.name;

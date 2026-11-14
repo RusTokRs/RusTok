@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos_ui::{
+use rustok_ui_leptos::{
     Alert, AlertVariant, Badge, BadgeVariant, Card, CardContent, CardDescription, CardHeader,
     CardTitle,
 };

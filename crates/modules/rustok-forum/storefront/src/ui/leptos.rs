@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_ui::RichTextHtml;
+use rustok_ui_leptos::RichTextHtml;
 use leptos_ui_routing::read_route_query_value;
 use rustok_api::normalize_locale_tag;
 use rustok_ui_core::UiRouteContext;
@@ -282,7 +282,7 @@ fn ForumShowcase(
                         )
                         on:click=move |_| set_view_mode.set(ForumViewMode::Topics)
                     >
-                        <span>"💬"</span>
+                        <span>"рџ’¬"</span>
                         <span>{discussions_label}</span>
                     </button>
                     <button
@@ -297,7 +297,7 @@ fn ForumShowcase(
                         )
                         on:click=move |_| set_view_mode.set(ForumViewMode::Categories)
                     >
-                        <span>"📁"</span>
+                        <span>"рџ“Ѓ"</span>
                         <span>{categories_switch_label}</span>
                     </button>
                 </div>
@@ -410,7 +410,7 @@ fn ForumCategoryRail(
                     class="shrink-0 rounded-full border border-border bg-background p-2 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-foreground"
                     on:click=move |_| on_switch_to_overview.run(())
                 >
-                    "Grid ⊞"
+                    "Grid вЉћ"
                 </button>
             </div>
 
@@ -457,7 +457,7 @@ fn ForumCategoryRail(
                                             dir="auto"
                                             class="flex items-center gap-1.5 text-sm font-semibold text-foreground"
                                         >
-                                            {is_subcategory.then(|| view! { <span class="text-xs text-muted-foreground">"↳"</span> })}
+                                            {is_subcategory.then(|| view! { <span class="text-xs text-muted-foreground">"в†і"</span> })}
                                             <span>{card.name}</span>
                                         </h4>
                                         <p
@@ -543,7 +543,7 @@ fn ForumThreadPanel(
     let marking_read_label = t(
         locale.as_deref(),
         "forum.thread.markingRead",
-        "Marking read…",
+        "Marking readвЂ¦",
     );
     let slug_label = slug_message(
         locale.as_deref(),
@@ -568,7 +568,7 @@ fn ForumThreadPanel(
         "forum.thread.loadMore",
         "Load more replies",
     );
-    let loading_label = t(locale.as_deref(), "forum.thread.loading", "Loading…");
+    let loading_label = t(locale.as_deref(), "forum.thread.loading", "LoadingвЂ¦");
     let page_error_label = t(
         locale.as_deref(),
         "forum.thread.pageFailed",

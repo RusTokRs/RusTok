@@ -35,7 +35,7 @@ rustok-auth-ui.workspace = true
 rustok-api = { workspace = true, default-features = false }
 rustok-ui-i18n.workspace = true
 leptos-ui-routing.workspace = true
-leptos-ui.workspace = true
+rustok-ui-leptos.workspace = true
 rustok-comments = { workspace = true, default-features = false }
 rustok-core = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }

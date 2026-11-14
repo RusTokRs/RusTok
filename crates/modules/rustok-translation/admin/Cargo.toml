@@ -53,7 +53,7 @@ rustok-translation-targets = { workspace = true, optional = true }
 rustok-ui-core.workspace = true
 rustok-ui-i18n.workspace = true
 rustok-ui-transport.workspace = true
-leptos-ui.workspace = true
+rustok-ui-leptos.workspace = true
 leptos-ui-routing.workspace = true
 sea-orm = { workspace = true, optional = true }
 serde.workspace = true

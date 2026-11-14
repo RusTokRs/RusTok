@@ -8,7 +8,7 @@
 use crate::core::initial_catalog;
 use crate::model::{ProductEffectiveForm, VariantAxisDraft, VariantAxisValueDraft, VariantDraft};
 use leptos::prelude::*;
-use leptos_ui::{Alert, AlertVariant, Button, Checkbox, Select, SelectOption};
+use rustok_ui_leptos::{Alert, AlertVariant, Button, Checkbox, Select, SelectOption};
 
 #[component]
 pub(super) fn InitialVariantsSection(
@@ -181,7 +181,7 @@ fn AssignmentSelect(
                     &axes.get(), &pending.get(), &id.get_value(), form.get().as_ref(),
                 ).into_iter().map(|option| {
                     let mut view = SelectOption::new(option.id, if option.available { option.label } else {
-                        format!("{} · {}", crate::i18n::t(locale.get_value().as_deref(), "product-combinations-retainedAssignment", "product-combinations-retainedAssignment"), option.label)
+                        format!("{} В· {}", crate::i18n::t(locale.get_value().as_deref(), "product-combinations-retainedAssignment", "product-combinations-retainedAssignment"), option.label)
                     });
                     view.disabled = !option.available;
                     view

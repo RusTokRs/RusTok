@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_ui::RichTextHtml;
+use rustok_ui_leptos::RichTextHtml;
 use leptos_ui_routing::{use_route_query_value, use_route_query_writer};
 use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_comments::{CommentStatus, CommentThreadStatus};
@@ -484,7 +484,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                                         Some(locale.get().as_str()),
                                                                         "comments.detail.authorLine",
                                                                         Some(&rustok_ui_i18n::fluent_args!("author" => comment_view_model.author_id.to_string(), "created_at" => comment_view_model.created_at.to_string())),
-                                                                        "author {author} · {created_at}",
+                                                                        "author {author} В· {created_at}",
                                                                     )}
                                                                 </span>
                                                             </div>

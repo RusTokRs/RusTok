@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_ui::{Button, ButtonVariant, Size};
+use rustok_ui_leptos::{Button, ButtonVariant, Size};
 use leptos_ui_routing::use_route_query_value;
 use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::{AdminQueryKey, UiRouteContext};
@@ -292,7 +292,7 @@ fn ModerationCommentCard(
                     {comment.status.clone()}
                 </span>
                 <span>{comment.effective_locale.clone()}</span>
-                <span>{"·"}</span>
+                <span>{"В·"}</span>
                 <span>{comment.created_at.clone()}</span>
                 {reply_label.map(|label| view! {
                     <span class="rounded-full border border-border px-2 py-0.5">{label}</span>

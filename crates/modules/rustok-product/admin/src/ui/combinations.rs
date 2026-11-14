@@ -8,7 +8,7 @@
 use crate::core::combinations::{self, CombinationAxis, CombinationError, CombinationMember};
 use crate::model::VariantAxisValueDraft;
 use leptos::prelude::*;
-use leptos_ui::{Alert, AlertVariant, Button, Select, SelectOption};
+use rustok_ui_leptos::{Alert, AlertVariant, Button, Select, SelectOption};
 
 #[component]
 pub(super) fn CombinationPicker(
@@ -49,19 +49,19 @@ pub(super) fn CombinationPicker(
             {move || match preview.get() {
                 Err(_) => None,
                 Ok(preview) => Some(view! {
-                    <p class="text-xs text-muted-foreground" aria-live="polite">{format!("{} {} · {} {} / {}", text("product-combinations-count"), preview.count, text("product-combinations-page"), preview.page + 1, preview.pages)}</p>
+                    <p class="text-xs text-muted-foreground" aria-live="polite">{format!("{} {} В· {} {} / {}", text("product-combinations-count"), preview.count, text("product-combinations-page"), preview.page + 1, preview.pages)}</p>
                     {(preview.incomplete_drafts > 0).then(|| view! { <p role="status" class="text-xs">{format!("{} ({})", text("product-combinations-incomplete"), preview.incomplete_drafts)}</p> })}
                 }),
             }}
             <ul class="space-y-2">
                 <For each=move || match preview.get() { Ok(page) => page.rows, Err(_) => Vec::new() } key=|row| (row.key.clone(), row.labels.clone(), row.existing.as_ref().map(|member| (member.id.clone(), member.sku.clone()))) children=move |row| {
                     let tuple = StoredValue::new(row.axis_values);
-                    let summary = StoredValue::new(if row.labels.is_empty() { text("product-combinations-default") } else { row.labels.join(" · ") });
+                    let summary = StoredValue::new(if row.labels.is_empty() { text("product-combinations-default") } else { row.labels.join(" В· ") });
                     view! {
                         <li class="flex flex-wrap items-center justify-between gap-2 rounded border p-2 text-xs">
                             <span>{summary.get_value()}</span>
                             {match row.existing {
-                                Some(member) => view! { <span>{format!("{} · {}", text(if draft { "product-combinations-selected" } else { "product-combinations-existing" }), member.sku.filter(|sku| !sku.is_empty()).unwrap_or(member.id))}</span> }.into_any(),
+                                Some(member) => view! { <span>{format!("{} В· {}", text(if draft { "product-combinations-selected" } else { "product-combinations-existing" }), member.sku.filter(|sku| !sku.is_empty()).unwrap_or(member.id))}</span> }.into_any(),
                                 None => view! {
                                     <span class="text-muted-foreground">{text("product-combinations-missing")}</span>
                                     {move || view! {

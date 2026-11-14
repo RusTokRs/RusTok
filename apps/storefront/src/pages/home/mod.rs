@@ -2,7 +2,7 @@ use crate::entities::product::{ProductCard, ProductCardData};
 use crate::shared::ui::{UiButton, UiInput};
 use leptos::prelude::AnyView;
 use leptos::prelude::*;
-use leptos_ui::ButtonVariant;
+use rustok_ui_leptos::ButtonVariant;
 
 #[component]
 pub fn HomePage(
@@ -45,7 +45,7 @@ pub fn HomePage(
                             <div class="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-4 py-1.5 backdrop-blur-md transition-all hover:bg-primary/15">
                                 <span class="flex h-2 w-2 rounded-full bg-primary animate-pulse" />
                                 <span class="text-xs font-semibold text-primary tracking-wide">
-                                    "⚡ RusToK Native Platform • Zero-GC Memory Safety • Sub-50ms SSR"
+                                    "вљЎ RusToK Native Platform вЂў Zero-GC Memory Safety вЂў Sub-50ms SSR"
                                 </span>
                             </div>
 
@@ -140,7 +140,7 @@ pub fn HomePage(
                                         <div class="flex items-center justify-between">
                                             <h4 class="text-sm font-bold text-foreground">"RusTok Pro Sound Hi-Fi"</h4>
                                             <div class="flex items-center text-amber-500 text-xs">
-                                                "★★★★★"
+                                                "в…в…в…в…в…"
                                                 <span class="ml-1 text-[11px] font-semibold text-foreground">"4.9"</span>
                                             </div>
                                         </div>
@@ -269,7 +269,7 @@ pub fn HomePage(
                                     </div>
                                     <div>
                                         <h3 class="text-xl font-bold text-card-foreground">{story_title}</h3>
-                                        <p class="text-xs text-muted-foreground">"Compiled native code • Zero runtime legacy"</p>
+                                        <p class="text-xs text-muted-foreground">"Compiled native code вЂў Zero runtime legacy"</p>
                                     </div>
                                 </div>
                                 <p class="text-sm text-muted-foreground leading-relaxed">
@@ -284,22 +284,22 @@ pub fn HomePage(
                                 </div>
                                 <div class="flex flex-wrap gap-2">
                                     <span class="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary/60 px-3 py-1 text-xs font-semibold text-foreground">
-                                        <span>"🦀 Rust 2024"</span>
+                                        <span>"рџ¦Ђ Rust 2024"</span>
                                     </span>
                                     <span class="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary/60 px-3 py-1 text-xs font-semibold text-foreground">
-                                        <span>"⚡ Axum SSR"</span>
+                                        <span>"вљЎ Axum SSR"</span>
                                     </span>
                                     <span class="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary/60 px-3 py-1 text-xs font-semibold text-foreground">
-                                        <span>"🐘 PostgreSQL 18"</span>
+                                        <span>"рџђ PostgreSQL 18"</span>
                                     </span>
                                     <span class="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary/60 px-3 py-1 text-xs font-semibold text-foreground">
-                                        <span>"🌐 Leptos WASM"</span>
+                                        <span>"рџЊђ Leptos WASM"</span>
                                     </span>
                                     <span class="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary/60 px-3 py-1 text-xs font-semibold text-foreground">
-                                        <span>"📦 Transactional Outbox"</span>
+                                        <span>"рџ“¦ Transactional Outbox"</span>
                                     </span>
                                     <span class="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary/60 px-3 py-1 text-xs font-semibold text-foreground">
-                                        <span>"🔍 pgvector & RAG"</span>
+                                        <span>"рџ”Ќ pgvector & RAG"</span>
                                     </span>
                                 </div>
                             </div>

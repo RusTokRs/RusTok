@@ -1,7 +1,7 @@
 use super::*;
 use leptos::prelude::*;
-use leptos_ui::RichTextHtml;
-use leptos_ui::{Button, Input};
+use rustok_ui_leptos::RichTextHtml;
+use rustok_ui_leptos::{Button, Input};
 use rustok_ui_core::UiRouteContext;
 
 #[cfg(target_arch = "wasm32")]
@@ -12,7 +12,7 @@ use crate::transport::fetch_post_by_preview_token;
 
 /// Draft preview component for viewing unpublished posts via a capability bearer token.
 ///
-/// Matches the Next.js `BlogDraftPreview` surface. Automatically parses `#token=…` from
+/// Matches the Next.js `BlogDraftPreview` surface. Automatically parses `#token=вЂ¦` from
 /// the browser URL fragment on load, or allows pasting the raw preview token into a form.
 #[component]
 pub fn BlogDraftPreview() -> impl IntoView {

@@ -43,7 +43,7 @@ leptos_axum = { workspace = true, optional = true }
 leptos_router.workspace = true
 rustok-auth-ui.workspace = true
 rustok-graphql.workspace = true
-leptos-ui.workspace = true
+rustok-ui-leptos.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rustok-api = { workspace = true, default-features = false }
@@ -67,7 +67,7 @@ serde_json.workspace = true
 toml.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
-normal = ["leptos-ui"]
+normal = ["rustok-ui-leptos"]
 
 [dev-dependencies]
 axum.workspace = true

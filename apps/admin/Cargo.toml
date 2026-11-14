@@ -187,7 +187,7 @@ leptos_axum = { workspace = true, optional = true }
 rustok-auth-ui = { workspace = true, default-features = false }
 rustok-graphql = { workspace = true }
 leptos-ui-routing = { workspace = true }
-leptos-ui = { workspace = true }
+rustok-ui-leptos = { workspace = true }
 rustok-ui-forms = { workspace = true }
 leptos-use = { workspace = true }
 rustok-ui-i18n.workspace = true

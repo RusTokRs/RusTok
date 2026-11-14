@@ -8,7 +8,7 @@ pub use draft_preview::BlogDraftPreview;
 use showcase::BlogShowcase;
 
 use leptos::prelude::*;
-use leptos_ui::{RichTextHtml, TableOfContents};
+use rustok_ui_leptos::{RichTextHtml, TableOfContents};
 use leptos_ui_routing::{read_route_query_value, use_route_query_value, use_route_query_writer};
 use rustok_ui_core::{UiRouteContext, UiRouteQueryIntent};
 

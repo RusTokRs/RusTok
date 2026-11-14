@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_ui::{Alert, Button};
+use rustok_ui_leptos::{Alert, Button};
 use rustok_auth_ui::ui::leptos::hooks::{use_current_user, use_tenant, use_token};
 use rustok_forms_leptos::{
     Form, FormError, FormField, FormInput, FormLabel, FormMessage, FormSelect, FormTextarea,

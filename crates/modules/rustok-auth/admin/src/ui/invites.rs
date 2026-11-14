@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos_ui::{Badge, BadgeVariant};
+use rustok_ui_leptos::{Badge, BadgeVariant};
 use rustok_auth_ui::ui::leptos::hooks::{use_tenant, use_token};
 use rustok_ui_core::UiRouteContext;
 
@@ -270,7 +270,7 @@ pub fn UserInvites() -> impl IntoView {
                                         <p class="text-sm text-muted-foreground">
                                             {t_local(
                                                 "users.invites.issuedNotice",
-                                                "Copy this link now — it is shown only once and works a single time:",
+                                                "Copy this link now вЂ” it is shown only once and works a single time:",
                                             )}
                                         </p>
                                         <code class="block break-all rounded-lg bg-muted px-3 py-2 text-xs">

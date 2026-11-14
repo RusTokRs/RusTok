@@ -1,6 +1,6 @@
 use crate::entities::oauth_app::model::AppType;
 use leptos::*;
-use leptos_ui::{Badge, BadgeVariant};
+use rustok_ui_leptos::{Badge, BadgeVariant};
 
 #[component]
 pub fn AppTypeBadge(app_type: AppType) -> impl IntoView {

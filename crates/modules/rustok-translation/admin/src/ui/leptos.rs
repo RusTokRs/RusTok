@@ -1,6 +1,6 @@
 use leptos::task::spawn_local;
 use leptos::{html, prelude::*};
-use leptos_ui::{
+use rustok_ui_leptos::{
     Alert, AlertVariant, Badge, BadgeVariant, Button, ButtonVariant, Card, CardContent,
     CardDescription, CardHeader, CardTitle, Checkbox, Input, Label, Select, SelectOption, Textarea,
 };
@@ -222,7 +222,7 @@ fn OverviewTab(
     let loading = t(
         locale.as_deref(),
         "translation.loading",
-        "Loading Translation state…",
+        "Loading Translation stateвЂ¦",
     );
 
     view! {
@@ -367,7 +367,7 @@ fn PolicyCard(
                     </div>
                     <Button on_click=Box::new(policy_action)>{replace_label}</Button>
                     <Show when=move || busy.get()>
-                        <p class="text-xs text-muted-foreground">"Operation in progress…"</p>
+                        <p class="text-xs text-muted-foreground">"Operation in progressвЂ¦"</p>
                     </Show>
                     <OutcomePanel outcome locale=locale.clone() />
                 </div>
@@ -476,7 +476,7 @@ fn TargetsCard(targets: Vec<TranslationTarget>, locale: Option<String>) -> impl 
                         <div class="flex-1">
                             <input
                                 type="text"
-                                placeholder={if is_ru { "Поиск по целям..." } else { "Search targets..." }}
+                                placeholder={if is_ru { "РџРѕРёСЃРє РїРѕ С†РµР»СЏРј..." } else { "Search targets..." }}
                                 class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
                                 prop:value=move || search.get()
                                 on:input=move |ev| search.set(event_target_value(&ev))
@@ -576,7 +576,7 @@ fn ReviewerQueueGrid(
                 <div class="flex-1">
                     <input
                         type="text"
-                        placeholder={if is_ru { "Поиск по очереди..." } else { "Search queue..." }}
+                        placeholder={if is_ru { "РџРѕРёСЃРє РїРѕ РѕС‡РµСЂРµРґРё..." } else { "Search queue..." }}
                         class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
                         prop:value=move || search.get()
                         on:input=move |ev| search.set(event_target_value(&ev))
@@ -690,7 +690,7 @@ fn ReviewerWorkloadGrid(
                 <div class="flex-1">
                     <input
                         type="text"
-                        placeholder={if is_ru { "Поиск по нагрузке..." } else { "Search workload..." }}
+                        placeholder={if is_ru { "РџРѕРёСЃРє РїРѕ РЅР°РіСЂСѓР·РєРµ..." } else { "Search workload..." }}
                         class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
                         prop:value=move || search.get()
                         on:input=move |ev| search.set(event_target_value(&ev))
@@ -797,7 +797,7 @@ fn InterchangeArtifactsGrid(
                 <div class="flex-1">
                     <input
                         type="text"
-                        placeholder={if is_ru { "Поиск по артефактам..." } else { "Search artifacts..." }}
+                        placeholder={if is_ru { "РџРѕРёСЃРє РїРѕ Р°СЂС‚РµС„Р°РєС‚Р°Рј..." } else { "Search artifacts..." }}
                         class="w-full px-3 py-1.5 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
                         prop:value=move || search.get()
                         on:input=move |ev| search.set(event_target_value(&ev))
@@ -1394,7 +1394,7 @@ fn JobsTab(
                         <Button variant=ButtonVariant::Secondary on_click=Box::new(rebuild_action)>{rebuild_label}</Button>
                     </div>
                     <Show when=move || busy.get()>
-                        <p class="text-xs text-muted-foreground">"Operation in progress…"</p>
+                        <p class="text-xs text-muted-foreground">"Operation in progressвЂ¦"</p>
                     </Show>
                 </CardContent>
             </Card>
@@ -1724,7 +1724,7 @@ fn GlossariesTab(
     let loading = t(
         locale.as_deref(),
         "translation.glossary.loading",
-        "Loading glossaries…",
+        "Loading glossariesвЂ¦",
     );
     let create_title = t(
         locale.as_deref(),
@@ -1938,7 +1938,7 @@ fn GlossariesTab(
                                                                     <Badge variant=BadgeVariant::Outline>{format!("v{}", item.revision)}</Badge>
                                                                 </div>
                                                             </div>
-                                                            <p class="mt-2 text-xs text-muted-foreground">{format!("{} → {}", item.source_locale, item.target_locale)}</p>
+                                                            <p class="mt-2 text-xs text-muted-foreground">{format!("{} в†’ {}", item.source_locale, item.target_locale)}</p>
                                                         </button>
                                                     }
                                                 }).collect_view().into_any()
@@ -2012,7 +2012,7 @@ fn GlossariesTab(
                 }}
             </Suspense>
             <Show when=move || busy.get()>
-                <p class="text-xs text-muted-foreground">"Operation in progress…"</p>
+                <p class="text-xs text-muted-foreground">"Operation in progressвЂ¦"</p>
             </Show>
             <OutcomePanel outcome locale=locale.clone() />
         </div>
@@ -2857,7 +2857,7 @@ fn InventoryTab(
                         <Button variant=ButtonVariant::Outline on_click=Box::new(required_action)>{required_label}</Button>
                     </div>
                     <Show when=move || busy.get()>
-                        <p class="text-xs text-muted-foreground">"Operation in progress…"</p>
+                        <p class="text-xs text-muted-foreground">"Operation in progressвЂ¦"</p>
                     </Show>
                 </CardContent>
             </Card>
@@ -3822,7 +3822,7 @@ fn WorkflowTab(
                         <Button on_click=Box::new(apply_action)>{apply_label}</Button>
                     </div>
                     <Show when=move || busy.get()>
-                        <p class="text-xs text-muted-foreground">"Operation in progress…"</p>
+                        <p class="text-xs text-muted-foreground">"Operation in progressвЂ¦"</p>
                     </Show>
                 </CardContent>
             </Card>
@@ -3887,7 +3887,7 @@ fn WorkflowTab(
                                                     <Badge variant=if is_resolved { BadgeVariant::Secondary } else { BadgeVariant::Outline }>{state}</Badge>
                                                     <span class="font-mono text-xs text-muted-foreground">{scope_id}</span>
                                                 </div>
-                                                <span class="text-xs text-muted-foreground">{format!("{author} · {}", note.created_at)}</span>
+                                                <span class="text-xs text-muted-foreground">{format!("{author} В· {}", note.created_at)}</span>
                                             </div>
                                             <p class="whitespace-pre-wrap text-sm text-foreground">{note.body}</p>
                                             {(!is_resolved).then(|| {

@@ -31,7 +31,7 @@ pub fn comment_composer_copy(locale: Option<&str>) -> CommentComposerCopy {
             "blog.comments.composer.emptyError",
             "Write a comment before submitting.",
         ),
-        richtext: leptos_ui::localized_richtext_frame_copy(|key, fallback| {
+        richtext: rustok_ui_leptos::localized_richtext_frame_copy(|key, fallback| {
             t(locale, key, fallback)
         }),
     }
@@ -53,11 +53,11 @@ mod tests {
     #[test]
     fn reading_time_uses_catalog_plural_rules_and_regional_locale() {
         for (minutes, expected) in [
-            (1, "1 минута чтения"),
-            (2, "2 минуты чтения"),
-            (5, "5 минут чтения"),
-            (11, "11 минут чтения"),
-            (21, "21 минута чтения"),
+            (1, "1 РјРёРЅСѓС‚Р° С‡С‚РµРЅРёСЏ"),
+            (2, "2 РјРёРЅСѓС‚С‹ С‡С‚РµРЅРёСЏ"),
+            (5, "5 РјРёРЅСѓС‚ С‡С‚РµРЅРёСЏ"),
+            (11, "11 РјРёРЅСѓС‚ С‡С‚РµРЅРёСЏ"),
+            (21, "21 РјРёРЅСѓС‚Р° С‡С‚РµРЅРёСЏ"),
         ] {
             assert_eq!(
                 visible(crate::core::format_reading_time(minutes, Some("ru-RU"))),
@@ -84,7 +84,7 @@ mod tests {
         }
         assert_eq!(
             visible(super::search_results_message(Some("en"), 1, 1)),
-            "Page 1 · Results: 1"
+            "Page 1 В· Results: 1"
         );
     }
 }

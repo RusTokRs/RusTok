@@ -21,7 +21,7 @@ hydrate = ["leptos/hydrate", "rustok-auth-ui/hydrate"]
 ssr = ["leptos/ssr", "rustok-auth-ui/ssr"]
 
 [dependencies]
-leptos-ui.workspace = true
+rustok-ui-leptos.workspace = true
 leptos.workspace = true
 rustok-auth-ui.workspace = true
 rustok-graphql.workspace = true

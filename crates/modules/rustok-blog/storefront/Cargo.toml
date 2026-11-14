@@ -49,7 +49,7 @@ leptos_axum = { workspace = true, optional = true }
 rustok-graphql.workspace = true
 rustok-ui-transport.workspace = true
 leptos-ui-routing.workspace = true
-leptos-ui.workspace = true
+rustok-ui-leptos.workspace = true
 tracing.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

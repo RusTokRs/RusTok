@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local_scoped_with_cancellation;
-use leptos_ui::{Button, ButtonVariant, Size};
+use rustok_ui_leptos::{Button, ButtonVariant, Size};
 use rustok_auth_ui::ui::leptos::AuthContext;
 use rustok_ui_core::UiRouteContext;
 
