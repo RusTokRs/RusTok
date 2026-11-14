@@ -4,9 +4,11 @@
 //! Provides comment composer state, rich-text frame integration, and validation logic.
 
 mod core;
+pub mod transport;
 mod ui;
 
 pub use core::{CommentComposerValidationError, is_richtext_blank, validate_comment_submission};
+pub use transport::{CommentTransportStatus, SubmitCommentPayload};
 pub use ui::{CommentComposer, CommentComposerCopy};
 
 #[cfg(test)]

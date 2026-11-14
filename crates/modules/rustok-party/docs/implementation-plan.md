@@ -5,6 +5,9 @@ Sovereign domain capability and client surfaces for Counterparty & Legal Entitie
 
 ## Current state
 - Status: `in_progress`
+- FFA status: `in_progress`
+- FBA status: `boundary_ready`
+- Structural shape: `core_transport_ui`
 - Architecture: FBA / FFA
 - Backend crate: `rustok-party`
 - Admin UI crate: `rustok-party-admin`

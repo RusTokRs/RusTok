@@ -16,6 +16,7 @@ pub mod core;
 mod css_scope;
 mod i18n;
 mod localized_route;
+pub mod transport;
 mod ui;
 
 #[cfg(test)]
@@ -26,6 +27,7 @@ pub use localized_route::{
     LocalizedPageBuilderStorefront, StorefrontLocalizedRouteOutput,
     render_storefront_localized_request, render_storefront_localized_slug,
 };
+pub use transport::{FetchStorefrontPagePayload, PageBuilderTransportStatus};
 pub use ui::PageBuilderView;
 
 #[cfg(feature = "inline-edit")]

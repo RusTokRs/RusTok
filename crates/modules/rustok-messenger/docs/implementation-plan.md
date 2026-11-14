@@ -13,6 +13,13 @@ Deliver a reliable private messenger first. A user can open a direct or private 
 
 The [proposed Messenger ADR](../../../../DECISIONS/2026-11-11-messenger-write-and-sync.md) owns the target write, authorization and sync contract. Accept it before starting the cutover. This plan applies the [embedded-first FBA sequence](../../../../docs/research/fluid-backend-architecture-unified-plan.md) and the [platform event contract](../../../../docs/architecture/event-flow-contract.md). The [Workplace proposal](../../../../docs/architecture/workplace-collaboration-superapp-plan.md) carries broader product ideas. Calls, collaborative documents, calendars and commerce workflows stay with their respective owners.
 
+## Current state
+
+- Status: `in_progress`
+- FFA status: `not_started`
+- FBA status: `boundary_ready`
+- Structural shape: `no_ui_boundary`
+
 ## Source baseline
 
 The Messenger source baseline was reviewed at `e16f5a4ae92b92f85361e42d31eb0522a49f0bf7`. The deployment and package boundaries were reconciled against local `main` at `2a58754812a9d968930ebc1ac19677c2f8917f50` on 2026-11-11. The source review establishes an embedded boundary and a partial scaffold. Runtime, privacy, frontend parity and scale remain open.

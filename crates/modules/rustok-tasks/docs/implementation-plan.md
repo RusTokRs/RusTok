@@ -5,6 +5,9 @@ Sovereign domain capability and client surfaces for Team Issues & Tasks.
 
 ## Current state
 - Status: `in_progress`
+- FFA status: `in_progress`
+- FBA status: `boundary_ready`
+- Structural shape: `core_transport_ui`
 - Architecture: FBA / FFA
 - Backend crate: `rustok-tasks`
 - Admin UI crate: `rustok-tasks-admin`
