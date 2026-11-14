@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use playwright_rs::Playwright;
 use playwright_rs::api::LaunchOptions;
+use playwright_rs::Playwright;
 
 const TOPIC_COMPOSITION_SELECTOR: &str = "body:has([data-storefront-composition='forum-topic-reactions']):not(:has([data-storefront-composition='forum-reply-reactions']))";
 const REPLY_COMPOSITION_SELECTOR: &str = "body:has([data-storefront-composition='forum-reply-reactions']):not(:has([data-storefront-composition='forum-topic-reactions']))";

@@ -1,5 +1,5 @@
-use super::{PlannedFile, ensure_no_symlink_ancestors};
-use anyhow::{Context, Result, bail, ensure};
+use super::{ensure_no_symlink_ancestors, PlannedFile};
+use anyhow::{bail, ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;

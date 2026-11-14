@@ -304,21 +304,15 @@ use rustok_ui_i18n::{
             &mut findings,
         );
 
-        assert!(
-            findings
-                .iter()
-                .any(|finding| finding.symbol == "FluentValue")
-        );
-        assert!(
-            findings
-                .iter()
-                .any(|finding| finding.symbol == "module::bundle")
-        );
-        assert!(
-            findings
-                .iter()
-                .all(|finding| finding.evidence == "same-file-candidate")
-        );
+        assert!(findings
+            .iter()
+            .any(|finding| finding.symbol == "FluentValue"));
+        assert!(findings
+            .iter()
+            .any(|finding| finding.symbol == "module::bundle"));
+        assert!(findings
+            .iter()
+            .all(|finding| finding.evidence == "same-file-candidate"));
     }
 
     #[test]

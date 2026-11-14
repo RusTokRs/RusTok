@@ -1,5 +1,5 @@
 use super::*;
-use crate::docs_markdown::{CORE_MODULES, Document, MODULE_COLUMNS, OPTIONAL_MODULES};
+use crate::docs_markdown::{Document, CORE_MODULES, MODULE_COLUMNS, OPTIONAL_MODULES};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RegistryDocsSection {
@@ -184,11 +184,9 @@ mod tests {
     #[test]
     fn real_duplicate_module_rows_still_fail() {
         let error = parse_registry_docs_rows("### Core Modules\n| Slug | Crate | Dependencies | Role |\n| --- | --- | --- | --- |\n\n### Optional Modules\n| Slug | Crate | Dependencies | Role |\n| --- | --- | --- | --- |\n| `example` | `rustok-example` | none | first |\n| `example` | `rustok-example` | none | duplicate |\n").unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("duplicate module row for 'example'")
-        );
+        assert!(error
+            .to_string()
+            .contains("duplicate module row for 'example'"));
     }
 
     #[test]
