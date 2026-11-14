@@ -248,12 +248,7 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
         tenant_id: Uuid,
         ids: &[Uuid],
     ) -> Result<Vec<FieldDefinitionView>, FlexError> {
-        let unique = ids.iter().copied().collect::<HashSet<_>>();
-        if unique.len() != ids.len() {
-            return Err(FlexError::InvalidFieldKey(
-                "attached field-definition reorder contains duplicate ids".to_string(),
-            ));
-        }
+        crate::registry::validate_field_definition_reorder_request(ids)?;
 
         let txn = db.begin().await.map_err(database_error)?;
         let query = Entity::find()
@@ -271,15 +266,7 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
             .iter()
             .map(|definition| definition.id)
             .collect::<HashSet<_>>();
-        if let Some(missing_id) = unique.difference(&existing_ids).next() {
-            return Err(FlexError::NotFound(*missing_id));
-        }
-        if unique != existing_ids {
-            return Err(FlexError::InvalidFieldKey(
-                "attached field-definition reorder must include every definition exactly once"
-                    .to_string(),
-            ));
-        }
+        crate::registry::validate_field_definition_reorder_coverage(ids, &existing_ids)?;
 
         let mut definitions_by_id = definitions
             .into_iter()
@@ -287,9 +274,10 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
             .collect::<std::collections::HashMap<_, _>>();
         let mut rows = Vec::with_capacity(ids.len());
         for (position, id) in ids.iter().copied().enumerate() {
-            let definition = definitions_by_id
-                .remove(&id)
-                .expect("requested ids were validated against the locked definition set");
+            let Some(definition) = definitions_by_id.remove(&id) else {
+                // Coverage validation above proved the id is in the locked set.
+                return Err(FlexError::NotFound(id));
+            };
             let mut active: ActiveModel = definition.into();
             active.position = Set(position as i32);
             active.updated_at = Set(Utc::now().fixed_offset());

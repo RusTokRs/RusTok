@@ -292,6 +292,13 @@ fn map_tenant_error(error: crate::TenantError) -> PortError {
             "tenant.locale_policy_idempotency_conflict",
             "tenant locale policy idempotency key was already used for a different request",
         ),
+        // A claimed host is a caller-fixable conflict, not a transient outage:
+        // reporting it as `Unavailable` would mark it retryable and invite a retry
+        // that can never succeed.
+        crate::TenantError::DomainAlreadyExists(domain) => PortError::conflict(
+            "tenant.domain_already_exists",
+            format!("tenant domain `{domain}` is already assigned to another tenant"),
+        ),
         crate::TenantError::LocalePolicyInvariant(message) => {
             PortError::invariant_violation("tenant.locale_policy_invariant", message)
         }

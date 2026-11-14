@@ -80,6 +80,13 @@ impl TenantService {
         {
             return Err(TenantError::SlugAlreadyExists(slug));
         }
+        // `tenants.domain` carries a unique key, and host-based resolution depends
+        // on it being unambiguous. Probing here keeps a collision a named conflict
+        // rather than a raw constraint violation, and keeps the error independent
+        // of whichever backend produced it.
+        if let Some(domain) = domain.as_deref() {
+            ensure_domain_available(&txn, domain, None).await?;
+        }
 
         let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
         let id = generate_id();
@@ -266,6 +273,11 @@ impl TenantService {
                         trimmed,
                     )
                     .map_err(|e| TenantError::Validation(e.to_string()))?;
+                // Moving a tenant onto another tenant's domain would make
+                // host-based resolution ambiguous, so the same uniqueness rule
+                // that guards creation applies here, ignoring this tenant's own
+                // current row.
+                ensure_domain_available(&txn, &valid, Some(tenant_id)).await?;
                 active.domain = Set(Some(valid));
             }
         }
@@ -297,7 +309,16 @@ impl TenantService {
         let per_page = per_page.clamp(1, 100);
         let page = page.max(1);
         tracing::debug!(page, per_page, "listing tenants");
-        let paginator = tenant::Entity::find().paginate(&self.db, per_page);
+        // Deterministic ordering is required for page walks: without it the
+        // backend may return rows in any order, so concurrent inserts (or a
+        // different plan) can shift rows across page boundaries and a caller
+        // iterating pages can skip a tenant entirely. `id` is the unique
+        // tie-breaker for identical timestamps, matching the ordering other
+        // paginated list endpoints in this workspace use.
+        let paginator = tenant::Entity::find()
+            .order_by_asc(tenant::Column::CreatedAt)
+            .order_by_asc(tenant::Column::Id)
+            .paginate(&self.db, per_page);
         let total = paginator.num_items().await?;
         let models = paginator.fetch_page(page.saturating_sub(1)).await?;
         let items = models.into_iter().map(to_tenant_response).collect();
@@ -649,6 +670,31 @@ impl TenantService {
     }
 }
 
+/// Reject a host name that another tenant already claims.
+///
+/// `tenants.domain` is declared `unique_key()` and host-based tenant resolution
+/// (`TenantReadSelector::Domain`) calls `.one()`, so two tenants sharing a host
+/// would make resolution pick an arbitrary row. The unique index remains the
+/// authority; this check turns the common case into a named conflict and
+/// excludes the tenant being updated from its own comparison.
+async fn ensure_domain_available<C>(
+    db: &C,
+    domain: &str,
+    ignore_tenant_id: Option<Uuid>,
+) -> TenantResult<()>
+where
+    C: sea_orm::ConnectionTrait,
+{
+    let mut query = tenant::Entity::find().filter(tenant::Column::Domain.eq(domain));
+    if let Some(tenant_id) = ignore_tenant_id {
+        query = query.filter(tenant::Column::Id.ne(tenant_id));
+    }
+    if query.one(db).await?.is_some() {
+        return Err(TenantError::DomainAlreadyExists(domain.to_string()));
+    }
+    Ok(())
+}
+
 fn canonicalize_locale_policy_request(
     mut request: ReplaceTenantLocalePolicyRequest,
 ) -> TenantResult<ReplaceTenantLocalePolicyRequest> {
@@ -851,6 +897,25 @@ mod tests {
     use super::*;
     use sea_orm::{ActiveModelTrait, ConnectionTrait, Database};
     use serde_json::json;
+
+    #[test]
+    fn tenant_list_query_orders_by_timestamp_then_unique_id() {
+        use sea_orm::{DbBackend, QueryTrait};
+
+        // A page walk is only stable when the ordering is total. Without the
+        // unique tie-breaker two tenants created in the same instant could swap
+        // positions between page requests.
+        let statement = tenant::Entity::find()
+            .order_by_asc(tenant::Column::CreatedAt)
+            .order_by_asc(tenant::Column::Id)
+            .build(DbBackend::Sqlite);
+        let sql = statement.to_string();
+        let order_by = sql.split("ORDER BY").nth(1).expect("query has ordering");
+        let timestamp_position = order_by.find("created_at").expect("timestamp order");
+        let id_position = order_by.find("id").expect("unique tie-breaker");
+        assert!(timestamp_position < id_position);
+        assert_eq!(order_by.matches("ASC").count(), 2);
+    }
 
     #[tokio::test]
     async fn update_tenant_module_settings_validation_and_lifecycle() {

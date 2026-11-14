@@ -1930,7 +1930,7 @@ impl RootMutation {
                 .invalidate_tenant(tenant.id);
         }
 
-        Ok(rustok_api::ModuleTransitionCheckpointView::from(receipt.checkpoint).into())
+        rustok_api::ModuleTransitionCheckpointView::from(receipt.checkpoint).try_into()
     }
 
     /// Starts (or resumes) a governed automatic transition to one admitted

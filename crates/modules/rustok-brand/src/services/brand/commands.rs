@@ -56,13 +56,25 @@ impl BrandService {
                 "Website URL exceeds maximum length of 512 characters".to_string(),
             ));
         }
+        let mut seen_locales = std::collections::BTreeSet::new();
         for t in &input.translations {
-            if t.locale.trim().is_empty() {
+            let locale = t.locale.trim().to_lowercase();
+            if locale.is_empty() {
                 return Err(BrandError::InvalidInput(
                     "Translation locale cannot be empty".to_string(),
                 ));
             }
-            if t.locale.len() > 16 {
+            // Locales are stored lowercased, so "ru" and "RU" are the same row.
+            // `uq_brand_translations_locale` would reject the duplicate only after
+            // the brand row was already inserted in this transaction, turning a
+            // caller mistake into a database error.
+            if !seen_locales.insert(locale) {
+                return Err(BrandError::InvalidInput(
+                    "Translation locales must be unique".to_string(),
+                ));
+            }
+            // Columns are counted in characters by the database, not bytes.
+            if t.locale.trim().chars().count() > 16 {
                 return Err(BrandError::InvalidInput(
                     "Translation locale exceeds maximum length of 16 characters".to_string(),
                 ));
@@ -72,7 +84,7 @@ impl BrandService {
                     "Translation name cannot be empty".to_string(),
                 ));
             }
-            if t.name.len() > 255 {
+            if t.name.trim().chars().count() > 255 {
                 return Err(BrandError::InvalidInput(
                     "Translation name exceeds maximum length of 255 characters".to_string(),
                 ));

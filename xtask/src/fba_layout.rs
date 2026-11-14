@@ -1,5 +1,5 @@
 use crate::manifest_io::load_manifest_from;
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path};

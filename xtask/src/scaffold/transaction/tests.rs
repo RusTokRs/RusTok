@@ -318,24 +318,21 @@ fn failed_retirement_cleanup_preserves_committed_sources() {
         "preserve",
     )
     .unwrap();
-    assert!(
-        transaction
-            .commit()
-            .unwrap_err()
-            .to_string()
-            .contains("Scaffold committed")
-    );
+    assert!(transaction
+        .commit()
+        .unwrap_err()
+        .to_string()
+        .contains("Scaffold committed"));
     assert!(!run_worker(&root.0, "recover").status.success());
     let foreign = root.0.join(".rustok/scaffold/retired/foreign.txt");
     assert_eq!(fs::read(&foreign).unwrap(), b"preserve");
     fs::remove_file(foreign).unwrap();
     assert!(run_worker(&root.0, "recover").status.success());
     assert_eq!(fs::read(root.0.join("modules.toml")).unwrap(), b"after");
-    assert!(
-        root.0
-            .join("crates/modules/rustok-example/src/lib.rs")
-            .is_file()
-    );
+    assert!(root
+        .0
+        .join("crates/modules/rustok-example/src/lib.rs")
+        .is_file());
 }
 
 #[test]
@@ -391,11 +388,10 @@ fn external_changes_and_untracked_files_block_undo_without_deleting_anything() {
         b"external edit"
     );
     assert_eq!(fs::read(&owner_file).unwrap(), b"owner work");
-    assert!(
-        root.0
-            .join("crates/modules/rustok-example/src/lib.rs")
-            .is_file()
-    );
+    assert!(root
+        .0
+        .join("crates/modules/rustok-example/src/lib.rs")
+        .is_file());
     assert!(root.0.join(".rustok/scaffold/active/plan.json").is_file());
     fs::remove_file(owner_file).unwrap();
     assert!(!run_worker(&root.0, "recover").status.success());
@@ -474,11 +470,10 @@ fn malformed_or_unsafe_journals_fail_before_recovery_writes() {
             "accepted {kind}"
         );
         assert_eq!(fs::read(root.0.join("modules.toml")).unwrap(), b"after");
-        assert!(
-            root.0
-                .join("crates/modules/rustok-example/src/lib.rs")
-                .is_file()
-        );
+        assert!(root
+            .0
+            .join("crates/modules/rustok-example/src/lib.rs")
+            .is_file());
         assert!(path.is_file());
     }
 }

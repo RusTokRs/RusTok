@@ -118,7 +118,8 @@ pub use registry::{
     field_definition_deleted_event, field_definition_description_json,
     field_definition_from_source, field_definition_label_json, field_definition_position_or_next,
     field_definition_type_name, field_definition_updated_event, field_definition_validation_json,
-    validate_field_definition_create, validate_field_definition_reorder,
+    validate_field_definition_create, validate_field_definition_key,
+    validate_field_definition_reorder_coverage, validate_field_definition_reorder_request,
 };
 pub use rest::{
     CreateFlexEntryRequest, CreateFlexSchemaRequest, DeleteFlexResponse, FlexEntryResponse,

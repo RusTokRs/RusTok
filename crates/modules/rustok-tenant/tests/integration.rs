@@ -187,6 +187,91 @@ async fn tenant_crud_flow() {
 }
 
 #[tokio::test]
+async fn duplicate_domain_is_a_named_conflict_on_create_and_update() {
+    let db = setup_db().await;
+    let service = TenantService::new(db.clone());
+
+    let first = service
+        .create_tenant(CreateTenantInput {
+            name: "First".to_string(),
+            slug: "first".to_string(),
+            domain: Some("shared.example".to_string()),
+        })
+        .await
+        .expect("first tenant should be created");
+
+    // `tenants.domain` is unique and drives host-based resolution, so a second
+    // tenant must not be able to claim the same host.
+    let duplicate = service
+        .create_tenant(CreateTenantInput {
+            name: "Second".to_string(),
+            slug: "second".to_string(),
+            domain: Some("shared.example".to_string()),
+        })
+        .await;
+    assert!(
+        matches!(duplicate, Err(TenantError::DomainAlreadyExists(ref domain)) if domain == "shared.example"),
+        "creating a tenant on a claimed domain must fail as DomainAlreadyExists, got {duplicate:?}"
+    );
+
+    // The failed create must not have left a partially written tenant behind.
+    assert!(
+        service.get_tenant_by_slug("second").await.is_err(),
+        "rejected tenant creation must not persist the row"
+    );
+
+    let second = service
+        .create_tenant(CreateTenantInput {
+            name: "Second".to_string(),
+            slug: "second".to_string(),
+            domain: Some("second.example".to_string()),
+        })
+        .await
+        .expect("second tenant should be created on its own domain");
+
+    // Re-saving a tenant with its own current domain must stay allowed.
+    service
+        .update_tenant(
+            first.id,
+            UpdateTenantInput {
+                name: Some("First Renamed".to_string()),
+                domain: Some("shared.example".to_string()),
+                is_active: None,
+                settings: None,
+            },
+        )
+        .await
+        .expect("a tenant may keep its own domain");
+
+    // Taking another tenant's domain must be rejected.
+    let stolen = service
+        .update_tenant(
+            second.id,
+            UpdateTenantInput {
+                name: None,
+                domain: Some("shared.example".to_string()),
+                is_active: None,
+                settings: None,
+            },
+        )
+        .await;
+    assert!(
+        matches!(stolen, Err(TenantError::DomainAlreadyExists(ref domain)) if domain == "shared.example"),
+        "moving a tenant onto another tenant's domain must fail as DomainAlreadyExists, got {stolen:?}"
+    );
+
+    let unchanged = service
+        .get_tenant(second.id)
+        .await
+        .expect("second tenant should still be readable");
+    assert_eq!(
+        unchanged.domain.as_deref(),
+        Some("second.example"),
+        "a rejected domain move must not be persisted"
+    );
+}
+
+#[tokio::test]
 async fn reject_invalid_tenant_settings_schema() {
     let db = setup_db().await;
     let service = TenantService::new(db);

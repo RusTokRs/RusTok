@@ -763,6 +763,9 @@ fn flex_field_definition_view_mapping_is_owned_by_flex_crate() {
 
         for required in [
             "flex::validate_field_definition_create",
+            "flex::validate_field_definition_key",
+            "flex::validate_field_definition_reorder_request",
+            "flex::validate_field_definition_reorder_coverage",
             "flex::field_definition_position_or_next",
             "flex::field_definition_type_name",
             "flex::field_definition_label_json",

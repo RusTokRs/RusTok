@@ -20,11 +20,10 @@ use crate::services::mcp_management_authority::{
     McpManagementAuthorityError, McpManagementAuthorityService,
 };
 use crate::services::server_runtime_context::ServerRuntimeContext;
-use rustok_core::ModuleRegistry;
 use rustok_mcp::{
     ApplyModuleScaffoldRequest, ApplyModuleScaffoldResponse, McpAccessContext, McpAccessPolicy,
     McpAccessResolver, McpActorType, McpAuditSink, McpIdentity, McpRuntimeBinding,
-    McpScaffoldDraftRuntimeContext, McpScaffoldDraftStore, McpServerConfig, McpSessionContext,
+    McpScaffoldDraftRuntimeContext, McpScaffoldDraftStore, McpSessionContext,
     McpToolCallAuditEvent, McpToolCallOutcome, ReviewModuleScaffoldRequest,
     ReviewModuleScaffoldResponse, ScaffoldModuleRequest, StageModuleScaffoldResponse,
     TOOL_MCP_WHOAMI, scaffold_source_digest,
@@ -54,17 +53,6 @@ impl DbBackedMcpRuntimeBridge {
 
     pub fn shared(runtime_ctx: ServerRuntimeContext) -> Arc<Self> {
         Arc::new(Self::new(runtime_ctx))
-    }
-
-    pub fn bind_stdio_config(
-        self: &Arc<Self>,
-        registry: ModuleRegistry,
-        session_context: McpSessionContext,
-    ) -> McpServerConfig {
-        McpServerConfig::new(registry)
-            .with_session_context(session_context)
-            .with_access_resolver(Arc::clone(self))
-            .with_audit_sink(Arc::clone(self))
     }
 
     pub async fn bootstrap_remote_session(

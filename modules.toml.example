@@ -51,7 +51,7 @@ social_graph = { crate = "rustok-social-graph", source = "path", path = "crates/
 reactions = { crate = "rustok-reactions", source = "path", path = "crates/modules/rustok-reactions", depends_on = ["outbox"] }
 groups = { crate = "rustok-groups", source = "path", path = "crates/modules/rustok-groups" }
 region = { crate = "rustok-region", source = "path", path = "crates/modules/rustok-region" }
-pricing = { crate = "rustok-pricing", source = "path", path = "crates/modules/rustok-pricing", depends_on = ["product"] }
+pricing = { crate = "rustok-pricing", source = "path", path = "crates/modules/rustok-pricing", depends_on = ["product", "region"] }
 inventory = { crate = "rustok-inventory", source = "path", path = "crates/modules/rustok-inventory", depends_on = ["product"] }
 order = { crate = "rustok-order", source = "path", path = "crates/modules/rustok-order" }
 payment = { crate = "rustok-payment", source = "path", path = "crates/modules/rustok-payment" }

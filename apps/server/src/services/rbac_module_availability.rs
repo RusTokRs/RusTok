@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use rustok_core::ModuleRegistry;
-use rustok_modules::ModuleDefinitionCatalog;
+use rustok_modules::ModuleControlPlane;
 use rustok_rbac::PermissionAvailability;
 
 use super::effective_module_policy::EffectiveModulePolicyService;
@@ -20,10 +20,17 @@ use crate::error::{Error, Result};
 #[derive(Clone)]
 pub struct RbacPermissionOwnership(pub Arc<BTreeMap<String, String>>);
 
-fn build_permission_ownership(registry: &ModuleRegistry) -> Result<BTreeMap<String, String>> {
-    let catalog = ModuleDefinitionCatalog::from_static_registry(registry).map_err(|error| {
-        Error::Message(format!("RBAC permission ownership catalog failed: {error}"))
-    })?;
+fn build_permission_ownership(
+    ctx: &ServerRuntimeContext,
+    registry: &ModuleRegistry,
+) -> Result<BTreeMap<String, String>> {
+    // The definition catalog is an owner service: obtain it through the
+    // control plane instead of constructing it in the host adapter.
+    let catalog = ModuleControlPlane::new(ctx.db_clone())
+        .catalog(registry)
+        .map_err(|error| {
+            Error::Message(format!("RBAC permission ownership catalog failed: {error}"))
+        })?;
     let mut ownership: BTreeMap<String, String> = BTreeMap::new();
     for definition in catalog.definitions() {
         for permission in &definition.permissions {
@@ -44,7 +51,7 @@ fn permission_ownership(
     if let Some(cached) = ctx.shared_get::<RbacPermissionOwnership>() {
         return Ok(cached.0);
     }
-    let ownership = Arc::new(build_permission_ownership(registry)?);
+    let ownership = Arc::new(build_permission_ownership(ctx, registry)?);
     ctx.shared_insert(RbacPermissionOwnership(ownership.clone()));
     Ok(ownership)
 }

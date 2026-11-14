@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use playwright_rs::Playwright;
 use playwright_rs::api::LaunchOptions;
+use playwright_rs::Playwright;
 
 fn leptos_admin_url(path: &str) -> String {
     let base = std::env::var("RUSTOK_LEPTOS_ADMIN_E2E_URL")

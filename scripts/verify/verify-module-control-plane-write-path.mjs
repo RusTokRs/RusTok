@@ -383,16 +383,59 @@ function read(relativePath) {
   return readTree(path.join(root, relativePath), "utf8");
 }
 
+/// Removes `#[cfg(test)]` items (usually `mod tests { .. }`) so a test fixture
+/// that touches an owner table is not reported as a production control-plane
+/// write. Items after the test module — and `#[cfg(test)] use` lines — are cut
+/// by brace/semicolon matching rather than by truncating the whole tail, so
+/// production code that follows a test module is still scanned.
+function productionSource(source) {
+  const marker = "#[cfg(test)]";
+  let out = "";
+  let cursor = 0;
+  for (;;) {
+    const start = source.indexOf(marker, cursor);
+    if (start === -1) return out + source.slice(cursor);
+    out += source.slice(cursor, start);
+    let index = start + marker.length;
+    let depth = 0;
+    let terminated = false;
+    while (index < source.length) {
+      const char = source[index];
+      if (char === "{") {
+        depth += 1;
+      } else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          index += 1;
+          terminated = true;
+          break;
+        }
+      } else if (char === ";" && depth === 0) {
+        index += 1;
+        terminated = true;
+        break;
+      }
+      index += 1;
+    }
+    if (!terminated) {
+      // Unterminated item: keep the remainder untouched rather than guessing.
+      return out + source.slice(start);
+    }
+    cursor = index;
+  }
+}
+
 function writesControlPlane(source) {
+  const production = productionSource(source);
   return (
-    writePattern.test(source) ||
-    activeModelPattern.test(source) ||
-    entityMutationPattern.test(source)
+    writePattern.test(production) ||
+    activeModelPattern.test(production) ||
+    entityMutationPattern.test(production)
   );
 }
 
 function constructsOwnerService(source) {
-  return ownerServiceConstructorPattern.test(source);
+  return ownerServiceConstructorPattern.test(productionSource(source));
 }
 
 function isProductionSource(filePath) {
@@ -502,6 +545,7 @@ try {
     staticLifecycleWriterPath,
     "utf8",
   );
+  const lifecycleWriterSource = staticLifecycleWriter;
   const recoverySource = readTree(recoveryPath, "utf8");
   const runtimeManifest = readTree(runtimeManifestPath, "utf8");
   const forbiddenDependencyViolations = forbiddenOwnerDependencies.filter(
@@ -613,7 +657,6 @@ try {
       "trace_id, correlation_id, created_at",
     ) ||
     !staticDistributionRolloutOwner.includes("event_envelope_for_command(") ||
-    !staticDistributionRolloutOwner.includes("record.trace_id.as_deref()") ||
     !staticDistributionRolloutOwner.includes("revoke_rollouts_for_release(") ||
     !staticDistributionRolloutOwner.includes(
       "context: &ModuleCommandContext,",
@@ -719,7 +762,7 @@ try {
     operationsToolStartCommand.groups.fields.includes("pub idempotency_key:") ||
     !operationsToolOwner.includes("validate_start_maintenance_command(&command)?") ||
     !operationsToolOwner.includes("validate_recovery_command(&command)?") ||
-    !operationsToolOwner.includes("let request_digest = digest_json(&command)") ||
+    !operationsToolOwner.includes("let request_digest = crate::idempotency::semantic_request_digest(&command)") ||
     !operationsToolOwner.includes("load_start_replay(") ||
     !operationsToolOwner.includes("load_recovery_replay(") ||
     !operationsToolOwner.includes("ON CONFLICT DO NOTHING") ||
@@ -735,6 +778,9 @@ try {
       "status IN ('in_progress', 'rolling_back', 'recovery_required')",
     ) ||
     !operationsToolOwner.includes("context.tenant_id.is_none()") ||
+    !operationsToolOwner.includes(
+      "operation.context.actor_id != command.context.actor_id",
+    ) ||
     !operationsToolMigration.includes(
       "request_digest TEXT NOT NULL CHECK (request_digest ~ '^sha256:[0-9a-f]{64}$')",
     ) ||
@@ -774,10 +820,12 @@ try {
     !externalPrebuiltIngressOwner.includes(
       "command.scope.matches_command_context(&command.context)",
     ) ||
-    !ociAdmissionOwner.includes("let request_digest = digest_json(&command)") ||
+    !ociAdmissionOwner.includes("let request_digest = command.semantic_request_digest()?") ||
     !externalPrebuiltIngressOwner.includes(
-      "let request_digest = digest_json(&command)",
+      "let request_digest = command.semantic_request_digest()?",
     ) ||
+    !ociAdmissionOwner.includes("fn semantic_request_digest(&self)") ||
+    !externalPrebuiltIngressOwner.includes("fn semantic_request_digest(&self)") ||
     !ociAdmissionOwner.includes("SELECT release_digest, request_digest") ||
     !externalPrebuiltIngressOwner.includes(
       "SELECT release_digest, request_digest",
@@ -802,7 +850,9 @@ try {
     distributionBootstrapContextFields.length !== 1 ||
     !staticDistributionBootstrapOwner.includes("context.tenant_id.is_some()") ||
     !staticDistributionBootstrapOwner.includes("trace_id, correlation_id") ||
-    !staticDistributionBootstrapOwner.includes("stored_context != *context")
+    !staticDistributionBootstrapOwner.includes(
+      "stored_context.actor_id != context.actor_id",
+    )
   ) {
     fail(
       "static distribution bootstrap import must retain and replay a platform-scoped ModuleCommandContext in the shared durable receipt",
@@ -838,15 +888,17 @@ try {
   }
 
   const reverificationCommand = lifecycleOwner.match(
-    /pub struct ArtifactAdmissionReverification\s*\{(?<fields>[\s\S]*?)\n\}/,
+    /pub struct ArtifactAdmissionReverificationCommand\s*\{(?<fields>[\s\S]*?)\n\}/,
   );
   if (
     !reverificationCommand?.groups?.fields.includes(
       "pub context: ModuleCommandContext,",
     ) ||
-    !lifecycleOwner.includes("validate_admission_reverification(&request)?") ||
     !lifecycleOwner.includes(
-      "admission_reverification_request_digest(&request)?",
+      "validate_admission_reverification(&request, &self.trust_policy)?",
+    ) ||
+    !lifecycleOwner.includes(
+      "admission_reverification_request_digest(&request, &self.trust_policy)?",
     ) ||
     !lifecycleOwner.includes(
       "event_envelope_for_command(\n                    &request.context,",
@@ -994,10 +1046,7 @@ try {
       "pub context: ModuleCommandContext,",
     ) ||
     !artifactBindingIdempotencyOwner.includes(
-      "stored_trace_id != request.context.trace_id",
-    ) ||
-    !artifactBindingIdempotencyOwner.includes(
-      "stored_correlation_id != request.context.correlation_id.to_string()",
+      "stored_digest != request.request_digest",
     ) ||
     !artifactBindingIdempotencyMigration.includes(
       "idempotency_key UUID NOT NULL",
@@ -1060,7 +1109,9 @@ try {
   if (
     !postPurgeRecoveryOwner.includes("pub context: ModuleCommandContext,") ||
     !postPurgeRecoveryOwner.includes("validate_context(&request.context, &request.reason)") ||
-    !postPurgeRecoveryOwner.includes("let request_digest = digest_json(&request)") ||
+    !postPurgeRecoveryOwner.includes(
+      "crate::idempotency::semantic_request_digest(&request)",
+    ) ||
     !postPurgeRecoveryOwner.includes("stored_request_digest != request_digest") ||
     !postPurgeRecoveryOwner.includes("ArtifactDataRestoreRequest") ||
     !postPurgeRecoveryOwner.includes("namespace_instance_id: Uuid") ||
@@ -1186,11 +1237,21 @@ try {
     .map(relative);
   const publicationEvidence = readTree(publicationEvidencePath, "utf8");
   const serverLifecycleSource = readTree(serverLifecyclePath, "utf8");
+  // The transition fence moved into the owner: the lifecycle executor rejects a
+  // toggle while an unresolved checkpoint exists, and the lifecycle writer rejects
+  // settings writes during an unresolved rollout. The host must not query the
+  // transition checkpoint store itself.
   if (
     serverLifecycleSource.includes("TransitionCheckpointStore") ||
-    !serverLifecycleSource.includes(".active_checkpoint_for_module(") ||
-    !serverLifecycleSource.includes(
-      ".active_observing_checkpoint_for_module(",
+    !lifecycleExecutor.includes(
+      "list_active_checkpoints_for_slug_and_tenant_or_platform(",
+    ) ||
+    !lifecycleExecutor.includes(
+      "an unresolved module release transition blocks lifecycle changes",
+    ) ||
+    !lifecycleWriterSource.includes("reject_unverifiable_rollout_settings_write") ||
+    !lifecycleWriterSource.includes(
+      "settings cannot be changed during an unresolved transition",
     ) ||
     !transitionOwner.includes("pub async fn active_checkpoint_for_module(") ||
     !transitionOwner.includes(
@@ -1981,10 +2042,10 @@ try {
   if (
     !alloyOwnerSource.includes("pub context: ModuleCommandContext,") ||
     !alloyOwnerSource.includes("self.context.tenant_id.is_some()") ||
-    !alloyOwnerSource.includes("stored_trace_id != command.context.trace_id") ||
     !alloyOwnerSource.includes(
-      "stored_correlation_id != command.context.correlation_id.to_string()",
+      "stored_actor_id != command.context.actor_id.to_string()",
     ) ||
+    !alloyOwnerSource.includes("PublicationIdempotencyConflict") ||
     !registryPublicationMigration.includes("actor_id UUID NOT NULL") ||
     !registryPublicationMigration.includes("trace_id TEXT NOT NULL") ||
     !registryPublicationMigration.includes("correlation_id UUID NOT NULL") ||
@@ -2366,7 +2427,8 @@ try {
       "request.context.tenant_id != Some(plan.tenant_id)",
     ) ||
     !staticLifecycleJournal.includes("pub trace_id: Option<String>,") ||
-    !staticLifecycleJournal.includes("existing.trace_id != request.trace_id") ||
+    !staticLifecycleJournal.includes("existing.expected_revision != request.expected_revision") ||
+    !staticLifecycleJournal.includes("ModuleOperationStoreError::IdempotencyConflict") ||
     !serverLifecycleSource.includes("context: ModuleCommandContext")
   ) {
     fail(
@@ -2635,7 +2697,7 @@ try {
     "storage: StorageRuntime",
     "expected_source_namespace_revision",
     "expected_target_namespace_revision",
-    "request_digest: digest_json(request)",
+    "request_digest: crate::idempotency::semantic_request_digest(request)",
     "inventory_digest: digest_json(&inventory)",
     "source_storage_key",
     "target_storage_key",
@@ -2673,7 +2735,8 @@ try {
   );
   for (const fragment of [
     "ArtifactDataCopyAuthorizer", "authorize_copy_on(&transaction", "lock_artifact_data_namespace_on",
-    "expected_source_namespace_revision", "expected_target_namespace_revision", "digest_json(&request)",
+    "expected_source_namespace_revision", "expected_target_namespace_revision",
+    "crate::idempotency::semantic_request_digest(&request)",
     "validate_authority", "synchronize_artifact_data_indexes", "receipt.next_page_cursor != request.page_cursor",
     "source_state != \"verified\"", "target_state != \"staging\"", "request_json", "receipt_json",
     "reserve_page", "reconcile_pending_pages", "frozen_page_json", "frozen_page_digest",

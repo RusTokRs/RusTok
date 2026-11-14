@@ -6,6 +6,8 @@ pub enum TenantError {
     NotFound,
     #[error("tenant slug '{0}' already exists")]
     SlugAlreadyExists(String),
+    #[error("tenant domain '{0}' is already assigned to another tenant")]
+    DomainAlreadyExists(String),
     #[error("invalid tenant settings schema: {0}")]
     InvalidSettingsSchema(String),
     #[error("invalid tenant locale policy: {0}")]

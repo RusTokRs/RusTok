@@ -84,7 +84,7 @@ impl ProductStorefrontHttpReadPort for CatalogService {}
 const MAX_LEGACY_STOREFRONT_HTTP_PRODUCTS_PER_PAGE: u64 = 100;
 fn load(context: &PortContext, products: &[Product]) {
     context.require_policy(PortCallPolicy::read())?;
-    rustok_inventory::is_metadata_visible_for_public_channel(
+    crate::services::catalog::helpers::is_metadata_visible_for_public_channel(
         context,
         metadata,
         channel,
@@ -116,7 +116,9 @@ fn hydrate(&self) {
     `host.shared_get::<rustok_product::ProductCatalogReadRuntime>()
 server.shared_get::<rustok_product::ProductCatalogReadRuntime>()
 rustok_product::ProductCatalogReadRuntime::in_process
-ProductCatalogReadRuntime must be initialized before marketplace listing
+require_shared::<rustok_product::ProductCatalogReadRuntime>
+"ProductCatalogReadRuntime"
+"MarketplaceListingRuntime"
 preserves_host_selected_external_product_catalog_runtime
 ProductCatalogReadProfile::External
 host.with_shared_value(rustok_ai::SharedAiProductCatalogReadPort(

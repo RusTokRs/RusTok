@@ -204,6 +204,61 @@ pub struct UpdateFieldDefinitionCommand {
     pub is_active: Option<bool>,
 }
 
+/// Validate a field key before an adapter opens a transaction or queries state.
+///
+/// The key format rule belongs to Flex. Adapters delegate here so an invalid key
+/// is rejected without acquiring a database transaction.
+pub fn validate_field_definition_key(field_key: &str) -> Result<(), FlexError> {
+    if is_valid_field_key(field_key) {
+        Ok(())
+    } else {
+        Err(FlexError::InvalidFieldKey(field_key.to_string()))
+    }
+}
+
+/// Validate the shape of a reorder request before an adapter loads owner state.
+///
+/// The supplied identifiers must be unique. Duplicates indicate a malformed
+/// request and are rejected before a database transaction is opened.
+pub fn validate_field_definition_reorder_request(ids: &[Uuid]) -> Result<(), FlexError> {
+    let unique = ids
+        .iter()
+        .copied()
+        .collect::<std::collections::HashSet<_>>();
+    if unique.len() == ids.len() {
+        Ok(())
+    } else {
+        Err(FlexError::InvalidFieldKey(
+            "field-definition reorder contains duplicate ids".to_string(),
+        ))
+    }
+}
+
+/// Validate that a reorder request addresses every scoped definition exactly once.
+///
+/// `existing_ids` is the locked, tenant-scoped definition set. A missing
+/// identifier is reported as [`FlexError::NotFound`]; a partial or foreign list
+/// cannot produce a total order and is rejected as a malformed request.
+pub fn validate_field_definition_reorder_coverage(
+    ids: &[Uuid],
+    existing_ids: &std::collections::HashSet<Uuid>,
+) -> Result<(), FlexError> {
+    let requested = ids
+        .iter()
+        .copied()
+        .collect::<std::collections::HashSet<_>>();
+    if let Some(missing_id) = requested.difference(existing_ids).next() {
+        return Err(FlexError::NotFound(*missing_id));
+    }
+    if requested == *existing_ids {
+        Ok(())
+    } else {
+        Err(FlexError::InvalidFieldKey(
+            "field-definition reorder must include every definition exactly once".to_string(),
+        ))
+    }
+}
+
 /// Validate owner-owned create guardrails for attached field definitions.
 pub fn validate_field_definition_create(
     entity_type: &str,
@@ -227,31 +282,6 @@ pub fn validate_field_definition_create(
         });
     }
 
-    Ok(())
-}
-
-/// Validate owner-owned reorder guardrails for attached field definitions.
-pub fn validate_field_definition_reorder(
-    ids: &[Uuid],
-    existing_ids: &std::collections::HashSet<Uuid>,
-) -> Result<(), FlexError> {
-    let requested_ids = ids
-        .iter()
-        .copied()
-        .collect::<std::collections::HashSet<_>>();
-    if requested_ids.len() != ids.len() {
-        return Err(FlexError::InvalidFieldKey(
-            "field-definition reorder contains duplicate ids".to_string(),
-        ));
-    }
-    if let Some(missing_id) = requested_ids.difference(existing_ids).next() {
-        return Err(FlexError::NotFound(*missing_id));
-    }
-    if requested_ids != *existing_ids {
-        return Err(FlexError::InvalidFieldKey(
-            "field-definition reorder must include every definition exactly once".to_string(),
-        ));
-    }
     Ok(())
 }
 
@@ -472,6 +502,55 @@ impl FieldDefRegistry {
             .get(entity_type)
             .cloned()
             .ok_or_else(|| FlexError::UnknownEntityType(entity_type.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod field_definition_policy_tests {
+    use super::*;
+
+    #[test]
+    fn field_definition_key_validation_rejects_malformed_keys() {
+        assert!(validate_field_definition_key("valid_key_1").is_ok());
+        for invalid in ["", "Invalid", "1leading", "has-dash", &"a".repeat(129)] {
+            match validate_field_definition_key(invalid) {
+                Err(FlexError::InvalidFieldKey(key)) => assert_eq!(key, invalid),
+                other => panic!("expected InvalidFieldKey for {invalid:?}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn reorder_request_rejects_duplicate_ids_before_state_reads() {
+        let first = Uuid::new_v4();
+        let second = Uuid::new_v4();
+        assert!(validate_field_definition_reorder_request(&[first, second]).is_ok());
+        match validate_field_definition_reorder_request(&[first, first, second]) {
+            Err(FlexError::InvalidFieldKey(message)) => {
+                assert!(message.contains("duplicate ids"), "{message}");
+            }
+            other => panic!("expected InvalidFieldKey for duplicates, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn reorder_coverage_distinguishes_unknown_from_partial_requests() {
+        let first = Uuid::new_v4();
+        let second = Uuid::new_v4();
+        let unknown = Uuid::new_v4();
+        let existing = std::collections::HashSet::from([first, second]);
+
+        assert!(validate_field_definition_reorder_coverage(&[second, first], &existing).is_ok());
+        assert!(matches!(
+            validate_field_definition_reorder_coverage(&[first, unknown], &existing),
+            Err(FlexError::NotFound(id)) if id == unknown
+        ));
+        match validate_field_definition_reorder_coverage(&[first], &existing) {
+            Err(FlexError::InvalidFieldKey(message)) => {
+                assert!(message.contains("exactly once"), "{message}");
+            }
+            other => panic!("expected InvalidFieldKey for a partial list, got {other:?}"),
+        }
     }
 }
 
