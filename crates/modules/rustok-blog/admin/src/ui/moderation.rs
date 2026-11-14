@@ -292,7 +292,7 @@ fn ModerationCommentCard(
                     {comment.status.clone()}
                 </span>
                 <span>{comment.effective_locale.clone()}</span>
-                <span>{"В·"}</span>
+                <span>{"·"}</span>
                 <span>{comment.created_at.clone()}</span>
                 {reply_label.map(|label| view! {
                     <span class="rounded-full border border-border px-2 py-0.5">{label}</span>

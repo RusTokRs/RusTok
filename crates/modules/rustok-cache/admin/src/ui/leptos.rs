@@ -264,7 +264,7 @@ pub fn CacheAdmin() -> impl IntoView {
                                     let display_text = format!("{} ({})", lh.no, err_text);
                                     view! { <Badge variant=BadgeVariant::Destructive>{display_text}</Badge> }.into_any()
                                 } else {
-                                    view! { <span class="text-muted-foreground">"вЂ”"</span> }.into_any()
+                                    view! { <span class="text-muted-foreground">"—"</span> }.into_any()
                                 };
                                 view! {
                                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">

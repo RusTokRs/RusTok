@@ -59,7 +59,7 @@ fn loaded_resource<S, Fut, T>(
 where
     S: PartialEq + Clone + Send + Sync + 'static,
     Fut: std::future::Future<Output = T> + Send + 'static,
-    T: Send + Sync + 'static,
+    T: serde::Serialize + for<'de> serde::Deserialize<'de> + Send + Sync + 'static,
 {
     Resource::new(source, fetcher)
 }
@@ -2306,14 +2306,14 @@ fn ProductMediaPanel(
                                                             class="rounded border border-border px-1.5 py-0.5 text-xs text-foreground hover:bg-accent"
                                                             on:click=move |_| set_editing_image_id.set(None)
                                                         >
-                                                            "вњ•"
+                                                            "✕"
                                                         </button>
                                                     </div>
                                                 }.into_any()
                                             } else {
                                                 view! {
                                                     <p class="text-xs text-foreground truncate cursor-pointer hover:underline" title=item.alt_text.clone() on:click=on_start_edit.clone()>
-                                                        {if item.alt_text.is_empty() { "вЂ” (click to edit alt text)" } else { &item.alt_text }}
+                                                        {if item.alt_text.is_empty() { "— (click to edit alt text)" } else { &item.alt_text }}
                                                     </p>
                                                 }.into_any()
                                             }}
@@ -2327,7 +2327,7 @@ fn ProductMediaPanel(
                                                     title="Move up"
                                                     on:click=on_move_up
                                                 >
-                                                    "в†‘"
+                                                    "↑"
                                                 </button>
                                                 <button
                                                     type="button"
@@ -2336,7 +2336,7 @@ fn ProductMediaPanel(
                                                     title="Move down"
                                                     on:click=on_move_down
                                                 >
-                                                    "в†“"
+                                                    "↓"
                                                 </button>
                                             </div>
                                             <button
@@ -2698,7 +2698,7 @@ fn apply_schema_authoring_result(
                 if accepted {
                     notice.set(Some(
                         if is_ru {
-                            "РЎС…РµРјР° РѕР±РЅРѕРІР»РµРЅР°"
+                            "Схема обновлена"
                         } else {
                             "Schema authoring updated"
                         }
@@ -2707,7 +2707,7 @@ fn apply_schema_authoring_result(
                 } else {
                     error.set(Some(
                         if is_ru {
-                            "Р’Р»Р°РґРµР»РµС† РѕС‚РєР»РѕРЅРёР» РёР·РјРµРЅРµРЅРёРµ СЃС…РµРјС‹"
+                            "Владелец отклонил изменение схемы"
                         } else {
                             "The owner rejected the schema change"
                         }
@@ -2862,7 +2862,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
         if category_id.is_empty() {
             set_error.set(Some(
                 if is_ru {
-                    "Р’С‹Р±РµСЂРёС‚Рµ РєР°С‚РµРіРѕСЂРёСЋ"
+                    "Выберите категорию"
                 } else {
                     "Select a category"
                 }
@@ -2954,7 +2954,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
         if schema_id.is_empty() || code.trim().is_empty() {
             set_error.set(Some(
                 if is_ru {
-                    "Р’С‹Р±РµСЂРёС‚Рµ СЃС…РµРјСѓ Рё СѓРєР°Р¶РёС‚Рµ РєРѕРґ РіСЂСѓРїРїС‹"
+                    "Выберите схему и укажите код группы"
                 } else {
                     "Select a schema and provide the group code"
                 }
@@ -3013,7 +3013,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
         if schema_id.is_empty() || attribute_id.is_empty() {
             set_error.set(Some(
                 if is_ru {
-                    "Р’С‹Р±РµСЂРёС‚Рµ СЃС…РµРјСѓ Рё Р°С‚СЂРёР±СѓС‚"
+                    "Выберите схему и атрибут"
                 } else {
                     "Select a schema and an attribute"
                 }
@@ -3082,7 +3082,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
         if category_id.is_empty() || code.trim().is_empty() {
             set_error.set(Some(
                 if is_ru {
-                    "Р’С‹Р±РµСЂРёС‚Рµ РєР°С‚РµРіРѕСЂРёСЋ Рё СѓРєР°Р¶РёС‚Рµ РєРѕРґ РіСЂСѓРїРїС‹"
+                    "Выберите категорию и укажите код группы"
                 } else {
                     "Select a category and provide the group code"
                 }
@@ -3141,7 +3141,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
         if category_id.is_empty() || attribute_id.is_empty() {
             set_error.set(Some(
                 if is_ru {
-                    "Р’С‹Р±РµСЂРёС‚Рµ РєР°С‚РµРіРѕСЂРёСЋ Рё Р°С‚СЂРёР±СѓС‚"
+                    "Выберите категорию и атрибут"
                 } else {
                     "Select a category and an attribute"
                 }
@@ -3216,11 +3216,11 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
         <section class="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm">
             <div class="space-y-1">
                 <h2 class="text-sm font-semibold text-foreground">
-                    {if is_ru { "РЎС…РµРјР° РєР°С‚РµРіРѕСЂРёРё: СЂРµР¶РёРј, РіСЂСѓРїРїС‹, РїСЂРёРІСЏР·РєРё" } else { "Category schema: mode, groups, bindings" }}
+                    {if is_ru { "Схема категории: режим, группы, привязки" } else { "Category schema: mode, groups, bindings" }}
                 </h2>
                 <p class="text-xs text-muted-foreground">
                     {if is_ru {
-                        "РљРѕРјР°РЅРґС‹ РІР»Р°РґРµР»СЊС†Р°, РєРѕС‚РѕСЂС‹Рµ СЂР°РЅСЊС€Рµ Р±С‹Р»Рё РґРѕСЃС‚РёР¶РёРјС‹ С‚РѕР»СЊРєРѕ С‡РµСЂРµР· GraphQL/REST."
+                        "Команды владельца, которые раньше были достижимы только через GraphQL/REST."
                     } else {
                         "Owner commands that used to be reachable only through GraphQL/REST."
                     }}
@@ -3241,24 +3241,24 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
             // 1. Category schema mode
             <div class="space-y-3 rounded-xl border border-border/80 bg-muted/10 p-4">
                 <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {if is_ru { "Р РµР¶РёРј СЃС…РµРјС‹ РєР°С‚РµРіРѕСЂРёРё" } else { "Category schema mode" }}
+                    {if is_ru { "Режим схемы категории" } else { "Category schema mode" }}
                 </h3>
                 <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <label class=label_class>
-                        <span>{if is_ru { "РљР°С‚РµРіРѕСЂРёСЏ" } else { "Category" }}</span>
+                        <span>{if is_ru { "Категория" } else { "Category" }}</span>
                         <select
                             class=select_class
                             prop:value=move || mode_category.get()
                             on:change=move |ev| set_mode_category.set(event_target_value(&ev))
                         >
-                            <option value="">{if is_ru { "вЂ” РІС‹Р±РµСЂРёС‚Рµ вЂ”" } else { "вЂ” select вЂ”" }}</option>
+                            <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
                             {move || categories.get().into_iter().map(|category| view! {
                                 <option value=category.id.clone()>{category.name.clone()}</option>
                             }).collect_view()}
                         </select>
                     </label>
                     <label class=label_class>
-                        <span>{if is_ru { "Р РµР¶РёРј" } else { "Mode" }}</span>
+                        <span>{if is_ru { "Режим" } else { "Mode" }}</span>
                         <select
                             class=select_class
                             prop:value=move || mode_value.get()
@@ -3271,26 +3271,26 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                         </select>
                     </label>
                     <label class=label_class>
-                        <span>{if is_ru { "РЎС…РµРјР° (РґР»СЏ use_schema)" } else { "Schema (for use_schema)" }}</span>
+                        <span>{if is_ru { "Схема (для use_schema)" } else { "Schema (for use_schema)" }}</span>
                         <select
                             class=select_class
                             prop:value=move || mode_schema.get()
                             on:change=move |ev| set_mode_schema.set(event_target_value(&ev))
                         >
-                            <option value="">{if is_ru { "вЂ” РЅРµ РІС‹Р±СЂР°РЅР° вЂ”" } else { "вЂ” none вЂ”" }}</option>
+                            <option value="">{if is_ru { "— не выбрана —" } else { "— none —" }}</option>
                             {move || schemas.get().into_iter().map(|schema| view! {
                                 <option value=schema.id.clone()>{schema.name.clone()}</option>
                             }).collect_view()}
                         </select>
                     </label>
                     <label class=label_class>
-                        <span>{if is_ru { "РљРѕРїРёСЂРѕРІР°С‚СЊ РёР· РєР°С‚РµРіРѕСЂРёРё" } else { "Clone from category" }}</span>
+                        <span>{if is_ru { "Копировать из категории" } else { "Clone from category" }}</span>
                         <select
                             class=select_class
                             prop:value=move || mode_clone_category.get()
                             on:change=move |ev| set_clone_category.set(event_target_value(&ev))
                         >
-                            <option value="">{if is_ru { "вЂ” РЅРµ РІС‹Р±СЂР°РЅР° вЂ”" } else { "вЂ” none вЂ”" }}</option>
+                            <option value="">{if is_ru { "— не выбрана —" } else { "— none —" }}</option>
                             {move || categories.get().into_iter().map(|category| view! {
                                 <option value=category.id.clone()>{category.name.clone()}</option>
                             }).collect_view()}
@@ -3303,31 +3303,31 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                     disabled=move || busy.get()
                     on:click=apply_mode
                 >
-                    {if is_ru { "РџСЂРёРјРµРЅРёС‚СЊ СЂРµР¶РёРј" } else { "Apply mode" }}
+                    {if is_ru { "Применить режим" } else { "Apply mode" }}
                 </button>
             </div>
 
             // 2. Schema-scoped groups and attribute bindings
             <div class="space-y-3 rounded-xl border border-border/80 bg-muted/10 p-4">
                 <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {if is_ru { "РЎС…РµРјР°: РіСЂСѓРїРїС‹ Рё РїСЂРёРІСЏР·РєРё Р°С‚СЂРёР±СѓС‚РѕРІ" } else { "Schema: groups and attribute bindings" }}
+                    {if is_ru { "Схема: группы и привязки атрибутов" } else { "Schema: groups and attribute bindings" }}
                 </h3>
                 <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <label class=label_class>
-                        <span>{if is_ru { "РЎС…РµРјР°" } else { "Schema" }}</span>
+                        <span>{if is_ru { "Схема" } else { "Schema" }}</span>
                         <select
                             class=select_class
                             prop:value=move || schema_target.get()
                             on:change=move |ev| set_schema_target.set(event_target_value(&ev))
                         >
-                            <option value="">{if is_ru { "вЂ” РІС‹Р±РµСЂРёС‚Рµ вЂ”" } else { "вЂ” select вЂ”" }}</option>
+                            <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
                             {move || schemas.get().into_iter().map(|schema| view! {
                                 <option value=schema.id.clone()>{schema.name.clone()}</option>
                             }).collect_view()}
                         </select>
                     </label>
                     <label class=label_class>
-                        <span>{if is_ru { "РљРѕРґ РіСЂСѓРїРїС‹" } else { "Group code" }}</span>
+                        <span>{if is_ru { "Код группы" } else { "Group code" }}</span>
                         <input
                             type="text"
                             class=input_class
@@ -3337,7 +3337,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                         />
                     </label>
                     <label class=label_class>
-                        <span>{if is_ru { "РќР°Р·РІР°РЅРёРµ РіСЂСѓРїРїС‹" } else { "Group label" }}</span>
+                        <span>{if is_ru { "Название группы" } else { "Group label" }}</span>
                         <input
                             type="text"
                             class=input_class
@@ -3347,7 +3347,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                         />
                     </label>
                     <label class=label_class>
-                        <span>{if is_ru { "РџРѕР·РёС†РёСЏ" } else { "Position" }}</span>
+                        <span>{if is_ru { "Позиция" } else { "Position" }}</span>
                         <input
                             type="number"
                             class=input_class
@@ -3362,25 +3362,25 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                     disabled=move || busy.get()
                     on:click=create_schema_group
                 >
-                    {if is_ru { "РЎРѕР·РґР°С‚СЊ РіСЂСѓРїРїСѓ СЃС…РµРјС‹" } else { "Create schema group" }}
+                    {if is_ru { "Создать группу схемы" } else { "Create schema group" }}
                 </button>
 
                 <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <label class=label_class>
-                        <span>{if is_ru { "РђС‚СЂРёР±СѓС‚" } else { "Attribute" }}</span>
+                        <span>{if is_ru { "Атрибут" } else { "Attribute" }}</span>
                         <select
                             class=select_class
                             prop:value=move || schema_attribute.get()
                             on:change=move |ev| set_schema_attribute.set(event_target_value(&ev))
                         >
-                            <option value="">{if is_ru { "вЂ” РІС‹Р±РµСЂРёС‚Рµ вЂ”" } else { "вЂ” select вЂ”" }}</option>
+                            <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
                             {move || attributes.get().into_iter().map(|attribute| view! {
                                 <option value=attribute.id.clone()>{attribute.label.clone()}</option>
                             }).collect_view()}
                         </select>
                     </label>
                     <label class=label_class>
-                        <span>{if is_ru { "Р“СЂСѓРїРїР° (РєРѕРґ)" } else { "Group (code)" }}</span>
+                        <span>{if is_ru { "Группа (код)" } else { "Group (code)" }}</span>
                         <input
                             type="text"
                             class=input_class
@@ -3390,7 +3390,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                         />
                     </label>
                     <label class=label_class>
-                        <span>{if is_ru { "РџРѕР·РёС†РёСЏ" } else { "Position" }}</span>
+                        <span>{if is_ru { "Позиция" } else { "Position" }}</span>
                         <input
                             type="number"
                             class=input_class
@@ -3405,7 +3405,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                                 prop:checked=move || schema_binding_required.get()
                                 on:change=move |ev| set_schema_binding_required.set(event_target_checked(&ev))
                             />
-                            <span>{if is_ru { "РћР±СЏР·Р°С‚РµР»СЊРЅС‹Р№" } else { "Required" }}</span>
+                            <span>{if is_ru { "Обязательный" } else { "Required" }}</span>
                         </label>
                         <label class="inline-flex items-center gap-2">
                             <input
@@ -3413,7 +3413,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                                 prop:checked=move || schema_binding_disabled.get()
                                 on:change=move |ev| set_schema_binding_disabled.set(event_target_checked(&ev))
                             />
-                            <span>{if is_ru { "РћС‚РєР»СЋС‡С‘РЅ" } else { "Disabled" }}</span>
+                            <span>{if is_ru { "Отключён" } else { "Disabled" }}</span>
                         </label>
                     </div>
                 </div>
@@ -3428,31 +3428,31 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                     disabled=move || busy.get()
                     on:click=bind_schema
                 >
-                    {if is_ru { "РџСЂРёРІСЏР·Р°С‚СЊ Р°С‚СЂРёР±СѓС‚ Рє СЃС…РµРјРµ" } else { "Bind attribute to schema" }}
+                    {if is_ru { "Привязать атрибут к схеме" } else { "Bind attribute to schema" }}
                 </button>
             </div>
 
             // 3. Category-scoped groups and attribute bindings
             <div class="space-y-3 rounded-xl border border-border/80 bg-muted/10 p-4">
                 <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {if is_ru { "РљР°С‚РµРіРѕСЂРёСЏ: РіСЂСѓРїРїС‹ Рё РїСЂРёРІСЏР·РєРё Р°С‚СЂРёР±СѓС‚РѕРІ" } else { "Category: groups and attribute bindings" }}
+                    {if is_ru { "Категория: группы и привязки атрибутов" } else { "Category: groups and attribute bindings" }}
                 </h3>
                 <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <label class=label_class>
-                        <span>{if is_ru { "РљР°С‚РµРіРѕСЂРёСЏ" } else { "Category" }}</span>
+                        <span>{if is_ru { "Категория" } else { "Category" }}</span>
                         <select
                             class=select_class
                             prop:value=move || category_target.get()
                             on:change=move |ev| set_category_target.set(event_target_value(&ev))
                         >
-                            <option value="">{if is_ru { "вЂ” РІС‹Р±РµСЂРёС‚Рµ вЂ”" } else { "вЂ” select вЂ”" }}</option>
+                            <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
                             {move || categories.get().into_iter().map(|category| view! {
                                 <option value=category.id.clone()>{category.name.clone()}</option>
                             }).collect_view()}
                         </select>
                     </label>
                     <label class=label_class>
-                        <span>{if is_ru { "РљРѕРґ РіСЂСѓРїРїС‹" } else { "Group code" }}</span>
+                        <span>{if is_ru { "Код группы" } else { "Group code" }}</span>
                         <input
                             type="text"
                             class=input_class
@@ -3462,7 +3462,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                         />
                     </label>
                     <label class=label_class>
-                        <span>{if is_ru { "РќР°Р·РІР°РЅРёРµ РіСЂСѓРїРїС‹" } else { "Group label" }}</span>
+                        <span>{if is_ru { "Название группы" } else { "Group label" }}</span>
                         <input
                             type="text"
                             class=input_class
@@ -3472,7 +3472,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                         />
                     </label>
                     <label class=label_class>
-                        <span>{if is_ru { "РџРѕР·РёС†РёСЏ" } else { "Position" }}</span>
+                        <span>{if is_ru { "Позиция" } else { "Position" }}</span>
                         <input
                             type="number"
                             class=input_class
@@ -3487,25 +3487,25 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                     disabled=move || busy.get()
                     on:click=create_category_group
                 >
-                    {if is_ru { "РЎРѕР·РґР°С‚СЊ РіСЂСѓРїРїСѓ РєР°С‚РµРіРѕСЂРёРё" } else { "Create category group" }}
+                    {if is_ru { "Создать группу категории" } else { "Create category group" }}
                 </button>
 
                 <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <label class=label_class>
-                        <span>{if is_ru { "РђС‚СЂРёР±СѓС‚" } else { "Attribute" }}</span>
+                        <span>{if is_ru { "Атрибут" } else { "Attribute" }}</span>
                         <select
                             class=select_class
                             prop:value=move || category_attribute.get()
                             on:change=move |ev| set_category_attribute.set(event_target_value(&ev))
                         >
-                            <option value="">{if is_ru { "вЂ” РІС‹Р±РµСЂРёС‚Рµ вЂ”" } else { "вЂ” select вЂ”" }}</option>
+                            <option value="">{if is_ru { "— выберите —" } else { "— select —" }}</option>
                             {move || attributes.get().into_iter().map(|attribute| view! {
                                 <option value=attribute.id.clone()>{attribute.label.clone()}</option>
                             }).collect_view()}
                         </select>
                     </label>
                     <label class=label_class>
-                        <span>{if is_ru { "Р“СЂСѓРїРїР° (РєРѕРґ)" } else { "Group (code)" }}</span>
+                        <span>{if is_ru { "Группа (код)" } else { "Group (code)" }}</span>
                         <input
                             type="text"
                             class=input_class
@@ -3515,7 +3515,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                         />
                     </label>
                     <label class=label_class>
-                        <span>{if is_ru { "Р’РёРґ РїСЂРёРІСЏР·РєРё" } else { "Binding kind" }}</span>
+                        <span>{if is_ru { "Вид привязки" } else { "Binding kind" }}</span>
                         <select
                             class=select_class
                             prop:value=move || category_binding_kind.get()
@@ -3528,7 +3528,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                     </label>
                     <div class="grid gap-3">
                         <label class=label_class>
-                            <span>{if is_ru { "РџРѕР·РёС†РёСЏ" } else { "Position" }}</span>
+                            <span>{if is_ru { "Позиция" } else { "Position" }}</span>
                             <input
                                 type="number"
                                 class=input_class
@@ -3542,7 +3542,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                                 prop:checked=move || category_binding_disabled.get()
                                 on:change=move |ev| set_category_binding_disabled.set(event_target_checked(&ev))
                             />
-                            <span>{if is_ru { "РћС‚РєР»СЋС‡С‘РЅ" } else { "Disabled" }}</span>
+                            <span>{if is_ru { "Отключён" } else { "Disabled" }}</span>
                         </label>
                     </div>
                 </div>
@@ -3557,7 +3557,7 @@ pub fn ProductSchemaAuthoringCard(locale: Option<String>) -> impl IntoView {
                     disabled=move || busy.get()
                     on:click=bind_category
                 >
-                    {if is_ru { "РџСЂРёРІСЏР·Р°С‚СЊ Р°С‚СЂРёР±СѓС‚ Рє РєР°С‚РµРіРѕСЂРёРё" } else { "Bind attribute to category" }}
+                    {if is_ru { "Привязать атрибут к категории" } else { "Bind attribute to category" }}
                 </button>
                 <section class="space-y-2" aria-label="Effective variant axis policies">
                     <h4>"Effective variant axis policies / source"</h4>

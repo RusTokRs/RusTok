@@ -230,7 +230,7 @@ pub fn Users() -> impl IntoView {
             }
             "actions" => {
                 let detail_href = item.detail_href.clone();
-                let view_label = if is_ru { "РџСЂРѕСЃРјРѕС‚СЂ" } else { "View" };
+                let view_label = if is_ru { "Просмотр" } else { "View" };
                 view! {
                     <div class="flex items-center justify-end">
                         <A href=detail_href>
@@ -357,7 +357,7 @@ pub fn Users() -> impl IntoView {
                                 .map(|edge| {
                                     graphql_user_view(
                                         edge.node,
-                                        t_local("users.placeholderDash", "вЂ”"),
+                                        t_local("users.placeholderDash", "—"),
                                     )
                                 })
                                 .collect::<Vec<_>>();
@@ -378,14 +378,14 @@ pub fn Users() -> impl IntoView {
                                     <Show when=move || !selection.get().is_empty()>
                                         <div class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-primary/20 bg-primary/5 text-sm">
                                             <span class="font-medium text-foreground">
-                                                {move || format!("{} {} {}", selection.get().count(), if is_ru { "РІС‹Р±СЂР°РЅРѕ" } else { "selected" }, if is_ru { "РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№" } else { "users" })}
+                                                {move || format!("{} {} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" }, if is_ru { "пользователей" } else { "users" })}
                                             </span>
                                             <button
                                                 type="button"
                                                 class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
                                                 on:click=move |_| selection.update(|s| s.clear())
                                             >
-                                                {if is_ru { "РЎРЅСЏС‚СЊ РІС‹Р±РѕСЂ" } else { "Clear" }}
+                                                {if is_ru { "Снять выбор" } else { "Clear" }}
                                             </button>
                                         </div>
                                     </Show>
@@ -460,7 +460,7 @@ pub fn Users() -> impl IntoView {
                             <Input
                                 value=new_password
                                 set_value=set_new_password
-                                placeholder="вЂўвЂўвЂўвЂўвЂўвЂўвЂўвЂў"
+                                placeholder="••••••••"
                                 type_="password"
                                 label=t_local("users.create.passwordLabel", "Password")
                             />

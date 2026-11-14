@@ -12,7 +12,7 @@ use crate::transport::fetch_post_by_preview_token;
 
 /// Draft preview component for viewing unpublished posts via a capability bearer token.
 ///
-/// Matches the Next.js `BlogDraftPreview` surface. Automatically parses `#token=вЂ¦` from
+/// Matches the Next.js `BlogDraftPreview` surface. Automatically parses `#token=…` from
 /// the browser URL fragment on load, or allows pasting the raw preview token into a form.
 #[component]
 pub fn BlogDraftPreview() -> impl IntoView {

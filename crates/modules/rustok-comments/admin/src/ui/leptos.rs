@@ -484,7 +484,7 @@ pub fn CommentsAdmin() -> impl IntoView {
                                                                         Some(locale.get().as_str()),
                                                                         "comments.detail.authorLine",
                                                                         Some(&rustok_ui_i18n::fluent_args!("author" => comment_view_model.author_id.to_string(), "created_at" => comment_view_model.created_at.to_string())),
-                                                                        "author {author} В· {created_at}",
+                                                                        "author {author} · {created_at}",
                                                                     )}
                                                                 </span>
                                                             </div>

@@ -655,9 +655,9 @@ pub(super) fn BlogPostsListHeader(
 
 /// One-time draft preview token banner shown after a successful mint.
 ///
-/// The plaintext secret exists only in the mint result вЂ” the backend stores a
-/// SHA-256 digest вЂ” so this is the only surface that ever shows it. The link
-/// carries the token in the URL *fragment* (`#token=вЂ¦`), which browsers never
+/// The plaintext secret exists only in the mint result — the backend stores a
+/// SHA-256 digest — so this is the only surface that ever shows it. The link
+/// carries the token in the URL *fragment* (`#token=…`), which browsers never
 /// send to the server, keeping the secret out of request logs and referrers.
 /// The admin host does not know the storefront origin in every deployment, so
 /// the banner shows the storefront-relative path and the raw token separately.
@@ -675,7 +675,7 @@ pub(super) fn BlogPreviewTokenBanner(
     let path_label = t(
         ui_locale.as_deref(),
         "blog.preview.pathLabel",
-        "Preview path вЂ” prepend your storefront origin",
+        "Preview path — prepend your storefront origin",
     );
     let token_label = t(ui_locale.as_deref(), "blog.preview.tokenLabel", "Token");
     let expires_at = token.expires_at.clone();
@@ -689,7 +689,7 @@ pub(super) fn BlogPreviewTokenBanner(
     let note = t(
         ui_locale.as_deref(),
         "blog.preview.note",
-        "Shown only once вЂ” the backend stores a digest, not the secret. Publishing, scheduling or archiving the post revokes the link immediately.",
+        "Shown only once — the backend stores a digest, not the secret. Publishing, scheduling or archiving the post revokes the link immediately.",
     );
     let close_label = t(ui_locale.as_deref(), "blog.preview.close", "Close");
     let preview_path = format!("/blog/preview#token={secret}");

@@ -218,7 +218,7 @@ pub fn OAuthAppsList(
                 <div class="flex-1">
                     <input
                         type="text"
-                        placeholder={if is_ru { "РџРѕРёСЃРє РїРѕ РЅР°Р·РІР°РЅРёСЋ, slug, client ID..." } else { "Search by app name, slug, client ID..." }}
+                        placeholder={if is_ru { "Поиск по названию, slug, client ID..." } else { "Search by app name, slug, client ID..." }}
                         class="w-full px-3 py-2 border rounded-xl shadow-sm focus:ring-primary focus:border-primary text-sm bg-background border-border text-foreground placeholder:text-muted-foreground"
                         prop:value=move || search.get()
                         on:input=move |ev| search.set(event_target_value(&ev))
@@ -231,7 +231,7 @@ pub fn OAuthAppsList(
                 <div class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-primary/20 bg-primary/5 text-sm">
                     <div class="flex items-center gap-2">
                         <span class="font-medium text-foreground">
-                            {move || format!("{} {} {}", selection.get().count(), if is_ru { "РІС‹Р±СЂР°РЅРѕ" } else { "selected" }, if is_ru { "РїСЂРёР»РѕР¶РµРЅРёР№" } else { "apps" })}
+                            {move || format!("{} {} {}", selection.get().count(), if is_ru { "выбрано" } else { "selected" }, if is_ru { "приложений" } else { "apps" })}
                         </span>
                     </div>
                     <button
@@ -239,7 +239,7 @@ pub fn OAuthAppsList(
                         class="h-6 px-2.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition border border-border bg-background"
                         on:click=move |_| selection.update(|s| s.clear())
                     >
-                        {if is_ru { "РЎРЅСЏС‚СЊ РІС‹Р±РѕСЂ" } else { "Clear" }}
+                        {if is_ru { "Снять выбор" } else { "Clear" }}
                     </button>
                 </div>
             </Show>
@@ -251,7 +251,7 @@ pub fn OAuthAppsList(
                 key_fn=|item: &OAuthAppListItemViewModel| item.app.id.to_string()
                 cell_renderer=cell_renderer
                 is_loading=Signal::derive(move || loading)
-                empty_message=if is_ru { "РџРѕРґРєР»СЋС‡РµРЅРЅС‹Рµ РїСЂРёР»РѕР¶РµРЅРёСЏ РЅРµ РЅР°Р№РґРµРЅС‹.".to_string() } else { "No app connections found.".to_string() }
+                empty_message=if is_ru { "Подключенные приложения не найдены.".to_string() } else { "No app connections found.".to_string() }
                 selection=selection
                 pagination=pagination
                 filters=filters

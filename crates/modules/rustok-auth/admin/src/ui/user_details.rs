@@ -279,7 +279,7 @@ pub fn UserDetails() -> impl IntoView {
                             if let Some(user) = response.user {
                                 let user = graphql_user_view(
                                     user,
-                                    t_local("users.placeholderDash", "вЂ”"),
+                                    t_local("users.placeholderDash", "—"),
                                 );
                                 let email = user.email;
                                 let name_display = user.name;

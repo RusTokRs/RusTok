@@ -286,6 +286,11 @@ impl BrandService {
 
         let txn = self.db.begin().await?;
 
+        BrandCategory::delete_many()
+            .filter(BrandCategoryColumn::BrandId.eq(brand.id))
+            .exec(&txn)
+            .await?;
+
         BrandProduct::delete_many()
             .filter(BrandProductColumn::BrandId.eq(brand.id))
             .exec(&txn)

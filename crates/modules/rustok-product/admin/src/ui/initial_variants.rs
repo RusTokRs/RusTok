@@ -181,7 +181,7 @@ fn AssignmentSelect(
                     &axes.get(), &pending.get(), &id.get_value(), form.get().as_ref(),
                 ).into_iter().map(|option| {
                     let mut view = SelectOption::new(option.id, if option.available { option.label } else {
-                        format!("{} В· {}", crate::i18n::t(locale.get_value().as_deref(), "product-combinations-retainedAssignment", "product-combinations-retainedAssignment"), option.label)
+                        format!("{} · {}", crate::i18n::t(locale.get_value().as_deref(), "product-combinations-retainedAssignment", "product-combinations-retainedAssignment"), option.label)
                     });
                     view.disabled = !option.available;
                     view
