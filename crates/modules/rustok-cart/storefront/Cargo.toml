@@ -28,6 +28,7 @@ ssr = [
   "dep:rustok-inventory",
   "dep:rustok-commerce",
   "dep:rustok-region",
+  "dep:sea-orm",
   "rustok-api/server",
 ]
 
@@ -52,7 +53,8 @@ rustok-inventory = { workspace = true, optional = true }
 rustok-commerce = { workspace = true, optional = true }
 rustok-region = { workspace = true, optional = true }
 rustok-pricing-storefront = { workspace = true, default-features = false }
-sea-orm.workspace = true
+# Database access is only used by the SSR adapter; never link it into the browser island.
+sea-orm = { workspace = true, optional = true }
 rust_decimal.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
