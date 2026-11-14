@@ -67,9 +67,6 @@ impl ProductFieldService {
         actor_id: Option<Uuid>,
         input: CreateFieldDefinitionInput,
     ) -> Result<(Model, EventEnvelope), FlexError> {
-        if !rustok_core::field_schema::is_valid_field_key(&input.field_key) {
-            return Err(FlexError::InvalidFieldKey(input.field_key));
-        }
         let txn = db.begin().await.map_err(|error| FlexError::Database(error.to_string()))?;
         // Serialize the count-and-insert guard on databases with row-level locks.
         // SQLite has no SELECT FOR UPDATE; its write transaction remains the fallback.
