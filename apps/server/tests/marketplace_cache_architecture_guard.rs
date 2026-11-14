@@ -113,14 +113,18 @@ fn marketplace_registry_client_fails_closed_and_disables_redirects() {
 #[test]
 fn marketplace_registry_configuration_errors_abort_startup_instead_of_panicking() {
     let provider = source("apps/server/src/services/marketplace_catalog_cache_base.rs");
+    // Only the production half of the file is under guard: the unit tests in
+    // `mod tests` legitimately use `panic!`/`unwrap()` as assertions, and they
+    // never run on a boot path.
+    let production = provider.split("mod tests {").next().unwrap_or(provider.as_str());
     for forbidden in ["panic!", "unreachable!", ".unwrap()"] {
         assert!(
-            !provider.contains(forbidden),
+            !production.contains(forbidden),
             "registry configuration must fail closed through a typed error, found {forbidden}"
         );
     }
     assert!(
-        provider.contains("pub fn from_env() -> Result<Vec<Self>, Error>"),
+        production.contains("pub fn from_env() -> Result<Vec<Self>, Error>"),
         "the registry provider constructor must return its configuration failure"
     );
     let runtime = source("apps/server/src/services/app_runtime.rs");
