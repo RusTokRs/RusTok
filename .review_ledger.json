@@ -1164,9 +1164,9 @@
       "category": "modules",
       "files": 20,
       "loc": 5650,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards across tenant_id, subject_id, command_id, actor_id; safe integer conversions (u64_to_i64, i64_to_u64); string segment and catalog bounds; selection policy (Single/Multiple/Remove) with atomic deltas; compound tenant-subject foreign keys with cascade deletion; TransactionalEventBus publishing (ActorStateChanged, SubjectReconciled); idempotent command leasing and failure recording; pessimistic subject locking; verified with cargo check -p rustok-reactions and verification scripts"
     },
     "crates/modules/rustok-region": {
       "name": "rustok-region",
@@ -2606,9 +2606,9 @@
       "category": "modules",
       "files": 8,
       "loc": 1061,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, ReactionSubjectUiRef segment and revision validation, ReactionBar component with reactive session ownership and cancellation, pure core control and settlement logic, GraphQL wire representation with non-leaking tenant/actor context; verified with cargo check -p rustok-reactions-storefront --features ssr, Next.js tests, and verification scripts"
     },
     "crates/modules/rustok-security": {
       "name": "rustok-security",

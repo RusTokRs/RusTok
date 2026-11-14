@@ -24,6 +24,7 @@ if (contract.contract !== "reactions_owner_persistence_v1") {
 
 const cargo = read("crates/modules/rustok-reactions/Cargo.toml");
 const lib = read("crates/modules/rustok-reactions/src/lib.rs");
+const moduleSource = read("crates/modules/rustok-reactions/src/module.rs");
 const entities = read("crates/modules/rustok-reactions/src/entities.rs");
 const migrationIndex = read("crates/modules/rustok-reactions/src/migrations/mod.rs");
 const migration = read(
@@ -73,7 +74,7 @@ for (const fragment of [
   "migrations::migrations()",
   "migrations::migration_dependencies()",
 ]) {
-  if (!lib.includes(fragment)) fail(`module boundary is missing ${fragment}`);
+  if (!lib.includes(fragment) && !moduleSource.includes(fragment)) fail(`module boundary is missing ${fragment}`);
 }
 
 for (const fragment of [

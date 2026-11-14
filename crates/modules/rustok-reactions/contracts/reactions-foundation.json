@@ -9,6 +9,7 @@
     "crates/modules/rustok-reactions/Cargo.toml",
     "crates/modules/rustok-reactions/src/lib.rs",
     "crates/modules/rustok-reactions/src/model.rs",
+    "crates/modules/rustok-reactions/src/module.rs",
     "crates/modules/rustok-reactions/src/provider.rs",
     "crates/modules/rustok-reactions/src/service.rs",
     "crates/modules/rustok-reactions/rustok-module.toml",

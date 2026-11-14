@@ -31,6 +31,7 @@ const ownerCargo = read("crates/modules/rustok-reactions/Cargo.toml");
 const ownerSource = [
   read("crates/modules/rustok-reactions/src/lib.rs"),
   read("crates/modules/rustok-reactions/src/model.rs"),
+  read("crates/modules/rustok-reactions/src/module.rs"),
   read("crates/modules/rustok-reactions/src/provider.rs"),
   read("crates/modules/rustok-reactions/src/service.rs"),
 ].join("\n");

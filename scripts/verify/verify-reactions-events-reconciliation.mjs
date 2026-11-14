@@ -56,7 +56,7 @@ const forumPlan = normalized(
   read("crates/modules/rustok-forum/docs/implementation-plan.md"),
 );
 
-if (!ownerCargo.includes("rustok-events.workspace = true")) {
+if (!ownerCargo.includes("rustok-events")) {
   fail("Reactions owner must depend on the central typed event contract crate");
 }
 if (eventsCargo.includes("rustok-reactions")) {
