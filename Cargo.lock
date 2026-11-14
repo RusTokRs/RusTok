@@ -16350,34 +16350,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustok-media-transport"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "image",
- "prost",
- "protoc-bin-vendored",
- "rustok-api",
- "rustok-media",
- "rustok-outbox",
- "rustok-storage",
- "sea-orm",
- "sea-orm-migration",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-prost",
- "tonic-prost-build",
- "url",
- "uuid",
-]
-
-[[package]]
 name = "rustok-messenger"
 version = "0.1.0"
 dependencies = [
@@ -17471,31 +17443,6 @@ dependencies = [
  "tracing",
  "uuid",
  "web-sys",
-]
-
-[[package]]
-name = "rustok-product-transport"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "chrono",
- "prost",
- "protoc-bin-vendored",
- "rustok-api",
- "rustok-product",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "subtle",
- "thiserror 2.0.21",
- "tokio",
- "tokio-stream",
- "tonic",
- "tonic-prost",
- "tonic-prost-build",
- "url",
- "uuid",
 ]
 
 [[package]]

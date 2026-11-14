@@ -613,9 +613,10 @@
       "category": "modules",
       "files": 66,
       "loc": 22218,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T03:08:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards in validate_request, check_variant_availability, check_variant_availability_for_channel, reserve, release_reservation_quantity; bounded level queries (STOCK_LEVEL_READ_LIMIT, QUANTITY_RESERVATION_ROW_LIMIT); checked integer arithmetic on stocked/reserved levels; replay-safe identity reservations via external_id; pessimistic row locking on item and location levels",
+      "last_audited": "2026-11-14"
     },
     "crates/modules/rustok-inventory/admin": {
       "name": "admin",
@@ -623,9 +624,10 @@
       "category": "modules",
       "files": 11,
       "loc": 4908,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T03:08:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID validation in parse_uuid, synchronized DTO status mapping with rustok_product::ProductStatus, RBAC permission verification in ensure_permission, server functions for quantity adjustment and reservation management",
+      "last_audited": "2026-11-14"
     },
     "crates/modules/rustok-marketplace": {
       "name": "rustok-marketplace",
@@ -757,9 +759,9 @@
       "completed_at": null,
       "notes": ""
     },
-    "crates/modules/rustok-media-transport": {
-      "name": "rustok-media-transport",
-      "path": "crates/modules/rustok-media-transport",
+    "crates/modules/rustok-media/ports": {
+      "name": "rustok-media-ports",
+      "path": "crates/modules/rustok-media/ports",
       "category": "modules",
       "files": 7,
       "loc": 2393,
@@ -1080,9 +1082,9 @@
       "completed_at": null,
       "notes": ""
     },
-    "crates/modules/rustok-product-transport": {
-      "name": "rustok-product-transport",
-      "path": "crates/modules/rustok-product-transport",
+    "crates/modules/rustok-product/ports": {
+      "name": "rustok-product-ports",
+      "path": "crates/modules/rustok-product/ports",
       "category": "modules",
       "files": 9,
       "loc": 3261,

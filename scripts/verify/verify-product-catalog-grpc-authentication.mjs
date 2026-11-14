@@ -31,19 +31,19 @@ function forbidAll(source, markers, description) {
   }
 }
 
-const cargo = read("crates/modules/rustok-product-transport/Cargo.toml");
-const lib = read("crates/modules/rustok-product-transport/src/lib.rs");
-const auth = read("crates/modules/rustok-product-transport/src/auth.rs");
-const client = read("crates/modules/rustok-product-transport/src/client.rs");
-const server = read("crates/modules/rustok-product-transport/src/server.rs");
+const cargo = read("crates/modules/rustok-product/ports/Cargo.toml");
+const lib = read("crates/modules/rustok-product/ports/src/grpc/mod.rs");
+const auth = read("crates/modules/rustok-product/ports/src/grpc/auth.rs");
+const client = read("crates/modules/rustok-product/ports/src/grpc/client.rs");
+const server = read("crates/modules/rustok-product/ports/src/grpc/server.rs");
 const deployment = read("apps/server/src/services/product_catalog_deployment.rs");
-const readme = read("crates/modules/rustok-product-transport/README.md");
+const readme = read("crates/modules/rustok-product/ports/README.md");
 const registrySource = read("crates/modules/rustok-product/contracts/product-fba-registry.json");
 const plan = read("crates/modules/rustok-product/docs/implementation-plan.md");
 
 requireAll(cargo, [
-  "sha2.workspace = true",
-  'subtle = "2"',
+  "sha2 = { workspace = true",
+  'subtle = { version = "2"',
   "uuid.workspace = true",
 ], "Product transport authentication dependencies");
 requireAll(lib, [

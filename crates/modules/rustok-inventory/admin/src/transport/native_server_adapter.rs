@@ -371,21 +371,15 @@ fn parse_uuid(value: &str, field_name: &str) -> Result<uuid::Uuid, ServerFnError
 #[cfg(feature = "ssr")]
 fn parse_product_status(
     value: Option<String>,
-) -> Result<Option<rustok_product::entities::product::ProductStatus>, ServerFnError> {
+) -> Result<Option<rustok_product::ProductStatus>, ServerFnError> {
     let Some(value) = crate::core::normalize_status_filter(value) else {
         return Ok(None);
     };
 
     match value.as_str() {
-        "DRAFT" => Ok(Some(
-            rustok_product::entities::product::ProductStatus::Draft,
-        )),
-        "ACTIVE" => Ok(Some(
-            rustok_product::entities::product::ProductStatus::Active,
-        )),
-        "ARCHIVED" => Ok(Some(
-            rustok_product::entities::product::ProductStatus::Archived,
-        )),
+        "DRAFT" => Ok(Some(rustok_product::ProductStatus::Draft)),
+        "ACTIVE" => Ok(Some(rustok_product::ProductStatus::Active)),
+        "ARCHIVED" => Ok(Some(rustok_product::ProductStatus::Archived)),
         _ => Err(ServerFnError::new("Invalid product status")),
     }
 }
@@ -415,7 +409,7 @@ fn map_current_tenant(tenant: &rustok_api::TenantContext) -> crate::model::Curre
 }
 
 #[cfg(feature = "ssr")]
-fn map_status(status: rustok_product::entities::product::ProductStatus) -> String {
+fn map_status(status: rustok_product::ProductStatus) -> String {
     status.to_string().to_ascii_uppercase()
 }
 

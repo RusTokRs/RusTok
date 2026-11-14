@@ -19,3 +19,11 @@ Publishes:
 
 Invalid configuration or connection failure stops startup immediately.
 
+## Authentication
+
+- Client authentication: `ProductCatalogGrpcBearerToken` attaches `Authorization: Bearer ...` and `x-rustok-tenant-id`.
+- Server authentication: Servers must use `ProductCatalogGrpcBearerInterceptor`, which compares the complete authorization value in constant time.
+- Configured via `RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN`.
+- Note: TLS and authentication solve separate problems; TLS protects data in transit while bearer tokens authenticate callers.
+
+
