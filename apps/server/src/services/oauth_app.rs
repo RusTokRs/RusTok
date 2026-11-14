@@ -356,7 +356,10 @@ impl OAuthAppService {
             .map_err(|_| Error::InternalServerError)?
             .ok_or_else(|| Error::NotFound)?;
 
-        // Revoke all active tokens for this app
+        // Revoke all active tokens for this app. `app` was loaded under the
+        // tenant filter above, so `app_id` is already tenant-owned; the extra
+        // tenant predicate keeps this statement correct even if a future caller
+        // reaches it without that lookup.
         use sea_orm::sea_query::Expr;
         oauth_tokens::Entity::update_many()
             .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
@@ -364,6 +367,7 @@ impl OAuthAppService {
             .filter(
                 sea_orm::Condition::all()
                     .add(oauth_tokens::Column::AppId.eq(app_id))
+                    .add(oauth_tokens::Column::TenantId.eq(tenant_id))
                     .add(oauth_tokens::Column::RevokedAt.is_null()),
             )
             .exec(&tx)
