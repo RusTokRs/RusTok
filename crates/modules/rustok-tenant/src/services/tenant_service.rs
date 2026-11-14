@@ -80,6 +80,13 @@ impl TenantService {
         {
             return Err(TenantError::SlugAlreadyExists(slug));
         }
+        // `tenants.domain` carries a unique key, and host-based resolution depends
+        // on it being unambiguous. Probing here keeps a collision a named conflict
+        // rather than a raw constraint violation, and keeps the error independent
+        // of whichever backend produced it.
+        if let Some(domain) = domain.as_deref() {
+            ensure_domain_available(&txn, domain, None).await?;
+        }
 
         let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
         let id = generate_id();
@@ -266,6 +273,11 @@ impl TenantService {
                         trimmed,
                     )
                     .map_err(|e| TenantError::Validation(e.to_string()))?;
+                // Moving a tenant onto another tenant's domain would make
+                // host-based resolution ambiguous, so the same uniqueness rule
+                // that guards creation applies here, ignoring this tenant's own
+                // current row.
+                ensure_domain_available(&txn, &valid, Some(tenant_id)).await?;
                 active.domain = Set(Some(valid));
             }
         }
@@ -647,6 +659,31 @@ impl TenantService {
             .await
             .map_err(|error| TenantError::EventPublish(error.to_string()))
     }
+}
+
+/// Reject a host name that another tenant already claims.
+///
+/// `tenants.domain` is declared `unique_key()` and host-based tenant resolution
+/// (`TenantReadSelector::Domain`) calls `.one()`, so two tenants sharing a host
+/// would make resolution pick an arbitrary row. The unique index remains the
+/// authority; this check turns the common case into a named conflict and
+/// excludes the tenant being updated from its own comparison.
+async fn ensure_domain_available<C>(
+    db: &C,
+    domain: &str,
+    ignore_tenant_id: Option<Uuid>,
+) -> TenantResult<()>
+where
+    C: sea_orm::ConnectionTrait,
+{
+    let mut query = tenant::Entity::find().filter(tenant::Column::Domain.eq(domain));
+    if let Some(tenant_id) = ignore_tenant_id {
+        query = query.filter(tenant::Column::Id.ne(tenant_id));
+    }
+    if query.one(db).await?.is_some() {
+        return Err(TenantError::DomainAlreadyExists(domain.to_string()));
+    }
+    Ok(())
 }
 
 fn canonicalize_locale_policy_request(
