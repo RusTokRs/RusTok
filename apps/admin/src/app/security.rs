@@ -315,7 +315,7 @@ mod tests {
         let app = Router::new()
             .route(
                 "/api/admin/pages/page-1/preview",
-                get(|_request: Request| async move {
+                get(|_request: Request<Body>| async move {
                     ([("content-security-policy", DERIVED)], Body::empty())
                 }),
             )
@@ -349,7 +349,7 @@ mod tests {
         let app = Router::new()
             .route(
                 "/api/admin/pages/page-1/preview",
-                get(|_request: Request| async move { StatusCode::NOT_FOUND }),
+                get(|_request: Request<Body>| async move { StatusCode::NOT_FOUND }),
             )
             .layer(middleware::from_fn(admin_security_headers));
         let response = app

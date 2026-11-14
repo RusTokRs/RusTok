@@ -88,11 +88,13 @@ pub fn CacheAdmin() -> impl IntoView {
             })
     };
     let backend = move || resolved().map(|(draft, _)| draft);
-    // `Copy`, not `move`: every field captures it, and a moved closure would be `FnOnce`.
-    let field = |read: fn(&CacheSettingsEdits) -> Option<String>,
-                 backend: fn(&CacheAdminFormDraft) -> String| {
+    let field = move |read: fn(&CacheSettingsEdits) -> Option<String>,
+                      extract: fn(&CacheAdminFormDraft) -> String,
+                      default: &'static str| {
         let edited = edits.get();
-        read(&edited).or_else(|| backend().map(|draft| backend(&draft)))
+        read(&edited)
+            .or_else(|| backend().map(|draft| extract(&draft)))
+            .unwrap_or_else(|| default.to_string())
     };
 
     let mode = Signal::derive(move || {
@@ -107,12 +109,14 @@ pub fn CacheAdmin() -> impl IntoView {
         field(
             |edits| edits.redis_host.clone(),
             |draft| draft.redis_host.clone(),
+            "127.0.0.1",
         )
     });
     let redis_port = Signal::derive(move || {
         field(
             |edits| edits.redis_port.clone(),
             |draft| draft.redis_port.clone(),
+            "6379",
         )
     });
     let redis_password = Signal::derive(move || {
@@ -127,12 +131,14 @@ pub fn CacheAdmin() -> impl IntoView {
         field(
             |edits| edits.redis_db.clone(),
             |draft| draft.redis_db.clone(),
+            "0",
         )
     });
     let redis_url = Signal::derive(move || {
         field(
             |edits| edits.redis_url.clone(),
             |draft| draft.redis_url.clone(),
+            "",
         )
     });
     let schema_version = Signal::derive(move || {

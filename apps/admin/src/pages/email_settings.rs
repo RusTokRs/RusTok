@@ -110,7 +110,10 @@ pub fn EmailSettingsPage() -> impl IntoView {
         let username = effective(|e| e.smtp_username.clone(), |s| s.smtp_username.clone());
         let from = effective(|e| e.from_address.clone(), |s| s.from_address.clone());
 
-        let port_num: u16 = port.parse().unwrap_or(587);
+        let port_num: u16 = port
+            .as_deref()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(587);
         let settings = serde_json::json!({
             "smtp_host": host,
             "smtp_port": port_num,

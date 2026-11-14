@@ -88,11 +88,12 @@ pub fn IggyConnectorAdmin() -> impl IntoView {
     let (save_result, set_save_result) = signal(Option::<Result<String, String>>::None);
 
     let resolved = move || configuration.get().and_then(Result::ok);
-    // `Copy`, not `move`: every input captures it, and a moved closure would be `FnOnce`.
-    let field = |read: fn(&ConnectorEdits) -> Option<String>,
-                 backend: fn(&crate::model::IggyConnectorConfiguration) -> String| {
+    let field = move |read: fn(&ConnectorEdits) -> Option<String>,
+                      extract: fn(&crate::model::IggyConnectorConfiguration) -> String| {
         let edited = edits.get();
-        read(&edited).or_else(|| resolved().map(|current| backend(&current)))
+        read(&edited)
+            .or_else(|| resolved().map(|current| extract(&current)))
+            .unwrap_or_default()
     };
 
     let mode = Signal::derive(move || {
@@ -112,11 +113,15 @@ pub fn IggyConnectorAdmin() -> impl IntoView {
         )
     });
     let password_resolver = Signal::derive(move || {
-        field(
+        let val = field(
             |edits| edits.password_resolver.clone(),
             backend_password_resolver,
-        )
-        .unwrap_or_else(|| "env".to_string())
+        );
+        if val.is_empty() {
+            "env".to_string()
+        } else {
+            val
+        }
     });
     let password_key =
         Signal::derive(move || field(|edits| edits.password_key.clone(), backend_password_key));

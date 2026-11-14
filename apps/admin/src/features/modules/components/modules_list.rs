@@ -461,7 +461,7 @@ pub fn ModulesList(
     let tenant = use_tenant();
     let navigate = use_navigate();
     let query = use_query_map();
-    let enabled_modules = use_enabled_modules_context();
+    let enabled_modules = StoredValue::new(use_enabled_modules_context());
     let is_showcase_surface = admin_surface == "next-admin";
 
     let (active_transitions, set_active_transitions) =
@@ -643,7 +643,7 @@ pub fn ModulesList(
               filters: CatalogFilters| {
             let request = orchestration_request.get_untracked().wrapping_add(1);
             set_orchestration_request.set(request);
-            let enabled_modules_for_refresh = enabled_modules.clone();
+            let enabled_modules_for_refresh = enabled_modules.get_value();
             spawn_local(async move {
                 enabled_modules_for_refresh.refresh();
                 if let Ok(modules) =

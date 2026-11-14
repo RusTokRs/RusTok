@@ -13,7 +13,7 @@
 use rustok_api::RichTextDocument;
 
 /// Storefront comment creation command payload.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SubmitCommentPayload {
     pub content_locale: String,
     pub content: RichTextDocument,

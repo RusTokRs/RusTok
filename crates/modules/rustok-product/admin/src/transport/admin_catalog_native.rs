@@ -4,6 +4,8 @@ use crate::catalog_controls::ProductAdminListInput;
 use crate::model::ProductList;
 #[cfg(feature = "ssr")]
 use crate::model::ProductListItem;
+#[cfg(feature = "ssr")]
+use rustok_product::AdminProductListQueryExt;
 
 pub(crate) async fn fetch_products(
     tenant_id: String,
