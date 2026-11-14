@@ -671,9 +671,9 @@
       "category": "modules",
       "files": 34,
       "loc": 6905,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified 6 Universal Logic Dimensions: terms, lifecycle, eligibility, re-exported permissions"
     },
     "crates/modules/rustok-marketplace-listing/admin": {
       "name": "admin",
@@ -681,9 +681,9 @@
       "category": "modules",
       "files": 10,
       "loc": 2010,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified FFA separation, non-nil tenant/user guards, RBAC gates"
     },
     "crates/modules/rustok-marketplace-payout": {
       "name": "rustok-marketplace-payout",

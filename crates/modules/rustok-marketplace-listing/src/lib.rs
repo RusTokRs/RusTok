@@ -38,6 +38,20 @@ pub use ports::{
     MarketplaceListingCommandPort, MarketplaceListingIdRequest, MarketplaceListingPorts,
     MarketplaceListingReadPort, MarketplaceListingRuntime,
 };
+pub const MARKETPLACE_LISTINGS_CREATE: rustok_api::Permission =
+    rustok_api::Permission::MARKETPLACE_LISTINGS_CREATE;
+pub const MARKETPLACE_LISTINGS_READ: rustok_api::Permission =
+    rustok_api::Permission::MARKETPLACE_LISTINGS_READ;
+pub const MARKETPLACE_LISTINGS_UPDATE: rustok_api::Permission =
+    rustok_api::Permission::MARKETPLACE_LISTINGS_UPDATE;
+pub const MARKETPLACE_LISTINGS_LIST: rustok_api::Permission =
+    rustok_api::Permission::MARKETPLACE_LISTINGS_LIST;
+pub const MARKETPLACE_LISTINGS_MANAGE: rustok_api::Permission =
+    rustok_api::Permission::MARKETPLACE_LISTINGS_MANAGE;
+pub const MARKETPLACE_LISTINGS_PUBLISH: rustok_api::Permission =
+    rustok_api::Permission::MARKETPLACE_LISTINGS_PUBLISH;
+pub const MARKETPLACE_LISTINGS_MODERATE: rustok_api::Permission =
+    rustok_api::Permission::MARKETPLACE_LISTINGS_MODERATE;
 pub use service::MarketplaceListingService;
 
 #[cfg(test)]

@@ -433,6 +433,11 @@ async fn native_request(
             "Permission denied: marketplace listing permission required",
         ));
     }
+    if tenant.id.is_nil() || auth.user_id.is_nil() {
+        return Err(ServerFnError::new(
+            "Permission denied: tenant_id and user_id must not be nil",
+        ));
+    }
     if auth.tenant_id != tenant.id
         || request.tenant_id != tenant.id
         || request.user_id != Some(auth.user_id)
