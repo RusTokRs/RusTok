@@ -36,7 +36,7 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[Phase FS-02 — Shared Platform Foundation Libraries (`crates/libs/*`)](#fs-02---shared-platform-foundation-libraries-crateslibs)** (10/10 completed)
 - [x] **[Phase FS-03 — Core Identity, Tenancy & Platform Governance Modules](#fs-03---core-identity,-tenancy-&-platform-governance-modules)** (24/24 completed)
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (22/37 completed)
-- [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (0/40 completed)
+- [ ] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (13/40 completed)
 - [ ] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (0/26 completed)
 - [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (0/26 completed)
 - [ ] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (0/19 completed)
@@ -195,10 +195,10 @@ The single canonical trigger to continue this audit sequence is:
 - [x] **[`crates/modules/rustok-content`](../../crates/modules/rustok-content)** (45 files, 6,014 LOC) — *(Done: verified across 6 Universal Logic Dimensions: non-nil UUID guards across tenant_id, topic_id, post_id, category_id, actor_id, idempotent content orchestration bridge with transactional audit logging, canonical route resolver port with normalized route invariants, transactional event bus publishing for promotion/demotion/split/merge events; verified with `cargo check -p rustok-content` and `verify-content-orchestration-contract.mjs`).*
 - [x] **[`crates/modules/rustok-content-orchestration`](../../crates/modules/rustok-content-orchestration)** (18 files, 3,245 LOC) — *(Done: verified across 6 Universal Logic Dimensions: bridge implementation between Blog and Forum, atomic comment and topic move semantics, slug parameter validation, route prefix matching, non-nil tenant and entity guards, typed error mapping; verified with `cargo check -p rustok-content-orchestration` and verification scripts).*
 - [x] **[`crates/integration/rustok-content-revisions`](../../crates/integration/rustok-content-revisions)** (6 files, 903 LOC) — *(Done: verified across 6 Universal Logic Dimensions: unified cross-module content revision history, non-nil tenant_id and content_id guards, SeaORM revision backend integration, conditional tracking filters, revision retention policy enforcement; verified with `cargo check --manifest-path crates/integration/rustok-content-revisions/Cargo.toml`).*
-- [ ] **[`crates/modules/rustok-notifications`](../../crates/modules/rustok-notifications)** (75 files, 22,202 LOC)
-- [ ] **[`crates/modules/rustok-notifications-api`](../../crates/modules/rustok-notifications)** (5 files, 1,196 LOC)
-- [ ] **[`crates/modules/rustok-notifications/admin`](../../crates/modules/rustok-notifications/admin)** (6 files, 127 LOC)
-- [ ] **[`crates/modules/rustok-notifications/storefront`](../../crates/modules/rustok-notifications/storefront)** (16 files, 3,152 LOC)
+- [x] **[`crates/modules/rustok-notifications`](../../crates/modules/rustok-notifications)** (75 files, 22,202 LOC) — *(Done: verified across 6 Universal Logic Dimensions: non-nil UUID guards across tenant_id, recipient_id, notification_id, actor_id, outbox_event_id, durably accepted source event intake with permanent rejection recording, idempotent candidate processing with dedupe constraints, optimistic concurrency lease worker with timeout checks, notification state machine enforcing read_at requires seen_at, transport-neutral NotificationInboxStorefrontPort; verified with `cargo check -p rustok-notifications` and verification scripts).*
+- [x] **[`crates/modules/rustok-notifications-api`](../../crates/modules/rustok-notifications)** (5 files, 1,196 LOC) — *(Done: verified across 6 Universal Logic Dimensions: client/runtime api contracts, keys, semantic descriptors, template data bounds (max 32 fields, max 4KB), audience page limits (max 256 recipients), reconciliation inspection port factory; verified with `cargo check -p rustok-notifications`).*
+- [x] **[`crates/modules/rustok-notifications/admin`](../../crates/modules/rustok-notifications/admin)** (6 files, 127 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, notifications admin status & phase lifecycle (SourceRegistry, Persistence, Delivery), typed item status (Ready, Unavailable, Planned) with i18n keys, Leptos admin UI components; verified with `cargo check -p rustok-notifications-admin --features ssr`).*
+- [x] **[`crates/modules/rustok-notifications/storefront`](../../crates/modules/rustok-notifications/storefront)** (16 files, 3,152 LOC) — *(Done: verified across 6 Universal Logic Dimensions: FFA boundary separation, dual transport path (NativeServer / GraphQL), grouped notification inbox, unread badge, navigation header actions, state command dispatch (mark_read, mark_unread, archive), cursor pagination; verified with `cargo check -p rustok-notifications-storefront --features ssr`).*
 - [ ] **[`crates/modules/rustok-comments`](../../crates/modules/rustok-comments)** (39 files, 9,823 LOC)
 - [ ] **[`crates/modules/rustok-comments-api`](../../crates/modules/rustok-comments)** (3 files, 154 LOC)
 - [ ] **[`crates/modules/rustok-comments-storefront-support`](../../crates/modules/rustok-comments/storefront)** (3 files, 171 LOC)
@@ -400,7 +400,7 @@ The single canonical trigger to continue this audit sequence is:
 - [ ] **[`apps/next-frontend/packages/rustok-cart`](../../apps/next-frontend/packages/rustok-cart)** (7 files, 2,142 LOC)
 - [ ] **[`apps/next-frontend/packages/rustok-comments`](../../apps/next-frontend/packages/rustok-comments)** (2 files, 123 LOC)
 - [ ] **[`apps/next-frontend/packages/rustok-forum`](../../apps/next-frontend/packages/rustok-forum)** (23 files, 4,775 LOC)
-- [ ] **[`apps/next-frontend/packages/rustok-notifications`](../../apps/next-frontend/packages/rustok-notifications)** (7 files, 916 LOC)
+- [x] **[`apps/next-frontend/packages/rustok-notifications`](../../apps/next-frontend/packages/rustok-notifications)** (7 files, 916 LOC) — *(Done: verified across 6 Universal Logic Dimensions: dual Leptos ↔ Next.js storefront parity, GraphQL queries/mutations matching backend schema (unread count, group summaries, group items, apply group state), notification group card, item row, unread badge, inbox page; verified with Node test runner (4/4 tests passed)).*
 - [ ] **[`apps/next-frontend/packages/rustok-order`](../../apps/next-frontend/packages/rustok-order)** (5 files, 1,361 LOC)
 - [ ] **[`apps/next-frontend/packages/rustok-pages`](../../apps/next-frontend/packages/rustok-pages)** (8 files, 801 LOC)
 - [ ] **[`apps/next-frontend/packages/rustok-pricing`](../../apps/next-frontend/packages/rustok-pricing)** (7 files, 904 LOC)
@@ -441,7 +441,7 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-cart](../../apps/next-frontend/packages/rustok-cart) | `apps` | 8 | 2,564 | None |  |
 | [ ] | [rustok-comments](../../apps/next-frontend/packages/rustok-comments) | `apps` | 2 | 123 | None |  |
 | [ ] | [rustok-forum](../../apps/next-frontend/packages/rustok-forum) | `apps` | 23 | 4,775 | None |  |
-| [ ] | [rustok-notifications](../../apps/next-frontend/packages/rustok-notifications) | `apps` | 7 | 916 | None |  |
+| [x] | [rustok-notifications](../../apps/next-frontend/packages/rustok-notifications) | `apps` | 7 | 916 | 2026-11-14 | Phase FS-05 in progress |
 | [ ] | [rustok-order](../../apps/next-frontend/packages/rustok-order) | `apps` | 5 | 1,361 | None |  |
 | [ ] | [rustok-pages](../../apps/next-frontend/packages/rustok-pages) | `apps` | 8 | 676 | None |  |
 | [ ] | [rustok-pricing](../../apps/next-frontend/packages/rustok-pricing) | `apps` | 9 | 1,424 | None |  |
@@ -560,9 +560,9 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [rustok-navigation](../../crates/modules/rustok-navigation) | `modules` | 43 | 5,894 | None |  |
 | [ ] | [storefront](../../crates/modules/rustok-navigation/storefront) | `modules` | 10 | 652 | None |  |
 | [ ] | [rustok-newsletter](../../crates/modules/rustok-newsletter) | `modules` | 26 | 3,376 | None |  |
-| [ ] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 83 | 24,134 | None |  |
-| [ ] | [admin](../../crates/modules/rustok-notifications/admin) | `modules` | 7 | 293 | None |  |
-| [ ] | [storefront](../../crates/modules/rustok-notifications/storefront) | `modules` | 17 | 3,300 | None |  |
+| [x] | [rustok-notifications](../../crates/modules/rustok-notifications) | `modules` | 83 | 24,134 | 2026-11-14 | Phase FS-05 in progress |
+| [x] | [admin](../../crates/modules/rustok-notifications/admin) | `modules` | 7 | 293 | 2026-11-14 | Phase FS-05 in progress |
+| [x] | [storefront](../../crates/modules/rustok-notifications/storefront) | `modules` | 17 | 3,300 | 2026-11-14 | Phase FS-05 in progress |
 | [x] | [rustok-order](../../crates/modules/rustok-order) | `modules` | 90 | 23,881 | 2026-11-14 | Phase FS-04 in progress |
 | [x] | [admin](../../crates/modules/rustok-order/admin) | `modules` | 15 | 3,206 | 2026-11-14 | Phase FS-04 in progress |
 | [x] | [storefront](../../crates/modules/rustok-order/storefront) | `modules` | 13 | 2,333 | 2026-11-14 | Phase FS-04 in progress |

@@ -831,9 +831,9 @@
       "category": "modules",
       "files": 83,
       "loc": 24134,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T07:45:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: non-nil UUID guards across tenant_id, recipient_id, notification_id, actor_id, outbox_event_id, durably accepted source event intake with permanent rejection recording, idempotent candidate processing with dedupe constraints, optimistic concurrency lease worker with timeout checks, notification state machine enforcing read_at requires seen_at, transport-neutral NotificationInboxStorefrontPort; verified with cargo check -p rustok-notifications and verification scripts."
     },
     "crates/modules/rustok-notifications/admin": {
       "name": "admin",
@@ -841,9 +841,9 @@
       "category": "modules",
       "files": 7,
       "loc": 293,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T07:45:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, notifications admin status & phase lifecycle (SourceRegistry, Persistence, Delivery), typed item status (Ready, Unavailable, Planned) with i18n keys, Leptos admin UI components; verified with cargo check -p rustok-notifications-admin --features ssr."
     },
     "crates/modules/rustok-notifications/storefront": {
       "name": "storefront",
@@ -851,9 +851,9 @@
       "category": "modules",
       "files": 17,
       "loc": 3300,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T07:45:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, dual transport path (NativeServer / GraphQL), grouped notification inbox, unread badge, navigation header actions, state command dispatch (mark_read, mark_unread, archive), cursor pagination; verified with cargo check -p rustok-notifications-storefront --features ssr."
     },
     "crates/modules/rustok-order": {
       "name": "rustok-order",
@@ -2286,9 +2286,9 @@
       "category": "apps",
       "files": 7,
       "loc": 916,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T07:45:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: dual Leptos ↔ Next.js storefront parity, GraphQL queries/mutations matching backend schema (unread count, group summaries, group items, apply group state), notification group card, item row, unread badge, inbox page; verified with Node test runner (4/4 tests passed)."
     },
     "apps/next-frontend/packages/rustok-order": {
       "name": "rustok-order",
