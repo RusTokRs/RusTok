@@ -97,6 +97,8 @@ npm run verify:auth:ui-boundary
 npm run test:verify:auth:ui-boundary
 cargo test --locked -p rustok-auth-ui --lib
 cargo test --locked -p rustok-auth-ui --lib --features ssr
+cargo test --locked -p rustok-auth-ui --test shared_client_contract
+cargo test --locked -p rustok-auth-ui --test shared_client_contract --features ssr
 ```
 
 Also check CSR and hydrate WASM and both real hosts; the source/metadata guard

@@ -184,6 +184,7 @@ fn create_product_input() -> CreateProductInput {
         shipping_profile_slug: None,
         primary_category_id: None,
         tags: vec![],
+        brands: vec![],
         publish: false,
         metadata: serde_json::json!({}),
     }

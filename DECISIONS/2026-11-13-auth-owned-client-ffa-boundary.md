@@ -66,7 +66,11 @@ page, change the Next.js implementation, or redefine server authorization.
 No new database or persisted identity format is introduced. The existing
 same-document lease coordinates cooperating providers only; it cannot cancel
 already-sent requests, serialize other tabs, or constrain unrelated scripts.
-The Auth backend retains session rotation and revocation transaction ownership.
+The Auth provider does not yet subscribe to external invalidation notifications:
+Cart's bridge invalidates its own state, but other provider projections may stay
+stale across roots or tabs. Route guards and some storage-backed transports also
+bypass ready-scope getters. These are open implementation gaps, not guarantees of
+this decision. The Auth backend retains session rotation and revocation transaction ownership.
 
 ## Context dimensions
 
@@ -77,9 +81,10 @@ by this client lifecycle boundary.
 
 ## Events and projections
 
-Non-secret browser notifications invalidate projections. They are neither durable
-outbox events nor cross-tab locks. In-memory user/session projections and scope
-stamps cannot prove server state or revoke a request already sent.
+Non-secret browser notifications let cooperating consumers invalidate projections;
+Cart's bridge consumes them, but Auth providers do not yet do so. They are neither
+durable outbox events nor cross-tab locks. In-memory user/session projections and
+scope stamps cannot prove server state or revoke a request already sent.
 
 ## Failure semantics
 
@@ -105,11 +110,14 @@ introduces server/storage dependencies. All are rejected.
 
 ## Verification
 
-Require locked native default/SSR tests, CSR and hydrate WASM checks, feature and
-source boundary guards, and both actual host builds. Exercise mounted provider,
-SSR hydration, native and direct-cookie login/refresh/logout, tenant mismatch,
-multiple providers, tabs, dropped futures and real services before rollout.
-The Auth plan and Page Builder backlog retain the outstanding gates.
+Locked native Auth default/SSR tests, the public contract and the Auth admin SSR
+check passed on cutover commit `5ce7c6c` in [CI run 43575756113](https://github.com/RusTokRs/RusTok/actions/runs/43575756113).
+Auth and Auth admin CSR WASM and the Product buyer island with Auth hydrate also
+passed. Both full host builds, the standalone hydrate graph fence and the new SSR
+rendering contract still need results. Exercise mounted provider, SSR hydration, native and
+direct-cookie login/refresh/logout, tenant mismatch, multiple providers, tabs,
+dropped futures and real services before rollout. The Auth plan and Page Builder
+backlog retain the outstanding gates.
 
 ## Consequences
 

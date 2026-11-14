@@ -69,9 +69,9 @@ Client operations return typed `AuthError`; a failed transition is not a verifie
 ## 2. Invariants & Business Rules
 - **BFF Cookie Isolation**: Refresh tokens are stored strictly in `HttpOnly; SameSite=Lax` cookies; browser client scripts cannot read refresh tokens directly.
 - **SSR ownership**: `ServerAuthSnapshot` is request-scoped input validated by the host, not a session inferred by this library. Browser restoration and SSR/hydration parity require mounted verification.
-- **Client scope**: `ClientAuthScope` and `AuthContext::client_scope` expose a non-secret, fail-closed transition generation. Cooperating providers share an in-document operation lease; it cannot coordinate other tabs or cancel an already-sent request. Owner/server authentication and CSRF checks remain authoritative.
+- **Client scope**: `ClientAuthScope` and `AuthContext::client_scope` expose a non-secret, fail-closed transition generation for the operating provider. Cooperating providers share an in-document operation lease; it cannot coordinate other tabs or cancel an already-sent request. Auth providers do not yet subscribe to external invalidations, so their projections can remain stale across roots or tabs. Owner/server authentication and CSRF checks remain authoritative.
 - **Read-only projections**: `AuthContext::{user,session,is_loading,error}()` return stable `ReadSignal` handles; fields remain private so a clone cannot rebind a projection while retaining the verified scope. Only transition methods and request-scoped SSR snapshot may set identity. Browser session mutation helpers are crate-private. Callers of the former public fields must migrate to accessor or transition methods. `get_token` and `get_tenant` return no value while the scope is pending or unverified, even when an old identity is retained for retry; this is a client consistency rule, not authorization.
-- **Tenant Context Preservation**: Tenant identity is strictly isolated and retained across session refreshes.
+- **Tenant context**: Host tenant binding refuses to overwrite a different canonical browser tenant. Server-side validation remains responsible for tenant isolation, including other roots and tabs.
 
 ## 3. Error Handling & Edge Cases
 - Native refresh returns an explicit absence only when no BFF refresh cookie exists. Malformed, duplicate, foreign-tenant, rejected and transport-failed credentials leave the client scope unverified; the direct-cookie 401 does not distinguish absence from rejection.
@@ -84,9 +84,10 @@ Client operations return typed `AuthError`; a failed transition is not a verifie
 ## 4. Security & Isolation Invariants
 - `HttpOnly; SameSite=Lax` cookie flags enforced in `refresh_cookie_header`.
 - `Secure` cookie attribute dynamically toggled based on deployment environment (HTTPS).
-- Plain request-scoped server snapshot prevents cross-request data leaks in multi-tenant SSR hosts.
+- SSR hosts must validate snapshots and keep them request-scoped; the plain snapshot type alone does not enforce isolation.
 
 ## 5. Contract Tests & Verification
 - `src/model/scope.rs`: standalone lifecycle state-machine tests; they do not exercise the provider or browser lease.
 - `src/contract_tests.rs`: package metadata, cookie serialization/deserialization and session ID extraction.
+- `tests/shared_client_contract.rs`: public value identity and cookie wire contract; the new SSR case renders host-supplied test snapshots in separate owners and still needs a locked run.
 - The current browser-provider, cross-provider and network/cookie behavior still requires mounted verification.

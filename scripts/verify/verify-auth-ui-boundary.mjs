@@ -108,6 +108,20 @@ export function validateSources(files) {
   }
   const context = text.get(`${owner}/src/ui/leptos/context.rs`) ?? "";
   if (!/\bpub\s+fn\s+AuthProvider\s*\(/.test(context)) failures.push("Auth-owned provider is missing");
+  // The standalone CSR host must provide the same owner context to both route branches.
+  // This does not assert anything about the separate SSR render path or mounting behavior.
+  const storefront = text.get("apps/storefront/src/main.rs") ?? "";
+  const csrStart = storefront.indexOf('#[cfg(feature = "csr")]\nfn main()');
+  const csrEnd = storefront.indexOf('\n#[cfg(', csrStart + 1);
+  const csr = csrStart < 0 ? "" : storefront.slice(csrStart, csrEnd < 0 ? undefined : csrEnd);
+  const open = csr.indexOf("<AuthProvider>");
+  const close = csr.indexOf("</AuthProvider>");
+  const page = csr.indexOf("<StorefrontModulePage");
+  const shell = csr.indexOf("<StorefrontShell");
+  if (!csr.includes("use rustok_auth_ui::ui::leptos::AuthProvider;") ||
+      open < 0 || page < open || shell < open || close < page || close < shell) {
+    failures.push("storefront CSR route branches must be composed under the Auth-owned provider");
+  }
   const adapter = text.get(`${owner}/src/transport/native_server_adapter.rs`) ?? "";
   for (const endpoint of ["sign-in", "sign-up", "sign-out", "refresh-token", "accept-invite", "forgot-password", "current-user"]) {
     if (!adapter.includes(`endpoint = "auth/${endpoint}"`)) failures.push(`Auth native endpoint ${endpoint} is missing`);

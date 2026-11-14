@@ -94,6 +94,7 @@ jobs:
           run_checked auth-tests cargo test --locked --lib -p rustok-auth-ui || failed=1
           run_checked auth-ssr-tests cargo test --locked --lib -p rustok-auth-ui --features ssr || failed=1
           run_checked auth-public-contract cargo test --locked -p rustok-auth-ui --test shared_client_contract || failed=1
+          run_checked auth-public-contract-ssr cargo test --locked -p rustok-auth-ui --test shared_client_contract --features ssr || failed=1
           run_checked auth-admin-ssr cargo check --locked --lib -p rustok-auth-admin --features ssr || failed=1
           if [ "$failed" -ne 0 ]; then exit "$failed"; fi
 
@@ -203,11 +204,13 @@ jobs:
           failed=0
           run_checked cart-product-wasm cargo check --locked --lib -p rustok-storefront --no-default-features --features product-buyer-island --target wasm32-unknown-unknown || failed=1
           run_checked auth-csr-wasm cargo check --locked --lib -p rustok-auth-ui --no-default-features --features csr --target wasm32-unknown-unknown || failed=1
+          run_checked auth-hydrate-wasm cargo check --locked --lib -p rustok-auth-ui --no-default-features --features hydrate --target wasm32-unknown-unknown || failed=1
           run_checked auth-admin-csr-wasm cargo check --locked --lib -p rustok-auth-admin --no-default-features --features csr --target wasm32-unknown-unknown || failed=1
-          run_checked storefront-csr-wasm cargo check --locked --lib -p rustok-storefront --no-default-features --features csr --target wasm32-unknown-unknown || failed=1
+          run_checked storefront-csr-wasm cargo check --locked -p rustok-storefront --no-default-features --features csr --target wasm32-unknown-unknown || failed=1
           run_checked admin-hydrate-wasm cargo check --locked --lib -p rustok-admin --no-default-features --features hydrate --target wasm32-unknown-unknown || failed=1
           if [ "$failed" -ne 0 ]; then exit "$failed"; fi
       - name: Verify the browser graph excludes server Auth and ORM
+        if: ${{ !cancelled() }}
         shell: bash
         run: |
           set -euo pipefail

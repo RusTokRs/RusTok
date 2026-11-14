@@ -38,6 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(feature = "csr")]
 fn main() {
     use leptos::prelude::*;
+    use rustok_auth_ui::ui::leptos::AuthProvider;
     use rustok_storefront::app::{StorefrontModulePage, StorefrontShell};
 
     console_error_panic_hook::set_once();
@@ -46,25 +47,29 @@ fn main() {
     let enabled_modules = resolve_csr_enabled_modules(&query_params);
 
     mount_to_body(move || {
-        if let Some(route_segment) = route_segment.clone() {
-            view! {
-                <StorefrontModulePage
-                    locale=locale.clone()
-                    enabled_modules=enabled_modules.clone()
-                    route_segment=route_segment
-                    query_params=query_params.clone()
-                />
-            }
-            .into_any()
-        } else {
-            view! {
-                <StorefrontShell
-                    locale=locale.clone()
-                    enabled_modules=enabled_modules.clone()
-                    query_params=query_params.clone()
-                />
-            }
-            .into_any()
+        view! {
+            <AuthProvider>
+                {if let Some(route_segment) = route_segment.clone() {
+                    view! {
+                        <StorefrontModulePage
+                            locale=locale.clone()
+                            enabled_modules=enabled_modules.clone()
+                            route_segment=route_segment
+                            query_params=query_params.clone()
+                        />
+                    }
+                    .into_any()
+                } else {
+                    view! {
+                        <StorefrontShell
+                            locale=locale.clone()
+                            enabled_modules=enabled_modules.clone()
+                            query_params=query_params.clone()
+                        />
+                    }
+                    .into_any()
+                }}
+            </AuthProvider>
         }
     });
 }

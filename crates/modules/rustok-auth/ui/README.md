@@ -27,8 +27,15 @@ Clients import the appropriate layer (`rustok_auth_ui::ui::leptos`, `::model`,
 `::core`, or `::transport`). Dependency features `csr`, `hydrate`, and `ssr`
 must propagate from every consuming package; they select one path rather than
 a runtime fallback. Native SSR needs the `ssr` feature and a validated
-request-scoped snapshot supplied by the host. Next/React has an independent UI
-implementation; this migration does not claim runtime parity with it.
+request-scoped snapshot supplied by the host. The standalone storefront CSR entry
+wraps both its shell and module routes in this provider; its Product and Blog islands
+also use it. The pre-existing separate storefront SSR shell creates an owner without
+an Auth provider or validated snapshot, so an SSR surface that requires a hook such
+as `use_token` can fail rather than receive a session. It needs explicit, validated
+request composition and cache-safe rendering; an empty snapshot must not be treated
+as proof that no credential exists. These paths still need mounted verification.
+Next/React has an independent UI implementation; this migration does not claim
+runtime parity with it.
 
 ## Host-resolved public tenant binding
 
@@ -50,10 +57,16 @@ source, cooperating providers in the same browser document use a shared lease an
 a dropped future poisons that document's lease because it does not cancel a request or its cookie
 side effects. Notifications contain no credentials. If notification storage is unavailable, a
 transition fails before network I/O. Other tabs receive an asynchronous invalidation stamp, not an
-atomic lock, and old requests may still affect cookies after a reload. Server authentication and
-tenant checks remain authoritative. These changes need locked native/WASM and mounted-provider
-verification; standalone state-machine tests do not prove the browser protocol. The Blog reference
-plan records earlier bounded package/WASM compilation, not validation of this change.
+atomic lock, and old requests may still affect cookies after a reload. The Auth provider itself
+does not subscribe to these notifications; Cart's bridge invalidates its own state, but other
+provider projections can remain stale across roots or tabs. Route authentication and some
+storage-backed transports also do not use the ready-scope getters. Server authentication and tenant
+checks remain authoritative. On the cutover commit, [CI run 43575756113](https://github.com/RusTokRs/RusTok/actions/runs/43575756113)
+passed locked Auth native default/SSR tests, the public contract and Auth admin SSR check; Auth
+and Auth admin CSR WASM checks and the Product buyer island (including Auth hydrate) also passed.
+Full host checks and mounted-provider verification remain open. Standalone state-machine tests do
+not prove the browser protocol. The Blog reference plan records earlier bounded package/WASM
+compilation, not validation of this change.
 
 The native BFF classifies an absent refresh cookie separately from malformed, duplicate,
 foreign, rejected or unreachable credentials. Only explicit absence with no existing session

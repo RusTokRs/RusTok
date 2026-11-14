@@ -34,6 +34,10 @@ function sourcesFixture() {
   files.find((file) => file.name.endsWith("/src/lib.rs")).content =
     "pub mod core; pub mod model; pub mod transport; pub mod ui;";
   files.find((file) => file.name.endsWith("/src/ui/leptos/context.rs")).content = "pub fn AuthProvider() {}";
+  files.push({
+    name: "apps/storefront/src/main.rs",
+    content: '#[cfg(feature = "csr")]\nfn main() { use rustok_auth_ui::ui::leptos::AuthProvider; <AuthProvider><StorefrontModulePage /><StorefrontShell /></AuthProvider> }\n#[cfg(feature = "ssr")]\nfn other() {}',
+  });
   files.find((file) => file.name.endsWith("/src/transport/native_server_adapter.rs")).content =
     ["sign-in", "sign-up", "sign-out", "refresh-token", "accept-invite", "forgot-password", "current-user"]
       .map((endpoint) => `endpoint = "auth/${endpoint}"`).join("\n");
@@ -84,4 +88,14 @@ test("rejects a removed native endpoint and missing FFA layer", () => {
   const failures = validateSources(files).join("\n");
   assert.match(failures, /missing or empty Auth FFA layer/);
   assert.match(failures, /Auth native endpoint sign-out is missing/);
+});
+
+test("rejects a CSR route rendered outside the Auth provider", () => {
+  const files = sourcesFixture();
+  const host = files.find((file) => file.name === "apps/storefront/src/main.rs");
+  host.content = host.content.replace(
+    "<StorefrontShell /></AuthProvider>",
+    "</AuthProvider><StorefrontShell />",
+  );
+  assert.match(validateSources(files).join("\n"), /storefront CSR route branches/);
 });
