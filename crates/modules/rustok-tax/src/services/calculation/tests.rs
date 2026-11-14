@@ -411,4 +411,5 @@ async fn tax_service_ignores_nil_channel_id_when_selecting_provider() {
         .expect("should fall back to region_default instead of unknown channel provider");
 
     assert_eq!(result.lines[0].provider_id, REGION_DEFAULT_TAX_PROVIDER_ID);
+    assert_eq!(result.lines[0].metadata["channel_id"], json!(null));
 }

@@ -97,7 +97,10 @@ impl TaxProvider for RegionTaxProvider {
                     "tax_included": resolved_policy.tax_included,
                     "country_code": resolved_policy.country_code,
                     "policy_scope": resolved_policy.policy_scope,
-                    "channel_id": input.channel_id.map(|value| value.to_string()),
+                    "channel_id": input
+                        .channel_id
+                        .filter(|id| !id.is_nil())
+                        .map(|value| value.to_string()),
                     "customer_tax_exempt": input.customer_tax_exempt,
                     "item_tax_class": amount.item_tax_class,
                     "shipping_tax_class": amount.shipping_tax_class,
