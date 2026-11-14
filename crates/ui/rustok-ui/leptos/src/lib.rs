@@ -22,11 +22,14 @@ pub mod checkbox;
 pub mod dialog;
 pub mod input;
 pub mod label;
+pub mod language_toggle;
 pub mod progress;
+pub mod richtext;
 pub mod select;
 pub mod separator;
 pub mod skeleton;
 pub mod spinner;
+pub mod success_message;
 pub mod switch;
 pub mod tabs;
 pub mod textarea;
@@ -49,11 +52,16 @@ pub use dialog::{
 };
 pub use input::Input;
 pub use label::Label;
+pub use language_toggle::{LanguageToggle, LanguageToggleOption};
 pub use progress::Progress;
+pub use richtext::{
+    RichTextEditorFrame, RichTextFrameCopy, RichTextHtml, localized_richtext_frame_copy,
+};
 pub use select::Select;
 pub use separator::Separator;
 pub use skeleton::Skeleton;
 pub use spinner::Spinner;
+pub use success_message::SuccessMessage;
 pub use switch::Switch;
 pub use tabs::{Tabs, TabsContent, TabsList, TabsTrigger};
 pub use textarea::Textarea;
@@ -109,3 +117,5 @@ pub use tabs::{
 };
 pub use textarea::Textarea as ui_textarea;
 pub use toc::TableOfContents as ui_table_of_contents;
+pub use language_toggle::LanguageToggle as ui_language_toggle;
+pub use success_message::SuccessMessage as ui_success_message;

@@ -40,20 +40,20 @@ pub use rustok_ui_leptos::{
     ui_spinner, ui_switch, ui_tabs, ui_tabs_content, ui_tabs_list, ui_tabs_trigger, ui_textarea,
 };
 
-// Local composite components
-pub mod language_toggle;
-pub mod richtext;
-pub mod success_message;
-pub mod toc;
-
-pub use language_toggle::{LanguageToggle as ui_language_toggle, LanguageToggleOption};
-pub use richtext::{
-    RichTextEditorFrame, RichTextFrameCopy, RichTextHtml, localized_richtext_frame_copy,
+// Local composite components re-exported from canonical rustok-ui-leptos adapter
+pub use rustok_ui_leptos::language_toggle::{
+    self, LanguageToggle, LanguageToggle as ui_language_toggle, LanguageToggleOption,
 };
-pub use success_message::SuccessMessage as ui_success_message;
-pub use toc::{
-    TableOfContents, TableOfContents as ui_table_of_contents, TocItem, extract_headings_from_html,
+pub use rustok_ui_leptos::richtext::{
+    self, RichTextEditorFrame, RichTextFrameCopy, RichTextHtml, localized_richtext_frame_copy,
 };
+pub use rustok_ui_leptos::success_message::{
+    self, SuccessMessage, SuccessMessage as ui_success_message,
+};
+pub use rustok_ui_leptos::toc::{
+    self, TableOfContents, TableOfContents as ui_table_of_contents,
+};
+pub use rustok_ui_leptos::{TocItem, extract_headings_from_html};
 
 #[cfg(test)]
 mod contract_tests;

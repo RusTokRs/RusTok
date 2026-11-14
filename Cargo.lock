@@ -18668,9 +18668,13 @@ dependencies = [
 name = "rustok-ui-leptos"
 version = "0.1.0"
 dependencies = [
+ "js-sys",
  "leptos",
+ "rustok-api",
  "rustok-ui",
  "serde",
+ "serde_json",
+ "wasm-bindgen",
  "web-sys",
 ]
 
