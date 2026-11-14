@@ -1338,6 +1338,7 @@ mod tests {
         let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
         let validators = ValidatorRegistry::default();
         let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
 
         SettingsService::update(
             &ctx,
@@ -1345,7 +1346,7 @@ mod tests {
             tenant_id,
             category::GENERAL,
             json!({ "site_name": "first" }),
-            None,
+            Some(actor_id),
             &validators,
         )
         .await
@@ -1356,7 +1357,7 @@ mod tests {
             tenant_id,
             category::GENERAL,
             json!({ "site_name": "second" }),
-            None,
+            Some(actor_id),
             &validators,
         )
         .await
@@ -1385,6 +1386,7 @@ mod tests {
         let event_bus = TransactionalEventBus::new(Arc::new(OutboxTransport::new(db.clone())));
         let validators = ValidatorRegistry::default();
         let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
 
         let initial = SettingsService::get_snapshot(&ctx, tenant_id, category::GENERAL)
             .await
@@ -1397,7 +1399,7 @@ mod tests {
             tenant_id,
             category::GENERAL,
             json!({ "site_name": "first" }),
-            None,
+            Some(actor_id),
             &validators,
             0,
         )
@@ -1411,7 +1413,7 @@ mod tests {
             tenant_id,
             category::GENERAL,
             json!({ "site_name": "second" }),
-            None,
+            Some(actor_id),
             &validators,
             first.schema_version,
         )
@@ -1425,7 +1427,7 @@ mod tests {
             tenant_id,
             category::GENERAL,
             json!({ "site_name": "stale" }),
-            None,
+            Some(actor_id),
             &validators,
             first.schema_version,
         )
@@ -1445,7 +1447,7 @@ mod tests {
             tenant_id,
             category::GENERAL,
             json!({ "site_name": "negative" }),
-            None,
+            Some(actor_id),
             &validators,
             -1,
         )
