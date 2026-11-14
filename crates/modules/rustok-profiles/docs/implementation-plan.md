@@ -20,7 +20,7 @@ reads evaluate privacy before localized presentation and hide restricted or
 unavailable rows as absent.
 
 `followers_only` resolves through authoritative bounded Social Graph owner ports.
-Profiles never reads relation tables and never authorizes from events, Index
+Profiles never reads relation tables and never authorizes from an event, Index
 state, DLQ receipts, broker identifiers, offsets, lag, poison health,
 PostgreSQL/Iggy evidence, deduplication observations, duplicate-scan modes,
 alert levels, duplicate-observer health, or Prometheus metrics.
@@ -51,8 +51,7 @@ mutation retry.
   `Applied`, `Duplicate`, and `StaleIgnored` are terminal durable results.
 - Runtime consumers are default-off, require a worker host plus `outbox_iggy`,
   and reuse the single `Arc<IggyTransport>` owned by `EventRuntime`.
-- Index/search projections can improve discovery but never authorize profile
-  visibility.
+- Index/search projections may use sealed owner events to improve discovery, but never authorize visibility.
 
 ### Raw decode failures and poison receipts
 
@@ -480,6 +479,7 @@ node scripts/evidence/capture-iggy-dlq-duplicate-moving-window-external-observer
 node scripts/verify/verify-event-dlq-duplicate-alert-server-observer.mjs
 node scripts/verify/verify-iggy-dlq-duplicate-inspection.mjs
 node scripts/verify/verify-profiles-storefront-boundary.mjs
+node scripts/verify/verify-social-graph-index-consumer.mjs
 ```
 
 ## Change rules

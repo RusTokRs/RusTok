@@ -229,6 +229,12 @@ The harness and source guard are source-complete; no PostgreSQL run has been exe
 10. Continue friendship lifecycle, directory/follow UX, lists, block/mute management,
     and moderation/admin repair.
 
+## Receipt retention and rollout contract
+
+- Automatic cleanup remains disabled.
+- Cleanup applies to completed receipts only; never delete `processing` receipts.
+- Application rollback and recovery retain the receipt table and rows.
+
 ## Verification
 
 ```bash

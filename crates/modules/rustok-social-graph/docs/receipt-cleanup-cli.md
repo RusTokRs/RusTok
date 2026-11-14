@@ -16,8 +16,7 @@ rustok-cli social_graph receipt-cleanup \
 ## Safety contract
 
 - `--tenant-id` is mandatory and scopes every owner query and delete.
-- `--retention-days` is mandatory. The adapter has no deployment retention
-  default and derives the owner cutoff as `now - retention_days`.
+- `--retention-days` is mandatory. The adapter has no deployment retention default and derives the owner cutoff as `now - retention_days`.
 - `--limit` defaults only the batch size to `100`; it can never exceed the owner
   maximum of `1000`.
 - `--dry-run` reaches the same owner selection path but deletes no rows.

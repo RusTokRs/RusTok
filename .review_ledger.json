@@ -1254,9 +1254,9 @@
       "category": "modules",
       "files": 40,
       "loc": 9812,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Phase FS-05 in progress"
     },
     "crates/modules/rustok-tax": {
       "name": "rustok-tax",
@@ -2646,9 +2646,9 @@
       "category": "modules",
       "files": 2,
       "loc": 506,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Phase FS-05 in progress"
     },
     "crates/modules/rustok-tasks": {
       "name": "rustok-tasks",

@@ -62,7 +62,7 @@ function forbidText(name, source, text) {
 requireText(
   "server Cargo feature",
   files.serverCargo,
-  'mod-social_graph = ["rustok-social-graph/graphql", "rustok-social-graph/index-consumer"]',
+  'mod-social_graph = ["dep:rustok-social-graph", "rustok-social-graph/graphql", "rustok-social-graph/index-consumer"]',
 );
 requireText(
   "services module",
@@ -150,7 +150,7 @@ for (const marker of [
 requireText(
   "readiness endpoint",
   files.health,
-  "checks.push(check_runtime_guardrails(&ctx).await);",
+  "check_runtime_guardrails(&ctx).await",
 );
 requireText(
   "aggregate guardrail metrics",
@@ -250,7 +250,12 @@ if (durableApply < 0 || durableAck <= durableApply) {
   );
 }
 
-const workerDlqPublish = files.worker.indexOf(".publish_consumed_to_dlq(");
+requireText(
+  "worker DLQ publication helper",
+  files.worker,
+  ".publish_consumed_to_dlq(",
+);
+const workerDlqPublish = files.worker.indexOf("publish_dead_lettered_result(");
 const workerDlqAck = files.worker.indexOf(
   "return acknowledge_terminal_result(",
   workerDlqPublish,

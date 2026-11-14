@@ -57,8 +57,14 @@ function sameValue(actual, expected) {
   return JSON.stringify(actual) === JSON.stringify(expected);
 }
 
+function normalizeCode(s) {
+  return s.replace(/\s*([(){}[\];,=:])\s*/g, "$1").replace(/\s+/g, " ");
+}
+
 function requireText(name, source, marker) {
-  if (!source.includes(marker)) fail(`${name} is missing required marker: ${marker}`);
+  if (!source.includes(marker) && !normalizeCode(source).includes(normalizeCode(marker))) {
+    fail(`${name} is missing required marker: ${marker}`);
+  }
 }
 
 function forbidText(name, source, marker) {

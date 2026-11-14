@@ -81,7 +81,7 @@ const test = readRepo(paths.test);
 
 assertContains(
   modules,
-  'social_graph = { crate = "rustok-social-graph", source = "path", path = "crates/modules/rustok-social-graph", depends_on = ["outbox"] }',
+  'social_graph = { crate = "rustok-social-graph", source = "path", path = "crates/modules/rustok-social-graph", depends_on = ["index", "outbox"] }',
   `${paths.modules}: Social Graph must declare its required Outbox dependency`,
 );
 assertContains(moduleManifest, "[dependencies]", `${paths.moduleManifest}: dependencies section missing`);
@@ -168,7 +168,7 @@ for (const marker of [
   "state_changed: bool",
   "state_changed: false",
   "state_changed: true",
-  "created_at: Set(now.clone())",
+  "created_at: Set(now)",
 ]) {
   assertContains(service, marker, `${paths.service}: write composition missing: ${marker}`);
 }
