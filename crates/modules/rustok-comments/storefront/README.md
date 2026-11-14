@@ -11,7 +11,7 @@ Reusable Leptos storefront authoring UI owned by the Comments capability.
 
 ## Interactions
 
-Blog composes `CommentComposer` with its post-bound comment-create action. Product reviews and later consumers may reuse the same component with their own exact target-bound commands. The component uses the canonical `comment` richtext profile through `leptos-ui::RichTextEditorFrame`.
+Blog composes `CommentComposer` with its post-bound comment-create action. Product reviews and later consumers may reuse the same component with their own exact target-bound commands. The component uses the canonical `comment` richtext profile through `rustok_ui_leptos::RichTextEditorFrame`.
 
 This is a support crate rather than a host-mounted module surface, so it intentionally has no transport adapter or route manifest. Transport ownership remains with each consuming domain module.
 

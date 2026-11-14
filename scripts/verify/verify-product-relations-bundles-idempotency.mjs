@@ -39,7 +39,9 @@ const relationsReceiptsPath =
   "crates/modules/rustok-product-relations/src/services/receipts.rs";
 const relationsServicePath =
   "crates/modules/rustok-product-relations/src/services/relation_service.rs";
-const relationsDtoPath = "crates/modules/rustok-product-relations/src/dto.rs";
+const relationsDtoPath = fs.existsSync(path.join(root, "crates/modules/rustok-product-relations/src/dto.rs"))
+  ? "crates/modules/rustok-product-relations/src/dto.rs"
+  : "crates/modules/rustok-product-relations/src/dto/mod.rs";
 const relationsServicesModPath = "crates/modules/rustok-product-relations/src/services/mod.rs";
 const relationsLibPath = "crates/modules/rustok-product-relations/src/lib.rs";
 const relationsManifestPath = "crates/modules/rustok-product-relations/Cargo.toml";
@@ -314,7 +316,7 @@ forbid(
 );
 for (const [source, namespace, compatibilityMarker, label] of [
   [
-    relationsLib,
+    relationsReceipts,
     'RELATION_CALLER_IDEMPOTENCY_NAMESPACE: &str = "commerce-graphql-relation"',
     "This deployed Product Relation namespace deliberately retains its original digest framing",
     "relations deployed receipt key compatibility",

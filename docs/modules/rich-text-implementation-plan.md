@@ -50,7 +50,7 @@ entity DataLoaders, and caller-selected Pages body format are removed.
 The Phase 2 browser runtime source is implemented in `packages/richtext`:
 the package owns the explicit Tiptap extension registry, generated profile
 contracts, bounded private-channel controller, React adapter, browser lifecycle,
-and hashed frame assets. The shared `leptos-ui` frame owns the Leptos WASM
+and hashed frame assets. The shared `rustok-ui-leptos` frame owns the Leptos WASM
 lifecycle; Blog and Forum expose only thin profile/locale wrappers. The Blog
 editor selects `article` and Forum selects `discussion`. A Chromium spike verified the
 sandbox boundary, blocked cookie/parent-DOM access, CSP headers, private
@@ -74,7 +74,7 @@ Phase 2 is complete.
 
 Read-only projection is centralized as well. React consumers use
 `@rustok/richtext/view`, and Leptos consumers use
-`leptos_ui::RichTextHtml`. Both accept the typed server-derived
+`rustok_ui_leptos::RichTextHtml`. Both accept the typed server-derived
 `RichTextView`, owner content locale, and presentation class; neither imports
 Tiptap, derives HTML, or accepts a raw HTML string as its public input. Blog
 Next/Leptos, Forum Leptos, and Comments moderation now use this boundary.

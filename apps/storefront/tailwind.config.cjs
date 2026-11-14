@@ -5,7 +5,6 @@ module.exports = {
     "./assets/**/*.css",
     "../../crates/ui/rustok-ui/src/**/*.rs",
     "../../crates/ui/rustok-ui/leptos/src/**/*.rs",
-    "../../crates/ui/leptos-ui/src/**/*.rs",
     "../../crates/modules/*/storefront/src/**/*.rs",
   ],
   theme: {

@@ -9,7 +9,7 @@ status: verified
 # Rust UI Component Catalog
 
 This document captures the current shared UI surface in RusToK and the division of
-responsibility between `crates/ui/rustok-ui*`, `crates/ui/leptos-ui`, `UI/*`, and
+responsibility between `crates/ui/rustok-ui*`, `UI/*`, and
 app-local components.
 
 ## Sources of Shared UI
@@ -19,11 +19,9 @@ The repository currently has these levels of UI reuse:
 - `crates/ui/rustok-ui/src` — framework-agnostic contracts (variants, sizes, state
   models) and the deterministic Tailwind class resolvers shared by every framework;
 - `crates/ui/rustok-ui/leptos` (`rustok-ui-leptos`) and `crates/ui/rustok-ui/dioxus`
-  (`rustok-ui-dioxus`) — the wrapper adapters that turn those resolvers into
-  framework components;
-- `crates/ui/leptos-ui` — RusToK-specific Leptos package boundary; re-exports
-  `rustok_ui_leptos::*` and owns only the local helper components
-  (`LanguageToggle`, rich-text helpers);
+  (`rustok-ui-dioxus`) — the framework component implementations providing
+  primitives (`Button`, `Input`, `Badge`, `Card`, etc.) and shared components
+  (`LanguageToggle`, `RichTextHtml`, `RichTextEditorFrame`, `TableOfContents`);
 - `UI/tokens` — legacy design tokens and CSS variables consumed by the admin shell;
 - `UI/next/components` — the legacy parallel shared primitives kept for Next surfaces that have not migrated to `rustok-ui` yet.
 
@@ -95,9 +93,9 @@ generic DOM-prop forwarding and runtime validation are still pending. Keep
 shared component status evidence-based: do not mark a component `parity` solely
 because its base markup or class names match.
 
-## Leptos-Specific Package Boundary: `crates/ui/leptos-ui`
+## Leptos Package Boundary: `crates/ui/rustok-ui/leptos` (`rustok-ui-leptos`)
 
-`crates/ui/leptos-ui` holds the RusToK-specific Leptos surface for applications and module-owned UI packages. It re-exports every component from `rustok-ui-leptos` (`pub use rustok_ui_leptos::*;`) and adds the local helpers below. Current entry points:
+`crates/ui/rustok-ui/leptos` holds the canonical Leptos component library for applications and module-owned UI packages. Current entry points:
 
 - `Button`
 - `Input`
@@ -118,8 +116,6 @@ because its base markup or class names match.
 - `RichTextEditorFrame` for the isolated shared authoring runtime
 - `TableOfContents` (and `extract_headings_from_html`) for sticky, accessible heading navigation across blog posts, forum topics, long product descriptions, and documentation
 
-This crate is needed where a simple shared primitive layer is insufficient and a stable package boundary within the Rust workspace is required.
-
 ## App-Local UI Not in the Shared Catalog
 
 The following surfaces currently remain app-local and should not automatically be considered part of the shared catalog:
@@ -129,7 +125,7 @@ The following surfaces currently remain app-local and should not automatically b
 - `apps/admin` host-local layout/navigation components
 - module-owned admin/storefront UI inside `crates/modules/rustok-*/admin` and `crates/modules/rustok-*/storefront`
 
-If such a component starts being reused across multiple hosts or modules, it should either be promoted to `UI/*` or formalized through `crates/ui/leptos-ui` for the Leptos path.
+If such a component starts being reused across multiple hosts or modules, it should either be promoted to `UI/*` or formalized through `crates/ui/rustok-ui/leptos` for the Leptos path.
 
 ## Verification When Changing Shared UI
 

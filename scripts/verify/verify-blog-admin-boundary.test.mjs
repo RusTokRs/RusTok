@@ -161,7 +161,7 @@ function richtextAdapterSource({
   wrongProfile = false,
 } = {}) {
   return `
-use leptos_ui::{RichTextEditorFrame, localized_richtext_frame_copy};
+use rustok_ui_leptos::{RichTextEditorFrame, localized_richtext_frame_copy};
 use rustok_api::RichTextDocument;
 pub fn BlogRichTextEditor(
     document: ReadSignal<RichTextDocument>,
@@ -309,7 +309,7 @@ function withFixture(options = {}) {
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/mod.rs", uiModSource(options));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/components.rs", "");
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/richtext.rs", richtextAdapterSource(options));
-  writeFixtureFile(root, "crates/ui/leptos-ui/src/richtext.rs", sharedRichtextAdapterSource(options));
+  writeFixtureFile(root, "crates/ui/rustok-ui/leptos/src/richtext.rs", sharedRichtextAdapterSource(options));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/ui/moderation.rs", moderationSource(options));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/transport/mod.rs", transportSource(options));
   writeFixtureFile(root, "crates/modules/rustok-blog/admin/src/transport/graphql_adapter.rs", graphqlAdapterSource(options));
@@ -339,7 +339,7 @@ function withFixture(options = {}) {
       core: "crates/modules/rustok-blog/admin/src/core.rs",
       ui: "crates/modules/rustok-blog/admin/src/ui/leptos.rs",
       adapter: "crates/modules/rustok-blog/admin/src/ui/richtext.rs",
-      shared_adapter: "crates/ui/leptos-ui/src/richtext.rs",
+      shared_adapter: "crates/ui/rustok-ui/leptos/src/richtext.rs",
       locales: {
         en: "crates/modules/rustok-blog/admin/locales/en.ftl",
         ru: "crates/modules/rustok-blog/admin/locales/ru.ftl"

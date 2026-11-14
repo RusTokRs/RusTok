@@ -354,7 +354,7 @@ Cross-framework component API (props, variants, CSS variables):
 
 | Reuse pattern | Where to extract | Example |
 |---|---|---|
-| UI primitives (buttons, inputs, cards) | `crates/ui/leptos-ui/` | `Button`, `Input`, `Card` |
+| UI primitives (buttons, inputs, cards) | `crates/ui/rustok-ui/leptos/` (`rustok-ui-leptos`) | `Button`, `Input`, `Card` |
 | Framework-agnostic UI route/query/input/busy contracts | `crates/ui/rustok-ui-core/` | `UiRouteContext`, `UiRouteQueryUpdate`, `UiRouteQueryIntent`, `AdminQueryKey`, `normalize_ui_text`, `ui_busy_key_with_id` |
 | Leptos routing/query adapter helpers | `crates/ui/leptos-ui-routing/` | `use_route_query_value`, `use_route_query_writer`, `use_route_locale` |
 | Framework-agnostic FFA transport result evidence and build-profile transport selection | `crates/ui/rustok-ui-transport/` | `UiTransportError`, `UiTransportPath`, `UiTransportResult`, `execute_selected_transport` |

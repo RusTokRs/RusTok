@@ -106,7 +106,7 @@ assertContains(ui, "use crate::core::", `${uiPath}: Leptos adapter must consume 
 assertContains(ui, "use crate::transport;", `${uiPath}: Leptos adapter must consume transport facade`);
 assertContains(ui, "transport::fetch_threads", `${uiPath}: Leptos adapter must call module-owned transport facade`);
 assertContains(ui, "apply_query_intent", `${uiPath}: Leptos adapter must apply prepared route-query writes`);
-assertContains(ui, "use leptos_ui::RichTextHtml;", `${uiPath}: moderation UI must use the shared server-projection renderer`);
+assertContains(ui, "use rustok_ui_leptos::RichTextHtml;", `${uiPath}: moderation UI must use the shared server-projection renderer`);
 assertContains(ui, "view=comment_view_model.body", `${uiPath}: moderation UI must render the typed owner projection`);
 assertContains(ui, "content_locale=comment_view_model.effective_locale.clone()", `${uiPath}: moderation UI must render with the effective content locale`);
 assertNotContains(ui, "{comment_view_model.body}", `${uiPath}: moderation UI must not collapse the projection into a text node`);
@@ -135,7 +135,7 @@ assertContains(nativeAdapter, "CommentsService::new", `${nativeAdapterPath}: nat
 assertContains(nativeAdapter, "HostRuntimeContext", `${nativeAdapterPath}: native adapter must consume neutral host runtime context`);
 assertContains(nativeAdapter, "comments_threads_native", `${nativeAdapterPath}: native adapter must own thread list server function`);
 assertContains(nativeAdapter, "comments_set_comment_status_native", `${nativeAdapterPath}: native adapter must own comment status server function`);
-assertContains(cargoToml, "leptos-ui.workspace = true", `${cargoPath}: comments admin must depend on the shared Leptos richtext view boundary`);
+assertContains(cargoToml, "rustok-ui-leptos.workspace = true", `${cargoPath}: comments admin must depend on the shared Leptos richtext view boundary`);
 
 assertContains(localPlan, "native-only comments admin exception", `${localPlanPath}: local plan must document native-only exception`);
 assertContains(localPlan, "HostRuntimeContext", `${localPlanPath}: local plan must record host-neutral native transport evidence`);

@@ -32,7 +32,7 @@ Verification relies on the current-state contract:
 ### Shared Leptos crates
 
 - [ ] `crates/modules/rustok-auth/ui` (Auth-owned shared client capability)
-- [ ] `crates/ui/leptos-ui`
+- [ ] `crates/ui/rustok-ui/leptos`
 - [ ] `crates/ui/leptos-ui-routing`
 
 ### Shared framework-agnostic FFA crates

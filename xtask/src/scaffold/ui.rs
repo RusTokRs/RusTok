@@ -566,7 +566,7 @@ mod tests {
                 || path.ends_with("src/core/mod.rs")
                 || path.to_string_lossy().contains("/src/transport/");
             if pure {
-                for framework in ["leptos::", "dioxus::", "leptos_ui::"] {
+                for framework in ["leptos::", "dioxus::", "rustok_ui_leptos::", "leptos_ui::"] {
                     assert!(
                         !source.contains(framework),
                         "{framework} must not leak into {}",

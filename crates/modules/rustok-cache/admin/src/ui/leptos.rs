@@ -226,7 +226,7 @@ pub fn CacheAdmin() -> impl IntoView {
                 </p>
             </header>
 
-            // Diagnostics / Health Card using leptos-ui Card and Badge
+            // Diagnostics / Health Card using rustok-ui-leptos Card and Badge
             <Card>
                 <CardHeader>
                     <CardTitle>{health_title_str}</CardTitle>
@@ -288,7 +288,7 @@ pub fn CacheAdmin() -> impl IntoView {
                 </CardContent>
             </Card>
 
-            // Configuration Form Card using leptos-ui Card, Input, Label, Button, Alert
+            // Configuration Form Card using rustok-ui-leptos Card, Input, Label, Button, Alert
             <Card>
                 <CardHeader>
                     <CardTitle>{settings_title_str}</CardTitle>
@@ -359,7 +359,7 @@ pub fn CacheAdmin() -> impl IntoView {
                             </div>
                         </div>
 
-                        // Redis Settings Sub-Section using leptos-ui Input and Label
+                        // Redis Settings Sub-Section using rustok-ui-leptos Input and Label
                         {
                             let lr = Arc::clone(&l_redis);
                             move || {
@@ -452,7 +452,7 @@ pub fn CacheAdmin() -> impl IntoView {
                             }
                         }
 
-                        // Save Result Alerts using leptos-ui Alert
+                        // Save Result Alerts using rustok-ui-leptos Alert
                         {
                             let l_fb = Arc::clone(&l_feedback);
                             move || {
@@ -473,7 +473,7 @@ pub fn CacheAdmin() -> impl IntoView {
                             }
                         }
 
-                        // Save Button using leptos-ui Button with loading state
+                        // Save Button using rustok-ui-leptos Button with loading state
                         <div>
                             <Button
                                 variant=ButtonVariant::Default

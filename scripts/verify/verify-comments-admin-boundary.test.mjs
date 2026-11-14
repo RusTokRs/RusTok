@@ -42,7 +42,7 @@ pub(crate) fn comments_admin_locale_query_intent() -> UiRouteQueryIntent { UiRou
   writeFixtureFile(root, "crates/modules/rustok-comments/admin/src/ui/leptos.rs", `
 use crate::core::{comments_admin_locale_query_intent, comments_admin_select_thread_query_intent};
 use crate::transport;
-use leptos_ui::RichTextHtml;
+use rustok_ui_leptos::RichTextHtml;
 
 pub fn CommentsAdmin() {
     let _ = comments_admin_select_thread_query_intent;
@@ -92,7 +92,7 @@ ssr = ["leptos/ssr", "rustok-api/server"]
 
 [dependencies]
 rustok-api = { workspace = true, default-features = false }
-leptos-ui.workspace = true
+rustok-ui-leptos.workspace = true
 `);
   writeFixtureFile(root, "crates/modules/rustok-comments/docs/implementation-plan.md", `
 native-only comments admin exception

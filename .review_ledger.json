@@ -1348,16 +1348,6 @@
       "completed_at": null,
       "notes": ""
     },
-    "crates/ui/leptos-ui": {
-      "name": "leptos-ui",
-      "path": "crates/ui/leptos-ui",
-      "category": "ui",
-      "files": 6,
-      "loc": 504,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
-    },
     "crates/ui/leptos-ui-routing": {
       "name": "leptos-ui-routing",
       "path": "crates/ui/leptos-ui-routing",

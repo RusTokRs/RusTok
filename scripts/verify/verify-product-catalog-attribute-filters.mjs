@@ -25,7 +25,10 @@ function requireAll(source, markers, description) {
   }
 }
 
-const types = read("crates/modules/rustok-product/src/services/catalog/types.rs");
+const types =
+  read("crates/modules/rustok-product/src/services/catalog/types.rs") +
+  "\n" +
+  read("crates/modules/rustok-product/ports/src/types.rs");
 const execution = read("crates/modules/rustok-product/src/services/catalog/attribute_filters.rs");
 const storefrontQuery = read("crates/modules/rustok-product/src/services/catalog/queries.rs");
 const adminQuery = read("crates/modules/rustok-product/src/services/catalog/admin_queries.rs");

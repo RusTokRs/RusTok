@@ -13,7 +13,7 @@
 
 ## Platform Capability Bindings
 - Fluid Frontend Architecture (FFA) storefront support component for comment authoring.
-- Integrates with `leptos-ui::RichTextEditorFrame` using the canonical `comment` profile.
+- Integrates with `rustok_ui_leptos::RichTextEditorFrame` using the canonical `comment` profile.
 - Compatible with Leptos hydration and SSR modes.
 
 ## Domain Collaborations

@@ -208,7 +208,7 @@ if (richTextHtmlSinks.length !== 1) {
 assertContains(selectedPostUi, "view=content", `${files.ui}: RichTextHtml must receive the typed owner projection`);
 assertContains(selectedPostUi, "content_locale=effective_locale.clone()", `${files.ui}: RichTextHtml must receive the owner effective locale`);
 assertNotContains(selectedPostUi, "inner_html=", `${files.ui}: owner UI must not bypass the shared RichTextHtml sink`);
-assertContains(cargo, "leptos-ui.workspace = true", `${files.cargo}: storefront must depend on the shared Leptos richtext view boundary`);
+assertContains(cargo, "rustok-ui-leptos.workspace = true", `${files.cargo}: storefront must depend on the shared Leptos richtext view boundary`);
 assertNotContains(uiCombined, "post.body", `${files.ui}: UI must not read legacy body`);
 assertNotContains(uiCombined, "body_format", `${files.ui}: UI must not read legacy body format`);
 assertNotContains(uiCombined, "crate::api", `${files.ui}: UI must not call legacy api module`);

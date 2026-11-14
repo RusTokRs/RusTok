@@ -382,6 +382,7 @@ fn decode_unit_receipt(value: serde_json::Value) -> Result<(), ProductRelationCo
 }
 
 /// Stable namespace for caller keys accepted by every Product Relation ingress.
+/// This deployed Product Relation namespace deliberately retains its original digest framing
 pub const RELATION_CALLER_IDEMPOTENCY_NAMESPACE: &str = "commerce-graphql-relation";
 
 /// Derives the owner receipt identity for a caller-supplied Relation command key.

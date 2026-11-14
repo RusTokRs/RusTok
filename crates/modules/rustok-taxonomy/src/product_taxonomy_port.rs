@@ -44,25 +44,57 @@ impl TaxonomyProductTaxonomyPortAdapter {
     }
 }
 
-fn map_taxonomy_error(err: TaxonomyError) -> CommerceError {
-    match err {
-        TaxonomyError::Database(db_err) => CommerceError::Database(db_err),
-        TaxonomyError::Validation(msg) => CommerceError::Validation(msg),
-        TaxonomyError::Forbidden(msg) => CommerceError::Validation(format!("Forbidden: {msg}")),
-        TaxonomyError::TermNotFound(id) => {
-            CommerceError::Validation(format!("Taxonomy term not found: {id}"))
+/// Sync accepts user intent; its authoritative domain refusals retain their class.
+fn map_taxonomy_sync_error(error: TaxonomyError) -> CommerceError {
+    use rustok_core::error::Error as CoreError;
+    match error {
+        TaxonomyError::Database(error) => CommerceError::Database(error),
+        TaxonomyError::Internal(_) => CommerceError::Core(CoreError::Internal(
+            "Taxonomy category synchronization failed".into(),
+        )),
+        TaxonomyError::Forbidden(_) => CommerceError::Core(CoreError::Forbidden(
+            "Taxonomy category access is denied".into(),
+        )),
+        TaxonomyError::TermNotFound(_) => CommerceError::Core(CoreError::NotFound(
+            "Referenced Taxonomy category was not found".into(),
+        )),
+        TaxonomyError::DuplicateCanonicalKey(_)
+        | TaxonomyError::DuplicateSlug(_)
+        | TaxonomyError::DuplicateAlias(_)
+        | TaxonomyError::Conflict(_)
+        | TaxonomyError::TranslationRevisionExhausted { .. } => {
+            CommerceError::Conflict("Taxonomy category conflicts with current state".into())
         }
-        TaxonomyError::DuplicateCanonicalKey(msg)
-        | TaxonomyError::DuplicateSlug(msg)
-        | TaxonomyError::DuplicateAlias(msg)
-        | TaxonomyError::Conflict(msg) => CommerceError::Validation(format!("Conflict: {msg}")),
-        TaxonomyError::TranslationRevisionExhausted { term_id, locale } => {
-            CommerceError::Validation(format!(
-                "Translation revision exhausted for term {term_id} locale {locale}"
-            ))
+        TaxonomyError::Validation(_) => {
+            CommerceError::Validation("Taxonomy category request is invalid".into())
         }
-        TaxonomyError::Internal(msg) => CommerceError::Validation(msg),
     }
+}
+
+/// A read projection does not accept a Taxonomy mutation: domain-shaped read failures
+/// other than permission denial indicate broken owner/projection state, not invalid user input.
+fn map_taxonomy_read_error(error: TaxonomyError) -> CommerceError {
+    use rustok_core::error::Error as CoreError;
+    match error {
+        TaxonomyError::Database(error) => CommerceError::Database(error),
+        TaxonomyError::Forbidden(_) => CommerceError::Core(CoreError::Forbidden(
+            "Taxonomy category access is denied".into(),
+        )),
+        TaxonomyError::Internal(_)
+        | TaxonomyError::TermNotFound(_)
+        | TaxonomyError::DuplicateCanonicalKey(_)
+        | TaxonomyError::DuplicateSlug(_)
+        | TaxonomyError::DuplicateAlias(_)
+        | TaxonomyError::Conflict(_)
+        | TaxonomyError::TranslationRevisionExhausted { .. }
+        | TaxonomyError::Validation(_) => {
+            taxonomy_projection_error("Taxonomy category projection could not be read safely")
+        }
+    }
+}
+
+fn taxonomy_projection_error(message: &'static str) -> CommerceError {
+    CommerceError::Core(rustok_core::error::Error::Internal(message.into()))
 }
 
 #[async_trait]
@@ -80,12 +112,12 @@ impl ProductTaxonomyPort for TaxonomyProductTaxonomyPortAdapter {
                 .service
                 .resolve_term_names_in(c, tenant_id, term_ids, locale, fallback_locale)
                 .await
-                .map_err(map_taxonomy_error),
+                .map_err(map_taxonomy_read_error),
             TaxonomyConnection::Transaction(tx) => self
                 .service
                 .resolve_term_names_in(tx, tenant_id, term_ids, locale, fallback_locale)
                 .await
-                .map_err(map_taxonomy_error),
+                .map_err(map_taxonomy_read_error),
         }
     }
 
@@ -106,7 +138,7 @@ impl ProductTaxonomyPort for TaxonomyProductTaxonomyPortAdapter {
                 tag_names,
             )
             .await
-            .map_err(map_taxonomy_error)
+            .map_err(map_taxonomy_sync_error)
     }
 
     async fn sync_category_translation_in_tx(
@@ -132,7 +164,7 @@ impl ProductTaxonomyPort for TaxonomyProductTaxonomyPortAdapter {
 
         sync_module_category_in_tx(txn, tenant_id, sync_input)
             .await
-            .map_err(map_taxonomy_error)?;
+            .map_err(map_taxonomy_sync_error)?;
         Ok(())
     }
 
@@ -170,7 +202,7 @@ impl ProductTaxonomyPort for TaxonomyProductTaxonomyPortAdapter {
                 .await
             }
         }
-        .map_err(map_taxonomy_error)?;
+        .map_err(map_taxonomy_read_error)?;
 
         Ok(categories
             .into_iter()

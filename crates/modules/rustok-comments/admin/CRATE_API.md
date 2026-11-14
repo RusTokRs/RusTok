@@ -29,7 +29,7 @@
 ## Platform Capability Bindings
 - Fluid Frontend Architecture (FFA) administration package for `rustok-comments`.
 - Native server functions integration via `HostRuntimeContext`.
-- Rich-text comment content rendering via `leptos_ui::RichTextHtml`.
+- Rich-text comment content rendering via `rustok_ui_leptos::RichTextHtml`.
 - Internationalization via `rustok-ui-i18n`.
 
 ## Domain Collaborations

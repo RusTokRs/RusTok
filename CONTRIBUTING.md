@@ -156,7 +156,7 @@ Update documentation when:
 Crates are categorized into 5 dedicated directories:
 - **`crates/libs/`**: Platform foundation libraries (`rustok-core`, `rustok-api`, `rustok-events`, `rustok-telemetry`, `rustok-runtime`, `rustok-web`, `rustok-fba`)
 - **`crates/modules/`**: Domain, system, and integration modules (`rustok-auth`, `rustok-commerce`, `rustok-product`, `rustok-content`, `rustok-blog`, `rustok-index`, `rustok-mcp`, `alloy`, etc.)
-- **`crates/ui/`**: Leptos and frontend support crates (`leptos-ui`, `rustok-ui-core`, `rustok-ui-i18n`, `rustok-graphql`, etc.)
+- **`crates/ui/`**: Fluid Frontend Architecture (FFA) and frontend support crates (`rustok-ui`, `rustok-ui-core`, `rustok-ui-i18n`, `rustok-graphql`, `rustok-grid`, etc.)
 - **`crates/utils/`**: Tooling, CLI, migrations, and shared utilities (`rustok-cli`, `rustok-build`, `rustok-migrations`, `rustok-secrets`, `rustok-installer`, `rustok-module-sdk`, etc.)
 - **`crates/workers/`**: Execution plane, sandboxes, and artifact reconciliation workers (`rustok-sandbox`, `rustok-module-build-worker`, `rustok-artifact-node-agent`, etc.)
 

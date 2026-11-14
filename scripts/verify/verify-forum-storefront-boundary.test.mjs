@@ -63,7 +63,7 @@ data-forum-route-identifier="";
 dir="ltr";
 `;
   return `${missingCoreUse ? "" : "use crate::core::{forum_storefront_category_card_view_model, forum_storefront_topic_card_view_model, forum_storefront_status_badge_class, forum_storefront_count_label};\n"}
-use leptos_ui::RichTextHtml;
+use rustok_ui_leptos::RichTextHtml;
 use rustok_api::normalize_locale_tag;
 fn forum_storefront_content_lang(locale: &str) -> String { normalize_locale_tag(locale).unwrap_or_else(|| "und".to_string()) }
 fn ForumCategoryRail() {
@@ -121,7 +121,7 @@ function fixture(options = {}) {
   }
   writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/transport/mod.rs", "mod graphql_adapter { include!(\"graphql_adapter.rs\"); }\npub async fn fetch_storefront_forum() { graphql_adapter::fetch_storefront_forum().await; }\n");
   writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/transport/graphql_adapter.rs", "use rustok_graphql::GraphqlRequest;\npub async fn fetch_storefront_forum() {}\n");
-  writeFixtureFile(root, "crates/modules/rustok-forum/storefront/Cargo.toml", "[dependencies]\nleptos-ui.workspace = true\n");
+  writeFixtureFile(root, "crates/modules/rustok-forum/storefront/Cargo.toml", "[dependencies]\nrustok-ui-leptos.workspace = true\n");
   if (options.restoredApi) writeFixtureFile(root, "crates/modules/rustok-forum/storefront/src/api.rs", "mod graphql {}\n");
   writeFixtureFile(root, "crates/modules/rustok-forum/docs/implementation-plan.md", "verify-forum-storefront-boundary.mjs shared `RichTextHtml`\n");
   writeFixtureFile(root, "docs/modules/registry.md", "verify-forum-storefront-boundary.mjs\n");

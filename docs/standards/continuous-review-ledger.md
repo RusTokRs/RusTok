@@ -351,7 +351,6 @@ The single canonical trigger to continue this audit sequence is:
 - [ ] **[crates/ui/fly/leptos](../../crates/ui/fly/leptos)** (6 files, 2,500 LOC)
 - [ ] **[crates/ui/fly/ui](../../crates/ui/fly/ui)** (23 files, 6,350 LOC)
 - [ ] **[crates/ui/fly/web](../../crates/ui/fly/web)** (7 files, 2,300 LOC)
-- [ ] **[crates/ui/leptos-ui](../../crates/ui/leptos-ui)** (6 files, 468 LOC)
 - [ ] **[crates/ui/leptos-ui-routing](../../crates/ui/leptos-ui-routing)** (2 files, 317 LOC)
 - [ ] **[crates/ui/rustok-ui-forms](../../crates/ui/rustok-ui-forms)** (10 files, 3,588 LOC)
 - [ ] **[crates/ui/rustok-ui-forms/dioxus](../../crates/ui/rustok-ui-forms/dioxus)** (7 files, 2,116 LOC)
@@ -627,7 +626,6 @@ The single canonical trigger to continue this audit sequence is:
 | [ ] | [leptos](../../crates/ui/fly/leptos) | `ui` | 6 | 2,965 | None |  |
 | [ ] | [ui](../../crates/ui/fly/ui) | `ui` | 23 | 6,426 | None |  |
 | [ ] | [web](../../crates/ui/fly/web) | `ui` | 7 | 2,307 | None |  |
-| [ ] | [leptos-ui](../../crates/ui/leptos-ui) | `ui` | 6 | 504 | None |  |
 | [ ] | [leptos-ui-routing](../../crates/ui/leptos-ui-routing) | `ui` | 2 | 383 | None |  |
 | [ ] | [rustok-graphql](../../crates/ui/rustok-graphql) | `ui` | 2 | 528 | None |  |
 | [ ] | [rustok-grid](../../crates/ui/rustok-grid) | `ui` | 31 | 7,285 | None |  |

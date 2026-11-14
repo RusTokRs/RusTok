@@ -66,7 +66,7 @@ The UI Workbench follows RusToK FFA principles ([`docs/UI/module-package-archite
 ### Leptos Host (`apps/admin`)
 - **Route:** `/design-system`
 - **Features:**
-  - Native WASM rendering of `leptos_ui` / `rustok_ui_leptos` primitives.
+  - Native WASM rendering of `rustok_ui_leptos` primitives.
   - Interactive reactive signal playground for Buttons and Form Controls (Input, Textarea, Switch, Checkbox).
   - Parity-verified matrix matching the Next.js visual states.
   - 4 Composite recipes matching the Next.js host with zero JavaScript bridges.

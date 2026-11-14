@@ -79,7 +79,7 @@ if (!/forum_storefront_count_label|count_message\(|slug_message\(/.test(uiAll)) 
 }
 assertNotContains(uiAll, '.replace("{count}"', `${files.ui}: UI must not interpolate counts by hand`);
 assertNotContains(uiAll, '.replace("{slug}"', `${files.ui}: UI must not interpolate slugs by hand`);
-assertContains(uiAll, "use leptos_ui::RichTextHtml;", `${files.ui}: UI must use the shared server-projection renderer`);
+assertContains(uiAll, "use rustok_ui_leptos::RichTextHtml;", `${files.ui}: UI must use the shared server-projection renderer`);
 assertContains(uiAll, "view=body", `${files.ui}: topic projection must use RichTextHtml`);
 assertContains(uiAll, "content_locale=body_locale", `${files.ui}: topic projection must keep the effective locale`);
 assertContains(uiAll, "view=content", `${files.ui}: reply projection must use RichTextHtml`);
@@ -134,7 +134,7 @@ const replyCard = ui.slice(replyCardStart);
 assertContains(replyCard, "<span dir=\"ltr\"", `${files.ui}: reply locale identifier must stay LTR`);
 assertContains(replyCard, "content_locale=content_locale", `${files.ui}: reply projection must keep its effective locale`);
 
-assertContains(cargo, "leptos-ui.workspace = true", `${files.cargo}: storefront must depend on the shared Leptos richtext view boundary`);
+assertContains(cargo, "rustok-ui-leptos.workspace = true", `${files.cargo}: storefront must depend on the shared Leptos richtext view boundary`);
 assertContains(transport, "fetch_storefront_forum", `${files.transport}: storefront transport facade must expose fetch_storefront_forum`);
 if (!transport.includes("mod graphql_adapter;") && !transport.includes("mod graphql_adapter {")) {
   fail(`${files.transport}: transport facade must own the canonical GraphQL adapter module`);

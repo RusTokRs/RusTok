@@ -44,7 +44,7 @@ suppression in files touched by the task.
 
 Before writing reusable code, check whether it already exists in shared libraries:
 
-- `leptos-ui` - Button, Input, Badge, Alert, Card, Label, Spinner, Progress, Checkbox, Switch, Textarea, Select
+- `rustok-ui-leptos` - Button, Input, Badge, Alert, Card, Label, Spinner, Progress, Checkbox, Switch, Textarea, Select, LanguageToggle, RichTextHtml, TableOfContents
 - `leptos-ui-routing` - `UiRouteContext`, `module_route_base()`, `query_value()`
 - `rustok-graphql` - framework-agnostic GraphQL HTTP client
 - `rustok-ui-core` - framework-agnostic route, pagination, sorting, filtering, selection, and presentation contracts
@@ -166,7 +166,7 @@ Full FFA concept: [Fluid Frontend Architecture](../../docs/research/fluid-fronte
 | `#[server]` only, no GraphQL | Keep native and GraphQL in parallel where the surface is public/headless-capable |
 | Removing `graphql_adapter.rs` | Keep GraphQL as the public/headless contract |
 | `use_cookie("lang")` in a package | Use `UiRouteContext.locale` from the host |
-| Writing `Button` locally | Use `leptos-ui::Button` |
+| Writing `Button` locally | Use `rustok_ui_leptos::Button` |
 | Raw HTTP client in `graphql_adapter` | Use `rustok-graphql` |
 | `t!(i18n, key)` macro | Use `i18n::t(locale, "key", "fallback")` |
 | Module UI in `apps/storefront/src/` | Use `crates/modules/rustok-<module>/storefront/` |

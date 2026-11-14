@@ -178,7 +178,7 @@ relative w-full rounded-lg border px-4 py-3 text-sm
 
 **Usage (Leptos)**:
 ```rust
-use leptos_ui::{Alert, AlertVariant};
+use rustok_ui_leptos::{Alert, AlertVariant};
 
 view! {
     <Alert variant=AlertVariant::Warning>

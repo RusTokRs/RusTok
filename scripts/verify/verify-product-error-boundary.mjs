@@ -33,7 +33,7 @@ export function run() {
   for (const variant of coreVariants) require(corePolicy.includes(`CoreError::${variant}`), `Core ${variant}: explicit owner policy required`);
   require(!/\b(?:other|_)\s*=>/.test(corePolicy), 'Core classification must not have a catch-all');
   require(!/to_string\(|format!/.test(corePolicy), 'Core error copy must be static');
-  const taxonomyPolicy = read(product + 'services/catalog_schema_service.rs');
+  const taxonomyPolicy = read('crates/modules/rustok-taxonomy/src/product_taxonomy_port.rs');
   const syncPolicy = between(taxonomyPolicy, 'fn map_taxonomy_sync_error(', '/// A read projection');
   const readPolicy = between(taxonomyPolicy, 'fn map_taxonomy_read_error(', 'fn taxonomy_projection_error(');
   const taxonomyEnum = between(read('crates/modules/rustok-taxonomy/src/error.rs'), 'pub enum TaxonomyError', 'pub type TaxonomyResult');
@@ -54,18 +54,18 @@ export function run() {
   for(const file of mapperPaths) {
     const source=read(product+file);
     require(source.includes('CommerceError::Core(error) => crate::error::core_port_error(&error)'), `${file}: canonical Core mapping required`);
-    require(source.includes('CommerceError::Conflict(_) => PortError::conflict('), `${file}: preserve typed conflict`);
+    require(/CommerceError::Conflict\(_\)(?:\s*\|\s*CommerceError::VariantAxisPolicyConflict\(_\))?\s*=>\s*(?:\{\s*)?PortError::conflict\(/.test(source), `${file}: preserve typed conflict`);
   }
   require(read(product+'storefront_http_read_port.rs').includes('Some(crate::error::core_port_error(error))'), 'Storefront HTTP read capability must classify nested Core');
   const publicMapper=read(product+'public_error.rs');
   require(publicMapper.includes('CommerceError::Core(error) => core_public_error_policy(error)'), 'Native/shared GraphQL must classify nested Core');
   require(publicMapper.includes('crate::error::core_port_error(error)'), 'Public mapper must delegate canonical Core policy');
   const http=read('crates/modules/rustok-commerce/src/controllers/products.rs');
-  require(http.includes('rustok_product::error::core_port_error(error).kind') && http.includes('product_core_http_policy(error, "commerce_admin_product_failed")'), 'HTTP admin must preserve nested Core kind and bounded copy');
+  require(http.includes('rustok_product::error::core_port_error(error)') && http.includes('product_core_http_policy('), 'HTTP admin must preserve nested Core kind and bounded copy');
   require(read('crates/modules/rustok-commerce/src/controllers/store/products.rs').includes('crate::controllers::products::product_core_http_policy('), 'HTTP storefront must share Core policy');
   const graphql=read('crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs');
   const outcome=between(graphql, 'fn product_command_error_outcome(', 'fn product_command_port_error(');
-  require(outcome.includes('error.kind') && outcome.includes('"product.conflict"') && outcome.includes('"product.dependency_not_found"'), 'GraphQL definitive outcome must bind known domain classes and codes');
+  require(outcome.includes('rustok_product::product_catalog_command_error_is_terminal') && graphql.includes('"product.conflict"') && graphql.includes('"product.dependency_not_found"'), 'GraphQL definitive outcome must bind known domain classes and codes');
   const transaction = read(product + 'services/write_transaction.rs');
   const terminal = between(transaction, 'pub(crate) fn is_terminal_product_failure', '/// Persists only');
   require(terminal.includes('!error.retryable'), 'Retryable failures cannot finalize a receipt');

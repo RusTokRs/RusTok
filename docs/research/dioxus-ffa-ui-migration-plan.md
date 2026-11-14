@@ -271,7 +271,7 @@ Below captures the alignment of the plan with the current repository state.
 ### 2) UI packages in code are currently Leptos-specific
 
 - Framework-specific adapter crates depend on Leptos:
-  - `crates/ui/leptos-ui/Cargo.toml`
+  - `crates/ui/rustok-ui/leptos/Cargo.toml`
   - `crates/ui/leptos-ui-routing/Cargo.toml`
   - `crates/modules/rustok-auth/ui/Cargo.toml`
 - Framework-neutral GraphQL execution, UI state, form-result, auth-value,

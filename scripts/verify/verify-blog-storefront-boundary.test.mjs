@@ -158,7 +158,7 @@ ${options.missingComments ? "" : pagination
   writeFixtureFile(
     root,
     "crates/modules/rustok-blog/storefront/src/ui/leptos.rs",
-    `use leptos_ui::RichTextHtml;
+    `use rustok_ui_leptos::RichTextHtml;
 ${pagination ? `use_route_query_value(comments_pagination::COMMENTS_PAGE_QUERY_KEY);
 use_route_query_writer();
 core::prepare_blog_page_request(
@@ -239,7 +239,7 @@ ${pagination ? "bounded_comments_request_page(comments_page); comments_per_page:
   writeFixtureFile(
     root,
     "crates/modules/rustok-blog/storefront/Cargo.toml",
-    "[package]\nname = \"rustok-blog-storefront-fixture\"\nversion = \"0.1.0\"\n[dependencies]\nleptos-ui.workspace = true\n",
+    "[package]\nname = \"rustok-blog-storefront-fixture\"\nversion = \"0.1.0\"\n[dependencies]\nrustok-ui-leptos.workspace = true\n",
   );
   writeFixtureFile(
     root,
