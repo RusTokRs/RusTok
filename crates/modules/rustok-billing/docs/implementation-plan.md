@@ -5,6 +5,9 @@ Sovereign domain capability and client surfaces for B2B Billing & Settlements.
 
 ## Current state
 - Status: `in_progress`
+- FFA status: `in_progress`
+- FBA status: `boundary_ready`
+- Structural shape: `core_transport_ui`
 - Architecture: FBA / FFA
 - Backend crate: `rustok-billing`
 - Admin UI crate: `rustok-billing-admin`

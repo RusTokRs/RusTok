@@ -18,7 +18,7 @@ fn loaded_resource<S, Fut, T>(
 where
     S: PartialEq + Clone + Send + Sync + 'static,
     Fut: std::future::Future<Output = T> + Send + 'static,
-    T: Send + Sync + 'static,
+    T: Send + Sync + 'static + serde::Serialize + for<'de> serde::Deserialize<'de>,
 {
     Resource::new(source, fetcher)
 }

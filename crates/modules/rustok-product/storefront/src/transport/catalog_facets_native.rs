@@ -2,6 +2,9 @@
 
 use leptos::prelude::*;
 
+#[cfg(feature = "ssr")]
+use rustok_product::StorefrontProductListQueryExt;
+
 use crate::catalog_controls::CatalogListInput;
 use crate::model::ProductCatalogFacet;
 #[cfg(feature = "ssr")]

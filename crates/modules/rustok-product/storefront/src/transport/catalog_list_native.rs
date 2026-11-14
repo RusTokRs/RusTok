@@ -5,6 +5,8 @@ use crate::core::FetchRequest;
 #[cfg(feature = "ssr")]
 use crate::model::{ProductImage, ProductListItem, ProductListPrice};
 use crate::model::{ProductList, StorefrontProductsData};
+#[cfg(feature = "ssr")]
+use rustok_product::StorefrontProductListQueryExt;
 
 use super::native_server_adapter::{self, ApiError};
 

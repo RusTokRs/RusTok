@@ -5,6 +5,9 @@ Sovereign domain capability and client surfaces for WebRTC Calls & Conferencing.
 
 ## Current state
 - Status: `in_progress`
+- FFA status: `in_progress`
+- FBA status: `boundary_ready`
+- Structural shape: `core_transport_ui`
 - Architecture: FBA / FFA
 - Backend crate: `rustok-calls`
 - Admin UI crate: `rustok-calls-admin`
