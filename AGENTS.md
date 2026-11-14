@@ -256,17 +256,19 @@ All UI applications (`apps/*`), module-owned UI packages (`crates/modules/*/admi
    - Dual-path transport (monolith server functions + headless GraphQL) MUST be preserved in accordance with `docs/UI/graphql-architecture.md`.
 
 3. **Canonical Platform UI Stack (`crates/ui/*`):**
-   Module UI MUST reuse canonical visual primitives and design tokens. Inventing ad-hoc controls or duplicating platform UI components is an architectural defect.
-   - **`rustok-ui` / `leptos-ui`**: Canonical visual primitives (`Button`, `Input`, `Select`, `Dialog`/Modal, `Badge`, `Card`, `Alert`, `Tabs`, `Switch`, `Avatar`, `Skeleton`, `Spinner`, `Separator`).
+   Module UI MUST reuse canonical visual primitives and design tokens. Inventing ad-hoc controls or duplicating platform UI components is an architectural defect. RusToK UI libraries follow the strict FFA model (framework-agnostic core + framework-specific render adapters):
+   - **`rustok-ui`** (`rustok-ui`, `rustok-ui-leptos`, `rustok-ui-dioxus`): Canonical visual primitives (`Button`, `Input`, `Select`, `Dialog`/Modal, `Badge`, `Card`, `Alert`, `Tabs`, `Switch`, `Avatar`, `Skeleton`, `Spinner`, `Separator`).
      *Invariants:* MUST NOT write raw `<button>` or `<input>` with custom styling, hand-roll modal dialogs, or build ad-hoc alerts.
-   - **`rustok-grid` (`rustok-grid-leptos`, `rustok-grid-dioxus`)**: Data grids, paginated tables, column sorting, filtering, row selection.
+   - **`rustok-grid`** (`rustok-grid`, `rustok-grid-leptos`, `rustok-grid-dioxus`): Data grids, paginated tables, column sorting, filtering, row selection.
      *Invariants:* MUST NOT build manual `<table>` loops or custom table pagination in module UI.
-   - **`rustok-ui-forms` (`rustok-forms-leptos`, `rustok-forms-dioxus`)**: Schema-driven form state, validation rule engine, field descriptors, and dirty tracking.
+   - **`rustok-ui-forms`** (`rustok-ui-forms`, `rustok-forms-leptos`, `rustok-forms-dioxus`): Schema-driven form state, validation rule engine, field descriptors, and dirty tracking.
      *Invariants:* MUST NOT hand-roll form validation logic or manual form error bindings.
+   - **`rustok-ui-core`**: Framework-agnostic route context (`UiRouteContext`), route query params, and navigation breadcrumbs with framework route adapters.
+   - **`rustok-ui-auth` & `rustok-auth-ui`**: Framework-neutral client authentication values/expiry models (`rustok-ui-auth`) and Auth module-owned client lifecycle (`rustok-auth-ui`).
+   - **`rustok-ui-transport`**: Framework-agnostic transport evidence and build-profile selected transport orchestration (`execute_selected_transport`).
+   - **`rustok-ui-i18n`**: Framework-agnostic UI message catalog, locale normalization, and Project Fluent (.ftl) key resolution.
+   - **`rustok-graphql`**: Framework-agnostic client-side GraphQL transport for headless mode.
    - **`fly`**: Cross-framework rendering engine and UI action registry.
-   - **`rustok-ui-core` & `leptos-ui-routing`**: Framework-agnostic route context (`UiRouteContext`), route query params, and navigation breadcrumbs.
-   - **`rustok-ui-i18n`**: UI localization, language toggles, localized date/number formatting.
-   - **`rustok-graphql`**: Client-side GraphQL transport for headless mode.
 
 4. **Approved External UI Libraries and Conventions:**
    - **Frameworks:** `Leptos` (SSR + Hydrate) is the primary web framework for `apps/admin` and `apps/storefront`; `Dioxus` is the cross-platform desktop/mobile target; `Next.js` (React / TypeScript) is the reference headless client in `apps/next-*`. MUST NOT introduce other UI frameworks (Yew, Svelte, Vue, Solid).

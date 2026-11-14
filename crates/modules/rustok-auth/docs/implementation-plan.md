@@ -17,8 +17,7 @@ does not create a package-local locale fallback.
 
 The shared client lifecycle is now owned by `rustok-auth/ui` (`rustok-auth-ui`):
 `core`/`model` are framework-neutral, `transport` owns native and GraphQL/cookie
-adapters, and `ui::leptos` binds one provider for admin and storefront. The former
-`leptos-auth` package has no code or compatibility alias. The server-heavy backend
+adapters, and `ui::leptos` binds one provider for admin and storefront. The server-heavy backend
 is not a dependency of the client package. This is a source cutover, not a new
 mounted storefront route or a claim of verified runtime parity.
 

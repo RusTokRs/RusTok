@@ -27,8 +27,7 @@ and [Leptos bridge](../../crates/modules/rustok-page-builder/storefront/README.m
 
 The shared Leptos auth lifecycle has also been cut over in source to the Auth module's
 [`rustok-auth-ui` FFA package](../../crates/modules/rustok-auth/ui/README.md), with explicit
-`core`, `model`, `transport` and `ui::leptos` boundaries shared by admin and storefront. The
-former `leptos-auth` package is no longer used; only its retirement description remains. This
+`core`, `model`, `transport` and `ui::leptos` boundaries shared by admin and storefront. This
 is an API and ownership cutover, not a new login surface or a claim of runtime parity. Its
 [decision](../../DECISIONS/2026-11-13-auth-owned-client-ffa-boundary.md) retains the existing
 cookie/security contract and the verification gates below.

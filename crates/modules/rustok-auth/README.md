@@ -6,8 +6,7 @@
 refresh-token helpers, invite-token helpers, auth config assembly/validation, and auth-related migrations.
 
 The shared Leptos client lifecycle belongs to the Auth-owned [`rustok-auth-ui`](./ui/README.md)
-FFA package. The former `leptos-auth` package is no longer used; its directory retains only
-[retirement documentation](../../ui/leptos-auth/README.md).
+FFA package and framework-neutral session models in `rustok-ui-auth`.
 
 ## Responsibilities
 

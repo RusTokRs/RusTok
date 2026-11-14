@@ -106,7 +106,6 @@ members = [
 ]
 default-members = []
 exclude = [
-    "crates/ui/leptos-auth", # retired documentation-only directory
     "rustok-revisions",
     "rustok-revisions-derive",
     "rustok-revisions-cli",
