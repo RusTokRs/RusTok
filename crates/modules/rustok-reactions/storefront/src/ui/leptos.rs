@@ -15,7 +15,7 @@ pub fn ReactionBar(subject: ReactionSubjectUiRef) -> impl IntoView {
         (
             transport::ReactionStorefrontTransportContext::from_auth(auth.as_ref()),
             auth.as_ref()
-                .and_then(|auth| auth.user.get())
+                .and_then(|auth| auth.user().get())
                 .map(|user| user.id),
         )
     });

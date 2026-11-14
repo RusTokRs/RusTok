@@ -37,8 +37,15 @@ struct CookieUserInfo {
 
 #[derive(Debug, Deserialize)]
 struct StatusResponse {
-    #[allow(dead_code)]
     status: String,
+}
+
+fn confirmed_logout(response: StatusResponse) -> Result<(), AuthError> {
+    if response.status == "ok" {
+        Ok(())
+    } else {
+        Err(AuthError::Network)
+    }
 }
 
 fn to_user_session(payload: CookieSessionResponse, tenant: String) -> (AuthUser, AuthSession) {
@@ -169,9 +176,16 @@ pub(super) async fn accept_invite_direct(
 }
 
 pub(super) async fn sign_out_cookie(tenant: String) -> Result<(), AuthError> {
+    sign_out_cookie_at(&get_api_url(), tenant).await
+}
+
+async fn sign_out_cookie_at(api_url: &str, tenant: String) -> Result<(), AuthError> {
     let client = reqwest::Client::new();
     let response = client
-        .post(format!("{}/api/auth/session/logout", get_api_url()))
+        .post(format!(
+            "{}/api/auth/session/logout",
+            api_url.trim_end_matches('/')
+        ))
         .header("X-Tenant-ID", tenant)
         .header("x-rustok-session-request", "1")
         .send()
@@ -180,6 +194,61 @@ pub(super) async fn sign_out_cookie(tenant: String) -> Result<(), AuthError> {
     if !response.status().is_success() {
         return Err(AuthError::from_status(response.status().as_u16(), false));
     }
-    let _ = response.json::<StatusResponse>().await;
-    Ok(())
+    // A 2xx HTML page or unrelated JSON is not evidence that the session was revoked.
+    let payload = response
+        .json::<StatusResponse>()
+        .await
+        .map_err(|_| AuthError::Network)?;
+    confirmed_logout(payload)
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::{AuthError, sign_out_cookie_at};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    async fn mock_api(status: &str, body: &str) -> (String, tokio::task::JoinHandle<String>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let response = format!(
+            "HTTP/1.1 {status}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let received = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 1024];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let read = socket.read(&mut buffer).await.unwrap();
+                assert!(read > 0 && request.len() + read <= 16_384);
+                request.extend_from_slice(&buffer[..read]);
+            }
+            socket.write_all(response.as_bytes()).await.unwrap();
+            String::from_utf8(request).unwrap()
+        });
+        (format!("http://{address}"), received)
+    }
+
+    #[tokio::test]
+    async fn direct_cookie_logout_requires_an_explicit_ok_response() {
+        let (url, request) = mock_api("200 OK", r#"{"status":"ok"}"#).await;
+        assert_eq!(sign_out_cookie_at(&url, "shop".into()).await, Ok(()));
+        let request = request.await.unwrap().to_ascii_lowercase();
+        assert!(request.starts_with("post /api/auth/session/logout http/1.1\r\n"));
+        assert!(request.contains("\r\nx-tenant-id: shop\r\n"));
+        assert!(request.contains("\r\nx-rustok-session-request: 1\r\n"));
+
+        for (status, body) in [
+            ("200 OK", r#"{"status":"unknown"}"#),
+            ("200 OK", "<html>login</html>"),
+            ("503 Service Unavailable", r#"{"status":"ok"}"#),
+        ] {
+            let (url, request) = mock_api(status, body).await;
+            assert!(matches!(
+                sign_out_cookie_at(&url, "shop".into()).await,
+                Err(AuthError::Network | AuthError::Http(_))
+            ));
+            request.await.unwrap();
+        }
+    }
 }

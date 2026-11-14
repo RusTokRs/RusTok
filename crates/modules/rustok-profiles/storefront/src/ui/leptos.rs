@@ -437,7 +437,8 @@ fn transport_context(
             let tenant_slug = auth_context
                 .and_then(AuthContext::get_tenant)
                 .or_else(|| option_env!("RUSTOK_TENANT_SLUG").map(str::to_string));
-            let current_user_id = auth_context.and_then(|auth| auth.user.get().map(|user| user.id));
+            let current_user_id =
+                auth_context.and_then(|auth| auth.user().get().map(|user| user.id));
             ProfilesStorefrontTransportContext::graphql_with_access_token(
                 access_token,
                 tenant_slug,

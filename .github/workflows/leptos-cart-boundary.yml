@@ -4,10 +4,19 @@ on:
   pull_request:
     paths:
       - "apps/admin/src/app/auth_ssr.rs"
+      - "apps/admin/src/features/auth/**"
+      - "apps/admin/locales/**"
       - "apps/storefront/**"
       - "apps/next-frontend/tests/e2e/fly-leptos-*.spec.ts"
       - "apps/next-frontend/tests/e2e/fly-storefront-bridge.spec.ts"
       - "crates/modules/rustok-cart/**"
+      - "crates/modules/rustok-auth/admin/**"
+      - "crates/modules/rustok-notifications/storefront/**"
+      - "crates/modules/rustok-notifications/docs/implementation-plan.md"
+      - "crates/modules/rustok-forum/contracts/forum-notification-inbox-auth-reactive-bootstrap.json"
+      - "scripts/verify/verify-forum-notification-inbox-auth-reactive-bootstrap.mjs"
+      - "crates/modules/rustok-profiles/storefront/**"
+      - "crates/modules/rustok-reactions/storefront/**"
       - "crates/modules/rustok-product/storefront/**"
       - "crates/modules/rustok-commerce/**"
       - "crates/modules/rustok-page-builder/storefront/assets/fly-storefront-bridge.js"
@@ -57,9 +66,20 @@ jobs:
             "$@" >"$log" 2>&1 || status=$?
             if [ "$status" -ne 0 ]; then
               local diagnostics
-              # Test failure names and panic messages do not start with `error:`. Preserve
-              # the bounded tail so a failed assertion is visible without artifact access.
-              diagnostics="$(tail -c 16000 "$log")"
+              # Annotations are capped at 4096 bytes after escaping. At most 1000 raw
+              # bytes remain under that cap even if every byte expands to three bytes.
+              # Keep panic locations/messages rather than the preceding passing-test list.
+              diagnostics="$(awk '
+                /^---- .* stdout ----$/ { print; remaining=6; next }
+                remaining > 0 { print; remaining-- }
+              ' "$log" | head -c 1000 || true)"
+              if [ -z "$diagnostics" ]; then
+                diagnostics="$(awk '
+                  /^error(\[|:)/ { print; remaining=5; next }
+                  remaining > 0 { print substr($0, 1, 400); remaining-- }
+                ' "$log" | head -c 1000 || true)"
+              fi
+              if [ -z "$diagnostics" ]; then diagnostics="$(tail -c 1000 "$log")"; fi
               diagnostics="$(printf '%s' "$diagnostics" | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
               echo "::error title=$label::$diagnostics"
               tail -n 180 "$log"
@@ -70,11 +90,16 @@ jobs:
           # Collect independent client/core test failures before checking the unrelated SSR graph.
           failed=0
           run_checked modules-client cargo check --locked --lib -p rustok-cart-storefront -p rustok-product-storefront || failed=1
+          run_checked auth-consumers cargo check --locked --lib -p rustok-profiles-storefront -p rustok-reactions-storefront || failed=1
           run_checked auth-tests cargo test --locked --lib -p leptos-auth || failed=1
           run_checked auth-ssr-tests cargo test --locked --lib -p leptos-auth --features ssr || failed=1
+          run_checked auth-admin-tests cargo test --locked --lib -p rustok-auth-admin session_revocation_tests || failed=1
+          run_checked notification-auth-source node scripts/verify/verify-forum-notification-inbox-auth-reactive-bootstrap.mjs || failed=1
+          run_checked notification-auth-contract cargo test --locked -p rustok-notifications-storefront --test auth_reactive_bootstrap_contract || failed=1
           run_checked product-tests cargo test --locked --lib -p rustok-product-storefront || failed=1
           run_checked host-client-tests cargo test --locked --lib -p rustok-storefront --no-default-features --features product-buyer-island || failed=1
           run_checked cart-tests cargo test --locked --lib -p rustok-cart-storefront || failed=1
+          run_checked admin-client cargo check --locked --lib -p rustok-admin --no-default-features || failed=1
           if [ "$failed" -ne 0 ]; then exit "$failed"; fi
           run_checked modules-ssr cargo check --locked --lib -p rustok-cart-storefront -p rustok-product-storefront --features ssr
           run_checked admission-test cargo test --locked --lib -p rustok-commerce buyer_admission_checks_both_owners_and_the_selected_channel
@@ -104,7 +129,11 @@ jobs:
           cargo check --locked --lib -p rustok-storefront --no-default-features \
             --features product-buyer-island --target wasm32-unknown-unknown >"$log" 2>&1 || status=$?
           if [ "$status" -ne 0 ]; then
-            diagnostics="$(tail -c 16000 "$log")"
+            diagnostics="$(awk '
+              /^error(\[|:)/ { print; remaining=5; next }
+              remaining > 0 { print substr($0, 1, 400); remaining-- }
+            ' "$log" | head -c 1000 || true)"
+            if [ -z "$diagnostics" ]; then diagnostics="$(tail -c 1000 "$log")"; fi
             diagnostics="$(printf '%s' "$diagnostics" | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
             echo "::error title=cart-product-wasm::$diagnostics"
             tail -n 180 "$log"

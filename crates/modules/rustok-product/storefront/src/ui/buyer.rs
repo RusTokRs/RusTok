@@ -62,7 +62,7 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
     });
     let cycle = Memo::new(move |_| BuyerQuoteCycle {
         input: generation.get(),
-        scope: cart.generation.try_get().unwrap_or(u64::MAX),
+        scope: cart.generation(),
         capability: cart.capability_generation(),
         auth: cart.auth_generation(),
     });

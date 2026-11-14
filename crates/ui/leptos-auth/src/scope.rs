@@ -20,6 +20,11 @@ impl ClientAuthScope {
         self.verified && !self.pending && self.generation < u64::MAX
     }
 
+    #[cfg(any(test, target_arch = "wasm32"))]
+    pub(crate) fn is_pending(self) -> bool {
+        self.pending
+    }
+
     /// An auth provider must not issue overlapping cookie-changing operations: response order
     /// otherwise makes the in-memory session and HttpOnly cookie disagree.
     pub(crate) fn begin(&mut self) -> bool {

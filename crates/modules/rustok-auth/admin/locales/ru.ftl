@@ -155,6 +155,7 @@ security-sessionIp = IP
 security-sessionsSubtitle = Проверьте устройства с активными входами.
 security-sessionsTitle = Активные сессии
 security-signOutAll = Выйти со всех сессий
+security-signOutAllFailed = Не удалось подтвердить выход. Проверьте активные сессии или повторите попытку в меню учётной записи.
 security-subtitle = Следите за активными сессиями и доступом.
 security-title = Безопасность и сессии
 users-access-hint = REST эндпоинт /api/auth/me требует Bearer-токен. GraphQL users требует permissions users:list.

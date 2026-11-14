@@ -63,7 +63,20 @@ plan records earlier bounded package/WASM compilation, not validation of this ch
 The native BFF classifies an absent refresh cookie separately from malformed, duplicate,
 foreign, rejected or unreachable credentials. Only explicit absence with no existing session
 can establish a guest scope. The direct-cookie endpoint currently uses the same HTTP 401 for
-absence and rejection, so its client fails closed instead of guessing. Native logout does not
-clear the cookie when revocation fails; already-invalid token cleanup and user-visible recovery
-remain open. Admin SSR now inspects every Cookie header and preserves the cookie on an unclassified
-exchange failure; it still renders an anonymous snapshot on failure, not proof of guest identity.
+absence and rejection, so its client fails closed instead of guessing. Native logout now forwards
+the validated refresh-cookie value only server-to-server to the idempotent cookie-session logout
+endpoint, refuses redirects, and clears the BFF cookie only after a confirmed response. A failed
+logout retains the in-memory identity for explicit retry but leaves the client scope unverified;
+admin callers display failure rather than silently treating it as a guest. Direct-cookie logout
+also requires the API's explicit `ok` response rather than accepting any 2xx body. These changes
+need real-service and mounted UI verification, including cross-tab refresh/logout races. Admin SSR
+inspects every Cookie header and preserves the cookie on an unclassified exchange failure; it
+still renders an anonymous snapshot on failure, not proof of guest identity.
+
+`AuthContext` exposes its user, session, loading and error signals through read-only methods
+(`user()`, `session()`, `is_loading()`, and `error()`). The handles are private to prevent a
+clone from pairing a replacement projection with the provider's scope. Host consumers must use
+transition methods instead of mutating signals or the crate-private browser session writers; SSR
+hosts supply verified state via `provide_server_auth_snapshot`. Reading or writing the former
+public fields requires a source migration. This does not make client state an authorization
+boundary or constrain unrelated scripts and tabs.

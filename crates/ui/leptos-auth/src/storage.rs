@@ -78,7 +78,7 @@ fn purge_legacy_persisted_credentials() {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn save_session(session: &AuthSession) -> Result<(), AuthError> {
+pub(crate) fn save_session(session: &AuthSession) -> Result<(), AuthError> {
     purge_legacy_persisted_credentials();
     // The tenant slug is not a credential; persisting it lets a page
     // reload attempt a silent cookie refresh for the right tenant.
@@ -88,7 +88,7 @@ pub fn save_session(session: &AuthSession) -> Result<(), AuthError> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn save_session(_session: &AuthSession) -> Result<(), AuthError> {
+pub(crate) fn save_session(_session: &AuthSession) -> Result<(), AuthError> {
     // Response-cookie persistence belongs to the SSR host because it owns cookie flags, domain,
     // session rotation, and CSRF policy.
     Ok(())
@@ -108,13 +108,13 @@ pub fn load_session() -> Result<AuthSession, AuthError> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn save_user(user: &AuthUser) -> Result<(), AuthError> {
+pub(crate) fn save_user(user: &AuthUser) -> Result<(), AuthError> {
     memory::save_user(user.clone());
     Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn save_user(_user: &AuthUser) -> Result<(), AuthError> {
+pub(crate) fn save_user(_user: &AuthUser) -> Result<(), AuthError> {
     Ok(())
 }
 
@@ -131,13 +131,13 @@ pub fn load_user() -> Result<AuthUser, AuthError> {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn clear_session() {
+pub(crate) fn clear_session() {
     purge_legacy_persisted_credentials();
     memory::clear();
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn clear_session() {}
+pub(crate) fn clear_session() {}
 
 #[cfg(target_arch = "wasm32")]
 pub fn get_token() -> Option<String> {

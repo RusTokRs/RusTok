@@ -1,4 +1,3 @@
-const AUTH_CONTEXT: &str = include_str!("../../../../ui/leptos-auth/src/context.rs");
 const STOREFRONT_TRANSPORT: &str = include_str!("../src/transport.rs");
 const STOREFRONT_UI: &str = include_str!("../src/ui/leptos.rs");
 
@@ -19,19 +18,36 @@ fn bootstrap_source_tracks_reactive_auth_transport_context() {
             "auth-reactive bootstrap source is missing `{marker}`"
         );
     }
+}
 
-    for marker in [
-        "pub user: RwSignal<Option<AuthUser>>",
-        "pub session: RwSignal<Option<AuthSession>>",
-        "self.session.get().map(|s| s.token)",
-        "self.session.get().map(|s| s.tenant)",
-        "self.session.set(None)",
-    ] {
-        assert!(
-            AUTH_CONTEXT.contains(marker),
-            "AuthContext is missing tracked session behavior `{marker}`"
-        );
-    }
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn auth_context_exposes_reactive_read_only_session_projections() {
+    use leptos::prelude::*;
+    use leptos_auth::{AuthContext, ServerAuthSnapshot, provide_server_auth_snapshot};
+
+    let owner = Owner::new();
+    owner.with(|| {
+        let session = serde_json::from_value(serde_json::json!({
+            "token": "test-access",
+            "expires_at": i64::MAX,
+            "tenant": "shop"
+        }))
+        .unwrap();
+        provide_server_auth_snapshot(ServerAuthSnapshot {
+            session: Some(session),
+            user: None,
+        });
+        let auth = AuthContext::new();
+        // Type-check the owner boundary instead of requiring a writable signal or source spelling.
+        let _: ReadSignal<_> = auth.user();
+        let session: ReadSignal<_> = auth.session();
+        let auth_for_memo = auth.clone();
+        let token = Memo::new(move |_| auth_for_memo.get_token());
+        assert_eq!(token.get().as_deref(), Some("test-access"));
+        assert_eq!(auth.get_tenant().as_deref(), Some("shop"));
+        assert_eq!(session.get().map(|value| value.token), token.get());
+    });
 }
 
 #[test]

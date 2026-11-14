@@ -133,10 +133,16 @@ fn now_unix_secs() -> i64 {
 
 #[derive(Clone)]
 pub struct AuthContext {
-    pub user: RwSignal<Option<AuthUser>>,
-    pub session: RwSignal<Option<AuthSession>>,
-    pub is_loading: RwSignal<bool>,
-    pub error: RwSignal<Option<String>>,
+    // The handles stay private too: rebinding a public projection on one clone must not let
+    // that clone pair a different session with the provider's verified lifecycle stamp.
+    user: ReadSignal<Option<AuthUser>>,
+    session: ReadSignal<Option<AuthSession>>,
+    is_loading: ReadSignal<bool>,
+    error: ReadSignal<Option<String>>,
+    user_state: RwSignal<Option<AuthUser>>,
+    session_state: RwSignal<Option<AuthSession>>,
+    loading_state: RwSignal<bool>,
+    error_state: RwSignal<Option<String>>,
     scope: RwSignal<ClientAuthScope>,
     source: String,
 }
@@ -149,13 +155,34 @@ impl AuthContext {
         let error = RwSignal::new(None);
 
         Self {
-            user,
-            session,
-            is_loading,
-            error,
+            user: user.read_only(),
+            session: session.read_only(),
+            is_loading: is_loading.read_only(),
+            error: error.read_only(),
+            user_state: user,
+            session_state: session,
+            loading_state: is_loading,
+            error_state: error,
             scope: RwSignal::new(ClientAuthScope::new(!cfg!(target_arch = "wasm32"))),
             source: provider_id(),
         }
+    }
+
+    /// Read-only handles are created with the provider's owner and remain stable across clones.
+    pub fn user(&self) -> ReadSignal<Option<AuthUser>> {
+        self.user
+    }
+
+    pub fn session(&self) -> ReadSignal<Option<AuthSession>> {
+        self.session
+    }
+
+    pub fn is_loading(&self) -> ReadSignal<bool> {
+        self.is_loading
+    }
+
+    pub fn error(&self) -> ReadSignal<Option<String>> {
+        self.error
     }
 
     /// Tracked, credential-free scope stamp. Consumers must still authorize server-side.
@@ -230,15 +257,15 @@ impl AuthContext {
         tenant: String,
     ) -> Result<(), AuthError> {
         let transition = self.begin_scope_transition(true)?;
-        self.is_loading.set(true);
-        self.error.set(None);
+        self.loading_state.set(true);
+        self.error_state.set(None);
         if !transition.is_current() {
-            self.is_loading.set(false);
+            self.loading_state.set(false);
             return Err(AuthError::Network);
         }
         let result = transport::sign_in(email, password, tenant).await;
         if !transition.is_current() {
-            self.is_loading.set(false);
+            self.loading_state.set(false);
             return Err(AuthError::Network);
         }
 
@@ -246,9 +273,9 @@ impl AuthContext {
             Ok((user, session)) => {
                 let _ = storage::save_user(&user);
                 let _ = storage::save_session(&session);
-                self.user.set(Some(user));
-                self.session.set(Some(session));
-                self.is_loading.set(false);
+                self.user_state.set(Some(user));
+                self.session_state.set(Some(session));
+                self.loading_state.set(false);
                 if transition.complete(true) {
                     Ok(())
                 } else {
@@ -256,8 +283,8 @@ impl AuthContext {
                 }
             }
             Err(e) => {
-                self.is_loading.set(false);
-                self.error.set(Some(format!("{}", e)));
+                self.loading_state.set(false);
+                self.error_state.set(Some(format!("{}", e)));
                 transition.complete(false);
                 Err(e)
             }
@@ -272,15 +299,15 @@ impl AuthContext {
         tenant: String,
     ) -> Result<(), AuthError> {
         let transition = self.begin_scope_transition(true)?;
-        self.is_loading.set(true);
-        self.error.set(None);
+        self.loading_state.set(true);
+        self.error_state.set(None);
         if !transition.is_current() {
-            self.is_loading.set(false);
+            self.loading_state.set(false);
             return Err(AuthError::Network);
         }
         let result = transport::sign_up(email, password, name, tenant).await;
         if !transition.is_current() {
-            self.is_loading.set(false);
+            self.loading_state.set(false);
             return Err(AuthError::Network);
         }
 
@@ -288,9 +315,9 @@ impl AuthContext {
             Ok((user, session)) => {
                 let _ = storage::save_user(&user);
                 let _ = storage::save_session(&session);
-                self.user.set(Some(user));
-                self.session.set(Some(session));
-                self.is_loading.set(false);
+                self.user_state.set(Some(user));
+                self.session_state.set(Some(session));
+                self.loading_state.set(false);
                 if transition.complete(true) {
                     Ok(())
                 } else {
@@ -298,8 +325,8 @@ impl AuthContext {
                 }
             }
             Err(e) => {
-                self.is_loading.set(false);
-                self.error.set(Some(format!("{}", e)));
+                self.loading_state.set(false);
+                self.error_state.set(Some(format!("{}", e)));
                 transition.complete(false);
                 Err(e)
             }
@@ -307,10 +334,24 @@ impl AuthContext {
     }
 
     pub async fn sign_out(&self) -> Result<(), AuthError> {
+        self.sign_out_with(transport::sign_out).await
+    }
+
+    async fn sign_out_with<F, Fut>(&self, revoke: F) -> Result<(), AuthError>
+    where
+        F: FnOnce(String) -> Fut,
+        Fut: std::future::Future<Output = Result<(), AuthError>>,
+    {
         let transition = self.begin_scope_transition(true)?;
-        self.is_loading.set(true);
+        if self
+            .loading_state
+            .try_update(|loading| *loading = true)
+            .is_none()
+        {
+            return Err(AuthError::Network);
+        }
+        let _ = self.error_state.try_update(|error| *error = None);
         if !transition.is_current() {
-            self.is_loading.set(false);
             return Err(AuthError::Network);
         }
 
@@ -324,25 +365,58 @@ impl AuthContext {
             .map(|session| session.tenant)
             .or_else(storage::get_tenant);
         let result = if let Some(tenant) = tenant {
-            transport::sign_out(tenant).await
+            revoke(tenant).await
         } else {
             Err(AuthError::Unauthorized)
         };
         if !transition.is_current() {
-            self.is_loading.set(false);
+            // A disposed or replaced owner must not clear shared browser identity or
+            // write to another transition. Drop poisons the abandoned lease.
             return Err(AuthError::Network);
         }
 
-        storage::clear_session();
-        self.user.set(None);
-        self.session.set(None);
-        // A failed logout may have left the server cookie intact. Do not silently
-        // treat that uncertain identity as an established guest session.
-        self.is_loading.set(false);
+        match &result {
+            Ok(()) => {
+                storage::clear_session();
+                // Browser storage calls can be synchronous integration boundaries.
+                if !transition.is_current() {
+                    return Err(AuthError::Network);
+                }
+                if self.user_state.try_update(|user| *user = None).is_none()
+                    || self
+                        .session_state
+                        .try_update(|session| *session = None)
+                        .is_none()
+                {
+                    return Err(AuthError::Network);
+                }
+            }
+            Err(error) => {
+                // Keep the old in-memory identity for an explicit retry. The cookie may
+                // still be live, so neither that identity nor guest scope is verified.
+                let _ = self
+                    .error_state
+                    .try_update(|slot| *slot = Some(error.to_string()));
+            }
+        }
+        let _ = self.loading_state.try_update(|loading| *loading = false);
         if transition.complete(result.is_ok()) {
             result
         } else {
             Err(AuthError::Network)
+        }
+    }
+
+    #[cfg(any(test, target_arch = "wasm32"))]
+    fn finish_initial_loading(&self) {
+        // Startup may lose a race to an explicit sign-in/out. Its rejected restore
+        // must not clear the loading flag belonging to that other transition.
+        if self
+            .scope
+            .try_get_untracked()
+            .is_some_and(|scope| !scope.is_pending())
+        {
+            let _ = self.loading_state.try_update(|loading| *loading = false);
         }
     }
 
@@ -411,8 +485,8 @@ impl AuthContext {
         };
         let _ = storage::save_session(&new_session);
         let _ = storage::save_user(&new_user);
-        self.session.set(Some(new_session));
-        self.user.set(Some(new_user));
+        self.session_state.set(Some(new_session));
+        self.user_state.set(Some(new_user));
         if transition.complete(true) {
             Ok(())
         } else {
@@ -448,7 +522,7 @@ impl AuthContext {
         match result {
             Ok(Some(user)) => {
                 let _ = storage::save_user(&user);
-                self.user.set(Some(user));
+                self.user_state.set(Some(user));
                 if transition.complete(true) {
                     Ok(())
                 } else {
@@ -456,7 +530,7 @@ impl AuthContext {
                 }
             }
             Ok(None) => {
-                self.user.set(None);
+                self.user_state.set(None);
                 transition.complete(false);
                 Err(AuthError::Unauthorized)
             }
@@ -473,11 +547,18 @@ impl AuthContext {
             && !self.is_token_expired()
     }
 
+    /// Do not hand a retained, uncertain session to transport consumers as if it were verified.
     pub fn get_token(&self) -> Option<String> {
+        if !self.client_scope().is_ready() {
+            return None;
+        }
         self.session.try_get().flatten().map(|s| s.token)
     }
 
     pub fn get_tenant(&self) -> Option<String> {
+        if !self.client_scope().is_ready() {
+            return None;
+        }
         self.session.try_get().flatten().map(|s| s.tenant)
     }
 }
@@ -499,9 +580,9 @@ pub fn AuthProvider(
         .transpose();
     let auth_context = AuthContext::new();
     if let Err(error) = &binding {
-        auth_context.error.set(Some(error.to_string()));
+        auth_context.error_state.set(Some(error.to_string()));
         auth_context.scope.update(|scope| scope.set_verified(false));
-        auth_context.is_loading.set(false);
+        auth_context.loading_state.set(false);
     }
 
     provide_context(auth_context.clone());
@@ -517,9 +598,15 @@ pub fn AuthProvider(
             if previous.is_none() {
                 let auth = auth_for_init.clone();
                 spawn_local(async move {
-                    auth.is_loading.set(true);
+                    if auth
+                        .loading_state
+                        .try_update(|loading| *loading = true)
+                        .is_none()
+                    {
+                        return;
+                    }
                     let _ = auth.restore_session().await;
-                    auth.is_loading.set(false);
+                    auth.finish_initial_loading();
                 });
             }
         });
@@ -580,5 +667,148 @@ mod tests {
         assert_eq!(auth.get_token(), None);
         assert!(auth.is_token_expired());
         assert!(auth.begin_scope_transition(false).is_err());
+    }
+
+    fn session() -> AuthSession {
+        AuthSession {
+            token: "access".into(),
+            expires_at: i64::MAX,
+            tenant: "shop".into(),
+        }
+    }
+
+    fn user() -> AuthUser {
+        AuthUser {
+            id: "user".into(),
+            email: "user@example.test".into(),
+            name: None,
+            role: "user".into(),
+            permissions: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn failed_logout_retains_identity_for_retry_without_verifying_guest() {
+        use futures_util::FutureExt;
+
+        let owner = Owner::new();
+        owner.with(|| {
+            let auth = AuthContext::new();
+            auth.session_state.set(Some(session()));
+            auth.user_state.set(Some(user()));
+            let auth_for_memo = auth.clone();
+            let token = Memo::new(move |_| auth_for_memo.get_token());
+            assert_eq!(token.get().as_deref(), Some("access"));
+            let failed = auth
+                .sign_out_with(|tenant| {
+                    assert_eq!(tenant, "shop");
+                    std::future::ready(Err(AuthError::Network))
+                })
+                .now_or_never();
+            assert_eq!(failed, Some(Err(AuthError::Network)));
+            assert_eq!(auth.session.get_untracked(), Some(session()));
+            assert_eq!(auth.user.get_untracked(), Some(user()));
+            assert!(auth.error.get_untracked().is_some());
+            assert!(!auth.client_scope_untracked().is_ready());
+            assert_eq!(token.get(), None);
+            assert_eq!(auth.get_tenant(), None);
+            assert!(!auth.is_loading.get_untracked());
+
+            let retried = auth
+                .sign_out_with(|_| std::future::ready(Ok(())))
+                .now_or_never();
+            assert_eq!(retried, Some(Ok(())));
+            assert_eq!(auth.session.get_untracked(), None);
+            assert_eq!(auth.user.get_untracked(), None);
+            assert_eq!(auth.error.get_untracked(), None);
+            assert_eq!(token.get(), None);
+            assert_eq!(auth.get_tenant(), None);
+            assert!(auth.client_scope_untracked().is_ready());
+        });
+    }
+
+    #[test]
+    fn reactive_credentials_follow_scope_and_session_transitions() {
+        let owner = Owner::new();
+        owner.with(|| {
+            let auth = AuthContext::new();
+            auth.session_state.set(Some(session()));
+            let auth_for_memo = auth.clone();
+            let credentials =
+                Memo::new(move |_| (auth_for_memo.get_token(), auth_for_memo.get_tenant()));
+            assert_eq!(
+                credentials.get(),
+                (Some("access".into()), Some("shop".into()))
+            );
+            assert_eq!(auth.session(), auth.clone().session());
+
+            let transition = auth.begin_scope_transition(true).unwrap();
+            assert_eq!(credentials.get(), (None, None));
+            auth.session_state.set(Some(AuthSession {
+                token: "other-access".into(),
+                tenant: "other-shop".into(),
+                ..session()
+            }));
+            assert_eq!(credentials.get(), (None, None));
+            assert!(transition.complete(true));
+            assert_eq!(
+                credentials.get(),
+                (Some("other-access".into()), Some("other-shop".into()))
+            );
+        });
+    }
+
+    #[test]
+    fn startup_does_not_clear_another_pending_transitions_loading() {
+        let owner = Owner::new();
+        owner.with(|| {
+            let auth = AuthContext::new();
+            let transition = auth.begin_scope_transition(true).unwrap();
+            auth.loading_state.set(true);
+            auth.finish_initial_loading();
+            assert!(auth.is_loading.get_untracked());
+            assert!(transition.complete(true));
+            auth.finish_initial_loading();
+            assert!(!auth.is_loading.get_untracked());
+        });
+    }
+
+    #[test]
+    fn a_logout_response_after_disposal_never_clears_or_publishes() {
+        use std::{
+            cell::Cell,
+            future::{Future, poll_fn},
+            rc::Rc,
+            task::{Context, Poll, Waker},
+        };
+
+        let owner = Owner::new();
+        let auth = owner.with(|| {
+            let auth = AuthContext::new();
+            auth.session_state.set(Some(session()));
+            auth.user_state.set(Some(user()));
+            auth
+        });
+        let ready = Rc::new(Cell::new(false));
+        let completed = ready.clone();
+        let mut logout = Box::pin(auth.sign_out_with(move |_| {
+            poll_fn(move |_| {
+                if completed.get() {
+                    Poll::Ready(Ok(()))
+                } else {
+                    Poll::Pending
+                }
+            })
+        }));
+        let mut context = Context::from_waker(Waker::noop());
+        assert!(logout.as_mut().poll(&mut context).is_pending());
+        owner.cleanup();
+        ready.set(true);
+        assert_eq!(
+            logout.as_mut().poll(&mut context),
+            Poll::Ready(Err(AuthError::Network))
+        );
+        assert!(!auth.client_scope_untracked().is_ready());
+        assert_eq!(auth.get_token(), None);
     }
 }

@@ -117,14 +117,16 @@ for (const marker of [
   requireText(ui, marker, `storefront UI is missing ${marker}`);
 }
 
+// The tracked session is a read-only owner projection. The typed and lifecycle tests cover
+// projection behavior, not a mounted notification refetch or service integration.
 for (const marker of [
-  "pub session: RwSignal<Option<AuthSession>>",
-  "self.session.get().map(|s| s.token)",
-  "self.session.get().map(|s| s.tenant)",
-  "self.session.set(None)",
+  "pub fn session(&self) -> ReadSignal<Option<AuthSession>>",
+  "pub fn get_token(&self)",
+  "pub fn get_tenant(&self)",
 ]) {
   requireText(auth, marker, `AuthContext is missing ${marker}`);
 }
+rejectText(auth, "pub session:", "consumers must not replace or mutate the auth session projection");
 
 const helper = between(
   ui,
@@ -173,18 +175,21 @@ for (const forbidden of [
 
 for (const marker of [
   "bootstrap_source_tracks_reactive_auth_transport_context",
+  "auth_context_exposes_reactive_read_only_session_projections",
   "bootstrap_reuses_one_exact_context_snapshot_and_clears_scope_feedback",
   "auth_reactivity_adds_no_polling_storage_or_identity_rendering",
 ]) {
   requireText(proof, marker, `source proof is missing ${marker}`);
 }
+// The owner-local implementation plan is the canonical note; an older per-slice filename was
+// never checked in. Keep the original validation disclosure separate from later evidence.
 for (const marker of [
-  "# FORUM-20AO auth-reactive grouped inbox bootstrap",
-  "source-ready / unvalidated",
-  "Sign-in, sign-out, token refresh, or tenant change",
-  "does not re-resolve credentials",
+  "### `FORUM-20AO`",
+  "auth token, tenant, sign-in, sign-out, and refresh-session changes trigger automatic reload",
+  "one context snapshot is reused for exact unread count",
+  "projection contract does not demonstrate a mounted reactive refetch",
 ]) {
-  requireText(note, marker, `owner note is missing ${marker}`);
+  requireProse(failures, note, marker, "owner note");
 }
 requireValidationDisclosure(failures, note, "owner note is missing");
 for (const marker of [

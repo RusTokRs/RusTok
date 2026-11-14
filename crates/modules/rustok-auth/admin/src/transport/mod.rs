@@ -1221,5 +1221,43 @@ pub async fn revoke_all_sessions(
     .await
     .map_err(|err| ApiError::Graphql(err.to_string()))?;
 
-    Ok(response.revoke_all_sessions.revoked_count)
+    confirmed_revoked_count(response.revoke_all_sessions)
+}
+
+fn confirmed_revoked_count(
+    payload: crate::model::RevokeAllSessionsPayload,
+) -> Result<i32, ApiError> {
+    if !payload.success || payload.revoked_count < 0 {
+        return Err(ApiError::Graphql(
+            "Session revocation was not confirmed".to_string(),
+        ));
+    }
+    Ok(payload.revoked_count)
+}
+
+#[cfg(test)]
+mod session_revocation_tests {
+    use super::confirmed_revoked_count;
+    use crate::model::RevokeAllSessionsPayload;
+
+    #[test]
+    fn revoke_all_requires_a_successful_coherent_response() {
+        assert_eq!(
+            confirmed_revoked_count(RevokeAllSessionsPayload {
+                success: true,
+                revoked_count: 2,
+            })
+            .unwrap(),
+            2
+        );
+        for (success, revoked_count) in [(false, 0), (false, 2), (true, -1)] {
+            assert!(
+                confirmed_revoked_count(RevokeAllSessionsPayload {
+                    success,
+                    revoked_count,
+                })
+                .is_err()
+            );
+        }
+    }
 }

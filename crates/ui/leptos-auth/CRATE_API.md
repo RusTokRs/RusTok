@@ -39,13 +39,16 @@ Leptos authentication context, protected route wrappers, BFF cookie management, 
 - **BFF Cookie Isolation**: Refresh tokens are stored strictly in `HttpOnly; SameSite=Lax` cookies; browser client scripts cannot read refresh tokens directly.
 - **SSR ownership**: `ServerAuthSnapshot` is request-scoped input validated by the host, not a session inferred by this library. Browser restoration and SSR/hydration parity require mounted verification.
 - **Client scope**: `ClientAuthScope` and `AuthContext::client_scope` expose a non-secret, fail-closed transition generation. Cooperating providers share an in-document operation lease; it cannot coordinate other tabs or cancel an already-sent request. Owner/server authentication and CSRF checks remain authoritative.
+- **Read-only projections**: `AuthContext::{user,session,is_loading,error}()` return stable `ReadSignal` handles; fields remain private so a clone cannot rebind a projection while retaining the verified scope. Only transition methods and request-scoped SSR snapshot may set identity. Browser session mutation helpers are crate-private. Callers of the former public fields must migrate to accessor or transition methods. `get_token` and `get_tenant` return no value while the scope is pending or unverified, even when an old identity is retained for retry; this is a client consistency rule, not authorization.
 - **Tenant Context Preservation**: Tenant identity is strictly isolated and retained across session refreshes.
 
 ## 3. Error Handling & Edge Cases
 - Native refresh returns an explicit absence only when no BFF refresh cookie exists. Malformed, duplicate, foreign-tenant, rejected and transport-failed credentials leave the client scope unverified; the direct-cookie 401 does not distinguish absence from rejection.
 - `transport::refresh_session` returns `Result<Option<(AuthSession, AuthUser)>, AuthError>`; `None` is the explicit native absence, not a failed credential.
-- Native sign-out preserves the cookie if revocation cannot be confirmed. The raw logout endpoint rejects already-invalid tokens, so idempotent native cleanup and visible failure recovery still need verification.
-- Browser refresh failures and the mounted notification/lease behavior need integration verification; a failed transition is not a verified guest.
+- Native sign-out uses the API's idempotent cookie-session logout contract over a redirect-disabled server-to-server request. It preserves the BFF cookie and local identity if revocation cannot be confirmed, and leaves the scope unverified for explicit retry. Concurrent refreshes in another tab remain outside this lease.
+- Direct-cookie sign-out likewise requires a 2xx response containing `status: ok`; an HTML response or unexpected payload is not confirmation.
+- `user()` and `session()` can still expose the retained identity on failure for recovery; `is_authenticated` is a UI projection, not proof of a verified client scope or server authorization. Native browser-client paths that read shared storage directly are not gated by `get_token`.
+- Browser refresh failures and the mounted notification/lease and logout-recovery behavior need integration verification; a failed transition is not a verified guest.
 
 ## 4. Security & Isolation Invariants
 - `HttpOnly; SameSite=Lax` cookie flags enforced in `refresh_cookie_header`.

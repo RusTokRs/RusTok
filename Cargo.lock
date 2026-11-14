@@ -8774,6 +8774,7 @@ dependencies = [
  "rustok-ui-transport",
  "serde",
  "serde_json",
+ "tokio",
  "web-sys",
 ]
 
@@ -14683,6 +14684,7 @@ dependencies = [
 name = "rustok-cart-storefront"
 version = "0.1.0"
 dependencies = [
+ "any_spawner",
  "js-sys",
  "leptos",
  "leptos-auth",

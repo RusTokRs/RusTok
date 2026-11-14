@@ -10,12 +10,12 @@ pub fn use_auth() -> AuthContext {
 
 pub fn use_current_user() -> Signal<Option<AuthUser>> {
     let auth = use_auth();
-    Signal::derive(move || auth.user.get())
+    Signal::derive(move || auth.user().get())
 }
 
 pub fn use_session() -> Signal<Option<AuthSession>> {
     let auth = use_auth();
-    Signal::derive(move || auth.session.get())
+    Signal::derive(move || auth.session().get())
 }
 
 pub fn use_is_authenticated() -> Signal<bool> {
@@ -25,12 +25,12 @@ pub fn use_is_authenticated() -> Signal<bool> {
 
 pub fn use_is_loading() -> Signal<bool> {
     let auth = use_auth();
-    Signal::derive(move || auth.is_loading.get())
+    Signal::derive(move || auth.is_loading().get())
 }
 
 pub fn use_auth_error() -> Signal<Option<String>> {
     let auth = use_auth();
-    Signal::derive(move || auth.error.get())
+    Signal::derive(move || auth.error().get())
 }
 
 pub fn use_token() -> Signal<Option<String>> {

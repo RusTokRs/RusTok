@@ -240,7 +240,8 @@ pub struct BuyerCartController {
     pub busy: Signal<bool>,
     operation: RwSignal<CartOperationState>,
     /// Changes before a restore starts, invalidating earlier Product observations immediately.
-    pub generation: RwSignal<u64>,
+    /// Only the Cart owner may advance this monotonic fence.
+    generation: RwSignal<u64>,
     reference: RwSignal<Option<String>>,
     scope: Memo<ClientScope>,
     bound_scope: RwSignal<Option<ClientScope>>,
@@ -351,6 +352,11 @@ impl BuyerCartController {
             && self.capability.get() == capability
             && self.generation.try_get() == Some(generation))
         .then_some(target)
+    }
+
+    /// Read-only Cart generation; a disposed owner always returns the exhausted sentinel.
+    pub fn generation(&self) -> u64 {
+        self.generation.try_get().unwrap_or(u64::MAX)
     }
 
     /// Separate synchronous generations also fence A → B → A before an effect is polled.
@@ -849,7 +855,7 @@ pub fn use_buyer_cart(
     let auth_refused = Signal::derive(move || {
         external_auth_changed.try_get().unwrap_or(true)
             || auth_for_refusal.as_ref().is_none_or(|auth| {
-                let Some(session) = auth.session.try_get() else {
+                let Some(session) = auth.session().try_get() else {
                     return true;
                 };
                 auth.get_tenant()
@@ -862,7 +868,7 @@ pub fn use_buyer_cart(
         !auth_scope.try_get().is_some_and(|scope| scope.is_ready())
             || auth
                 .as_ref()
-                .is_none_or(|auth| auth.is_loading.try_get().unwrap_or(true))
+                .is_none_or(|auth| auth.is_loading().try_get().unwrap_or(true))
     });
     let state = RwSignal::new(BuyerCartSession::restoring(cart_id.clone()));
     let bound_scope = RwSignal::new(None::<ClientScope>);
@@ -1050,8 +1056,17 @@ pub fn use_buyer_cart(
 mod tests {
     use super::*;
 
+    fn init_test_executor() {
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            any_spawner::Executor::init_futures_executor()
+                .expect("one native executor for Cart owner tests");
+        });
+    }
+
     #[test]
     fn guard_cancellation_poisoning_and_stale_completion_are_owner_scoped() {
+        init_test_executor();
         let owner = Owner::new();
         owner.with(|| {
             let state = RwSignal::new(CartOperationState::default());
@@ -1089,6 +1104,7 @@ mod tests {
 
     #[test]
     fn recovery_and_mutations_share_one_owner_reservation() {
+        init_test_executor();
         let owner = Owner::new();
         owner.with(|| {
             provide_context(leptos_auth::AuthContext::new());
@@ -1123,6 +1139,7 @@ mod tests {
 
     #[test]
     fn disposed_owner_refuses_late_guards_and_controller_reads() {
+        init_test_executor();
         let owner = Owner::new();
         let (guard, controller) = owner.with(|| {
             provide_context(leptos_auth::AuthContext::new());
@@ -1150,12 +1167,14 @@ mod tests {
         assert!(!guard.finish());
         assert!(!controller.context_ready());
         assert!(!controller.quote_context_ready_untracked());
+        assert_eq!(controller.generation(), u64::MAX);
         assert!(!controller.can_write());
         assert_eq!(controller.confirmed_item_count(), None);
     }
 
     #[test]
     fn disabled_cart_can_persist_selection_and_returns_the_effective_host_url() {
+        init_test_executor();
         let owner = Owner::new();
         owner.with(|| {
             provide_context(leptos_auth::AuthContext::new());
@@ -1177,6 +1196,7 @@ mod tests {
 
     #[test]
     fn selection_callback_cannot_acknowledge_a_replaced_capability() {
+        init_test_executor();
         let owner = Owner::new();
         owner.with(|| {
             provide_context(leptos_auth::AuthContext::new());
@@ -1199,6 +1219,7 @@ mod tests {
 
     #[test]
     fn selection_callback_cannot_acknowledge_a_disposed_owner() {
+        init_test_executor();
         let callback_owner = Owner::new();
         let owner = Owner::new();
         let owner_to_dispose = owner.clone();
@@ -1226,6 +1247,7 @@ mod tests {
 
     #[test]
     fn disabled_cart_does_not_hide_public_quotes_but_stale_host_does() {
+        init_test_executor();
         let owner = Owner::new();
         owner.with(|| {
             provide_context(leptos_auth::AuthContext::new());

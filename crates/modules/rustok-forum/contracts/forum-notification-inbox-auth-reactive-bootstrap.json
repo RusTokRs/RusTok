@@ -7,7 +7,7 @@
   "storefront_ui_file": "crates/modules/rustok-notifications/storefront/src/ui/leptos.rs",
   "auth_context_file": "crates/ui/leptos-auth/src/context.rs",
   "storefront_proof": "crates/modules/rustok-notifications/storefront/tests/auth_reactive_bootstrap_contract.rs",
-  "owner_note": "crates/modules/rustok-notifications/docs/forum-20ao-auth-reactive-bootstrap.md",
+  "owner_note": "crates/modules/rustok-notifications/docs/implementation-plan.md",
   "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
   "notifications_local_plan": "crates/modules/rustok-notifications/docs/implementation-plan.md",
   "notifications_owner_readme": "crates/modules/rustok-notifications/README.md",
