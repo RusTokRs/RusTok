@@ -67,6 +67,7 @@ query Me {
     name
     role
     status
+    permissions
   }
 }
 `;

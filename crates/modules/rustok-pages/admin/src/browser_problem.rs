@@ -19,6 +19,7 @@ const HTTP_SERVICE_UNAVAILABLE: u16 = 503;
 pub const BROWSER_REVISION_CONFLICT_CODE: &str = "REVISION_CONFLICT";
 pub const BROWSER_PROJECT_HASH_CONFLICT_CODE: &str = "PROJECT_HASH_CONFLICT";
 pub const BROWSER_DRAFT_GENERATION_CONFLICT_CODE: &str = "DRAFT_GENERATION_CONFLICT";
+pub const BROWSER_DRAFT_UNAVAILABLE_CODE: &str = "DRAFT_UNAVAILABLE";
 /// Code of an intent for a page whose authoring document is withheld from the principal.
 pub const BROWSER_DOCUMENT_UNAVAILABLE_CODE: &str = "DOCUMENT_UNAVAILABLE";
 /// Code of a rejected save that carries no more specific stable code.
@@ -126,6 +127,9 @@ fn status_for_error(error: &PagesBrowserIntentAccessError) -> u16 {
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::DocumentUnavailable) => {
             HTTP_FORBIDDEN
         }
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::DraftUnavailable) => {
+            HTTP_CONFLICT
+        }
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::PageMismatch { .. }) => {
             HTTP_BAD_REQUEST
         }
@@ -189,6 +193,9 @@ fn stable_code_for_error(error: &PagesBrowserIntentAccessError) -> Option<&str> 
         }
         PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::DocumentUnavailable) => {
             Some(BROWSER_DOCUMENT_UNAVAILABLE_CODE)
+        }
+        PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::DraftUnavailable) => {
+            Some(BROWSER_DRAFT_UNAVAILABLE_CODE)
         }
         _ => None,
     }
@@ -367,6 +374,14 @@ mod tests {
             Some(BROWSER_DOCUMENT_UNAVAILABLE_CODE)
         );
         assert_eq!(problem.error, crate::core::DOCUMENT_UNAVAILABLE_MESSAGE);
+    }
+
+    #[test]
+    fn missing_draft_is_a_conflict_not_a_new_session() {
+        let error = PagesBrowserIntentAccessError::Pages(PagesBrowserIntentError::DraftUnavailable);
+        let problem = PagesBrowserIntentProblem::from(&error);
+        assert_eq!(problem.status, HTTP_CONFLICT);
+        assert_eq!(problem.code.as_deref(), Some(BROWSER_DRAFT_UNAVAILABLE_CODE));
     }
 
     #[test]

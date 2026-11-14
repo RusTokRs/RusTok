@@ -4,6 +4,8 @@ export interface User {
   name: string | null;
   role: string;
   status: string;
+  /** Present when loaded from the authenticated me query. */
+  permissions?: string[];
   createdAt?: string;
   tenantName?: string | null;
 }

@@ -1,5 +1,5 @@
 //! Authenticated authoring surface for Pages-owned layout definitions.
-//! These definitions are not yet composed into public artifacts.
+//! Exact-locale definitions participate in preview and reviewed publication.
 use async_graphql::{Context, Object, Result, SimpleObject};
 use rustok_api::{
     AuthContext, Permission, TenantContext, graphql::require_module_enabled,
@@ -111,6 +111,7 @@ impl PageTemplateQuery {
             .map_err(|err| async_graphql::Error::new(err.to_string()))
     }
 
+    /// Exact-locale keys usable by the creator. Non-default keys and definitions require manage.
     async fn page_template_keys(
         &self,
         ctx: &Context<'_>,
@@ -118,7 +119,7 @@ impl PageTemplateQuery {
         tenant_id: Option<Uuid>,
     ) -> Result<Vec<String>> {
         require_module_enabled(ctx, "pages").await?;
-        let (tenant_id, security) = scope(ctx, tenant_id, Permission::PAGES_MANAGE)?;
+        let (tenant_id, security) = scope(ctx, tenant_id, Permission::PAGES_CREATE)?;
         PageTemplateService::new(ctx.data::<DatabaseConnection>()?.clone())
             .list_keys(tenant_id, &security, &locale)
             .await

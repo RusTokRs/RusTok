@@ -1298,3 +1298,49 @@ blog-detail-publishedAt = Published { $date }
 
 blog-editor-creationUnknown = Creation is unconfirmed. Save again to retry the original request.
 blog-editor-creationStorage = Post creation recovery is unavailable. Reload this tab to try again.
+pages-starter-label = Starter template
+pages-starter-unavailable = Starter catalog unavailable
+pages-starter-selectionError = Starter catalog is unavailable or the selection changed. Reload and try again.
+pages-starter-layoutHint = Suggested layout (not applied automatically)
+
+pages-starter-saveTitle = Save saved page as starter
+pages-starter-savedWarning = Uses the saved working copy in the selected locale, not unsaved editor changes. Existing starter keys cannot be replaced here. Requires pages:manage.
+pages-starter-key = Starter key
+pages-starter-name = Starter name
+pages-starter-category = Category
+pages-starter-sourceLocale = Source locale
+pages-starter-saved = Saved from
+pages-starter-saveAction = Save starter
+
+pages-starter-manageTitle = Manage starter catalog
+pages-starter-manageHint = Only tenant starters can be changed. The document and thumbnail are preserved; suggested layouts are not applied automatically.
+pages-starter-builtin = Built-in (read only)
+pages-starter-tenant = Tenant starter
+pages-starter-edit = Edit
+pages-starter-description = Description
+pages-starter-layoutKey = Suggested layout key
+pages-starter-saveChanges = Save changes
+pages-starter-delete = Delete starter
+pages-starter-deleteWarning = Delete this tenant starter? If it overrides a built-in, the built-in will become visible again.
+pages-starter-confirmDelete = Confirm deletion
+pages-starter-cancel = Cancel
+pages-starter-reload = Reload catalog and discard edits
+pages-starter-updated = Starter updated
+pages-starter-deleted = Starter deleted
+pages-starter-notDeleted = Starter was not deleted
+
+pages-starter-contextError = Session or tenant changed. Reload and try again.
+
+pages-starter-operationError = Changes were not applied. Edits are retained; reload the catalog to resolve a revision conflict.
+
+pages-layout-label = Page layout
+pages-layout-loading = Loading layouts...
+pages-layout-unavailable = Layout catalog unavailable
+pages-layout-selectionError = Choose a layout available for this locale. Reload the catalog if needed.
+pages-layout-reload = Reload layouts
+pages-layout-suggestionAvailable = Available to you for this locale
+pages-layout-suggestionMissing = Not available to you for this locale
+
+pages-layout-contextAfterCreate = Session, tenant or locale changed while creating the page. The page may have been created in the previous context; check before retrying.
+
+pages-layout-permissionsHint = Non-default layouts require pages:manage for builder composition.

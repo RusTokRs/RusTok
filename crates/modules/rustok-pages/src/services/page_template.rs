@@ -1,6 +1,6 @@
 //! Pages-owned layout catalog. This is authoring state, not a public artifact.
-//! `default` remains the virtual empty layout until legacy template labels
-//! have been explicitly audited and publish-time composition is enabled.
+//! `default` is a virtual empty layout. Non-default layouts compose at preview
+//! and reviewed publish; legacy free-form page labels still require auditing.
 
 use std::collections::BTreeSet;
 
@@ -8,8 +8,9 @@ use chrono::Utc;
 use rustok_api::{Action, Resource, TenantLocale};
 use rustok_core::{PermissionScope, SecurityContext};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    Statement, TransactionTrait, sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -102,19 +103,36 @@ impl PageTemplateService {
         row.map(TryInto::try_into).transpose()
     }
 
-    /// List available template keys for a tenant/locale, always including the virtual `default` key.
+    /// List usable layout keys for page creation, scoped to the exact tenant and locale.
+    /// Non-default composition currently requires `pages:manage`, so creators without
+    /// that permission get only the virtual default; full definitions remain manage-only.
     pub async fn list_keys(
         &self,
         tenant_id: Uuid,
         security: &SecurityContext,
         locale: &str,
     ) -> PagesResult<Vec<String>> {
-        require_all(security, Action::Manage)?;
+        if security.is_public_read()
+            || security.get_scope(Resource::Pages, Action::Create) == PermissionScope::None
+        {
+            return Err(PagesError::forbidden("Layout key selection requires Pages creation permission"));
+        }
+        let locale = normalize_locale(locale)?;
+        if security.get_scope(Resource::Pages, Action::Manage) != PermissionScope::All {
+            return Ok(vec!["default".to_string()]);
+        }
+        let items = page_template::Entity::find()
+            .select_only()
+            .column(page_template::Column::TemplateKey)
+            .filter(page_template::Column::TenantId.eq(tenant_id))
+            .filter(page_template::Column::Locale.eq(locale))
+            .order_by_asc(page_template::Column::TemplateKey)
+            .into_tuple::<String>()
+            .all(&self.db).await?;
         let mut keys = vec!["default".to_string()];
-        let items = self.list(tenant_id, security, locale).await?;
-        for item in items {
-            if item.key != "default" && !keys.contains(&item.key) {
-                keys.push(item.key);
+        for key in items {
+            if key != "default" && !keys.contains(&key) {
+                keys.push(key);
             }
         }
         Ok(keys)
@@ -291,7 +309,15 @@ impl PageTemplateService {
         let key = normalize_key(key)?;
         let locale = normalize_locale(locale)?;
         let tx = self.db.begin().await?;
+        // READ COMMITTED makes the usage check after a waited advisory lock observe
+        // the winner's commit even if the connection default is REPEATABLE READ.
+        if tx.get_database_backend() == DatabaseBackend::Postgres {
+            prepare_checked_layout_transaction(&tx).await?;
+        }
         crate::services::page::lock_site_symbol_catalog_in_tx(&tx, tenant_id, &locale).await?;
+        if tx.get_database_backend() == DatabaseBackend::Sqlite {
+            lock_sqlite_template_writer(&tx, tenant_id, &locale, &key).await?;
+        }
         let used = page::Entity::find()
             .filter(page::Column::TenantId.eq(tenant_id))
             .filter(page::Column::Template.eq(&key))
@@ -318,6 +344,71 @@ impl PageTemplateService {
         tx.commit().await?;
         Ok(())
     }
+}
+
+/// Must be the first statement of a checked creation transaction.
+pub(crate) async fn prepare_checked_layout_transaction(
+    tx: &DatabaseTransaction,
+) -> PagesResult<()> {
+    match tx.get_database_backend() {
+        DatabaseBackend::Postgres => {
+            tx.execute(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SET TRANSACTION ISOLATION LEVEL READ COMMITTED".to_string(),
+            ))
+            .await?;
+        }
+        DatabaseBackend::Sqlite => {}
+        // The existing catalog lock is PostgreSQL-specific. Do not claim safety on
+        // MySQL until its isolation and catalog writer protocol are implemented.
+        _ => {
+            return Err(PagesError::validation(
+                "Checked non-default layouts are not supported on this database",
+            ));
+        }
+    }
+    Ok(())
+}
+
+async fn lock_sqlite_template_writer(
+    tx: &DatabaseTransaction,
+    tenant_id: Uuid,
+    locale: &str,
+    key: &str,
+) -> PagesResult<()> {
+    // Acquire SQLite's write reservation before the existence/usage read. An
+    // incompatible snapshot returns SQLITE_BUSY rather than committing stale data.
+    page_template::Entity::update_many()
+        .col_expr(page_template::Column::Revision, Expr::col(page_template::Column::Revision))
+        .filter(page_template::Column::TenantId.eq(tenant_id))
+        .filter(page_template::Column::Locale.eq(locale))
+        .filter(page_template::Column::TemplateKey.eq(key))
+        .exec(tx)
+        .await?;
+    Ok(())
+}
+
+pub(crate) async fn lock_and_check_selected_layout(
+    tx: &DatabaseTransaction,
+    tenant_id: Uuid,
+    locale: &str,
+    key: &str,
+) -> PagesResult<()> {
+    let key = normalize_key(key)?;
+    crate::services::page::lock_site_symbol_catalog_in_tx(tx, tenant_id, locale).await?;
+    if tx.get_database_backend() == DatabaseBackend::Sqlite {
+        lock_sqlite_template_writer(tx, tenant_id, locale, &key).await?;
+    }
+    let exists = page_template::Entity::find_by_id((tenant_id, locale.to_string(), key))
+        .one(tx)
+        .await?
+        .is_some();
+    if !exists {
+        return Err(PagesError::validation(
+            "Selected layout is no longer available for this tenant and locale",
+        ));
+    }
+    Ok(())
 }
 
 fn require_all(security: &SecurityContext, action: Action) -> PagesResult<()> {

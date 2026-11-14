@@ -22,7 +22,7 @@
 - `FlyActionBridge()`:
   - Client component (`"use client"`) that side-effect imports the canonical `fly-actions.js` runtime asset (a byte-exact copy of `crates/ui/fly/browser/assets/fly-actions.js`, the same script the Rust storefront inlines) and listens for `fly:action` CustomEvents.
   - Interprets host `emit_event` actions; provider actions stay provider-owned. Cart controls use `@rustok/cart-frontend`, while purchases use the validated [shared Product handoff](README.md#shared-purchase-handoff) and Next.js `useRouter`, never a direct Cart mutation.
-  - Synchronizes landing-local `cart_count` islands, including replaced markup, and intercepts safe root-relative links for client-side routing. A disabled, failed or unconfirmed Cart displays an unknown count instead of a fabricated zero.
+  - Synchronizes landing-local `cart_count` islands, including replaced markup, and intercepts safe root-relative links for client-side routing. Same-context fragment links and `navigate` events resolve only inside their landing; missing, empty and malformed fragments do not navigate the host. Fragment scrolling honors reduced motion. A disabled, failed or unconfirmed Cart displays an unknown count instead of a fabricated zero.
 
 ### Data Fetching & Parsers
 

@@ -47,16 +47,56 @@ const __flyDraftFromRoute = () => {
     return null;
   }
 };
-const __flyWriteDraftRoute = (token) => {
-  if (typeof token !== "string" || !token) return;
+const __flyDraftUrl = (token) => {
   try {
     const url = new URL(globalThis.location.href);
-    if (url.searchParams.get(__flyDraftQueryKey) === token) return;
-    url.searchParams.set(__flyDraftQueryKey, token);
-    globalThis.history.replaceState(globalThis.history.state, "", url);
+    if (typeof token === "string" && token) url.searchParams.set(__flyDraftQueryKey, token);
+    return url;
   } catch (_) {
-    // URL synchronization is progressive enhancement; the server endpoint still works without it.
+    return null;
   }
+};
+const __flyWriteDraftRoute = (token) => {
+  if (typeof token !== "string" || !token) return false;
+  try {
+    const url = __flyDraftUrl(token);
+    if (!url) return false;
+    if (__flyDraftFromRoute() !== token) {
+      globalThis.history.replaceState(globalThis.history.state, "", url);
+    }
+    return __flyDraftFromRoute() === token;
+  } catch (_) {
+    return false;
+  }
+};
+// Never let a canvas post into a session different from the one rendered by
+// the server. Keep the cached token intact and offer a same-origin recovery
+// link; the server still checks session owner and page on the next render.
+const __flyStopForDraftRecovery = (adapter, token, showNotice = true) => {
+  adapter.postIntents = false;
+  adapter.intentEndpoint = null;
+  adapter.stop();
+  const root = adapter.root;
+  root.inert = true;
+  if (!showNotice) return;
+  if (root.previousElementSibling?.hasAttribute("data-fly-draft-recovery")) return;
+  const notice = document.createElement("div");
+  notice.setAttribute("data-fly-draft-recovery", "true");
+  notice.setAttribute("role", "alert");
+  notice.setAttribute("class", "rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive");
+  const message = document.createElement("p");
+  message.textContent = root.dataset.flyDraftRecoveryMessage ||
+    "The editor does not match its draft session. Editing is stopped. Restore the draft before continuing; it may expire.";
+  notice.append(message);
+  const url = __flyDraftUrl(token);
+  if (url) {
+    const link = document.createElement("a");
+    link.href = url.toString();
+    link.textContent = root.dataset.flyDraftRecoveryLink || "Restore draft or reload this address";
+    link.setAttribute("class", "mt-2 inline-block font-medium underline");
+    notice.append(link);
+  }
+  root.parentNode?.insertBefore(notice, root);
 };
 const __flyBrowserConfig = globalThis.__FLY_BROWSER_CONFIG__ || {};
 const __flySsrControlStateKey = Symbol.for("fly.browser.ssr.controls");
@@ -75,8 +115,59 @@ const __flyBindSsrAdapter = (adapter) => {
   }
   const __flyLifecycleOptions = { signal: __flyLifecycleSignal };
   const routeDraft = __flyDraftFromRoute();
-  if (routeDraft && adapter.draftSession?.token !== routeDraft) {
+  const strictDraft = adapter.root.dataset.flyDraftContract === "rendered";
+  // Bind responses to the page and route that owned this canvas. A request may
+  // finish after client-side navigation even if it is the newest request for
+  // this adapter. Never write its token into a different page's route.
+  let boundUrl;
+  try { boundUrl = new URL(globalThis.location.href); } catch (_) { boundUrl = null; }
+  let boundDraft = routeDraft;
+  if (strictDraft) {
+    const rendered = adapter.root.dataset.flyRenderedDraftToken || null;
+    const rawGeneration = adapter.root.dataset.flyRenderedDraftGeneration;
+    const generation = typeof rawGeneration === "string" && /^[1-9][0-9]*$/.test(rawGeneration)
+      ? Number(rawGeneration) : NaN;
+    if (rendered) {
+      if (routeDraft !== rendered || !Number.isSafeInteger(generation)) {
+        __flyStopForDraftRecovery(adapter, rendered);
+        return adapter;
+      }
+      // The generation belongs to the SSR snapshot, not to independently cached state.
+      adapter.draftSession = { token: rendered, generation };
+    } else if (routeDraft !== null || rawGeneration !== undefined) {
+      __flyStopForDraftRecovery(adapter, routeDraft);
+      return adapter;
+    } else if (adapter.draftSession?.token) {
+      // The server rendered the saved page, but this tab retains a draft. Do not
+      // silently post that hidden draft or overwrite its only recovery pointer.
+      __flyStopForDraftRecovery(adapter, adapter.draftSession.token);
+      return adapter;
+    } else {
+      adapter.draftSession = null;
+    }
+  } else if (routeDraft && adapter.draftSession?.token !== routeDraft) {
     adapter.draftSession = { token: routeDraft, generation: null };
+  }
+  const __flyRouteOwnership = () => {
+    let currentUrl;
+    try { currentUrl = new URL(globalThis.location.href); } catch (_) { currentUrl = null; }
+    const samePage = !!(boundUrl && currentUrl &&
+      boundUrl.origin === currentUrl.origin && boundUrl.pathname === currentUrl.pathname &&
+      boundUrl.searchParams.get("page_id") === currentUrl.searchParams.get("page_id"));
+    const connected = adapter.root.isConnected !== false;
+    return { samePage, connected, valid: samePage && connected && __flyDraftFromRoute() === boundDraft };
+  };
+  if (strictDraft) {
+    const emitIntent = adapter.emitIntent;
+    adapter.emitIntent = function (...args) {
+      const ownership = __flyRouteOwnership();
+      if (!ownership.valid) {
+        __flyStopForDraftRecovery(adapter, adapter.draftSession?.token,
+          ownership.samePage && ownership.connected);
+        return Promise.resolve(null);
+      }
+      return emitIntent.apply(adapter, args);
+    };
   }
   // The server renders every `[data-fly-selected-component-input]` with the component its form
   // was rendered for, and the picker with the option that names it. That is the target until
@@ -156,9 +247,30 @@ const __flyBindSsrAdapter = (adapter) => {
   };
   adapter.root.addEventListener("fly:browser-intent-response", (event) => {
     const detail = event.detail;
-    if (!detail?.ok || !__flyObject(detail.result)) return;
+    if (!detail?.ok || detail.current === false || !__flyObject(detail.result)) return;
     const token = detail.result.draft_token;
-    if (typeof token === "string" && token) __flyWriteDraftRoute(token);
+    if (strictDraft) {
+      const ownership = __flyRouteOwnership();
+      if (!ownership.valid) {
+        detail.result.reload = false;
+        delete detail.result.location;
+        // The adapter still stores an accepted response under its own page key.
+        // Do not put a recovery link for the old page on a different route.
+        __flyStopForDraftRecovery(adapter, token, ownership.samePage && ownership.connected);
+        return;
+      }
+    }
+    if (typeof token === "string" && token && !__flyWriteDraftRoute(token)) {
+      // The adapter would otherwise reload a URL that cannot restore this
+      // response's session. Keep the response and expose a recovery link.
+      detail.result.reload = false;
+      // A response may also carry a navigation target; suppress it as well
+      // until the user can restore the draft whose route could not be written.
+      delete detail.result.location;
+      __flyStopForDraftRecovery(adapter, token);
+    } else if (typeof token === "string" && token) {
+      boundDraft = token;
+    }
   }, __flyLifecycleOptions);
   adapter.root.addEventListener(
     "fly:browser-intent-response",

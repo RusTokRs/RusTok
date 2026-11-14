@@ -49,24 +49,19 @@ impl PagesMutation {
         let tenant_id = mutation_tenant_id(tenant, &auth, tenant_id)?;
 
         let service = PageService::new(db.clone(), event_bus.clone());
-        let page = service
-            .create(
-                tenant_id,
-                page_security(&auth),
-                CreatePageInput {
-                    translations: input
-                        .translations
-                        .into_iter()
-                        .map(page_translation_input)
-                        .collect(),
-                    template: input.template,
-                    body: input.body.map(page_body_input),
-                    channel_slugs: input.channel_slugs,
-                    publish: false,
-                },
-            )
-            .await
-            .map_err(map_pages_error)?;
+        let checked_layout = input.checked_layout.unwrap_or(false);
+        let create_input = CreatePageInput {
+            translations: input.translations.into_iter().map(page_translation_input).collect(),
+            template: input.template,
+            body: input.body.map(page_body_input),
+            channel_slugs: input.channel_slugs,
+            publish: false,
+        };
+        let page = if checked_layout {
+            service.create_with_catalog_layout(tenant_id, page_security(&auth), create_input).await
+        } else {
+            service.create(tenant_id, page_security(&auth), create_input).await
+        }.map_err(map_pages_error)?;
 
         Ok(page.into())
     }

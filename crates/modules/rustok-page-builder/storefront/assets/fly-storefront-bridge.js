@@ -40,6 +40,28 @@
       ? element.closest("[data-fly-page-body]") : null;
   }
 
+  // Fragment navigation must never fall through to the document's global ID lookup.
+  function scrollLandingFragment(root, href) {
+    var id;
+    try {
+      id = decodeURIComponent(href.slice(1));
+    } catch {
+      return;
+    }
+    if (!id) return;
+    var candidates = root.querySelectorAll("[id], a[name]");
+    for (var i = 0; i < candidates.length; i++) {
+      var candidate = candidates[i];
+      if (landingRoot(candidate) !== root ||
+          (candidate.id !== id && candidate.getAttribute("name") !== id)) continue;
+      var view = candidate.ownerDocument.defaultView;
+      var reduced = view && typeof view.matchMedia === "function" &&
+        view.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      candidate.scrollIntoView({ behavior: reduced ? "instant" : "smooth" });
+      return;
+    }
+  }
+
   // fly:action payloads are opaque author data. They have not passed the typed
   // navigate_url validator, so check them before asking the browser to navigate.
   function safeNavigationHref(raw) {
@@ -155,7 +177,8 @@
       cartAction(root, "toggle");
     } else if (name === "navigate") {
       var href = safeNavigationHref(data.href || data.url);
-      if (href) window.location.assign(href);
+      if (href && href.startsWith("#")) scrollLandingFragment(root, href);
+      else if (href) window.location.assign(href);
     }
   });
 
@@ -167,7 +190,15 @@
     var trigger = target.closest("[data-fly-island='cart_trigger']");
     // The canonical action runtime handles a co-located Fly action; do not toggle twice.
     var action = target.closest("[data-fly-action]");
-    if (action && root.contains(action)) return;
+    if (action && root.contains(action)) {
+      // Even an invalid or unavailable action must not expose a fragment to the host.
+      var link = target.closest("a");
+      if (link && root.contains(link) && (!link.target || link.target === "_self") &&
+          !link.hasAttribute("download") && (link.getAttribute("href") || "").startsWith("#")) {
+        event.preventDefault();
+      }
+      return;
+    }
     if (trigger && root.contains(trigger)) {
       event.preventDefault();
       cartAction(root, "toggle");
@@ -177,23 +208,9 @@
     if (!anchor || !root.contains(anchor) || (anchor.target && anchor.target !== "_self") ||
         anchor.hasAttribute("download") || anchor.hasAttribute("data-fly-action")) return;
     var href = anchor.getAttribute("href");
-    if (!href || !href.startsWith("#") || href.length <= 1) return;
-    var id;
-    try {
-      id = decodeURIComponent(href.slice(1));
-    } catch {
-      return;
-    }
-    var candidates = root.querySelectorAll("[id], a[name]");
-    for (var i = 0; i < candidates.length; i++) {
-      var candidate = candidates[i];
-      if (landingRoot(candidate) === root &&
-          (candidate.id === id || candidate.getAttribute("name") === id)) {
-        event.preventDefault();
-        candidate.scrollIntoView({ behavior: "smooth" });
-        return;
-      }
-    }
+    if (!href || !href.startsWith("#")) return;
+    event.preventDefault();
+    scrollLandingFragment(root, href);
   });
 
   window.addEventListener("rustok:cart:updated", function (event) {

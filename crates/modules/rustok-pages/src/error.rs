@@ -32,6 +32,9 @@ pub enum PagesError {
     #[error("Page translation conflict: {0}")]
     TranslationConflict(String),
 
+    #[error("Starter revision conflict: reload before writing")]
+    StarterRevisionConflict,
+
     #[error("Cannot delete published page")]
     CannotDeletePublished,
 
@@ -206,6 +209,12 @@ impl From<PagesError> for RichError {
             PagesError::TranslationConflict(message) => RichError::new(ErrorKind::Conflict, message)
                 .with_user_message("The page translation changed while this operation was pending.")
                 .with_error_code("PAGE_TRANSLATION_CONFLICT"),
+            PagesError::StarterRevisionConflict => RichError::new(
+                ErrorKind::Conflict,
+                "Starter revision changed or the starter no longer exists",
+            )
+            .with_user_message("The starter changed. Reload before writing.")
+            .with_error_code("PAGE_STARTER_REVISION_CONFLICT"),
             PagesError::CannotDeletePublished => {
                 RichError::new(ErrorKind::BusinessLogic, "Cannot delete published page")
                     .with_user_message("Published pages cannot be deleted. Unpublish them first.")

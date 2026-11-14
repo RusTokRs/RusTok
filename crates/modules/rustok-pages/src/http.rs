@@ -175,6 +175,11 @@ fn map_publication_error(error: PagesError) -> HttpError {
             "PAGE_TRANSLATION_CONFLICT",
             "The page translation changed while this operation was pending.",
         ),
+        PagesError::StarterRevisionConflict => HttpError::new(
+            StatusCode::CONFLICT,
+            "PAGE_STARTER_REVISION_CONFLICT",
+            message,
+        ),
         PagesError::PublishRuntimeReviewInvalid(_) => HttpError::new(
             StatusCode::BAD_REQUEST,
             PAGE_BUILDER_PUBLISH_RUNTIME_REVIEW_INVALID,

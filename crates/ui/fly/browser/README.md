@@ -18,8 +18,15 @@ SSR-first browser adapter assets and protocol contracts for Fly editors.
   renderer-owned hooks preferred to authored IDs. Tab panels may sit outside a nested tablist
   header; discovery stops at landing, explicit group, enclosing panel or competing-group
   boundaries, and a missing target leaves selection unchanged. Clicks and swipes cannot inherit a
-  group from the host or change a nested landing. It emits host events but does not implement
-  Cart, Product or Pricing rules.
+  group from the host or change a nested landing. Scroll actions use instant scrolling when the
+  target document requests reduced motion, even if its CSS specifies smooth scrolling. It emits
+  host events but does not implement Cart, Product or Pricing rules.
+
+## Verification
+
+- `node --test crates/ui/fly/browser/tests/action_runtime.test.mjs` exercises action dispatch with a minimal DOM boundary.
+- `apps/next-frontend/tests/e2e/fly-actions.spec.ts` covers the shipped asset in Chromium, including actual scrolling and media emulation; it requires the Playwright dependencies and browser.
+- `cargo test -p fly-browser` covers the Rust protocol and asset contracts.
 
 ## Interactions
 

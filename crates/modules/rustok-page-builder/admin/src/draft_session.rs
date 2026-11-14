@@ -43,6 +43,14 @@ pub struct SsrDraftSessionSnapshot {
     pub owner: Option<DraftSessionOwner>,
 }
 
+/// Draft identity of the exact session snapshot used to render a browser canvas.
+/// Hosts provide this even for a saved-page render (`session: None`), so the
+/// browser cannot silently act on a different session restored from storage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SsrDraftRenderBinding {
+    pub session: Option<(String, u64)>,
+}
+
 /// Current on-disk shape of a persisted draft session record.
 ///
 /// A record written by an older build is upgraded in place on read (its missing `format` is

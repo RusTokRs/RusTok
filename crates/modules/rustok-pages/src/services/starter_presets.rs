@@ -1,20 +1,18 @@
-use fly::{DocumentKind, GrapesJsCodec, ProjectDocument, UniqueIdGenerator};
-use rustok_ui_core::normalize_ui_text;
-use serde::{Deserialize, Serialize};
+use fly::{DocumentKind, GrapesJsCodec, ProjectDocument};
+#[cfg(test)]
+use fly::UniqueIdGenerator;
 use serde_json::{Value, json};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageStarterDescriptor {
     pub id: String,
     pub title: String,
     pub description: String,
     pub category: String,
     pub template_key: String,
-    pub preview_badge: String,
-    pub icon: String,
 }
 
-pub fn page_starters() -> Vec<PageStarterDescriptor> {
+fn page_starters() -> Vec<PageStarterDescriptor> {
     vec![
         PageStarterDescriptor {
             id: "blank".to_string(),
@@ -22,8 +20,6 @@ pub fn page_starters() -> Vec<PageStarterDescriptor> {
             description: "Start with an empty canvas and build custom sections from scratch.".to_string(),
             category: "general".to_string(),
             template_key: "default".to_string(),
-            preview_badge: "Minimal".to_string(),
-            icon: "file-text".to_string(),
         },
         PageStarterDescriptor {
             id: "saas_landing".to_string(),
@@ -31,8 +27,6 @@ pub fn page_starters() -> Vec<PageStarterDescriptor> {
             description: "Complete modern product landing with hero, features grid, pricing table, FAQ accordion, and CTA.".to_string(),
             category: "landing".to_string(),
             template_key: "default".to_string(),
-            preview_badge: "Popular".to_string(),
-            icon: "rocket".to_string(),
         },
         PageStarterDescriptor {
             id: "ecommerce_showcase".to_string(),
@@ -40,8 +34,6 @@ pub fn page_starters() -> Vec<PageStarterDescriptor> {
             description: "High-impact product launch page with spotlight columns, testimonials, and buy action.".to_string(),
             category: "ecommerce".to_string(),
             template_key: "default".to_string(),
-            preview_badge: "Store".to_string(),
-            icon: "shopping-bag".to_string(),
         },
         PageStarterDescriptor {
             id: "lead_capture".to_string(),
@@ -49,8 +41,6 @@ pub fn page_starters() -> Vec<PageStarterDescriptor> {
             description: "Focused conversion landing page with value proposition, contact capture form, and social proof.".to_string(),
             category: "lead_generation".to_string(),
             template_key: "default".to_string(),
-            preview_badge: "Lead Gen".to_string(),
-            icon: "user-check".to_string(),
         },
         PageStarterDescriptor {
             id: "link_in_bio".to_string(),
@@ -58,8 +48,6 @@ pub fn page_starters() -> Vec<PageStarterDescriptor> {
             description: "Mobile-first creator or brand hub with avatar, biography, and interactive link action cards.".to_string(),
             category: "personal".to_string(),
             template_key: "default".to_string(),
-            preview_badge: "Mobile".to_string(),
-            icon: "link".to_string(),
         },
         PageStarterDescriptor {
             id: "company_contact".to_string(),
@@ -67,44 +55,71 @@ pub fn page_starters() -> Vec<PageStarterDescriptor> {
             description: "Corporate company overview with contact form, mission statement, and FAQ accordion.".to_string(),
             category: "company".to_string(),
             template_key: "default".to_string(),
-            preview_badge: "Corporate".to_string(),
-            icon: "building".to_string(),
         },
     ]
 }
 
-pub fn build_starter_preset(starter_id: &str, title: &str) -> ProjectDocument {
-    let normalized = normalize_ui_text(title);
-    let title = normalized.as_deref().unwrap_or("New Page");
+/// Server-owned built-ins formerly used only by the Leptos create form.
+/// Their text is an editable starting point, not a substitution into tenant content.
+pub(super) fn catalog() -> crate::error::PagesResult<Vec<super::page_starter::PageStarterRecord>> {
+    page_starters().into_iter().map(|starter| {
+        let document = build_starter_preset(&starter.id, "New Page")
+            .map_err(|error| crate::error::PagesError::validation(format!("Invalid built-in starter: {error}")))?;
+        let content = GrapesJsCodec::encode_value(&document)
+            .map_err(|error| crate::error::PagesError::validation(format!("Cannot encode built-in starter: {error}")))?;
+        Ok(super::page_starter::PageStarterRecord {
+            id: uuid::Uuid::nil(),
+            key: starter.id,
+            category: starter.category,
+            name: starter.title,
+            description: Some(starter.description),
+            thumbnail_url: None,
+            default_template_key: starter.template_key,
+            content,
+            revision: None,
+        })
+    }).collect()
+}
+
+#[derive(Debug, thiserror::Error)]
+enum StarterPresetError {
+    #[error("Unknown starter preset `{0}`")]
+    UnknownStarter(String),
+    #[error(transparent)]
+    Fly(#[from] fly::FlyError),
+}
+
+fn build_starter_preset(
+    starter_id: &str,
+    title: &str,
+) -> Result<ProjectDocument, StarterPresetError> {
+    let title = title.trim();
+    let title = if title.is_empty() { "New Page" } else { title };
 
     let mut doc = match starter_id {
+        "blank" => build_blank_doc(title),
         "saas_landing" => build_saas_landing_doc(title),
         "ecommerce_showcase" => build_ecommerce_showcase_doc(title),
         "lead_capture" => build_lead_capture_doc(title),
         "link_in_bio" => build_link_in_bio_doc(title),
         "company_contact" => build_company_contact_doc(title),
-        _ => build_blank_doc(title),
-    };
+        _ => return Err(StarterPresetError::UnknownStarter(starter_id.to_string())),
+    }?;
 
     doc.set_document_kind(DocumentKind::StarterPreset);
-    doc
+    Ok(doc)
 }
 
-pub fn instantiate_starter_preset(starter_id: &str, title: &str) -> Result<Value, String> {
-    let preset = build_starter_preset(starter_id, title);
+#[cfg(test)]
+fn instantiate_starter_preset(starter_id: &str, title: &str) -> Result<Value, StarterPresetError> {
+    let preset = build_starter_preset(starter_id, title)?;
     let mut generator = UniqueIdGenerator::new("page");
-    let page_doc = preset
-        .clone_as_page(&mut generator)
-        .map_err(|err| err.to_string())?;
-    GrapesJsCodec::encode_value(&page_doc).map_err(|err| err.to_string())
+    let page_doc = preset.clone_as_page(&mut generator)?;
+    Ok(GrapesJsCodec::encode_value(&page_doc)?)
 }
 
-pub fn instantiate_starter_preset_pretty(starter_id: &str, title: &str) -> Result<String, String> {
-    let value = instantiate_starter_preset(starter_id, title)?;
-    serde_json::to_string_pretty(&value).map_err(|err| err.to_string())
-}
 
-fn wrap_page_document(title: &str, components: Vec<Value>) -> ProjectDocument {
+fn wrap_page_document(title: &str, components: Vec<Value>) -> fly::FlyResult<ProjectDocument> {
     let val = json!({
         "assets": [],
         "styles": [],
@@ -120,10 +135,10 @@ fn wrap_page_document(title: &str, components: Vec<Value>) -> ProjectDocument {
             }
         ]
     });
-    GrapesJsCodec::decode_value(val).expect("page document must decode")
+    GrapesJsCodec::decode_value(val)
 }
 
-fn build_blank_doc(title: &str) -> ProjectDocument {
+fn build_blank_doc(title: &str) -> fly::FlyResult<ProjectDocument> {
     wrap_page_document(
         title,
         vec![
@@ -143,7 +158,7 @@ fn build_blank_doc(title: &str) -> ProjectDocument {
     )
 }
 
-fn build_saas_landing_doc(title: &str) -> ProjectDocument {
+fn build_saas_landing_doc(title: &str) -> fly::FlyResult<ProjectDocument> {
     let hero = json!({
         "id": "sec-hero",
         "type": "section",
@@ -234,7 +249,7 @@ fn build_saas_landing_doc(title: &str) -> ProjectDocument {
     wrap_page_document(title, vec![hero, features, pricing, faq, cta])
 }
 
-fn build_ecommerce_showcase_doc(title: &str) -> ProjectDocument {
+fn build_ecommerce_showcase_doc(title: &str) -> fly::FlyResult<ProjectDocument> {
     let hero = json!({
         "id": "sec-eco-hero",
         "type": "section",
@@ -298,7 +313,7 @@ fn build_ecommerce_showcase_doc(title: &str) -> ProjectDocument {
     wrap_page_document(title, vec![hero, testimonials])
 }
 
-fn build_lead_capture_doc(title: &str) -> ProjectDocument {
+fn build_lead_capture_doc(title: &str) -> fly::FlyResult<ProjectDocument> {
     let hero = json!({
         "id": "sec-lead-hero",
         "type": "section",
@@ -368,7 +383,7 @@ fn build_lead_capture_doc(title: &str) -> ProjectDocument {
     wrap_page_document(title, vec![hero, form_section])
 }
 
-fn build_link_in_bio_doc(title: &str) -> ProjectDocument {
+fn build_link_in_bio_doc(title: &str) -> fly::FlyResult<ProjectDocument> {
     let container = json!({
         "id": "bio-container",
         "type": "container",
@@ -416,10 +431,10 @@ fn build_link_in_bio_doc(title: &str) -> ProjectDocument {
             }
         ]
     });
-    GrapesJsCodec::decode_value(val).expect("link in bio document is valid")
+    GrapesJsCodec::decode_value(val)
 }
 
-fn build_company_contact_doc(title: &str) -> ProjectDocument {
+fn build_company_contact_doc(title: &str) -> fly::FlyResult<ProjectDocument> {
     let hero = json!({
         "id": "sec-corp-hero",
         "type": "section",
@@ -741,7 +756,8 @@ mod tests {
     fn each_starter_preset_validates_as_valid_fly_document() {
         let registries = RegistrySet::with_builtins();
         for starter in page_starters() {
-            let doc = build_starter_preset(&starter.id, "Test Title");
+            let doc = build_starter_preset(&starter.id, "Test Title")
+                .expect("starter must decode");
             assert_eq!(doc.document_kind(), DocumentKind::StarterPreset);
             let report = validate_project(&doc, &registries, ValidationLimits::default());
             assert!(
