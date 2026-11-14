@@ -376,4 +376,22 @@ mod tests {
             "tenant.domain_empty"
         );
     }
+
+    #[test]
+    fn a_claimed_domain_maps_to_a_non_retryable_conflict() {
+        // Both the code and the retryability matter: a hard host collision is
+        // caller-fixable, so advertising it as retryable would invite a retry
+        // loop that can never succeed.
+        let error = map_tenant_error(crate::TenantError::DomainAlreadyExists(
+            "admin.example.com".to_string(),
+        ));
+        assert_eq!(error.kind, PortErrorKind::Conflict, "{error:?}");
+        assert_eq!(error.code, "tenant.domain_already_exists");
+        assert!(!error.retryable, "a claimed domain must not be retryable");
+        assert!(
+            error.message.contains("admin.example.com"),
+            "the rejected host must be identifiable: {}",
+            error.message
+        );
+    }
 }
