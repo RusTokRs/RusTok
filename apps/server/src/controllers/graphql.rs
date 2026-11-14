@@ -521,13 +521,6 @@ where
     .await
 }
 
-async fn close_ws_for_auth_change<S>(sink: &mut S) -> bool
-where
-    S: futures_util::Sink<Message> + Unpin,
-{
-    close_ws(sink, WS_CLOSE_UNAUTHORIZED, WS_AUTHORITY_CHANGED_REASON).await
-}
-
 /// A peer that has already gone away cannot fail the host shutdown path, but a
 /// missed close frame must stay observable instead of being silently discarded.
 async fn close_ws_observed<S>(sink: &mut S, code: u16, reason: &'static str)
