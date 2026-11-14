@@ -24,11 +24,18 @@ pub fn Alert(
     rsx! {
         div {
             role: "alert",
+            "data-slot": "alert",
             class: "{full_class}",
             if let Some(t) = title {
-                p { class: "mb-1 font-medium leading-none tracking-tight", "{t}" }
+                p {
+                    "data-slot": "alert-title",
+                    class: "mb-1 font-medium leading-none tracking-tight",
+                    "{t}"
+                }
             }
-            div { class: "[&_p]:leading-relaxed",
+            div {
+                "data-slot": "alert-description",
+                class: "[&_p]:leading-relaxed",
                 {children}
             }
         }

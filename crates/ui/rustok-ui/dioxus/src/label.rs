@@ -25,6 +25,8 @@ pub fn Label(
     rsx! {
         label {
             r#for: r#for.as_deref(),
+            "data-slot": "label",
+            "data-disabled": disabled.then_some(""),
             class: "{full_class}",
             {children}
             if required {

@@ -25,11 +25,13 @@ pub fn Badge(
 
     rsx! {
         span {
+            "data-slot": "badge",
             class: "{full_class}",
             {children}
             if dismissible {
                 button {
                     r#type: "button",
+                    "data-slot": "badge-dismiss",
                     class: "ml-0.5 rounded-full opacity-70 hover:opacity-100 focus:outline-none",
                     "aria-label": "Dismiss",
                     onclick: move |_| {

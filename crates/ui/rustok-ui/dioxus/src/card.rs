@@ -24,7 +24,9 @@ pub fn Card(
     let full_class = card_classes(variant, custom);
 
     rsx! {
-        div { class: "{full_class}",
+        div {
+            "data-slot": "card",
+            class: "{full_class}",
             {children}
         }
     }
@@ -36,7 +38,9 @@ pub fn CardHeader(#[props(default)] class: Option<String>, children: Element) ->
     let full_class = card_header_classes(custom);
 
     rsx! {
-        div { class: "{full_class}",
+        div {
+            "data-slot": "card-header",
+            class: "{full_class}",
             {children}
         }
     }
@@ -48,7 +52,9 @@ pub fn CardTitle(#[props(default)] class: Option<String>, children: Element) -> 
     let full_class = card_title_classes(custom);
 
     rsx! {
-        div { class: "{full_class}",
+        div {
+            "data-slot": "card-title",
+            class: "{full_class}",
             {children}
         }
     }
@@ -60,7 +66,9 @@ pub fn CardDescription(#[props(default)] class: Option<String>, children: Elemen
     let full_class = card_description_classes(custom);
 
     rsx! {
-        div { class: "{full_class}",
+        div {
+            "data-slot": "card-description",
+            class: "{full_class}",
             {children}
         }
     }
@@ -72,7 +80,9 @@ pub fn CardAction(#[props(default)] class: Option<String>, children: Element) ->
     let full_class = card_action_classes(custom);
 
     rsx! {
-        div { class: "{full_class}",
+        div {
+            "data-slot": "card-action",
+            class: "{full_class}",
             {children}
         }
     }
@@ -84,7 +94,9 @@ pub fn CardContent(#[props(default)] class: Option<String>, children: Element) -
     let full_class = card_content_classes(custom);
 
     rsx! {
-        div { class: "{full_class}",
+        div {
+            "data-slot": "card-content",
+            class: "{full_class}",
             {children}
         }
     }
@@ -96,7 +108,9 @@ pub fn CardFooter(#[props(default)] class: Option<String>, children: Element) ->
     let full_class = card_footer_classes(custom);
 
     rsx! {
-        div { class: "{full_class}",
+        div {
+            "data-slot": "card-footer",
+            class: "{full_class}",
             {children}
         }
     }

@@ -32,6 +32,9 @@ pub fn Checkbox(
     rsx! {
         input {
             r#type: "checkbox",
+            "data-slot": "checkbox",
+            "data-state": if checked { "checked" } else { "unchecked" },
+            "aria-checked": if checked { "true" } else { "false" },
             id: id.as_deref(),
             name: name.as_deref(),
             disabled: disabled,

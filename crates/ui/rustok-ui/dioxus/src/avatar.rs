@@ -22,19 +22,25 @@ pub fn Avatar(
     let custom = class.as_deref();
     let (container_class, fallback_class) = avatar_classes(size, custom);
     let initials = extract_initials(fallback.as_deref().unwrap_or(""));
+    let src = src.filter(|s| !s.trim().is_empty());
 
     rsx! {
-        div { class: "{container_class}",
+        div {
+            "data-slot": "avatar",
+            class: "{container_class}",
             match src {
                 Some(url) => rsx! {
                     img {
+                        "data-slot": "avatar-image",
                         src: "{url}",
                         alt: alt.as_deref().unwrap_or(""),
                         class: "aspect-square h-full w-full object-cover",
                     }
                 },
                 None => rsx! {
-                    span { class: "{fallback_class}",
+                    span {
+                        "data-slot": "avatar-fallback",
+                        class: "{fallback_class}",
                         "{initials}"
                     }
                 }

@@ -22,6 +22,8 @@ pub fn Separator(
     rsx! {
         div {
             role: "separator",
+            "data-slot": "separator",
+            "data-orientation": orientation.as_str(),
             "aria-orientation": orientation.as_str(),
             class: "{full_class}",
         }

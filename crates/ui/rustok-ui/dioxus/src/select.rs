@@ -30,6 +30,9 @@ pub fn Select(
     rsx! {
         select {
             id: id.as_deref(),
+            "data-slot": "select",
+            "data-disabled": disabled.then_some(""),
+            "data-invalid": invalid.then_some(""),
             class: "{full_class}",
             disabled: disabled,
             "aria-invalid": invalid.to_string(),

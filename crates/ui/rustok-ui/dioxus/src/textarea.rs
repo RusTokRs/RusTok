@@ -30,6 +30,9 @@ pub fn Textarea(
     rsx! {
         textarea {
             id: id.as_deref(),
+            "data-slot": "textarea",
+            "data-disabled": disabled.then_some(""),
+            "data-invalid": invalid.then_some(""),
             rows: "{rows}",
             class: "{full_class}",
             disabled: disabled,

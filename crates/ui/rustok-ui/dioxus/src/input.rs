@@ -43,6 +43,9 @@ pub fn Input(
             input {
                 id: id.as_deref(),
                 r#type: "{type_attr}",
+                "data-slot": "input",
+                "data-disabled": disabled.then_some(""),
+                "data-invalid": invalid.then_some(""),
                 class: "{full_class}",
                 disabled: disabled,
                 "aria-invalid": invalid.to_string(),
@@ -59,6 +62,7 @@ pub fn Input(
     } else {
         rsx! {
             div {
+                "data-slot": "input-wrapper",
                 class: "relative flex items-center w-full",
                 if let Some(p) = prefix {
                     span {
@@ -69,6 +73,9 @@ pub fn Input(
                 input {
                     id: id.as_deref(),
                     r#type: "{type_attr}",
+                    "data-slot": "input",
+                    "data-disabled": disabled.then_some(""),
+                    "data-invalid": invalid.then_some(""),
                     class: "{full_class}",
                     disabled: disabled,
                     "aria-invalid": invalid.to_string(),

@@ -19,7 +19,9 @@ pub fn Tabs(#[props(default)] class: Option<String>, children: Element) -> Eleme
     let full_class = merge_classes(&["w-full", custom.unwrap_or("")]);
 
     rsx! {
-        div { class: "{full_class}",
+        div {
+            "data-slot": "tabs",
+            class: "{full_class}",
             {children}
         }
     }
@@ -37,6 +39,8 @@ pub fn TabsList(
     rsx! {
         div {
             role: "tablist",
+            "data-slot": "tabs-list",
+            "data-orientation": orientation.as_str(),
             "aria-orientation": orientation.as_str(),
             class: "{full_class}",
             {children}
@@ -59,7 +63,11 @@ pub fn TabsTrigger(
         button {
             r#type: "button",
             role: "tab",
+            "data-slot": "tabs-trigger",
+            "data-state": if active { "active" } else { "inactive" },
+            "data-disabled": disabled.then_some(""),
             "aria-selected": active.to_string(),
+            tabindex: if active { "0" } else { "-1" },
             disabled: disabled,
             class: "{full_class}",
             onclick: move |_| {
@@ -84,6 +92,8 @@ pub fn TabsContent(
     rsx! {
         div {
             role: "tabpanel",
+            "data-slot": "tabs-content",
+            "data-state": if active { "active" } else { "inactive" },
             class: "{full_class}",
             {children}
         }

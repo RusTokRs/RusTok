@@ -16,11 +16,18 @@ use crate::avatar::*;
 use crate::badge::*;
 use crate::button::*;
 use crate::card::*;
+use crate::checkbox::*;
 use crate::dialog::*;
 use crate::input::*;
+use crate::label::*;
 use crate::progress::*;
+use crate::select::*;
+use crate::separator::*;
 use crate::skeleton::*;
+use crate::spinner::*;
+use crate::switch::*;
 use crate::tabs::*;
+use crate::textarea::*;
 
 #[test]
 fn test_dioxus_button_instantiation() {
@@ -150,6 +157,26 @@ fn test_dioxus_toc_instantiation() {
                 html: Some("<h2>First Section</h2><p>Content</p><h3>Subsection</h3>".to_string()),
                 locale: Some("ru".to_string()),
             }
+        }
+    });
+    dom.rebuild_in_place();
+}
+
+#[test]
+fn test_dioxus_form_controls_instantiation() {
+    let mut dom = VirtualDom::new(|| {
+        rsx! {
+            Label { r#for: "terms".to_string(), required: true, "Accept Terms" }
+            Checkbox { id: Some("terms".to_string()), checked: true }
+            Switch { id: Some("sw".to_string()), checked: true }
+            Select {
+                id: Some("sel".to_string()),
+                options: vec![SelectOption::new("1", "One")],
+                placeholder: Some("Choose".to_string()),
+            }
+            Textarea { id: Some("ta".to_string()), rows: 4, placeholder: Some("Notes".to_string()) }
+            Separator { orientation: Orientation::Horizontal }
+            Spinner { size: Size::Md }
         }
     });
     dom.rebuild_in_place();

@@ -28,6 +28,9 @@ pub fn Switch(
             id: id.as_deref(),
             r#type: "button",
             role: "switch",
+            "data-slot": "switch",
+            "data-state": if checked { "checked" } else { "unchecked" },
+            "data-disabled": disabled.then_some(""),
             "aria-checked": checked.to_string(),
             disabled: disabled,
             class: "{track_class}",
@@ -36,7 +39,11 @@ pub fn Switch(
                     cb.call(!checked);
                 }
             },
-            span { class: "{thumb_class}" }
+            span {
+                "data-slot": "switch-thumb",
+                "data-state": if checked { "checked" } else { "unchecked" },
+                class: "{thumb_class}"
+            }
         }
     }
 }

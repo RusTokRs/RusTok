@@ -55,9 +55,12 @@ pub fn TableOfContents(
     rsx! {
         nav {
             role: "navigation",
+            "data-slot": "toc",
             aria_label: "{effective_title}",
             class: "{nav_class}",
-            div { class: "{header_class}",
+            div {
+                "data-slot": "toc-header",
+                class: "{header_class}",
                 svg {
                     xmlns: "http://www.w3.org/2000/svg",
                     width: "16",
@@ -77,6 +80,7 @@ pub fn TableOfContents(
             }
             ul {
                 role: "list",
+                "data-slot": "toc-list",
                 class: "{list_class}",
                 for item in resolved_items {
                     {

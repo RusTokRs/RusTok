@@ -33,6 +33,8 @@ pub fn Dialog(
     rsx! {
         if open {
             div {
+                "data-slot": "dialog-overlay",
+                "data-state": if open { "open" } else { "closed" },
                 class: "{backdrop_class}",
                 onclick: move |_| {
                     if let Some(ref cb) = on_close {
@@ -42,6 +44,8 @@ pub fn Dialog(
             }
             div {
                 role: "dialog",
+                "data-slot": "dialog-content",
+                "data-state": if open { "open" } else { "closed" },
                 "aria-modal": "true",
                 "aria-label": aria_label.as_deref(),
                 "aria-labelledby": aria_labelledby.as_deref(),
@@ -57,7 +61,9 @@ pub fn Dialog(
 pub fn DialogHeader(#[props(default)] class: Option<String>, children: Element) -> Element {
     let custom = class.as_deref();
     rsx! {
-        div { class: "{dialog_header_classes(custom)}",
+        div {
+            "data-slot": "dialog-header",
+            class: "{dialog_header_classes(custom)}",
             {children}
         }
     }
@@ -74,6 +80,7 @@ pub fn DialogTitle(
     rsx! {
         h2 {
             id: id.as_deref(),
+            "data-slot": "dialog-title",
             class: "{dialog_title_classes(custom)}",
             {children}
         }
@@ -84,7 +91,9 @@ pub fn DialogTitle(
 pub fn DialogDescription(#[props(default)] class: Option<String>, children: Element) -> Element {
     let custom = class.as_deref();
     rsx! {
-        p { class: "{dialog_description_classes(custom)}",
+        p {
+            "data-slot": "dialog-description",
+            class: "{dialog_description_classes(custom)}",
             {children}
         }
     }
@@ -94,7 +103,9 @@ pub fn DialogDescription(#[props(default)] class: Option<String>, children: Elem
 pub fn DialogFooter(#[props(default)] class: Option<String>, children: Element) -> Element {
     let custom = class.as_deref();
     rsx! {
-        div { class: "{dialog_footer_classes(custom)}",
+        div {
+            "data-slot": "dialog-footer",
+            class: "{dialog_footer_classes(custom)}",
             {children}
         }
     }

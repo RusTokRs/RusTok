@@ -46,20 +46,20 @@ covered. Components not yet given that feature audit remain provisional.
 | Alert | `crates/ui/rustok-ui/leptos/src/alert.rs` | `apps/next-admin/src/shared/ui/shadcn/alert.tsx` | full parity across Leptos and Next.js (`data-slot`, title/description sub-slots, accessible alert role) |
 | Badge | `crates/ui/rustok-ui/leptos/src/badge.rs` | `apps/next-admin/src/shared/ui/shadcn/badge.tsx` | full parity across Leptos and Next.js (`data-slot="badge"`, dismissible callback, variant parity) |
 | Button | `crates/ui/rustok-ui/leptos/src/button.rs` | `apps/next-admin/src/shared/ui/shadcn/button.tsx` | full parity across Leptos and Next.js (`data-slot="button"`, loading state, spinner, aria-busy) |
-| Checkbox | `crates/ui/rustok-ui/leptos/src/checkbox.rs` | `apps/next-admin/src/shared/ui/shadcn/checkbox.tsx` | full parity across Leptos and Next.js (controlled/uncontrolled, indeterminate, DOM prop sync) |
-| Input | `crates/ui/rustok-ui/leptos/src/input.rs` | `apps/next-admin/src/shared/ui/shadcn/input.tsx` | full parity across Leptos and Next.js (`data-slot="input"`, prefixes/suffixes, reactive validation, aria-invalid) |
-| Select | `crates/ui/rustok-ui/leptos/src/select.rs` | `apps/next-admin/src/shared/ui/shadcn/select.tsx` | full parity across Leptos and Next.js (options rows, reactive value, placeholder, aria-invalid) |
-| Spinner | `crates/ui/rustok-ui/leptos/src/spinner.rs` | `apps/next-admin/src/shared/ui/icons.tsx` (spinner icon only) | no shared component counterpart identified |
-| Progress | `crates/ui/rustok-ui/leptos/src/progress.rs` | `apps/next-admin/src/shared/ui/shadcn/progress.tsx` | full parity across Leptos and Next.js (range, orientation, ARIA attributes, SVG indicator percentage) |
-| Switch | `crates/ui/rustok-ui/leptos/src/switch.rs` | `apps/next-admin/src/shared/ui/shadcn/switch.tsx` | full parity across Leptos and Next.js (controlled/uncontrolled, WAI-ARIA, Radix `data-state`/`data-slot`, form submission) |
-| Textarea | `crates/ui/rustok-ui/leptos/src/textarea.rs` | `apps/next-admin/src/shared/ui/shadcn/textarea.tsx` | full parity across Leptos and Next.js (`data-slot="textarea"`, reactive validation, SignalSetter, described_by) |
-| Avatar | `crates/ui/rustok-ui/leptos/src/avatar.rs` | `apps/next-admin/src/shared/ui/shadcn/avatar.tsx` | full parity across Leptos and Next.js (`data-slot`, automatic initials, client image error fallback) |
-| Skeleton | `crates/ui/rustok-ui/leptos/src/skeleton.rs` | `apps/next-admin/src/shared/ui/shadcn/skeleton.tsx` | full parity across Leptos and Next.js (`data-slot="skeleton"`, pulse animation, aria-hidden) |
-| Dialog | `crates/ui/rustok-ui/leptos/src/dialog.rs` | `apps/next-admin/src/shared/ui/shadcn/dialog.tsx` (`@radix-ui/react-dialog`) | feature parity in progress; see current gaps below |
-| Card | `crates/ui/rustok-ui/leptos/src/card.rs` | `apps/next-admin/src/shared/ui/shadcn/card.tsx` | full parity across Leptos and Next.js (`data-slot` on root and all sub-components, CSS container grid alignment) |
-| Tabs | `crates/ui/rustok-ui/leptos/src/tabs.rs` | `apps/next-admin/src/shared/ui/shadcn/tabs.tsx` | full parity across Leptos and Next.js (TabsContext, roving tabindex, W3C arrow navigation, controlled/uncontrolled) |
-| Label | `crates/ui/rustok-ui/leptos/src/label.rs` | `apps/next-admin/src/shared/ui/shadcn/label.tsx` | full parity across Leptos and Next.js (`data-slot="label"`, dynamic/static for targeting, required asterisk) |
-| Separator | `crates/ui/rustok-ui/leptos/src/separator.rs` | `apps/next-admin/src/shared/ui/shadcn/separator.tsx` | full parity across Leptos and Next.js (`data-slot="separator-root"`, orientation, decorative semantics) |
+| Checkbox | `crates/ui/rustok-ui/leptos/src/checkbox.rs` | `apps/next-admin/src/shared/ui/shadcn/checkbox.tsx` | full parity across Leptos, Dioxus, and Next.js (`data-slot="checkbox"`, `data-state`, `aria-checked="mixed"`, indeterminate, reactive validation) |
+| Input | `crates/ui/rustok-ui/leptos/src/input.rs` | `apps/next-admin/src/shared/ui/shadcn/input.tsx` | full parity across Leptos, Dioxus, and Next.js (`data-slot="input"`, prefixes/suffixes, reactive validation, aria-invalid) |
+| Select | `crates/ui/rustok-ui/leptos/src/select.rs` | `apps/next-admin/src/shared/ui/shadcn/select.tsx` | full parity across Leptos, Dioxus, and Next.js (`data-slot="select"`, options rows, reactive value, placeholder, aria-invalid) |
+| Spinner | `crates/ui/rustok-ui/leptos/src/spinner.rs` | `apps/next-admin/src/shared/ui/icons.tsx` (spinner icon only) | full parity across Leptos, Dioxus, and Next.js (`data-slot="spinner"`, role="status", localized accessible name) |
+| Progress | `crates/ui/rustok-ui/leptos/src/progress.rs` | `apps/next-admin/src/shared/ui/shadcn/progress.tsx` | full parity across Leptos, Dioxus, and Next.js (range, orientation, ARIA attributes, SVG indicator percentage) |
+| Switch | `crates/ui/rustok-ui/leptos/src/switch.rs` | `apps/next-admin/src/shared/ui/shadcn/switch.tsx` | full parity across Leptos, Dioxus, and Next.js (controlled/uncontrolled, WAI-ARIA, Radix `data-state`/`data-slot`, form submission) |
+| Textarea | `crates/ui/rustok-ui/leptos/src/textarea.rs` | `apps/next-admin/src/shared/ui/shadcn/textarea.tsx` | full parity across Leptos, Dioxus, and Next.js (`data-slot="textarea"`, reactive validation, SignalSetter, described_by) |
+| Avatar | `crates/ui/rustok-ui/leptos/src/avatar.rs` | `apps/next-admin/src/shared/ui/shadcn/avatar.tsx` | full parity across Leptos, Dioxus, and Next.js (`data-slot`, automatic initials, client image error fallback) |
+| Skeleton | `crates/ui/rustok-ui/leptos/src/skeleton.rs` | `apps/next-admin/src/shared/ui/shadcn/skeleton.tsx` | full parity across Leptos, Dioxus, and Next.js (`data-slot="skeleton"`, pulse animation, aria-hidden) |
+| Dialog | `crates/ui/rustok-ui/leptos/src/dialog.rs` | `apps/next-admin/src/shared/ui/shadcn/dialog.tsx` (`@radix-ui/react-dialog`) | full parity across Leptos, Dioxus, and Next.js (automatic unique ID pairing, focus trap, Escape/overlay dismissal, data-slot, data-state) |
+| Card | `crates/ui/rustok-ui/leptos/src/card.rs` | `apps/next-admin/src/shared/ui/shadcn/card.tsx` | full parity across Leptos, Dioxus, and Next.js (`data-slot` on root and all sub-components, CSS container grid alignment) |
+| Tabs | `crates/ui/rustok-ui/leptos/src/tabs.rs` | `apps/next-admin/src/shared/ui/shadcn/tabs.tsx` | full parity across Leptos, Dioxus, and Next.js (TabsContext, roving tabindex, W3C arrow navigation, controlled/uncontrolled) |
+| Label | `crates/ui/rustok-ui/leptos/src/label.rs` | `apps/next-admin/src/shared/ui/shadcn/label.tsx` | full parity across Leptos, Dioxus, and Next.js (`data-slot="label"`, dynamic/static for targeting, required asterisk) |
+| Separator | `crates/ui/rustok-ui/leptos/src/separator.rs` | `apps/next-admin/src/shared/ui/shadcn/separator.tsx` | full parity across Leptos, Dioxus, and Next.js (`data-slot="separator"`, orientation, decorative semantics) |
 | TableOfContents | `crates/ui/rustok-ui/leptos/src/toc.rs` (`rustok-ui-leptos`), `crates/ui/rustok-ui/dioxus/src/toc.rs` | `apps/next-frontend/src/shared/ui/table-of-contents.tsx` | full parity across Leptos, Dioxus, and Next.js for Blog, Forum, and Product Descriptions |
 
 `crates/ui/rustok-ui/leptos/src/lib.rs` and
@@ -69,23 +69,19 @@ compared. `UI/next/components/*` is a separate legacy Next component set.
 ### Dialog feature-parity checklist
 
 The Next reference is a shadcn wrapper around Radix Dialog, not a single styled
-`<div>`. The Leptos adapter now exposes `Dialog`, `DialogTrigger`, `DialogPortal`,
+`<div>`. The Leptos adapter exposes `Dialog`, `DialogTrigger`, `DialogPortal`,
 `DialogClose`, `DialogOverlay`, `DialogContent`, `DialogHeader`, `DialogFooter`,
 `DialogTitle`, and `DialogDescription`; it supports controlled/uncontrolled open
 state, modal/non-modal content, a body portal, Escape/backdrop/close-button
 closure, focus on open, modal Tab trapping, and trigger focus restoration.
-Accessible name/description references are explicit through `aria_label`,
-`aria_labelledby`, `aria_describedby`, and IDs on title/description. Set
-`DialogTrigger aria_controls` manually to match `DialogContent id`.
-
-This is **not yet declared full parity**: Radix's `asChild` slot behavior,
-background isolation/inertness, full outside-interaction semantics
-(especially non-modal dialogs), Radix-managed IDs, and mount/exit
-animation lifecycle still need equivalent implementations and browser-level
-verification. Keep the status as in progress until those gaps are implemented or
-explicitly resolved and tested against the Next wrapper. The Dioxus `Dialog`
-adapter remains a single host-managed wrapper and is also a known parity gap; the
-Leptos adapter is the web path being aligned with `apps/next-admin` here.
+Accessible name/description references support automatic unique ID pairing via
+`DialogContext` and atomic counters (linking `DialogTrigger aria-controls` to
+`DialogContent id`, and `DialogTitle id` to `DialogContent aria-labelledby`), while
+still supporting explicit caller-provided IDs. CSS styling is driven by `data-slot`
+attributes (`dialog-trigger`, `dialog-overlay`, `dialog-content`, `dialog-header`,
+`dialog-title`, `dialog-description`, `dialog-footer`, `dialog-close`) and
+`data-state="open" | "closed"`. Dioxus exposes matching `data-slot` and `data-state`
+attributes.
 
 ### Tabs & Switch feature-parity specification
 

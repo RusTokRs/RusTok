@@ -21,6 +21,7 @@ pub fn Skeleton(
 
     rsx! {
         div {
+            "data-slot": "skeleton",
             class: "{full_class}",
             "aria-hidden": "true",
         }

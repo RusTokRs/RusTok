@@ -32,6 +32,9 @@ pub fn Button(
     rsx! {
         button {
             r#type: "{type_attr}",
+            "data-slot": "button",
+            "data-disabled": is_disabled.then_some(""),
+            "aria-busy": loading.then_some("true"),
             class: "{full_class}",
             disabled: is_disabled,
             onclick: move |evt| {
