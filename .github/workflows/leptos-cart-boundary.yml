@@ -3,6 +3,7 @@ name: Leptos Cart boundary
 on:
   pull_request:
     paths:
+      - "apps/admin/src/app/auth_ssr.rs"
       - "apps/storefront/**"
       - "apps/next-frontend/tests/e2e/fly-leptos-*.spec.ts"
       - "apps/next-frontend/tests/e2e/fly-storefront-bridge.spec.ts"
@@ -56,8 +57,9 @@ jobs:
             "$@" >"$log" 2>&1 || status=$?
             if [ "$status" -ne 0 ]; then
               local diagnostics
-              diagnostics="$(grep -E '^(error|warning)(\[|:)|^ *--> ' -A 24 "$log" | head -c 16000 || true)"
-              if [ -z "$diagnostics" ]; then diagnostics="$(tail -c 6000 "$log")"; fi
+              # Test failure names and panic messages do not start with `error:`. Preserve
+              # the bounded tail so a failed assertion is visible without artifact access.
+              diagnostics="$(tail -c 16000 "$log")"
               diagnostics="$(printf '%s' "$diagnostics" | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
               echo "::error title=$label::$diagnostics"
               tail -n 180 "$log"
@@ -65,14 +67,19 @@ jobs:
             fi
             tail -n 12 "$log"
           }
-          # Test the shared client/core first; an unrelated SSR dependency must not hide these results.
-          run_checked modules-client cargo check --locked --lib -p rustok-cart-storefront -p rustok-product-storefront
-          run_checked auth-tests cargo test --locked --lib -p leptos-auth
-          run_checked cart-tests cargo test --locked --lib -p rustok-cart-storefront
-          run_checked product-tests cargo test --locked --lib -p rustok-product-storefront
+          # Collect independent client/core test failures before checking the unrelated SSR graph.
+          failed=0
+          run_checked modules-client cargo check --locked --lib -p rustok-cart-storefront -p rustok-product-storefront || failed=1
+          run_checked auth-tests cargo test --locked --lib -p leptos-auth || failed=1
+          run_checked auth-ssr-tests cargo test --locked --lib -p leptos-auth --features ssr || failed=1
+          run_checked product-tests cargo test --locked --lib -p rustok-product-storefront || failed=1
+          run_checked host-client-tests cargo test --locked --lib -p rustok-storefront --no-default-features --features product-buyer-island || failed=1
+          run_checked cart-tests cargo test --locked --lib -p rustok-cart-storefront || failed=1
+          if [ "$failed" -ne 0 ]; then exit "$failed"; fi
           run_checked modules-ssr cargo check --locked --lib -p rustok-cart-storefront -p rustok-product-storefront --features ssr
           run_checked admission-test cargo test --locked --lib -p rustok-commerce buyer_admission_checks_both_owners_and_the_selected_channel
           run_checked graphql-admission-test cargo test --locked -p rustok-commerce --test graphql_runtime_parity_test storefront_cart_admission_requires_both_owners_without_hiding_product_catalog
+          run_checked admin-auth-host-tests cargo test --locked --lib -p rustok-admin app::auth_ssr::tests
           run_checked host cargo check --locked --lib -p rustok-storefront
 
   wasm:
@@ -97,8 +104,7 @@ jobs:
           cargo check --locked --lib -p rustok-storefront --no-default-features \
             --features product-buyer-island --target wasm32-unknown-unknown >"$log" 2>&1 || status=$?
           if [ "$status" -ne 0 ]; then
-            diagnostics="$(grep -E '^(error|warning)(\[|:)|^ *--> ' -A 24 "$log" | head -c 16000 || true)"
-            if [ -z "$diagnostics" ]; then diagnostics="$(tail -c 6000 "$log")"; fi
+            diagnostics="$(tail -c 16000 "$log")"
             diagnostics="$(printf '%s' "$diagnostics" | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
             echo "::error title=cart-product-wasm::$diagnostics"
             tail -n 180 "$log"

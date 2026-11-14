@@ -13,7 +13,7 @@ Leptos authentication context, protected route wrappers, BFF cookie management, 
 ### Cookie and Session Helpers
 - `refresh_cookie_value(tenant: &str, refresh_token: &str) -> String`: Encodes refresh cookie value as `{tenant}.{refresh_token}`.
 - `parse_refresh_cookie_value(value: &str) -> Option<(&str, &str)>`: Parses cookie value into tenant and token components.
-- `extract_refresh_cookie(cookie_header: &str) -> Option<(String, String)>`: Extracts refresh credentials from HTTP Cookie headers.
+- `inspect_refresh_cookie_headers(headers) -> Result<Option<(String, String)>, RefreshCookieError>`: Inspects all Cookie headers; `Ok(None)` means absent, while malformed and duplicate credentials are errors.
 - `refresh_cookie_header(tenant: &str, refresh_token: &str, secure: bool) -> String`: Constructs standard `Set-Cookie` header.
 - `clear_refresh_cookie_header(secure: bool) -> String`: Constructs expired `Set-Cookie` header to invalidate session.
 - `session_id_from_access_token(token: &str) -> Option<String>`: Unverified payload parser extracting a session identifier; it is not authentication or a CSRF secret.
@@ -42,9 +42,10 @@ Leptos authentication context, protected route wrappers, BFF cookie management, 
 - **Tenant Context Preservation**: Tenant identity is strictly isolated and retained across session refreshes.
 
 ## 3. Error Handling & Edge Cases
-- Malformed cookies or tampered tokens fail closed returning `None` without panicking.
-- Network and token refresh failures cleanly update reactive `AuthError` signal.
-- Expired tokens seamlessly trigger refresh attempts prior to GraphQL transport queries.
+- Native refresh returns an explicit absence only when no BFF refresh cookie exists. Malformed, duplicate, foreign-tenant, rejected and transport-failed credentials leave the client scope unverified; the direct-cookie 401 does not distinguish absence from rejection.
+- `transport::refresh_session` returns `Result<Option<(AuthSession, AuthUser)>, AuthError>`; `None` is the explicit native absence, not a failed credential.
+- Native sign-out preserves the cookie if revocation cannot be confirmed. The raw logout endpoint rejects already-invalid tokens, so idempotent native cleanup and visible failure recovery still need verification.
+- Browser refresh failures and the mounted notification/lease behavior need integration verification; a failed transition is not a verified guest.
 
 ## 4. Security & Isolation Invariants
 - `HttpOnly; SameSite=Lax` cookie flags enforced in `refresh_cookie_header`.

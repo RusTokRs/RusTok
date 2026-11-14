@@ -149,7 +149,8 @@ fn persist_reference(path: &str, cart_id: Option<String>) -> bool {
         return false;
     };
     if current_path != path
-        || rustok_ui_core::decode_single_value_ui_query(search.trim_start_matches('?')).is_err()
+        || rustok_ui_core::decode_single_value_ui_query(search.strip_prefix('?').unwrap_or(&search))
+            .is_err()
     {
         return false;
     }
@@ -161,21 +162,14 @@ fn persist_reference(path: &str, cart_id: Option<String>) -> bool {
 }
 
 /// Product selection changes share the very same navigation fence as Cart reference writes.
-fn persist_selection(path: &str, href: &str) -> bool {
-    let Some(window) = web_sys::window() else {
-        return false;
-    };
-    let Ok(hash) = window.location().hash() else {
-        return false;
-    };
-    let (target_path, query) = href.split_once('?').unwrap_or((href, ""));
-    if target_path != path
-        || href.contains('#')
-        || rustok_ui_core::decode_single_value_ui_query(query).is_err()
-    {
-        return false;
-    }
-    navigation_call("replace", Some(&format!("{href}{hash}")))
+/// Return the actual URL so Product links do not reuse a stale Cart/host query snapshot.
+fn persist_selection(path: &str, href: &str) -> Option<String> {
+    let location = web_sys::window()?.location();
+    let search = location.search().ok()?;
+    let hash = location.hash().ok()?;
+    let target = crate::cart_buyer_route::selection_target(path, href, &search)?;
+    let target = format!("{target}{hash}");
+    navigation_call("replace", Some(&target)).then_some(target)
 }
 
 fn mark_product_error(root: &web_sys::HtmlElement) {
@@ -224,8 +218,9 @@ pub(crate) fn start() -> Result<(), JsValue> {
         .filter(|value| !value.is_empty());
     let path = window.location().pathname()?;
     let query = window.location().search()?;
-    let query = rustok_ui_core::decode_single_value_ui_query(query.trim_start_matches('?'))
-        .map_err(|_| error("Storefront route is ambiguous"))?;
+    let query =
+        rustok_ui_core::decode_single_value_ui_query(query.strip_prefix('?').unwrap_or(&query))
+            .map_err(|_| error("Storefront route is ambiguous"))?;
     let cart_id = query.get("cart_id").cloned();
     let projection = module_projection().unwrap_or_default();
     let root = header.clone().unwrap_or_else(|| host.clone());
@@ -269,9 +264,14 @@ pub(crate) fn start() -> Result<(), JsValue> {
             capability.fail_closed();
         }
         let path = StoredValue::new(path);
-        let persist = Callback::new(move |id| persist_reference(&path.get_value(), id));
-        let persist_selection =
-            Callback::new(move |href: String| persist_selection(&path.get_value(), &href));
+        let persist = Callback::new(move |id| {
+            path.try_get_value()
+                .is_some_and(|path| persist_reference(&path, id))
+        });
+        let persist_selection = Callback::new(move |href: String| {
+            path.try_get_value()
+                .and_then(|path| persist_selection(&path, &href))
+        });
         let expected_query = StoredValue::new(query);
         let product_cleanup = StoredValue::new_local(None::<Box<dyn FnOnce()>>);
         on_cleanup(move || {
@@ -288,10 +288,15 @@ pub(crate) fn start() -> Result<(), JsValue> {
                 .try_with_value(|(_, _, product)| product.clone())
                 .flatten()
             {
+                let (Some(tenant), Some(query)) =
+                    (buyer_tenant.try_get_value(), expected_query.try_get_value())
+                else {
+                    return;
+                };
                 match rustok_product_storefront::mount_product_buyer(
                     root.clone(),
-                    &buyer_tenant.get_value(),
-                    &expected_query.get_value(),
+                    &tenant,
+                    &query,
                     cart,
                 ) {
                     Ok(cleanup) => product_cleanup.set_value(Some(cleanup)),
@@ -300,7 +305,7 @@ pub(crate) fn start() -> Result<(), JsValue> {
             }
         });
         view! {
-            <leptos_auth::AuthProvider tenant_slug=Some(tenant.clone())>
+            <leptos_auth::AuthProvider tenant_slug=tenant.clone()>
                 <rustok_cart_storefront::CartClient cart_id locale tenant_slug=tenant
                     capability persist_reference=persist persist_selection on_ready show_header />
             </leptos_auth::AuthProvider>

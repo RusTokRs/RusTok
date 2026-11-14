@@ -20,10 +20,12 @@ impl DrawerVisibility {
         }
     }
 
-    pub fn set(self, next: bool) {
-        let previous = self.open.get_untracked();
+    pub fn set(self, next: bool) -> bool {
+        let Some(previous) = self.open.try_get_untracked() else {
+            return false;
+        };
         if previous == next {
-            return;
+            return true;
         }
         #[cfg(target_arch = "wasm32")]
         if next {
@@ -32,9 +34,13 @@ impl DrawerVisibility {
                 .and_then(|window| window.document())
                 .and_then(|document| document.active_element())
                 .and_then(|element| element.dyn_into::<web_sys::HtmlElement>().ok());
-            self.focus_origin.set_value(active);
+            if self.focus_origin.try_set_value(active).is_some() {
+                return false;
+            }
         }
-        self.open.set(next);
+        if self.open.try_update(|open| *open = next).is_none() {
+            return false;
+        }
         #[cfg(target_arch = "wasm32")]
         if !next {
             let target = self
@@ -45,10 +51,13 @@ impl DrawerVisibility {
                 let _ = target.focus();
             }
         }
+        true
     }
 
-    pub fn toggle(self) {
-        self.set(!self.open.get_untracked());
+    pub fn toggle(self) -> bool {
+        self.open
+            .try_get_untracked()
+            .is_some_and(|previous| self.set(!previous))
     }
 }
 
@@ -142,25 +151,28 @@ pub(super) fn install(
                 listeners.push(Listener::new(&window, name, move |event| {
                     if !event.cancelable()
                         || event.default_prevented()
-                        || !controller.context_ready()
+                        || !controller.context_ready_untracked()
                     {
                         return;
                     }
-                    match name {
+                    let handled = match name {
                         "rustok:cart:open" => drawer.set(true),
                         "rustok:cart:close" => drawer.set(false),
                         "rustok:cart:toggle" => drawer.toggle(),
-                        _ => return,
+                        _ => false,
+                    };
+                    // A synchronous focus/event callback can dispose or invalidate the owner.
+                    // Acknowledge only if it is still current after accepting the request.
+                    if handled && controller.context_ready_untracked() {
+                        event.prevent_default();
                     }
-                    // The request is acknowledged only after this mounted owner accepts it.
-                    event.prevent_default();
                 })?);
             }
             listeners.push(Listener::new(
                 &window,
                 "rustok:cart:request-count",
                 move |_| {
-                    publish_count(controller.confirmed_item_count());
+                    publish_count(controller.confirmed_item_count_untracked());
                 },
             )?);
             listeners.push(Listener::new(
@@ -217,7 +229,9 @@ pub(super) fn install(
         }
         let listeners = StoredValue::new_local(Some(listeners));
         on_cleanup(move || {
-            listeners.set_value(None);
+            // Detach consumers before publishing the final unknown observation. Publishing is
+            // synchronous and can itself trigger another owner cleanup.
+            drop(listeners.try_update_value(Option::take));
             publish_count(None);
         });
         Effect::new(move |_| {

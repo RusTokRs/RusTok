@@ -34,7 +34,9 @@
 - The client is included only with built Product buyer assets and a request CSP nonce. Without
   it, the SSR Cart trigger remains disabled and landing controls must report unavailable. A
   stopped or externally navigated owner does not remount in the same document; reload is required,
-  and reload itself does not prove cancellation of an earlier transmitted request.
+  and reload itself does not prove cancellation of an earlier transmitted request. Product selection
+  writes preserve current host-owned query values and return the effective URL; a changed product
+  handle or ambiguous query is refused rather than merged with a stale Product snapshot.
 - Home and module SSR pass the request nonce to trusted module styles/scripts, including a Pages
   landing rendered in a home slot; nonce-bearing HTML responses are `private, no-store`. Canonical
   Pages compositions with a nonce cannot return a cached ETag/304. The new host response and

@@ -37,7 +37,10 @@ Remaining release work, with owners:
    runtime certification. Obtain locked native and actual-feature WASM builds, owner admission
    and real mounted capability, tenant, auth, in-flight create/add, disposal and navigation tests.
    Verify guest cookie restoration and cross-provider/tab races explicitly; a local hint, browser
-   event or document lease cannot cancel an already-sent operation.
+   event or document lease cannot cancel an already-sent operation. The guest Cart adapter emits
+   a plaintext capability header and its cookie currently lacks `Secure`; establish the intended
+   client/HTTPS policy before rollout. Direct-cookie refresh conflates absent and rejected
+   credentials, and native invalid-token logout/user-visible failure recovery also remains open.
 2. **Verify actual hosts, SSR and CSP** (Page Builder storefront + both hosts). Compile and run
    the new Leptos SSR/nonce and canonical Pages response tests in the real workspace, including
    default platform i18n and consumer builds. Test Leptos mounted hydration and navigation, both
@@ -60,12 +63,17 @@ Remaining release work, with owners:
    action. An author must replace the sample and configure the explicit handoff; neither bridge
    selects a SKU, fabricates a price or bypasses Product confirmation.
 
-Latest bounded Cart-boundary evidence: standalone `ClientAuthScope` 4/4 and Cart capability
-2/2 passed; the navigation guard's Node tests passed 4/4. Chromium passed 14/14 targeted shipped
-bridge, late-count handshake, navigation and enforced-CSP simulation tests. Those browser tests
-use simulated owners/HTML, not mounted WASM or real services. UI i18n parity (77 catalogs), the
-i18n contract and Cart/Product source-boundary guards passed. Locked workspace tests, the new
-same-document auth lease, cookie propagation and the live host remain unverified.
+Latest bounded Cart-boundary evidence: standalone `ClientAuthScope` 4/4, Cart capability 2/2,
+Cart operation fence 2/2 and an extracted Auth cookie-classification harness 3/3 passed; the
+navigation guard's Node tests passed 4/4. Chromium passed 14/14 targeted shipped bridge, late-count
+handshake, navigation and enforced-CSP simulation tests. Those tests use simulated owners/HTML,
+not mounted WASM or real services. UI i18n parity (77 catalogs), the i18n contract and
+Cart/Product source-boundary guards passed. Locked CI [43569585310](https://github.com/RusTokRs/RusTok/actions/runs/43569585310)
+for `23f9a7d` reached the Cart tests after the native client check and default Auth tests, but the
+Cart test step failed without accessible assertion details. The WASM host check failed on an
+`AuthProvider` prop type; that source is corrected in the subsequent work, not yet certified.
+The new same-document auth lease, selection/recovery fences, cookie propagation, SSR/admission
+and live host remain unverified.
 
 Evidence in this continuation: isolated tests using the real Fly and platform i18n sources passed
 Fly 356/356 with default platform i18n and 353/353 without it, `fly-browser` 39/39, `fly-ui` 81/81,

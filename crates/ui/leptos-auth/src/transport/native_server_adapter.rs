@@ -74,12 +74,19 @@ fn clear_refresh_cookie(headers: &axum::http::HeaderMap) -> Result<(), ServerFnE
 }
 
 #[cfg(feature = "ssr")]
-fn refresh_cookie_from(headers: &axum::http::HeaderMap) -> Option<(String, String)> {
-    headers
-        .get(axum::http::header::COOKIE)?
-        .to_str()
-        .ok()
-        .and_then(crate::extract_refresh_cookie)
+fn refresh_cookie_from(
+    headers: &axum::http::HeaderMap,
+) -> Result<Option<(String, String)>, ServerFnError> {
+    let mut values = Vec::new();
+    for value in headers.get_all(axum::http::header::COOKIE).iter() {
+        values.push(
+            value
+                .to_str()
+                .map_err(|_| ServerFnError::new("Invalid authentication cookie"))?,
+        );
+    }
+    crate::cookie::inspect_refresh_cookie_headers(values)
+        .map_err(|_| ServerFnError::new("Invalid authentication cookie"))
 }
 
 /// Exchange a refresh token directly against the API from trusted
@@ -177,12 +184,13 @@ pub(super) async fn sign_out_native(tenant: String) -> Result<(), ServerFnError>
     #[cfg(feature = "ssr")]
     {
         let headers = request_headers().await?;
-        // Best-effort server-side revocation; the cookie is cleared
-        // either way so the browser always ends up logged out.
-        if let Some((cookie_tenant, refresh_token)) = refresh_cookie_from(&headers)
-            && cookie_tenant == tenant
-        {
-            let _result: Result<RestStatusResponse, ServerFnError> = auth_rest_post(
+        // Do not report logout or clear a different tenant's cookie. If revocation fails,
+        // preserve the cookie for recovery and leave the caller's scope unverified.
+        if let Some((cookie_tenant, refresh_token)) = refresh_cookie_from(&headers)? {
+            if cookie_tenant != tenant {
+                return Err(ServerFnError::new("Authentication tenant mismatch"));
+            }
+            let _: RestStatusResponse = auth_rest_post(
                 "/api/auth/logout",
                 &json!({
                     "refresh_token": refresh_token,
@@ -190,7 +198,7 @@ pub(super) async fn sign_out_native(tenant: String) -> Result<(), ServerFnError>
                 None,
                 Some(tenant),
             )
-            .await;
+            .await?;
         }
         clear_refresh_cookie(&headers)?;
         Ok(())
@@ -207,20 +215,22 @@ pub(super) async fn sign_out_native(tenant: String) -> Result<(), ServerFnError>
 #[server(prefix = "/api/fn", endpoint = "auth/refresh-token")]
 pub(super) async fn refresh_token_native(
     tenant: String,
-) -> Result<NativeAuthPayload, ServerFnError> {
+) -> Result<Option<NativeAuthPayload>, ServerFnError> {
     #[cfg(feature = "ssr")]
     {
         let headers = request_headers().await?;
-        let (cookie_tenant, refresh_token) =
-            refresh_cookie_from(&headers).ok_or_else(|| ServerFnError::new("Unauthorized"))?;
+        let Some((cookie_tenant, refresh_token)) = refresh_cookie_from(&headers)? else {
+            // Only an explicitly absent cookie is evidence of a guest. Invalid, duplicate,
+            // foreign, expired or revoked cookies all follow an error path instead.
+            return Ok(None);
+        };
         if cookie_tenant != tenant {
-            // An existing foreign-tenant cookie is not evidence of an anonymous session.
             return Err(ServerFnError::new("Authentication tenant mismatch"));
         }
 
         let (payload, rotated) = exchange_refresh_token_ssr(refresh_token, tenant.clone()).await?;
         persist_refresh_cookie(&headers, &tenant, &rotated)?;
-        Ok(payload)
+        Ok(Some(payload))
     }
     #[cfg(not(feature = "ssr"))]
     {
@@ -413,4 +423,40 @@ async fn rest_error_message(response: reqwest::Response) -> String {
     }
 
     trimmed.to_string()
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::refresh_cookie_from;
+    use axum::http::{HeaderMap, HeaderValue, header::COOKIE};
+
+    #[test]
+    fn native_refresh_distinguishes_absence_from_invalid_and_duplicate_cookies() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(refresh_cookie_from(&headers).unwrap(), None);
+        headers.append(COOKIE, HeaderValue::from_static("other=value"));
+        assert_eq!(refresh_cookie_from(&headers).unwrap(), None);
+        headers.append(
+            COOKIE,
+            HeaderValue::from_static("rustok-admin-refresh-v1=shop.token"),
+        );
+        assert_eq!(
+            refresh_cookie_from(&headers).unwrap(),
+            Some(("shop".into(), "token".into()))
+        );
+        headers.append(
+            COOKIE,
+            HeaderValue::from_static("rustok-admin-refresh-v1=shop.token"),
+        );
+        assert!(refresh_cookie_from(&headers).is_err());
+
+        let mut malformed = HeaderMap::new();
+        malformed.insert(
+            COOKIE,
+            HeaderValue::from_static("rustok-admin-refresh-v1=not-a-token"),
+        );
+        assert!(refresh_cookie_from(&malformed).is_err());
+        malformed.insert(COOKIE, HeaderValue::from_bytes(&[0xff]).unwrap());
+        assert!(refresh_cookie_from(&malformed).is_err());
+    }
 }

@@ -84,7 +84,15 @@ impl ScopeTransition {
     }
 
     fn complete(mut self, verified: bool) -> bool {
+        if !self.is_current() {
+            return false;
+        }
         let announced = notify_scope_change(&self.source, self.identity_change);
+        // Dispatch is synchronous: a listener can dispose the owner or invalidate the lease.
+        // Drop then poisons the old lease rather than verifying a different scope.
+        if !self.is_current() {
+            return false;
+        }
         let released = self.realm.take().is_some_and(|realm| realm.release());
         self.completed = true;
         let updated = self
@@ -152,12 +160,16 @@ impl AuthContext {
 
     /// Tracked, credential-free scope stamp. Consumers must still authorize server-side.
     pub fn client_scope(&self) -> ClientAuthScope {
-        self.scope.get()
+        self.scope
+            .try_get()
+            .unwrap_or_else(|| ClientAuthScope::new(false))
     }
 
     /// Untracked version for checking an asynchronous operation before publishing its result.
     pub fn client_scope_untracked(&self) -> ClientAuthScope {
-        self.scope.get_untracked()
+        self.scope
+            .try_get_untracked()
+            .unwrap_or_else(|| ClientAuthScope::new(false))
     }
 
     pub fn scope_source(&self) -> &str {
@@ -165,8 +177,10 @@ impl AuthContext {
     }
 
     fn begin_scope_transition(&self, identity_change: bool) -> Result<ScopeTransition, AuthError> {
-        let mut started = false;
-        self.scope.update(|scope| started = scope.begin());
+        let started = self
+            .scope
+            .try_update(ClientAuthScope::begin)
+            .ok_or(AuthError::Network)?;
         if !started {
             return Err(AuthError::Http(409));
         }
@@ -176,14 +190,27 @@ impl AuthContext {
         let realm = match crate::realm::RealmTransition::acquire(&self.source) {
             Ok(realm) => realm,
             Err(error) => {
-                self.scope.update(|scope| scope.finish(false));
+                let _ = self.scope.try_update(|scope| {
+                    if *scope == started_scope {
+                        scope.finish(false);
+                    } else {
+                        scope.abandon();
+                    }
+                });
                 return Err(error);
             }
         };
         if !notify_scope_change(&self.source, identity_change) {
-            // No request has started. Release this lease but leave the provider unverified.
+            // No request has started. A listener may have disposed or changed the scope.
+            // Release only this lease and never finish a different transition.
             let _ = realm.release();
-            self.scope.update(|scope| scope.finish(false));
+            let _ = self.scope.try_update(|scope| {
+                if *scope == started_scope {
+                    scope.finish(false);
+                } else {
+                    scope.abandon();
+                }
+            });
             return Err(AuthError::Network);
         }
         Ok(ScopeTransition {
@@ -321,14 +348,16 @@ impl AuthContext {
 
     pub fn is_token_expired(&self) -> bool {
         self.session
-            .get()
+            .try_get()
+            .flatten()
             .map(|s| s.is_expired(now_unix_secs()))
             .unwrap_or(true)
     }
 
     pub fn secs_until_expiry(&self) -> i64 {
         self.session
-            .get()
+            .try_get()
+            .flatten()
             .map(|s| s.secs_until_expiry(now_unix_secs()))
             .unwrap_or(0)
     }
@@ -361,12 +390,23 @@ impl AuthContext {
             return Err(AuthError::Network);
         }
         let (new_session, new_user) = match result {
-            Ok(value) => value,
+            Ok(Some(value)) => value,
+            Ok(None) => {
+                // An absent native-host cookie establishes guest only when no in-memory
+                // identity was already present. A 401 or malformed cookie is not absence.
+                let guest = previous_session.is_none();
+                return if transition.complete(guest) {
+                    Err(AuthError::Unauthorized)
+                } else {
+                    Err(AuthError::Network)
+                };
+            }
             Err(error) => {
-                // Only a definite absent cookie without a previous session establishes guest.
-                let guest = previous_session.is_none() && matches!(&error, AuthError::Unauthorized);
-                transition.complete(guest);
-                return Err(error);
+                return if transition.complete(false) {
+                    Err(error)
+                } else {
+                    Err(AuthError::Network)
+                };
             }
         };
         let _ = storage::save_session(&new_session);
@@ -428,15 +468,17 @@ impl AuthContext {
     }
 
     pub fn is_authenticated(&self) -> bool {
-        self.user.get().is_some() && self.session.get().is_some() && !self.is_token_expired()
+        self.user.try_get().flatten().is_some()
+            && self.session.try_get().flatten().is_some()
+            && !self.is_token_expired()
     }
 
     pub fn get_token(&self) -> Option<String> {
-        self.session.get().map(|s| s.token)
+        self.session.try_get().flatten().map(|s| s.token)
     }
 
     pub fn get_tenant(&self) -> Option<String> {
-        self.session.get().map(|s| s.tenant)
+        self.session.try_get().flatten().map(|s| s.tenant)
     }
 }
 
@@ -503,4 +545,40 @@ pub fn AuthProvider(
     }
 
     children()
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invalidated_transition_cannot_verify_a_different_scope() {
+        let owner = Owner::new();
+        owner.with(|| {
+            let auth = AuthContext::new();
+            let transition = auth.begin_scope_transition(false).unwrap();
+            auth.scope.update(|scope| scope.set_verified(false));
+            assert!(!transition.complete(true));
+            assert_eq!(auth.client_scope().generation, u64::MAX);
+            assert!(!auth.client_scope().is_ready());
+            assert!(auth.begin_scope_transition(false).is_err());
+        });
+    }
+
+    #[test]
+    fn disposed_provider_never_verifies_a_late_transition() {
+        let owner = Owner::new();
+        let (auth, transition) = owner.with(|| {
+            let auth = AuthContext::new();
+            let transition = auth.begin_scope_transition(false).unwrap();
+            (auth, transition)
+        });
+        owner.cleanup();
+        assert!(!transition.complete(true));
+        assert!(!auth.client_scope().is_ready());
+        assert!(!auth.client_scope_untracked().is_ready());
+        assert_eq!(auth.get_token(), None);
+        assert!(auth.is_token_expired());
+        assert!(auth.begin_scope_transition(false).is_err());
+    }
 }

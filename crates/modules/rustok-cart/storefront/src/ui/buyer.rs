@@ -8,7 +8,8 @@ use rustok_pricing_storefront::PricingResolutionContext;
 
 use crate::core::{
     BuyerCartCheckpoint, BuyerCartError, BuyerCartLineAction, BuyerCartLinePlan, BuyerCartPhase,
-    BuyerCartPlan, BuyerCartSession, CartCapabilityState, CartFetchRequest, buyer_cart_storage_key,
+    BuyerCartPlan, BuyerCartSession, CartCapabilityState, CartFetchRequest, CartOperationState,
+    buyer_cart_storage_key,
 };
 #[cfg(target_arch = "wasm32")]
 use crate::core::{legacy_buyer_cart_storage_key, legacy_buyer_cart_storage_prefix};
@@ -36,14 +37,20 @@ impl CartCapability {
 
     /// Call for every new host policy snapshot, including same-value replacements.
     pub fn replace(&self, enabled: bool) {
-        self.state.update(|state| state.replace(enabled));
-        crate::ui::bridge::publish_count(None);
+        if self
+            .state
+            .try_update(|state| state.replace(enabled))
+            .is_some()
+        {
+            crate::ui::bridge::publish_count(None);
+        }
     }
 
     /// Listener/host setup failure cannot be repaired by a later optimistic policy update.
     pub fn fail_closed(&self) {
-        self.state.update(|state| state.fail_closed());
-        crate::ui::bridge::publish_count(None);
+        if self.state.try_update(|state| state.fail_closed()).is_some() {
+            crate::ui::bridge::publish_count(None);
+        }
     }
 
     /// The host snapshot and route can remain valid even when Cart itself is disabled.
@@ -53,7 +60,10 @@ impl CartCapability {
     }
 
     pub fn get(&self) -> CartCapabilityState {
-        let mut state = self.state.get();
+        let mut state = self.state.try_get().unwrap_or(CartCapabilityState {
+            enabled: false,
+            generation: u64::MAX,
+        });
         state.enabled &= self.host_current();
         state
     }
@@ -198,11 +208,37 @@ fn save_browser_checkpoint(
     }
 }
 
+/// A dropped future is not evidence that its request was cancelled. Preserve the lock so
+/// this owner cannot issue another write until the page is reloaded and recovery is explicit.
+struct CartOperationGuard {
+    state: RwSignal<CartOperationState>,
+    id: u64,
+    finished: bool,
+}
+
+impl CartOperationGuard {
+    fn finish(mut self) -> bool {
+        let finished = self.state.try_update(|state| state.finish(self.id)) == Some(true);
+        self.finished = finished;
+        finished
+    }
+}
+
+impl Drop for CartOperationGuard {
+    fn drop(&mut self) {
+        if !self.finished {
+            let _ = self.state.try_update(|state| state.abandon(self.id));
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct BuyerCartController {
     pub session: Signal<BuyerCartSession>,
     state: RwSignal<BuyerCartSession>,
-    pub busy: RwSignal<bool>,
+    /// Read-only projection; only the current operation guard can release the lock.
+    pub busy: Signal<bool>,
+    operation: RwSignal<CartOperationState>,
     /// Changes before a restore starts, invalidating earlier Product observations immediately.
     pub generation: RwSignal<u64>,
     reference: RwSignal<Option<String>>,
@@ -220,7 +256,7 @@ pub struct BuyerCartController {
     /// Failed persistence retains the confirmed original-scope ID in memory, but never enables IO.
     volatile: StoredValue<BTreeMap<String, BuyerCartCheckpoint>>,
     persist_reference: Callback<Option<String>, bool>,
-    persist_selection: Callback<String, bool>,
+    persist_selection: Callback<String, Option<String>>,
 }
 
 impl BuyerCartController {
@@ -228,27 +264,50 @@ impl BuyerCartController {
         if !self.context_ready() {
             return None;
         }
-        self.reference.get()
+        self.reference.try_get().flatten()
     }
     pub fn context_ready(&self) -> bool {
-        !self.auth_loading.get()
-            && !self.auth_refused.get()
+        let Some(scope) = self.scope.try_get() else {
+            return false;
+        };
+        self.auth_loading.try_get() == Some(false)
+            && self.auth_refused.try_get() == Some(false)
             && self.capability.get().enabled
-            && self.generation.get() < u64::MAX
-            && self.bound_scope.get().as_ref() == Some(&self.scope.get())
-            && self.current(&self.scope.get())
+            && self
+                .generation
+                .try_get()
+                .is_some_and(|generation| generation < u64::MAX)
+            && self.bound_scope.try_get().flatten().as_ref() == Some(&scope)
+            && self.current(&scope)
     }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn context_ready_untracked(&self) -> bool {
+        let Some(scope) = self.scope.try_get_untracked() else {
+            return false;
+        };
+        self.generation
+            .try_get_untracked()
+            .is_some_and(|generation| self.current_generation(&scope, generation))
+    }
+
     /// Product catalog quotes do not depend on Cart being enabled. They still use the
     /// verified tenant, auth and host route and are fenced by the Cart/auth generations.
     pub fn quote_context_ready(&self) -> bool {
-        let scope = self.scope.get();
-        !self.auth_loading.get()
-            && !self.auth_refused.get()
-            && self.generation.get() < u64::MAX
+        let Some(scope) = self.scope.try_get() else {
+            return false;
+        };
+        self.auth_loading.try_get() == Some(false)
+            && self.auth_refused.try_get() == Some(false)
+            && self.external_auth_changed.try_get() == Some(false)
+            && self
+                .generation
+                .try_get()
+                .is_some_and(|generation| generation < u64::MAX)
             && self.capability.get().generation < u64::MAX
             && self.capability.host_current()
             && scope.auth.is_ready()
-            && self.auth_scope.get() == scope.auth
+            && self.auth_scope.try_get() == Some(scope.auth)
             && (!cfg!(target_arch = "wasm32") || scope.page_path.is_some())
             && browser_path() == scope.page_path
             && leptos_auth::storage::get_token() == scope.token
@@ -277,9 +336,21 @@ impl BuyerCartController {
             && leptos_auth::storage::matches_request_tenant(&scope.tenant)
     }
 
-    /// The host owns history writes, including selection-only changes.
-    pub fn persist_selection(&self, href: String) -> bool {
-        self.context_ready() && self.persist_selection.run(href)
+    /// The host owns history writes, including selection-only changes. Its returned URL
+    /// includes current host/Cart selectors rather than stale values from the Product snapshot.
+    pub fn persist_selection(&self, href: String) -> Option<String> {
+        if !self.quote_context_ready() {
+            return None;
+        }
+        let scope = self.scope.try_get()?;
+        let capability = self.capability.get();
+        let generation = self.generation.try_get()?;
+        let target = self.persist_selection.try_run(href).flatten()?;
+        (self.quote_context_ready()
+            && self.scope.try_get().as_ref() == Some(&scope)
+            && self.capability.get() == capability
+            && self.generation.try_get() == Some(generation))
+        .then_some(target)
     }
 
     /// Separate synchronous generations also fence A → B → A before an effect is polled.
@@ -287,35 +358,53 @@ impl BuyerCartController {
         self.capability.get().generation
     }
     pub fn auth_generation(&self) -> u64 {
-        self.auth_scope.get().generation
+        self.auth_scope
+            .try_get()
+            .map_or(u64::MAX, |scope| scope.generation)
     }
     pub fn confirmed_item_count(&self) -> Option<u64> {
-        if self.busy.get() || !self.context_ready() {
+        if self.busy.try_get() != Some(false) || !self.context_ready() {
             None
         } else {
-            self.session.get().confirmed_item_count()
+            self.session.try_get()?.confirmed_item_count()
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn confirmed_item_count_untracked(&self) -> Option<u64> {
+        if self.busy.try_get_untracked() != Some(false) || !self.context_ready_untracked() {
+            None
+        } else {
+            self.session.try_get_untracked()?.confirmed_item_count()
         }
     }
     /// Other browser providers/tabs may have changed an HttpOnly session we cannot inspect.
     /// Refuse until a full reload restores the canonical session; no credentials are broadcast.
     pub fn invalidate_external_auth(&self) {
         // Fence Product observations synchronously, before any reactive restore effect runs.
-        self.generation
-            .update(|generation| *generation = generation.saturating_add(1));
-        self.external_auth_changed.set(true);
+        let _ = self
+            .generation
+            .try_update(|generation| *generation = generation.saturating_add(1));
+        let _ = self.external_auth_changed.try_set(true);
     }
     #[cfg(target_arch = "wasm32")]
     pub(super) fn matches_checkpoint_key(&self, key: &str) -> bool {
-        let scope = self.scope.get_untracked();
+        let Some(scope) = self.scope.try_get_untracked() else {
+            return true;
+        };
         checkpoint_key(&scope).is_ok_and(|current| current == key)
             || legacy_buyer_cart_storage_prefix(&scope.tenant)
                 .is_ok_and(|prefix| key.starts_with(&prefix))
     }
     pub fn can_write(&self) -> bool {
-        !self.busy.get() && self.context_ready() && self.state.get().permits_write()
+        self.busy.try_get() == Some(false)
+            && self.context_ready()
+            && self
+                .state
+                .try_get()
+                .is_some_and(|session| session.permits_write())
     }
     pub fn can_reset(&self) -> bool {
-        !self.busy.get() && self.context_ready()
+        self.busy.try_get() == Some(false) && self.context_ready()
     }
     fn current(&self, scope: &ClientScope) -> bool {
         self.auth_loading.try_get_untracked() == Some(false)
@@ -337,11 +426,54 @@ impl BuyerCartController {
             && self.generation.try_get_untracked() == Some(generation)
             && self.current(scope)
     }
+    /// Reserve before any synchronous browser event. Recovery is allowed in failed phases,
+    /// but it shares the same lock as writes so callbacks cannot reenter either operation.
+    fn begin_operation(
+        &self,
+        require_write: bool,
+    ) -> Option<(ClientScope, u64, CartOperationGuard)> {
+        if self.busy.try_get_untracked() != Some(false) {
+            return None;
+        }
+        let scope = self.scope.try_get_untracked()?;
+        let generation = self.generation.try_get_untracked()?;
+        let allowed = || {
+            (!require_write
+                || self
+                    .state
+                    .try_get_untracked()
+                    .is_some_and(|session| session.permits_write()))
+                && self.current_generation(&scope, generation)
+        };
+        if !allowed() {
+            return None;
+        }
+        let id = self.operation.try_update(CartOperationState::begin)??;
+        let guard = CartOperationGuard {
+            state: self.operation,
+            id,
+            finished: false,
+        };
+        if !allowed() {
+            guard.finish();
+            return None;
+        }
+        Some((scope, generation, guard))
+    }
+    fn finish_and_retry(&self, guard: CartOperationGuard) {
+        if guard.finish() {
+            // Releasing the guard notifies observers; its owner may already be gone.
+            let _ = self
+                .retry
+                .try_update(|retry| *retry = retry.saturating_add(1));
+        }
+    }
     fn checkpoint(&self, scope: &ClientScope) -> Result<BuyerCartCheckpoint, BuyerCartError> {
         let key = checkpoint_key(scope)?;
         if let Some(checkpoint) = self
             .volatile
-            .with_value(|entries| entries.get(&key).cloned())
+            .try_with_value(|entries| entries.get(&key).cloned())
+            .ok_or(BuyerCartError::Restore)?
         {
             return Ok(checkpoint);
         }
@@ -353,56 +485,95 @@ impl BuyerCartController {
         checkpoint: BuyerCartCheckpoint,
     ) -> Result<(), BuyerCartError> {
         let key = checkpoint_key(scope)?;
-        self.volatile.update_value(|entries| {
-            entries.insert(key.clone(), checkpoint.clone());
-        });
+        self.volatile
+            .try_update_value(|entries| {
+                entries.insert(key.clone(), checkpoint.clone());
+            })
+            .ok_or(BuyerCartError::Restore)?;
         save_browser_checkpoint(scope, &checkpoint)?;
-        self.volatile.update_value(|entries| {
-            entries.remove(&key);
-        });
+        self.volatile
+            .try_update_value(|entries| {
+                entries.remove(&key);
+            })
+            .ok_or(BuyerCartError::Restore)?;
         Ok(())
     }
     /// Owner read only, never a repeat of an unconfirmed mutation.
     pub fn inspect(&self) {
-        if self.can_reset() && self.state.get_untracked().can_inspect() {
-            let id = self.state.get_untracked().cart_id;
-            crate::ui::bridge::publish_count(None);
-            self.inspection_scope.set(Some(self.scope.get_untracked()));
-            self.state.set(BuyerCartSession::restoring(id));
-            self.bound_scope.set(None);
-            self.generation
-                .update(|generation| *generation = generation.saturating_add(1));
-            self.retry.update(|retry| *retry = retry.saturating_add(1));
+        let Some((scope, generation, guard)) = self.begin_operation(false) else {
+            return;
+        };
+        let Some(session) = self.state.try_get_untracked() else {
+            guard.finish();
+            return;
+        };
+        if !session.can_inspect() {
+            guard.finish();
+            return;
         }
+        crate::ui::bridge::publish_count(None);
+        if !self.current_generation(&scope, generation) {
+            self.finish_and_retry(guard);
+            return;
+        }
+        let _ = self.inspection_scope.try_set(Some(scope));
+        let _ = self
+            .state
+            .try_set(BuyerCartSession::restoring(session.cart_id));
+        let _ = self.bound_scope.try_set(None);
+        let _ = self
+            .generation
+            .try_update(|generation| *generation = generation.saturating_add(1));
+        // The restore effect must run after this synchronous recovery reservation is released.
+        self.finish_and_retry(guard);
     }
     /// Explicit local reset does not delete a Cart or cancel an operation whose outcome is unknown.
     pub fn reset_reference(&self) {
-        if !self.can_reset() {
+        let Some((scope, generation, guard)) = self.begin_operation(false) else {
             return;
-        }
-        let scope = self.scope.get_untracked();
+        };
         if self
             .save_checkpoint(&scope, BuyerCartCheckpoint::default())
             .is_err()
         {
-            self.state
-                .update(|session| session.fail(BuyerCartError::Restore));
+            if self.current_generation(&scope, generation) {
+                let _ = self
+                    .state
+                    .try_update(|session| session.fail(BuyerCartError::Restore));
+            }
+            guard.finish();
             return;
         }
-        if !self.persist_reference.run(None) {
-            self.state
-                .update(|session| session.fail(BuyerCartError::Restore));
+        if !self.current_generation(&scope, generation) {
+            self.finish_and_retry(guard);
+            return;
+        }
+        let persisted = self.persist_reference.try_run(None) == Some(true);
+        if !self.current_generation(&scope, generation) {
+            self.finish_and_retry(guard);
+            return;
+        }
+        if !persisted {
+            let _ = self
+                .state
+                .try_update(|session| session.fail(BuyerCartError::Restore));
+            guard.finish();
             return;
         }
         crate::ui::bridge::publish_count(None);
-        self.initialized.set_value(true);
-        self.inspection_scope.set(None);
-        self.reference.set(None);
-        self.state.set(BuyerCartSession::restoring(None));
-        self.bound_scope.set(None);
-        self.generation
-            .update(|generation| *generation = generation.saturating_add(1));
-        self.retry.update(|retry| *retry = retry.saturating_add(1));
+        if !self.current_generation(&scope, generation) {
+            self.finish_and_retry(guard);
+            return;
+        }
+        let _ = self.initialized.try_set_value(true);
+        let _ = self.inspection_scope.try_set(None);
+        let _ = self.reference.try_set(None);
+        let _ = self.state.try_set(BuyerCartSession::restoring(None));
+        let _ = self.bound_scope.try_set(None);
+        let _ = self
+            .generation
+            .try_update(|generation| *generation = generation.saturating_add(1));
+        self.finish_and_retry(guard);
     }
     pub async fn add_variant(
         &self,
@@ -410,62 +581,61 @@ impl BuyerCartController {
         context: PricingResolutionContext,
         locale: Option<String>,
     ) -> bool {
-        if !self.can_write() {
+        let Some((scope, generation, guard)) = self.begin_operation(true) else {
             return false;
-        }
-        let scope = self.scope.get_untracked();
-        let generation = self.generation.get_untracked();
-        match self.checkpoint(&scope) {
-            Ok(checkpoint) if checkpoint.mutation_pending => {
-                self.state
-                    .update(|session| session.fail(BuyerCartError::Unconfirmed));
-                return false;
-            }
-            Err(error) => {
-                self.state.update(|session| session.fail(error));
-                return false;
-            }
-            Ok(_) => {}
-        }
-        let plan = match self.state.get_untracked().plan_add(
-            variant_id.clone(),
-            context.clone(),
-            locale.clone(),
-        ) {
-            Ok(plan) => plan,
-            Err(error) => {
-                self.state.update(|session| session.fail(error));
-                return false;
-            }
         };
-        // Persist uncertainty BEFORE IO. A reload/auth round-trip cannot become an automatic retry.
-        let pending = BuyerCartCheckpoint {
-            cart_id: self.state.get_untracked().cart_id,
-            mutation_pending: true,
-        };
-        if self.save_checkpoint(&scope, pending).is_err() {
-            self.state
-                .update(|session| session.fail(BuyerCartError::Restore));
-            return false;
-        }
-        crate::ui::bridge::publish_count(None);
-        self.busy.set(true);
         let result = self
-            .run_add(&scope, generation, plan, variant_id, context, locale)
+            .start_add(&scope, generation, variant_id, context, locale)
             .await;
-        self.busy.set(false);
         if !self.current_generation(&scope, generation) {
-            // The original pending marker remains. Do not publish or clear an old-scope result.
-            self.retry.update(|retry| *retry = retry.saturating_add(1));
+            // The original pending marker remains. A completed old operation can release only
+            // its own guard, never a newer operation's lock or a disposed owner's signals.
+            self.finish_and_retry(guard);
             return false;
         }
-        match result {
+        let succeeded = match result {
             Ok(()) => true,
             Err(error) => {
                 self.state.update(|session| session.fail(error));
                 false
             }
+        };
+        guard.finish() && succeeded
+    }
+
+    async fn start_add(
+        &self,
+        scope: &ClientScope,
+        generation: u64,
+        variant_id: String,
+        context: PricingResolutionContext,
+        locale: Option<String>,
+    ) -> Result<(), BuyerCartError> {
+        if self.checkpoint(scope)?.mutation_pending {
+            return Err(BuyerCartError::Unconfirmed);
         }
+        let session = self
+            .state
+            .try_get_untracked()
+            .ok_or(BuyerCartError::Restore)?;
+        let plan = session.plan_add(variant_id.clone(), context.clone(), locale.clone())?;
+        if !self.current_generation(scope, generation) {
+            return Err(BuyerCartError::Restore);
+        }
+        // Persist uncertainty BEFORE IO. A reload/auth round-trip cannot become an automatic retry.
+        self.save_checkpoint(
+            scope,
+            BuyerCartCheckpoint {
+                cart_id: session.cart_id,
+                mutation_pending: true,
+            },
+        )?;
+        crate::ui::bridge::publish_count(None);
+        if !self.current_generation(scope, generation) {
+            return Err(BuyerCartError::Unconfirmed);
+        }
+        self.run_add(scope, generation, plan, variant_id, context, locale)
+            .await
     }
     /// Decrement/remove share the same pending checkpoint and scope fence as Product adds.
     /// A successful write is not a new count until a subsequent owner read succeeds.
@@ -475,107 +645,98 @@ impl BuyerCartController {
         action: BuyerCartLineAction,
         locale: Option<String>,
     ) -> bool {
-        if !self.can_write() {
+        let Some((scope, generation, guard)) = self.begin_operation(true) else {
+            return false;
+        };
+        let result = self
+            .start_line_change(&scope, generation, line_id, action, locale)
+            .await;
+        if !self.current_generation(&scope, generation) {
+            self.finish_and_retry(guard);
             return false;
         }
-        let scope = self.scope.get_untracked();
-        let generation = self.generation.get_untracked();
-        let checkpoint = match self.checkpoint(&scope) {
-            Ok(checkpoint) if !checkpoint.mutation_pending => checkpoint,
-            Ok(_) => {
-                self.state
-                    .update(|session| session.fail(BuyerCartError::Unconfirmed));
-                return false;
+        let succeeded = match result {
+            Ok(restored) => {
+                self.state.set(restored);
+                true
             }
             Err(error) => {
                 self.state.update(|session| session.fail(error));
-                return false;
+                false
             }
         };
-        let session = self.state.get_untracked();
-        let plan = match session.plan_line_change(line_id, action) {
-            Ok(plan) => plan,
-            Err(error) => {
-                self.state.update(|session| session.fail(error));
-                return false;
-            }
-        };
-        let Some(cart_id) = session.cart_id.clone() else {
-            return false;
-        };
+        guard.finish() && succeeded
+    }
+
+    async fn start_line_change(
+        &self,
+        scope: &ClientScope,
+        generation: u64,
+        line_id: String,
+        action: BuyerCartLineAction,
+        locale: Option<String>,
+    ) -> Result<BuyerCartSession, BuyerCartError> {
+        let checkpoint = self.checkpoint(scope)?;
+        if checkpoint.mutation_pending {
+            return Err(BuyerCartError::Unconfirmed);
+        }
+        let session = self
+            .state
+            .try_get_untracked()
+            .ok_or(BuyerCartError::Restore)?;
+        let plan = session.plan_line_change(line_id, action)?;
+        let cart_id = session.cart_id.clone().ok_or(BuyerCartError::Restore)?;
         if checkpoint.cart_id.as_ref() != Some(&cart_id)
-            || self
-                .save_checkpoint(
-                    &scope,
-                    BuyerCartCheckpoint {
-                        cart_id: Some(cart_id.clone()),
-                        mutation_pending: true,
-                    },
-                )
-                .is_err()
+            || !self.current_generation(scope, generation)
         {
-            self.state
-                .update(|session| session.fail(BuyerCartError::Restore));
-            return false;
+            return Err(BuyerCartError::Restore);
         }
+        self.save_checkpoint(
+            scope,
+            BuyerCartCheckpoint {
+                cart_id: Some(cart_id.clone()),
+                mutation_pending: true,
+            },
+        )?;
         crate::ui::bridge::publish_count(None);
-        self.busy.set(true);
         // Publishing invalidation synchronously invokes page listeners. They may change or
         // dispose the host before this scheduled command reaches its transport.
-        if !self.current_generation(&scope, generation) {
-            self.busy.set(false);
-            self.retry.update(|retry| *retry = retry.saturating_add(1));
-            return false;
+        if !self.current_generation(scope, generation) {
+            return Err(BuyerCartError::Unconfirmed);
         }
-        let changed = match plan {
+        match plan {
             BuyerCartLinePlan::Decrement(request) => {
                 crate::transport::decrement_line_item(request).await
             }
             BuyerCartLinePlan::Remove(request) => crate::transport::remove_line_item(request).await,
-        };
-        let observed = if changed.is_ok() && self.current_generation(&scope, generation) {
-            crate::transport::fetch_cart(CartFetchRequest {
-                selected_cart_id: Some(cart_id),
-                locale,
-            })
-            .await
-            .ok()
-            .and_then(|data| data.cart)
-        } else {
-            None
-        };
-        if !self.current_generation(&scope, generation) {
-            self.busy.set(false);
-            self.retry.update(|retry| *retry = retry.saturating_add(1));
-            return false;
         }
-        let result = observed
-            .ok_or(BuyerCartError::Unconfirmed)
-            .and_then(|cart| session.finish_restore(Some(cart)))
-            .and_then(|restored| {
-                self.save_checkpoint(
-                    &scope,
-                    BuyerCartCheckpoint {
-                        cart_id: restored.cart_id.clone(),
-                        mutation_pending: false,
-                    },
-                )
-                .map_err(|_| BuyerCartError::Unconfirmed)?;
-                Ok(restored)
-            });
-        match result {
-            Ok(restored) => {
-                self.state.set(restored);
-                self.busy.set(false);
-                true
-            }
-            Err(_) => {
-                self.state
-                    .update(|session| session.fail(BuyerCartError::Unconfirmed));
-                self.busy.set(false);
-                false
-            }
+        .map_err(|_| BuyerCartError::Unconfirmed)?;
+        if !self.current_generation(scope, generation) {
+            return Err(BuyerCartError::Unconfirmed);
         }
+        let cart = crate::transport::fetch_cart(CartFetchRequest {
+            selected_cart_id: Some(cart_id),
+            locale,
+        })
+        .await
+        .map_err(|_| BuyerCartError::Unconfirmed)?
+        .cart
+        .ok_or(BuyerCartError::Unconfirmed)?;
+        if !self.current_generation(scope, generation) {
+            return Err(BuyerCartError::Unconfirmed);
+        }
+        let restored = session
+            .finish_restore(Some(cart))
+            .map_err(|_| BuyerCartError::Unconfirmed)?;
+        self.save_checkpoint(
+            scope,
+            BuyerCartCheckpoint {
+                cart_id: restored.cart_id.clone(),
+                mutation_pending: false,
+            },
+        )
+        .map_err(|_| BuyerCartError::Unconfirmed)?;
+        Ok(restored)
     }
 
     async fn run_add(
@@ -610,9 +771,15 @@ impl BuyerCartController {
                     mutation_pending: true,
                 },
             );
+            if !self.current_generation(scope, generation) {
+                return Err(BuyerCartError::Unconfirmed);
+            }
             self.reference.set(created.cart_id.clone());
             self.state.set(created.clone());
-            if !self.persist_reference.run(created.cart_id.clone()) || saved.is_err() {
+            if self.persist_reference.try_run(created.cart_id.clone()) != Some(true)
+                || saved.is_err()
+                || !self.current_generation(scope, generation)
+            {
                 return Err(BuyerCartError::Unconfirmed);
             }
             plan = created.plan_add(variant_id, context, locale)?;
@@ -641,6 +808,9 @@ impl BuyerCartController {
                 mutation_pending: false,
             },
         );
+        if !self.current_generation(scope, generation) {
+            return Err(BuyerCartError::Unconfirmed);
+        }
         self.state.set(added);
         saved.map_err(|_| BuyerCartError::Unconfirmed)
     }
@@ -652,7 +822,7 @@ pub fn use_buyer_cart(
     tenant_slug: String,
     capability: CartCapability,
     persist_reference: Callback<Option<String>, bool>,
-    persist_selection: Callback<String, bool>,
+    persist_selection: Callback<String, Option<String>>,
 ) -> BuyerCartController {
     let auth = use_context::<leptos_auth::AuthContext>();
     let auth_for_stamp = auth.clone();
@@ -669,22 +839,30 @@ pub fn use_buyer_cart(
         token: auth_for_scope.as_ref().and_then(|auth| auth.get_token()),
         tenant: scope_tenant.clone(),
         page_path: page_path.clone(),
-        auth: auth_scope.get(),
+        auth: auth_scope
+            .try_get()
+            .unwrap_or_else(|| leptos_auth::ClientAuthScope::new(false)),
         capability: capability.get(),
     });
     let external_auth_changed = RwSignal::new(false);
     let auth_for_refusal = auth.clone();
     let auth_refused = Signal::derive(move || {
-        external_auth_changed.get()
+        external_auth_changed.try_get().unwrap_or(true)
             || auth_for_refusal.as_ref().is_none_or(|auth| {
+                let Some(session) = auth.session.try_get() else {
+                    return true;
+                };
                 auth.get_tenant()
                     .is_some_and(|tenant| tenant != tenant_slug)
-                    || (auth.session.get().is_some() && auth.is_token_expired())
+                    || (session.is_some() && auth.is_token_expired())
                     || !leptos_auth::storage::matches_request_tenant(&tenant_slug)
             })
     });
     let auth_loading = Signal::derive(move || {
-        !auth_scope.get().is_ready() || auth.as_ref().is_none_or(|auth| auth.is_loading.get())
+        !auth_scope.try_get().is_some_and(|scope| scope.is_ready())
+            || auth
+                .as_ref()
+                .is_none_or(|auth| auth.is_loading.try_get().unwrap_or(true))
     });
     let state = RwSignal::new(BuyerCartSession::restoring(cart_id.clone()));
     let bound_scope = RwSignal::new(None::<ClientScope>);
@@ -694,26 +872,33 @@ pub fn use_buyer_cart(
             hidden.phase = BuyerCartPhase::Unavailable;
             return hidden;
         }
-        if auth_refused.get() {
+        if auth_refused.try_get().unwrap_or(true) {
             let mut hidden = BuyerCartSession::restoring(None);
             hidden.phase = BuyerCartPhase::AuthRefused;
             return hidden;
         }
-        let current_scope = scope.get();
-        if auth_loading.get()
-            || bound_scope.get().as_ref() != Some(&current_scope)
-            || auth_scope.get() != current_scope.auth
+        let Some(current_scope) = scope.try_get() else {
+            return BuyerCartSession::restoring(None);
+        };
+        if auth_loading.try_get().unwrap_or(true)
+            || bound_scope.try_get().flatten().as_ref() != Some(&current_scope)
+            || auth_scope.try_get() != Some(current_scope.auth)
             || capability.get() != current_scope.capability
             || leptos_auth::storage::get_token() != current_scope.token
         {
             return BuyerCartSession::restoring(None);
         }
-        state.get()
+        state
+            .try_get()
+            .unwrap_or_else(|| BuyerCartSession::restoring(None))
     });
+    let operation = RwSignal::new(CartOperationState::default());
+    let busy = Signal::derive(move || operation.try_get().is_none_or(|state| state.is_busy()));
     let controller = BuyerCartController {
         session,
         state,
-        busy: RwSignal::new(false),
+        busy,
+        operation,
         generation: RwSignal::new(0),
         reference: RwSignal::new(cart_id.clone()),
         scope,
@@ -838,8 +1023,11 @@ pub fn use_buyer_cart(
                     if !controller.current_generation(&scope, generation) {
                         return;
                     }
-                    let persisted =
-                        saved.is_ok() && controller.persist_reference.run(restored.cart_id.clone());
+                    let persisted = saved.is_ok()
+                        && controller
+                            .persist_reference
+                            .try_run(restored.cart_id.clone())
+                            == Some(true);
                     if !controller.current_generation(&scope, generation) {
                         return;
                     }
@@ -863,6 +1051,180 @@ mod tests {
     use super::*;
 
     #[test]
+    fn guard_cancellation_poisoning_and_stale_completion_are_owner_scoped() {
+        let owner = Owner::new();
+        owner.with(|| {
+            let state = RwSignal::new(CartOperationState::default());
+            let first = state
+                .try_update(CartOperationState::begin)
+                .flatten()
+                .unwrap();
+            let old = CartOperationGuard {
+                state,
+                id: first,
+                finished: false,
+            };
+            assert!(old.finish());
+            let second = state
+                .try_update(CartOperationState::begin)
+                .flatten()
+                .unwrap();
+            let stale = CartOperationGuard {
+                state,
+                id: first,
+                finished: false,
+            };
+            assert!(!stale.finish());
+            assert!(state.get_untracked().is_busy());
+            let pending = CartOperationGuard {
+                state,
+                id: second,
+                finished: false,
+            };
+            drop(pending);
+            assert!(state.get_untracked().is_busy());
+            assert_eq!(state.try_update(CartOperationState::begin), Some(None));
+        });
+    }
+
+    #[test]
+    fn recovery_and_mutations_share_one_owner_reservation() {
+        let owner = Owner::new();
+        owner.with(|| {
+            provide_context(leptos_auth::AuthContext::new());
+            let controller = use_buyer_cart(
+                None,
+                Some("en".into()),
+                "shop".into(),
+                CartCapability::new(true),
+                Callback::new(|_| true),
+                Callback::new(Some),
+            );
+            controller
+                .bound_scope
+                .set(Some(controller.scope.get_untracked()));
+            controller.state.set(BuyerCartSession::empty());
+            let (_, _, guard) = controller.begin_operation(true).unwrap();
+            assert!(controller.begin_operation(false).is_none());
+            assert!(controller.begin_operation(true).is_none());
+            controller.reset_reference();
+            assert_eq!(controller.busy.get_untracked(), true);
+            assert!(guard.finish());
+
+            controller
+                .state
+                .update(|session| session.fail(BuyerCartError::Restore));
+            assert!(controller.begin_operation(true).is_none());
+            let (_, _, recovery) = controller.begin_operation(false).unwrap();
+            assert!(controller.begin_operation(true).is_none());
+            assert!(recovery.finish());
+        });
+    }
+
+    #[test]
+    fn disposed_owner_refuses_late_guards_and_controller_reads() {
+        let owner = Owner::new();
+        let (guard, controller) = owner.with(|| {
+            provide_context(leptos_auth::AuthContext::new());
+            let state = RwSignal::new(CartOperationState::default());
+            let id = state
+                .try_update(CartOperationState::begin)
+                .flatten()
+                .unwrap();
+            let guard = CartOperationGuard {
+                state,
+                id,
+                finished: false,
+            };
+            let controller = use_buyer_cart(
+                None,
+                Some("en".into()),
+                "shop".into(),
+                CartCapability::new(false),
+                Callback::new(|_| false),
+                Callback::new(|_| None),
+            );
+            (guard, controller)
+        });
+        owner.cleanup();
+        assert!(!guard.finish());
+        assert!(!controller.context_ready());
+        assert!(!controller.quote_context_ready_untracked());
+        assert!(!controller.can_write());
+        assert_eq!(controller.confirmed_item_count(), None);
+    }
+
+    #[test]
+    fn disabled_cart_can_persist_selection_and_returns_the_effective_host_url() {
+        let owner = Owner::new();
+        owner.with(|| {
+            provide_context(leptos_auth::AuthContext::new());
+            let controller = use_buyer_cart(
+                None,
+                Some("en".into()),
+                "shop".into(),
+                CartCapability::new(false),
+                Callback::new(|_| false),
+                Callback::new(|_: String| Some("/products?cart_id=current&quantity=2".into())),
+            );
+            assert!(!controller.can_write());
+            assert_eq!(
+                controller.persist_selection("/products?cart_id=old&quantity=2".into()),
+                Some("/products?cart_id=current&quantity=2".into())
+            );
+        });
+    }
+
+    #[test]
+    fn selection_callback_cannot_acknowledge_a_replaced_capability() {
+        let owner = Owner::new();
+        owner.with(|| {
+            provide_context(leptos_auth::AuthContext::new());
+            let capability = CartCapability::new(false);
+            let controller = use_buyer_cart(
+                None,
+                Some("en".into()),
+                "shop".into(),
+                capability,
+                Callback::new(|_| false),
+                Callback::new(move |href: String| {
+                    capability.replace(false);
+                    Some(href)
+                }),
+            );
+            assert!(controller.quote_context_ready());
+            assert_eq!(controller.persist_selection("/products".into()), None);
+        });
+    }
+
+    #[test]
+    fn selection_callback_cannot_acknowledge_a_disposed_owner() {
+        let callback_owner = Owner::new();
+        let owner = Owner::new();
+        let owner_to_dispose = owner.clone();
+        let callback = callback_owner.with(|| {
+            Callback::new(move |href: String| {
+                owner_to_dispose.cleanup();
+                Some(href)
+            })
+        });
+        owner.with(|| {
+            provide_context(leptos_auth::AuthContext::new());
+            let controller = use_buyer_cart(
+                None,
+                Some("en".into()),
+                "shop".into(),
+                CartCapability::new(false),
+                Callback::new(|_| false),
+                callback,
+            );
+            assert!(controller.quote_context_ready());
+            assert_eq!(controller.persist_selection("/products".into()), None);
+            assert!(!controller.quote_context_ready());
+        });
+    }
+
+    #[test]
     fn disabled_cart_does_not_hide_public_quotes_but_stale_host_does() {
         let owner = Owner::new();
         owner.with(|| {
@@ -878,7 +1240,7 @@ mod tests {
                 "shop".into(),
                 capability,
                 Callback::new(|_| false),
-                Callback::new(|_| false),
+                Callback::new(|_| None),
             );
             assert!(!controller.can_write());
             assert!(controller.quote_context_ready());

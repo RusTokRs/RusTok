@@ -59,3 +59,11 @@ atomic lock, and old requests may still affect cookies after a reload. Server au
 tenant checks remain authoritative. These changes need locked native/WASM and mounted-provider
 verification; standalone state-machine tests do not prove the browser protocol. The Blog reference
 plan records earlier bounded package/WASM compilation, not validation of this change.
+
+The native BFF classifies an absent refresh cookie separately from malformed, duplicate,
+foreign, rejected or unreachable credentials. Only explicit absence with no existing session
+can establish a guest scope. The direct-cookie endpoint currently uses the same HTTP 401 for
+absence and rejection, so its client fails closed instead of guessing. Native logout does not
+clear the cookie when revocation fails; already-invalid token cleanup and user-visible recovery
+remain open. Admin SSR now inspects every Cookie header and preserves the cookie on an unclassified
+exchange failure; it still renders an anonymous snapshot on failure, not proof of guest identity.

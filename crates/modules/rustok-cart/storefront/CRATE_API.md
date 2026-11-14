@@ -25,7 +25,8 @@
 
 ### Input DTOs/Commands
 - `CartView`: Entrypoint route component for full storefront cart display.
-- `CartClient`: Host-configured Cart controller, modal drawer and landing event adapter.
+- `CartClient`: Host-configured Cart controller, modal drawer and landing event adapter. Its selection callback returns the effective merged URL, or `None` on refusal; a verified Product quote context does not require Cart to be enabled.
+- `BuyerCartController`: Same-owner operation reservation spans writes and synchronous recovery; abandoning an operation leaves the owner unavailable, not proof of server cancellation.
 - `decrement_line_item`: Transport command reducing item quantity safely.
 - `remove_line_item`: Transport command removing item from active cart.
 

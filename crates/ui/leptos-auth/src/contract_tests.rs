@@ -35,8 +35,10 @@ fn test_refresh_cookie_helpers_contract() {
         "other=1; {}={}; session=abc",
         ADMIN_REFRESH_COOKIE, cookie_val
     );
-    let extracted = extract_refresh_cookie(&raw_header);
-    assert_eq!(extracted, Some((tenant.to_string(), token.to_string())));
+    let extracted = inspect_refresh_cookie_headers([raw_header.as_str()]);
+    assert_eq!(extracted, Ok(Some((tenant.to_string(), token.to_string()))));
+    assert_eq!(inspect_refresh_cookie_headers([]), Ok(None));
+    assert!(inspect_refresh_cookie_headers([raw_header.as_str(), raw_header.as_str()]).is_err());
 
     let set_cookie_insecure = refresh_cookie_header(tenant, token, false);
     assert!(set_cookie_insecure.contains("HttpOnly"));

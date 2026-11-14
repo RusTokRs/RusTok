@@ -46,7 +46,7 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
     let input = RwSignal::new(initial);
     let generation = RwSignal::new(0_u64);
     let link_error = RwSignal::new(false);
-    let saved_href = RwSignal::new(None::<String>);
+    let saved_href = RwSignal::new(None::<(BuyerQuoteCycle, String, String)>);
     let interactive = RwSignal::new(cfg!(target_arch = "wasm32"));
     // A detached or server-rendered buyer has no host capability and stays read-only.
     // The mounted host injects the same Cart controller used by its drawer and landing bridge.
@@ -57,12 +57,12 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
             snapshot.with_value(|snapshot| snapshot.tenant_slug.clone()),
             rustok_cart_storefront::CartCapability::new(false),
             Callback::new(|_| false),
-            Callback::new(|_| false),
+            Callback::new(|_| None),
         )
     });
     let cycle = Memo::new(move |_| BuyerQuoteCycle {
         input: generation.get(),
-        scope: cart.generation.get(),
+        scope: cart.generation.try_get().unwrap_or(u64::MAX),
         capability: cart.capability_generation(),
         auth: cart.auth_generation(),
     });
@@ -133,13 +133,21 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
     });
     Effect::new(move |_| {
         let href = href.get();
-        if interactive.get() && cart.context_ready() {
+        let selection_cycle = cycle.get();
+        if interactive.get() && cart.quote_context_ready() {
             let saved = cart.persist_selection(href.clone());
-            link_error.set(!saved);
-            saved_href.set(saved.then_some(href));
+            let still_current = cycle.try_get_untracked() == Some(selection_cycle)
+                && cart.quote_context_ready_untracked();
+            // The host callback may synchronously dispose this Product owner.
+            let _ = link_error.try_set(saved.is_none() || !still_current);
+            let _ = saved_href.try_set(
+                saved
+                    .filter(|_| still_current)
+                    .map(|actual| (selection_cycle, href, actual)),
+            );
         }
     });
-    let locked = Signal::derive(move || !interactive.get() || cart.busy.get());
+    let locked = Signal::derive(move || !interactive.get() || cart.busy.try_get().unwrap_or(true));
     let (quantity, set_quantity) = signal(input.get_untracked().quantity_text);
     let (currency, set_currency) = signal(
         input
@@ -173,7 +181,12 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
         !interactive.get()
             || generation.get() == u64::MAX
             || link_error.get()
-            || saved_href.get().as_ref() != Some(&href.get())
+            || saved_href
+                .get()
+                .as_ref()
+                .is_none_or(|(saved_cycle, saved, _)| {
+                    *saved_cycle != cycle.get() || saved != &href.get()
+                })
             || !cart.can_write()
             || !view_model.get().can_purchase
     });
@@ -210,7 +223,7 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
         });
     };
     view! {
-        <section class="mt-6 space-y-4 border-t border-border pt-5" data-product-buyer="true" aria-busy=move || quote.get().is_none() || cart.busy.get()>
+        <section class="mt-6 space-y-4 border-t border-border pt-5" data-product-buyer="true" aria-busy=move || quote.get().is_none() || cart.busy.try_get().unwrap_or(true)>
             {move || (!interactive.get()).then(|| view! { <Alert>{labels.get_value().javascript}</Alert> })}
             <div class="space-y-3">
                 <For each=move || snapshot.with_value(|snapshot| snapshot.product.variant_axes.clone()) key=|axis| axis.attribute_id.clone()
@@ -250,7 +263,7 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
             }}
             {move || link_error.get().then(|| view! { <Alert>{labels.get_value().link_error}</Alert> })}
             <div class="flex flex-wrap gap-2">
-                <Button on_click=Box::new(add) disabled=purchase_disabled loading=Signal::derive(move || cart.busy.get())>{labels.get_value().add}</Button>
+                <Button on_click=Box::new(add) disabled=purchase_disabled loading=Signal::derive(move || cart.busy.try_get().unwrap_or(true))>{labels.get_value().add}</Button>
                 {move || view_model.get().unavailable.then(|| view! { <Button variant=ButtonVariant::Outline disabled=locked on_click=Box::new(move || generation.update(|value| *value = value.saturating_add(1)))>{labels.get_value().retry}</Button> })}
                 {move || view_model.get().preview.then(|| view! { <Button variant=ButtonVariant::Outline disabled=locked on_click=Box::new(move || change_input(input, generation, buyer::ordinary_context(&input.get_untracked())))>{labels.get_value().ordinary}</Button> })}
                 {move || cart.session.get().cart.map(|cart| {
@@ -263,7 +276,21 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
                 {move || cart.session.get().cart_id.map(|id| view! { <a class="text-sm underline" href=snapshot.with_value(|snapshot| buyer::cart_href(&snapshot.route, &id))>{labels.get_value().inspect_cart}</a> })}
                 {move || cart.session.get().can_inspect().then(|| view! { <Button variant=ButtonVariant::Outline disabled=Signal::derive(move || !interactive.get() || !cart.can_reset()) on_click=Box::new(move || cart.inspect())>{labels.get_value().inspect_cart}</Button> })}
                 <Button variant=ButtonVariant::Outline disabled=Signal::derive(move || !interactive.get() || !cart.can_reset()) on_click=Box::new(move || cart.reset_reference())>{labels.get_value().reset_cart}</Button>
-                <a class="text-sm underline" href=move || href.get()>{labels.get_value().selection_link}</a>
+                {move || {
+                    let desired = href.get();
+                    let actual = if !interactive.get() {
+                        Some(desired.clone())
+                    } else if cart.quote_context_ready() {
+                        saved_href.get().and_then(|(saved_cycle, saved, actual)| {
+                            (saved_cycle == cycle.get() && saved == desired).then_some(actual)
+                        })
+                    } else {
+                        None
+                    };
+                    actual.map(|actual| view! {
+                        <a class="text-sm underline" href=actual>{labels.get_value().selection_link}</a>
+                    })
+                }}
             </div>
         </section>
     }.into_any()

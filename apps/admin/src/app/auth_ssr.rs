@@ -25,17 +25,23 @@ fn cookie_request_is_secure(headers: &HeaderMap) -> bool {
 /// rendered into HTML: this host validates it server-to-server and
 /// exposes only the resulting short-lived access token and user
 /// profile to SSR rendering. The returned `Set-Cookie` value carries
-/// the rotated refresh token (or clears a dead cookie) and must be
-/// attached to the response — dropping it would make the browser
-/// replay the previous token and trip reuse detection.
+/// the rotated refresh token and must be attached to the response — dropping it
+/// would make the browser replay the previous token and trip reuse detection.
 pub async fn verified_snapshot_from_headers(
     headers: &HeaderMap,
 ) -> (ServerAuthSnapshot, Option<String>) {
-    let Some((tenant, refresh_token)) = headers
-        .get(header::COOKIE)
-        .and_then(|value| value.to_str().ok())
-        .and_then(leptos_auth::extract_refresh_cookie)
+    let cookie_headers = headers
+        .get_all(header::COOKIE)
+        .iter()
+        .map(|value| value.to_str())
+        .collect::<Result<Vec<_>, _>>();
+    let Ok(cookie_headers) = cookie_headers else {
+        return (ServerAuthSnapshot::default(), None);
+    };
+    let Ok(Some((tenant, refresh_token))) =
+        leptos_auth::inspect_refresh_cookie_headers(cookie_headers)
     else {
+        // Invalid or duplicate credentials do not produce a verified SSR identity.
         return (ServerAuthSnapshot::default(), None);
     };
 
@@ -50,10 +56,9 @@ pub async fn verified_snapshot_from_headers(
                 &tenant, &rotated, secure,
             )),
         ),
-        Err(_) => (
-            ServerAuthSnapshot::default(),
-            Some(leptos_auth::clear_refresh_cookie_header(secure)),
-        ),
+        // An outage and a rejected credential are not distinguishable here. Preserve the
+        // cookie rather than silently destroying a potentially live session on failure.
+        Err(_) => (ServerAuthSnapshot::default(), None),
     }
 }
 
@@ -122,6 +127,31 @@ mod tests {
     #[tokio::test]
     async fn missing_refresh_cookie_yields_anonymous_snapshot() {
         let headers = HeaderMap::new();
+        let (snapshot, set_cookie) = verified_snapshot_from_headers(&headers).await;
+        assert_eq!(snapshot, ServerAuthSnapshot::default());
+        assert!(set_cookie.is_none());
+    }
+
+    #[tokio::test]
+    async fn ambiguous_refresh_cookies_never_select_or_clear_a_credential() {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            header::COOKIE,
+            HeaderValue::from_static("rustok-admin-refresh-v1=shop.one"),
+        );
+        headers.append(
+            header::COOKIE,
+            HeaderValue::from_static("rustok-admin-refresh-v1=shop.two"),
+        );
+        let (snapshot, set_cookie) = verified_snapshot_from_headers(&headers).await;
+        assert_eq!(snapshot, ServerAuthSnapshot::default());
+        assert!(set_cookie.is_none());
+
+        headers.clear();
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_static("rustok-admin-refresh-v1=invalid"),
+        );
         let (snapshot, set_cookie) = verified_snapshot_from_headers(&headers).await;
         assert_eq!(snapshot, ServerAuthSnapshot::default());
         assert!(set_cookie.is_none());

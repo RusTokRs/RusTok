@@ -12,6 +12,8 @@
 
 #[cfg(all(feature = "product-buyer-island", target_arch = "wasm32"))]
 mod cart_buyer_client;
+#[cfg(any(test, all(feature = "product-buyer-island", target_arch = "wasm32")))]
+mod cart_buyer_route;
 mod enabled_module_events;
 
 #[cfg(any(

@@ -54,7 +54,7 @@ pub fn CartClient(
     tenant_slug: String,
     capability: CartCapability,
     persist_reference: Callback<Option<String>, bool>,
-    persist_selection: Callback<String, bool>,
+    persist_selection: Callback<String, Option<String>>,
     on_ready: Callback<BuyerCartController>,
     #[prop(default = true)] show_header: bool,
 ) -> impl IntoView {

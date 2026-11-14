@@ -6,6 +6,7 @@
 mod client;
 pub mod components;
 pub mod context;
+mod cookie;
 pub mod hooks;
 mod realm;
 mod scope;
@@ -37,18 +38,6 @@ pub fn parse_refresh_cookie_value(value: &str) -> Option<(&str, &str)> {
     (!tenant.is_empty() && !token.is_empty()).then_some((tenant, token))
 }
 
-/// Extract `(tenant, refresh_token)` from a raw `Cookie` header value.
-pub fn extract_refresh_cookie(cookie_header: &str) -> Option<(String, String)> {
-    cookie_header.split(';').find_map(|part| {
-        let (name, value) = part.trim().split_once('=')?;
-        if name.trim() != ADMIN_REFRESH_COOKIE {
-            return None;
-        }
-        let (tenant, token) = parse_refresh_cookie_value(value)?;
-        Some((tenant.to_string(), token.to_string()))
-    })
-}
-
 /// `Set-Cookie` header value persisting the BFF refresh cookie.
 pub fn refresh_cookie_header(tenant: &str, refresh_token: &str, secure: bool) -> String {
     let mut cookie = format!(
@@ -75,6 +64,7 @@ pub use components::{GuestRoute, ProtectedRoute, RequireAuth};
 pub use context::{
     AUTH_SCOPE_CHANGE_EVENT, AUTH_SCOPE_CHANGE_STORAGE_KEY, AuthContext, AuthProvider,
 };
+pub use cookie::{RefreshCookieError, inspect_refresh_cookie_headers};
 pub use hooks::{
     use_auth, use_auth_error, use_current_user, use_is_authenticated, use_is_loading,
     use_is_token_valid, use_session, use_tenant, use_token,

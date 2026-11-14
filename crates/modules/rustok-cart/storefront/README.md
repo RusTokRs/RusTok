@@ -45,8 +45,12 @@ Leptos storefront UI package for the `rustok-cart` module.
 
 `CartClient` mounts a single Cart-owned controller, modal and landing bridge; the host injects
 that controller into Product with its current tenant, locale, module capability and guarded URL
-callbacks. `use_buyer_cart` fences owner reads and writes against capability, auth, route and
-restore generations. A count is published only for a current, confirmed, valid owner projection;
+callbacks. The Product selection callback returns the actual host-merged URL, or `None` if it
+cannot persist under the current verified quote context; public quotes and selection remain
+independent of Cart availability. `use_buyer_cart` fences owner reads and writes against capability,
+auth, route and restore generations. Writes and synchronous inspect/reset share one operation
+reservation; a dropped operation poisons that owner rather than implying cancellation. A count is
+published only for a current, confirmed, valid owner projection;
 missing or uncertain is unknown, not zero. Native/GraphQL create/add use the Commerce workflow
 and guarded Cart ports; restore is an owner read, not repricing. Known original-scope references
 and pending hints are preserved conservatively, including across token rotation by session lineage.
