@@ -43,23 +43,23 @@ covered. Components not yet given that feature audit remain provisional.
 
 | Primitive | Leptos | Next.js | Status |
 |-----------|--------|---------|--------|
-| Alert | `crates/ui/rustok-ui/leptos/src/alert.rs` | `apps/next-admin/src/shared/ui/shadcn/alert.tsx` | functional audit pending |
-| Badge | `crates/ui/rustok-ui/leptos/src/badge.rs` | `apps/next-admin/src/shared/ui/shadcn/badge.tsx` | functional audit pending |
-| Button | `crates/ui/rustok-ui/leptos/src/button.rs` | `apps/next-admin/src/shared/ui/shadcn/button.tsx` | functional audit pending |
-| Checkbox | `crates/ui/rustok-ui/leptos/src/checkbox.rs` | `apps/next-admin/src/shared/ui/shadcn/checkbox.tsx` | functional audit pending |
-| Input | `crates/ui/rustok-ui/leptos/src/input.rs` | `apps/next-admin/src/shared/ui/shadcn/input.tsx` | functional audit pending |
-| Select | `crates/ui/rustok-ui/leptos/src/select.rs` | `apps/next-admin/src/shared/ui/shadcn/select.tsx` | functional audit pending |
+| Alert | `crates/ui/rustok-ui/leptos/src/alert.rs` | `apps/next-admin/src/shared/ui/shadcn/alert.tsx` | full parity across Leptos and Next.js (`data-slot`, title/description sub-slots, accessible alert role) |
+| Badge | `crates/ui/rustok-ui/leptos/src/badge.rs` | `apps/next-admin/src/shared/ui/shadcn/badge.tsx` | full parity across Leptos and Next.js (`data-slot="badge"`, dismissible callback, variant parity) |
+| Button | `crates/ui/rustok-ui/leptos/src/button.rs` | `apps/next-admin/src/shared/ui/shadcn/button.tsx` | full parity across Leptos and Next.js (`data-slot="button"`, loading state, spinner, aria-busy) |
+| Checkbox | `crates/ui/rustok-ui/leptos/src/checkbox.rs` | `apps/next-admin/src/shared/ui/shadcn/checkbox.tsx` | full parity across Leptos and Next.js (controlled/uncontrolled, indeterminate, DOM prop sync) |
+| Input | `crates/ui/rustok-ui/leptos/src/input.rs` | `apps/next-admin/src/shared/ui/shadcn/input.tsx` | full parity across Leptos and Next.js (`data-slot="input"`, prefixes/suffixes, reactive validation, aria-invalid) |
+| Select | `crates/ui/rustok-ui/leptos/src/select.rs` | `apps/next-admin/src/shared/ui/shadcn/select.tsx` | full parity across Leptos and Next.js (options rows, reactive value, placeholder, aria-invalid) |
 | Spinner | `crates/ui/rustok-ui/leptos/src/spinner.rs` | `apps/next-admin/src/shared/ui/icons.tsx` (spinner icon only) | no shared component counterpart identified |
-| Progress | `crates/ui/rustok-ui/leptos/src/progress.rs` | `apps/next-admin/src/shared/ui/shadcn/progress.tsx` | range/orientation/ARIA behavior implemented; generic DOM-prop forwarding and validation pending |
+| Progress | `crates/ui/rustok-ui/leptos/src/progress.rs` | `apps/next-admin/src/shared/ui/shadcn/progress.tsx` | full parity across Leptos and Next.js (range, orientation, ARIA attributes, SVG indicator percentage) |
 | Switch | `crates/ui/rustok-ui/leptos/src/switch.rs` | `apps/next-admin/src/shared/ui/shadcn/switch.tsx` | full parity across Leptos and Next.js (controlled/uncontrolled, WAI-ARIA, Radix `data-state`/`data-slot`, form submission) |
-| Textarea | `crates/ui/rustok-ui/leptos/src/textarea.rs` | `apps/next-admin/src/shared/ui/shadcn/textarea.tsx` | functional audit pending |
-| Avatar | `crates/ui/rustok-ui/leptos/src/avatar.rs` | `apps/next-admin/src/shared/ui/shadcn/avatar.tsx` | functional audit pending |
-| Skeleton | `crates/ui/rustok-ui/leptos/src/skeleton.rs` | `apps/next-admin/src/shared/ui/shadcn/skeleton.tsx` | functional audit pending |
+| Textarea | `crates/ui/rustok-ui/leptos/src/textarea.rs` | `apps/next-admin/src/shared/ui/shadcn/textarea.tsx` | full parity across Leptos and Next.js (`data-slot="textarea"`, reactive validation, SignalSetter, described_by) |
+| Avatar | `crates/ui/rustok-ui/leptos/src/avatar.rs` | `apps/next-admin/src/shared/ui/shadcn/avatar.tsx` | full parity across Leptos and Next.js (`data-slot`, automatic initials, client image error fallback) |
+| Skeleton | `crates/ui/rustok-ui/leptos/src/skeleton.rs` | `apps/next-admin/src/shared/ui/shadcn/skeleton.tsx` | full parity across Leptos and Next.js (`data-slot="skeleton"`, pulse animation, aria-hidden) |
 | Dialog | `crates/ui/rustok-ui/leptos/src/dialog.rs` | `apps/next-admin/src/shared/ui/shadcn/dialog.tsx` (`@radix-ui/react-dialog`) | feature parity in progress; see current gaps below |
-| Card | `crates/ui/rustok-ui/leptos/src/card.rs` | `apps/next-admin/src/shared/ui/shadcn/card.tsx` | functional audit pending |
+| Card | `crates/ui/rustok-ui/leptos/src/card.rs` | `apps/next-admin/src/shared/ui/shadcn/card.tsx` | full parity across Leptos and Next.js (`data-slot` on root and all sub-components, CSS container grid alignment) |
 | Tabs | `crates/ui/rustok-ui/leptos/src/tabs.rs` | `apps/next-admin/src/shared/ui/shadcn/tabs.tsx` | full parity across Leptos and Next.js (TabsContext, roving tabindex, W3C arrow navigation, controlled/uncontrolled) |
-| Label | `crates/ui/rustok-ui/leptos/src/label.rs` | `apps/next-admin/src/shared/ui/shadcn/label.tsx` | functional audit pending |
-| Separator | `crates/ui/rustok-ui/leptos/src/separator.rs` | `apps/next-admin/src/shared/ui/shadcn/separator.tsx` | functional audit pending |
+| Label | `crates/ui/rustok-ui/leptos/src/label.rs` | `apps/next-admin/src/shared/ui/shadcn/label.tsx` | full parity across Leptos and Next.js (`data-slot="label"`, dynamic/static for targeting, required asterisk) |
+| Separator | `crates/ui/rustok-ui/leptos/src/separator.rs` | `apps/next-admin/src/shared/ui/shadcn/separator.tsx` | full parity across Leptos and Next.js (`data-slot="separator-root"`, orientation, decorative semantics) |
 | TableOfContents | `crates/ui/rustok-ui/leptos/src/toc.rs` (`rustok-ui-leptos`), `crates/ui/rustok-ui/dioxus/src/toc.rs` | `apps/next-frontend/src/shared/ui/table-of-contents.tsx` | full parity across Leptos, Dioxus, and Next.js for Blog, Forum, and Product Descriptions |
 
 `crates/ui/rustok-ui/leptos/src/lib.rs` and

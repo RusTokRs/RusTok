@@ -24,7 +24,7 @@ pub fn Badge(
     let full_class = badge_classes(variant, size, custom);
 
     view! {
-        <span class=full_class>
+        <span class=full_class data-slot="badge">
             {children()}
             {move || dismissible.then(|| {
                 view! {

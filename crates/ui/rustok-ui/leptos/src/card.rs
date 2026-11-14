@@ -25,7 +25,7 @@ pub fn Card(
     let full_class = card_classes(variant, custom);
 
     view! {
-        <div class=full_class>
+        <div data-slot="card" class=full_class>
             {children()}
         </div>
     }
@@ -35,7 +35,7 @@ pub fn Card(
 pub fn CardHeader(#[prop(optional, into)] class: String, children: Children) -> impl IntoView {
     let custom = (!class.is_empty()).then_some(class.as_str());
     view! {
-        <div class=card_header_classes(custom)>
+        <div data-slot="card-header" class=card_header_classes(custom)>
             {children()}
         </div>
     }
@@ -45,7 +45,7 @@ pub fn CardHeader(#[prop(optional, into)] class: String, children: Children) -> 
 pub fn CardTitle(#[prop(optional, into)] class: String, children: Children) -> impl IntoView {
     let custom = (!class.is_empty()).then_some(class.as_str());
     view! {
-        <div class=card_title_classes(custom)>
+        <div data-slot="card-title" class=card_title_classes(custom)>
             {children()}
         </div>
     }
@@ -55,7 +55,7 @@ pub fn CardTitle(#[prop(optional, into)] class: String, children: Children) -> i
 pub fn CardDescription(#[prop(optional, into)] class: String, children: Children) -> impl IntoView {
     let custom = (!class.is_empty()).then_some(class.as_str());
     view! {
-        <div class=card_description_classes(custom)>
+        <div data-slot="card-description" class=card_description_classes(custom)>
             {children()}
         </div>
     }
@@ -65,7 +65,7 @@ pub fn CardDescription(#[prop(optional, into)] class: String, children: Children
 pub fn CardAction(#[prop(optional, into)] class: String, children: Children) -> impl IntoView {
     let custom = (!class.is_empty()).then_some(class.as_str());
     view! {
-        <div class=card_action_classes(custom)>
+        <div data-slot="card-action" class=card_action_classes(custom)>
             {children()}
         </div>
     }
@@ -75,7 +75,7 @@ pub fn CardAction(#[prop(optional, into)] class: String, children: Children) -> 
 pub fn CardContent(#[prop(optional, into)] class: String, children: Children) -> impl IntoView {
     let custom = (!class.is_empty()).then_some(class.as_str());
     view! {
-        <div class=card_content_classes(custom)>
+        <div data-slot="card-content" class=card_content_classes(custom)>
             {children()}
         </div>
     }
@@ -85,7 +85,7 @@ pub fn CardContent(#[prop(optional, into)] class: String, children: Children) ->
 pub fn CardFooter(#[prop(optional, into)] class: String, children: Children) -> impl IntoView {
     let custom = (!class.is_empty()).then_some(class.as_str());
     view! {
-        <div class=card_footer_classes(custom)>
+        <div data-slot="card-footer" class=card_footer_classes(custom)>
             {children()}
         </div>
     }

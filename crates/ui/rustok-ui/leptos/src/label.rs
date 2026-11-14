@@ -12,25 +12,27 @@ use leptos::children::Children;
 use leptos::prelude::*;
 use rustok_ui::label_classes;
 
-/// Field label.
+/// Field label with `data-slot="label"` and accessible target reference.
 ///
-/// `r#for` targets a static element id; `required` appends the destructive
+/// `r#for` targets an element id; `required` appends the destructive
 /// asterisk, and `disabled` switches the `peer-disabled:` styling to the
 /// hard-disabled one for labels that are not peers of their control.
 #[component]
 pub fn Label(
     #[prop(default = false)] required: bool,
     #[prop(default = false)] disabled: bool,
-    #[prop(optional)] r#for: Option<&'static str>,
+    #[prop(optional, into)] r#for: Option<String>,
     #[prop(optional, into)] class: String,
     children: Children,
 ) -> impl IntoView {
     let custom = (!class.is_empty()).then_some(class.as_str());
     let full_class = label_classes(disabled, custom);
+    let for_attr = r#for.and_then(|f| (!f.is_empty()).then_some(f));
 
     view! {
         <label
-            for=r#for
+            data-slot="label"
+            for=for_attr
             class=full_class
         >
             {children()}

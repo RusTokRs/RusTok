@@ -11,11 +11,16 @@
 use leptos::prelude::*;
 use rustok_ui::{Orientation, separator_classes};
 
-/// Horizontal or vertical divider with `role="separator"` and the matching
-/// `aria-orientation`.
+/// Horizontal or vertical divider with `data-slot="separator-root"`,
+/// `data-orientation`, and accessible role semantics.
+///
+/// When `decorative` is true (the default), `aria-hidden="true"` is set to avoid
+/// cluttering screen readers. When false, `role="separator"` and `aria-orientation`
+/// are rendered.
 #[component]
 pub fn Separator(
     #[prop(default = Orientation::Horizontal)] orientation: Orientation,
+    #[prop(default = true)] decorative: bool,
     #[prop(optional, into)] class: String,
 ) -> impl IntoView {
     let custom = (!class.is_empty()).then_some(class.as_str());
@@ -23,9 +28,12 @@ pub fn Separator(
 
     view! {
         <div
+            data-slot="separator-root"
+            data-orientation=orientation.as_str()
             class=full_class
-            role="separator"
-            aria-orientation=orientation.as_str()
+            role=move || (!decorative).then_some("separator")
+            aria-orientation=move || (!decorative).then_some(orientation.as_str())
+            aria-hidden=move || decorative.then_some("true")
         />
     }
 }

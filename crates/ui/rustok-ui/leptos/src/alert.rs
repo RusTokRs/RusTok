@@ -24,12 +24,13 @@ pub fn Alert(
     view! {
         <div
             role="alert"
+            data-slot="alert"
             class=full_class
         >
             {title.map(|t| view! {
-                <p class="mb-1 font-medium leading-none tracking-tight">{t}</p>
+                <p data-slot="alert-title" class="mb-1 font-medium leading-none tracking-tight">{t}</p>
             })}
-            <div class="[&_p]:leading-relaxed">
+            <div data-slot="alert-description" class="[&_p]:leading-relaxed">
                 {children()}
             </div>
         </div>

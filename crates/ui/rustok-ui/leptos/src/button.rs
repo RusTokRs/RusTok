@@ -37,6 +37,7 @@ pub fn Button(
     view! {
         <button
             type=r#type
+            data-slot="button"
             class=full_class
             disabled=is_disabled
             aria-busy=move || loading.get()

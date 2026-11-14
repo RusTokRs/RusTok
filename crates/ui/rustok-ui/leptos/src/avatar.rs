@@ -23,22 +23,32 @@ pub fn Avatar(
     let (container_class, fallback_class) = avatar_classes(size, custom);
 
     let initials = extract_initials(fallback.as_deref().unwrap_or(""));
+    let (img_error, set_img_error) = signal(false);
+
+    let src_check = src.clone();
+    let has_image = move || src_check.is_some() && !img_error.get();
 
     view! {
-        <div class=container_class>
-            {match src {
-                Some(url) => view! {
-                    <img
-                        src=url
-                        alt=alt.unwrap_or_default()
-                        class="aspect-square h-full w-full object-cover"
-                    />
-                }.into_any(),
-                None => view! {
-                    <span class=fallback_class>
-                        {initials}
-                    </span>
-                }.into_any(),
+        <div data-slot="avatar" class=container_class>
+            {move || {
+                if has_image() {
+                    let url = src.clone().unwrap_or_default();
+                    view! {
+                        <img
+                            data-slot="avatar-image"
+                            src=url
+                            alt=alt.clone().unwrap_or_default()
+                            class="aspect-square h-full w-full object-cover"
+                            on:error=move |_| set_img_error.set(true)
+                        />
+                    }.into_any()
+                } else {
+                    view! {
+                        <span data-slot="avatar-fallback" class=fallback_class.clone()>
+                            {initials.clone()}
+                        </span>
+                    }.into_any()
+                }
             }}
         </div>
     }

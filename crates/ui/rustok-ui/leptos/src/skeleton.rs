@@ -20,6 +20,6 @@ pub fn Skeleton(
     let full_class = skeleton_classes(variant, custom);
 
     view! {
-        <div class=full_class aria-hidden="true" />
+        <div data-slot="skeleton" class=full_class aria-hidden="true" />
     }
 }
