@@ -40,8 +40,9 @@ Cart open/close/toggle requests are cancelable `rustok:cart:{open,close,toggle}`
 host consumer must acknowledge an accepted request with `preventDefault()`. Without acknowledgement
 the landing reports `cart_unavailable`. A Cart owner can broadcast `rustok:cart:updated` with a
 non-negative safe-integer `count` (or `itemCount`), or `{status: "unknown"}` to invalidate a previous
-observation on a scope/restore change. Counts start unknown (`—`) and newly inserted landing bodies
-are synchronized. Neither an event nor an acknowledgement proves a cart mutation.
+observation on a scope/restore change. Counts start unknown (`—`); on install the bridge asks the
+owner for its current observation with `rustok:cart:request-count`, and newly inserted landing
+bodies are synchronized. Neither an event nor an acknowledgement proves a cart mutation.
 
 ## Entry points
 
@@ -57,7 +58,7 @@ are synchronized. Neither an event nor an acknowledgement proves a cart mutation
 - **No fallback for browsers without `@scope`.** It needs Chrome/Edge 118+, Safari 17.4+ or Firefox 128+. An older browser drops the whole block: the landing renders unstyled there (the host is unaffected). There is no selector-prefixing fallback.
 - **At-rules that define document-wide names are not confined.** `@keyframes`, `@font-face`, `@property` and similar keep their names global where a browser accepts them inside `@scope`; a landing can still collide with a host animation or font name.
 - **Landing markup is not scoped, only its stylesheet.** The body HTML is emitted as produced by the Fly sanitizer (`inner_html`); `scope_landing_css` adds no second sanitization pass.
-- **Leptos Cart is not connected to this bridge.** The current `apps/storefront` composition has no consumer for `rustok:cart:{open,close,toggle}` or publisher for its count/invalidation protocol. Until Cart owns and mounts that integration, these controls report unavailable and the count remains unknown; Product handoff does not imply a connected drawer. The separately mounted Leptos Product buyer also does not receive the host's Cart-enabled state; its capability guard and server-admission verification remain open.
+- **Leptos Cart integration is not release-verified.** Source now mounts a shared Cart controller, event consumer and count publisher, and injects the host's Cart capability into Product. When assets or a valid owner are absent, controls remain unavailable and counts unknown. Synthetic bridge tests (including late installation) do not prove mounted WASM, tenant/auth transitions or owner-side admission.
 - **Real host execution is not yet verified.** The added SSR/nonce and response-cache tests still need to compile and run in the real workspace, followed by mounted hydration, client navigation, CSP and accessibility checks. The isolated JavaScript browser tests do not prove those paths.
 
 See the [Page Builder documentation](../docs/README.md) and the [module UI guide](../../../../docs/UI/module-package-implementation.md).

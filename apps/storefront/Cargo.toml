@@ -37,7 +37,8 @@ blog-comment-island = [
 ]
 blog-comment-assets = []
 product-buyer-island = [
-  "hydrate", "dep:wasm-bindgen", "dep:rustok-product-storefront", "rustok-product-storefront/hydrate",
+  "hydrate", "dep:wasm-bindgen", "dep:rustok-cart-storefront", "rustok-cart-storefront/hydrate",
+  "dep:rustok-product-storefront", "rustok-product-storefront/hydrate",
 ]
 product-buyer-assets = ["ssr"]
 ssr = [
@@ -158,7 +159,10 @@ rustok-search-storefront = { path = "../../crates/modules/rustok-search/storefro
 rustok-messenger-storefront = { path = "../../crates/modules/rustok-messenger/storefront", default-features = false, optional = true }
 console_error_panic_hook = "0.1"
 wasm-bindgen = { version = "0.2", optional = true }
-web-sys = { version = "0.3", features = ["Document", "Element", "HtmlElement", "Location", "Window"] }
+web-sys = { version = "0.3", features = ["Document", "Element", "Node", "NodeList", "HtmlElement", "Location", "History", "Window", "Event", "EventTarget", "CustomEvent", "CustomEventInit"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
 
 [build-dependencies]
 serde = { workspace = true, features = ["derive"] }

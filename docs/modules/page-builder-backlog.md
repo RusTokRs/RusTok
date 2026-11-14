@@ -27,16 +27,17 @@ and [Leptos bridge](../../crates/modules/rustok-page-builder/storefront/README.m
 
 Remaining release work, with owners:
 
-1. **Mount the Leptos Cart boundary** (Cart + Product owners + `apps/storefront`). Implement and
-   verify the cancelable open/close/toggle consumer and scope-aware count/invalidation publisher;
-   without an acknowledging consumer the bridge reports unavailable, and an unknown count is not
-   zero. The independently mounted Leptos Product buyer currently does **not** receive the host's
-   Cart-enabled state: `BuyerCartController::can_write` checks auth/session/busy state, not module
-   availability. Do not treat the handoff as capability-safe until the host supplies a reactive,
-   fail-closed capability to the island and Cart fences reads/writes and quote generations across
-   disable/re-enable and tenant/auth changes. Verify the owner-side Commerce/Cart admission policy
-   independently; a UI flag is not authorization. Exercise real mounted capability, tenant, auth,
-   in-flight create/add and navigation transitions, not just synthetic events.
+1. **Mount and verify the Leptos Cart boundary** (Cart + Product owners + `apps/storefront`) —
+   source in progress, **OPEN**. One host-mounted Cart controller now supplies the drawer, the
+   cancelable open/close/toggle consumer and a scope-aware count/invalidation publisher, and is
+   injected into Product with a reactive fail-closed capability. Counts remain unknown without a
+   confirmed owner observation, and acknowledgements do not prove mutations. Cart and Product
+   fence reads, writes and quote cycles across policy/auth/route changes; Commerce adds separate
+   tenant and selected-channel Cart admission. These are source changes, not authorization or
+   runtime certification. Obtain locked native and actual-feature WASM builds, owner admission
+   and real mounted capability, tenant, auth, in-flight create/add, disposal and navigation tests.
+   Verify guest cookie restoration and cross-provider/tab races explicitly; a local hint, browser
+   event or document lease cannot cancel an already-sent operation.
 2. **Verify actual hosts, SSR and CSP** (Page Builder storefront + both hosts). Compile and run
    the new Leptos SSR/nonce and canonical Pages response tests in the real workspace, including
    default platform i18n and consumer builds. Test Leptos mounted hydration and navigation, both
@@ -58,6 +59,13 @@ Remaining release work, with owners:
    built-in product card and price are static sample content and its button has no default purchase
    action. An author must replace the sample and configure the explicit handoff; neither bridge
    selects a SKU, fabricates a price or bypasses Product confirmation.
+
+Latest bounded Cart-boundary evidence: standalone `ClientAuthScope` 4/4 and Cart capability
+2/2 passed; the navigation guard's Node tests passed 4/4. Chromium passed 14/14 targeted shipped
+bridge, late-count handshake, navigation and enforced-CSP simulation tests. Those browser tests
+use simulated owners/HTML, not mounted WASM or real services. UI i18n parity (77 catalogs), the
+i18n contract and Cart/Product source-boundary guards passed. Locked workspace tests, the new
+same-document auth lease, cookie propagation and the live host remain unverified.
 
 Evidence in this continuation: isolated tests using the real Fly and platform i18n sources passed
 Fly 356/356 with default platform i18n and 353/353 without it, `fly-browser` 39/39, `fly-ui` 81/81,

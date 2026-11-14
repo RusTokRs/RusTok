@@ -201,6 +201,25 @@ pub(crate) fn product_query_tenant(
     Ok(tenant.id)
 }
 
+/// Cart GraphQL and native buyer transports share the same tenant/channel admission.
+/// This check is independent of any host-rendered availability flag.
+pub(crate) async fn require_storefront_cart_enabled(ctx: &Context<'_>) -> Result<()> {
+    let db = ctx.data::<DatabaseConnection>()?;
+    let tenant = ctx.data::<TenantContext>()?;
+    let request = ctx.data::<RequestContext>()?;
+    crate::admit_storefront_cart_request(db, tenant.id, request)
+        .await
+        .map_err(|error| match error.kind {
+            rustok_api::PortErrorKind::Forbidden => {
+                async_graphql::Error::new("Cart is not available in this storefront scope")
+                    .extend_with(|_, ext| ext.set("code", "MODULE_NOT_ENABLED"))
+            }
+            _ => <FieldError as GraphQLError>::internal_error(
+                "Cart availability could not be verified",
+            ),
+        })
+}
+
 pub(crate) async fn require_storefront_channel_enabled(ctx: &Context<'_>) -> Result<()> {
     let Some(request_context) = ctx.data_opt::<RequestContext>() else {
         return Ok(());

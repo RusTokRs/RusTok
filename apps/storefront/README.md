@@ -27,12 +27,14 @@
 
 ## Known Limitations / Pending Implementation
 
-- The Page Builder landing bridge has no mounted Leptos Cart event consumer or Cart-count
-  publisher. Landing Cart controls therefore report unavailable and counts remain unknown until
-  the Cart owner wires and verifies that boundary; see the [storefront contract](../../crates/modules/rustok-page-builder/storefront/README.md#purchase-and-cart-bridge).
-- The separate Product buyer island does not receive the host's Cart-enabled state, so it can offer
-  an add while Cart is disabled. This is a release blocker pending Product/Cart/host capability
-  wiring and server-side admission verification; the Next buyer's guard does not cover this host.
+- The shared Cart/Product client now has a source-level landing event consumer and count
+  publisher, and Product receives the same host-supplied Cart capability as the drawer. These
+  paths remain release blockers until the locked native/WASM builds and real mounted tenant,
+  auth, navigation, in-flight and server-admission tests pass. See the [storefront contract](../../crates/modules/rustok-page-builder/storefront/README.md#purchase-and-cart-bridge).
+- The client is included only with built Product buyer assets and a request CSP nonce. Without
+  it, the SSR Cart trigger remains disabled and landing controls must report unavailable. A
+  stopped or externally navigated owner does not remount in the same document; reload is required,
+  and reload itself does not prove cancellation of an earlier transmitted request.
 - Home and module SSR pass the request nonce to trusted module styles/scripts, including a Pages
   landing rendered in a home slot; nonce-bearing HTML responses are `private, no-store`. Canonical
   Pages compositions with a nonce cannot return a cached ETag/304. The new host response and

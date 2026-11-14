@@ -1,9 +1,11 @@
+mod capability;
 mod error;
 mod identifiers;
 mod policy;
 mod request;
 mod view_model;
 
+pub use capability::CartCapabilityState;
 pub use error::{CartCoreError, error_with_context};
 #[cfg(feature = "ssr")]
 pub use identifiers::normalize_public_channel_slug;
@@ -31,6 +33,7 @@ pub use buyer::{
 
 mod buyer_session;
 pub use buyer_session::{
-    BuyerCartCheckpoint, BuyerCartError, BuyerCartPhase, BuyerCartPlan, BuyerCartSession,
-    buyer_cart_storage_key,
+    BuyerCartCheckpoint, BuyerCartError, BuyerCartLineAction, BuyerCartLinePlan, BuyerCartPhase,
+    BuyerCartPlan, BuyerCartSession, buyer_cart_badge, buyer_cart_storage_key,
+    legacy_buyer_cart_storage_key, legacy_buyer_cart_storage_prefix,
 };

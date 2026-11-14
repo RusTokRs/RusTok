@@ -6,10 +6,11 @@
 - `core`: Framework-agnostic display mapping, view-models, and cart calculations.
 - `model`: Storefront data models for cart representations and line items.
 - `transport`: Thin UI-facing transport facade and adapters (native server and GraphQL).
-- `ui`: Storefront Leptos views and interactive cart components.
+- The private `ui` layer binds the Cart controller to Leptos views and browser events.
 
 ### Re-exports
-- `CartCheckoutHandoffCard`, `CartDrawer`, `CartDrawerState`, `CartFloatingTrigger`, `CartHeaderTrigger`, `CartView`, `use_cart_drawer`
+- `CartCheckoutHandoffCard`, `CartClient`, `CartHeaderTrigger`, `CartView`
+- `BuyerCartController`, `CartCapability`, `use_buyer_cart`
 
 ## Platform Capability Bindings
 - Fluid Frontend Architecture (FFA) storefront package for the `rustok-cart` domain.
@@ -24,7 +25,7 @@
 
 ### Input DTOs/Commands
 - `CartView`: Entrypoint route component for full storefront cart display.
-- `CartDrawer`: Interactive slide-out drawer presenting cart contents.
+- `CartClient`: Host-configured Cart controller, modal drawer and landing event adapter.
 - `decrement_line_item`: Transport command reducing item quantity safely.
 - `remove_line_item`: Transport command removing item from active cart.
 

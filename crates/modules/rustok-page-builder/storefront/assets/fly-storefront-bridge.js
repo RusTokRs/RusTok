@@ -210,4 +210,7 @@
       syncCounters();
     }
   });
+  // If Cart mounted before this landing, ask it to republish its current scoped observation.
+  // With no owner the count remains unknown; this event cannot grant a capability.
+  window.dispatchEvent(new CustomEvent("rustok:cart:request-count"));
 })();

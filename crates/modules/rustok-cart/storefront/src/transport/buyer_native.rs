@@ -76,7 +76,7 @@ pub(super) async fn buyer_scope(operation: &'static str) -> Result<BuyerScope, S
     {
         return Err(ServerFnError::new("Cart request context is unavailable"));
     }
-    rustok_commerce::admit_storefront_buyer_request(host.db(), tenant.id, &request)
+    rustok_commerce::admit_storefront_cart_request(host.db(), tenant.id, &request)
         .await
         .map_err(port_error)?;
     let customer_id = resolve_storefront_customer_id(

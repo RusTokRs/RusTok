@@ -34,7 +34,7 @@ mod search;
 pub mod services;
 pub mod state_machine;
 mod storefront_channel;
-pub use storefront_channel::admit_storefront_buyer_request;
+pub use storefront_channel::{admit_storefront_buyer_request, admit_storefront_cart_request};
 pub mod storefront_cart_runtime;
 mod storefront_checkout_pricing;
 pub use storefront_checkout_pricing::{

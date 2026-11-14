@@ -286,6 +286,23 @@ test('Leptos shows an unavailable cart until a host consumer acknowledges it', a
   await expect(page.getByTestId('two-count')).toHaveAttribute('data-fly-cart-count-status', 'unknown');
 });
 
+test('a late Leptos landing requests the mounted owner’s current count', async ({ page }) => {
+  await mount(page);
+  // A Cart owner may have published before the landing script existed. This fake owner
+  // republish is a bridge protocol test, not evidence of the mounted Leptos consumer.
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('rustok:cart:updated', { detail: { count: 8 } }));
+    window.addEventListener('rustok:cart:request-count', () => {
+      window.dispatchEvent(new CustomEvent('rustok:cart:updated', { detail: { count: 8 } }));
+    });
+  });
+  await page.addScriptTag({ content: await readFile(rustBridge, 'utf8') });
+  await expect(page.getByTestId('one-count')).toHaveText('8');
+  await expect(page.getByTestId('two-count')).toHaveAttribute('data-fly-cart-count-status', 'confirmed');
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('rustok:cart:updated', { detail: { status: 'unknown' } })));
+  await expect(page.getByTestId('one-count')).toHaveText('—');
+});
+
 test('one published purchase payload hands off to Product on both hosts without a cart mutation', async ({ browser }) => {
   const context = await browser.newContext();
   try {

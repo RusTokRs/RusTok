@@ -1,0 +1,103 @@
+name: Leptos Cart boundary
+
+on:
+  pull_request:
+    paths:
+      - "apps/storefront/**"
+      - "apps/next-frontend/tests/e2e/fly-leptos-*.spec.ts"
+      - "apps/next-frontend/tests/e2e/fly-storefront-bridge.spec.ts"
+      - "crates/modules/rustok-cart/**"
+      - "crates/modules/rustok-product/storefront/**"
+      - "crates/modules/rustok-commerce/**"
+      - "crates/modules/rustok-page-builder/storefront/assets/fly-storefront-bridge.js"
+      - "crates/ui/leptos-auth/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/leptos-cart-boundary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leptos-cart-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  RUSTUP_TOOLCHAIN: "1.96.0"
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: never
+  RUSTFLAGS: "-C debuginfo=0"
+
+jobs:
+  native:
+    name: Native Cart, Product and admission
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: "1.96.0"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          key: leptos-cart-native
+      - name: Navigation fence unit tests
+        run: node --test apps/storefront/tests/product-buyer-navigation.test.mjs
+      - name: Check and test the owner boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_checked() {
+            local label="$1"; shift
+            local log; log="$(mktemp)"
+            local status=0
+            "$@" >"$log" 2>&1 || status=$?
+            if [ "$status" -ne 0 ]; then
+              local diagnostics
+              diagnostics="$(grep -E '^(error|warning)(\[|:)|^ *--> ' -A 8 "$log" | head -c 12000 || true)"
+              if [ -z "$diagnostics" ]; then diagnostics="$(tail -c 6000 "$log")"; fi
+              diagnostics="$(printf '%s' "$diagnostics" | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
+              echo "::error title=$label::$diagnostics"
+              tail -n 180 "$log"
+              return "$status"
+            fi
+            tail -n 12 "$log"
+          }
+          run_checked modules cargo check --locked --lib -p rustok-cart-storefront -p rustok-product-storefront --features ssr
+          run_checked auth-tests cargo test --locked --lib -p leptos-auth
+          run_checked cart-tests cargo test --locked --lib -p rustok-cart-storefront
+          run_checked admission-test cargo test --locked --lib -p rustok-commerce buyer_admission_checks_both_owners_and_the_selected_channel
+          run_checked graphql-admission-test cargo test --locked -p rustok-commerce --test graphql_runtime_parity_test storefront_cart_admission_requires_both_owners_without_hiding_product_catalog
+          run_checked host cargo check --locked --lib -p rustok-storefront
+
+  wasm:
+    name: Storefront Cart and Product client
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: "1.96.0"
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          key: leptos-cart-wasm
+      - name: Check the actual client feature set
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$(mktemp)"
+          status=0
+          cargo check --locked --lib -p rustok-storefront --no-default-features \
+            --features product-buyer-island --target wasm32-unknown-unknown >"$log" 2>&1 || status=$?
+          if [ "$status" -ne 0 ]; then
+            diagnostics="$(grep -E '^(error|warning)(\[|:)|^ *--> ' -A 8 "$log" | head -c 12000 || true)"
+            if [ -z "$diagnostics" ]; then diagnostics="$(tail -c 6000 "$log")"; fi
+            diagnostics="$(printf '%s' "$diagnostics" | sed 's/%/%25/g' | sed -z 's/\n/%0A/g')"
+            echo "::error title=cart-product-wasm::$diagnostics"
+            tail -n 180 "$log"
+            exit "$status"
+          fi
+          tail -n 12 "$log"

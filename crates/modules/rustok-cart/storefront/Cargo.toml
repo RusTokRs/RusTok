@@ -14,10 +14,11 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
-hydrate = ["leptos-auth/hydrate", "leptos/hydrate"]
+hydrate = ["leptos-auth/hydrate", "leptos/hydrate", "rustok-ui-leptos/hydrate"]
 ssr = [
   "leptos-auth/ssr",
   "leptos/ssr",
+  "rustok-ui-leptos/ssr",
   "dep:leptos_axum",
   "dep:rustok-cart",
   "dep:rustok-customer",
@@ -33,6 +34,7 @@ ssr = [
 [dependencies]
 leptos-auth.workspace = true
 rustok-ui-core.workspace = true
+rustok-ui-leptos = { path = "../../../ui/rustok-ui/leptos", default-features = false }
 leptos.workspace = true
 leptos_axum = { workspace = true, optional = true }
 rustok-graphql.workspace = true
@@ -59,4 +61,5 @@ uuid.workspace = true
 tracing.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-web-sys = { version = "0.3", features = ["Window", "Storage"] }
+js-sys = { version = "0.3" }
+web-sys = { version = "0.3", features = ["Window", "Location", "Storage", "Document", "Element", "Node", "HtmlElement", "Event", "EventTarget", "CustomEvent", "CustomEventInit", "StorageEvent"] }

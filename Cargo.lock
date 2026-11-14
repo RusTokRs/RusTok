@@ -14683,6 +14683,7 @@ dependencies = [
 name = "rustok-cart-storefront"
 version = "0.1.0"
 dependencies = [
+ "js-sys",
  "leptos",
  "leptos-auth",
  "leptos-ui-routing",
@@ -14701,6 +14702,7 @@ dependencies = [
  "rustok-region",
  "rustok-ui-core",
  "rustok-ui-i18n",
+ "rustok-ui-leptos",
  "rustok-ui-transport",
  "sea-orm",
  "serde",
@@ -18317,6 +18319,7 @@ dependencies = [
  "axum",
  "console_error_panic_hook",
  "futures",
+ "js-sys",
  "leptos",
  "leptos-auth",
  "leptos-ui",

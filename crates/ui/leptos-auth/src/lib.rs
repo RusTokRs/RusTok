@@ -7,6 +7,8 @@ mod client;
 pub mod components;
 pub mod context;
 pub mod hooks;
+mod realm;
+mod scope;
 pub mod storage;
 pub mod transport;
 
@@ -70,11 +72,14 @@ pub fn clear_refresh_cookie_header(secure: bool) -> String {
 
 pub use client::AuthorizedBrowserClient;
 pub use components::{GuestRoute, ProtectedRoute, RequireAuth};
-pub use context::{AuthContext, AuthProvider};
+pub use context::{
+    AUTH_SCOPE_CHANGE_EVENT, AUTH_SCOPE_CHANGE_STORAGE_KEY, AuthContext, AuthProvider,
+};
 pub use hooks::{
     use_auth, use_auth_error, use_current_user, use_is_authenticated, use_is_loading,
     use_is_token_valid, use_session, use_tenant, use_token,
 };
+pub use scope::ClientAuthScope;
 pub use storage::{ServerAuthSnapshot, provide_server_auth_snapshot};
 
 /// Extract the stable session id (`session_id` claim) from an access

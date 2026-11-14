@@ -38,7 +38,7 @@ axum = { workspace = true, optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 gloo-storage = { workspace = true }
-web-sys = { version = "0.3", features = ["Window", "Location", "Headers"] }
+web-sys = { version = "0.3", features = ["Window", "Location", "Headers", "Storage", "Event", "EventTarget", "CustomEvent", "CustomEventInit"] }
 js-sys = { version = "0.3" }
 
 [package.metadata.cargo-udeps.ignore]

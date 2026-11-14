@@ -10,6 +10,10 @@
 
 #![recursion_limit = "256"]
 
+#[cfg(all(feature = "product-buyer-island", target_arch = "wasm32"))]
+mod cart_buyer_client;
+mod enabled_module_events;
+
 #[cfg(any(
     feature = "ssr",
     not(any(feature = "blog-comment-island", feature = "product-buyer-island"))
@@ -78,19 +82,14 @@ pub fn start_blog_comment_client() -> Result<(), wasm_bindgen::JsValue> {
 #[cfg(all(feature = "product-buyer-island", target_arch = "wasm32"))]
 #[wasm_bindgen::prelude::wasm_bindgen]
 pub fn start_product_buyer_client() -> Result<(), wasm_bindgen::JsValue> {
-    use wasm_bindgen::JsCast;
     console_error_panic_hook::set_once();
-    let document = web_sys::window()
-        .and_then(|window| window.document())
-        .ok_or_else(|| wasm_bindgen::JsValue::from_str("Buyer document is unavailable"))?;
-    let Some(root) = document.query_selector("[data-product-buyer-island='true']")? else {
-        return Ok(());
-    };
-    let root = root
-        .dyn_into::<web_sys::HtmlElement>()
-        .map_err(|_| wasm_bindgen::JsValue::from_str("Invalid buyer mount point"))?;
-    rustok_product_storefront::mount_product_buyer(root)
-        .map_err(|error| wasm_bindgen::JsValue::from_str(&error))
+    cart_buyer_client::start()
+}
+
+#[cfg(all(feature = "product-buyer-island", target_arch = "wasm32"))]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn stop_product_buyer_client() {
+    cart_buyer_client::stop();
 }
 
 #[cfg(all(feature = "ssr", feature = "product-buyer-assets"))]
@@ -172,7 +171,9 @@ fn render_document(
         String::new()
     };
     #[cfg(feature = "product-buyer-assets")]
-    let buyer_bootstrap = if app_html.contains(r#"data-product-buyer-island="true""#) {
+    let buyer_bootstrap = if app_html.contains(r#"data-rustok-cart-host="true""#)
+        || app_html.contains(r#"data-product-buyer-island="true""#)
+    {
         csp_nonce.map(|nonce| format!(r#"<script nonce="{}" type="module" src="/assets/product-buyer-bootstrap.js"></script>"#, nonce.as_str())).unwrap_or_default()
     } else {
         String::new()
@@ -266,7 +267,7 @@ async fn render_shell_with_modules(
         .await;
     let modules_meta = format!(
         r#"<meta name="rustok-enabled-modules" content="{}" />"#,
-        enabled_modules.join(",")
+        rustok_core::html_escape(&enabled_modules.join(","))
     );
     render_document(
         locale,
@@ -385,7 +386,7 @@ async fn render_module_page_with_modules(
         .unwrap_or_default();
     let modules_meta = format!(
         r#"<meta name="rustok-enabled-modules" content="{}" />"#,
-        enabled_modules.join(",")
+        rustok_core::html_escape(&enabled_modules.join(","))
     );
     let mut head = head_html;
     if !head.is_empty() {

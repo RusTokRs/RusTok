@@ -151,6 +151,21 @@ pub fn get_token() -> Option<String> {
         .map(|session| session.token)
 }
 
+/// Check both the persisted public tenant and any in-memory session. This detects a tenant
+/// change in another tab even when this tab still holds an older access token.
+pub fn matches_request_tenant(tenant: &str) -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let stored = LocalStorage::get::<String>(ADMIN_TENANT_KEY).ok();
+        stored.as_deref() == Some(tenant)
+            && memory::load_session().is_none_or(|session| session.tenant == tenant)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        get_tenant().is_none_or(|current| current == tenant)
+    }
+}
+
 /// Bind a host-resolved public tenant to the existing canonical browser tenant key.
 /// This is request metadata, not authentication: never replace an existing foreign tenant or
 /// manufacture a session. Guest requests and silent refresh must use the page's resolved tenant.

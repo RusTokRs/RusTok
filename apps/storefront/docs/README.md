@@ -169,10 +169,14 @@ into a request Leptos Owner. Tenant resolution is an outer middleware in the ser
 child render Owners inherit it through scoped futures. Native SSR auth remains Axum request
 metadata, not a browser-auth snapshot fabricated by the host.
 
-The public Product snapshot includes only resolved tenant slug, catalog and route state. Its
-browser AuthProvider binds a missing canonical public tenant before refresh and refuses foreign
-stored scope. No bearer or guest capability is serialized. Build the client with
+The public Product snapshot includes only resolved tenant slug, catalog and route state. One
+browser AuthProvider and Cart controller are mounted by the host; the Product owner receives that
+controller rather than creating a separate Cart session. The provider binds a missing canonical
+public tenant before refresh and refuses foreign stored scope. No bearer or guest capability is
+serialized. The host projects enabled modules and synchronously fences same-document history
+changes; client policy is not server authorization. Build the client with
 `node apps/storefront/scripts/build-product-buyer-client.mjs` and explicitly enable
 `product-buyer-assets`; generated target assets are not tracked. Without a client, SSR controls
-remain disabled with an explicit notice. This build, CSP bootstrap, cookie/Set-Cookie propagation,
-Owner inheritance and WASM behavior are **not runtime-proven** by source checks.
+remain disabled with an explicit notice. The navigation guard and late-landing handshake have
+bounded browser tests, but the actual build, cookie/Set-Cookie propagation, Owner inheritance,
+mounted WASM and real-service behavior are **not runtime-proven** by those tests.

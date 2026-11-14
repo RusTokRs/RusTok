@@ -44,6 +44,8 @@ pub struct BuyerQuoteRequest {
 pub struct BuyerQuoteCycle {
     pub input: u64,
     pub scope: u64,
+    pub capability: u64,
+    pub auth: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

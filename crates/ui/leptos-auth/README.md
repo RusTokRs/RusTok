@@ -48,7 +48,14 @@ validated Axum request context. Browser header mutation uses the fallible
 `web_sys::Headers` obtained from the Leptos request wrapper. The gloo convenience
 setter returns unit and throws; it cannot implement this error contract.
 
-## Known Limitations / Pending Implementation
+## Client auth scope and outstanding verification
 
-Mounted request/session verification remains pending; the Blog reference plan
-records the bounded package/WASM compilation obtained during its continuation.
+The provider exposes a non-secret generation and marks it unavailable during transitions. In
+source, cooperating providers in the same browser document use a shared lease and refuse overlap;
+a dropped future poisons that document's lease because it does not cancel a request or its cookie
+side effects. Notifications contain no credentials. If notification storage is unavailable, a
+transition fails before network I/O. Other tabs receive an asynchronous invalidation stamp, not an
+atomic lock, and old requests may still affect cookies after a reload. Server authentication and
+tenant checks remain authoritative. These changes need locked native/WASM and mounted-provider
+verification; standalone state-machine tests do not prove the browser protocol. The Blog reference
+plan records earlier bounded package/WASM compilation, not validation of this change.

@@ -8,6 +8,7 @@ Leptos authentication context, protected route wrappers, BFF cookie management, 
 - `ADMIN_USER_KEY`: retired persisted-user key, purged on browser access.
 - `ADMIN_SESSION_KEY`: retired persisted-session key, purged on browser access.
 - `ADMIN_REFRESH_COOKIE`: HttpOnly cookie name (`rustok-admin-refresh-v1`) for BFF session refresh.
+- `AUTH_SCOPE_CHANGE_EVENT`, `AUTH_SCOPE_CHANGE_STORAGE_KEY`: non-secret lifecycle invalidations; neither is authorization or a cross-tab lock.
 
 ### Cookie and Session Helpers
 - `refresh_cookie_value(tenant: &str, refresh_token: &str) -> String`: Encodes refresh cookie value as `{tenant}.{refresh_token}`.
@@ -15,7 +16,7 @@ Leptos authentication context, protected route wrappers, BFF cookie management, 
 - `extract_refresh_cookie(cookie_header: &str) -> Option<(String, String)>`: Extracts refresh credentials from HTTP Cookie headers.
 - `refresh_cookie_header(tenant: &str, refresh_token: &str, secure: bool) -> String`: Constructs standard `Set-Cookie` header.
 - `clear_refresh_cookie_header(secure: bool) -> String`: Constructs expired `Set-Cookie` header to invalidate session.
-- `session_id_from_access_token(token: &str) -> Option<String>`: Unverified payload parser extracting stable session UUID for CSRF protection.
+- `session_id_from_access_token(token: &str) -> Option<String>`: Unverified payload parser extracting a session identifier; it is not authentication or a CSRF secret.
 
 ### Components
 - `AuthProvider(children, tenant_slug?)`: canonical context provider. An optional resolved host tenant binds only missing public tenant metadata; foreign saved tenants refuse.
@@ -37,7 +38,7 @@ Leptos authentication context, protected route wrappers, BFF cookie management, 
 ## 2. Invariants & Business Rules
 - **BFF Cookie Isolation**: Refresh tokens are stored strictly in `HttpOnly; SameSite=Lax` cookies; browser client scripts cannot read refresh tokens directly.
 - **SSR ownership**: `ServerAuthSnapshot` is request-scoped input validated by the host, not a session inferred by this library. Browser restoration and SSR/hydration parity require mounted verification.
-- **CSRF Protection**: Stable session ID derived from unverified access token payload serves as request secret across state-modifying requests.
+- **Client scope**: `ClientAuthScope` and `AuthContext::client_scope` expose a non-secret, fail-closed transition generation. Cooperating providers share an in-document operation lease; it cannot coordinate other tabs or cancel an already-sent request. Owner/server authentication and CSRF checks remain authoritative.
 - **Tenant Context Preservation**: Tenant identity is strictly isolated and retained across session refreshes.
 
 ## 3. Error Handling & Edge Cases
@@ -51,5 +52,6 @@ Leptos authentication context, protected route wrappers, BFF cookie management, 
 - Plain request-scoped server snapshot prevents cross-request data leaks in multi-tenant SSR hosts.
 
 ## 5. Contract Tests & Verification
-- Unit test suite: 3 tests verifying GraphQL transport URL shapes, authenticated client wire types, and server snapshot scoping.
-- `src/contract_tests.rs`: Direct verification of package metadata, cookie serialization/deserialization invariants, and session ID extraction.
+- `src/scope.rs`: standalone lifecycle state-machine tests; they do not exercise the provider or browser lease.
+- `src/contract_tests.rs`: package metadata, cookie serialization/deserialization and session ID extraction.
+- The current browser-provider, cross-provider and network/cookie behavior still requires mounted verification.

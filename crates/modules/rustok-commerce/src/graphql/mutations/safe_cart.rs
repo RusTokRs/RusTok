@@ -614,7 +614,7 @@ use self::rustok_cart_shim as rustok_cart;
 use self::rustok_pricing_shim as rustok_pricing;
 
 use async_graphql::{Context, Object, Result};
-use rustok_api::{AuthContext, RequestContext, TenantContext, graphql::require_module_enabled};
+use rustok_api::{AuthContext, RequestContext, TenantContext};
 use uuid::Uuid;
 
 use crate::StoreContextService;
@@ -624,7 +624,7 @@ use rustok_cart::{
 };
 use rustok_pricing::in_process_pricing_read_port;
 
-use super::super::{MODULE_SLUG, current_tenant_scope, types::*};
+use super::super::{current_tenant_scope, types::*};
 use super::helpers::*;
 use super::typed_shipping_option_helper::validate_selected_shipping_option;
 
@@ -639,8 +639,7 @@ impl CommerceCartMutation {
         tenant_id: Option<Uuid>,
         input: CreateStorefrontCartInput,
     ) -> Result<GqlStoreCart> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        super::super::require_storefront_channel_enabled(ctx).await?;
+        super::super::require_storefront_cart_enabled(ctx).await?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -725,8 +724,7 @@ impl CommerceCartMutation {
         cart_id: Uuid,
         input: AddStorefrontCartLineItemInput,
     ) -> Result<GqlCart> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        super::super::require_storefront_channel_enabled(ctx).await?;
+        super::super::require_storefront_cart_enabled(ctx).await?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -795,8 +793,7 @@ impl CommerceCartMutation {
         cart_id: Uuid,
         input: UpdateStorefrontCartContextInput,
     ) -> Result<GqlStoreCart> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        super::super::require_storefront_channel_enabled(ctx).await?;
+        super::super::require_storefront_cart_enabled(ctx).await?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -949,8 +946,7 @@ impl CommerceCartMutation {
         line_id: Uuid,
         input: UpdateStorefrontCartLineItemInput,
     ) -> Result<GqlCart> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        super::super::require_storefront_channel_enabled(ctx).await?;
+        super::super::require_storefront_cart_enabled(ctx).await?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
@@ -1023,8 +1019,7 @@ impl CommerceCartMutation {
         cart_id: Uuid,
         line_id: Uuid,
     ) -> Result<GqlCart> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        super::super::require_storefront_channel_enabled(ctx).await?;
+        super::super::require_storefront_cart_enabled(ctx).await?;
 
         let db = ctx.data::<sea_orm::DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;

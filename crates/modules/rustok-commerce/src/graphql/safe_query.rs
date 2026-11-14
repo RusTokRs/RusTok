@@ -39,6 +39,14 @@ pub(crate) async fn require_storefront_channel_enabled(
         .map_err(Into::into)
 }
 
+pub(crate) async fn require_storefront_cart_enabled(
+    ctx: &::async_graphql::Context<'_>,
+) -> Result<(), query_error_boundary::BoundaryError> {
+    super::require_storefront_cart_enabled(ctx)
+        .await
+        .map_err(Into::into)
+}
+
 #[path = "safe_query/source.rs"]
 mod source;
 

@@ -1028,12 +1028,11 @@ impl CommerceQuery {
         id: Uuid,
         tenant_id: Option<Uuid>,
     ) -> Result<Option<GqlCart>> {
-        require_module_enabled(ctx, MODULE_SLUG).await?;
-        super::require_storefront_channel_enabled(ctx).await?;
+        super::require_storefront_cart_enabled(ctx).await?;
 
         let db = ctx.data::<DatabaseConnection>()?;
         let tenant = ctx.data::<TenantContext>()?;
-        let tenant_id = tenant_id.unwrap_or(tenant.id);
+        let tenant_id = current_tenant_scope(ctx, tenant_id, "Storefront cart reads")?;
         let customer_id =
             resolve_optional_storefront_customer_id(db, tenant_id, ctx.data_opt::<AuthContext>())
                 .await?;

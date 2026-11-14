@@ -98,8 +98,8 @@ and hands exact ordinary context to Commerce/Cart. The historical pending descri
 superseded at the source level, not by runtime certification. See the [current Product plan](../docs/implementation-plan.md#buyer-source-implementation-and-handoff-2026-10-30)
 for contracts, bounds, recovery semantics, build instructions and unexecuted release gates.
 
-**Open capability blocker:** the independently mounted Product buyer does not receive the host's
-Cart-enabled state. Its Cart controller checks auth, session and busy state, but may enable an add
-when the host considers Cart disabled. The Cart, Product and host owners must connect a reactive,
-fail-closed capability and verify scope transitions and server admission before releasing this
-purchase flow. See the [shared storefront continuation](../../../../docs/modules/page-builder-backlog.md#storefront-and-identity-continuation-2026-11-13--open).
+**Open verification blocker:** the host now injects the same reactive Cart capability/controller
+into Product and the drawer in source; a detached buyer remains read-only. Product quote and add
+cycles are fenced against input, auth, Cart policy and route changes, while server admission remains
+independent. Locked native/WASM builds and mounted capability, actor, navigation, in-flight and
+real-service evidence are still required before release. See the [shared storefront continuation](../../../../docs/modules/page-builder-backlog.md#storefront-and-identity-continuation-2026-11-13--open).

@@ -214,7 +214,8 @@ pub(super) async fn refresh_token_native(
         let (cookie_tenant, refresh_token) =
             refresh_cookie_from(&headers).ok_or_else(|| ServerFnError::new("Unauthorized"))?;
         if cookie_tenant != tenant {
-            return Err(ServerFnError::new("Unauthorized"));
+            // An existing foreign-tenant cookie is not evidence of an anonymous session.
+            return Err(ServerFnError::new("Authentication tenant mismatch"));
         }
 
         let (payload, rotated) = exchange_refresh_token_ssr(refresh_token, tenant.clone()).await?;
