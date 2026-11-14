@@ -313,10 +313,19 @@ impl OAuthAppService {
         })
     }
 
-    /// Revoke an app — deactivate and revoke all its tokens
-    pub async fn revoke_app(db: &DatabaseConnection, app_id: Uuid) -> Result<oauth_apps::Model> {
+    /// Revoke an app — deactivate and revoke all its tokens.
+    ///
+    /// Tenancy is part of the lookup, not something the caller is trusted to
+    /// have checked first: a revoke keyed on a bare `app_id` would let any
+    /// tenant deactivate another tenant's app and invalidate its issued tokens.
+    pub async fn revoke_app(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        app_id: Uuid,
+    ) -> Result<oauth_apps::Model> {
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
         let app = OAuthApps::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
             .one(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?
@@ -2445,7 +2454,7 @@ mod tests {
         .await
         .expect("insert oauth token");
 
-        let revoked = OAuthAppService::revoke_app(&db, created.app.id)
+        let revoked = OAuthAppService::revoke_app(&db, created.app.tenant_id, created.app.id)
             .await
             .expect("revoke app");
         assert!(!revoked.is_active);
@@ -2516,7 +2525,7 @@ mod tests {
         .await;
         assert!(edit_result.is_err());
 
-        let revoke_result = OAuthAppService::revoke_app(&db, managed.id).await;
+        let revoke_result = OAuthAppService::revoke_app(&db, tenant.id, managed.id).await;
         assert!(revoke_result.is_err());
 
         let other_tenant =
