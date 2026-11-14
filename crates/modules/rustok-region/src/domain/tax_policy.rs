@@ -6,6 +6,9 @@ pub(crate) fn channel_tax_provider_id(
     channel_id: Option<Uuid>,
 ) -> Option<String> {
     let channel_id = channel_id?;
+    if channel_id.is_nil() {
+        return None;
+    }
     let channel_key = channel_id.to_string();
     let value = metadata
         .get("channel_tax_provider_ids")
@@ -115,5 +118,16 @@ mod tests {
         });
 
         assert_eq!(channel_tax_provider_id(&metadata, None), None);
+    }
+
+    #[test]
+    fn channel_tax_provider_id_returns_none_for_nil_channel_id() {
+        let metadata = json!({
+            "channel_tax_provider_ids": {
+                Uuid::nil().to_string(): "provider_nil"
+            }
+        });
+
+        assert_eq!(channel_tax_provider_id(&metadata, Some(Uuid::nil())), None);
     }
 }

@@ -1174,9 +1174,9 @@
       "category": "modules",
       "files": 54,
       "loc": 9829,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified 6 Universal Logic Dimensions: non-nil UUID guards, tax rate bounds, cursor validation"
     },
     "crates/modules/rustok-region/admin": {
       "name": "admin",
@@ -1184,9 +1184,9 @@
       "category": "modules",
       "files": 9,
       "loc": 3095,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified FFA separation, non-nil tenant_id guards, RBAC permission verification"
     },
     "crates/modules/rustok-region/storefront": {
       "name": "storefront",
@@ -1194,9 +1194,9 @@
       "category": "modules",
       "files": 10,
       "loc": 1783,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14",
+      "notes": "Verified FFA separation, non-nil tenant_id guards, error status mapping and DOM attributes"
     },
     "crates/modules/rustok-search": {
       "name": "rustok-search",

@@ -159,12 +159,19 @@ impl TranslationTargetProvider for RegionTranslationTargetProvider {
             .cursor
             .as_ref()
             .map(|cursor| {
-                Uuid::parse_str(cursor.as_str()).map_err(|_| {
+                let id = Uuid::parse_str(cursor.as_str()).map_err(|_| {
                     PortError::validation(
                         "region.translation_cursor_invalid",
                         "Region translation cursor must be a Region UUID",
                     )
-                })
+                })?;
+                if id.is_nil() {
+                    return Err(PortError::validation(
+                        "region.translation_cursor_invalid",
+                        "Region translation cursor must be a non-nil Region UUID",
+                    ));
+                }
+                Ok(id)
             })
             .transpose()?;
         let (snapshots, next_after) = self

@@ -249,6 +249,9 @@ async fn region_bootstrap_native() -> Result<RegionAdminBootstrap, ServerFnError
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+        if tenant.id.is_nil() {
+            return Err(ServerFnError::new("tenant_id cannot be nil UUID"));
+        }
         ensure_permission(
             &auth.permissions,
             &[Permission::REGIONS_LIST, Permission::REGIONS_READ],
@@ -283,6 +286,9 @@ async fn region_list_native() -> Result<RegionList, ServerFnError> {
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+        if tenant.id.is_nil() {
+            return Err(ServerFnError::new("tenant_id cannot be nil UUID"));
+        }
         let request_context = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -330,6 +336,9 @@ async fn region_detail_native(region_id: String) -> Result<RegionDetail, ServerF
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+        if tenant.id.is_nil() {
+            return Err(ServerFnError::new("tenant_id cannot be nil UUID"));
+        }
         let request_context = leptos_axum::extract::<RequestContext>()
             .await
             .map_err(ServerFnError::new)?;
@@ -376,6 +385,9 @@ async fn region_create_native(payload: RegionDraft) -> Result<RegionDetail, Serv
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+        if tenant.id.is_nil() {
+            return Err(ServerFnError::new("tenant_id cannot be nil UUID"));
+        }
 
         ensure_permission(
             &auth.permissions,
@@ -443,6 +455,9 @@ async fn region_update_native(
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
+        if tenant.id.is_nil() {
+            return Err(ServerFnError::new("tenant_id cannot be nil UUID"));
+        }
 
         ensure_permission(
             &auth.permissions,

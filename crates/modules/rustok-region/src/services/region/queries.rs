@@ -22,6 +22,10 @@ impl RegionService {
         region_id: Uuid,
         channel_id: Option<Uuid>,
     ) -> Result<Option<RegionTaxPolicy>, DbErr> {
+        if tenant_id.is_nil() || region_id.is_nil() {
+            return Ok(None);
+        }
+        let channel_id = channel_id.filter(|id| !id.is_nil());
         load_tax_policy(tx, tenant_id, region_id, channel_id).await
     }
 

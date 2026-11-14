@@ -151,6 +151,12 @@ impl RegionTranslationService {
             .filter(entities::region::Column::Id.in_subquery(source_region_ids))
             .order_by_asc(entities::region::Column::Id);
         if let Some(after) = after {
+            if after.is_nil() {
+                return Err(RegionError::Validation(
+                    "Region translation cursor after must not be nil UUID".to_string(),
+                )
+                .into());
+            }
             query = query.filter(entities::region::Column::Id.gt(after));
         }
 
