@@ -112,7 +112,7 @@ pub fn AuthoringToolbar(
     let conflict = t(
         locale.as_deref(),
         "page_builder.status.saveConflict",
-        "Save conflict: changed in another session. Reload before saving.",
+        "Save conflict: changed in another session. Preserve your unsaved work before opening the latest version.",
     );
     let device = t(locale.as_deref(), "page_builder.field.device", "Device");
 

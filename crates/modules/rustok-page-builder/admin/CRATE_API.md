@@ -8,7 +8,7 @@
 - `ConsumerPropertiesPanel`: Property inspector component for editing consumer properties.
 
 ### Canvas & Controller
-- `AdminCanvasController`: Manages iframe canvas lifecycle, selection, hover, and overlay geometry.
+- `AdminCanvasController`: Manages iframe canvas lifecycle, selection, hover, and overlay geometry. `active_page_project` produces the one-page project used by both server-preview entrypoints without changing editor state; a missing active page or encoding failure is returned as a `FlyError`, not an empty document.
 - `AdminCanvasEffect`: Side-effects produced by canvas interactions (geometry updates, postMessage framing).
 - `AdminCanvasError`: Typed error representing canvas interaction failures.
 
@@ -69,3 +69,14 @@
 - `BrowserIntentDispatchError`: Malformed or invalid editing intent dispatched to canvas.
 - `ConsumerPropertyEditorError`: Validation failure in consumer properties payload.
 - `SsrDraftSessionError`: Optimistic concurrency conflict or draft storage failure. Includes `OwnerMismatch` (opaque — never echoes user ids), `RecordTooLarge { bytes, maximum }`, and `LockTimeout` (token lock contention).
+
+### Rendered SSR draft binding
+
+`SsrDraftRenderBinding` is an optional consumer-provided context containing the token and
+store generation of the exact snapshot used for the canvas, or `None` for the saved-page render.
+When provided, the host bootstrap prevents edits against a cached or route session inconsistent
+with that render, offers a same-origin recovery link, and uses the rendered generation as the
+first request's optimistic-concurrency guard. Older responses cannot update the URL; failed
+history synchronization stops editing and keeps a recovery link. Pages supplies the binding;
+other hosts must opt in only when they can provide the actual rendered snapshot. Integration and
+all-store concurrency verification remain outstanding.

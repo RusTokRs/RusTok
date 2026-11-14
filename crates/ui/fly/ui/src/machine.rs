@@ -319,12 +319,12 @@ impl FlyUiStateMachine {
             UiIntent::SaveConflict { expected, actual } => {
                 // A lost update is not a generic failure: the local changes are still
                 // unsaved (`dirty` stays set) and retrying against the same revision
-                // will conflict again, so the announcement tells the user to reload.
+                // will conflict again, so the announcement tells the user to preserve their work.
                 self.state.dirty.save_in_progress = false;
                 self.state.dirty.save_failed = true;
                 self.state.dirty.save_conflict = true;
                 vec![UiEffect::Announce(format!(
-                    "Save conflict: this page changed in another session (expected {expected}, found {actual}). Your changes are not saved; reload the latest version before continuing."
+                    "Save conflict: this page changed in another session (expected {expected}, found {actual}). Your changes are not saved; preserve them before opening the latest version."
                 ))]
             }
             UiIntent::ReplaceDiagnostics(diagnostics) => {

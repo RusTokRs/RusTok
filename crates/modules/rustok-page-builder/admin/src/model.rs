@@ -97,6 +97,24 @@ impl AdminCanvasController {
         PageLocator::by_index(self.active_page_index())
     }
 
+    /// Encode the active page for preview without changing the editor or its revision.
+    /// A missing active page or a serialization failure must not become an empty project.
+    pub fn active_page_project(&self) -> fly::FlyResult<Value> {
+        let index = self.active_page_index();
+        let mut document = self.editor.document().clone();
+        let page = document
+            .project
+            .pages
+            .get(index)
+            .cloned()
+            .ok_or(fly::FlyError::InvalidPageIndex {
+                index,
+                len: document.project.pages.len(),
+            })?;
+        document.project.pages = vec![page];
+        GrapesJsCodec::encode_value(&document)
+    }
+
     pub fn active_page_summary(&self) -> Option<PageSummary> {
         self.page_summaries().get(self.active_page_index()).cloned()
     }

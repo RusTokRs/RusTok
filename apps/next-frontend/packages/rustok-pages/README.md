@@ -26,9 +26,9 @@ Rather than isolating the public storefront within a sandboxed `<iframe>`, `@rus
 
 2. **Client Island (`FlyActionBridge` + canonical `fly-actions.js`):**
    - Side-effect imports `components/fly-actions.js` — a byte-exact copy of the canonical runtime asset the Rust storefront inlines (`crates/ui/fly/browser/assets/fly-actions.js`); it self-starts idempotently (SSR-safe) and exposes `globalThis.FlyActions`.
-   - Natively handles DOM actions: `toggle_visibility`, `switch_tab`, `toggle_accordion`, `switch_slide` (incl. touch/swipe), `scroll_to`, `animate`. Targets and group traversal stay within the nearest landing, including when the host or another landing nests a group.
+   - Natively handles DOM actions: `toggle_visibility`, `switch_tab`, `toggle_accordion`, `switch_slide` (incl. touch/swipe), `scroll_to`, `animate`. Targets and group traversal stay within the nearest landing, including when the host or another landing nests a group. Scroll and animation actions respect the target document's reduced-motion preference.
    - Handles host `emit_event` actions only; provider actions stay with their provider. Cart open/close/toggle use the actual Cart capability; a disabled Cart reports localized feedback and its count is unknown, not zero. Handler and counter updates occur in a layout effect so they reflect a committed capability change before subsequent host layout effects.
-   - `add_to_cart`, `cart:add` and `buy_now` navigate to the Product buyer rather than mutating Cart from unpriced landing data. Hash targets stay inside their landing, and safe root-relative links use Next client routing.
+   - `add_to_cart`, `cart:add` and `buy_now` navigate to the Product buyer rather than mutating Cart from unpriced landing data. Same-context fragment links and `navigate` events resolve only inside their landing: missing, empty or malformed fragments never fall through to the host document. Fragment scrolling honors reduced motion; safe root-relative links use Next client routing.
 
 - `PageBuilderContent` — React Component rendering scoped HTML + CSS + client action bridge.
 - `FlyActionBridge` — Client Component handling interactive actions, cart integration, and dynamic island sync.

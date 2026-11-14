@@ -514,3 +514,26 @@ test('custom actions suppress native activation when the control wraps or is ins
   await page.getByTestId('wrapped-link').click();
   expect(await page.evaluate(() => window.location.hash)).toBe('');
 });
+
+test('scroll actions respect reduced motion even when the page enables smooth scrolling', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await mount(page, `<main data-fly-page-body>
+    <button data-testid="scroll" data-fly-action='${action({ kind: 'scroll_to', target_id: 'destination' })}'>Go</button>
+    <div style="height: 3000px"></div>
+    <div id="destination" tabindex="-1" data-testid="destination">Destination</div>
+  </main>`, 'html { scroll-behavior: smooth; }');
+  const result = await page.evaluate(() => {
+    const target = document.querySelector<HTMLElement>('#destination')!;
+    const original = target.scrollIntoView.bind(target);
+    let behavior: ScrollBehavior | undefined;
+    target.scrollIntoView = (options?: boolean | ScrollIntoViewOptions) => {
+      if (typeof options === 'object') behavior = options.behavior;
+      original(options);
+    };
+    document.querySelector<HTMLElement>('[data-testid="scroll"]')!.click();
+    return { behavior, scrollY: window.scrollY, focused: document.activeElement === target };
+  });
+  expect(result.behavior).toBe('instant');
+  expect(result.scrollY).toBeGreaterThan(0);
+  expect(result.focused).toBe(true);
+});

@@ -10,7 +10,6 @@ use crate::core::{
     validate_symbol_id, validate_template_key,
 };
 use crate::model::PageTemplateSummary;
-use crate::starters::{instantiate_starter_preset, page_starters};
 use fly_ui::CapabilityState;
 
 const CRATE_API_DOC: &str = include_str!("../CRATE_API.md");
@@ -77,26 +76,17 @@ fn effective_permission_contract_enforces_least_privilege() {
 }
 
 #[test]
-fn starter_catalog_contract_is_consistent() {
-    let starters = page_starters();
-    assert!(
-        !starters.is_empty(),
-        "Page starter catalog must not be empty"
-    );
-
-    let blank = starters.iter().find(|s| s.id == "blank");
-    assert!(blank.is_some(), "Blank starter must always be available");
-
-    for starter in &starters {
-        assert!(!starter.id.is_empty());
-        assert!(!starter.title.is_empty());
-        let doc = instantiate_starter_preset(&starter.id, "Test Page");
-        assert!(
-            doc.is_ok(),
-            "Starter `{}` must instantiate successfully",
-            starter.id
-        );
-    }
+fn selected_starter_requires_an_exact_catalog_key() {
+    let item = crate::model::PageStarterSummary {
+        key: "team".into(),
+        name: "Team".into(),
+        category: "about".into(),
+        description: None,
+        default_template_key: "default".into(),
+        revision: Some("revision".into()),
+    };
+    assert_eq!(crate::core::selected_page_starter(&[item.clone()], "team"), Some(item));
+    assert!(crate::core::selected_page_starter(&[], "blank").is_none());
 }
 
 #[test]
@@ -156,4 +146,40 @@ fn stable_problem_detail_conflict_codes() {
         "DRAFT_GENERATION_CONFLICT"
     );
     assert_eq!(BROWSER_DOCUMENT_UNAVAILABLE_CODE, "DOCUMENT_UNAVAILABLE");
+}
+
+#[test]
+fn starter_metadata_update_uses_required_revision_and_no_document() {
+    let input = crate::model::PageStarterMetadataUpdate {
+        key: "team".into(), category: "custom".into(), name: "Team".into(),
+        description: None, default_template_key: "default".into(),
+        expected_revision: "observed-revision".into(),
+    };
+    let value = serde_json::to_value(input).expect("serialize metadata");
+    assert_eq!(value["expectedRevision"], "observed-revision");
+    assert_eq!(value["defaultTemplateKey"], "default");
+    assert!(value.get("contentJson").is_none());
+    assert!(value.get("thumbnailUrl").is_none());
+}
+
+#[test]
+fn selected_layout_must_be_in_the_exact_catalog_snapshot() {
+    let keys = vec!["default".to_string(), "site".to_string()];
+    assert!(crate::core::selected_layout_available(&keys, "site"));
+    assert!(!crate::core::selected_layout_available(&keys, "SITE"));
+    assert!(!crate::core::selected_layout_available(&[], "default"));
+}
+
+#[test]
+fn changing_page_clears_only_the_route_draft_in_the_same_update() {
+    use crate::core::{FLY_DRAFT_QUERY_KEY, page_selection_query_update};
+    let page_key = rustok_ui_core::AdminQueryKey::PageId.as_str().to_string();
+    assert_eq!(
+        page_selection_query_update(Some("new-page".to_string())),
+        vec![(page_key.clone(), Some("new-page".to_string())), (FLY_DRAFT_QUERY_KEY.to_string(), None)]
+    );
+    assert_eq!(
+        page_selection_query_update(None),
+        vec![(page_key, None), (FLY_DRAFT_QUERY_KEY.to_string(), None)]
+    );
 }

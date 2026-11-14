@@ -69,19 +69,47 @@ channel visibility and deterministic published artifacts.
 
 ## Known Limitations
 
-The `pages.template` field is presently a free-form label; no stored layout
-wraps the document during review/publish. The accepted [page layout and menu
-link decision](../../../../DECISIONS/2026-10-09-page-layouts-and-menu-page-links.md)
-specifies the Pages-owned versioned template and host-resolved menu target.
-The additive catalog, revision-guarded service and GraphQL authoring operations
-exist. `previewPageTemplateDocument` produces a sanitized, non-persistent
-composition of a supplied document and its exact-locale layout. The editor does
-not yet call this preview; templates are **not used by reviewed publish**:
-selecting a `pages.template` string does not change the served page. There is
-no layout editor, existing-label cutover, menu page-target writer or host route
-adapter.
-Site symbols still require manual re-review and
-re-publication of dependent pages after a shared edit.
+Pages owns an exact-locale, revision-guarded layout catalog. Non-default layouts
+compose their header and footer symbols into the page body for builder preview,
+review and reviewed publish; published artifacts remain immutable. The Leptos
+admin manages layout symbol IDs, but is not a full visual layout editor. Authenticated
+`pages:create` principals can list usable exact-locale layout keys; without
+`pages:manage` only virtual `default` is returned, because builder composition of
+non-default layouts currently requires that grant. Full definitions and authoring
+remain `pages:manage`-only. Editors without it cannot compose existing non-default
+pages in the builder; a page-scoped preview authorization path remains open. Both create
+forms check the chosen key against the catalog and recheck immediately before
+creation, failing visibly on lookup errors. Both request opt-in `checkedLayout`
+creation: for a single translation it checks exact tenant/locale existence while
+serializing with same-locale deletion on PostgreSQL/SQLite; MySQL non-default selection
+fails closed. SQLite contention can fail with a busy error. It does not pin the layout
+revision and does not cover legacy create/metadata free-form labels or cross-locale
+deletion. The server must be deployed before clients send the new input field. Reviewed
+publish must resolve non-default layouts for every page locale. The new database and
+concurrency behavior has not yet been verified in this environment.
+See the [page layout decision](../../../../DECISIONS/2026-10-09-page-layouts-and-menu-page-links.md).
+Site symbols still require manual re-review and re-publication of dependent
+pages after a shared edit.
+
+Page starters are separate from layouts. The backend catalog combines built-ins
+and tenant records, with tenant keys overriding built-ins before category
+filtering. Save rejects documents that cannot be cloned, and instantiation
+reissues identities. Both admin create forms select from that server catalog and
+request instantiation at the observed revision and page locale; template text is not rewritten
+with the page title. Embedded site-symbol catalogs are never imported as authority:
+linked starters use the current exact-locale catalog and require `pages:manage`,
+while unlinked starters discard embedded definitions. Missing references and stale
+catalog revisions fail instead of replacing current site symbols. Both admin UIs can
+create a new starter from a page's saved exact-locale working body, explicitly excluding
+unsaved editor changes. The returned state and revision identify the captured body;
+source selection and insertion are not revision-locked as one transaction. This flow
+cannot replace existing or built-in keys. Both admin UIs also provide tenant-only
+metadata editing and confirmed deletion with observed revision tokens; metadata
+updates leave the document and thumbnail untouched. Built-ins are read-only and
+deleting an override reveals its built-in. Automatic application of suggested
+layouts remains open. Tenant starter saves and deletes use opaque revision tokens; deleting an
+override reveals its built-in. `default_template_key` is syntax-checked, not
+resolved for a locale. Old writers must be stopped during the CAS migration.
 
 ## Integration
 

@@ -842,7 +842,8 @@ fn pages_error_to_port_error(error: PagesError) -> PortError {
         ),
         PagesError::DuplicateSlug { .. }
         | PagesError::VersionConflict { .. }
-        | PagesError::TranslationConflict(_) => PortError::conflict(
+        | PagesError::TranslationConflict(_)
+        | PagesError::StarterRevisionConflict => PortError::conflict(
             "pages.translation_owner_conflict",
             "Pages state conflicts with the requested translation mutation",
         ),

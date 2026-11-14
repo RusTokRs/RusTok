@@ -51,6 +51,21 @@ documents inherit the host policy. The adapter workspace reaches the same nonce 
 context: `AdapterWorkspacePanel` passes it to `fly_leptos::FlyEditorWorkspace`, whose canvas
 renders the project stylesheet as an inline `<style>` that the policy would otherwise drop.
 
+A consumer that restores SSR draft sessions provides `SsrDraftRenderBinding`, including the
+exact token and generation that produced the rendered controller (or an explicit saved-page
+render with no session). Pages supplies this binding. The browser uses the rendered generation,
+not a potentially newer sessionStorage value. If a saved-page render finds a cached draft, or the
+route and render disagree, editing stops and a same-origin recovery link preserves the token.
+Out-of-order responses cannot rewrite the route, and a history-write failure stops editing and
+offers recovery instead of reloading the wrong document. For this binding, the host checks the
+pathname, `page_id`, draft token and connected root before sending an intent or applying its route
+response; an old canvas cannot navigate the newly selected page. This does not make navigation
+transactional: stopping can abort a request already committed by the server before its token is
+received, and concurrent adapters for the same page can still overwrite the single per-page
+sessionStorage pointer. Durable discovery of all in-flight draft sessions remains open. Hosts
+without this binding retain their existing browser contract. The Node DOM-boundary test and Chromium host-bootstrap fixture pass;
+they use stubbed endpoints and do not replace a running Pages-server integration test.
+
 The current canvas supports rendering, geometry, hover, selection, overlays and persistence. It
 also provides the block palette, drag-and-drop insertion, resize handles, keyboard editing,
 traits/styles editors and asset management. Storefront real-DOM editing remains outside this
@@ -77,6 +92,10 @@ and WASM toolchains installed.
 
 Server preview (`src/editor/server_preview.rs`):
 
+- **Active-page preview error handling is source-only.** Both the browser intent and the Pages
+  preview route now call `AdminCanvasController::active_page_project`, which returns a Fly error
+  instead of silently producing an empty project when the active page is absent or encoding
+  fails. The change still requires crate compilation and regression coverage for both paths.
 - **The preview cannot be requested in the default runtime.** "Refresh preview" acts through
   hydration. No intent or SSR form requests a preview, and the draft session holds none.
 - **The preview is shown under the policy of the admin.** A `srcdoc` document inherits the

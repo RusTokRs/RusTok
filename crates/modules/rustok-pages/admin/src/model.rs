@@ -1,6 +1,38 @@
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 use serde_json::Value;
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PageStarterSummary {
+    pub key: String,
+    pub name: String,
+    pub category: String,
+    pub description: Option<String>,
+    #[serde(rename = "defaultTemplateKey")]
+    pub default_template_key: String,
+    pub revision: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageStarterMetadataUpdate {
+    pub key: String,
+    pub category: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub default_template_key: String,
+    pub expected_revision: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SavedStarterSnapshot {
+    #[serde(rename = "sourceLocale")]
+    pub source_locale: String,
+    #[serde(rename = "sourceState")]
+    pub source_state: String,
+    #[serde(rename = "sourceRevision")]
+    pub source_revision: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PageList {
     pub items: Vec<PageListItem>,

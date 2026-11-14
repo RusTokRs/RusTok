@@ -2,9 +2,12 @@ import type { GqlOpts } from '../api/pages';
 import {
   builderUrlForPage,
   listPages,
+  listPageLayoutKeys,
+  listPageStarters,
   storefrontUrlForPage
 } from '../api/pages';
 import { PageActions } from '../components/page-actions';
+import { StarterCatalogManager } from '../components/starter-catalog-manager';
 
 interface PagesPageProps {
   token?: string | null;
@@ -15,6 +18,7 @@ interface PagesPageProps {
   /** Storefront base URL for "View live" links of published pages. */
   storefrontBaseUrl?: string | null;
   locale?: string;
+  canManageStarters?: boolean;
 }
 
 /**
@@ -29,6 +33,7 @@ export default async function PagesPage({
   tenantId,
   builderBaseUrl,
   storefrontBaseUrl,
+  canManageStarters = false,
   locale = 'en'
 }: PagesPageProps) {
   const opts: GqlOpts = { token, tenantSlug, tenantId };
@@ -40,11 +45,27 @@ export default async function PagesPage({
   } catch (cause) {
     loadError = cause instanceof Error ? cause.message : 'Failed to load pages';
   }
+  let starters: Awaited<ReturnType<typeof listPageStarters>> = [];
+  let starterError: string | null = null;
+  try {
+    starters = await listPageStarters(opts);
+  } catch (cause) {
+    starterError = cause instanceof Error ? cause.message : 'Failed to load starters';
+  }
+
+  let layoutKeys: string[] = [];
+  let layoutError: string | null = null;
+  try {
+    layoutKeys = await listPageLayoutKeys(locale, opts);
+  } catch (cause) {
+    layoutError = cause instanceof Error ? cause.message : 'Failed to load layouts';
+  }
 
   return (
     <section>
       <h1>Pages</h1>
-      <PageActions opts={opts} locale={locale} />
+      <PageActions opts={opts} locale={locale} starters={starters} starterError={starterError} layoutKeys={layoutKeys} layoutError={layoutError} />
+      {canManageStarters ? <StarterCatalogManager opts={opts} starters={starters} error={starterError} /> : null}
       {loadError ? (
         <p role='alert'>Pages could not be loaded: {loadError}</p>
       ) : items.length === 0 ? (
@@ -115,6 +136,8 @@ export default async function PagesPage({
                     opts={opts}
                     pageId={page.id}
                     status={page.status}
+                    locale={locale}
+                    canManageStarters={canManageStarters}
                   />
                 </td>
               </tr>

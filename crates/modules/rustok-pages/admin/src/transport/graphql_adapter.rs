@@ -20,6 +20,11 @@ const PAGE_QUERY: &str = "query PageAdmin($id: UUID!, $locale: String) { page(id
 const PAGE_BUILDER_SCENARIO_BASELINE_QUERY: &str = "query PageBuilderScenarioBaseline($pageId: UUID!) { pageBuilderScenarioBaseline(pageId: $pageId) { baseline } }";
 const PAGE_BODY_REVISIONS_QUERY: &str = "query PageBodyRevisions($id: UUID!, $locale: String!) { pageBodyRevisions(id: $id, locale: $locale) { id locale source bodyRevision createdAt createdBy } }";
 const CREATE_PAGE_MUTATION: &str = "mutation CreatePage($input: CreateGqlPageInput!) { createPage(input: $input) { id version status updatedAt translation { locale title slug } } }";
+const UPDATE_STARTER_METADATA_MUTATION: &str = "mutation UpdatePageStarterMetadata($input: UpdateGqlPageStarterMetadataInput!) { updatePageStarterMetadata(input: $input) }";
+const DELETE_STARTER_MUTATION: &str = "mutation DeletePageStarter($key: String!, $expectedRevision: UUID!) { deletePageStarter(key: $key, expectedRevision: $expectedRevision) }";
+const SAVE_STARTER_FROM_PAGE_MUTATION: &str = "mutation SaveStarterFromPage($input: SavePageStarterFromPageGqlInput!) { savePageStarterFromPage(input: $input) { sourceLocale sourceState sourceRevision } }";
+const PAGE_STARTERS_QUERY: &str = "query PageStarters { pageStarters { key name category description defaultTemplateKey revision } }";
+const INSTANTIATE_PAGE_STARTER_MUTATION: &str = "mutation InstantiatePageStarter($key: String!, $expectedRevision: UUID, $locale: String!) { instantiatePageStarter(key: $key, expectedRevision: $expectedRevision, locale: $locale) }";
 const PATCH_PAGE_METADATA_MUTATION: &str = "mutation PatchPageMetadata($id: UUID!, $input: PatchGqlPageMetadataInput!) { patchPageMetadata(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug metaTitle metaDescription } body { locale content format contentJson updatedAt state } documentReadable } }";
 const SAVE_PAGE_DOCUMENT_MUTATION: &str = "mutation SavePageDocument($id: UUID!, $input: SaveGqlPageDocumentInput!) { savePageDocument(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt state } documentReadable } }";
 const RESTORE_PAGE_BODY_REVISION_MUTATION: &str = "mutation RestorePageBodyRevision($id: UUID!, $input: RestoreGqlPageBodyRevisionInput!) { restorePageBodyRevision(id: $id, input: $input) { id version status template updatedAt availableLocales channelSlugs translation { locale title slug } body { locale content format contentJson updatedAt state } documentReadable } }";
@@ -47,6 +52,44 @@ const ROLLBACK_IDEMPOTENCY_FORMAT: &str = "pages_admin_rollback_v1";
 #[derive(Debug, Deserialize)]
 struct PagesResponse {
     pages: PageList,
+}
+
+#[derive(Debug, Deserialize)]
+struct PageStartersResponse {
+    #[serde(rename = "pageStarters")]
+    page_starters: Vec<crate::model::PageStarterSummary>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateStarterMetadataResponse {
+    #[serde(rename = "updatePageStarterMetadata")]
+    revision: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeleteStarterResponse {
+    #[serde(rename = "deletePageStarter")]
+    deleted: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct SaveStarterFromPageResponse {
+    #[serde(rename = "savePageStarterFromPage")]
+    snapshot: crate::model::SavedStarterSnapshot,
+}
+
+#[derive(Debug, Deserialize)]
+struct InstantiatePageStarterResponse {
+    #[serde(rename = "instantiatePageStarter")]
+    instantiate_page_starter: String,
+}
+
+#[derive(Debug, Serialize)]
+struct InstantiatePageStarterVariables {
+    locale: String,
+    key: String,
+    #[serde(rename = "expectedRevision")]
+    expected_revision: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -247,6 +290,8 @@ struct PageVariables {
 struct CreatePageInput {
     translations: Vec<PageTranslationWriteInput>,
     template: Option<String>,
+    #[serde(rename = "checkedLayout")]
+    checked_layout: bool,
     body: Option<PageBodyWriteInput>,
     #[serde(rename = "channelSlugs", skip_serializing_if = "Option::is_none")]
     channel_slugs: Option<Vec<String>>,
@@ -407,6 +452,66 @@ where
     .await
 }
 
+pub async fn fetch_page_starters(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<Vec<crate::model::PageStarterSummary>, ApiError> {
+    let response: PageStartersResponse =
+        request(PAGE_STARTERS_QUERY, serde_json::json!({}), token, tenant_slug).await?;
+    Ok(response.page_starters)
+}
+
+pub async fn update_starter_metadata(
+    token: Option<String>, tenant_slug: Option<String>, input: crate::model::PageStarterMetadataUpdate,
+) -> Result<String, ApiError> {
+    let response: UpdateStarterMetadataResponse = request(
+        UPDATE_STARTER_METADATA_MUTATION, serde_json::json!({"input": input}), token, tenant_slug,
+    ).await?;
+    Ok(response.revision)
+}
+
+pub async fn delete_starter(
+    token: Option<String>, tenant_slug: Option<String>, key: String, expected_revision: String,
+) -> Result<bool, ApiError> {
+    let response: DeleteStarterResponse = request(
+        DELETE_STARTER_MUTATION, serde_json::json!({"key": key, "expectedRevision": expected_revision}), token, tenant_slug,
+    ).await?;
+    Ok(response.deleted)
+}
+
+pub async fn save_starter_from_page(
+    token: Option<String>, tenant_slug: Option<String>, page_id: String,
+    locale: String, key: String, name: String, category: String,
+) -> Result<crate::model::SavedStarterSnapshot, ApiError> {
+    let response: SaveStarterFromPageResponse = request(
+        SAVE_STARTER_FROM_PAGE_MUTATION,
+        serde_json::json!({"input": {"pageId": page_id, "locale": locale, "key": key, "name": name, "category": category}}),
+        token, tenant_slug,
+    ).await?;
+    Ok(response.snapshot)
+}
+
+pub async fn instantiate_page_starter(
+    token: Option<String>,
+    tenant_slug: Option<String>,
+    key: String,
+    expected_revision: Option<String>,
+    locale: String,
+) -> Result<Value, ApiError> {
+    let response: InstantiatePageStarterResponse = request(
+        INSTANTIATE_PAGE_STARTER_MUTATION,
+        InstantiatePageStarterVariables { key, expected_revision, locale },
+        token,
+        tenant_slug,
+    ).await?;
+    let document: Value = serde_json::from_str(&response.instantiate_page_starter)
+        .map_err(|error| GraphqlHttpError::Graphql(format!("Invalid instantiated starter JSON: {error}")))?;
+    if !document.is_object() {
+        return Err(GraphqlHttpError::Graphql("The starter returned an invalid document".to_string()));
+    }
+    Ok(document)
+}
+
 pub async fn fetch_pages(
     token: Option<String>,
     tenant_slug: Option<String>,
@@ -485,6 +590,7 @@ pub async fn create_page(
                     meta_description: None,
                 }],
                 template: draft.template,
+                checked_layout: true,
                 body: Some(PageBodyWriteInput {
                     locale: draft.locale,
                     document: draft.document,

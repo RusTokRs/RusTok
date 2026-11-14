@@ -164,6 +164,8 @@ pub struct GqlRollbackPageResult {
 pub struct CreateGqlPageInput {
     pub translations: Vec<GqlPageTranslationInput>,
     pub template: Option<String>,
+    /// Opt into exact-locale catalog validation; absent preserves legacy labels.
+    pub checked_layout: Option<bool>,
     pub body: Option<GqlPageBodyInput>,
     pub channel_slugs: Option<Vec<String>>,
     pub publish: Option<bool>,

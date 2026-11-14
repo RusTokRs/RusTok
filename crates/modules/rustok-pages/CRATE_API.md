@@ -53,6 +53,66 @@
 - Published storefront output is selected through immutable landing artifacts.
 - There is no public block entity, block service, block DTO or block mutation.
 
+## Layout selection contract
+
+`pageTemplateKeys` exposes exact-tenant, exact-locale layout keys to authenticated
+`pages:create` principals. It returns only virtual `default` without `pages:manage`;
+non-default keys, full records and builder composition require `pages:manage`.
+Existing non-default pages may therefore be inaccessible in the builder to editors
+without that grant; a page-scoped composition permission remains open. Admin clients recheck their
+explicit selection immediately before creating a page, without silently substituting
+`default` on errors. Both admins also opt into GraphQL `checkedLayout`: the server
+accepts a single translation, requires `pages:manage` for non-default keys and checks
+the exact tenant/locale layout inside the creation transaction, serialized with
+same-locale catalog deletion on PostgreSQL and SQLite. PostgreSQL uses READ COMMITTED;
+SQLite may return a busy error under contention. Checked non-default creation fails
+closed on MySQL. Legacy create/metadata APIs still accept free-form labels and do not
+participate in this guarantee; cross-locale deletion checks and legacy writes are not
+serialized. This is not a revision pin: a changed or recreated layout under the same
+key may be selected. Concurrency and database behavior need integration verification. Reviewed publish resolves
+non-default keys for every published body locale and fails when a definition is missing.
+
+## Starter catalog contract
+
+`PageStarterService` and the `pageStarters`, `pageStarter`, `savePageStarter`,
+`updatePageStarterMetadata`, `instantiatePageStarter`, and `deletePageStarter` GraphQL operations expose a
+tenant-local library. Listing merges built-ins and tenant records by key (tenant
+wins), orders by key, and filters category case-insensitively. Catalog access
+requires an authenticated tenant-wide Pages grant; writes require `pages:manage`.
+Saving checks key and default layout key syntax and whether Fly can clone the
+document; instantiation reissues component identities. This is not full
+render/readiness validation, and layout existence is not resolved without a locale.
+
+Tenant rows carry an opaque UUID revision; built-ins have a null revision. A
+save with no expected revision creates a tenant row (including an override of a
+built-in); update and delete require the last observed token. Stale, missing,
+or concurrently replaced rows fail with `PAGE_STARTER_REVISION_CONFLICT`.
+`updatePageStarterMetadata` requires a non-null observed revision and updates only
+name, category, description and suggested layout key; document and thumbnail are
+untouched. It cannot create or override a built-in. Layout keys are syntax-checked,
+not resolved for a locale. Deleting an override reveals the built-in. `instantiatePageStarter` also compares
+`expectedRevision`: null selects a built-in and a UUID selects that exact tenant
+revision. Instantiation requires the intended page locale. An unlinked starter's
+embedded symbol catalog and revision are discarded; a linked starter receives the
+current exact-locale site catalog and token, and unresolved references fail closed.
+Because this returns the full authoring catalog, linked starters additionally require
+`pages:manage`. If the catalog changes before page creation, the page save CAS
+rejects the stale document. `instantiate_starter` is only a raw clone helper, not a
+safe substitute for the locale-aware selection flow. The built-ins include the six formerly local admin presets; title input
+is page metadata and does not rewrite the preset's example content. The additive
+migration backfills existing revisions from row IDs; stop old writers while
+migrating and deploying, since old binaries cannot honor the CAS contract.
+
+`savePageStarterFromPage` creates a new tenant key from the persisted exact-locale
+working body (draft if present, otherwise current), requiring `pages:manage` and
+source access. It rejects built-in keys, existing keys, missing or non-builder
+bodies, and strips the site's embedded symbol definitions and revision while
+retaining references. It returns the captured locale, state and body revision;
+no unsaved editor state is included. Source reads and starter insertion are not
+revision-locked in one transaction, so the returned revision describes the captured
+body, not a guarantee that it remained the latest through insertion. The suggested
+layout is copied by key and is not checked for locale availability.
+
 ## Current menu contract
 
 - Base `menus` and `menu_items` rows contain only language-neutral identity,

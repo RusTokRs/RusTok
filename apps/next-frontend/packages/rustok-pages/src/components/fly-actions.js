@@ -16,7 +16,8 @@
  *   synchronizing `aria-expanded` on trigger, `aria-hidden` on content, and optionally collapsing siblings.
  * - `switch_slide`: navigate slider/carousel (payload `slider_id`, `direction`: 'next'|'prev', `index`, `target_slide`),
  *   synchronizing active slide visibility, aria-hidden, and dot indicators, with native swipe/touch support.
- * - `scroll_to`: smooth-scroll the target element (payload `target_id`) into view.
+ * - `scroll_to`: scroll the target element (payload `target_id`) into view, without motion
+ *   when the user requests reduced motion.
  * - `animate`: play an allow-listed Web Animations keyframe set (payload `animation`,
  *   optional `duration_ms`) on the target element. The keyframe sets below are the only
  *   ones; payloads can name them but never supply CSS. Reduced-motion users get no
@@ -414,11 +415,18 @@
     }
   }
 
+  function prefersReducedMotion(element) {
+    var view = element.ownerDocument.defaultView;
+    return !!view && typeof view.matchMedia === "function" &&
+      view.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
   function scrollToTarget(element, action) {
     var target = findTarget(action, element);
     if (!target) return;
     if (typeof target.scrollIntoView === "function") {
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      // `auto` can still animate if the page sets CSS scroll-behavior: smooth.
+      target.scrollIntoView({ behavior: prefersReducedMotion(target) ? "instant" : "smooth", block: "start" });
     }
     if (typeof target.focus === "function") {
       target.focus({ preventScroll: true });
@@ -461,11 +469,7 @@
     var duration = Number(action.duration_ms);
     if (!Number.isFinite(duration) || duration <= 0) duration = 300;
     duration = Math.min(10000, Math.max(50, duration));
-    var reduced =
-      typeof window !== "undefined" &&
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduced || typeof target.animate !== "function") {
+    if (prefersReducedMotion(target) || typeof target.animate !== "function") {
       var endState = keyframes[keyframes.length - 1];
       if (endState && endState.opacity) target.style.opacity = endState.opacity;
       return;

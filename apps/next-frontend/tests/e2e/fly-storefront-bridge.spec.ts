@@ -131,10 +131,11 @@ test('Next bridge rejects dangerous custom navigation and allows supported URLs'
     await page.getByTestId('one-action').click();
   }
   expect(await page.evaluate(() => (window as unknown as BridgeTestWindow).bridgeEvents)).toEqual([
-    ['one', 'navigate', '/shop?tag=1'], ['one', 'navigate', '#destination'],
+    ['one', 'navigate', '/shop?tag=1'],
     ['one', 'navigate', '?q=one'], ['one', 'navigate', 'https://example.test/path'],
     ['one', 'navigate', 'mailto:hi@example.test'], ['one', 'navigate', 'tel:+123'],
   ]);
+  expect(await page.evaluate(() => (window as unknown as BridgeTestWindow).scrolls)).toEqual(['one-destination']);
 });
 
 test('Leptos bridge blocks javascript navigation, isolates anchors and installs once', async ({ page }) => {
@@ -332,3 +333,49 @@ test('one published purchase payload hands off to Product on both hosts without 
     await context.close();
   }
 });
+
+for (const host of ['Next', 'Leptos'] as const) {
+  test(`${host} fragment navigation stays inside its landing and respects reduced motion`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await mount(page);
+    if (host === 'Next') await installNext(page);
+    else await page.addScriptTag({ content: await readFile(rustBridge, 'utf8') });
+
+    const result = await page.evaluate(() => {
+      const root = document.querySelector<HTMLElement>('[data-testid="one"]')!;
+      const target = document.querySelector<HTMLElement>('[data-testid="one-destination"]')!;
+      const options: ScrollIntoViewOptions[] = [];
+      target.scrollIntoView = (value?: boolean | ScrollIntoViewOptions) => {
+        if (typeof value === 'object') options.push(value);
+      };
+      const nested = document.createElement('div');
+      nested.setAttribute('data-fly-page-body', '');
+      nested.innerHTML = '<span id="nested-only">Nested</span>';
+      root.append(nested);
+      const hostOnly = document.createElement('div');
+      hostOnly.id = 'host-only';
+      document.body.append(hostOnly);
+      const link = document.createElement('a');
+      root.append(link);
+      const prevented = ['#host-only', '#nested-only', '#', '#%'].map((href) => {
+        link.setAttribute('href', href);
+        return !link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      });
+      link.setAttribute('data-fly-action', '{invalid');
+      link.setAttribute('href', '#host-only');
+      prevented.push(!link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })));
+      link.removeAttribute('data-fly-action');
+      link.setAttribute('href', '#destination');
+      prevented.push(!link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })));
+      for (const href of ['#host-only', '#nested-only', '#destination']) {
+        link.dispatchEvent(new CustomEvent('fly:action', {
+          bubbles: true, detail: { kind: 'emit_event', event: 'navigate', payload: { href } },
+        }));
+      }
+      return { prevented, options, hash: window.location.hash };
+    });
+    expect(result.prevented).toEqual([true, true, true, true, true, true]);
+    expect(result.options).toEqual([{ behavior: 'instant' }, { behavior: 'instant' }]);
+    expect(result.hash).toBe('');
+  });
+}

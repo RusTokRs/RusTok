@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use rustok_api::{Action, Resource};
 use rustok_content::entities::node::ContentStatus;
-use rustok_core::SecurityContext;
+use rustok_core::{PermissionScope, SecurityContext};
 use rustok_events::DomainEvent;
 
 use crate::dto::{CreatePageInput, PageBodyRevisionSource, PageResponse, PageTranslationInput};
@@ -35,6 +35,28 @@ impl PageService {
         security: SecurityContext,
         input: CreatePageInput,
     ) -> PagesResult<PageResponse> {
+        self.create_inner(tenant_id, security, input, false).await
+    }
+
+    /// Create with an exact-locale catalog layout. Legacy `create` retains free-form labels.
+    /// Non-default selection serializes against catalog deletion on PostgreSQL and SQLite.
+    #[instrument(skip(self, input, security))]
+    pub async fn create_with_catalog_layout(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        input: CreatePageInput,
+    ) -> PagesResult<PageResponse> {
+        self.create_inner(tenant_id, security, input, true).await
+    }
+
+    async fn create_inner(
+        &self,
+        tenant_id: Uuid,
+        security: SecurityContext,
+        input: CreatePageInput,
+        checked_layout: bool,
+    ) -> PagesResult<PageResponse> {
         enforce_scope(&security, Resource::Pages, Action::Create)?;
         if input.publish {
             return Err(PagesError::validation(
@@ -53,6 +75,22 @@ impl PageService {
             .template
             .clone()
             .unwrap_or_else(|| "default".to_string());
+        if checked_layout {
+            // Pages have one layout key globally; the checked contract intentionally supports
+            // one exact translation, not a misleading multi-locale partial validation.
+            if input.translations.len() != 1 {
+                return Err(PagesError::validation(
+                    "Catalog layout creation requires exactly one translation",
+                ));
+            }
+            if template != "default"
+                && security.get_scope(Resource::Pages, Action::Manage) != PermissionScope::All
+            {
+                return Err(PagesError::forbidden(
+                    "Non-default layout creation requires Pages management permission",
+                ));
+            }
+        }
         let metadata = build_page_metadata(&template, None);
         let channel_slugs = normalize_channel_slugs(input.channel_slugs.as_deref().unwrap_or(&[]));
         let body = normalize_page_body_input(input.body)?;
@@ -67,12 +105,30 @@ impl PageService {
                 )));
             }
         }
+        if checked_layout && body.as_ref().is_some_and(|body| body.locale != response_locale) {
+            return Err(PagesError::validation(
+                "Catalog layout and body locales must match",
+            ));
+        }
         let now = body_revision_timestamp(Utc::now());
         let page_id = Uuid::new_v4();
         let txn = self.db.begin().await?;
+        if checked_layout && template != "default" {
+            crate::services::page_template::prepare_checked_layout_transaction(&txn).await?;
+        }
 
         if body_uses_builder_capability(body.as_ref()) {
             Self::ensure_builder_enabled_in_tx(&txn, tenant_id).await?;
+        }
+
+        if checked_layout && template != "default" {
+            crate::services::page_template::lock_and_check_selected_layout(
+                &txn,
+                tenant_id,
+                &response_locale,
+                &template,
+            )
+            .await?;
         }
 
         for translation in &input.translations {

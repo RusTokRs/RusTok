@@ -29,9 +29,9 @@ const MAX_RUNTIME_CONTEXT_BYTES: usize = 256 * 1024;
 const MAX_RUNTIME_LOCALE_BYTES: usize = 64;
 const MAX_RUNTIME_FALLBACK_LOCALES: usize = 16;
 
-/// Lifetime of a cached persisted-page revision (audit §5.1). Bounded so a
-/// revision saved by another editor is picked up (and the draft session
-/// re-seeded) within this window even if this process never re-fetches.
+/// Lifetime of a cached persisted-page revision (audit §5.1). After expiry,
+/// the next intent re-fetches and can detect another editor's saved revision.
+/// A stale draft must never be discarded.
 const PERSISTED_REVISION_TTL: Duration = Duration::from_secs(30);
 /// Upper bound on cached (token, tenant, page) revision entries.
 const PERSISTED_REVISION_CACHE_MAX_ENTRIES: usize = 512;
@@ -189,9 +189,13 @@ pub async fn dispatch_pages_browser_intent_with_store(
     // Load the draft session before any page fetch: a session already in
     // sync with the cached persisted revision lets the dispatch skip the
     // fetch entirely (audit §5.1). The page document is only needed to seed
-    // or re-seed a controller — never for an in-sync session.
+    // a new controller — never to replace an existing session.
     let loaded_session = match envelope.draft_token.as_deref() {
-        Some(token) => draft_store.load(token, &snapshot.page_id, snapshot.owner.as_ref())?,
+        Some(token) => Some(
+            draft_store
+                .load(token, &snapshot.page_id, snapshot.owner.as_ref())?
+                .ok_or(PagesBrowserIntentError::DraftUnavailable)?,
+        ),
         None => None,
     };
     if let (Some(expected), Some(session)) = (envelope.draft_generation, loaded_session.as_ref())
@@ -213,6 +217,7 @@ pub async fn dispatch_pages_browser_intent_with_store(
             .is_some_and(|cached| cached == session.controller.revision_id())
     });
 
+    let mut newly_detected_conflict = false;
     let (mut controller, mut runtime_context, session_token, session_generation) =
         match loaded_session {
             Some(session) if session_in_sync => (
@@ -236,7 +241,6 @@ pub async fn dispatch_pages_browser_intent_with_store(
                 }
                 let persisted_revision = builder::page_revision(&page);
                 persisted_revision_cache().put(revision_key, persisted_revision.clone(), now);
-                let generated_context = generated_runtime_context(&page, &snapshot.default_locale);
                 match loaded {
                     Some(session) if session.controller.revision_id() == persisted_revision => (
                         session.controller,
@@ -244,22 +248,23 @@ pub async fn dispatch_pages_browser_intent_with_store(
                         Some(session.token),
                         Some(session.generation),
                     ),
-                    Some(session) => {
-                        draft_store.remove(&session.token, snapshot.owner.as_ref())?;
+                    Some(mut session) => {
+                        // A newer persisted revision says nothing about whether this
+                        // session contains irreplaceable work. Never delete or rebase it.
+                        newly_detected_conflict = mark_stale_draft_conflict(
+                            &mut session.controller,
+                            &persisted_revision,
+                        )?;
                         (
-                            controller_from_page(
-                                &page,
-                                &persisted_revision,
-                                &snapshot.default_locale,
-                            )?,
-                            generated_context,
-                            None,
-                            None,
+                            session.controller,
+                            session.runtime_context,
+                            Some(session.token),
+                            Some(session.generation),
                         )
                     }
                     None => (
                         controller_from_page(&page, &persisted_revision, &snapshot.default_locale)?,
-                        generated_context,
+                        generated_runtime_context(&page, &snapshot.default_locale),
                         None,
                         None,
                     ),
@@ -294,7 +299,14 @@ pub async fn dispatch_pages_browser_intent_with_store(
         _ => dispatch_browser_intent(&mut controller, envelope.clone())?,
     };
     let mut requests = request_effects(&result);
-    let mut save_failure = None;
+    let mut save_failure = newly_detected_conflict.then(|| {
+        PagesBrowserIntentProblem::from_save_failure(
+            &PageBuilderAdminFacadeError::with_stable_code(
+                "The saved page changed. Your draft is preserved; copy its project JSON before opening the saved page separately.",
+                BROWSER_REVISION_CONFLICT_CODE,
+            ),
+        )
+    });
 
     // A dirty working copy is autosaved after every intent — `select` and
     // `hover` included. Once a save has failed, an intent that leaves the
@@ -363,6 +375,9 @@ pub async fn dispatch_pages_browser_intent_with_store(
                         Instant::now(),
                     );
                     result = controller_snapshot(&controller)?;
+                    // A successful conditional save resolves a conflict detected earlier
+                    // in this dispatch (the persisted revision may have changed again).
+                    save_failure = None;
                 }
                 persistence = Some(response);
             }
@@ -376,7 +391,7 @@ pub async fn dispatch_pages_browser_intent_with_store(
                 record_save_failure(&mut controller, &error)?;
                 // Whatever revision was cached is no longer trustworthy —
                 // for a conflict it is known to be stale. The next intent
-                // re-fetches the page and re-seeds the session if needed.
+                // re-fetches the page but preserves the original session.
                 persisted_revision_cache().invalidate(revision_key);
                 result = controller_snapshot(&controller)?;
                 save_failure = Some(PagesBrowserIntentProblem::from_save_failure(&error));
@@ -633,6 +648,25 @@ fn single_request(
     Ok(requests.pop())
 }
 
+/// Record a changed saved revision without deleting, rebasing, or acknowledging the draft.
+/// Returns true only when this detection needs to be announced to the browser.
+pub(crate) fn mark_stale_draft_conflict(
+    controller: &mut AdminCanvasController,
+    persisted_revision: &str,
+) -> Result<bool, PagesBrowserIntentError> {
+    if controller.revision_id() == persisted_revision {
+        return Ok(false);
+    }
+    let was_conflicted = controller.editor().revision().save_conflict;
+    if !was_conflicted {
+        controller.mark_save_conflict(
+            controller.revision_id().to_string(),
+            persisted_revision.to_string(),
+        )?;
+    }
+    Ok(!was_conflicted)
+}
+
 /// Marks the working copy as "changes not on the server" after a rejected
 /// save: a lost update is recorded as a conflict (retrying against the same
 /// revision would conflict again), anything else as a failed save.
@@ -664,6 +698,8 @@ fn request_effects(result: &BrowserIntentDispatchResult) -> Vec<PageBuilderCapab
 pub enum PagesBrowserIntentError {
     #[error("Pages document was not found")]
     PageNotFound,
+    #[error("Draft session is unavailable or expired; open the saved page in a private window using an address without fly_draft")]
+    DraftUnavailable,
     #[error("{}", crate::core::DOCUMENT_UNAVAILABLE_MESSAGE)]
     DocumentUnavailable,
     #[error("Page Builder browser request targets `{actual}`, but endpoint owns `{expected}`")]
@@ -873,6 +909,56 @@ mod tests {
         let same = form_envelope("activate_page", json!({ "page_id": "home" }));
         dispatch_browser_intent(&mut controller, same).expect("open the current page");
         assert_eq!(open_page(&controller), before);
+    }
+
+    #[test]
+    fn stale_draft_keeps_its_document_and_generation_guard() {
+        use rustok_page_builder_admin::InMemorySsrDraftSessionStore;
+        let store = InMemorySsrDraftSessionStore::editor_default();
+        let initial = store
+            .commit_with_context(None, None, dirty_controller(), json!({"locale": "en"}), None)
+            .expect("create draft");
+        let mut stale = store.load(&initial.token, "home", None).unwrap().unwrap();
+        let original_hash = stale.controller.editor().revision().project_hash;
+        assert!(!mark_stale_draft_conflict(&mut stale.controller, "rev-1").unwrap());
+        assert!(mark_stale_draft_conflict(&mut stale.controller, "rev-2").unwrap());
+        assert!(!mark_stale_draft_conflict(&mut stale.controller, "rev-2").unwrap());
+        assert_eq!(stale.controller.revision_id(), "rev-1");
+        assert_eq!(stale.controller.editor().revision().project_hash, original_hash);
+        assert!(stale.controller.editor().revision().dirty);
+        assert!(stale.controller.editor().revision().save_conflict);
+
+        // A concurrent session writer wins the store CAS; stale handling must not
+        // remove or overwrite the newer generation.
+        let concurrent = store.commit_with_context(
+            Some(&initial.token), Some(initial.generation), dirty_controller(),
+            json!({"locale": "ru"}), None,
+        ).unwrap();
+        let rejected = store.commit_with_context(
+            Some(&stale.token), Some(stale.generation), stale.controller,
+            stale.runtime_context, None,
+        );
+        assert!(matches!(rejected, Err(SsrDraftSessionError::GenerationConflict { .. })));
+        let retained = store.load(&initial.token, "home", None).unwrap().unwrap();
+        assert_eq!(retained.generation, concurrent.generation);
+        assert_eq!(retained.runtime_context, json!({"locale": "ru"}));
+        assert_eq!(retained.controller.editor().revision().project_hash, original_hash);
+    }
+
+    #[tokio::test]
+    async fn missing_session_token_never_seeds_a_new_page() {
+        use rustok_page_builder_admin::InMemorySsrDraftSessionStore;
+        let store = InMemorySsrDraftSessionStore::editor_default();
+        let mut envelope = form_envelope("select", json!({"component_id": "hero"}));
+        envelope.draft_token = Some("gone-token".to_string());
+        let snapshot = PagesBuilderSaveSnapshot {
+            token: None, tenant_slug: None, page_id: "home".to_string(),
+            default_locale: "en".to_string(), owner: None,
+        };
+        let result = dispatch_pages_browser_intent_with_store(
+            snapshot, envelope, &store, CapabilityState::full(),
+        ).await;
+        assert!(matches!(result, Err(PagesBrowserIntentError::DraftUnavailable)));
     }
 
     #[test]

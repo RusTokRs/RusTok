@@ -9,7 +9,7 @@ This package manages page lifecycle operations (listing, creating initial drafts
 - **Package Name**: `@rustok/pages-admin`
 - **Location**: `apps/next-admin/packages/pages`
 - **Owner**: `rustok-pages` module frontend surface
-- **Status**: Stable / Verified
+- **Status**: In progress; starter integration requires scoped verification.
 
 ## 2. Public API Surface
 
@@ -25,7 +25,12 @@ This package manages page lifecycle operations (listing, creating initial drafts
 ### API & Data Fetching
 
 - `PAGES_LIST_QUERY`: GraphQL query retrieving paginated pages with status, template, translations, channels, and timestamp.
-- `CREATE_PAGE_MUTATION`: GraphQL mutation initializing a draft page with localized translations.
+- `PAGE_STARTERS_QUERY`, `listPageStarters`: Read the tenant starter catalog.
+- `PAGE_LAYOUT_KEYS_QUERY`, `listPageLayoutKeys`: Read usable exact-locale keys using `pages:create`; only `default` is available without `pages:manage`, which non-default builder composition currently requires. The create flow requires an explicit available selection, rechecks it and requests `checkedLayout` on create. Server-side selection is serialized against same-locale deletion on PostgreSQL/SQLite; non-default selection fails closed on MySQL. No layout revision is pinned.
+- `INSTANTIATE_PAGE_STARTER_MUTATION`, `instantiatePageStarter`: Clone the selected revision for the target locale and require an object document. Linked site-symbol starters require `pages:manage` and available exact-locale symbols.
+- `SAVE_STARTER_FROM_PAGE_MUTATION`, `saveStarterFromPage`: create a new key from an exact-locale saved working body and return its revision and state. The UI does not capture unsaved builder state; the host hides the action without an effective `pages:manage` grant.
+- `UPDATE_STARTER_METADATA_MUTATION`, `updateStarterMetadata`, `DELETE_STARTER_MUTATION`, `deleteStarter`: manage only observed tenant revisions; metadata updates preserve document and thumbnail, and deleting an override reveals its built-in. Built-ins are read-only in the UI.
+- `CREATE_PAGE_MUTATION`: GraphQL mutation initializing a draft page with localized translations and an optional Fly document.
 - `UNPUBLISH_PAGE_MUTATION`: GraphQL mutation transitioning a published page back to draft, supporting optimistic `expectedVersion` concurrency check.
 - `DELETE_PAGE_MUTATION`: GraphQL mutation permanently removing a page.
 - `listPages(filter, opts)`: Queries paginated pages with clamped bounds (`page >= 1`, `1 <= perPage <= 100`).

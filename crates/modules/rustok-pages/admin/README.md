@@ -1,5 +1,21 @@
 # rustok-pages-admin
 
+Create-page reads the Pages GraphQL starter catalog and instantiates the selected
+built-in or tenant starter at its observed revision. Catalog, clone and revision
+errors stop creation; no blank fallback is substituted. Page titles are metadata:
+example text in a preset is editable in the builder and is not rewritten. The
+starter's suggested layout is shown with exact-locale availability but is not applied
+automatically. Layout catalog errors block creation; the selected key is rechecked
+before create; the create mutation also requests server-side checked layout selection
+(PostgreSQL/SQLite; non-default selection fails closed on MySQL). It validates
+existence, not a layout revision. The page workspace can
+create a new starter from a saved exact-locale working body and displays its revision;
+unsaved editor changes are not included. Managers can edit tenant starter metadata
+and confirm deletion at the observed revision; built-ins remain read-only, and the
+starter document and thumbnail are not changed by metadata edits. Content editing
+is not provided by this catalog UI. The integration has not yet been compiled or
+verified against a running server.
+
 > **For contributors and AI agents — choose the relevant guide before modifying this package:**
 > [Architecture](../../../../docs/UI/module-package-architecture.md) |
 > [Implementation](../../../../docs/UI/module-package-implementation.md) |
@@ -51,19 +67,37 @@
   the next edit that changes the document. An intent that does not change the document (selecting,
   switching panels) does not retry, so after a transient outage the draft stays unsaved until one
   of those happens.
-- **A draft that cannot be loaded is reported, not recovered.** When the address names a draft
-  session and the draft store fails or refuses the caller, the editor opens the saved page and
-  shows the error above the workspace. The error is not logged (the crate has no `tracing`
-  dependency), the address keeps the draft token, so each editor action is refused with the same
-  error until the page is opened without it, and a session that is gone or belongs to another
-  saved revision still opens the saved page without a message.
+- **Stale-draft recovery is manual and unverified.** A mismatched saved revision no longer
+  deletes or rebases the existing session: the route restores it, marks a conflict and exposes
+  the entire project as copyable JSON. Copy it before the session expires or is evicted, then open
+  the saved page in a private window at an address without `fly_draft` and merge manually. There
+  is no automatic merge/import or permanent backup. The new paths and store concurrency have not
+  been compiled or integration-tested here; verify all supported stores before release.
+- **The shared active-page preview projection is not yet verified.** Both preview entrypoints now
+  propagate a missing active page or encoding failure instead of substituting an empty project.
+  Compilation and behavioral verification remain pending.
+- **A draft that cannot be loaded is reported, not recovered.** A missing, expired or refused
+  route draft stops the editor instead of opening a different document under that token. The intent
+  endpoint returns `DRAFT_UNAVAILABLE` for a missing token, and preview fails closed too. The error is not logged (no `tracing`
+  dependency); reopening the saved page requires an address without `fly_draft` in a separate
+  private window to avoid the existing tab's stored session token. When the saved-page render
+  finds a cached draft, the browser now stops editing and offers a route to restore it; first
+  requests use the generation of the SSR-rendered snapshot. Page changes clear the previous
+  route token in the same query update without deleting its session. Store outage/eviction
+  recovery and browser/server integration still need verification. A request aborted after the
+  server committed can lose its response token; simultaneous adapters for one page can also
+  replace the single browser storage pointer. This is not durable draft discovery.
+- **Server document CAS is not a complete multi-writer guarantee.** Timestamp revision reuse and
+  the post-commit response read can associate an editor's project with another writer's revision;
+  see `rustok-pages/README.md`. Resolve and test this before relying on stale-draft handling to
+  prevent lost writes.
 - **The save-failure message ages out.** It stays on screen, and across reloads, until a save
   succeeds, but the browser keeps it for at most 10 minutes; after that only the toolbar's unsaved
   state says that the draft is not stored.
 - **The facade save path carries no draft owner, by design.** `PagesBuilderFacade` is built with
   `PagesBuilderSaveSnapshot { owner: None, .. }` (`src/composition.rs`). Attribution belongs to the
   intent endpoint: `dispatch_pages_browser_intent` takes the owner from the verified caller, and
-  that is the only path that creates, commits or removes a draft session. The facade's snapshot
+  that is the only path that creates or commits a draft session. The facade's snapshot
   serves the capability and preview calls, which read no session. The editor's route draft is
   loaded separately with an owner built from the current user and the tenant
   (`load_route_draft(..., draft_owner.as_ref())`), so a session that belongs to another caller is

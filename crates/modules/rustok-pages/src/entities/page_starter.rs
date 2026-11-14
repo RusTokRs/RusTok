@@ -16,6 +16,7 @@ pub struct Model {
     pub thumbnail_url: Option<String>,
     pub default_template_key: String,
     pub content: Json,
+    pub revision: Uuid,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

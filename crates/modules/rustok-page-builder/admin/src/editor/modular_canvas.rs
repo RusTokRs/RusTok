@@ -13,7 +13,7 @@ use crate::i18n::t;
 use crate::ui::browser_adapter::PageBuilderBrowserAdapter;
 use crate::{
     AdminCanvasController, ConsumerPropertyEditorRuntime, PageBuilderAdminFacade,
-    PageBuilderAdminProviderStatus,
+    PageBuilderAdminProviderStatus, SsrDraftRenderBinding,
 };
 use fly::TraitSchemaRegistry;
 use fly_ui::{
@@ -152,6 +152,14 @@ pub fn AdminCanvas(
     // The host policy admits an inline script only with the nonce of this response.
     let browser_script_nonce = use_context::<UiCspNonce>().map(|nonce| nonce.as_str().to_string());
     let root_csrf_token = browser_csrf_token.clone();
+    let draft_render_binding = use_context::<SsrDraftRenderBinding>();
+    let draft_contract = draft_render_binding.as_ref().map(|_| "rendered");
+    let (rendered_draft_token, rendered_draft_generation) = draft_render_binding
+        .and_then(|binding| binding.session)
+        .map(|(token, generation)| (Some(token), Some(generation.to_string())))
+        .unwrap_or((None, None));
+    let draft_recovery_message = t(locale.as_deref(), "page_builder.draftRecovery.message", "The editor does not match its draft session. Editing is stopped. Restore the draft before continuing; it may expire.");
+    let draft_recovery_link = t(locale.as_deref(), "page_builder.draftRecovery.link", "Restore draft or reload this address");
     let adapter_runtime = runtime.clone();
     let adapter_assembly = contribution_assembly.clone();
     let canvas_runtime = runtime.clone();
@@ -196,6 +204,11 @@ pub fn AdminCanvas(
             data-fly-page-id=browser_page_id
             data-fly-revision=browser_revision
             data-fly-project-hash=browser_project_hash
+            data-fly-draft-contract=draft_contract
+            data-fly-rendered-draft-token=rendered_draft_token
+            data-fly-rendered-draft-generation=rendered_draft_generation
+            data-fly-draft-recovery-message=draft_recovery_message
+            data-fly-draft-recovery-link=draft_recovery_link
             data-fly-intent-endpoint=root_intent_endpoint
             data-fly-csrf-token=root_csrf_token
         >

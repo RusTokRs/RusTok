@@ -1,5 +1,5 @@
 pages-badge = страницы
-pages-builder-draftLoadError = Не удалось загрузить черновик из этого адреса; редактор показывает сохранённую страницу
+pages-builder-draftLoadError = Не удалось загрузить черновик. Редактор остановлен, чтобы не заменить его. Откройте сохранённую страницу в приватном окне по адресу без fly_draft.
 pages-builder-loadError = Не удалось загрузить выбранную страницу для визуального редактирования
 pages-builder-loading = Загрузка визуального редактора...
 pages-builder-missing = Выберите существующую страницу, чтобы открыть визуальный редактор Fly.
@@ -81,3 +81,53 @@ pages-table-unpublish = Снять с публикации
 pages-table-untitled = Страница без названия
 pages-table-updated = Обновлено
 pages-title = Управление страницами
+pages-starter-label = Стартовый шаблон
+pages-starter-loading = Загрузка шаблонов...
+pages-starter-unavailable = Каталог шаблонов недоступен
+pages-starter-selectionError = Каталог недоступен или выбранный шаблон изменился. Обновите страницу и повторите попытку.
+pages-starter-prepareError = Не удалось подготовить шаблон
+pages-starter-contextError = Сессия или организация изменилась. Обновите страницу и повторите попытку.
+pages-starter-layoutHint = Рекомендуемый макет (не применяется автоматически)
+
+pages-starter-saveTitle = Сохранить сохранённую страницу как шаблон
+pages-starter-savedWarning = Используется сохранённая рабочая версия для выбранной локали, а не несохранённые изменения редактора. Существующие ключи шаблонов заменить нельзя. Требуется pages:manage.
+pages-starter-key = Ключ шаблона
+pages-starter-name = Название шаблона
+pages-starter-category = Категория
+pages-starter-sourceLocale = Локаль источника
+pages-starter-saved = Сохранён источник
+pages-starter-saveAction = Сохранить шаблон
+
+pages-starter-manageTitle = Управление каталогом шаблонов
+pages-starter-manageHint = Изменять можно только шаблоны организации. Документ и миниатюра сохраняются; рекомендуемый макет автоматически не применяется.
+pages-starter-builtin = Встроенный (только чтение)
+pages-starter-tenant = Шаблон организации
+pages-starter-edit = Изменить
+pages-starter-description = Описание
+pages-starter-layoutKey = Ключ рекомендуемого макета
+pages-starter-saveChanges = Сохранить изменения
+pages-starter-delete = Удалить шаблон
+pages-starter-deleteWarning = Удалить шаблон организации? Если он заменяет встроенный, встроенный шаблон снова станет видимым.
+pages-starter-confirmDelete = Подтвердить удаление
+pages-starter-cancel = Отмена
+pages-starter-reload = Обновить каталог и отменить изменения
+pages-starter-updated = Шаблон обновлён
+pages-starter-deleted = Шаблон удалён
+pages-starter-notDeleted = Шаблон не удалён
+
+pages-starter-operationError = Изменения не применены. Данные формы сохранены; при конфликте ревизии обновите каталог.
+
+pages-layout-label = Макет страницы
+pages-layout-loading = Загрузка макетов...
+pages-layout-unavailable = Каталог макетов недоступен
+pages-layout-selectionError = Выберите макет, доступный для этой локали. При необходимости обновите каталог.
+pages-layout-reload = Обновить макеты
+pages-layout-suggestionAvailable = Доступен вам для этой локали
+pages-layout-suggestionMissing = Недоступен вам для этой локали
+
+pages-layout-contextAfterCreate = Сессия, организация или локаль изменилась во время создания страницы. Страница могла быть создана в прежнем контексте; проверьте это перед повторной попыткой.
+
+pages-layout-permissionsHint = Для работы билдера с нестандартными макетами требуется pages:manage.
+
+pages-builder-staleDraft = Сохранённая страница изменилась в другом сеансе. Черновик сохранён, но его нельзя записать поверх новой версии. Скопируйте JSON проекта сейчас: срок хранения черновика ограничен. Откройте сохранённую страницу в приватном окне по адресу без fly_draft и вручную перенесите изменения.
+pages-builder-recoveryProject = JSON черновика для копирования

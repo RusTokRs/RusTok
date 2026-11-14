@@ -28,7 +28,7 @@ mod model;
 mod preview;
 mod rollback_control;
 mod standalone_metadata;
-pub mod starters;
+mod starter_admin;
 pub mod templates_admin;
 mod transport;
 
@@ -85,10 +85,6 @@ pub use preview::{
 };
 pub use preview::{PagesServerPreview, pages_server_preview_store};
 pub use rustok_page_builder_admin::{DraftSessionOwner, SsrDraftSessionStore};
-pub use starters::{
-    PageStarterDescriptor, instantiate_starter_preset, instantiate_starter_preset_pretty,
-    page_starters,
-};
 
 #[component]
 pub fn PagesAdmin() -> impl IntoView {
