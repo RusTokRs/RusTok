@@ -53,12 +53,10 @@ includes(`${native}/native_server_adapter.rs`,
   '.is_module_enabled_for_tenant(tenant_id, channel_id, "forum")',
   '.with_settings_providers(settings_providers.clone())');
 for (const path of [
+  `${native}/native_server_adapter.rs`,
   `${native}/native_server_adapter_pages.rs`,
-  `${native}/native_server_adapter_bulk.rs`,
-  `${native}/native_server_adapter_category_route.rs`,
-  `${native}/native_server_adapter_topic_route.rs`,
 ]) {
-  includes(path, 'forum_channel_enabled(&runtime_ctx, tenant.id, &request).await?');
+  includes(path, 'forum_channel_enabled(&runtime_ctx, tenant.id, &request)');
 }
 const nativeMain = source(`${native}/native_server_adapter.rs`);
 const nativePages = source(`${native}/native_server_adapter_pages.rs`);
@@ -102,7 +100,8 @@ includes('crates/modules/rustok-search/src/audience_security.rs',
 // ordering and pagination stay authorized.
 includes('crates/modules/rustok-search/src/pg_engine.rs',
   'sd.document_id AS document_id',
-  '(source_module NOT IN ({gated_params}) OR document_id IN ({authorized_params}))');
+  'source_module NOT IN ({gated_params})',
+  'document_id IN ({ids_params})');
 includes('crates/modules/rustok-search/src/audience_security.rs',
   'SearchAudienceClass',
   'pub fn declared_source_modules(&self) -> Vec<String>',

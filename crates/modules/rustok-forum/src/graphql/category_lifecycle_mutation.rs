@@ -1,6 +1,7 @@
 use async_graphql::{Context, Object, Result, SimpleObject};
 use rustok_api::Permission;
 use rustok_api::{TenantContext, graphql::require_module_enabled};
+use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::CategorySubtreeLifecycleResponse;

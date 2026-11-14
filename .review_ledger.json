@@ -476,9 +476,9 @@
       "category": "modules",
       "files": 614,
       "loc": 181014,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T06:30:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: decoupled ForumTaxonomyPort architecture per ADR 2026-11-12, non-nil UUID guards across tenant_id, category_id, topic_id, reply_id, user_id, actor_id, transactional outbox domain events, topic & reply lifecycle state machines, thread locking, pinning, solution marking/unmarking, anonymous discovery enforcement with cross-module search protection, 16-hex short_id topic routing; verified with cargo check -p rustok-forum and verification scripts."
     },
     "crates/modules/rustok-forum/admin": {
       "name": "admin",
@@ -486,9 +486,9 @@
       "category": "modules",
       "files": 36,
       "loc": 13498,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T06:30:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil tenant and actor guards, RBAC permission verification across server functions (categories:manage, topics:moderate, replies:moderate), category hierarchy tree management, topic fork, merge, split, and slug rename operations; verified with cargo check -p rustok-forum-admin --features ssr and verification scripts."
     },
     "crates/modules/rustok-forum/storefront": {
       "name": "storefront",
@@ -496,9 +496,9 @@
       "category": "modules",
       "files": 20,
       "loc": 7854,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T06:30:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: FFA boundary separation, non-nil UUID and session resolution, topic and reply cursor pagination, channel-scoped storefront enablement, content-locale bidi isolation with LTR route markers, rich text html projection; verified with cargo check -p rustok-forum-storefront --features ssr and verification scripts."
     },
     "crates/modules/rustok-fulfillment": {
       "name": "rustok-fulfillment",
@@ -2246,9 +2246,9 @@
       "category": "apps",
       "files": 19,
       "loc": 4927,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T06:30:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: dual Next.js and Leptos admin client parity, category tree admin dialog, topic and reply editor dialogs, topic fork, merge, split, and slug rename operations with i18n support; verified."
     },
     "apps/next-admin/packages/iggy-connector": {
       "name": "iggy-connector",
@@ -2276,9 +2276,9 @@
       "category": "apps",
       "files": 23,
       "loc": 4775,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-14T06:30:00Z",
+      "notes": "Verified across 6 Universal Logic Dimensions: dual Next.js and Leptos storefront parity, category overview hierarchy, topic detail, thread navigation, timeline scroller, topic feed, member card, and composer context with draft storage; verified."
     },
     "apps/next-frontend/packages/rustok-notifications": {
       "name": "rustok-notifications",

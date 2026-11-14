@@ -136,7 +136,9 @@ assertContains(replyCard, "content_locale=content_locale", `${files.ui}: reply p
 
 assertContains(cargo, "leptos-ui.workspace = true", `${files.cargo}: storefront must depend on the shared Leptos richtext view boundary`);
 assertContains(transport, "fetch_storefront_forum", `${files.transport}: storefront transport facade must expose fetch_storefront_forum`);
-assertContains(transport, "mod graphql_adapter {", `${files.transport}: transport facade must own the canonical GraphQL adapter module`);
+if (!transport.includes("mod graphql_adapter;") && !transport.includes("mod graphql_adapter {")) {
+  fail(`${files.transport}: transport facade must own the canonical GraphQL adapter module`);
+}
 assertContains(transport, "graphql_adapter::fetch_storefront_forum", `${files.transport}: transport facade must delegate through GraphQL adapter`);
 assertNotContains(transport, "crate::api", `${files.transport}: transport facade must not delegate to the removed api module`);
 assertContains(graphqlAdapter, "GraphqlRequest", `${files.graphqlAdapter}: storefront GraphQL adapter must keep GraphQL-backed read contract`);
