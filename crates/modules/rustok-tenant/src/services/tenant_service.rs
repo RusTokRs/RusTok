@@ -309,7 +309,16 @@ impl TenantService {
         let per_page = per_page.clamp(1, 100);
         let page = page.max(1);
         tracing::debug!(page, per_page, "listing tenants");
-        let paginator = tenant::Entity::find().paginate(&self.db, per_page);
+        // Deterministic ordering is required for page walks: without it the
+        // backend may return rows in any order, so concurrent inserts (or a
+        // different plan) can shift rows across page boundaries and a caller
+        // iterating pages can skip a tenant entirely. `id` is the unique
+        // tie-breaker for identical timestamps, matching the ordering other
+        // paginated list endpoints in this workspace use.
+        let paginator = tenant::Entity::find()
+            .order_by_asc(tenant::Column::CreatedAt)
+            .order_by_asc(tenant::Column::Id)
+            .paginate(&self.db, per_page);
         let total = paginator.num_items().await?;
         let models = paginator.fetch_page(page.saturating_sub(1)).await?;
         let items = models.into_iter().map(to_tenant_response).collect();
@@ -888,6 +897,25 @@ mod tests {
     use super::*;
     use sea_orm::{ActiveModelTrait, ConnectionTrait, Database};
     use serde_json::json;
+
+    #[test]
+    fn tenant_list_query_orders_by_timestamp_then_unique_id() {
+        use sea_orm::{DbBackend, QueryTrait};
+
+        // A page walk is only stable when the ordering is total. Without the
+        // unique tie-breaker two tenants created in the same instant could swap
+        // positions between page requests.
+        let statement = tenant::Entity::find()
+            .order_by_asc(tenant::Column::CreatedAt)
+            .order_by_asc(tenant::Column::Id)
+            .build(DbBackend::Sqlite);
+        let sql = statement.to_string();
+        let order_by = sql.split("ORDER BY").nth(1).expect("query has ordering");
+        let timestamp_position = order_by.find("created_at").expect("timestamp order");
+        let id_position = order_by.find("id").expect("unique tie-breaker");
+        assert!(timestamp_position < id_position);
+        assert_eq!(order_by.matches("ASC").count(), 2);
+    }
 
     #[tokio::test]
     async fn update_tenant_module_settings_validation_and_lifecycle() {
