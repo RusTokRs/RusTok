@@ -245,7 +245,7 @@ non-human security context instead of being rejected for having no human ID.
 | Command or bounded scenario | Obtained result and limit |
 | --- | --- |
 | Scoped library tests for Blog admin, storefront, Reactions storefront and Grid under default native profiles | 59 + 50 + 16 + 80 passed before final SSR-only continuation. |
-| `cargo test -p rustok-blog -p rustok-blog-admin -p rustok-blog-storefront -p rustok-reactions-storefront -p rustok-grid -p rustok-grid-leptos -p leptos-auth -p rustok-graphql --features rustok-blog-admin/ssr,rustok-blog-storefront/ssr,rustok-reactions-storefront/ssr --locked --offline --lib` | 421 passed: Blog 184, admin 65, storefront 53, Reactions 16, Grid 80, Grid Leptos 3, Auth 8 and GraphQL 12. One opt-in PostgreSQL library case was ignored. Includes real native HTTP acknowledgement/authorization, category Clear/Set/Keep with Update-only authority, widget dispatcher type fidelity, and real Grid SSR page 2/3 with French copy. |
+| `cargo test -p rustok-blog -p rustok-blog-admin -p rustok-blog-storefront -p rustok-reactions-storefront -p rustok-grid -p rustok-grid-leptos -p rustok-auth-ui -p rustok-graphql --features rustok-blog-admin/ssr,rustok-blog-storefront/ssr,rustok-reactions-storefront/ssr --locked --offline --lib` | 421 passed: Blog 184, admin 65, storefront 53, Reactions 16, Grid 80, Grid Leptos 3, Auth 8 and GraphQL 12. One opt-in PostgreSQL library case was ignored. Includes real native HTTP acknowledgement/authorization, category Clear/Set/Keep with Update-only authority, widget dispatcher type fidelity, and real Grid SSR page 2/3 with French copy. |
 | `cargo test -p rustok-blog -p rustok-blog-admin --features rustok-blog-admin/ssr --locked --offline --test widgets --test integration -- --include-ignored` with explicit PostgreSQL URL | 22 integration and five widget scenarios passed, including PostgreSQL owner preview, actual REST/GraphQL, service principals, publication/channel filtering, locale provenance and unchanged rows/outbox. |
 | Next editor/API/presentation and storefront utility/policy Node suites | 31 passed. Includes actual async detail RSC execution with real Fluent copy/formatter; this is not mounted HTML/browser evidence. |
 | Next storefront `npm run typecheck` | Passed. |
@@ -263,7 +263,7 @@ verification for the selected production feature combination.
 Clippy passed with `-D warnings` across all targets of `rustok-blog`,
 `rustok-blog-admin`, `rustok-blog-storefront`, `rustok-reactions-storefront`,
 `rustok-grid`, `rustok-grid-leptos`, `rustok-grid-dioxus`, `rustok-ui-leptos`,
-`leptos-auth` and `rustok-graphql`
+`rustok-auth-ui` and `rustok-graphql`
 using the SSR feature combination above. The complete `verify:blog:fba` and
 `test:verify:blog:fba` chains also passed as source/fixture checks. No broader
 workspace/server build was run. WASM hydration checks passed for Blog admin,
