@@ -46,16 +46,14 @@ fn map_taxonomy_error(err: TaxonomyError) -> GroupsError {
     match err {
         TaxonomyError::Database(db_err) => GroupsError::Persistence(db_err.to_string()),
         TaxonomyError::Validation(msg) => GroupsError::Validation(msg),
-        TaxonomyError::Forbidden(msg) => GroupsError::Validation(format!("Forbidden: {msg}")),
-        TaxonomyError::TermNotFound(id) => {
-            GroupsError::Validation(format!("Taxonomy term not found: {id}"))
-        }
+        TaxonomyError::Forbidden(msg) => GroupsError::Forbidden(msg),
+        TaxonomyError::TermNotFound(_) => GroupsError::NotFound,
         TaxonomyError::DuplicateCanonicalKey(msg)
         | TaxonomyError::DuplicateSlug(msg)
         | TaxonomyError::DuplicateAlias(msg)
-        | TaxonomyError::Conflict(msg) => GroupsError::Validation(format!("Conflict: {msg}")),
+        | TaxonomyError::Conflict(msg) => GroupsError::Conflict(msg),
         TaxonomyError::TranslationRevisionExhausted { term_id, locale } => {
-            GroupsError::Validation(format!(
+            GroupsError::Conflict(format!(
                 "Translation revision exhausted for term {term_id} locale {locale}"
             ))
         }
