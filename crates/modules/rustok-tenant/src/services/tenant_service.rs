@@ -912,7 +912,11 @@ mod tests {
         let sql = statement.to_string();
         let order_by = sql.split("ORDER BY").nth(1).expect("query has ordering");
         let timestamp_position = order_by.find("created_at").expect("timestamp order");
-        let id_position = order_by.find("id").expect("unique tie-breaker");
+        // Quote the identifier so a substring of another column name (or of
+        // `created_at` itself) cannot satisfy the tie-breaker assertion.
+        let id_position = order_by
+            .find(r#""id""#)
+            .expect("unique tie-breaker on the quoted id column");
         assert!(timestamp_position < id_position);
         assert_eq!(order_by.matches("ASC").count(), 2);
     }
