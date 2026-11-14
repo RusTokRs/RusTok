@@ -376,7 +376,6 @@ Analogous to the code audit ledger ([continuous-review-ledger.md](./continuous-r
   - `crates/modules/rustok-translation/docs/README.md`: Indexed 3 missing specifications.
   - `crates/modules/rustok-ai-athanor/docs/README.md`: Indexed `implementation-plan.md`.
   - `crates/modules/rustok-distribution/docs/README.md`: Indexed `inventory-index.md`.
-  - `crates/ui/leptos-auth/docs/README.md`: Indexed `implementation-plan.md`.
   - `crates/workers/rustok-sandbox-transport/docs/README.md`: Indexed `implementation-plan.md`.
   - `crates/workers/rustok-sandbox-worker/docs/README.md`: Indexed `implementation-plan.md`.
   Achieved **100% indexing coverage (0 unindexed files across all 130 component documentation directories)**.
