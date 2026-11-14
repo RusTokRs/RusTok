@@ -16,7 +16,6 @@ Detailed architecture, FFA boundary guarantees, and parity rules are documented 
   - `base.css`: CSS custom properties for web runtimes.
   - `rustok_tokens.g.dart`: Generated Dart tokens for Flutter (`npm run generate:tokens:flutter`).
 - `next/`: Next.js (React) component primitives.
-- `leptos/`: Leptos (Rust/WASM) component primitives.
 - `docs/`: Component API contracts and design specs.
 
 ## Autonomous UI Workbenches

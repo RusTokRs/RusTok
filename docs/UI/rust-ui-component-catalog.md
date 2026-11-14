@@ -25,8 +25,7 @@ The repository currently has these levels of UI reuse:
   `rustok_ui_leptos::*` and owns only the local helper components
   (`LanguageToggle`, rich-text helpers);
 - `UI/tokens` — legacy design tokens and CSS variables consumed by the admin shell;
-- `UI/leptos` (`iu-leptos`) and `UI/next/components` — the legacy parallel shared
-  primitives kept for surfaces that have not migrated to `rustok-ui` yet.
+- `UI/next/components` — the legacy parallel shared primitives kept for Next surfaces that have not migrated to `rustok-ui` yet.
 
 App-local complex components remain inside specific host applications and are not considered part of the shared catalog until a reusable contract emerges.
 
@@ -67,8 +66,7 @@ covered. Components not yet given that feature audit remain provisional.
 
 `crates/ui/rustok-ui/leptos/src/lib.rs` and
 `apps/next-admin/src/shared/ui/shadcn/index.ts` are the component entry points being
-compared. `UI/next/components/*` is a separate legacy Next component set;
-`UI/leptos/src/*` remains available through the `iu-leptos` workspace crate.
+compared. `UI/next/components/*` is a separate legacy Next component set.
 
 ### Dialog feature-parity checklist
 

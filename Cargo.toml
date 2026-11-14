@@ -100,7 +100,6 @@ members = [
     "crates/modules/rustok-security/admin",
     "crates/modules/rustok-security/storefront",
     "tests/e2e-rust",
-    "UI/leptos",
     "ops/benches",
     "xtask",
 ]
@@ -254,7 +253,6 @@ leptos = "=0.8.21"
 leptos_axum = "0.8.9"
 leptos_router = "0.8.13"
 rustok-auth-ui = { path = "crates/modules/rustok-auth/ui", default-features = false }
-iu-leptos = { path = "UI/leptos" }
 leptos-ui = { path = "crates/ui/leptos-ui" }
 rustok-ui = { path = "crates/ui/rustok-ui" }
 rustok-ui-leptos = { path = "crates/ui/rustok-ui/leptos" }

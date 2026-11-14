@@ -337,10 +337,7 @@ pub fn BlogAdmin() -> impl IntoView {
 ### Shared UI primitives (`crates/ui/rustok-ui/`)
 
 Source primitives live in `crates/ui/rustok-ui/leptos/src/`; the framework-agnostic
-class resolvers and headless contracts live in `crates/ui/rustok-ui/src/`. The compiled
-crate boundary is `crates/ui/leptos-ui`, which re-exports `rustok_ui_leptos::*` and no
-longer owns component implementations. `UI/leptos/src/` is the legacy `iu-leptos`
-workspace crate retained for surfaces that have not migrated to `rustok-ui` yet.
+class resolvers and headless contracts live in `crates/ui/rustok-ui/src/`.
 Check [`docs/UI/rust-ui-component-catalog.md`](./rust-ui-component-catalog.md) before
 writing any new component — it may already exist.
 
