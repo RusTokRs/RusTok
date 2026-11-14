@@ -30,6 +30,7 @@
     "test:verify:ui:grid-parity": "node scripts/verify/verify-ui-grid-parity.test.mjs",
     "verify:ui:grid-facets": "node scripts/verify/verify-product-ui-grid-facets.mjs",
     "test:verify:ui:grid-facets": "node scripts/verify/verify-product-ui-grid-facets.test.mjs",
+    "test:ui:workbench": "npm --prefix apps/next-admin run test:e2e:workbench",
     "audit:deps": "cargo machete",
     "audit:deadcode": "npx knip --directory apps/next-admin",
     "audit:clones": "npx jscpd crates/ apps/ --min-tokens 50",

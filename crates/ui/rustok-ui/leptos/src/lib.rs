@@ -63,7 +63,7 @@ pub use skeleton::Skeleton;
 pub use spinner::Spinner;
 pub use success_message::SuccessMessage;
 pub use switch::Switch;
-pub use tabs::{Tabs, TabsContent, TabsList, TabsTrigger};
+pub use tabs::{Tabs, TabsContent, TabsContext, TabsList, TabsTrigger, use_tabs_context};
 pub use textarea::Textarea;
 pub use toc::TableOfContents;
 
@@ -114,8 +114,9 @@ pub use spinner::Spinner as ui_spinner;
 pub use success_message::SuccessMessage as ui_success_message;
 pub use switch::Switch as ui_switch;
 pub use tabs::{
-    Tabs as ui_tabs, TabsContent as ui_tabs_content, TabsList as ui_tabs_list,
-    TabsTrigger as ui_tabs_trigger,
+    Tabs as ui_tabs, TabsContent as ui_tabs_content, TabsContext as ui_tabs_context,
+    TabsList as ui_tabs_list, TabsTrigger as ui_tabs_trigger,
+    use_tabs_context as use_ui_tabs_context,
 };
 pub use textarea::Textarea as ui_textarea;
 pub use toc::TableOfContents as ui_table_of_contents;

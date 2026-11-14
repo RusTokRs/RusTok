@@ -438,7 +438,9 @@ impl PageService {
                 created_by,
             )
             .await?;
-            page_body_draft::Entity::delete_by_id(draft.id)
+            page_body_draft::Entity::delete_many()
+                .filter(page_body_draft::Column::TenantId.eq(tenant_id))
+                .filter(page_body_draft::Column::Id.eq(draft.id))
                 .exec(txn)
                 .await?;
             promoted.push(WorkingBody::from(&draft));

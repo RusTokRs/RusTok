@@ -355,7 +355,7 @@ pub(crate) async fn prepare_checked_layout_transaction(
 ) -> PagesResult<()> {
     match tx.get_database_backend() {
         DatabaseBackend::Postgres => {
-            tx.execute(Statement::from_string(
+            tx.execute_raw(Statement::from_string(
                 DatabaseBackend::Postgres,
                 "SET TRANSACTION ISOLATION LEVEL READ COMMITTED".to_string(),
             ))

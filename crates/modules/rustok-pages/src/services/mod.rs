@@ -45,6 +45,8 @@ pub use page::{
     PageRouteHistoryImportService, PageRouteResolution, PageRouteService, PageService,
     inline_edit_context_mismatch, page_inline_edit_keyring_from_environment,
 };
+#[cfg(feature = "runtime")]
+pub use page::{PageScheduledPublishWorkAdapter, PageScheduledPublishWorkRegistration};
 pub use page_builder_artifact::{PageBuilderArtifactService, PublishedLandingArtifact};
 pub use page_starter::{PageStarterRecord, PageStarterService, SavePageStarterInput};
 pub use page_template::{MAX_TEMPLATE_SECTIONS, PageTemplateRecord, PageTemplateService};

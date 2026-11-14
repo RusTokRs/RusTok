@@ -603,6 +603,9 @@ function dropOverlayRect(rect, position) {
 
 export function updateNetworkIndicator(root, status, detail = null) {
   if (!root || !root.dispatchEvent) return;
+  if (root.dataset) {
+    root.dataset.flyNetworkStatus = status;
+  }
   root.dispatchEvent(
     new CustomEvent("fly:network-status", {
       bubbles: true,
@@ -622,7 +625,7 @@ export function updateNetworkIndicator(root, status, detail = null) {
   }
 }
 
-class FlyBrowserAdapter {
+export class FlyBrowserAdapter {
   constructor(root, options = {}) {
     if (!(root instanceof Element)) {
       throw new TypeError("Fly browser root must be an Element");
@@ -1357,6 +1360,7 @@ class FlyBrowserAdapter {
       ),
     };
     this.pendingIntentRequests.set(requestKey, record);
+    updateNetworkIndicator(this.root, "saving");
 
     const headers = {
       "content-type": "application/json",
@@ -1404,6 +1408,13 @@ class FlyBrowserAdapter {
           },
         }),
       );
+      if (current) {
+        if (response.ok) {
+          updateNetworkIndicator(this.root, "saved");
+        } else {
+          updateNetworkIndicator(this.root, "error", response.status);
+        }
+      }
       if (current && response.ok && isObject(result)) {
         const state = isObject(result.result) ? result.result : result;
         if (typeof state.revision_id === "string") {
@@ -1453,6 +1464,9 @@ class FlyBrowserAdapter {
       return result;
     } catch (error) {
       const current = requestGeneration === this.latestIntentRequestGeneration;
+      if (current) {
+        updateNetworkIndicator(this.root, "error", error);
+      }
       if (controller.signal.aborted) {
         this.root.dispatchEvent(
           new CustomEvent("fly:browser-intent-aborted", {

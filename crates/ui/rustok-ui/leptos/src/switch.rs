@@ -11,23 +11,40 @@
 use leptos::prelude::*;
 use rustok_ui::{SwitchSize, switch_classes};
 
-/// Switch toggle rendered as a `role="switch"` button.
+/// Switch toggle rendered as an accessible `role="switch"` control.
 ///
-/// `checked`/`set_checked` is an optional controlled pair and `aria-checked`
-/// always reflects the resolved state. A switch is not a form control: hosts
-/// that must submit a value should pair it with a hidden input.
+/// Supports:
+/// - Controlled mode: via `checked` and `set_checked` / `on_checked_change`.
+/// - Uncontrolled mode: via `default_checked` and optional `on_checked_change`.
+/// - Form integration: via `name` and optional `value` (renders a hidden input for standard form submissions).
+/// - WAI-ARIA & Shadcn/Radix compliance: `role="switch"`, `aria-checked`, `data-state`, `data-slot`.
 #[component]
 pub fn Switch(
     #[prop(optional)] checked: Option<ReadSignal<bool>>,
     #[prop(optional)] set_checked: Option<WriteSignal<bool>>,
+    #[prop(optional)] default_checked: Option<bool>,
+    #[prop(optional)] on_checked_change: Option<Callback<bool>>,
     #[prop(default = false)] disabled: bool,
     #[prop(default = SwitchSize::Md)] size: SwitchSize,
     #[prop(optional, into)] class: String,
     #[prop(optional, into)] id: String,
+    #[prop(optional, into)] name: String,
+    #[prop(optional, into)] value: Option<String>,
+    #[prop(optional, into)] aria_label: Option<String>,
+    #[prop(optional, into)] aria_labelledby: Option<String>,
 ) -> impl IntoView {
     let id = (!id.is_empty()).then_some(id);
+    let name = (!name.is_empty()).then_some(name);
     let custom = (!class.is_empty()).then_some(class.as_str());
-    let is_checked = move || checked.map(|c| c.get()).unwrap_or(false);
+
+    let (internal_checked, set_internal_checked) = signal(default_checked.unwrap_or(false));
+    let is_checked = move || {
+        if let Some(c) = checked {
+            c.get()
+        } else {
+            internal_checked.get()
+        }
+    };
 
     let (track_classes, thumb_classes) = {
         let (track_off, thumb_off) = switch_classes(false, size, custom);
@@ -50,24 +67,61 @@ pub fn Switch(
         )
     };
 
+    let resolved_value = value.unwrap_or_else(|| "on".to_string());
+
+    let on_click = move |_| {
+        if !disabled {
+            let next = !is_checked();
+            if let Some(set) = set_checked {
+                set.set(next);
+            }
+            if checked.is_none() {
+                set_internal_checked.set(next);
+            }
+            if let Some(cb) = on_checked_change {
+                cb.run(next);
+            }
+        }
+    };
+
+    let data_state = move || if is_checked() { "checked" } else { "unchecked" };
+
     view! {
         <button
             id=id
             type="button"
             role="switch"
             aria-checked=move || is_checked().to_string()
+            aria-label=aria_label
+            aria-labelledby=aria_labelledby
             disabled=disabled
+            data-slot="switch"
+            data-state=data_state
+            data-disabled=disabled.then_some("")
             class=track_classes
-            on:click=move |_| {
-                if !disabled
-                    && let Some(set) = set_checked
-                {
-                    let current = checked.map(|c| c.get()).unwrap_or(false);
-                    set.set(!current);
-                }
-            }
+            on:click=on_click
         >
-            <span class=thumb_classes />
+            <span
+                data-slot="switch-thumb"
+                data-state=data_state
+                class=thumb_classes
+            />
         </button>
+        {name.map(|field_name| {
+            view! {
+                <input
+                    type="checkbox"
+                    aria-hidden="true"
+                    tabindex="-1"
+                    name=field_name
+                    value=resolved_value.clone()
+                    disabled=disabled
+                    prop:checked=move || is_checked()
+                    checked=move || is_checked()
+                    class="sr-only"
+                    style="transform: translateX(-100%); position: absolute; pointer-events: none; opacity: 0; margin: 0px;"
+                />
+            }
+        })}
     }
 }

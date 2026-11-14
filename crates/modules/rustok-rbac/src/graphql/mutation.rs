@@ -484,11 +484,11 @@ impl RbacMutation {
         // deleted and recreated) concurrently, fail instead of writing grant
         // rows for a role that no longer exists.
         let lock_role_sql = match backend {
-            sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql => {
-                "SELECT id FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
-            }
             sea_orm::DbBackend::Sqlite => {
                 "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? RETURNING id"
+            }
+            sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql | _ => {
+                "SELECT id FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
             }
         };
         let tx_role = tx
@@ -772,11 +772,11 @@ impl RbacMutation {
         // above ran outside it, so a concurrent delete must surface as
         // not-found here instead of a phantom success below.
         let lock_role_sql = match backend {
-            sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql => {
-                "SELECT id FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
-            }
             sea_orm::DbBackend::Sqlite => {
                 "UPDATE roles SET updated_at = updated_at WHERE tenant_id = ? AND id = ? RETURNING id"
+            }
+            sea_orm::DbBackend::Postgres | sea_orm::DbBackend::MySql | _ => {
+                "SELECT id FROM roles WHERE tenant_id = ? AND id = ? LIMIT 1 FOR UPDATE"
             }
         };
         let tx_role = tx

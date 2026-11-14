@@ -548,10 +548,8 @@ impl DirectTaskHandler for ProductCopyHandler {
                     port_context.clone(),
                     rustok_product::ProductProjectionRequest {
                         product_id: input.product_id,
-                        include_variants: true,
-                        include_archived: false,
-                        channel_slug: None,
-                        include_translations: true,
+                        locale: Some(request.resolved_locale.clone()),
+                        fallback_locale: request.requested_locale.clone(),
                     },
                 )
                 .await
@@ -654,7 +652,7 @@ impl DirectTaskHandler for ProductCopyHandler {
         let updated = if let Some(command_port) = runtime.product_catalog_command_port() {
             let command_ctx = port_context
                 .clone()
-                .with_idempotency_key(format!("ai-product-copy:{}", request.run_id));
+                .with_idempotency_key(format!("ai-product-copy:{}:{expected_revision}", product.id));
             command_port
                 .update_product(command_ctx, product.id, update_input)
                 .await

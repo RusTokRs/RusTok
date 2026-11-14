@@ -420,29 +420,12 @@ impl RusToKMcpServer {
             tracing::warn!(error = %error, "Failed to persist MCP tool audit event");
         }
     }
-}
 
-impl ServerHandler for RusToKMcpServer {
-    async fn call_tool(
+    async fn execute_tool(
         &self,
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, rmcp::ErrorData> {
-        if request.name.as_ref() != TOOL_MCP_HEALTH {
-            if let Some(binding) = self.resolve_live_binding().await? {
-                let mut refreshed = self.clone();
-                refreshed.access_context = Some(Arc::new(binding.access_context.clone()));
-                refreshed.runtime_binding = Some(Arc::new(binding));
-                refreshed.access_resolver = None;
-                // Re-enter once with the refreshed binding; boxing breaks the
-                // recursive async future type, and clearing the resolver prevents recursion.
-                return Box::pin(<Self as ServerHandler>::call_tool(
-                    &refreshed, request, _context,
-                ))
-                .await;
-            }
-        }
-
         tracing::info!(tool = %request.name, "MCP tool call");
 
         if !self.tool_enabled_by_legacy_config(request.name.as_ref()) {
@@ -652,6 +635,26 @@ impl ServerHandler for RusToKMcpServer {
                 None,
             )),
         }
+    }
+}
+
+impl ServerHandler for RusToKMcpServer {
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, rmcp::ErrorData> {
+        if request.name.as_ref() != TOOL_MCP_HEALTH {
+            if let Some(binding) = self.resolve_live_binding().await? {
+                let mut refreshed = self.clone();
+                refreshed.access_context = Some(Arc::new(binding.access_context.clone()));
+                refreshed.runtime_binding = Some(Arc::new(binding));
+                refreshed.access_resolver = None;
+                return refreshed.execute_tool(request, _context).await;
+            }
+        }
+
+        self.execute_tool(request, _context).await
     }
 
     async fn list_tools(

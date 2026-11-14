@@ -238,7 +238,7 @@ pub fn PagesAdmin() -> impl IntoView {
                                         <PagesNavigator
                                             pages
                                             selected_page_id=selected_page_query.get()
-                                            on_select=Callback::new(move |page_id| {
+                                            on_select=Callback::new(move |page_id: String| {
                                                 if selected_page_query.get_untracked().as_deref() != Some(page_id.as_str()) {
                                                     writer.update(core::page_selection_query_update(Some(page_id)), true);
                                                 }
@@ -651,7 +651,8 @@ fn CreatePageCard(
                                             {(!valid).then(|| view! { <option value=current selected=true disabled=true>{layout_selection_error.clone()}</option> })}
                                             {keys.into_iter().map(|key| {
                                                 let selected_key = key.clone();
-                                                view! { <option value=key.clone() selected=move || selected_template.get() == selected_key>{key}</option> }
+                                                let option_value = key.clone();
+                                                view! { <option value=option_value selected=move || selected_template.get() == selected_key>{key}</option> }
                                             }).collect_view()}
                                         </select>
                                         {(!valid).then(|| view! { <p role="alert" class="text-xs text-destructive">{layout_selection_error.clone()}</p> })}

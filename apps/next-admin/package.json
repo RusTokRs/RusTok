@@ -30,6 +30,7 @@
     "lint:fix": "eslint src --fix && prettier --write src",
     "lint:strict": "eslint src --max-warnings=0",
     "test:e2e": "playwright test",
+    "test:e2e:workbench": "playwright test --config=playwright.ui-workbench.config.ts",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:install": "playwright install chromium",
     "format": "prettier --write .",

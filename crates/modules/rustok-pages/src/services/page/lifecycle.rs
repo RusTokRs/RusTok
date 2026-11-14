@@ -247,7 +247,11 @@ impl PageService {
             .filter(page_translation::Column::PageId.eq(page_id))
             .exec(&txn)
             .await?;
-        page::Entity::delete_by_id(page_id).exec(&txn).await?;
+        page::Entity::delete_many()
+            .filter(page::Column::TenantId.eq(tenant_id))
+            .filter(page::Column::Id.eq(page_id))
+            .exec(&txn)
+            .await?;
         self.event_bus
             .publish_in_tx(
                 &txn,

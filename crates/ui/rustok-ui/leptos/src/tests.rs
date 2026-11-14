@@ -21,6 +21,7 @@ use crate::dialog::*;
 use crate::input::*;
 use crate::progress::*;
 use crate::skeleton::*;
+use crate::switch::*;
 use crate::tabs::*;
 
 #[test]
@@ -276,4 +277,77 @@ fn test_render_toc_ssr() {
     assert!(html.contains("Содержание"));
     assert!(html.contains("Overview"));
     assert!(html.contains("Details"));
+}
+
+#[test]
+fn test_render_declarative_tabs_ssr() {
+    let html = Owner::new().with(|| {
+        let view = view! {
+            <Tabs default_value="tab2".to_string()>
+                <TabsList>
+                    <TabsTrigger value="tab1".to_string() id="trigger-1" panel_id="panel-1">"Tab 1"</TabsTrigger>
+                    <TabsTrigger value="tab2".to_string() id="trigger-2" panel_id="panel-2">"Tab 2"</TabsTrigger>
+                </TabsList>
+                <TabsContent value="tab1".to_string() id="panel-1" tab_id="trigger-1">"Content 1"</TabsContent>
+                <TabsContent value="tab2".to_string() id="panel-2" tab_id="trigger-2">"Content 2"</TabsContent>
+            </Tabs>
+        };
+        view.to_html()
+    });
+
+    assert!(html.contains("role=\"tablist\""));
+    assert!(html.contains("role=\"tab\""));
+    assert!(html.contains("aria-selected=\"false\""));
+    assert!(html.contains("aria-selected=\"true\""));
+    assert!(html.contains("tabindex=\"-1\""));
+    assert!(html.contains("tabindex=\"0\""));
+    assert!(html.contains("role=\"tabpanel\""));
+    assert!(html.contains("Content 2"));
+}
+
+#[test]
+fn test_render_switch_ssr() {
+    // Uncontrolled default (off)
+    let view_default = view! {
+        <Switch id="sw-default" aria_label="Default toggle" />
+    };
+    let html_default = view_default.to_html();
+    assert!(html_default.contains("role=\"switch\""));
+    assert!(html_default.contains("aria-checked=\"false\""));
+    assert!(html_default.contains("data-state=\"unchecked\""));
+    assert!(html_default.contains("aria-label=\"Default toggle\""));
+    assert!(html_default.contains("data-slot=\"switch\""));
+    assert!(html_default.contains("data-slot=\"switch-thumb\""));
+
+    // Uncontrolled default_checked (on) with form name
+    let view_checked = view! {
+        <Switch
+            id="sw-notifications"
+            default_checked=true
+            name="notifications"
+            value="enabled".to_string()
+        />
+    };
+    let html_checked = view_checked.to_html();
+    assert!(html_checked.contains("role=\"switch\""));
+    assert!(html_checked.contains("aria-checked=\"true\""));
+    assert!(html_checked.contains("data-state=\"checked\""));
+    assert!(html_checked.contains("type=\"checkbox\""));
+    assert!(html_checked.contains("name=\"notifications\""));
+    assert!(html_checked.contains("value=\"enabled\""));
+
+    // Controlled switch
+    let html_controlled = Owner::new().with(|| {
+        let (checked, set_checked) = signal(true);
+        let view_controlled = view! {
+            <Switch
+                id="sw-ctrl"
+                checked=checked
+                set_checked=set_checked
+            />
+        };
+        view_controlled.to_html()
+    });
+    assert!(html_controlled.contains("aria-checked=\"true\""));
+    assert!(html_controlled.contains("data-state=\"checked\""));
 }

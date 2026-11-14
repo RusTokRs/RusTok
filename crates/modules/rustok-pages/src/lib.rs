@@ -8,6 +8,8 @@
  * You may not remove or alter this copyright notice or license header.
  */
 
+#![recursion_limit = "512"]
+
 //! # rustok-pages
 //!
 //! Pages module for RusToK platform.

@@ -156,6 +156,7 @@ impl AiHostRuntime {
             provider_targets,
             order_status_port: None,
             product_catalog_read_port: None,
+            product_catalog_command_port: None,
             rag_retrieval_port: None,
             #[cfg(test)]
             test_inference_engine: None,
