@@ -14,12 +14,18 @@ use rustok_ui::{
 };
 
 #[component]
-pub fn Tabs(#[props(default)] class: Option<String>, children: Element) -> Element {
-    let custom = class.as_deref();
+pub fn Tabs(
+    #[props(default)] id: Option<String>,
+    #[props(default)] class: Option<String>,
+    children: Element,
+) -> Element {
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = merge_classes(&["w-full", custom.unwrap_or("")]);
 
     rsx! {
         div {
+            id: id,
             "data-slot": "tabs",
             class: "{full_class}",
             {children}
@@ -30,10 +36,12 @@ pub fn Tabs(#[props(default)] class: Option<String>, children: Element) -> Eleme
 #[component]
 pub fn TabsList(
     #[props(default)] orientation: Orientation,
+    #[props(default)] aria_label: Option<String>,
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
+    let aria_label = aria_label.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = tabs_list_classes(orientation, custom);
 
     rsx! {
@@ -42,6 +50,7 @@ pub fn TabsList(
             "data-slot": "tabs-list",
             "data-orientation": orientation.as_str(),
             "aria-orientation": orientation.as_str(),
+            aria_label: aria_label,
             class: "{full_class}",
             {children}
         }
@@ -53,20 +62,26 @@ pub fn TabsTrigger(
     #[props(default = false)] active: bool,
     #[props(default = false)] disabled: bool,
     #[props(default)] onselect: Option<EventHandler<()>>,
+    #[props(default)] id: Option<String>,
+    #[props(default)] aria_controls: Option<String>,
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
+    let aria_controls = aria_controls.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = tabs_trigger_classes(active, disabled, custom);
 
     rsx! {
         button {
+            id: id,
             r#type: "button",
             role: "tab",
             "data-slot": "tabs-trigger",
             "data-state": if active { "active" } else { "inactive" },
             "data-disabled": disabled.then_some(""),
             "aria-selected": active.to_string(),
+            aria_controls: aria_controls,
             tabindex: if active { "0" } else { "-1" },
             disabled: disabled,
             class: "{full_class}",
@@ -83,17 +98,24 @@ pub fn TabsTrigger(
 #[component]
 pub fn TabsContent(
     #[props(default = false)] active: bool,
+    #[props(default)] id: Option<String>,
+    #[props(default)] aria_labelledby: Option<String>,
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
+    let aria_labelledby = aria_labelledby.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = tabs_content_classes(active, custom);
 
     rsx! {
         div {
+            id: id,
             role: "tabpanel",
             "data-slot": "tabs-content",
             "data-state": if active { "active" } else { "inactive" },
+            aria_labelledby: aria_labelledby,
+            tabindex: if active { "0" } else { "-1" },
             class: "{full_class}",
             {children}
         }

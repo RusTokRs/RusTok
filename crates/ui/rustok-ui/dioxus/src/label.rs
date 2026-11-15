@@ -15,16 +15,20 @@ use rustok_ui::label_classes;
 pub fn Label(
     #[props(default = false)] required: bool,
     #[props(default = false)] disabled: bool,
+    #[props(default)] id: Option<String>,
     #[props(default)] r#for: Option<String>,
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
+    let r#for = r#for.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = label_classes(disabled, custom);
 
     rsx! {
         label {
-            r#for: r#for.as_deref(),
+            id: id,
+            r#for: r#for,
             "data-slot": "label",
             "data-disabled": disabled.then_some(""),
             class: "{full_class}",

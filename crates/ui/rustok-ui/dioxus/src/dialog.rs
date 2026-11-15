@@ -21,12 +21,18 @@ use rustok_ui::{
 pub fn Dialog(
     #[props(default = false)] open: bool,
     #[props(default)] on_close: Option<EventHandler<()>>,
+    #[props(default)] id: Option<String>,
     #[props(default)] class: Option<String>,
     #[props(default)] aria_label: Option<String>,
     #[props(default)] aria_labelledby: Option<String>,
+    #[props(default)] aria_describedby: Option<String>,
     children: Element,
 ) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
+    let aria_label = aria_label.as_deref().filter(|s| !s.trim().is_empty());
+    let aria_labelledby = aria_labelledby.as_deref().filter(|s| !s.trim().is_empty());
+    let aria_describedby = aria_describedby.as_deref().filter(|s| !s.trim().is_empty());
     let backdrop_class = dialog_backdrop_classes(open);
     let content_class = dialog_content_classes(open, custom);
 
@@ -43,12 +49,14 @@ pub fn Dialog(
                 },
             }
             div {
+                id: id,
                 role: "dialog",
                 "data-slot": "dialog-content",
                 "data-state": if open { "open" } else { "closed" },
                 "aria-modal": "true",
-                "aria-label": aria_label.as_deref(),
-                "aria-labelledby": aria_labelledby.as_deref(),
+                aria_label: aria_label,
+                aria_labelledby: aria_labelledby,
+                aria_describedby: aria_describedby,
                 tabindex: "-1",
                 class: "{content_class}",
                 {children}
@@ -59,7 +67,7 @@ pub fn Dialog(
 
 #[component]
 pub fn DialogHeader(#[props(default)] class: Option<String>, children: Element) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
     rsx! {
         div {
             "data-slot": "dialog-header",
@@ -76,10 +84,11 @@ pub fn DialogTitle(
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
     rsx! {
         h2 {
-            id: id.as_deref(),
+            id: id,
             "data-slot": "dialog-title",
             class: "{dialog_title_classes(custom)}",
             {children}
@@ -88,10 +97,16 @@ pub fn DialogTitle(
 }
 
 #[component]
-pub fn DialogDescription(#[props(default)] class: Option<String>, children: Element) -> Element {
-    let custom = class.as_deref();
+pub fn DialogDescription(
+    #[props(default)] id: Option<String>,
+    #[props(default)] class: Option<String>,
+    children: Element,
+) -> Element {
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
     rsx! {
         p {
+            id: id,
             "data-slot": "dialog-description",
             class: "{dialog_description_classes(custom)}",
             {children}
@@ -101,7 +116,7 @@ pub fn DialogDescription(#[props(default)] class: Option<String>, children: Elem
 
 #[component]
 pub fn DialogFooter(#[props(default)] class: Option<String>, children: Element) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
     rsx! {
         div {
             "data-slot": "dialog-footer",

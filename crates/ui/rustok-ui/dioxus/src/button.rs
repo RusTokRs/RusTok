@@ -20,21 +20,30 @@ pub fn Button(
     #[props(default = false)] disabled: bool,
     #[props(default = false)] loading: bool,
     #[props(default)] class: Option<String>,
+    #[props(default)] id: Option<String>,
+    #[props(default)] name: Option<String>,
+    #[props(default)] aria_label: Option<String>,
     #[props(default)] onclick: Option<EventHandler<MouseEvent>>,
     #[props(default = "button")] r#type: &'static str,
     children: Element,
 ) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
+    let name = name.as_deref().filter(|s| !s.trim().is_empty());
+    let aria_label = aria_label.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = button_classes(variant, size, custom);
     let is_disabled = disabled || loading;
     let type_attr = r#type;
 
     rsx! {
         button {
+            id: id,
+            name: name,
             r#type: "{type_attr}",
             "data-slot": "button",
             "data-disabled": is_disabled.then_some(""),
             "aria-busy": loading.then_some("true"),
+            aria_label: aria_label,
             class: "{full_class}",
             disabled: is_disabled,
             onclick: move |evt| {
