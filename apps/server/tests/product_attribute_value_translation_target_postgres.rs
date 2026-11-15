@@ -558,6 +558,7 @@ fn source_product(category_id: Uuid) -> CreateProductInput {
         shipping_profile_slug: None,
         primary_category_id: Some(category_id),
         tags: Vec::new(),
+        brands: Vec::new(),
         metadata: json!({"evidence": "attribute-value-translation"}),
         publish: false,
     }

@@ -694,7 +694,7 @@ async fn get_client(
     let details = McpManagementService::get_client_details(ctx.db(), tenant.id, client_id)
         .await?
         .ok_or(crate::error::Error::NotFound)?;
-    Ok(Json(map_client_details(details)))
+    Ok(Json(map_client_details(details)?))
 }
 
 async fn create_client(
@@ -1136,18 +1136,18 @@ fn map_scaffold_draft(
     }
 }
 
-fn map_client_details(details: McpClientDetails) -> McpClientDetailsResponse {
-    McpClientDetailsResponse {
+fn map_client_details(details: McpClientDetails) -> Result<McpClientDetailsResponse> {
+    Ok(McpClientDetailsResponse {
         client: map_client_summary(details.client.clone()),
         description: details.client.description,
         delegated_user_id: details.client.delegated_user_id,
         metadata: details.client.metadata,
-        policy: details.policy.map(map_policy),
+        policy: details.policy.map(map_policy).transpose()?,
         tokens: details.tokens.into_iter().map(map_token).collect(),
         effective_access_context: details
             .effective_access_context
             .and_then(|value| serde_json::to_value(value).ok()),
-    }
+    })
 }
 
 fn map_audit_event(model: crate::models::mcp_audit_logs::Model) -> McpAuditEventResponse {

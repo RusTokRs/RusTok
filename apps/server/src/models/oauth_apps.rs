@@ -412,7 +412,7 @@ where
         sea_orm::DatabaseBackend::Postgres => {
             "INSERT INTO oauth_app_translation_change_journal (operation_id, tenant_id, app_id, resource_revision, lifecycle) VALUES ($1, $2, $3, $4, $5)"
         }
-        sea_orm::DatabaseBackend::Sqlite | sea_orm::DatabaseBackend::MySql => {
+        sea_orm::DatabaseBackend::Sqlite | sea_orm::DatabaseBackend::MySql | _ => {
             "INSERT INTO oauth_app_translation_change_journal (operation_id, tenant_id, app_id, resource_revision, lifecycle) VALUES (?, ?, ?, ?, ?)"
         }
     };

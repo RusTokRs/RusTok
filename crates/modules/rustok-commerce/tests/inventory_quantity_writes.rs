@@ -222,7 +222,9 @@ async fn product_refused(
         .update_variant(f.tenant, f.actor, f.variant, peer_changes(quantity))
         .await
         .unwrap_err();
-    assert!(matches!(error, CommerceError::InventoryQuantityBlocked(actual) if actual == reason.into()));
+    assert!(
+        matches!(error, CommerceError::InventoryQuantityBlocked(actual) if actual == reason.into())
+    );
     assert_eq!(
         snapshot(db).await,
         before,

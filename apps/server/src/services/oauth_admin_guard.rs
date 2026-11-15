@@ -320,11 +320,10 @@ mod tests {
         GuardedOAuthAdminProvider, clamp_oauth_guard_list_limit, internal_oauth_guard_error,
         validate_grant_dependencies,
     };
+    use crate::models::oauth_apps::scope_runtime_copy_locale;
     use crate::models::{oauth_apps, tenants};
     use crate::services::auth_admin_mutation_provider::ServerAuthAdminMutationProvider;
-    use crate::services::oauth_app::{
-        CreateOAuthAppInput, OAuthAppService, scope_runtime_copy_locale,
-    };
+    use crate::services::oauth_app::{CreateOAuthAppInput, OAuthAppService};
     use crate::services::rbac_request_scope::{RbacRequestScope, with_rbac_request_scope};
     use rustok_api::Permission;
     use rustok_auth::{AuthAdminMutationContext, AuthAdminMutationError, OAuthAdminPort};

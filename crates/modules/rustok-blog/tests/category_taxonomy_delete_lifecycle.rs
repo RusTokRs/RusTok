@@ -4,12 +4,14 @@ use std::sync::{
 };
 
 use async_trait::async_trait;
-use rustok_blog::{BlogError, BlogModule, CategoryService, CreateCategoryInput};
+use rustok_blog::{
+    BlogCategoryDeleteCleanupPort, BlogError, BlogModule, CategoryService, CreateCategoryInput,
+};
 use rustok_core::{MemoryTransport, MigrationSource, SecurityContext, UserRole};
 use rustok_events::EventEnvelope;
 use rustok_outbox::TransactionalEventBus;
 use rustok_taxonomy::{
-    TaxonomyCategoryDeleteCleanupPort, TaxonomyError, TaxonomyModule, TaxonomyResult,
+    TaxonomyModule,
     entities::{taxonomy_category_hierarchy, taxonomy_term},
 };
 use sea_orm::{
@@ -24,16 +26,16 @@ struct RecordingCleanup {
 }
 
 #[async_trait]
-impl TaxonomyCategoryDeleteCleanupPort for RecordingCleanup {
+impl BlogCategoryDeleteCleanupPort for RecordingCleanup {
     async fn cleanup_in_tx(
         &self,
         _txn: &sea_orm::DatabaseTransaction,
         _tenant_id: Uuid,
         _category_id: Uuid,
-    ) -> TaxonomyResult<()> {
+    ) -> Result<(), BlogError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         if self.fail {
-            return Err(TaxonomyError::validation("forced cleanup failure"));
+            return Err(BlogError::Validation("forced cleanup failure".to_string()));
         }
         Ok(())
     }
@@ -59,7 +61,7 @@ async fn setup() -> DatabaseConnection {
 
 fn service(
     db: &DatabaseConnection,
-    cleanup: Arc<dyn TaxonomyCategoryDeleteCleanupPort>,
+    cleanup: Arc<dyn BlogCategoryDeleteCleanupPort>,
 ) -> (
     CategoryService,
     tokio::sync::broadcast::Receiver<EventEnvelope>,

@@ -1145,11 +1145,6 @@ async fn update_first_party_app_from_manifest(
             oauth_apps::Column::RevokedAt,
             Expr::value(None::<sea_orm::prelude::DateTimeWithTimeZone>),
         )
-        .col_expr(oauth_apps::Column::Name, Expr::value(name.to_string()))
-        .col_expr(
-            oauth_apps::Column::Description,
-            Expr::value(Some(format!("Auto-created for {slug}"))),
-        )
         .col_expr(oauth_apps::Column::Scopes, Expr::value(scopes_json))
         .col_expr(
             oauth_apps::Column::GrantTypes,
@@ -1194,6 +1189,24 @@ async fn update_first_party_app_from_manifest(
             "first-party OAuth app `{slug}` changed ownership during manifest sync"
         )));
     }
+    oauth_apps::upsert_translation(
+        db,
+        tenant_id,
+        app.id,
+        "en",
+        name.to_string(),
+        Some(format!("Auto-created for {slug}")),
+    )
+    .await
+    .map_err(|error| {
+        tracing::error!(
+            tenant_id = %tenant_id,
+            slug = slug,
+            error = %error,
+            "Failed to upsert first-party OAuth app translation during manifest sync"
+        );
+        Error::InternalServerError
+    })?;
     Ok(())
 }
 

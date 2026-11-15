@@ -493,6 +493,7 @@ fn initial_product() -> CreateProductInput {
         shipping_profile_slug: None,
         primary_category_id: None,
         tags: Vec::new(),
+        brands: Vec::new(),
         metadata: json!({"evidence": "variant-translation"}),
         publish: false,
     }

@@ -134,6 +134,13 @@ pub fn build_admin_router() -> AxumRouter {
 }
 
 #[cfg(feature = "embed-admin-assets")]
+fn header_value(raw: &str, fallback: &'static str) -> axum::http::HeaderValue {
+    axum::http::HeaderValue::from_str(raw)
+        .or_else(|_| axum::http::HeaderValue::from_str(fallback))
+        .unwrap_or_else(|_| axum::http::HeaderValue::from_static("application/octet-stream"))
+}
+
+#[cfg(feature = "embed-admin-assets")]
 fn admin_asset_response(
     path: &str,
     bytes: std::borrow::Cow<'static, [u8]>,
@@ -167,11 +174,6 @@ fn admin_asset_response(
     // `mime_guess` only yields valid ASCII types and `cache_control` is one of
     // the two constants below, so these are defensive fallbacks rather than an
     // expected branch.
-    fn header_value(raw: &str, fallback: &'static str) -> axum::http::HeaderValue {
-        axum::http::HeaderValue::from_str(raw)
-            .or_else(|_| axum::http::HeaderValue::from_str(fallback))
-            .unwrap_or_else(|_| axum::http::HeaderValue::from_static("application/octet-stream"))
-    }
 
     let mime = mime_guess::from_path(path).first_or_octet_stream();
     let cache_control = if is_document {

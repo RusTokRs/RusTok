@@ -104,15 +104,15 @@ pub fn request_context(tenant: &TenantContext, auth: &AuthContext) -> RequestCon
 struct UnusedCategoryCleanup;
 
 #[async_trait::async_trait]
-impl rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort for UnusedCategoryCleanup {
+impl rustok_blog::BlogCategoryDeleteCleanupPort for UnusedCategoryCleanup {
     async fn cleanup_in_tx(
         &self,
         _txn: &sea_orm::DatabaseTransaction,
         _tenant: Uuid,
         _category: Uuid,
-    ) -> rustok_taxonomy::TaxonomyResult<()> {
-        Err(rustok_taxonomy::TaxonomyError::validation(
-            "This read/create transport fixture must never delete a category",
+    ) -> Result<(), rustok_blog::BlogError> {
+        Err(rustok_blog::BlogError::Validation(
+            "This read/create transport fixture must never delete a category".to_string(),
         ))
     }
 }
@@ -123,7 +123,7 @@ pub fn router(
     tenant: TenantContext,
     auth: Option<AuthContext>,
 ) -> Router {
-    let cleanup: Arc<dyn rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort> =
+    let cleanup: Arc<dyn rustok_blog::BlogCategoryDeleteCleanupPort> =
         Arc::new(UnusedCategoryCleanup);
     let host = rustok_api::HostRuntimeContext::new(db)
         .with_shared_value(bus)

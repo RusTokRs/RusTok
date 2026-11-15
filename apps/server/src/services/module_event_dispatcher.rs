@@ -609,7 +609,7 @@ pub fn build_shared_runtime_extensions_with_host_providers(
     extensions.insert(UserAdminMutationRuntime::new(user_admin_provider));
     let auth_lifecycle_provider = Arc::new(
         crate::services::auth_lifecycle_provider::ServerAuthLifecycleProvider::new(
-            runtime_ctx,
+            runtime_ctx.clone(),
             auth_config,
         ),
     );

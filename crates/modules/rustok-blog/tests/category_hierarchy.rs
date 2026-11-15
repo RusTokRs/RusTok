@@ -41,13 +41,13 @@ async fn setup() -> DatabaseConnection {
 struct NoopCategoryDeleteCleanup;
 
 #[async_trait::async_trait]
-impl rustok_taxonomy::TaxonomyCategoryDeleteCleanupPort for NoopCategoryDeleteCleanup {
+impl rustok_blog::BlogCategoryDeleteCleanupPort for NoopCategoryDeleteCleanup {
     async fn cleanup_in_tx(
         &self,
         _txn: &sea_orm::DatabaseTransaction,
         _tenant_id: Uuid,
         _category_id: Uuid,
-    ) -> rustok_taxonomy::TaxonomyResult<()> {
+    ) -> Result<(), rustok_blog::BlogError> {
         Ok(())
     }
 }

@@ -449,7 +449,7 @@ impl flex::FieldDefinitionCachePort for FieldDefinitionCache {
 #[cfg(test)]
 mod tests {
     use super::{
-        FieldDefinitionCache, FieldDefinitionCacheInvalidationHandle,
+        FieldDefinitionCache, FieldDefinitionCacheEntry, FieldDefinitionCacheInvalidationHandle,
         field_definition_cache_from_context, field_definition_entry_weight,
         supervise_field_definition_cache_invalidation,
     };

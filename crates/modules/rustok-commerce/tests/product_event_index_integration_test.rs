@@ -5,10 +5,10 @@ use rust_decimal::Decimal;
 use rustok_api::Patch;
 use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
 use rustok_product::CatalogService;
+use rustok_product::ProductStatus;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
 };
-use rustok_product::ProductStatus;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use sea_orm_migration::MigrationTrait;
