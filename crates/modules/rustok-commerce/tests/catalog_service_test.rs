@@ -12,7 +12,7 @@ use rustok_product::dto::{
     UpdateProductInput, VariantAxisInput, VariantAxisValueInput,
 };
 use rustok_product::entities;
-use rustok_product::entities::product::ProductStatus;
+use rustok_product::ProductStatus;
 use rustok_product::services::{
     CatalogCategoryKind, CategoryTranslationInput, CreateCatalogCategoryInput,
     ProductAttributeValuePatch, ProductAttributeValuePatchValue, ProductCatalogSchemaService,
@@ -206,6 +206,7 @@ fn create_test_product_input() -> CreateProductInput {
         product_type: Some("Physical".to_string()),
         shipping_profile_slug: None,
         primary_category_id: None,
+        brands: vec![],
         tags: vec![],
         publish: false,
         metadata: serde_json::json!({}),
@@ -299,6 +300,7 @@ async fn test_shipping_profile_slug_round_trips_through_catalog_service() {
                 product_type: Patch::Keep,
                 shipping_profile_slug: Patch::Set("Cold-Chain".to_string()),
                 primary_category_id: Patch::Keep,
+                brands: None,
                 tags: None,
                 status: None,
                 metadata: None,
@@ -417,6 +419,7 @@ async fn test_update_product_success() {
         product_type: Patch::Set("Digital".to_string()),
         shipping_profile_slug: Patch::Keep,
         primary_category_id: Patch::Keep,
+        brands: None,
         tags: None,
         status: Some(ProductStatus::Active),
         metadata: None,
@@ -589,6 +592,7 @@ async fn test_product_locale_fallback_resolves_localized_flex_metadata_from_atta
                 product_type: Patch::Keep,
                 shipping_profile_slug: Patch::Keep,
                 primary_category_id: Patch::Keep,
+                brands: None,
                 tags: None,
                 status: None,
                 metadata: Some(serde_json::json!({
@@ -1094,6 +1098,7 @@ async fn test_update_product_metadata() {
         product_type: Patch::Keep,
         shipping_profile_slug: Patch::Keep,
         primary_category_id: Patch::Keep,
+        brands: None,
         tags: None,
         status: None,
         metadata: Some(serde_json::json!({
@@ -1157,6 +1162,7 @@ async fn test_update_vendor() {
         product_type: Patch::Keep,
         shipping_profile_slug: Patch::Keep,
         primary_category_id: Patch::Keep,
+        brands: None,
         tags: None,
         status: None,
         metadata: None,
@@ -1198,6 +1204,7 @@ async fn test_update_nonexistent_product() {
         product_type: Patch::Keep,
         shipping_profile_slug: Patch::Keep,
         primary_category_id: Patch::Keep,
+        brands: None,
         tags: None,
         status: None,
         metadata: None,
@@ -1320,6 +1327,7 @@ async fn test_create_archived_product() {
         product_type: Patch::Keep,
         shipping_profile_slug: Patch::Keep,
         primary_category_id: Patch::Keep,
+        brands: None,
         tags: None,
         status: Some(ProductStatus::Archived),
         metadata: None,

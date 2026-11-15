@@ -252,9 +252,12 @@ mod tests {
 /// Dialog root that provides controlled or uncontrolled open state to its parts.
 ///
 /// Pass `open` together with `on_open_change` for controlled state, or use
-/// `default_open` for an uncontrolled dialog. `modal` defaults to `true`.
+/// `default_open` for an uncontrolled dialog. An optional `id` provides a deterministic
+/// identifier namespace for child controls (`{id}-content`, `{id}-title`, etc.).
+/// `modal` defaults to `true`.
 #[component]
 pub fn Dialog(
+    #[prop(optional, into)] id: String,
     #[prop(optional, into)] open: MaybeProp<bool>,
     #[prop(default = false)] default_open: bool,
     #[prop(optional)] on_open_change: Option<Callback<bool>>,
@@ -266,8 +269,12 @@ pub fn Dialog(
     let open_signal =
         Signal::derive(move || open_prop.get().unwrap_or_else(|| internal_open.get()));
     let last_trigger = RwSignal::new(None::<NodeRef<html::Button>>);
-    let next_id = DIALOG_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let instance_id = format!("dialog-{next_id}");
+    let instance_id = if !id.trim().is_empty() {
+        id
+    } else {
+        let next_id = DIALOG_COUNTER.fetch_add(1, Ordering::Relaxed);
+        format!("dialog-{next_id}")
+    };
     let content_id = RwSignal::new(format!("{instance_id}-content"));
     let title_id = RwSignal::new(format!("{instance_id}-title"));
     let description_id = RwSignal::new(format!("{instance_id}-description"));
@@ -347,12 +354,15 @@ pub fn DialogTrigger(
     children: Children,
 ) -> impl IntoView {
     let context = expect_dialog_context();
-    let id = (!id.is_empty()).then_some(id);
-    let aria_label = (!aria_label.is_empty()).then_some(aria_label);
-    let aria_controls = if !aria_controls.is_empty() {
-        Some(aria_controls)
-    } else {
-        Some(context.content_id.get())
+    let id = (!id.trim().is_empty()).then_some(id);
+    let aria_label = (!aria_label.trim().is_empty()).then_some(aria_label);
+    let aria_controls_prop = aria_controls;
+    let aria_controls = move || {
+        if !aria_controls_prop.trim().is_empty() {
+            Some(aria_controls_prop.clone())
+        } else {
+            Some(context.content_id.get())
+        }
     };
     let trigger_ref = NodeRef::<html::Button>::new();
     view! {
@@ -470,24 +480,24 @@ pub fn DialogContent(
     children: ChildrenFn,
 ) -> impl IntoView {
     let context = expect_dialog_context();
-    let id = if !id.is_empty() {
+    let id = if !id.trim().is_empty() {
         context.content_id.set(id.clone());
         Some(id)
     } else {
         Some(context.content_id.get())
     };
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     let content_class = dialog_content_classes(true, custom);
     let close_class = dialog_close_classes(None);
-    let label_attr = (!aria_label.is_empty()).then_some(aria_label);
-    let labelledby_attr = if !aria_labelledby.is_empty() {
+    let label_attr = (!aria_label.trim().is_empty()).then_some(aria_label);
+    let labelledby_attr = if !aria_labelledby.trim().is_empty() {
         Some(aria_labelledby)
     } else if label_attr.is_none() {
         Some(context.title_id.get())
     } else {
         None
     };
-    let describedby_attr = (!aria_describedby.is_empty()).then_some(aria_describedby);
+    let describedby_attr = (!aria_describedby.trim().is_empty()).then_some(aria_describedby);
     let dialog_ref = NodeRef::<html::Div>::new();
 
     Effect::new(move |_| {
@@ -558,7 +568,7 @@ pub fn DialogContent(
 /// Header slot for a dialog's title and description.
 #[component]
 pub fn DialogHeader(#[prop(optional, into)] class: String, children: Children) -> impl IntoView {
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     view! {
         <div data-slot="dialog-header" class=dialog_header_classes(custom)>
             {children()}
@@ -575,7 +585,7 @@ pub fn DialogTitle(
     children: Children,
 ) -> impl IntoView {
     let context = use_context::<DialogContext>();
-    let id = if !id.is_empty() {
+    let id = if !id.trim().is_empty() {
         if let Some(ctx) = context {
             ctx.title_id.set(id.clone());
         }
@@ -583,7 +593,7 @@ pub fn DialogTitle(
     } else {
         context.map(|ctx| ctx.title_id.get())
     };
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     view! {
         <h2 id=id data-slot="dialog-title" class=dialog_title_classes(custom)>
             {children()}
@@ -600,7 +610,7 @@ pub fn DialogDescription(
     children: Children,
 ) -> impl IntoView {
     let context = use_context::<DialogContext>();
-    let id = if !id.is_empty() {
+    let id = if !id.trim().is_empty() {
         if let Some(ctx) = context {
             ctx.description_id.set(id.clone());
         }
@@ -608,7 +618,7 @@ pub fn DialogDescription(
     } else {
         context.map(|ctx| ctx.description_id.get())
     };
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     view! {
         <p id=id data-slot="dialog-description" class=dialog_description_classes(custom)>
             {children()}
@@ -619,7 +629,7 @@ pub fn DialogDescription(
 /// Footer slot for dialog actions.
 #[component]
 pub fn DialogFooter(#[prop(optional, into)] class: String, children: Children) -> impl IntoView {
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     view! {
         <div data-slot="dialog-footer" class=dialog_footer_classes(custom)>
             {children()}

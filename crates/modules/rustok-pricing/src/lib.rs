@@ -6,7 +6,7 @@
 
 #![deny(clippy::float_arithmetic)]
 
-pub(crate) mod entities;
+pub mod entities;
 
 pub mod dto;
 pub mod error;

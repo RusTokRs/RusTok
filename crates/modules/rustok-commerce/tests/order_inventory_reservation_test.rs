@@ -129,6 +129,7 @@ async fn create_product_and_variant(catalog: &CatalogService, tenant_id: Uuid) -
                 product_type: Some("physical".to_string()),
                 shipping_profile_slug: None,
                 primary_category_id: None,
+                brands: Vec::new(),
                 tags: Vec::new(),
                 publish: false,
                 metadata: serde_json::json!({}),

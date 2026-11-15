@@ -97,6 +97,11 @@ impl SearchAnalyticsService {
         record: SearchQueryLogRecord,
     ) -> Result<Option<i64>> {
         ensure_postgres(db)?;
+        if record.tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id cannot be nil for search query log".to_string(),
+            ));
+        }
 
         let normalized_query = normalize_query_text(&record.query);
         if normalized_query.is_empty() {
@@ -147,6 +152,11 @@ impl SearchAnalyticsService {
 
     pub async fn record_click(db: &DatabaseConnection, record: SearchClickRecord) -> Result<()> {
         ensure_postgres(db)?;
+        if record.tenant_id.is_nil() || record.document_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id and document_id cannot be nil for search click log".to_string(),
+            ));
+        }
 
         let stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -200,6 +210,11 @@ impl SearchAnalyticsService {
         limit: usize,
     ) -> Result<SearchAnalyticsSnapshot> {
         ensure_postgres(db)?;
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id cannot be nil for search analytics snapshot".to_string(),
+            ));
+        }
 
         let summary = Self::summary(db, tenant_id, days).await?;
         let top_queries = Self::query_rows(db, tenant_id, days, limit, QueryRowMode::Top).await?;

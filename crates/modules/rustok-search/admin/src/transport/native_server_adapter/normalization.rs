@@ -118,8 +118,12 @@ fn normalize_uuid_values(
     values
         .into_iter()
         .map(|value| {
-            uuid::Uuid::parse_str(value.trim())
-                .map_err(|_| ServerFnError::new(format!("{field_name} contains an invalid UUID")))
+            let parsed = uuid::Uuid::parse_str(value.trim())
+                .map_err(|_| ServerFnError::new(format!("{field_name} contains an invalid UUID")))?;
+            if parsed.is_nil() {
+                return Err(ServerFnError::new(format!("{field_name} contains a nil UUID")));
+            }
+            Ok(parsed)
         })
         .collect()
 }

@@ -379,12 +379,12 @@ async fn insufficient_shared_counter_does_not_spend_other_live_ledger_claims() {
 #[tokio::test]
 async fn continue_backorders_keep_negative_availability_through_anonymous_partial_release() {
     let stock = stock().await;
-    let variant = entities::product_variant::Entity::find_by_id(stock.variant)
+    let variant = rustok_product::entities::product_variant::Entity::find_by_id(stock.variant)
         .one(&stock.db)
         .await
         .unwrap()
         .unwrap();
-    let mut active: entities::product_variant::ActiveModel = variant.into();
+    let mut active: rustok_product::entities::product_variant::ActiveModel = variant.into();
     active.inventory_policy = Set("CoNtInUe".to_string());
     active.update(&stock.db).await.unwrap();
     for location in [stock.default_location, stock.other_location] {

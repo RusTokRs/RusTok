@@ -74,6 +74,7 @@ fn create_test_product_input(tags: &[&str]) -> CreateProductInput {
         product_type: Some("Physical".to_string()),
         shipping_profile_slug: None,
         primary_category_id: None,
+        brands: vec![],
         tags: tags.iter().map(|tag| (*tag).to_string()).collect(),
         metadata: serde_json::json!({
             "featured": true,
@@ -218,6 +219,7 @@ async fn update_product_tags_resyncs_product_tag_relations_without_metadata_mirr
                 product_type: Patch::Keep,
                 shipping_profile_slug: Patch::Keep,
                 primary_category_id: Patch::Keep,
+                brands: None,
                 tags: Some(vec![
                     "featured".to_string(),
                     "sale".to_string(),
@@ -299,6 +301,7 @@ async fn update_product_tags_only_preserves_existing_non_tag_metadata() {
                 product_type: Patch::Keep,
                 shipping_profile_slug: Patch::Keep,
                 primary_category_id: Patch::Keep,
+                brands: None,
                 tags: Some(vec!["featured".to_string()]),
                 metadata: None,
                 status: None,
@@ -357,6 +360,7 @@ async fn metadata_tags_are_rejected_on_update_without_mutating_canonical_tags() 
                 product_type: Patch::Keep,
                 shipping_profile_slug: Patch::Keep,
                 primary_category_id: Patch::Keep,
+                brands: None,
                 tags: None,
                 metadata: Some(serde_json::json!({
                     "featured": false,

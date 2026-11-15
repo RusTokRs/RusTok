@@ -32,14 +32,18 @@ impl SearchSettingsService {
         db: &DatabaseConnection,
         tenant_id: Option<Uuid>,
     ) -> Result<SearchSettingsRecord, DbErr> {
-        if let Some(tenant_id) = tenant_id
-            && let Some(model) = Entity::find()
+        if let Some(tenant_id) = tenant_id {
+            if tenant_id.is_nil() {
+                return Err(DbErr::Custom("tenant_id cannot be nil".to_string()));
+            }
+            if let Some(model) = Entity::find()
                 .filter(Column::TenantId.eq(tenant_id))
                 .order_by_desc(Column::UpdatedAt)
                 .one(db)
                 .await?
-        {
-            return map_model(model);
+            {
+                return map_model(model);
+            }
         }
 
         if let Some(model) = Entity::find()
@@ -65,6 +69,12 @@ impl SearchSettingsService {
             .map_err(|err| DbErr::Custom(err.to_string()))?;
         SearchFilterPresetService::validate_config(&config)
             .map_err(|err| DbErr::Custom(err.to_string()))?;
+
+        if let Some(id) = tenant_id {
+            if id.is_nil() {
+                return Err(DbErr::Custom("tenant_id cannot be nil".to_string()));
+            }
+        }
 
         let existing = if let Some(tenant_id) = tenant_id {
             Entity::find()

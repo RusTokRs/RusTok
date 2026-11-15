@@ -65,6 +65,11 @@ impl SearchDictionaryService {
         tenant_id: Uuid,
     ) -> Result<SearchDictionarySnapshot> {
         ensure_postgres(db)?;
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id cannot be nil for search dictionary snapshot".to_string(),
+            ));
+        }
 
         let synonyms = Self::load_synonyms(db, tenant_id).await?;
         let stop_words = Self::load_stop_words(db, tenant_id).await?;
@@ -84,6 +89,11 @@ impl SearchDictionaryService {
         synonyms: Vec<String>,
     ) -> Result<SearchSynonymRecord> {
         ensure_postgres(db)?;
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id cannot be nil for search synonym".to_string(),
+            ));
+        }
 
         let normalized_term = normalize_token(term);
         if normalized_term.is_empty() {
@@ -139,6 +149,11 @@ impl SearchDictionaryService {
         synonym_id: Uuid,
     ) -> Result<()> {
         ensure_postgres(db)?;
+        if tenant_id.is_nil() || synonym_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id and synonym_id cannot be nil".to_string(),
+            ));
+        }
 
         let stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -155,6 +170,11 @@ impl SearchDictionaryService {
         value: &str,
     ) -> Result<SearchStopWordRecord> {
         ensure_postgres(db)?;
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id cannot be nil for search stop word".to_string(),
+            ));
+        }
 
         let normalized_value = normalize_token(value);
         if normalized_value.is_empty() {
@@ -194,6 +214,11 @@ impl SearchDictionaryService {
         stop_word_id: Uuid,
     ) -> Result<()> {
         ensure_postgres(db)?;
+        if tenant_id.is_nil() || stop_word_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id and stop_word_id cannot be nil".to_string(),
+            ));
+        }
 
         let stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -212,6 +237,11 @@ impl SearchDictionaryService {
         pinned_position: u32,
     ) -> Result<SearchQueryRuleRecord> {
         ensure_postgres(db)?;
+        if tenant_id.is_nil() || document_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id and document_id cannot be nil for query pin rule".to_string(),
+            ));
+        }
 
         let normalized_query = normalize_query_text(query_text);
         if normalized_query.is_empty() {
@@ -304,6 +334,11 @@ impl SearchDictionaryService {
         query_rule_id: Uuid,
     ) -> Result<()> {
         ensure_postgres(db)?;
+        if tenant_id.is_nil() || query_rule_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id and query_rule_id cannot be nil".to_string(),
+            ));
+        }
 
         let stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -320,6 +355,11 @@ impl SearchDictionaryService {
         raw_query: &str,
     ) -> Result<SearchQueryTransform> {
         ensure_postgres(db)?;
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id cannot be nil for query transform".to_string(),
+            ));
+        }
 
         let original_query = raw_query.trim().to_string();
         let normalized_query = normalize_query_text(&original_query);

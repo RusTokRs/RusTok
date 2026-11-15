@@ -22,6 +22,11 @@ impl SearchProjector {
     /// has already populated the shared Search document store.
     pub async fn ensure_bootstrap(&self, tenant_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "Search bootstrap requires a valid non-nil tenant identifier".to_owned(),
+            ));
+        }
 
         let stmt = Statement::from_sql_and_values(
             DbBackend::Postgres,
@@ -71,6 +76,11 @@ impl SearchProjector {
 
     pub async fn rebuild_content_scope(&self, tenant_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "Search content scope rebuild requires a non-nil tenant identifier".to_owned(),
+            ));
+        }
         let started_at = Instant::now();
         let tx = self.begin_transaction().await?;
         let result = async {
@@ -97,6 +107,11 @@ impl SearchProjector {
 
     pub async fn rebuild_product_scope(&self, tenant_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "Search product scope rebuild requires a non-nil tenant identifier".to_owned(),
+            ));
+        }
         let started_at = Instant::now();
         let tx = self.begin_product_transaction(tenant_id).await?;
         let result = async {
@@ -123,6 +138,11 @@ impl SearchProjector {
 
     pub async fn upsert_node(&self, tenant_id: Uuid, node_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
+        if tenant_id.is_nil() || node_id.is_nil() {
+            return Err(Error::Validation(
+                "Search node upsert requires valid non-nil tenant and node identifiers".to_owned(),
+            ));
+        }
         let started_at = Instant::now();
         let tx = self.begin_transaction().await?;
         let result = async {
@@ -149,6 +169,11 @@ impl SearchProjector {
         locale: &str,
     ) -> Result<()> {
         self.ensure_postgres()?;
+        if tenant_id.is_nil() || node_id.is_nil() {
+            return Err(Error::Validation(
+                "Search node locale upsert requires valid non-nil tenant and node identifiers".to_owned(),
+            ));
+        }
         let started_at = Instant::now();
         let tx = self.begin_transaction().await?;
         let result = async {
@@ -170,6 +195,11 @@ impl SearchProjector {
     }
 
     pub async fn delete_node(&self, tenant_id: Uuid, node_id: Uuid) -> Result<()> {
+        if tenant_id.is_nil() || node_id.is_nil() {
+            return Err(Error::Validation(
+                "Search node deletion requires valid non-nil tenant and node identifiers".to_owned(),
+            ));
+        }
         self.delete_node_in(&self.db, tenant_id, node_id).await
     }
 
@@ -179,12 +209,22 @@ impl SearchProjector {
         node_id: Uuid,
         locale: &str,
     ) -> Result<()> {
+        if tenant_id.is_nil() || node_id.is_nil() {
+            return Err(Error::Validation(
+                "Search node locale deletion requires valid non-nil tenant and node identifiers".to_owned(),
+            ));
+        }
         self.delete_node_locale_in(&self.db, tenant_id, node_id, locale)
             .await
     }
 
     pub async fn reindex_category(&self, tenant_id: Uuid, category_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
+        if tenant_id.is_nil() || category_id.is_nil() {
+            return Err(Error::Validation(
+                "Search category reindex requires valid non-nil tenant and category identifiers".to_owned(),
+            ));
+        }
         let started_at = Instant::now();
         let tx = self.begin_transaction().await?;
         let result = async {
@@ -221,6 +261,11 @@ impl SearchProjector {
 
     pub async fn upsert_product(&self, tenant_id: Uuid, product_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
+        if tenant_id.is_nil() || product_id.is_nil() {
+            return Err(Error::Validation(
+                "Search product upsert requires valid non-nil tenant and product identifiers".to_owned(),
+            ));
+        }
         let started_at = Instant::now();
         let tx = self.begin_product_transaction(tenant_id).await?;
         let result = async {
@@ -241,6 +286,11 @@ impl SearchProjector {
     }
 
     pub async fn delete_product(&self, tenant_id: Uuid, product_id: Uuid) -> Result<()> {
+        if tenant_id.is_nil() || product_id.is_nil() {
+            return Err(Error::Validation(
+                "Search product deletion requires valid non-nil tenant and product identifiers".to_owned(),
+            ));
+        }
         let tx = self.begin_product_transaction(tenant_id).await?;
         self.delete_product_in(&tx, tenant_id, product_id).await?;
         self.commit_transaction(tx).await

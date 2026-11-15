@@ -8,7 +8,7 @@ use rustok_product::CatalogService;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, PriceInput, ProductTranslationInput, UpdateProductInput,
 };
-use rustok_product::entities::product::ProductStatus;
+use rustok_product::ProductStatus;
 use rustok_test_utils::db::setup_test_db;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
 use sea_orm_migration::MigrationTrait;
@@ -73,6 +73,7 @@ fn create_product_input(handle: &str, title: &str, sku: &str) -> CreateProductIn
         product_type: Some("Physical".to_string()),
         shipping_profile_slug: None,
         primary_category_id: None,
+        brands: vec![],
         tags: vec![],
         publish: false,
         metadata: serde_json::json!({}),
@@ -127,6 +128,7 @@ async fn test_product_update_triggers_event() {
         product_type: Patch::Set("Digital".to_string()),
         shipping_profile_slug: Patch::Keep,
         primary_category_id: Patch::Keep,
+        brands: None,
         tags: None,
         status: Some(ProductStatus::Active),
         metadata: None,

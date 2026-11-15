@@ -17,6 +17,7 @@ pub fn Input(
     #[props(default)] size: Size,
     #[props(default = false)] disabled: bool,
     #[props(default = false)] invalid: bool,
+    #[props(default = false)] required: bool,
     #[props(default)] placeholder: Option<String>,
     #[props(default)] value: Option<String>,
     #[props(default)] oninput: Option<EventHandler<FormEvent>>,
@@ -25,8 +26,18 @@ pub fn Input(
     #[props(default)] class: Option<String>,
     #[props(default)] id: Option<String>,
     #[props(default)] name: Option<String>,
+    #[props(default)] aria_label: Option<String>,
+    #[props(default)] aria_labelledby: Option<String>,
+    #[props(default)] aria_describedby: Option<String>,
+    #[props(default)] input_mode: Option<String>,
 ) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
+    let name = name.as_deref().filter(|s| !s.trim().is_empty());
+    let aria_label = aria_label.as_deref().filter(|s| !s.trim().is_empty());
+    let aria_labelledby = aria_labelledby.as_deref().filter(|s| !s.trim().is_empty());
+    let aria_describedby = aria_describedby.as_deref().filter(|s| !s.trim().is_empty());
+    let input_mode = input_mode.as_deref().filter(|s| !s.trim().is_empty());
     let has_prefix = prefix.is_some();
     let has_suffix = suffix.is_some();
     let mut full_class = input_classes(size, invalid, custom);
@@ -41,16 +52,22 @@ pub fn Input(
     if !has_prefix && !has_suffix {
         rsx! {
             input {
-                id: id.as_deref(),
+                id: id,
                 r#type: "{type_attr}",
                 "data-slot": "input",
                 "data-disabled": disabled.then_some(""),
                 "data-invalid": invalid.then_some(""),
                 class: "{full_class}",
                 disabled: disabled,
+                required: required,
+                "aria-required": required.then_some("true"),
                 "aria-invalid": invalid.to_string(),
+                aria_label: aria_label,
+                aria_labelledby: aria_labelledby,
+                aria_describedby: aria_describedby,
+                inputmode: input_mode,
                 placeholder: placeholder.as_deref(),
-                name: name.as_deref(),
+                name: name,
                 value: value.as_deref().unwrap_or(""),
                 oninput: move |evt| {
                     if let Some(ref handler) = oninput {
@@ -71,16 +88,22 @@ pub fn Input(
                     }
                 }
                 input {
-                    id: id.as_deref(),
+                    id: id,
                     r#type: "{type_attr}",
                     "data-slot": "input",
                     "data-disabled": disabled.then_some(""),
                     "data-invalid": invalid.then_some(""),
                     class: "{full_class}",
                     disabled: disabled,
+                    required: required,
+                    "aria-required": required.then_some("true"),
                     "aria-invalid": invalid.to_string(),
+                    aria_label: aria_label,
+                    aria_labelledby: aria_labelledby,
+                    aria_describedby: aria_describedby,
+                    inputmode: input_mode,
                     placeholder: placeholder.as_deref(),
-                    name: name.as_deref(),
+                    name: name,
                     value: value.as_deref().unwrap_or(""),
                     oninput: move |evt| {
                         if let Some(ref handler) = oninput {

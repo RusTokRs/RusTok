@@ -154,6 +154,11 @@ impl PgSearchEngine {
         let tenant_id = query.tenant_id.ok_or_else(|| {
             Error::Validation("search preview currently requires tenant_id".to_string())
         })?;
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "search preview currently requires non-nil tenant_id".to_string(),
+            ));
+        }
         let locale = query.locale.clone().unwrap_or_default();
         let limit = query.limit.clamp(1, 50) as i64;
         let offset = query.offset as i64;

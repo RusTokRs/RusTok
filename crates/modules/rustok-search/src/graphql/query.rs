@@ -618,7 +618,13 @@ async fn ensure_settings_read_permission(ctx: &Context<'_>) -> Result<()> {
 fn parse_optional_uuid(value: Option<&str>) -> Result<Option<Uuid>> {
     value
         .filter(|value| !value.trim().is_empty())
-        .map(|value| Uuid::parse_str(value).map_err(|_| FieldError::new("Invalid UUID")))
+        .map(|value| {
+            let parsed = Uuid::parse_str(value.trim()).map_err(|_| FieldError::new("Invalid UUID"))?;
+            if parsed.is_nil() {
+                return Err(FieldError::new("UUID cannot be nil"));
+            }
+            Ok(parsed)
+        })
         .transpose()
 }
 
@@ -635,7 +641,17 @@ fn resolve_surface_tenant_scope(
     requested_tenant_id: Option<Uuid>,
     policy: SearchSurfacePolicy,
 ) -> Result<Uuid> {
+    if tenant.id.is_nil() {
+        return Err(<FieldError as GraphQLError>::bad_user_input(
+            "tenant context identifier cannot be nil",
+        ));
+    }
     match requested_tenant_id {
+        Some(requested_tenant_id) if requested_tenant_id.is_nil() => {
+            Err(<FieldError as GraphQLError>::bad_user_input(
+                "requested tenant identifier cannot be nil",
+            ))
+        }
         Some(requested_tenant_id)
             if !policy.allows_tenant_override || requested_tenant_id != tenant.id =>
         {
@@ -764,8 +780,12 @@ fn normalize_uuid_values(field_name: &str, values: Option<Vec<String>>) -> Resul
     values
         .into_iter()
         .map(|value| {
-            Uuid::parse_str(value.trim())
-                .map_err(|_| FieldError::new(format!("{field_name} contains an invalid UUID")))
+            let parsed = Uuid::parse_str(value.trim())
+                .map_err(|_| FieldError::new(format!("{field_name} contains an invalid UUID")))?;
+            if parsed.is_nil() {
+                return Err(FieldError::new(format!("{field_name} contains a nil UUID")));
+            }
+            Ok(parsed)
         })
         .collect()
 }

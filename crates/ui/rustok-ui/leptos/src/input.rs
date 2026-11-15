@@ -24,8 +24,10 @@ pub fn Input(
     #[prop(default = Size::Md)] size: Size,
     #[prop(into, default = false.into())] disabled: Signal<bool>,
     #[prop(into, default = false.into())] invalid: Signal<bool>,
+    #[prop(default = false)] required: bool,
     #[prop(optional, into)] placeholder: String,
     #[prop(optional)] value: Option<ReadSignal<String>>,
+    #[prop(optional, into)] default_value: Option<String>,
     /// A value derived from other signals, for a field whose text is the resolved response with the
     /// operator's edits laid over it. `value` stays `ReadSignal` because that is what an owned cell
     /// is; a derived value has no cell to hand over, and a `ReadSignal` cannot be built from a
@@ -37,6 +39,9 @@ pub fn Input(
     /// face of a value that is not an owned cell.
     #[prop(optional, into)]
     set_value: Option<SignalSetter<String>>,
+    /// Callback invoked with the new input string upon user input.
+    #[prop(optional)]
+    on_change: Option<Callback<String>>,
     #[prop(optional, into)] prefix: Option<AnyView>,
     #[prop(optional, into)] suffix: Option<AnyView>,
     #[prop(optional, into)] class: String,
@@ -49,18 +54,20 @@ pub fn Input(
 ) -> impl IntoView {
     // A field is either an owned cell or a value derived from the response; the derived one wins
     // when given, so a caller migrating a form off an `Effect` does not have to invent a cell.
+    // If neither is passed, an internal signal initialized with `default_value` drives the field.
+    let (internal_value, set_internal_value) = signal(default_value.unwrap_or_default());
     let current_value = move || {
         derived_value
             .map(|derived| derived.get())
             .or_else(|| value.map(|cell| cell.get()))
-            .unwrap_or_default()
+            .unwrap_or_else(|| internal_value.get())
     };
-    let id = (!id.is_empty()).then_some(id);
-    let name = (!name.is_empty()).then_some(name);
-    let described_by = (!described_by.is_empty()).then_some(described_by);
-    let input_mode = (!input_mode.is_empty()).then_some(input_mode);
-    let aria_label = (!aria_label.is_empty()).then_some(aria_label);
-    let aria_labelledby = (!aria_labelledby.is_empty()).then_some(aria_labelledby);
+    let id = (!id.trim().is_empty()).then_some(id);
+    let name = (!name.trim().is_empty()).then_some(name);
+    let described_by = (!described_by.trim().is_empty()).then_some(described_by);
+    let input_mode = (!input_mode.trim().is_empty()).then_some(input_mode);
+    let aria_label = (!aria_label.trim().is_empty()).then_some(aria_label);
+    let aria_labelledby = (!aria_labelledby.trim().is_empty()).then_some(aria_labelledby);
     let custom_class = StoredValue::new(class);
     let custom = move || custom_class.get_value();
 
@@ -70,7 +77,7 @@ pub fn Input(
             input_classes(
                 size,
                 invalid.get(),
-                (!class.is_empty()).then_some(class.as_str()),
+                (!class.trim().is_empty()).then_some(class.as_str()),
             )
         };
         view! {
@@ -80,6 +87,8 @@ pub fn Input(
                 data-slot="input"
                 class=full_class
                 disabled=move || disabled.get()
+                required=required
+                aria-required=required.then_some("true")
                 aria-invalid=move || invalid.get()
                 data-invalid=move || invalid.get().then_some("")
                 data-disabled=move || disabled.get().then_some("")
@@ -91,8 +100,15 @@ pub fn Input(
                 name=name
                 prop:value=move || current_value()
                 on:input=move |ev| {
+                    let next = event_target_value(&ev);
                     if let Some(set) = set_value {
-                        set.set(event_target_value(&ev));
+                        set.set(next.clone());
+                    }
+                    if value.is_none() && derived_value.is_none() {
+                        set_internal_value.set(next.clone());
+                    }
+                    if let Some(cb) = on_change {
+                        cb.run(next);
                     }
                 }
             />
@@ -106,7 +122,7 @@ pub fn Input(
             let mut full_class = input_classes(
                 size,
                 invalid.get(),
-                (!class.is_empty()).then_some(class.as_str()),
+                (!class.trim().is_empty()).then_some(class.as_str()),
             );
             if has_prefix {
                 full_class.push_str(" pl-9");
@@ -129,6 +145,8 @@ pub fn Input(
                     data-slot="input"
                     class=full_class
                     disabled=move || disabled.get()
+                    required=required
+                    aria-required=required.then_some("true")
                     aria-invalid=move || invalid.get()
                     data-invalid=move || invalid.get().then_some("")
                     data-disabled=move || disabled.get().then_some("")
@@ -140,8 +158,15 @@ pub fn Input(
                     name=name
                     prop:value=move || current_value()
                     on:input=move |ev| {
+                        let next = event_target_value(&ev);
                         if let Some(set) = set_value {
-                            set.set(event_target_value(&ev));
+                            set.set(next.clone());
+                        }
+                        if value.is_none() && derived_value.is_none() {
+                            set_internal_value.set(next.clone());
+                        }
+                        if let Some(cb) = on_change {
+                            cb.run(next);
                         }
                     }
                 />

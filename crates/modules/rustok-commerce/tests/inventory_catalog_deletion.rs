@@ -189,7 +189,7 @@ async fn assert_product_refused(
         .delete_product(fixture.tenant, fixture.actor, fixture.product)
         .await
         .unwrap_err();
-    assert!(matches!(error, CommerceError::InventoryDeletionBlocked(actual) if actual == reason));
+    assert!(matches!(error, CommerceError::InventoryDeletionBlocked(actual) if actual == reason.into()));
     assert_eq!(
         snapshot(db).await,
         before,
@@ -570,7 +570,7 @@ async fn standalone_variant_deletion_uses_the_same_history_guard() {
         .unwrap_err();
     assert!(matches!(
         error,
-        CommerceError::InventoryDeletionBlocked(CatalogDeletionBlocker::HistoryPresent)
+        CommerceError::InventoryDeletionBlocked(rustok_product::ProductInventoryDeletionBlocker::HistoryPresent)
     ));
     assert_eq!(snapshot(&db).await, before);
     assert!(

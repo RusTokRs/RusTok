@@ -88,6 +88,11 @@ impl SearchSuggestionService {
         audience: Option<StorefrontSuggestionAudience<'_>>,
     ) -> Result<Vec<SearchSuggestion>> {
         ensure_postgres(db)?;
+        if query.tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "suggestions require non-nil tenant_id".to_string(),
+            ));
+        }
 
         let normalized_query = normalize_suggestion_query(&query.query);
         if normalized_query.is_empty() {

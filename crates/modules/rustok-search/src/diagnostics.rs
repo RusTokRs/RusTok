@@ -56,6 +56,11 @@ impl SearchDiagnosticsService {
         db: &DatabaseConnection,
         tenant_id: Uuid,
     ) -> Result<SearchDiagnosticsSnapshot> {
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id cannot be nil for search diagnostics".to_string(),
+            ));
+        }
         if db.get_database_backend() != DbBackend::Postgres {
             return Err(Error::External(
                 "SearchDiagnosticsService requires PostgreSQL backend".to_string(),
@@ -230,6 +235,11 @@ impl SearchDiagnosticsService {
         tenant_id: Uuid,
         limit: usize,
     ) -> Result<Vec<LaggingSearchDocument>> {
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id cannot be nil for lagging search documents".to_string(),
+            ));
+        }
         if db.get_database_backend() != DbBackend::Postgres {
             return Err(Error::External(
                 "SearchDiagnosticsService requires PostgreSQL backend".to_string(),
@@ -306,6 +316,11 @@ impl SearchDiagnosticsService {
         tenant_id: Uuid,
         limit: usize,
     ) -> Result<Vec<SearchConsistencyIssue>> {
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id cannot be nil for search consistency issues".to_string(),
+            ));
+        }
         if db.get_database_backend() != DbBackend::Postgres {
             return Err(Error::External(
                 "SearchDiagnosticsService requires PostgreSQL backend".to_string(),

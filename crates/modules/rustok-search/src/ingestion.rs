@@ -75,6 +75,11 @@ impl SearchIngestionHandler {
     }
 
     async fn rebuild_tenant(&self, tenant_id: Uuid) -> HandlerResult {
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "tenant_id cannot be nil for search rebuild".to_string(),
+            ));
+        }
         self.projector.rebuild_tenant(tenant_id).await?;
         for driver in self.owner_drivers().into_iter().flatten() {
             driver.rebuild_tenant(tenant_id).await?;

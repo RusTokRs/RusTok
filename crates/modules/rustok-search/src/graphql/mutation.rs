@@ -41,6 +41,9 @@ impl SearchMutationRoot {
             .map_err(|_| FieldError::new("Invalid query_log_id"))?;
         let document_id = Uuid::parse_str(input.document_id.trim())
             .map_err(|_| FieldError::new("Invalid document_id"))?;
+        if document_id.is_nil() {
+            return Err(FieldError::new("document_id cannot be nil"));
+        }
 
         SearchAnalyticsService::record_click(
             db,
@@ -343,7 +346,13 @@ async fn ensure_settings_manage_permission(ctx: &Context<'_>) -> Result<()> {
 fn parse_optional_uuid(value: Option<&str>) -> Result<Option<Uuid>> {
     value
         .filter(|value| !value.trim().is_empty())
-        .map(|value| Uuid::parse_str(value).map_err(|_| FieldError::new("Invalid UUID")))
+        .map(|value| {
+            let parsed = Uuid::parse_str(value.trim()).map_err(|_| FieldError::new("Invalid UUID"))?;
+            if parsed.is_nil() {
+                return Err(FieldError::new("UUID cannot be nil"));
+            }
+            Ok(parsed)
+        })
         .transpose()
 }
 
@@ -353,7 +362,11 @@ fn parse_requested_engine(value: &str, field_name: &str) -> Result<SearchEngineK
 }
 
 fn parse_required_uuid(value: &str, field_name: &str) -> Result<Uuid> {
-    Uuid::parse_str(value.trim()).map_err(|_| FieldError::new(format!("Invalid {field_name}")))
+    let parsed = Uuid::parse_str(value.trim()).map_err(|_| FieldError::new(format!("Invalid {field_name}")))?;
+    if parsed.is_nil() {
+        return Err(FieldError::new(format!("{field_name} cannot be nil")));
+    }
+    Ok(parsed)
 }
 
 fn ensure_engine_is_available(engine: SearchEngineKind) -> Result<()> {
@@ -374,7 +387,17 @@ fn ensure_engine_is_available(engine: SearchEngineKind) -> Result<()> {
 }
 
 fn resolve_tenant_scope(tenant: &TenantContext, requested_tenant_id: Option<Uuid>) -> Result<Uuid> {
+    if tenant.id.is_nil() {
+        return Err(<FieldError as GraphQLError>::bad_user_input(
+            "tenant context identifier cannot be nil",
+        ));
+    }
     match requested_tenant_id {
+        Some(requested_tenant_id) if requested_tenant_id.is_nil() => {
+            Err(<FieldError as GraphQLError>::bad_user_input(
+                "requested tenant identifier cannot be nil",
+            ))
+        }
         Some(requested_tenant_id) if requested_tenant_id != tenant.id => {
             Err(<FieldError as GraphQLError>::permission_denied(
                 "cross-tenant search access is not allowed",

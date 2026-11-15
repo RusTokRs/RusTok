@@ -13,26 +13,27 @@ use crate::model::{
 
 #[cfg(feature = "ssr")]
 fn require_index_admin_tenant_scope(
-    auth_tenant_id: uuid::Uuid,
+    auth: &rustok_api::AuthContext,
     resolved_tenant_id: uuid::Uuid,
 ) -> Result<(), ServerFnError> {
-    if auth_tenant_id.is_nil() || resolved_tenant_id.is_nil() {
+    if auth.tenant_id.is_nil() || resolved_tenant_id.is_nil() || auth.user_id.is_nil() {
         tracing::warn!(
-            auth_tenant_id = %auth_tenant_id,
+            auth_tenant_id = %auth.tenant_id,
             resolved_tenant_id = %resolved_tenant_id,
+            user_id = %auth.user_id,
             code = "index.admin_tenant_scope_invalid",
             boundary = "index_admin_native_transport",
-            "index admin requires non-nil tenant scope"
+            "index admin requires non-nil tenant and user scope"
         );
         return Err(ServerFnError::new("Index admin access is denied"));
     }
 
-    if auth_tenant_id == resolved_tenant_id {
+    if auth.tenant_id == resolved_tenant_id {
         return Ok(());
     }
 
     tracing::warn!(
-        auth_tenant_id = %auth_tenant_id,
+        auth_tenant_id = %auth.tenant_id,
         resolved_tenant_id = %resolved_tenant_id,
         code = "index.admin_tenant_scope_mismatch",
         boundary = "index_admin_native_transport",
@@ -54,7 +55,7 @@ pub async fn fetch_bootstrap_native() -> Result<IndexAdminBootstrap, ServerFnErr
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
-        require_index_admin_tenant_scope(auth.tenant_id, tenant.id)?;
+        require_index_admin_tenant_scope(&auth, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::SETTINGS_READ) {
             return Err(ServerFnError::new(
@@ -409,7 +410,7 @@ pub async fn trigger_replay_native(
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
-        require_index_admin_tenant_scope(auth.tenant_id, tenant.id)?;
+        require_index_admin_tenant_scope(&auth, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::MODULES_MANAGE) {
             return Err(ServerFnError::new(
@@ -509,7 +510,7 @@ pub async fn cancel_job_native(input: CancelJobInput) -> Result<CancelActionResu
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
-        require_index_admin_tenant_scope(auth.tenant_id, tenant.id)?;
+        require_index_admin_tenant_scope(&auth, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::MODULES_MANAGE) {
             return Err(ServerFnError::new(
@@ -585,7 +586,7 @@ pub async fn retry_job_native(input: RetryJobInput) -> Result<RetryActionResult,
         let tenant = leptos_axum::extract::<TenantContext>()
             .await
             .map_err(ServerFnError::new)?;
-        require_index_admin_tenant_scope(auth.tenant_id, tenant.id)?;
+        require_index_admin_tenant_scope(&auth, tenant.id)?;
 
         if !has_effective_permission(&auth.permissions, &Permission::MODULES_MANAGE) {
             return Err(ServerFnError::new(

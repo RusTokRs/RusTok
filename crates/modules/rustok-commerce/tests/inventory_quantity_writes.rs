@@ -222,7 +222,7 @@ async fn product_refused(
         .update_variant(f.tenant, f.actor, f.variant, peer_changes(quantity))
         .await
         .unwrap_err();
-    assert!(matches!(error, CommerceError::InventoryQuantityBlocked(actual) if actual == reason));
+    assert!(matches!(error, CommerceError::InventoryQuantityBlocked(actual) if actual == reason.into()));
     assert_eq!(
         snapshot(db).await,
         before,
@@ -574,7 +574,9 @@ async fn quantity_stock_notification_failure_rolls_back_native_and_product_chang
                 assert!(matches!(
                     &error,
                     CommerceError::Database(_)
-                        | CommerceError::InventoryQuantityBlocked(B::PublicationUnverified)
+                        | CommerceError::InventoryQuantityBlocked(
+                            rustok_product::ProductInventoryQuantityBlocker::PublicationUnverified,
+                        )
                 ));
                 assert!(
                     !rustok_product::map_product_public_error(

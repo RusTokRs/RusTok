@@ -23,16 +23,21 @@ fn ensure_search_admin_tenant_scope(
     auth: &rustok_api::AuthContext,
     resolved_tenant_id: uuid::Uuid,
 ) -> Result<(), ServerFnError> {
-    if auth.tenant_id == resolved_tenant_id {
+    if !auth.tenant_id.is_nil()
+        && !resolved_tenant_id.is_nil()
+        && !auth.user_id.is_nil()
+        && auth.tenant_id == resolved_tenant_id
+    {
         return Ok(());
     }
 
     tracing::warn!(
         auth_tenant_id = %auth.tenant_id,
         resolved_tenant_id = %resolved_tenant_id,
+        user_id = %auth.user_id,
         code = "search.admin_tenant_scope_mismatch",
         boundary = "search_admin_native_transport",
-        "search admin permissions cannot cross the resolved tenant boundary"
+        "search admin permissions cannot cross the resolved tenant boundary or use nil identifiers"
     );
     Err(ServerFnError::new("Search admin access is denied"))
 }
@@ -69,8 +74,12 @@ fn ensure_settings_manage_permission(
 
 #[cfg(feature = "ssr")]
 fn parse_required_uuid(value: &str, field_name: &str) -> Result<uuid::Uuid, ServerFnError> {
-    uuid::Uuid::parse_str(value.trim())
-        .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))
+    let parsed = uuid::Uuid::parse_str(value.trim())
+        .map_err(|_| ServerFnError::new(format!("Invalid {field_name}")))?;
+    if parsed.is_nil() {
+        return Err(ServerFnError::new(format!("{field_name} cannot be nil")));
+    }
+    Ok(parsed)
 }
 
 #[cfg(feature = "ssr")]
@@ -78,7 +87,12 @@ fn parse_optional_uuid(value: Option<&str>) -> Result<Option<uuid::Uuid>, Server
     value
         .filter(|value| !value.trim().is_empty())
         .map(|value| {
-            uuid::Uuid::parse_str(value.trim()).map_err(|_| ServerFnError::new("Invalid UUID"))
+            let parsed = uuid::Uuid::parse_str(value.trim())
+                .map_err(|_| ServerFnError::new("Invalid UUID"))?;
+            if parsed.is_nil() {
+                return Err(ServerFnError::new("UUID cannot be nil"));
+            }
+            Ok(parsed)
         })
         .transpose()
 }

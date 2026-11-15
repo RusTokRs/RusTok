@@ -45,6 +45,11 @@ impl SearchProjectionDriver {
 
     pub(crate) async fn rebuild_tenant(&self, tenant_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "Search rebuild requires a non-nil tenant identifier".to_owned(),
+            ));
+        }
         let started_at = Instant::now();
         let tx = self.db.begin().await.map_err(Error::Database)?;
         let result = async {
@@ -123,6 +128,11 @@ impl SearchProjectionDriver {
         entity_id: Uuid,
     ) -> Result<()> {
         self.ensure_postgres()?;
+        if tenant_id.is_nil() || entity_id.is_nil() {
+            return Err(Error::Validation(
+                "Search entity refresh requires valid non-nil tenant and entity identifiers".to_owned(),
+            ));
+        }
         validate_entity_type(entity_type)?;
         // The owner declares how wide one entity refresh has to be; Search does not
         // infer it from an entity-type name.
@@ -181,6 +191,11 @@ impl SearchProjectionDriver {
         entity_id: Uuid,
     ) -> Result<()> {
         self.ensure_postgres()?;
+        if tenant_id.is_nil() || entity_id.is_nil() {
+            return Err(Error::Validation(
+                "Search entity deletion requires valid non-nil tenant and entity identifiers".to_owned(),
+            ));
+        }
         validate_entity_type(entity_type)?;
         let started_at = Instant::now();
         let result = self
@@ -198,6 +213,11 @@ impl SearchProjectionDriver {
 
     pub(crate) async fn delete_tenant(&self, tenant_id: Uuid) -> Result<()> {
         self.ensure_postgres()?;
+        if tenant_id.is_nil() {
+            return Err(Error::Validation(
+                "Search tenant deletion requires a non-nil tenant identifier".to_owned(),
+            ));
+        }
         let started_at = Instant::now();
         let result = self.delete_scope(&self.db, tenant_id).await;
         record_operation(

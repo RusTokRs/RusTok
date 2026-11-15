@@ -74,6 +74,9 @@ impl ProductChannelProjectionReconciler {
             rebuilt_tenants: 0,
         };
         for tenant_id in tenant_ids {
+            if tenant_id.is_nil() {
+                continue;
+            }
             self.projector.rebuild_product_scope(tenant_id).await?;
             report.rebuilt_tenants += 1;
         }

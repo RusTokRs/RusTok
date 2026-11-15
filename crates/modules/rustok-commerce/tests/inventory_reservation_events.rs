@@ -30,12 +30,12 @@ async fn fixture() -> Fixture {
         .set_inventory(tenant, actor, variant, 0)
         .await
         .unwrap();
-    let saved = entities::product_variant::Entity::find_by_id(variant)
+    let saved = rustok_product::entities::product_variant::Entity::find_by_id(variant)
         .one(&db)
         .await
         .unwrap()
         .unwrap();
-    let mut active: entities::product_variant::ActiveModel = saved.into();
+    let mut active: rustok_product::entities::product_variant::ActiveModel = saved.into();
     active.inventory_policy = Set("CoNtInUe".to_owned());
     active.update(&db).await.unwrap();
     let item = entities::inventory_item::Entity::find()

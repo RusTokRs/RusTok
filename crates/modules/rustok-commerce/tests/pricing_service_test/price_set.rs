@@ -808,6 +808,7 @@ async fn test_get_variant_prices_empty() {
         product_type: Some("Physical".to_string()),
         shipping_profile_slug: None,
         primary_category_id: None,
+        brands: vec![],
         tags: vec![],
         publish: false,
         metadata: serde_json::json!({}),

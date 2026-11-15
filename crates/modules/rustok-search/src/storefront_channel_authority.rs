@@ -62,8 +62,15 @@ pub fn resolve_trusted_storefront_channel(
     expected_tenant_id: Uuid,
     requested_channel_id: Option<Uuid>,
 ) -> Result<TrustedStorefrontChannel, StorefrontChannelAuthorityError> {
-    if request_context.tenant_id != expected_tenant_id {
+    if expected_tenant_id.is_nil()
+        || request_context.tenant_id.is_nil()
+        || request_context.tenant_id != expected_tenant_id
+    {
         return Err(StorefrontChannelAuthorityError::RequestTenantMismatch);
+    }
+
+    if requested_channel_id.is_some_and(|id| id.is_nil()) {
+        return Err(StorefrontChannelAuthorityError::InvalidRequestedChannelId);
     }
 
     let trusted = match (

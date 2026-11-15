@@ -25,6 +25,7 @@ pub fn Select(
     #[prop(into)] options: Signal<Vec<SelectOption>>,
     #[prop(optional, into)] placeholder: String,
     #[prop(optional)] value: Option<ReadSignal<String>>,
+    #[prop(optional, into)] default_value: Option<String>,
     #[prop(optional)] set_value: Option<WriteSignal<String>>,
     /// Receives the selected value after the controlled signal has been updated.
     #[prop(optional)]
@@ -37,11 +38,19 @@ pub fn Select(
     #[prop(optional, into)] aria_labelledby: String,
     #[prop(optional, into)] aria_describedby: String,
 ) -> impl IntoView {
-    let id = (!id.is_empty()).then_some(id);
-    let name = (!name.is_empty()).then_some(name);
-    let aria_label = (!aria_label.is_empty()).then_some(aria_label);
-    let aria_labelledby = (!aria_labelledby.is_empty()).then_some(aria_labelledby);
-    let aria_describedby = (!aria_describedby.is_empty()).then_some(aria_describedby);
+    let (internal_value, set_internal_value) = signal(default_value.unwrap_or_default());
+    let current_value = move || {
+        if let Some(v) = value {
+            v.get()
+        } else {
+            internal_value.get()
+        }
+    };
+    let id = (!id.trim().is_empty()).then_some(id);
+    let name = (!name.trim().is_empty()).then_some(name);
+    let aria_label = (!aria_label.trim().is_empty()).then_some(aria_label);
+    let aria_labelledby = (!aria_labelledby.trim().is_empty()).then_some(aria_labelledby);
+    let aria_describedby = (!aria_describedby.trim().is_empty()).then_some(aria_describedby);
     let custom_class = StoredValue::new(class);
     let custom = move || custom_class.get_value();
     let full_class = move || {
@@ -49,7 +58,7 @@ pub fn Select(
         select_classes(
             size,
             invalid.get(),
-            (!class.is_empty()).then_some(class.as_str()),
+            (!class.trim().is_empty()).then_some(class.as_str()),
         )
     };
 
@@ -68,11 +77,14 @@ pub fn Select(
             aria-describedby=aria_describedby
             name=name
             required=required
-            prop:value=move || value.map(|v| v.get()).unwrap_or_default()
+            prop:value=current_value
             on:change=move |ev| {
                 let selected = event_target_value(&ev);
                 if let Some(set) = set_value {
                     set.set(selected.clone());
+                }
+                if value.is_none() {
+                    set_internal_value.set(selected.clone());
                 }
                 if let Some(on_change) = on_change {
                     on_change.run(selected);
@@ -80,7 +92,7 @@ pub fn Select(
             }
         >
             {(!placeholder.is_empty()).then(|| view! {
-                <option value="" disabled=true selected=move || value.map(|v| v.get()).unwrap_or_default().is_empty()>
+                <option value="" disabled=true selected=move || current_value().is_empty()>
                     {placeholder.clone()}
                 </option>
             })}
@@ -91,7 +103,7 @@ pub fn Select(
                     <option
                         value=opt_value
                         disabled=opt.disabled
-                        selected=move || value.map(|v| v.get()).unwrap_or_default() == opt_val_cmp
+                        selected=move || current_value() == opt_val_cmp
                     >
                         {opt.label}
                     </option>

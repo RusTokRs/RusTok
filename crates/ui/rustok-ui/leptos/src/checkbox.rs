@@ -19,17 +19,20 @@ fn checkbox_checked(ev: &leptos::ev::Event) -> bool {
         .unwrap_or(false)
 }
 
-/// Checkbox input with an optional controlled `checked`/`set_checked` pair.
+/// Checkbox input with support for controlled and uncontrolled states.
 ///
-/// `indeterminate` is applied as a DOM property (HTML defines no such
-/// attribute), so it is passed as a reactive closure and follows signal
-/// changes. `data-slot="checkbox"`, `data-state` ("checked" | "unchecked" | "indeterminate"),
-/// and `aria-checked` are provided for Radix and WAI-ARIA parity.
+/// Supports:
+/// - Controlled mode: via `checked` and `set_checked` / `on_checked_change`.
+/// - Uncontrolled mode: via `default_checked` and optional `on_checked_change`.
+/// - Tri-state: via `indeterminate` DOM property mapping to `aria-checked="mixed"` and `data-state="indeterminate"`.
+/// - WAI-ARIA & Shadcn/Radix compliance: `data-slot="checkbox"`, `data-state`, `aria-checked`, `aria-invalid`, `aria-required`.
 /// Empty `id`/`name` values are omitted instead of rendered empty.
 #[component]
 pub fn Checkbox(
     #[prop(optional)] checked: Option<ReadSignal<bool>>,
     #[prop(optional)] set_checked: Option<WriteSignal<bool>>,
+    #[prop(optional)] default_checked: Option<bool>,
+    #[prop(optional)] on_checked_change: Option<Callback<bool>>,
     #[prop(into, default = false.into())] indeterminate: Signal<bool>,
     #[prop(into, default = false.into())] invalid: Signal<bool>,
     #[prop(default = false)] disabled: bool,
@@ -42,16 +45,23 @@ pub fn Checkbox(
     #[prop(optional, into)] aria_labelledby: String,
     #[prop(optional, into)] aria_describedby: String,
 ) -> impl IntoView {
-    let id = (!id.is_empty()).then_some(id);
-    let name = (!name.is_empty()).then_some(name);
-    let value = (!value.is_empty()).then_some(value);
-    let aria_label = (!aria_label.is_empty()).then_some(aria_label);
-    let aria_labelledby = (!aria_labelledby.is_empty()).then_some(aria_labelledby);
-    let aria_describedby = (!aria_describedby.is_empty()).then_some(aria_describedby);
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let id = (!id.trim().is_empty()).then_some(id);
+    let name = (!name.trim().is_empty()).then_some(name);
+    let value = (!value.trim().is_empty()).then_some(value);
+    let aria_label = (!aria_label.trim().is_empty()).then_some(aria_label);
+    let aria_labelledby = (!aria_labelledby.trim().is_empty()).then_some(aria_labelledby);
+    let aria_describedby = (!aria_describedby.trim().is_empty()).then_some(aria_describedby);
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     let full_class = checkbox_classes(custom);
 
-    let is_checked = move || checked.map(|c| c.get()).unwrap_or(false);
+    let (internal_checked, set_internal_checked) = signal(default_checked.unwrap_or(false));
+    let is_checked = move || {
+        if let Some(c) = checked {
+            c.get()
+        } else {
+            internal_checked.get()
+        }
+    };
     let data_state = move || {
         if indeterminate.get() {
             "indeterminate"
@@ -93,8 +103,15 @@ pub fn Checkbox(
             prop:checked=is_checked
             prop:indeterminate=move || indeterminate.get()
             on:change=move |ev| {
+                let next = checkbox_checked(&ev);
                 if let Some(set) = set_checked {
-                    set.set(checkbox_checked(&ev));
+                    set.set(next);
+                }
+                if checked.is_none() {
+                    set_internal_checked.set(next);
+                }
+                if let Some(cb) = on_checked_change {
+                    cb.run(next);
                 }
             }
         />
