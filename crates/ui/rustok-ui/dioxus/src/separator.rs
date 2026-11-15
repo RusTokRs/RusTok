@@ -14,17 +14,22 @@ use rustok_ui::{Orientation, separator_classes};
 #[component]
 pub fn Separator(
     #[props(default)] orientation: Orientation,
+    #[props(default = true)] decorative: bool,
+    #[props(default)] id: Option<String>,
     #[props(default)] class: Option<String>,
 ) -> Element {
-    let custom = class.as_deref();
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = separator_classes(orientation, custom);
 
     rsx! {
         div {
-            role: "separator",
+            id: id,
+            role: (!decorative).then_some("separator"),
             "data-slot": "separator",
             "data-orientation": orientation.as_str(),
-            "aria-orientation": orientation.as_str(),
+            "aria-orientation": (!decorative).then_some(orientation.as_str()),
+            "aria-hidden": decorative.then_some("true"),
             class: "{full_class}",
         }
     }

@@ -36,6 +36,7 @@ pub fn use_tabs_context() -> Option<TabsContext> {
 /// via `default_value`.
 #[component]
 pub fn Tabs(
+    #[prop(optional, into)] id: String,
     #[prop(optional, into)] value: Option<Signal<String>>,
     #[prop(optional)] on_value_change: Option<Callback<String>>,
     #[prop(optional, into)] default_value: Option<String>,
@@ -43,7 +44,8 @@ pub fn Tabs(
     #[prop(optional, into)] class: String,
     children: Children,
 ) -> impl IntoView {
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let id = (!id.trim().is_empty()).then_some(id);
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     let full_class = merge_classes(&["w-full", custom.unwrap_or("")]);
 
     let (internal_value, set_internal_value) = signal(default_value.unwrap_or_default());
@@ -69,7 +71,7 @@ pub fn Tabs(
     });
 
     view! {
-        <div class=full_class data-slot="tabs" data-orientation=orientation.as_str()>
+        <div id=id class=full_class data-slot="tabs" data-orientation=orientation.as_str()>
             {children()}
         </div>
     }
@@ -79,13 +81,17 @@ pub fn Tabs(
 #[component]
 pub fn TabsList(
     #[prop(optional)] orientation: Option<Orientation>,
+    #[prop(optional, into)] aria_label: String,
+    #[prop(optional, into)] aria_labelledby: String,
     #[prop(optional, into)] class: String,
     children: Children,
 ) -> impl IntoView {
     let ctx = use_tabs_context();
     let effective_orientation = orientation.or_else(|| ctx.map(|c| c.orientation)).unwrap_or(Orientation::Horizontal);
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     let full_class = tabs_list_classes(effective_orientation, custom);
+    let aria_label = (!aria_label.trim().is_empty()).then_some(aria_label);
+    let aria_labelledby = (!aria_labelledby.trim().is_empty()).then_some(aria_labelledby);
 
     let on_keydown = move |event: leptos::ev::KeyboardEvent| {
         #[cfg(target_arch = "wasm32")]
@@ -141,6 +147,8 @@ pub fn TabsList(
             data-slot="tabs-list"
             data-orientation=effective_orientation.as_str()
             aria-orientation=effective_orientation.as_str()
+            aria-label=aria_label
+            aria-labelledby=aria_labelledby
             class=full_class
             on:keydown=on_keydown
         >
@@ -174,13 +182,13 @@ pub fn TabsTrigger(
         }
     });
 
-    let id = (!id.is_empty()).then_some(id);
-    let panel_id = (!panel_id.is_empty()).then_some(panel_id);
+    let id = (!id.trim().is_empty()).then_some(id);
+    let panel_id = (!panel_id.trim().is_empty()).then_some(panel_id);
     let custom = StoredValue::new(class);
 
     let full_class = move || {
         let c = custom.get_value();
-        tabs_trigger_classes(is_active.get(), disabled, (!c.is_empty()).then_some(c.as_str()))
+        tabs_trigger_classes(is_active.get(), disabled, (!c.trim().is_empty()).then_some(c.as_str()))
     };
 
     let data_state = move || if is_active.get() { "active" } else { "inactive" };
@@ -195,6 +203,7 @@ pub fn TabsTrigger(
             data-slot="tabs-trigger"
             data-state=data_state
             data-orientation=orientation_str
+            data-disabled=disabled.then_some("")
             aria-selected=move || is_active.get().to_string()
             aria-controls=panel_id
             tabindex=move || if is_active.get() { "0" } else { "-1" }
@@ -239,13 +248,13 @@ pub fn TabsContent(
         }
     });
 
-    let id = (!id.is_empty()).then_some(id);
-    let tab_id = (!tab_id.is_empty()).then_some(tab_id);
+    let id = (!id.trim().is_empty()).then_some(id);
+    let tab_id = (!tab_id.trim().is_empty()).then_some(tab_id);
     let custom = StoredValue::new(class);
 
     let full_class = move || {
         let c = custom.get_value();
-        tabs_content_classes(is_active.get(), (!c.is_empty()).then_some(c.as_str()))
+        tabs_content_classes(is_active.get(), (!c.trim().is_empty()).then_some(c.as_str()))
     };
 
     let data_state = move || if is_active.get() { "active" } else { "inactive" };

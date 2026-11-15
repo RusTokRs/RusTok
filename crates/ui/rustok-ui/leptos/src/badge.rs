@@ -17,19 +17,22 @@ pub fn Badge(
     #[prop(default = Size::Md)] size: Size,
     #[prop(default = false)] dismissible: bool,
     #[prop(optional)] on_dismiss: Option<Callback<()>>,
+    #[prop(optional, into)] id: String,
     #[prop(optional, into)] class: String,
     children: Children,
 ) -> impl IntoView {
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let id = (!id.trim().is_empty()).then_some(id);
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     let full_class = badge_classes(variant, size, custom);
 
     view! {
-        <span class=full_class data-slot="badge">
+        <span id=id class=full_class data-slot="badge">
             {children()}
             {move || dismissible.then(|| {
                 view! {
                     <button
                         type="button"
+                        data-slot="badge-dismiss"
                         class="ml-0.5 rounded-full opacity-70 hover:opacity-100 focus:outline-none"
                         aria-label="Dismiss"
                         on:click=move |_| {

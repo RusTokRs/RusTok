@@ -17,14 +17,17 @@ use rustok_ui::{
 #[component]
 pub fn Card(
     #[props(default)] variant: CardVariant,
+    #[props(default)] id: Option<String>,
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = card_classes(variant, custom);
 
     rsx! {
         div {
+            id: id,
             "data-slot": "card",
             class: "{full_class}",
             {children}
@@ -34,7 +37,7 @@ pub fn Card(
 
 #[component]
 pub fn CardHeader(#[props(default)] class: Option<String>, children: Element) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = card_header_classes(custom);
 
     rsx! {
@@ -47,12 +50,18 @@ pub fn CardHeader(#[props(default)] class: Option<String>, children: Element) ->
 }
 
 #[component]
-pub fn CardTitle(#[props(default)] class: Option<String>, children: Element) -> Element {
-    let custom = class.as_deref();
+pub fn CardTitle(
+    #[props(default)] id: Option<String>,
+    #[props(default)] class: Option<String>,
+    children: Element,
+) -> Element {
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = card_title_classes(custom);
 
     rsx! {
         div {
+            id: id,
             "data-slot": "card-title",
             class: "{full_class}",
             {children}
@@ -61,12 +70,18 @@ pub fn CardTitle(#[props(default)] class: Option<String>, children: Element) -> 
 }
 
 #[component]
-pub fn CardDescription(#[props(default)] class: Option<String>, children: Element) -> Element {
-    let custom = class.as_deref();
+pub fn CardDescription(
+    #[props(default)] id: Option<String>,
+    #[props(default)] class: Option<String>,
+    children: Element,
+) -> Element {
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = card_description_classes(custom);
 
     rsx! {
         div {
+            id: id,
             "data-slot": "card-description",
             class: "{full_class}",
             {children}
@@ -76,7 +91,7 @@ pub fn CardDescription(#[props(default)] class: Option<String>, children: Elemen
 
 #[component]
 pub fn CardAction(#[props(default)] class: Option<String>, children: Element) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = card_action_classes(custom);
 
     rsx! {
@@ -90,7 +105,7 @@ pub fn CardAction(#[props(default)] class: Option<String>, children: Element) ->
 
 #[component]
 pub fn CardContent(#[props(default)] class: Option<String>, children: Element) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = card_content_classes(custom);
 
     rsx! {
@@ -104,7 +119,7 @@ pub fn CardContent(#[props(default)] class: Option<String>, children: Element) -
 
 #[component]
 pub fn CardFooter(#[props(default)] class: Option<String>, children: Element) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = card_footer_classes(custom);
 
     rsx! {

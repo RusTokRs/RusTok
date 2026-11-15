@@ -26,21 +26,31 @@ pub fn Button(
     #[prop(into, default = false.into())] disabled: Signal<bool>,
     #[prop(into, default = false.into())] loading: Signal<bool>,
     #[prop(optional, into)] class: String,
+    #[prop(optional, into)] id: String,
+    #[prop(optional, into)] name: String,
+    #[prop(optional, into)] aria_label: String,
     #[prop(optional)] on_click: Option<Box<dyn Fn() + 'static>>,
     #[prop(default = "button")] r#type: &'static str,
     children: Children,
 ) -> impl IntoView {
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let id = (!id.trim().is_empty()).then_some(id);
+    let name = (!name.trim().is_empty()).then_some(name);
+    let aria_label = (!aria_label.trim().is_empty()).then_some(aria_label);
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     let full_class = button_classes(variant, size, custom);
     let is_disabled = move || disabled.get() || loading.get();
 
     view! {
         <button
+            id=id
+            name=name
             type=r#type
             data-slot="button"
+            data-disabled=move || is_disabled().then_some("")
             class=full_class
             disabled=is_disabled
             aria-busy=move || loading.get()
+            aria-label=aria_label
             on:click=move |_| {
                 if !is_disabled() {
                     if let Some(ref handler) = on_click {

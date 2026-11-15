@@ -14,13 +14,16 @@ use rustok_ui::{SkeletonVariant, skeleton_classes};
 #[component]
 pub fn Skeleton(
     #[props(default)] variant: SkeletonVariant,
+    #[props(default)] id: Option<String>,
     #[props(default)] class: Option<String>,
 ) -> Element {
-    let custom = class.as_deref();
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = skeleton_classes(variant, custom);
 
     rsx! {
         div {
+            id: id,
             "data-slot": "skeleton",
             class: "{full_class}",
             "aria-hidden": "true",

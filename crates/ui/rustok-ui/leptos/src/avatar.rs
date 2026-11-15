@@ -17,9 +17,11 @@ pub fn Avatar(
     #[prop(optional, into)] alt: Option<String>,
     #[prop(optional, into)] fallback: Option<String>,
     #[prop(default = AvatarSize::Md)] size: AvatarSize,
+    #[prop(optional, into)] id: String,
     #[prop(optional, into)] class: String,
 ) -> impl IntoView {
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let id = (!id.trim().is_empty()).then_some(id);
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     let (container_class, fallback_class) = avatar_classes(size, custom);
 
     let src = src.and_then(|s| (!s.trim().is_empty()).then_some(s));
@@ -30,7 +32,7 @@ pub fn Avatar(
     let has_image = move || src_check.is_some() && !img_error.get();
 
     view! {
-        <div data-slot="avatar" class=container_class>
+        <div id=id data-slot="avatar" class=container_class>
             {move || {
                 if has_image() {
                     let url = src.clone().unwrap_or_default();

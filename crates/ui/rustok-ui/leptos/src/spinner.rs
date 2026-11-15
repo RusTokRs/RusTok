@@ -20,9 +20,11 @@ use rustok_ui::{Size, spinner_classes};
 pub fn Spinner(
     #[prop(default = Size::Md)] size: Size,
     #[prop(optional, into)] aria_label: String,
+    #[prop(optional, into)] id: String,
     #[prop(optional, into)] class: String,
 ) -> impl IntoView {
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let id = (!id.trim().is_empty()).then_some(id);
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     let full_class = spinner_classes(size, custom);
     let aria_label = if aria_label.trim().is_empty() {
         "Loading".to_string()
@@ -32,6 +34,7 @@ pub fn Spinner(
 
     view! {
         <span
+            id=id
             role="status"
             data-slot="spinner"
             aria-label=aria_label

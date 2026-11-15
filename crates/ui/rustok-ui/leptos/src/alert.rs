@@ -15,15 +15,18 @@ use rustok_ui::{AlertVariant, alert_classes};
 pub fn Alert(
     #[prop(default = AlertVariant::Default)] variant: AlertVariant,
     #[prop(optional, into)] title: Option<String>,
+    #[prop(optional, into)] id: String,
     #[prop(optional, into)] class: String,
     children: Children,
 ) -> impl IntoView {
+    let id = (!id.trim().is_empty()).then_some(id);
     let title = title.and_then(|t| (!t.trim().is_empty()).then_some(t));
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     let full_class = alert_classes(variant, custom);
 
     view! {
         <div
+            id=id
             role="alert"
             data-slot="alert"
             class=full_class

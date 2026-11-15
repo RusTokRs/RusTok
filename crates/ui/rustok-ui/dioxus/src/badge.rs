@@ -17,14 +17,17 @@ pub fn Badge(
     #[props(default)] size: Size,
     #[props(default = false)] dismissible: bool,
     #[props(default)] on_dismiss: Option<EventHandler<()>>,
+    #[props(default)] id: Option<String>,
     #[props(default)] class: Option<String>,
     children: Element,
 ) -> Element {
-    let custom = class.as_deref();
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = badge_classes(variant, size, custom);
 
     rsx! {
         span {
+            id: id,
             "data-slot": "badge",
             class: "{full_class}",
             {children}

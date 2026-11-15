@@ -21,22 +21,26 @@ use rustok_ui::label_classes;
 pub fn Label(
     #[prop(default = false)] required: bool,
     #[prop(default = false)] disabled: bool,
+    #[prop(optional, into)] id: Option<String>,
     #[prop(optional, into)] r#for: Option<String>,
     #[prop(optional, into)] class: String,
     children: Children,
 ) -> impl IntoView {
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     let full_class = label_classes(disabled, custom);
-    let for_attr = r#for.and_then(|f| (!f.is_empty()).then_some(f));
+    let id_attr = id.and_then(|i| (!i.trim().is_empty()).then_some(i));
+    let for_attr = r#for.and_then(|f| (!f.trim().is_empty()).then_some(f));
 
     view! {
         <label
+            id=id_attr
             data-slot="label"
+            data-disabled=disabled.then_some("")
             for=for_attr
             class=full_class
         >
             {children()}
-            {move || required.then(|| view! { <span class="text-destructive ml-1">"*"</span> })}
+            {move || required.then(|| view! { <span class="text-destructive ml-1" aria-hidden="true">"*"</span> })}
         </label>
     }
 }

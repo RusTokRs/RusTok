@@ -19,9 +19,11 @@ use rustok_ui::{Size, spinner_classes};
 pub fn Spinner(
     #[props(default)] size: Size,
     #[props(default)] aria_label: Option<String>,
+    #[props(default)] id: Option<String>,
     #[props(default)] class: Option<String>,
 ) -> Element {
-    let custom = class.as_deref();
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
     let full_class = spinner_classes(size, custom);
     let aria_label = aria_label
         .filter(|label| !label.trim().is_empty())
@@ -29,6 +31,7 @@ pub fn Spinner(
 
     rsx! {
         span {
+            id: id,
             role: "status",
             "data-slot": "spinner",
             "aria-label": "{aria_label}",

@@ -31,8 +31,8 @@ pub fn Progress(
     #[prop(optional, into)] aria_value_text: String,
     #[prop(optional, into)] class: String,
 ) -> impl IntoView {
-    let id = (!id.is_empty()).then_some(id);
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let id = (!id.trim().is_empty()).then_some(id);
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
     let full_class = progress_classes(custom);
     let value_prop = value;
     let max_prop = max;
@@ -52,9 +52,9 @@ pub fn Progress(
             "loading"
         }
     };
-    let aria_label = (!aria_label.is_empty()).then_some(aria_label);
-    let aria_labelledby = (!aria_labelledby.is_empty()).then_some(aria_labelledby);
-    let aria_value_text = (!aria_value_text.is_empty()).then_some(aria_value_text);
+    let aria_label = (!aria_label.trim().is_empty()).then_some(aria_label);
+    let aria_labelledby = (!aria_labelledby.trim().is_empty()).then_some(aria_labelledby);
+    let aria_value_text = (!aria_value_text.trim().is_empty()).then_some(aria_value_text);
     let orientation_value = orientation.as_str();
 
     view! {

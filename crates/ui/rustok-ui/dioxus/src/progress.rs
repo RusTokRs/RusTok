@@ -31,29 +31,34 @@ pub fn Progress(
     #[props(default)] aria_value_text: Option<String>,
     #[props(default)] class: Option<String>,
 ) -> Element {
+    let id = id.as_deref().filter(|s| !s.trim().is_empty());
+    let aria_label = aria_label.as_deref().filter(|s| !s.trim().is_empty());
+    let aria_labelledby = aria_labelledby.as_deref().filter(|s| !s.trim().is_empty());
+    let aria_value_text = aria_value_text.as_deref().filter(|s| !s.trim().is_empty());
+    let custom = class.as_deref().filter(|s| !s.trim().is_empty());
     let max = normalize_progress_max(max);
     let value = normalize_progress_value_for_max(value, max);
     let value_text = value.to_string();
     let width = progress_value_percentage(value, max).to_string();
     let data_state = if value >= max { "complete" } else { "loading" };
     let orientation = orientation.as_str();
-    let full_class = progress_classes(class.as_deref());
+    let full_class = progress_classes(custom);
 
     rsx! {
         div {
-            id: id.as_deref(),
+            id: id,
             role: "progressbar",
             "data-slot": "progress",
             "data-state": data_state,
             "data-value": "{value_text}",
             "data-max": "{max}",
             "data-orientation": orientation,
-            "aria-label": aria_label.as_deref(),
-            "aria-labelledby": aria_labelledby.as_deref(),
+            "aria-label": aria_label,
+            "aria-labelledby": aria_labelledby,
             "aria-valuemin": "0",
             "aria-valuemax": "{max}",
             "aria-valuenow": "{value_text}",
-            "aria-valuetext": aria_value_text.as_deref(),
+            "aria-valuetext": aria_value_text,
             "aria-orientation": orientation,
             class: "{full_class}",
             svg {

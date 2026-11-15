@@ -25,6 +25,7 @@ pub fn Switch(
     #[prop(optional)] default_checked: Option<bool>,
     #[prop(optional)] on_checked_change: Option<Callback<bool>>,
     #[prop(default = false)] disabled: bool,
+    #[prop(default = false)] required: bool,
     #[prop(default = SwitchSize::Md)] size: SwitchSize,
     #[prop(optional, into)] class: String,
     #[prop(optional, into)] id: String,
@@ -33,9 +34,11 @@ pub fn Switch(
     #[prop(optional, into)] aria_label: Option<String>,
     #[prop(optional, into)] aria_labelledby: Option<String>,
 ) -> impl IntoView {
-    let id = (!id.is_empty()).then_some(id);
-    let name = (!name.is_empty()).then_some(name);
-    let custom = (!class.is_empty()).then_some(class.as_str());
+    let id = (!id.trim().is_empty()).then_some(id);
+    let name = (!name.trim().is_empty()).then_some(name);
+    let aria_label = aria_label.and_then(|a| (!a.trim().is_empty()).then_some(a));
+    let aria_labelledby = aria_labelledby.and_then(|a| (!a.trim().is_empty()).then_some(a));
+    let custom = (!class.trim().is_empty()).then_some(class.as_str());
 
     let (internal_checked, set_internal_checked) = signal(default_checked.unwrap_or(false));
     let is_checked = move || {
@@ -67,7 +70,9 @@ pub fn Switch(
         )
     };
 
-    let resolved_value = value.unwrap_or_else(|| "on".to_string());
+    let resolved_value = value
+        .and_then(|v| (!v.trim().is_empty()).then_some(v))
+        .unwrap_or_else(|| "on".to_string());
 
     let on_click = move |_| {
         if !disabled {
@@ -92,6 +97,7 @@ pub fn Switch(
             type="button"
             role="switch"
             aria-checked=move || is_checked().to_string()
+            aria-required=required.then_some("true")
             aria-label=aria_label
             aria-labelledby=aria_labelledby
             disabled=disabled
@@ -116,6 +122,7 @@ pub fn Switch(
                     name=field_name
                     value=resolved_value.clone()
                     disabled=disabled
+                    required=required
                     prop:checked=move || is_checked()
                     checked=move || is_checked()
                     class="sr-only"
