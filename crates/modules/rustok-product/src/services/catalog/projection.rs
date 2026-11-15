@@ -463,7 +463,8 @@ impl CatalogService {
     pub(super) async fn get_product_in<
         C: ConnectionTrait
             + crate::ports::pricing::AsPricingConnection
-            + crate::ports::AsInventoryConnection,
+            + crate::ports::AsInventoryConnection
+            + crate::ports::AsTaxonomyConnection,
     >(
         &self,
         conn: &C,
@@ -808,7 +809,8 @@ impl CatalogService {
     pub(super) async fn get_variant_in<
         C: ConnectionTrait
             + crate::ports::pricing::AsPricingConnection
-            + crate::ports::AsInventoryConnection,
+            + crate::ports::AsInventoryConnection
+            + crate::ports::AsTaxonomyConnection,
     >(
         &self,
         conn: &C,

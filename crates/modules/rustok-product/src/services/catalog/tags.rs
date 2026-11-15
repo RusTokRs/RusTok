@@ -7,7 +7,7 @@ use sea_orm::{
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-use crate::{entities, error::CommerceResult};
+use crate::{entities, error::CommerceResult, ports::AsTaxonomyConnection};
 
 use crate::entities::product_tag;
 
@@ -76,7 +76,7 @@ impl CatalogService {
         Ok(tags_by_product)
     }
 
-    pub(crate) async fn load_product_tags_in<C: ConnectionTrait>(
+    pub(crate) async fn load_product_tags_in<C: ConnectionTrait + AsTaxonomyConnection>(
         &self,
         conn: &C,
         tenant_id: Uuid,
@@ -102,7 +102,7 @@ impl CatalogService {
         let names = self
             .taxonomy()
             .resolve_term_names(
-                (&self.db).into(),
+                conn.as_taxonomy_connection(),
                 tenant_id,
                 &term_ids,
                 locale,

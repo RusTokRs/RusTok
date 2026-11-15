@@ -21,14 +21,14 @@ function fixture(options = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "rustok-product-grpc-transport-"));
   write(
     root,
-    "crates/modules/rustok-product-transport/Cargo.toml",
+    "crates/modules/rustok-product/ports/Cargo.toml",
     options.storageDependency
-      ? `name = "rustok-product-transport"\nrustok-api.workspace = true\nrustok-product.workspace = true\nthiserror.workspace = true\ntonic = { workspace = true }\ntonic-prost.workspace = true\nurl.workspace = true\nprotoc-bin-vendored.workspace = true\ntonic-prost-build.workspace = true\ntokio-stream = { version = "0.1", features = ["net"] }\nsea-orm.workspace = true`
-      : `name = "rustok-product-transport"\nrustok-api.workspace = true\nrustok-product.workspace = true\nthiserror.workspace = true\ntonic = { workspace = true }\ntonic-prost.workspace = true\nurl.workspace = true\nprotoc-bin-vendored.workspace = true\ntonic-prost-build.workspace = true\ntokio-stream = { version = "0.1", features = ["net"] }`,
+      ? `name = "rustok-product-ports"\nrustok-api.workspace = true\nthiserror.workspace = true\ntonic = { workspace = true }\ntonic-prost = { workspace = true, optional = true }\nurl.workspace = true\nprotoc-bin-vendored = { workspace = true, optional = true }\ntonic-prost-build = { workspace = true, optional = true }\ntokio-stream = { version = "0.1", features = ["net"] }\nsea-orm.workspace = true`
+      : `name = "rustok-product-ports"\nrustok-api.workspace = true\nthiserror.workspace = true\ntonic = { workspace = true }\ntonic-prost = { workspace = true, optional = true }\nurl.workspace = true\nprotoc-bin-vendored = { workspace = true, optional = true }\ntonic-prost-build = { workspace = true, optional = true }\ntokio-stream = { version = "0.1", features = ["net"] }`,
   );
   write(
     root,
-    "crates/modules/rustok-product-transport/build.rs",
+    "crates/modules/rustok-product/ports/build.rs",
     `protoc_bin_vendored::protoc_bin_path(); tonic_prost_build::configure(); "proto/rustok/product/product_catalog.proto";`,
   );
   const variantRpc = options.missingRpc
@@ -36,35 +36,35 @@ function fixture(options = {}) {
     : "rpc ReadVariantProductProjection(JsonRequest) returns (JsonResponse);";
   write(
     root,
-    "crates/modules/rustok-product-transport/proto/rustok/product/product_catalog.proto",
+    "crates/modules/rustok-product/ports/proto/rustok/product/product_catalog.proto",
     `package rustok.product; service ProductCatalogReadService { rpc ReadProductProjection(JsonRequest) returns (JsonResponse); ${variantRpc} rpc ListPublishedProducts(JsonRequest) returns (JsonResponse); } message JsonRequest { bytes context_json = 1; bytes input_json = 2; } message JsonResponse { bytes output_json = 1; }`,
   );
   write(
     root,
-    "crates/modules/rustok-product-transport/src/lib.rs",
+    "crates/modules/rustok-product/ports/src/grpc/mod.rs",
     `pub mod client; pub mod connection; pub mod server; tonic::include_proto!("rustok.product"); GrpcProductCatalogReadProvider GrpcProductCatalogReadConnectionConfig ProductCatalogGrpcService TrustedProductCatalogAuthority ProductCatalogGrpcOperation`,
   );
   write(
     root,
-    "crates/modules/rustok-product-transport/src/client.rs",
+    "crates/modules/rustok-product/ports/src/grpc/client.rs",
     `impl ProductCatalogReadPort for GrpcProductCatalogReadProvider { async fn read_product_projection( context_json: encode(&context)? input_json: encode(&request)? ); async fn read_variant_product_projection( context_json: encode(&context)? input_json: encode(&request)? ); async fn list_published_products( context_json: encode(&context)? input_json: encode(&request)? ); } request.set_timeout(Duration::from_millis(deadline_ms)); serde_json::from_slice::<PortError>(status.details()); Code::DeadlineExceeded => PortErrorKind::Timeout; Code::Unavailable | Code::ResourceExhausted => PortErrorKind::Unavailable;`,
   );
   write(
     root,
-    "crates/modules/rustok-product-transport/src/server.rs",
+    "crates/modules/rustok-product/ports/src/grpc/server.rs",
     options.missingAuthority
       ? `impl<P> ProductCatalogReadService for ProductCatalogGrpcService<P> where P: ProductCatalogReadPort + 'static { }`
       : `impl<P> ProductCatalogReadService for ProductCatalogGrpcService<P> where P: ProductCatalogReadPort + 'static { } TrustedProductCatalogAuthority allowed_operations: HashSet<ProductCatalogGrpcOperation> ReadProductProjection ReadVariantProductProjection ListPublishedProducts trusted_context( claimed.tenant_id != authority.tenant_id claimed.actor = authority.actor.clone() claimed.claims.clone_from(&authority.claims) claimed.roles.clone_from(&authority.roles) Status::with_details(code, error.message, Bytes::from(details)) Status::unauthenticated("trusted Product catalog authority is missing") assert_eq!(trusted.actor, PortActor::service("trusted-product-service"))`,
   );
   write(
     root,
-    "crates/modules/rustok-product-transport/tests/port_conformance.rs",
+    "crates/modules/rustok-product/tests/port_conformance.rs",
     `impl ProductCatalogReadPort for MockProductCatalogReadPort ProductCatalogReadServiceServer::with_interceptor GrpcProductCatalogReadProvider::connect ProductCatalogGrpcOperation::ReadProductProjection ProductCatalogGrpcOperation::ReadVariantProductProjection ProductCatalogGrpcOperation::ListPublishedProducts read_product_projection( read_variant_product_projection( list_published_products( product.product_not_found port.deadline_required PortActor::service("trusted-product-catalog-conformance") serve_with_incoming_shutdown`,
   );
   write(
     root,
-    "crates/modules/rustok-product-transport/README.md",
-    `Typed tonic gRPC framing does not own Product DTOs TrustedProductCatalogAuthority cargo test -p rustok-product-transport --test port_conformance Loopback conformance covers transport and authority handling boundary_ready`,
+    "crates/modules/rustok-product/ports/README.md",
+    `rustok-product-ports ProductCatalogReadPort ProductVariantIdentityReadPort ProductCatalogCommandPort grpc-client grpc-server`,
   );
   const falsePromotion = options.falsePromotion === true;
   write(
@@ -77,7 +77,7 @@ function fixture(options = {}) {
           "scripts/verify/verify-product-catalog-grpc-transport.mjs",
       },
       external_transport: {
-        crate: "rustok-product-transport",
+        crate: "rustok-product-ports",
         client: "GrpcProductCatalogReadProvider",
         server: "ProductCatalogGrpcService",
         status: falsePromotion
@@ -111,7 +111,7 @@ function fixture(options = {}) {
     "crates/modules/rustok-product/docs/implementation-plan.md",
     options.omitPlan
       ? "Product plan"
-      : "`rustok-product-transport` supplies a concrete tonic gRPC client/server adapter. Adapter and production-wiring source are complete, but neither path has been run by the implementation agent. Loopback and configured remote-profile execution evidence remain open. cargo test -p rustok-product-transport --test port_conformance ProductCatalogReadRuntime::external verify-product-catalog-grpc-transport.mjs",
+      : "The current transport lives in `rustok-product-ports`. cargo test -p rustok-product --test port_conformance ProductCatalogReadRuntime::external verify-product-catalog-grpc-transport.mjs",
   );
   return root;
 }

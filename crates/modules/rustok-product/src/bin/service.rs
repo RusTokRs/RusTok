@@ -16,7 +16,7 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 use rustok_api::PortActor;
-use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus};
+use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus, idempotency};
 use rustok_product::{
     CatalogService,
     entities::{Product, ProductVariant},
@@ -28,6 +28,8 @@ use rustok_product_ports::grpc::{
     proto::product_catalog_read_service_server::ProductCatalogReadServiceServer,
 };
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait};
+use tokio::net::TcpListener;
+use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::{Identity, Server, ServerTlsConfig};
 use url::Url;
 use uuid::Uuid;
@@ -186,6 +188,17 @@ async fn run() -> Result<()> {
 
     let database = connect_database(&config).await?;
     verify_required_schema(&database).await?;
+    let commands_enabled = config.command_authentication.is_some();
+    if commands_enabled {
+        idempotency::verify_readable_schema(&database)
+            .await
+            .map_err(|_| schema_preflight_error("owner_operation_receipts"))?;
+    }
+    tracing::info!(
+        required_tables = ?REQUIRED_SCHEMA_TABLES,
+        commands_enabled,
+        "Product catalog database schema preflight passed"
+    );
 
     let outbox = Arc::new(OutboxTransport::new(database.clone()));
     let event_bus = TransactionalEventBus::new(outbox);
@@ -218,8 +231,14 @@ async fn run() -> Result<()> {
             .context("Product catalog service TLS configuration failed")?;
     }
 
+    let listener = TcpListener::bind(config.bind)
+        .await
+        .context("Product catalog gRPC listener bind failed")?;
+    let bound_addr = listener
+        .local_addr()
+        .context("Product catalog gRPC listener address unavailable")?;
     tracing::info!(
-        bind = %config.bind,
+        bind = %bound_addr,
         transport = config.transport.label(),
         commands_enabled = command_service.is_some(),
         "Product catalog gRPC service listening"
@@ -227,7 +246,7 @@ async fn run() -> Result<()> {
     server
         .add_service(service)
         .add_optional_service(command_service)
-        .serve_with_shutdown(config.bind, shutdown_signal())
+        .serve_with_incoming_shutdown(TcpListenerStream::new(listener), shutdown_signal())
         .await
         .context("Product catalog gRPC service failed")
 }
@@ -258,10 +277,6 @@ async fn verify_required_schema(database: &DatabaseConnection) -> Result<()> {
         .await
         .map_err(|_| schema_preflight_error("sys_events"))?;
 
-    tracing::info!(
-        required_tables = ?REQUIRED_SCHEMA_TABLES,
-        "Product catalog database schema preflight passed"
-    );
     Ok(())
 }
 

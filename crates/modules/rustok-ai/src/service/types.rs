@@ -44,15 +44,16 @@ pub struct SharedAiStructuredResultKeyringConfig(pub crate::AiStructuredResultKe
 #[derive(Clone)]
 pub struct SharedAiOrderStatusPort(pub Arc<dyn rustok_order::CheckoutCompletionPort>);
 
-/// Host-composed owner port for read-only product context enrichment.
-/// AI uses it only to enrich advisory generation and never queries product storage directly.
+/// Host-composed Product read port for advisory enrichment and copy generation.
 #[derive(Clone)]
-pub struct SharedAiProductCatalogReadPort(pub Arc<dyn rustok_product::ProductCatalogReadPort>);
+pub struct SharedAiProductCatalogReadPort(
+    pub Arc<dyn rustok_product_ports::ProductCatalogReadPort>,
+);
 
 /// Host-composed owner port for product catalog commands (e.g. AI product copy).
 #[derive(Clone)]
 pub struct SharedAiProductCatalogCommandPort(
-    pub Arc<dyn rustok_product::ProductCatalogCommandPort>,
+    pub Arc<dyn rustok_product_ports::ProductCatalogCommandPort>,
 );
 
 /// Host-composed retrieval provider used only when a task profile enables RAG.
@@ -70,8 +71,8 @@ pub struct AiHostRuntime {
     egress_policy: crate::ProviderEgressPolicy,
     provider_targets: crate::AiProviderTargetCatalog,
     order_status_port: Option<Arc<dyn rustok_order::CheckoutCompletionPort>>,
-    product_catalog_read_port: Option<Arc<dyn rustok_product::ProductCatalogReadPort>>,
-    product_catalog_command_port: Option<Arc<dyn rustok_product::ProductCatalogCommandPort>>,
+    product_catalog_read_port: Option<Arc<dyn rustok_product_ports::ProductCatalogReadPort>>,
+    product_catalog_command_port: Option<Arc<dyn rustok_product_ports::ProductCatalogCommandPort>>,
     rag_retrieval_port: Option<Arc<dyn crate::RagRetrievalPort>>,
     #[cfg(test)]
     test_inference_engine: Option<Arc<dyn crate::engine::InferenceEngine>>,
@@ -187,7 +188,7 @@ impl AiHostRuntime {
 
     pub(crate) fn with_product_catalog_read_port(
         mut self,
-        product_catalog_read_port: Option<Arc<dyn rustok_product::ProductCatalogReadPort>>,
+        product_catalog_read_port: Option<Arc<dyn rustok_product_ports::ProductCatalogReadPort>>,
     ) -> Self {
         self.product_catalog_read_port = product_catalog_read_port;
         self
@@ -195,7 +196,9 @@ impl AiHostRuntime {
 
     pub(crate) fn with_product_catalog_command_port(
         mut self,
-        product_catalog_command_port: Option<Arc<dyn rustok_product::ProductCatalogCommandPort>>,
+        product_catalog_command_port: Option<
+            Arc<dyn rustok_product_ports::ProductCatalogCommandPort>,
+        >,
     ) -> Self {
         self.product_catalog_command_port = product_catalog_command_port;
         self
@@ -243,13 +246,13 @@ impl AiHostRuntime {
 
     pub fn product_catalog_read_port(
         &self,
-    ) -> Option<Arc<dyn rustok_product::ProductCatalogReadPort>> {
+    ) -> Option<Arc<dyn rustok_product_ports::ProductCatalogReadPort>> {
         self.product_catalog_read_port.clone()
     }
 
     pub fn product_catalog_command_port(
         &self,
-    ) -> Option<Arc<dyn rustok_product::ProductCatalogCommandPort>> {
+    ) -> Option<Arc<dyn rustok_product_ports::ProductCatalogCommandPort>> {
         self.product_catalog_command_port.clone()
     }
 

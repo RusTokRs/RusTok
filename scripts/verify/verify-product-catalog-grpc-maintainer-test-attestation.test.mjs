@@ -85,7 +85,7 @@ function fixture(options = {}) {
     "Cargo.lock",
     options.missingLock
       ? "version = 4"
-      : 'version = 4\n\n[[package]]\nname = "rustok-product-catalog-service"\nversion = "0.1.0"',
+      : 'version = 4\n\n[[package]]\nname = "rustok-product"\nversion = "0.1.0"',
   );
   write(
     root,
@@ -189,7 +189,7 @@ test("guard rejects premature Product promotion", () => {
 });
 
 test("guard rejects a missing Cargo.lock package entry", () => {
-  reject({ missingLock: true }, /Cargo.lock Product service package entry/);
+  reject({ missingLock: true }, /Cargo.lock Product owner package entry/);
 });
 
 test("guard rejects missing AI-product evidence linkage", () => {

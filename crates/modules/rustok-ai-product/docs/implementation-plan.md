@@ -35,12 +35,17 @@ for complete tenant, locale, and persistence validation.
 ## Completed direct-execution evidence
 
 `direct::tests::direct_product_copy_updates_only_the_requested_locale_through_catalog_owner`
-executes `product_copy` through the composed `rustok-ai` handler and the public
-`rustok-product::CatalogService`. Its SQLite fixture contains English and Russian
+executes `product_copy` through the composed `rustok-ai` handler and host-bound
+Product read and command ports. Its SQLite fixture contains English and Russian
 translations; after a Russian request, the test proves that the Russian owner
 translation changes while the English title and handle remain unchanged. This
 keeps generated copy inside the product owner boundary and does not add an
 AI-specific product port or persistence path.
+
+The command port is required before generation starts. The gRPC test connects both
+ports to an authenticated loopback Product provider and gives AI a separate database
+without Product tables. The test checks that the owner stores the generated locale
+and preserves the source locale. This covers the handler and its Product ports.
 
 `direct::tests::direct_product_attributes_returns_review_only_suggestions_without_product_write`
 proves the complementary attributes boundary. It reads the product through the

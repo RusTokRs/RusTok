@@ -19,22 +19,22 @@ const runnerPath =
 const verifierPath =
   "scripts/verify/verify-product-catalog-separate-process-runtime-contract.mjs";
 const probePath =
-  "crates/modules/rustok-product-transport/examples/product_catalog_runtime_probe.rs";
+  "crates/modules/rustok-product/examples/product_catalog_runtime_probe.rs";
 const registryPath = "crates/modules/rustok-product/contracts/product-fba-registry.json";
 const planPath = "crates/modules/rustok-product/docs/implementation-plan.md";
-const providerPath = "crates/modules/rustok-product-catalog-service/src/main.rs";
+const providerPath = "crates/modules/rustok-product/src/bin/service.rs";
 const consumerPath = "apps/server/src/services/product_catalog_deployment.rs";
 const commands = {
   provider: {
     program: "cargo",
-    args: ["run", "-p", "rustok-product-catalog-service"],
+    args: ["run", "-p", "rustok-product", "--bin", "rustok-product-catalog-service", "--features", "service"],
   },
   probe: {
     program: "cargo",
     args: [
       "run",
       "-p",
-      "rustok-product-transport",
+      "rustok-product",
       "--example",
       "product_catalog_runtime_probe",
     ],

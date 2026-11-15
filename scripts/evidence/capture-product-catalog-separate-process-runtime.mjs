@@ -25,14 +25,14 @@ const expectedEvidencePath =
 const expectedCommands = {
   provider: {
     program: "cargo",
-    args: ["run", "-p", "rustok-product-catalog-service"],
+    args: ["run", "-p", "rustok-product", "--bin", "rustok-product-catalog-service", "--features", "service"],
   },
   probe: {
     program: "cargo",
     args: [
       "run",
       "-p",
-      "rustok-product-transport",
+      "rustok-product",
       "--example",
       "product_catalog_runtime_probe",
     ],

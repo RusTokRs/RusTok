@@ -23,7 +23,7 @@ function fixture(options = {}) {
   write(
     root,
     "crates/modules/rustok-commerce/Cargo.toml",
-    `rustok-product-transport = { path = "../rustok-product-transport" }\ntokio-stream = { version = "0.1", features = ["net"] }\ntonic.workspace = true\n[[test]]\nname = "product_remote_consumer_behavior"\npath = "tests/product_remote_consumer_behavior.rs"`,
+    `rustok-product-ports = { workspace = true, features = ["grpc-client", "grpc-server"] }\ntokio-stream = { version = "0.1", features = ["net"] }\ntonic.workspace = true\n[[test]]\nname = "product_remote_consumer_behavior"\npath = "tests/product_remote_consumer_behavior.rs"`,
   );
   const commerceTimeout = options.missingCommerceTimeout
     ? ""
@@ -45,7 +45,7 @@ function fixture(options = {}) {
   write(
     root,
     "crates/modules/rustok-ai/Cargo.toml",
-    `rustok-product-transport = { path = "../rustok-product-transport" }\ntokio-stream = { version = "0.1", features = ["net"] }\n[features]\nserver = ["dep:tonic"]\n[dependencies]\ntonic = { workspace = true, optional = true }`,
+    `rustok-product-ports = { workspace = true, features = ["grpc-client", "grpc-server"] }\ntokio-stream = { version = "0.1", features = ["net"] }\n[features]\nserver = ["dep:tonic"]\n[dependencies]\ntonic = { workspace = true, optional = true }`,
   );
   const aiReview = options.missingAiReview ? "" : `"review_required": true`;
   const aiTimeout = options.missingAiTimeout

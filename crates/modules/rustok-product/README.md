@@ -20,6 +20,10 @@ Product follows the [canonical FBA layout](../../../docs/backend/module-backend-
 - The modular monolith remains the default deployment mode.
 
 The remote capability remains bounded to its supported operations.
+The strict Product FBA layout check still rejects the direct Flex runtime dependency.
+The current separate-process profile uses the platform-migrated schema. A Product-only
+database still requires separating the historical Taxonomy migration/FK boundary and
+moving shared attached Flex values into Product-owned storage.
 
 ## Known Limitations / Pending Implementation
 
@@ -49,11 +53,46 @@ The retained standalone PostgreSQL probe exercises the six original read RPCs. C
 in both profiles. The AI GraphQL attribute task passed locally with a separate Product service
 and separate PostgreSQL databases. The catalog-read track remains `boundary_ready` pending
 the combined deployment capture.
-AI `product_copy` still uses local Product reads and writes. A database split requires migrating
-these callers and defining how transactions, owner events and dependent data are handled.
+AI `product_copy` uses the Product read and command ports selected by the host and fails
+before generation if either is missing. The host enables this write workflow when
+both ports are embedded or both use the configured Product gRPC endpoint, so the
+revision comes from the authority that accepts the write. A database split still
+requires routing the remaining callers and defining how transactions, owner events
+and dependent data are handled.
 Product publishes a contracts-only build without ORM dependencies in `rustok-product-ports`
 (in `ports/`), and composes the standalone service in `src/bin/service.rs` behind feature `service`.
 See the [coverage and verification work](docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
+
+## Standalone service configuration
+
+Start the provider on an externally migrated PostgreSQL database:
+
+```sh
+cargo run -p rustok-product --bin rustok-product-catalog-service --features service
+```
+
+Set `RUSTOK_PRODUCT_CATALOG_DATABASE_URL`, `RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN`
+and `RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR`. Set
+`RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_CERT_PATH` and
+`RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_KEY_PATH` together. For a local loopback test,
+`RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true` permits plaintext.
+The command service is registered only when both command variables are set:
+`RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN` and
+`RUSTOK_PRODUCT_CATALOG_COMMAND_ACTOR_ID` (a non-nil UUID).
+The command credential must differ from the read credential. Product and SKU
+deletion fail with `product.inventory_deletion_state_unverified` when Inventory
+is not wired, including in this standalone profile.
+Catalog reads that must resolve stored tag relations report an unavailable
+dependency when Taxonomy is not wired.
+
+### Schema preflight
+
+The provider does not run migrations at startup. It probes `products`,
+`product_variants` and `sys_events` before tonic starts listening. When commands
+are enabled, it also checks `owner_operation_receipts`. This is a
+minimum startup check for the bounded catalog profile; it does not verify access
+to every table or dependency required by catalog workflows.
+The provider writes outbox rows but does not run a relay.
 
 
 ## Responsibilities

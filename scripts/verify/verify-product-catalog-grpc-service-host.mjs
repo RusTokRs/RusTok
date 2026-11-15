@@ -44,30 +44,35 @@ function forbidAll(source, markers, description) {
 }
 
 const rootCargo = read("Cargo.toml");
-const serviceRoot = "crates/modules/rustok-product-catalog-service";
+const serviceRoot = "crates/modules/rustok-product";
+const serviceCommand = "cargo run -p rustok-product --bin rustok-product-catalog-service --features service";
 const cargo = read(`${serviceRoot}/Cargo.toml`);
-const source = read(`${serviceRoot}/src/main.rs`);
+const source = read(`${serviceRoot}/src/bin/service.rs`);
 const readme = read(`${serviceRoot}/README.md`);
 const registrySource = read("crates/modules/rustok-product/contracts/product-fba-registry.json");
 const plan = read("crates/modules/rustok-product/docs/implementation-plan.md");
 
 requireAll(rootCargo, ['"crates/modules/*"'], "workspace service discovery");
 requireAll(cargo, [
+  'name = "rustok-product"',
   'name = "rustok-product-catalog-service"',
+  'path = "src/bin/service.rs"',
+  'required-features = ["service"]',
+  'rustok-product-ports/grpc-server',
   "rustok-api.workspace = true",
   "rustok-outbox.workspace = true",
-  "rustok-product.workspace = true",
-  'rustok-product-transport = { path = "../rustok-product-transport" }',
-  "rustok-telemetry.workspace = true",
+  "rustok-product-ports.workspace = true",
+  "rustok-telemetry = { workspace = true, optional = true }",
   "sea-orm.workspace = true",
-  'tonic = { workspace = true, features = ["tls-ring"] }',
+  'tonic = { workspace = true, optional = true, features = ["tls-ring"] }',
 ], "Product catalog service manifest");
 forbidAll(cargo, [
   "axum",
   "async-graphql",
-  "sea-orm-migration",
   "rustok-migrations",
-  "rustok-commerce",
+  "rustok-commerce =",
+  "rustok-commerce.workspace",
+  "rustok-product-transport",
 ], "Product catalog service dependency boundary");
 
 requireAll(source, [
@@ -85,7 +90,7 @@ requireAll(source, [
   ".with_allowed_operations(ProductCatalogGrpcOperation::COMMAND)",
   "Server::builder()",
   "ServerTlsConfig::new().identity(identity)",
-  ".serve_with_shutdown(config.bind, shutdown_signal())",
+  ".serve_with_incoming_shutdown(TcpListenerStream::new(listener), shutdown_signal())",
 ], "Product owner gRPC host composition");
 requireAll(source, [
   'DATABASE_URL_ENV: &str = "RUSTOK_PRODUCT_CATALOG_DATABASE_URL"',
@@ -117,8 +122,15 @@ requireAll(source, [
 requireOrder(source, [
   "let database = connect_database(&config).await?;",
   "verify_required_schema(&database).await?;",
+  "let commands_enabled = config.command_authentication.is_some();",
+  "if commands_enabled {",
+  "idempotency::verify_readable_schema(&database)",
+  'schema_preflight_error("owner_operation_receipts")',
+  "Product catalog database schema preflight passed",
   "let outbox = Arc::new(OutboxTransport::new(database.clone()));",
   "let mut server = Server::builder();",
+  "TcpListener::bind(config.bind)",
+  "Product catalog gRPC service listening",
 ], "Product service startup preflight order");
 requireAll(source, [
   "struct RedactedSecret(String)",
@@ -163,24 +175,18 @@ forbidAll(source, [
 ], "Product service ownership and secret boundary");
 
 requireAll(readme, [
-  "optionally expose `ProductCatalogCommandPort`",
-  "CatalogService",
-  "ProductCatalogGrpcService",
-  "ProductCatalogGrpcBearerInterceptor",
-  "OutboxTransport",
+  "## Standalone service configuration",
   "command service is registered only when both command variables are set",
   "does not run migrations at startup",
-  "## Schema preflight",
+  "### Schema preflight",
   "products",
   "product_variants",
   "sys_events",
   "before tonic starts listening",
-  "does not silently continue with partial readiness",
   "RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_CERT_PATH",
   "RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true",
   "RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR",
-  "cargo run -p rustok-product-catalog-service",
-  "does not claim this command was executed",
+  serviceCommand,
   "boundary_ready",
 ], "Product service deployment documentation");
 
@@ -196,8 +202,8 @@ if (registry) {
   }
   const external = registry.external_transport ?? {};
   const expected = {
-    provider_host_crate: "rustok-product-catalog-service",
-    provider_host_source: "crates/modules/rustok-product-catalog-service/src/main.rs",
+    provider_host_crate: "rustok-product",
+    provider_host_source: "crates/modules/rustok-product/src/bin/service.rs",
     provider_host_binary: "rustok-product-catalog-service",
     provider_host_database: "postgresql",
     provider_host_transport_security: "tls_or_explicit_loopback",
@@ -215,6 +221,9 @@ if (registry) {
   const expectedTables = ["products", "product_variants", "sys_events"];
   if (JSON.stringify(external.provider_host_schema_preflight_tables) !== JSON.stringify(expectedTables)) {
     failures.push("Product registry provider_host_schema_preflight_tables drift");
+  }
+  if (JSON.stringify(external.provider_host_command_schema_preflight_tables) !== JSON.stringify(["owner_operation_receipts"])) {
+    failures.push("Product registry provider_host_command_schema_preflight_tables drift");
   }
   if (
     registry.evidence?.grpc_service_host_verifier !==
@@ -236,7 +245,7 @@ requireAll(plan, [
   "Schema-preflight execution evidence remains open",
   "host execution evidence remains open",
   "Product remains `boundary_ready`",
-  "cargo run -p rustok-product-catalog-service",
+  serviceCommand,
   "verify-product-catalog-grpc-service-host.mjs",
 ], "Product service-host implementation plan");
 

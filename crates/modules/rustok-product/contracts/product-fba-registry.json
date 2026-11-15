@@ -147,6 +147,7 @@
       "sys_events"
     ],
     "provider_host_schema_preflight_order": "after_connect_before_owner_and_listener",
+    "provider_host_command_schema_preflight_tables": ["owner_operation_receipts"],
     "provider_host_schema_preflight_status": "source_complete_execution_pending",
     "provider_host_status": "source_complete_execution_pending",
     "maintainer_test_status": "passed_no_raw_logs_end_to_end_pending",

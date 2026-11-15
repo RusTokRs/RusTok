@@ -527,7 +527,7 @@ The July 29 attestation is retained for its original projection and consumer har
 | Provider selection | `apps/server/src/services/product_catalog_deployment.rs` installs the selected external read and/or command runtime before ordinary bootstrap. Invalid configuration or connection aborts startup. |
 | Wire operations | `ReadProductProjection`, `ReadVariantProductProjection` and `ListPublishedProducts` cover base catalog projections. `ReadStorefrontVariantProductProjection` applies Product visibility rules when Cart resolves a SKU. `ReadVariantIdentities` and `ListProductVariantIdentities` cover `ProductVariantIdentityReadPort`. |
 | Additional reads | Filtered lists, facets and storefront detail have RPCs. External runtime schema, HTTP and tag handles remain absent unless explicitly supplied. |
-| Mounted consumers | Pricing reads SKU identity from the selected Product provider. Local Commerce HTTP checkout passed in both profiles. Some storefront REST and Product admin paths still access local catalog services or entities. AI attributes supports remote Product while AI `product_copy` uses local Product storage. |
+| Mounted consumers | Pricing reads SKU identity from the selected Product provider. Local Commerce HTTP checkout passed in both profiles. Some storefront REST and Product admin paths still access local catalog services or entities. AI attributes and `product_copy` use the host-selected read port. `product_copy` also requires the selected command port. |
 | Commands | The opt-in gRPC service exposes 15 command-port operations including preview. The consumer must authorize delegation. Writes are attributed to a configured service UUID. The standalone owner lacks embedded Pricing, Shipping Profile and Media bindings. |
 | Transactions | Product, Pricing and Inventory lifecycle/bootstrap operations share a local SQL transaction. Their transaction-participant interfaces cannot cross RPC. |
 | Packaging | Public contracts and implementation are in the existing owner crate, with unconditional implementation dependencies. A contracts-only feature is unimplemented and is not a prerequisite for this bounded FBA profile. |
@@ -536,6 +536,17 @@ Product's packaging now implements the [canonical FBA layout](../../../../docs/b
 - Published contracts, DTOs, protobuf definitions, and tonic gRPC adapters live in `rustok-product-ports` (`ports/`).
 - The domain implementation, entities, migrations, and standalone service binary live in `rustok-product` (`src/bin/service.rs` behind feature `service`).
 - Former separate crates `rustok-product-transport` and `rustok-product-catalog-service` are retired and consolidated into `rustok-product`.
+- The strict FBA layout check still fails on the Product runtime's direct Flex
+  dependency. Reconcile shared attached-value storage, Taxonomy-dependent
+  migrations and remaining provider bypasses before claiming independently
+  provisioned Product storage.
+
+The Flex GraphQL host also writes Product metadata and shared localized Product
+values. Route that path through Product before moving those values to Product
+storage so the handoff has a single writer. Flex continues to own field definitions
+and policies. Product's existing migrations reference Tenant and Taxonomy tables.
+Replace cross-owner deletion and synchronization behavior before provisioning a
+Product-only schema, and keep the existing installation upgrade path verifiable.
 - Cross-module foreign keys (`taxonomy_terms`, `flex_field_definition_cache_generation`) are guarded during migrations for independent database execution.
 - Historical evidence files retain their original recorded paths and commands.
 
@@ -691,9 +702,9 @@ deployment capture remains open.
 - `node scripts/evidence/capture-product-catalog-separate-process-runtime.mjs`
 - `node scripts/verify/verify-product-remote-consumer-behavior.mjs`
 - `node scripts/verify/verify-product-remote-consumer-behavior.test.mjs`
-- `cargo test -p rustok-product-catalog-service`
-- `cargo test -p rustok-product-transport --lib`
-- `cargo test -p rustok-product-transport --test port_conformance`
+- `cargo test -p rustok-product --features service --bin rustok-product-catalog-service`
+- `cargo test -p rustok-product-ports --features grpc-client,grpc-server --lib`
+- `cargo test -p rustok-product --test port_conformance`
 - `cargo test -p rustok-commerce --test product_remote_consumer_behavior`
 - `cargo test -p rustok-ai --features server --lib remote_product_`
 - `node scripts/verify/verify-product-catalog-attribute-filters.mjs`
@@ -714,7 +725,7 @@ deployment capture remains open.
 
 - Product owns catalog data, `ProductCatalogReadPort`, and
   `ProductCatalogReadRuntime` profile selection.
-- `rustok-product-transport` owns tonic/protobuf framing, validated client
+- The current transport lives in `rustok-product-ports`. It owns tonic/protobuf framing, validated client
   connection policy, deadline/status mapping, bearer metadata, constant-time
   credential comparison, and trusted-authority adaptation. It must not own
   Product policy, persistence, DTOs, locale/channel rules, fallback decisions,
@@ -727,10 +738,13 @@ deployment capture remains open.
 - The standalone provider host owns only deployment composition: PostgreSQL pool,
   required-schema read probes, canonical `CatalogService`, `OutboxTransport`,
   tonic TLS/listener lifecycle, bearer interceptor configuration, telemetry, and
-  graceful shutdown. It does not run migrations, issue DDL, expose write RPCs,
-  relay outbox rows, or duplicate Product policy/persistence. It configures the
+  graceful shutdown. It optionally mounts the existing command RPCs with separate
+  credentials. It does not run migrations, issue DDL, relay outbox rows, or duplicate
+  Product policy/persistence. A deployment without Inventory refuses SKU deletion
+  with `product.inventory_deletion_state_unverified`. The host configures the
   trusted service actor server-side, verifies `products`, `product_variants`, and
-  `sys_events` before serving, and never trusts actor/claims/roles supplied in
+  `sys_events` before serving, checks `owner_operation_receipts` when commands are
+  enabled, and never trusts actor/claims/roles supplied in
   `PortContext`.
 - The retained evidence runner owns orchestration only: fixed process commands,
   local-loopback validation, bounded readiness/shutdown, source/output hashing,

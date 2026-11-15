@@ -18,6 +18,10 @@ Publishes:
 - `RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK=true`: Allow plaintext HTTP only on loopback interfaces (`127.0.0.1`, `::1`).
 
 Invalid configuration or connection failure stops startup immediately.
+Connection success establishes transport reachability. The server checks the
+credential, tenant context and operation grant when it handles an RPC; a
+successful connection alone does not establish command-service availability.
+See the [owner's service configuration](../README.md#standalone-service-configuration).
 
 ## Authentication
 

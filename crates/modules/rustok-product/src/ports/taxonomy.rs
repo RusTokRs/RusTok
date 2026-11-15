@@ -145,11 +145,17 @@ impl ProductTaxonomyPort for NoopProductTaxonomyPort {
         &self,
         _conn: TaxonomyConnection<'_>,
         _tenant_id: Uuid,
-        _term_ids: &[Uuid],
+        term_ids: &[Uuid],
         _locale: &str,
         _fallback_locale: Option<&str>,
     ) -> Result<HashMap<Uuid, String>, CommerceError> {
-        Ok(HashMap::new())
+        if term_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        Err(rustok_core::error::Error::External(
+            "Product tag resolution requires an active Taxonomy capability".to_owned(),
+        )
+        .into())
     }
 
     async fn ensure_product_tags_in_tx(
@@ -187,5 +193,36 @@ impl ProductTaxonomyPort for NoopProductTaxonomyPort {
         _fallback_locale: Option<&str>,
     ) -> Result<Vec<ProductTaxonomyCategorySnapshot>, CommerceError> {
         Ok(Vec::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sea_orm::Database;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn missing_taxonomy_does_not_hide_stored_tag_relations() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let tenant_id = Uuid::new_v4();
+        let port = NoopProductTaxonomyPort;
+        let error = port
+            .resolve_term_names((&db).into(), tenant_id, &[Uuid::new_v4()], "en", None)
+            .await
+            .unwrap_err();
+        let CommerceError::Core(error) = error else {
+            panic!("expected unavailable Taxonomy dependency");
+        };
+        assert_eq!(
+            crate::error::core_port_error(&error).kind,
+            rustok_api::PortErrorKind::Unavailable
+        );
+        assert!(
+            port.resolve_term_names((&db).into(), tenant_id, &[], "en", None)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 }

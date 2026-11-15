@@ -973,6 +973,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     };
 
     let social_graph_index_drain = async {
+        #[cfg(feature = "mod-social_graph")]
         if let Some(worker) = runtime_ctx
             .shared_take::<crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle>()
         {
@@ -985,6 +986,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     };
 
     let social_graph_position_observer_drain = async {
+        #[cfg(feature = "mod-social_graph")]
         if let Some(worker) = runtime_ctx
             .shared_take::<crate::services::social_graph_index_position_observer::SocialGraphIndexPositionObserverHandle>()
         {
@@ -997,6 +999,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     };
 
     let social_graph_poison_observer_drain = async {
+        #[cfg(feature = "mod-social_graph")]
         if let Some(worker) = runtime_ctx
             .shared_take::<crate::services::social_graph_index_poison_observer::SocialGraphIndexPoisonObserverHandle>()
         {
