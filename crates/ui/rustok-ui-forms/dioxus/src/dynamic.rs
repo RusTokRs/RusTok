@@ -296,7 +296,15 @@ pub fn DynamicForm(
         map
     };
 
-    let initial_values = values.unwrap_or(default_map.clone());
+    let initial_values = {
+        let mut map = default_map.clone();
+        if let Some(passed) = values {
+            for (k, v) in passed {
+                map.insert(k, v);
+            }
+        }
+        map
+    };
     let mut local_values = use_signal(move || initial_values);
     let local_state = use_signal(FormState::idle);
     let mut actual_state = state.unwrap_or(local_state);
@@ -307,6 +315,7 @@ pub fn DynamicForm(
             let current = local_values.read().clone();
             let errors = schema.validate_map(&current);
             if errors.is_empty() {
+                actual_state.write().clear_errors();
                 actual_state.write().set_submitting();
                 on_submit.call(current);
             } else {

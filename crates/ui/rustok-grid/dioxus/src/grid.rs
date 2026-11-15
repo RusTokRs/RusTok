@@ -223,6 +223,7 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
     let sort_now = Rc::new(current_sort.clone());
     let selection_now = Rc::new(current_selection.clone());
     let columns_now = Rc::new(effective_columns.clone());
+    let widths_now = Rc::new(current_widths.clone());
 
     // Applies a pagination intent and returns the state that was actually
     // adopted — never an out-of-range page a user managed to click.
@@ -325,6 +326,8 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
         }
     });
 
+    let widths_for_resize = Rc::clone(&widths_now);
+
     rsx! {
         div { class: "w-full rounded-xl border border-border/80 bg-card shadow-sm flex flex-col overflow-hidden",
 
@@ -387,9 +390,13 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
                                 .find(|column| column.id.as_str() == id)
                                 .map(|column| (column.width.min, column.width.max));
                             if let Some((min, max)) = bounds {
-                                local_widths.write().set_clamped(id, width, min, max);
+                                if !widths_controlled {
+                                    local_widths.write().set_clamped(id.clone(), width, min, max);
+                                }
                                 if let Some(ref handler) = on_column_widths_change {
-                                    handler.call(local_widths.read().clone());
+                                    let mut next = (*widths_for_resize).clone();
+                                    next.set_clamped(id, width, min, max);
+                                    handler.call(next);
                                 }
                             }
                         },

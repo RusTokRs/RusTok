@@ -425,7 +425,16 @@ pub fn DynamicForm(
         map
     };
 
-    let local_values = values.unwrap_or_else(|| RwSignal::new(default_map.clone()));
+    let local_values = if let Some(sig) = values {
+        sig.update(|m| {
+            for (k, v) in &default_map {
+                m.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+        });
+        sig
+    } else {
+        RwSignal::new(default_map.clone())
+    };
     let form_state = state.unwrap_or_else(|| RwSignal::new(FormState::idle()));
 
     let handle_submit = {
@@ -434,7 +443,10 @@ pub fn DynamicForm(
             let current = local_values.get_untracked();
             let errors = schema.validate_map(&current);
             if errors.is_empty() {
-                form_state.update(|s| s.set_submitting());
+                form_state.update(|s| {
+                    s.clear_errors();
+                    s.set_submitting();
+                });
                 on_submit.run(current);
             } else {
                 form_state.update(|s| s.set_field_errors(errors));
