@@ -252,7 +252,7 @@ pub fn BlogCategoriesAdmin() -> impl IntoView {
                 <Alert><p>{copy("blog.editor.fallbackNotice", "The requested translation does not exist. The source below is read-only; enter target-language title and content to create it.")}</p>
                     <p lang=row.effective_locale>{row.name}</p><p>{row.description.unwrap_or_default()}</p></Alert>
             })}
-            <Form state=state dirty_tracker=dirty auto_submitting=false on_submit=submit class="space-y-4">
+            <Form state=state dirty_tracker=Some(dirty) auto_submitting=false on_submit=submit class="space-y-4">
                 <FormError />
                 <FormField name="name"><FormLabel>{copy("blog.categories.form.name", "Name")}</FormLabel><FormInput value=name on_input=move |value| name.set(value) disabled=busy /><FormMessage /></FormField>
                 <FormField name="slug"><FormLabel>{copy("blog.categories.form.slug", "Slug")}</FormLabel><FormInput value=slug on_input=move |value| slug.set(value) disabled=busy /><FormMessage /></FormField>

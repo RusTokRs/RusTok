@@ -146,6 +146,7 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
     let sort_controlled = sort_state.is_some() && on_sort_change.is_some();
     let selection_controlled = selection.is_some() && on_selection_change.is_some();
     let pagination_controlled = pagination.is_some() && !client_side;
+    let widths_controlled = column_widths.is_some() && on_column_widths_change.is_some();
 
     let current_filters = if filters_controlled {
         filters.clone().unwrap_or_default()
@@ -162,7 +163,12 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
     } else {
         local_selection.read().clone()
     };
-    let widths = local_widths.read().clone();
+    let current_widths = if widths_controlled {
+        column_widths.clone().unwrap_or_default()
+    } else {
+        local_widths.read().clone()
+    };
+    let widths = current_widths.clone();
 
     let total_rows = data.len();
     let mut current_pagination = if pagination_controlled {

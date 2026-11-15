@@ -599,9 +599,9 @@
       "category": "modules",
       "files": 142,
       "loc": 60081,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-15",
+      "notes": "Verified queue leases, heartbeat replay, non-nil tenant guards, zero defects"
     },
     "crates/modules/rustok-index/admin": {
       "name": "admin",
@@ -609,9 +609,9 @@
       "category": "modules",
       "files": 10,
       "loc": 2989,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-15",
+      "notes": "Hardened require_index_admin_tenant_scope with non-nil tenant, user and auth guards"
     },
     "crates/modules/rustok-inventory": {
       "name": "rustok-inventory",
@@ -1204,9 +1204,9 @@
       "category": "modules",
       "files": 94,
       "loc": 35047,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-15",
+      "notes": "Hardened pg_engine, projector_core, projection_driver, suggestions, analytics, diagnostics, dictionaries and GraphQL resolvers against nil UUIDs"
     },
     "crates/modules/rustok-search/admin": {
       "name": "admin",
@@ -1214,9 +1214,9 @@
       "category": "modules",
       "files": 21,
       "loc": 10161,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-15",
+      "notes": "Verified admin tenant scoping and normalization with non-nil checks"
     },
     "crates/modules/rustok-search/storefront": {
       "name": "storefront",
@@ -1224,9 +1224,9 @@
       "category": "modules",
       "files": 10,
       "loc": 3267,
-      "completed": false,
-      "completed_at": null,
-      "notes": ""
+      "completed": true,
+      "completed_at": "2026-11-15",
+      "notes": "Hardened storefront search tenant validation and normalization"
     },
     "crates/modules/rustok-seo": {
       "name": "rustok-seo",

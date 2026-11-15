@@ -38,7 +38,7 @@ The single canonical trigger to continue this audit sequence is:
 - [ ] **[Phase FS-04 — Commerce, Financial & Marketplace Domain Modules](#fs-04---commerce,-financial-&-marketplace-domain-modules)** (22/37 completed)
 - [x] **[Phase FS-05 — Content, Media, Social & Community Domain Modules](#fs-05---content,-media,-social-&-community-domain-modules)** (40/40 completed)
 - [x] **[Phase FS-06 — Catalog, Taxonomy, Dynamic Extensibility & CMS Pages](#fs-06---catalog,-taxonomy,-dynamic-extensibility-&-cms-pages)** (25/25 completed)
-- [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (0/26 completed)
+- [ ] **[Phase FS-07 — Search, Indexing, Translation & AI Ecosystem](#fs-07---search,-indexing,-translation-&-ai-ecosystem)** (5/26 completed)
 - [ ] **[Phase FS-08 — Background Workers & Execution Fleet (`crates/workers/*`, `rustok-iggy*`)](#fs-08---background-workers-&-execution-fleet-cratesworkers,-rustok-iggy)** (0/19 completed)
 - [ ] **[Phase FS-09 — Platform Utilities, Storage & Build Tooling (`crates/utils/*`)](#fs-09---platform-utilities,-storage-&-build-tooling-cratesutils)** (0/19 completed)
 - [ ] **[Phase FS-10 — Frontend Framework, UI Primitives & Design System (crates/ui/*)](#fs-10---frontend-framework,-ui-primitives-&-design-system-cratesui)** (0/23 completed)
@@ -261,13 +261,13 @@ The single canonical trigger to continue this audit sequence is:
 ---
 
 ### Phase FS-07 — Search, Indexing, Translation & AI Ecosystem
-*Full-text search, faceted search index, SEO metadata, multi-lingual translations, Model Context Protocol (MCP), and AI LLM integrations.* (0/26 completed)
+*Full-text search, faceted search index, SEO metadata, multi-lingual translations, Model Context Protocol (MCP), and AI LLM integrations.* (5/26 completed)
 
-- [ ] **[`crates/modules/rustok-search`](../../crates/modules/rustok-search)** (101 files, 35,305 LOC)
-- [ ] **[`crates/modules/rustok-search/admin`](../../crates/modules/rustok-search/admin)** (20 files, 8,298 LOC)
-- [ ] **[`crates/modules/rustok-search/storefront`](../../crates/modules/rustok-search/storefront)** (11 files, 3,970 LOC)
-- [ ] **[`crates/modules/rustok-index`](../../crates/modules/rustok-index)** (137 files, 58,160 LOC)
-- [ ] **[`crates/modules/rustok-index/admin`](../../crates/modules/rustok-index/admin)** (10 files, 2,989 LOC)
+- [x] **[`crates/modules/rustok-search`](../../crates/modules/rustok-search)** (101 files, 35,305 LOC)
+- [x] **[`crates/modules/rustok-search/admin`](../../crates/modules/rustok-search/admin)** (20 files, 8,298 LOC)
+- [x] **[`crates/modules/rustok-search/storefront`](../../crates/modules/rustok-search/storefront)** (11 files, 3,970 LOC)
+- [x] **[`crates/modules/rustok-index`](../../crates/modules/rustok-index)** (137 files, 58,160 LOC)
+- [x] **[`crates/modules/rustok-index/admin`](../../crates/modules/rustok-index/admin)** (10 files, 2,989 LOC)
 - [ ] **[`crates/modules/rustok-seo`](../../crates/modules/rustok-seo)** (82 files, 35,554 LOC)
 - [ ] **[`crates/modules/rustok-seo/admin`](../../crates/modules/rustok-seo/admin)** (15 files, 4,557 LOC)
 - [ ] **[`crates/modules/rustok-seo/storefront`](../../crates/modules/rustok-seo/storefront)** (6 files, 919 LOC)
