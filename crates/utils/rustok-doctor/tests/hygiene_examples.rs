@@ -801,3 +801,38 @@ struct ActiveJobHandle(#[allow(dead_code)] Uuid);
     assert_eq!(allow_findings.len(), 1);
     assert_eq!(allow_findings[0].line, 2);
 }
+
+#[test]
+fn identifies_unreachable_in_production_code() {
+    let source = r#"
+pub fn map_status(val: &str) -> &'static str {
+    match val {
+        "active" => "active",
+        _ => unreachable!(),
+    }
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let panic_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-ZERO-PANIC-PROD")
+        .collect();
+
+    assert_eq!(panic_findings.len(), 1);
+    assert_eq!(panic_findings[0].line, 5);
+}
+
+#[test]
+fn allows_unreachable_with_invariant_comment() {
+    let source = r#"
+pub fn map_status(val: &str) -> &'static str {
+    match val {
+        "active" => "active",
+        // INVARIANT: validated by caller schema
+        _ => unreachable!(),
+    }
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    assert!(findings.iter().all(|f| f.pattern_id != "P-ZERO-PANIC-PROD"));
+}

@@ -306,6 +306,7 @@ flowchart TD
   2. For genuinely static constants, construct them at compile time via `const` or pre-validate them during module initialization.
   3. Use fallible conversions at public boundaries unless the source type itself
      enforces the range; distinguish test fixtures and reviewed invariants.
+  4. Never leave bare `unreachable!()` or panic macros in production UI/service match branches; either handle fallback states gracefully or document the physical invariant explicitly with `// INVARIANT:`.
 
   ```rust
   let parent_version = Version::parse(&self.descriptor.version)
@@ -313,8 +314,8 @@ flowchart TD
   ```
 
   Detection: `cargo xtask doctor hygiene --all --ignore-rule P-UNFINISHED-CODE`
-  and inspect `P-ZERO-PANIC-PROD` with its callers. Doctor is lexical and does
-  not prove panic reachability.
+  and inspect `P-ZERO-PANIC-PROD` with its callers. Doctor checks `.expect()`,
+  `.unwrap()`, `.unwrap_err()`, `panic!()`, and `unreachable!()` in production code.
 
 ---
 
