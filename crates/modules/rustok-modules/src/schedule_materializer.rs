@@ -109,6 +109,7 @@ impl ArtifactScheduleMaterializer {
             return Err(ArtifactScheduleMaterializationError::InvalidRequest);
         }
         let now = now
+            // INVARIANT: setting nanosecond to 0 on a valid DateTime<Utc> is infallible
             .with_nanosecond(0)
             .expect("valid UTC clock instant must support second precision");
         let mut report = ArtifactScheduleMaterializationReport::default();

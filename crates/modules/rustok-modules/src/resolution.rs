@@ -179,6 +179,7 @@ where
         if slug == ROOT_PACKAGE {
             continue;
         }
+        // INVARIANT: PubGrub selects only candidates present in the dependency snapshot
         let candidate = snapshot
             .candidate(&slug, &version)
             .expect("PubGrub may select only a candidate present in its immutable snapshot");

@@ -274,6 +274,7 @@ impl ArtifactLocalizationCatalog {
         if !valid_digest(&self.digest)
             || self.digest
                 != canonical_schema_digest(
+                    // INVARIANT: localization catalog contains only serializable string fields
                     &serde_json::to_value(&self.messages)
                         .expect("localization catalog serialization must be infallible"),
                 )
@@ -1284,6 +1285,7 @@ impl ModuleArtifactSourceManifest {
 /// This identity is distinct from the executable payload digest stored inside
 /// the descriptor and from the OCI manifest digest that addresses the package.
 pub fn canonical_artifact_descriptor_digest(descriptor: &ModuleArtifactDescriptor) -> String {
+    // INVARIANT: validated ModuleArtifactDescriptor serialization to Value is infallible
     let value = serde_json::to_value(descriptor)
         .expect("module artifact descriptor serialization must be infallible");
     format!("sha256:{}", hash_manifest_snapshot(&value))
@@ -1334,9 +1336,9 @@ impl ArtifactRelease {
         }
 
         let parent_version = Version::parse(&self.descriptor.version)
-            .expect("published artifact version must have been validated");
-        let next_version =
-            Version::parse(&descriptor.version).expect("validated artifact version must parse");
+            .map_err(|error| ModuleArtifactError::InvalidVersion(error.to_string()))?;
+        let next_version = Version::parse(&descriptor.version)
+            .map_err(|error| ModuleArtifactError::InvalidVersion(error.to_string()))?;
         if next_version <= parent_version {
             return Err(ModuleArtifactError::ForkVersionNotIncremented {
                 parent: self.descriptor.version.clone(),

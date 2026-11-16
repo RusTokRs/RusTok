@@ -1152,6 +1152,7 @@ impl StaticTenantLifecycleStore {
         if module_slugs.is_empty() {
             return Ok(BTreeMap::new());
         }
+        let fallback_slug = module_slugs.iter().next().cloned().unwrap_or_default();
         let backend = SupportedBackend::new(db.get_database_backend())
             .map_err(static_lifecycle_database_error)?;
         let mut values = vec![backend.uuid_value(tenant_id)];
@@ -1201,13 +1202,11 @@ impl StaticTenantLifecycleStore {
                     .map_err(static_lifecycle_database_error)?;
                 let matched =
                     crate::backend::sqlite_tenant_module_identity(&row).map_err(|_| {
-                        StaticTenantLifecycleStoreError::InconsistentState(
-                            module_slugs.iter().next().expect("nonempty slugs").clone(),
-                        )
+                        StaticTenantLifecycleStoreError::InconsistentState(fallback_slug.clone())
                     })?;
                 if orphaned {
                     return Err(StaticTenantLifecycleStoreError::InconsistentState(
-                        module_slugs.iter().next().expect("nonempty slugs").clone(),
+                        fallback_slug.clone(),
                     ));
                 }
                 if !matched {
@@ -1357,6 +1356,7 @@ impl StaticTenantLifecycleStore {
         if module_slugs.is_empty() {
             return Ok(BTreeMap::new());
         }
+        let fallback_slug = module_slugs.iter().next().cloned().unwrap_or_default();
         let mut snapshots = module_slugs
             .iter()
             .map(|module_slug| {

@@ -594,6 +594,7 @@ impl ModuleWorkSource for ArtifactEventDeliveryWorkAdapter {
                     tenant_id: item.tenant_id,
                     worker_slug: ARTIFACT_EVENT_DELIVERY_WORKER.to_string(),
                     lease_token: self.queue.infrastructure.new_id().to_string(),
+                    // INVARIANT: EventDeliveryWorkItem contains only serializable fields
                     payload: serde_json::to_value(item).expect("event work item must serialize"),
                 }));
             }

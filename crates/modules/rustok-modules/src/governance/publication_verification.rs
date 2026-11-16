@@ -316,7 +316,7 @@ pub(crate) async fn verify_publish_request_prerequisites(
     match artifact_origin {
         ModulePublicationArtifactOrigin::PlatformBuilt => {
             let platform_build_manifest = platform_build_manifest
-                .expect("platform-built staging must provide an OCI manifest digest");
+                .ok_or(ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
             let matched_build_and_platform_evidence = tx
                     .query_one_raw(Statement::from_sql_and_values(
                         backend.db_backend(),

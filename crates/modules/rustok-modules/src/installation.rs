@@ -409,7 +409,12 @@ impl InstalledModuleArtifact {
                 .nodes
                 .iter()
                 .find(|node| node.slug == dependency.slug)
-                .expect("declared dependencies were checked while walking the graph");
+                .ok_or_else(|| {
+                    ModuleInstallationError::DependencyLock(format!(
+                        "missing lock node for declared dependency `{}`",
+                        dependency.slug
+                    ))
+                })?;
             let version = Version::parse(&node.version).map_err(|error| {
                 ModuleInstallationError::DependencyLock(format!(
                     "resolved dependency `{}` has invalid version: {error}",

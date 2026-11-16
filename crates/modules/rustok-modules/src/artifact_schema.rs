@@ -19,6 +19,7 @@ pub(crate) fn validates_ui_contribution(value: &Value) -> bool {
 
     VALIDATOR
         .get_or_init(|| {
+            // INVARIANT: bundled UI_CONTRIBUTION_SCHEMA is static compile-time JSON
             let schema = serde_json::from_str(UI_CONTRIBUTION_SCHEMA)
                 .expect("the bundled UI contribution schema must be valid JSON");
             jsonschema::options()
@@ -31,6 +32,7 @@ pub(crate) fn validates_ui_contribution(value: &Value) -> bool {
                         .dfa_size_limit(MAX_ARTIFACT_SCHEMA_REGEX_BYTES),
                 )
                 .build(&schema)
+                // INVARIANT: bundled UI_CONTRIBUTION_SCHEMA is static compile-time valid schema
                 .expect("the bundled UI contribution schema must compile")
         })
         .is_valid(value)

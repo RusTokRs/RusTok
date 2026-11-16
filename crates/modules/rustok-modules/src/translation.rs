@@ -483,6 +483,7 @@ fn derive_step_idempotency_key(
 }
 
 fn hash_part(hasher: &mut Sha256, value: &[u8]) {
+    // INVARIANT: usize is guaranteed to fit in u64 on supported 32-bit and 64-bit targets
     let length = u64::try_from(value.len()).expect("usize must fit in u64 on supported targets");
     hasher.update(length.to_be_bytes());
     hasher.update(value);

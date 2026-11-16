@@ -79,6 +79,7 @@ impl From<ModuleTransitionCheckpoint> for ModuleTransitionCheckpointView {
 
         Self {
             operation_id: checkpoint.operation_id.to_string(),
+            // INVARIANT: persisted transition revisions are constrained to BIGINT
             revision: i64::try_from(checkpoint.revision)
                 .expect("persisted transition revisions are constrained to BIGINT"),
             module_slug: checkpoint.module_slug,
@@ -87,8 +88,10 @@ impl From<ModuleTransitionCheckpoint> for ModuleTransitionCheckpointView {
             candidate_digest: checkpoint.candidate_digest,
             state,
             state_details,
+            // INVARIANT: persisted transition security epochs are constrained to BIGINT
             security_epoch: i64::try_from(checkpoint.security_epoch.value())
                 .expect("persisted transition security epochs are constrained to BIGINT"),
+            // INVARIANT: persisted transition recovery attempts are constrained to INTEGER
             recovery_attempt_count: i32::try_from(checkpoint.recovery_attempt_count)
                 .expect("persisted transition recovery attempts are constrained to INTEGER"),
             created_at: checkpoint.created_at.to_rfc3339(),
@@ -104,6 +107,7 @@ impl From<crate::RetentionHoldRecord> for ModuleRetentionHoldView {
             hold_id: record.hold_id.to_string(),
             target_type: target_type.to_string(),
             target_identity,
+            // INVARIANT: RetentionHoldKind is a serializable enum
             kind: serde_json::to_string(&record.kind)
                 .expect("retention hold kinds are serializable owner contracts"),
             created_at: record.created_at.to_rfc3339(),

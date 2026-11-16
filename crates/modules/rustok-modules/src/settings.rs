@@ -188,6 +188,7 @@ pub fn validate_module_settings_schema(
                 key,
             });
         }
+        // INVARIANT: key originates directly from schema.keys()
         let spec = schema
             .get(&key)
             .expect("sorted settings key must exist in schema");
@@ -243,6 +244,7 @@ pub fn normalize_module_settings(
 
     let mut normalized = serde_json::Map::new();
     for key in allowed_keys {
+        // INVARIANT: key originates directly from schema.keys()
         let spec = schema
             .get(&key)
             .expect("allowed settings key must exist in schema");
@@ -409,6 +411,7 @@ fn validate_setting_spec(
                     key: format!("{key}.{property_key}"),
                 });
             }
+            // INVARIANT: property_key originates directly from spec.properties.keys()
             let property_spec = spec
                 .properties
                 .get(&property_key)
@@ -577,6 +580,7 @@ fn normalize_setting_value(
     }
 
     if value_type == "object" {
+        // INVARIANT: value was confirmed as JSON object by value_type match above
         let mut object = value
             .as_object()
             .expect("object type was checked above")
@@ -605,6 +609,7 @@ fn normalize_setting_value(
             property_keys.sort();
             let mut normalized = serde_json::Map::new();
             for property_key in property_keys {
+                // INVARIANT: property_key originates directly from spec.properties.keys()
                 let property_spec = spec
                     .properties
                     .get(&property_key)
@@ -646,6 +651,7 @@ fn normalize_setting_value(
     }
 
     if value_type == "array" {
+        // INVARIANT: value was confirmed as JSON array by value_type match above
         let array = value
             .as_array()
             .expect("array type was checked above")
@@ -694,6 +700,7 @@ fn resolve_setting_spec<'a>(
     }
 
     let mut segments = path.split('.');
+    // INVARIANT: split on a non-empty string always yields at least one segment
     let root_key = segments
         .next()
         .expect("non-empty settings metadata path must have a root segment");

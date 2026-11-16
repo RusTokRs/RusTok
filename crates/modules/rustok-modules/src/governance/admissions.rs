@@ -210,7 +210,7 @@ pub(crate) async fn canonical_marketplace_artifact_contract(
     };
     if let Some(parent_release) = &parent_release {
         let parent_version = Version::parse(&parent_release.version)
-            .expect("validated artifact release version must parse");
+            .map_err(|_| ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
         let child_version = Version::parse(version)
             .map_err(|_| ModuleGovernanceError::PublishRequestMissingCanonicalArtifactContract)?;
         if parent_release.slug != slug

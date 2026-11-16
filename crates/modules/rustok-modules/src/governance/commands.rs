@@ -400,6 +400,7 @@ impl ModulePublishRequestCreateCommand {
     /// warning text.
     pub fn validation_warnings(&self) -> Result<Vec<String>, ModuleGovernanceError> {
         self.validate()?;
+        // INVARIANT: self.validate() above validates that self.ui_packages.is_object()
         let ui_packages = self
             .ui_packages
             .as_object()

@@ -458,6 +458,7 @@ pub(crate) fn index_contract_digest(indexes: &[ArtifactDataIndexField]) -> Optio
                 .then_with(|| left.json_pointer.cmp(&right.json_pointer))
                 .then_with(|| (left.value_type as u8).cmp(&(right.value_type as u8)))
         });
+        // INVARIANT: ArtifactDataIndexField contains only serializable fields
         let encoded = serde_json::to_vec(&canonical)
             .expect("artifact data index declarations are always serializable");
         crate::installation::sha256_digest(&encoded)

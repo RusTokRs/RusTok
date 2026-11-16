@@ -31,6 +31,7 @@ impl StorageArtifactBlobStore {
         storage: StorageRuntime,
         infrastructure: ControlPlaneInfrastructure,
     ) -> Self {
+        // INVARIANT: the built-in prefix "module-artifact" is guaranteed valid
         Self::with_prefix_and_infrastructure(storage, "module-artifact", infrastructure)
             .expect("the built-in artifact CAS prefix is valid")
     }

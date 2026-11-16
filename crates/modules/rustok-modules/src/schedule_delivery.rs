@@ -505,6 +505,7 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
                     delivery_id,
                     attempt,
                 },
+                // INVARIANT: held outcome branch guarantees error_code is Some
                 error_code
                     .as_deref()
                     .expect("held outcome has an error code"),
@@ -521,6 +522,7 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
                     delivery_id,
                     attempt,
                 },
+                // INVARIANT: retryable outcome branch guarantees error_code is Some
                 error_code
                     .as_deref()
                     .expect("retryable outcome has an error code"),
@@ -532,6 +534,7 @@ impl SeaOrmArtifactScheduleDeliveryQueue {
             let terminal_column = if retryable {
                 "dead_lettered_at"
             } else {
+                // INVARIANT: non-retryable terminal outcome guarantees terminal_column is Some
                 terminal_column.expect("terminal outcome has a timestamp")
             };
             complete_terminal(
@@ -707,6 +710,7 @@ impl ModuleWorkSource for ArtifactScheduleDeliveryWorkAdapter {
                     tenant_id: item.tenant_id,
                     worker_slug: ARTIFACT_SCHEDULE_DELIVERY_WORKER.to_string(),
                     lease_token: self.queue.infrastructure.new_id().to_string(),
+                    // INVARIANT: ScheduleDeliveryWorkItem contains only serializable fields
                     payload: serde_json::to_value(item).expect("schedule work item must serialize"),
                 }));
             }
