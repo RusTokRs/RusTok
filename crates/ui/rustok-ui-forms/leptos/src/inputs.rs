@@ -1809,9 +1809,9 @@ mod tests {
                 <FormNumberInput
                     value=num_val
                     name="quantity"
-                    min=1.0
-                    max=100.0
-                    step=1.0
+                    min=Some(1.0)
+                    max=Some(100.0)
+                    step=Some(1.0)
                 />
                 <FormSearchInput
                     value=q_val
