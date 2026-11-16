@@ -219,9 +219,10 @@ fn ensure_stop_handle(runtime_ctx: &ServerRuntimeContext) -> StopHandle {
 
     let (candidate, _receiver) = StopHandle::new();
     let _ = runtime_ctx.shared_insert_if_absent(candidate.clone());
+    // INVARIANT: StopHandle was either already present or just inserted via shared_insert_if_absent.
     runtime_ctx
         .shared_get::<StopHandle>()
-        .expect("StopHandle must exist after Comments schedule audit worker initialization")
+        .unwrap_or(candidate)
 }
 
 fn read_optional_environment(name: &str) -> std::result::Result<Option<String>, String> {

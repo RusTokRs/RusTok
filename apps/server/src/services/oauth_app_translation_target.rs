@@ -50,8 +50,10 @@ impl OAuthAppTranslationTargetProvider {
 
     fn descriptor_value() -> TranslationTargetProviderDescriptor {
         TranslationTargetProviderDescriptor {
+            // INVARIANT: Static Auth owner slug satisfies target contract.
             owner_slug: OwnerSlug::new(OWNER_SLUG)
                 .expect("static Auth owner slug must satisfy the target contract: invariant validated at startup"),
+            // INVARIANT: Static OAuth application copy kind satisfies target contract.
             resource_kind: ResourceKind::new(RESOURCE_KIND)
                 .expect("static OAuth application copy kind must satisfy the target contract: invariant validated at startup"),
             display_name: "OAuth application presentation".to_string(),
@@ -453,9 +455,12 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
 
 fn oauth_app_identity(app_id: Uuid) -> TranslationResourceIdentity {
     TranslationResourceIdentity {
+        // INVARIANT: Static Auth owner slug is valid.
         owner_slug: OwnerSlug::new(OWNER_SLUG).expect("static Auth owner slug must be valid: invariant validated at startup"),
+        // INVARIANT: Static OAuth application copy resource kind is valid.
         resource_kind: ResourceKind::new(RESOURCE_KIND)
             .expect("static OAuth application copy resource kind must be valid: invariant validated at startup"),
+        // INVARIANT: OAuth application UUID string satisfies resource id contract.
         resource_id: ResourceId::new(app_id.to_string())
             .expect("OAuth application UUID must satisfy the resource id contract"),
         subresource_id: None,
@@ -524,6 +529,7 @@ fn translation_fields(
     vec![
         TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
+                // INVARIANT: Static OAuth name field key is valid.
                 key: FieldKey::new("name").expect("static OAuth name field key must be valid: invariant validated at startup"),
                 profile: TranslationValueProfile::PlainText,
                 strategy: TranslationStrategy::Translate,
@@ -540,6 +546,7 @@ fn translation_fields(
         },
         TranslationFieldSnapshot {
             descriptor: TranslationFieldDescriptor {
+                // INVARIANT: Static OAuth description field key is valid.
                 key: FieldKey::new("description")
                     .expect("static OAuth description field key must be valid: invariant validated at startup"),
                 profile: TranslationValueProfile::PlainText,

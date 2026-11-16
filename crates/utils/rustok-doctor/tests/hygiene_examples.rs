@@ -686,3 +686,118 @@ fn detects_real_fulfillment_and_pages_pointer_args() {
     assert_eq!(ptr_findings.len(), 1);
     assert_eq!(ptr_findings[0].line, 234);
 }
+
+#[test]
+fn identifies_bare_allow_unused_imports_and_mut() {
+    let source = r#"
+#[allow(unused_imports)]
+use std::time::Duration;
+
+#[allow(unused_mut)]
+fn test_mut() {
+    let mut x = 1;
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let allow_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-STALE-ALLOW-LINT")
+        .collect();
+
+    assert_eq!(allow_findings.len(), 2);
+    assert_eq!(allow_findings[0].line, 2);
+    assert_eq!(allow_findings[1].line, 5);
+}
+
+#[test]
+fn respects_invariant_comments_for_expect_calls() {
+    let source = r#"
+fn run() {
+    // INVARIANT: statically guaranteed valid constant
+    let a = parse("fixed").expect("valid");
+
+    // Without invariant comment, this must be flagged
+    let b = parse("dynamic").expect("might fail");
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let panic_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-ZERO-PANIC-PROD")
+        .collect();
+
+    assert_eq!(panic_findings.len(), 1);
+    assert_eq!(panic_findings[0].line, 7);
+}
+
+#[test]
+fn identifies_post_hoc_in_memory_tenant_checks() {
+    let source = r#"
+async fn validate_access(app: &App, tenant_id: Uuid) -> Result<()> {
+    if app.tenant_id != tenant_id {
+        return Err(Error::Forbidden);
+    }
+    Ok(())
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let tenant_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-TENANT-FALLBACK-LEAK")
+        .collect();
+
+    assert_eq!(tenant_findings.len(), 1);
+    assert_eq!(tenant_findings[0].line, 3);
+}
+
+#[test]
+fn identifies_direct_print_in_production_code() {
+    let source = r#"
+pub fn calculate() -> u32 {
+    println!("debugging calculation");
+    eprintln!("error calculation");
+    dbg!(42);
+    42
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let print_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-LOG-RAW-PRINT")
+        .collect();
+
+    assert_eq!(print_findings.len(), 3);
+    assert_eq!(print_findings[0].line, 3);
+    assert_eq!(print_findings[1].line, 4);
+    assert_eq!(print_findings[2].line, 5);
+}
+
+#[test]
+fn allows_direct_print_in_cli_and_tests() {
+    let source = r#"
+fn main() {
+    println!("CLI output");
+    eprintln!("CLI error");
+}
+"#;
+    let cli_findings = rustok_doctor::scan_source(Path::new("src/bin/tool.rs"), source);
+    assert!(cli_findings.iter().all(|f| f.pattern_id != "P-LOG-RAW-PRINT"));
+
+    let test_findings = rustok_doctor::scan_source(Path::new("tests/integration_test.rs"), source);
+    assert!(test_findings.iter().all(|f| f.pattern_id != "P-LOG-RAW-PRINT"));
+}
+
+#[test]
+fn identifies_bare_allow_in_tuple_struct_field() {
+    let source = r#"
+struct ActiveJobHandle(#[allow(dead_code)] Uuid);
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let allow_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-STALE-ALLOW-LINT")
+        .collect();
+
+    assert_eq!(allow_findings.len(), 1);
+    assert_eq!(allow_findings[0].line, 2);
+}

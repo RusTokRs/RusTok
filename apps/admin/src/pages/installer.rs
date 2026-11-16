@@ -96,26 +96,26 @@ pub fn InstallerPage() -> impl IntoView {
     });
 
     let build_plan = move || {
-        build_install_plan(
-            instance_root.get_untracked(),
-            environment.get_untracked(),
-            profile.get_untracked(),
-            database_engine.get_untracked(),
-            database_url.get_untracked(),
-            database_secret_backend.get_untracked(),
-            database_secret_key.get_untracked(),
-            create_database.get_untracked(),
-            admin_email.get_untracked(),
-            admin_password.get_untracked(),
-            admin_secret_backend.get_untracked(),
-            admin_secret_key.get_untracked(),
-            tenant_slug.get_untracked(),
-            tenant_name.get_untracked(),
-            seed_profile.get_untracked(),
-            secrets_mode.get_untracked(),
-            enable_modules.get_untracked(),
-            disable_modules.get_untracked(),
-        )
+        build_install_plan(BuildInstallPlanParams {
+            instance_root: instance_root.get_untracked(),
+            environment: environment.get_untracked(),
+            profile: profile.get_untracked(),
+            database_engine: database_engine.get_untracked(),
+            database_url: database_url.get_untracked(),
+            database_secret_backend: database_secret_backend.get_untracked(),
+            database_secret_key: database_secret_key.get_untracked(),
+            create_database: create_database.get_untracked(),
+            admin_email: admin_email.get_untracked(),
+            admin_password: admin_password.get_untracked(),
+            admin_secret_backend: admin_secret_backend.get_untracked(),
+            admin_secret_key: admin_secret_key.get_untracked(),
+            tenant_slug: tenant_slug.get_untracked(),
+            tenant_name: tenant_name.get_untracked(),
+            seed_profile: seed_profile.get_untracked(),
+            secrets_mode: secrets_mode.get_untracked(),
+            enable_modules: enable_modules.get_untracked(),
+            disable_modules: disable_modules.get_untracked(),
+        })
     };
 
     let run_preflight = move |_| {
@@ -695,8 +695,7 @@ fn CheckboxField(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn build_install_plan(
+struct BuildInstallPlanParams {
     instance_root: String,
     environment: String,
     profile: String,
@@ -715,22 +714,28 @@ fn build_install_plan(
     secrets_mode: String,
     enable_modules: String,
     disable_modules: String,
-) -> Result<InstallPlan, String> {
-    let tenant_slug = require_text("Tenant slug", tenant_slug)?;
-    let instance_root = require_text("Instance root", instance_root)?;
-    let tenant_name = require_text("Tenant name", tenant_name)?;
-    let admin_email = require_text("Admin email", admin_email)?;
-    require_secret("Database URL", &database_url, &database_secret_key)?;
-    require_secret("Admin password", &admin_password, &admin_secret_key)?;
+}
+
+fn build_install_plan(params: BuildInstallPlanParams) -> Result<InstallPlan, String> {
+    let tenant_slug = require_text("Tenant slug", params.tenant_slug)?;
+    let instance_root = require_text("Instance root", params.instance_root)?;
+    let tenant_name = require_text("Tenant name", params.tenant_name)?;
+    let admin_email = require_text("Admin email", params.admin_email)?;
+    require_secret("Database URL", &params.database_url, &params.database_secret_key)?;
+    require_secret("Admin password", &params.admin_password, &params.admin_secret_key)?;
 
     Ok(InstallPlan {
         placement: InstancePlacement::new(instance_root),
-        environment: parse_environment(&environment)?,
-        profile: parse_profile(&profile)?,
+        environment: parse_environment(&params.environment)?,
+        profile: parse_profile(&params.profile)?,
         database: DatabaseConfig {
-            engine: parse_database_engine(&database_engine)?,
-            url: secret_value(database_url, database_secret_backend, database_secret_key),
-            create_if_missing: create_database,
+            engine: parse_database_engine(&params.database_engine)?,
+            url: secret_value(
+                params.database_url,
+                params.database_secret_backend,
+                params.database_secret_key,
+            ),
+            create_if_missing: params.create_database,
         },
         tenant: TenantBootstrap {
             slug: tenant_slug,
@@ -738,15 +743,19 @@ fn build_install_plan(
         },
         admin: AdminBootstrap {
             email: admin_email,
-            password: secret_value(admin_password, admin_secret_backend, admin_secret_key),
+            password: secret_value(
+                params.admin_password,
+                params.admin_secret_backend,
+                params.admin_secret_key,
+            ),
         },
         modules: ModuleSelection {
-            enable: parse_module_list(&enable_modules),
-            disable: parse_module_list(&disable_modules),
+            enable: parse_module_list(&params.enable_modules),
+            disable: parse_module_list(&params.disable_modules),
         },
         topology: InstallTopology::for_mode(InstallTopologyMode::Monolith),
-        seed_profile: parse_seed_profile(&seed_profile)?,
-        secrets_mode: parse_secret_mode(&secrets_mode)?,
+        seed_profile: parse_seed_profile(&params.seed_profile)?,
+        secrets_mode: parse_secret_mode(&params.secrets_mode)?,
     })
 }
 

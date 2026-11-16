@@ -826,15 +826,6 @@ pub async fn rate_limit_for_paths(
     }
 }
 
-pub async fn cleanup_task(limiter: Arc<RateLimiter>) {
-    let mut interval = tokio::time::interval(Duration::from_secs(300));
-
-    loop {
-        interval.tick().await;
-        limiter.cleanup_expired().await;
-    }
-}
-
 #[cfg(test)]
 mod diagnostic_tests {
     use super::*;

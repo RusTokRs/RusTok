@@ -554,7 +554,8 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-CANONICAL-DIGEST` | Cryptographic integrity | Variable-length elements prefixed with length in signatures/hashes | Manual |
 | `P-PTR-ARG` | API design | Borrowed slices used instead of &String, &Vec, &PathBuf | High: &String, &Vec, or &PathBuf in function parameters |
 | `P-BLOCKING-IO-IN-ASYNC` | Concurrency | Asynchronous tasks use non-blocking I/O or spawn_blocking | High: synchronous std::fs in async fn |
-| `P-STALE-ALLOW-LINT` | Code completeness | Unused functions tested, deleted, or marked with #[expect(dead_code, reason = "...")] | Medium: bare #[allow(dead_code)] on function |
+| `P-STALE-ALLOW-LINT` | Code completeness | Unused code tested, deleted, or marked with #[expect(..., reason = "...")] | Medium: bare #[allow(dead_code)], #[allow(unused_imports)], or #[allow(unused_mut)] |
+| `P-LOG-RAW-PRINT` | Observability | Production code uses tracing macros instead of raw stdout/stderr prints | High: direct println!, eprintln!, or dbg! in non-CLI/non-test code |
 
 ---
 
@@ -1323,3 +1324,22 @@ fn parse_bulk_csv(...) -> SeoResult<Vec<BulkImportRow>> { ... }
 
 Detection: `cargo xtask doctor hygiene --crate <crate>`.
 Doctor detects bare `#[allow(dead_code)]` on function definitions in non-test, non-migration crates.
+
+## P-LOG-RAW-PRINT — Prohibit direct stdout/stderr prints in production runtime code
+
+- **Category:** Observability and structured logging hygiene.
+- **Logic dimensions:** Side-effect completeness, order and concurrency.
+- **Observed behavior:** Invocations of `println!`, `eprintln!`, or `dbg!` in library crates, domain services, or controllers bypass the unified platform tracing infrastructure (`tracing`). Raw standard I/O prints lack structured fields (such as `tenant_id`, `trace_id`, `span_id`), cannot be dynamically filtered by log levels (`RUST_LOG`), and can contend on standard I/O mutexes under heavy request concurrency.
+- **Remediation:** Replace ad-hoc prints with structured `tracing` macros (`tracing::info!`, `tracing::warn!`, `tracing::error!`, or `tracing::debug!`). CLI binaries (`main.rs`, `cli.rs`, `xtask`), build scripts (`build.rs`), examples, and test files are exempted.
+
+```rust
+// Forbidden in services and libraries
+println!("User {} logged in", user_id);
+
+// Canonical structured logging
+tracing::info!(%user_id, %tenant_id, "User authenticated successfully");
+```
+
+Detection: `cargo xtask doctor hygiene --crate <crate>` or
+`rg -n '\b(println|eprintln|dbg)!\s*\(' crates/ apps/`.
+Doctor flags raw print macros in non-test, non-CLI production crates.

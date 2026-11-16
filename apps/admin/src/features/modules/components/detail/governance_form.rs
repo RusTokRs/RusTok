@@ -29,7 +29,6 @@ pub fn GovernanceForm(
     governance_reason: Signal<String>,
     set_governance_reason: WriteSignal<String>,
     governance_intent_action: Signal<Option<String>>,
-    set_governance_intent_action: WriteSignal<Option<String>>,
     governance_actions_for_form: Signal<Vec<RegistryGovernanceActionLifecycle>>,
     governance_submitting: Signal<bool>,
     governance_confirmation_action: Signal<Option<String>>,
@@ -48,8 +47,6 @@ pub fn GovernanceForm(
     on_yank_release: Callback<()>,
     on_refresh: Callback<()>,
 ) -> impl IntoView {
-    let _ = set_governance_intent_action;
-
     view! {
         <div class="mt-3 space-y-3 rounded-lg border border-border bg-background p-3">
             <div class="flex flex-wrap items-center justify-between gap-3">

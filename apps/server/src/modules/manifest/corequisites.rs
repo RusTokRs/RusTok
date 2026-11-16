@@ -47,6 +47,7 @@ fn module_policy_corequisites(
     let mut slugs = resolved_specs.keys().cloned().collect::<Vec<_>>();
     slugs.sort();
     for slug in slugs {
+        // INVARIANT: Slug was collected from resolved_specs.keys() and is guaranteed to exist.
         let spec = resolved_specs
             .get(&slug)
             .expect("resolved module slug must have a manifest spec");

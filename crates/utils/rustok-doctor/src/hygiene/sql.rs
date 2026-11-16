@@ -89,6 +89,7 @@ fn dynamic_format(code: &str, syntax: &str, opening: usize) -> bool {
         }
         if let Some(capture) = re!(r"^\s*([A-Za-z_]\w*)\s*=\s*").captures(value) {
             explicit_names.insert(capture[1].to_owned());
+            // INVARIANT: capture matched, group 0 always present.
             value = &value[capture.get(0).expect("assignment exists").end()..];
         }
         if !literal(value) {
@@ -113,6 +114,7 @@ pub(super) fn check(
     let format_call = re!(r"(?:std::)?format\s*!\s*[({\[]");
     if let Some(assignment) = assignment {
         let name = &assignment[1];
+        // INVARIANT: assignment matched, group 0 always present.
         let after = assignment.get(0).expect("assignment exists").end();
         let format = format_call
             .find_at(syntax, after)

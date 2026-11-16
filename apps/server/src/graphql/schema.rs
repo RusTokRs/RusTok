@@ -196,6 +196,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         #[cfg(feature = "mod-media")]
         storage,
     } = dependencies;
+    // INVARIANT: module marketplace catalog is populated during runtime startup prior to GraphQL build.
     let marketplace_catalog = graphql_runtime_inputs
         .shared_get::<rustok_modules::SharedModuleMarketplaceCatalog>()
         .expect("module marketplace catalog must be composed before GraphQL schema construction");
@@ -206,6 +207,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
     // source modules are gated and would have to fail closed on every query. Search is a
     // required module, so the manifest `runtime_data_factory` hook does not cover it and
     // the attachment is explicit here.
+    // INVARIANT: search audience registry is registered during host provider runtime extensions initialization.
     let search_audience_registry = graphql_runtime_inputs
         .shared_get::<rustok_search::SearchAudienceRegistry>()
         .expect("search audience registry must be composed before GraphQL schema construction");
@@ -261,6 +263,7 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
         factories = ?schema_codegen::MODULE_GRAPHQL_RUNTIME_DATA_FACTORIES,
         "Attaching manifest-declared GraphQL runtime data"
     );
+    // INVARIANT: schema_codegen factories are generated from validated module manifests.
     let builder = schema_codegen::attach_module_graphql_data(builder, &graphql_runtime_inputs)
         .expect("manifest GraphQL runtime-data factory must materialize");
     let builder = if let Some(runtime) = graphql_runtime_inputs

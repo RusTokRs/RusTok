@@ -3,10 +3,10 @@
     allow(dead_code)
 )]
 
-#[allow(unused_imports)]
+#[cfg(all(feature = "mod-profiles", feature = "mod-media"))]
 use std::time::Duration;
 
-#[allow(unused_imports)]
+#[cfg(all(feature = "mod-profiles", feature = "mod-media"))]
 use crate::error::Error;
 use crate::error::Result;
 use crate::services::server_runtime_context::ServerRuntimeContext;

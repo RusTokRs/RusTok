@@ -230,6 +230,7 @@ impl AuthLifecycleService {
                 .map_err(|error| InviteAcceptanceError::Internal(error.into()))?;
 
             let already_consumed = auth_invite_consumptions::Entity::find()
+                .filter(auth_invite_consumptions::Column::TenantId.eq(tenant_id))
                 .filter(auth_invite_consumptions::Column::TokenHash.eq(&token_hash))
                 .one(ctx.db())
                 .await
@@ -287,6 +288,7 @@ impl AuthLifecycleService {
         };
 
         let reservation = auth_invite_consumptions::Entity::find_by_id(consumption_id)
+            .filter(auth_invite_consumptions::Column::TenantId.eq(tenant_id))
             .one(&tx)
             .await
             .map_err(|error| InviteAcceptanceError::Internal(error.into()))?

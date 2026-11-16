@@ -124,8 +124,9 @@ pub fn build_redirect_location(
         return resolved.canonical_url.clone();
     }
 
+    // INVARIANT: serializing key-value pairs of valid strings to urlencoded is infallible
     let lang_suffix = serde_urlencoded::to_string([("lang", normalized_lang.as_str())])
-        .expect("serializing lang query for redirect should not fail");
+        .unwrap_or_default();
 
     if resolved.canonical_url.contains('?') {
         format!("{}&{}", resolved.canonical_url, lang_suffix)
@@ -168,8 +169,8 @@ pub fn build_module_route(route_segment: &str, query_params: &HashMap<String, St
         return base;
     }
 
-    let query = serde_urlencoded::to_string(filtered)
-        .expect("serializing module route query should not fail");
+    // INVARIANT: serializing BTreeMap of strings to urlencoded is infallible
+    let query = serde_urlencoded::to_string(filtered).unwrap_or_default();
     format!("{base}?{query}")
 }
 

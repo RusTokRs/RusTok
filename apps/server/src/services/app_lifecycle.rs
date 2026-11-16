@@ -30,7 +30,7 @@ impl StopHandle {
         (Self { stop_tx: tx }, rx)
     }
 
-    /// Create a new `Receiver` subscribed to the shutdown signal.
+    /// Subscribes a new watch `Receiver` to the host shutdown signal.
     ///
     /// The returned receiver immediately sees the current value and will be
     /// notified when [`StopHandle::stop`] is called. Clone it once per background worker
@@ -1106,6 +1106,7 @@ impl ShutdownJoinHandle {
     }
 
     fn handle_mut(&mut self) -> &mut JoinHandle<()> {
+        // INVARIANT: handle_mut is invoked only while the task is armed before disarm/completion.
         self.0.as_mut().expect("shutdown task handle is present")
     }
 

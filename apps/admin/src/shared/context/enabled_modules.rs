@@ -112,6 +112,7 @@ pub fn use_enabled_modules_resource() -> EnabledModulesResource {
 }
 
 pub fn use_enabled_modules_context() -> EnabledModulesContext {
+    // INVARIANT: EnabledModulesProvider is mounted in App shell before child component rendering
     use_context::<EnabledModulesContext>().expect(
         "EnabledModulesContext not found. Make sure to wrap your app with <EnabledModulesProvider>",
     )

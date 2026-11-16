@@ -174,9 +174,11 @@ fn map_auth_admin_error(error: AuthAdminMutationError) -> RbacGraphqlRoleWriteEr
 pub fn rbac_graphql_role_writer_from_context(
     ctx: &ServerRuntimeContext,
 ) -> RbacGraphqlRoleWriterHandle {
+    // INVARIANT: ModuleRuntimeExtensions is registered during bootstrap_app_runtime before GraphQL construction.
     let extensions = ctx
         .shared_get::<Arc<ModuleRuntimeExtensions>>()
         .expect("ModuleRuntimeExtensions must be initialized before GraphQL schema construction");
+    // INVARIANT: UserAdminMutationRuntime is registered during module runtime extensions bootstrap.
     let runtime = extensions
         .get::<UserAdminMutationRuntime>()
         .cloned()

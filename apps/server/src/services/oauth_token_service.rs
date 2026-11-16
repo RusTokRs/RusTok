@@ -200,8 +200,8 @@ impl OAuthTokenService {
             }
         };
 
-        if let Err(error) = OAuthAppService::touch_last_used(db, app.id).await {
-            tracing::warn!(app_id = %app.id, error = %error, "Failed to update OAuth app usage timestamp");
+        if let Err(error) = OAuthAppService::touch_last_used_scoped(db, app.tenant_id, app.id).await {
+            tracing::warn!(app_id = %app.id, tenant_id = %app.tenant_id, error = %error, "Failed to update OAuth app usage timestamp");
         }
 
         Ok(response)
@@ -236,16 +236,10 @@ async fn resolve_client(
     let client_id = required(request.client_id.as_deref(), "client_id is required")?;
     let client_id = Uuid::parse_str(client_id)
         .map_err(|_| OAuthTokenProtocolError::invalid_client("Invalid client_id format"))?;
-    let app = oauth_apps::Entity::find_active_security_by_client_id(db, client_id)
+    let app = oauth_apps::Entity::find_active_security_by_client_id_scoped(db, tenant_id, client_id)
         .await
         .map_err(|_| OAuthTokenProtocolError::server_error("Failed to resolve OAuth client"))?
         .ok_or_else(|| OAuthTokenProtocolError::invalid_client("Unknown or inactive client"))?;
-
-    if app.tenant_id != tenant_id {
-        return Err(OAuthTokenProtocolError::invalid_client(
-            "Client is not registered for this tenant",
-        ));
-    }
 
     Ok(app)
 }
@@ -341,6 +335,8 @@ async fn validate_authorization_code(
     let code_hash = hex::encode(Sha256::digest(raw_code.as_bytes()));
     let code = oauth_codes::Entity::find()
         .filter(oauth_codes::Column::CodeHash.eq(code_hash))
+        .filter(oauth_codes::Column::AppId.eq(app.id))
+        .filter(oauth_codes::Column::TenantId.eq(tenant_id))
         .one(db)
         .await
         .map_err(|_| {

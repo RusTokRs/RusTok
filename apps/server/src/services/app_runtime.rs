@@ -315,6 +315,7 @@ async fn initialize_module_work_runtime(
 pub fn module_runtime_extensions_from_ctx(
     ctx: &ServerRuntimeContext,
 ) -> Arc<ModuleRuntimeExtensions> {
+    // INVARIANT: ModuleRuntimeExtensions is registered in ServerRuntimeContext during bootstrap_app_runtime before any request handlers execute.
     ctx.shared_get::<Arc<ModuleRuntimeExtensions>>()
         .expect("ModuleRuntimeExtensions not initialized; bootstrap_app_runtime must run first")
 }

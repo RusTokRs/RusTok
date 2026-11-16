@@ -150,7 +150,7 @@
   },
   {
     "path": "src/services/processor.rs",
-    "source": "\r\n        pub fn process(input: Input) -> Result<(), Error> {\r\n            let name = input.name.clone();\r\n            // check_permission was verified earlier\r\n            println!(\"Proceeding with name: {}\", name);\r\n            Ok(())\r\n        }\r\n        ",
+    "source": "\r\n        pub fn process(input: Input) -> Result<(), Error> {\r\n            let name = input.name.clone();\r\n            // check_permission was verified earlier\r\n            tracing::info!(\"Proceeding with name: {}\", name);\r\n            Ok(())\r\n        }\r\n        ",
     "findings": []
   },
   {

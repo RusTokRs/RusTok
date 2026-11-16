@@ -165,8 +165,15 @@ async fn preflight(
     }))
 }
 
-#[derive(Clone, Debug)]
-struct ActiveInstallerJobHandle(#[allow(dead_code)] Uuid);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ActiveInstallerJobHandle(Uuid);
+
+impl ActiveInstallerJobHandle {
+    #[must_use]
+    pub fn id(&self) -> Uuid {
+        self.0
+    }
+}
 
 struct InstallerJobRuntimeGuard {
     ctx: ServerRuntimeContext,
@@ -187,7 +194,8 @@ async fn apply(
     require_setup_token(&headers)?;
     ensure_setup_not_completed(&ctx).await?;
 
-    if ctx.shared_contains::<ActiveInstallerJobHandle>() {
+    if let Some(active) = ctx.shared_get::<ActiveInstallerJobHandle>() {
+        tracing::warn!(active_job_id = %active.id(), "Installer job rejected: job already in progress");
         return Err(http_error(HttpError::new(
             StatusCode::CONFLICT,
             "installer_running",

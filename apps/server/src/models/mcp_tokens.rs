@@ -44,7 +44,7 @@ impl Entity {
             return Ok(None);
         }
 
-        let policy = mcp_policies::Entity::find_by_client(db, client.id).await?;
+        let policy = mcp_policies::Entity::find_by_client_scoped(db, client.tenant_id, client.id).await?;
         if policy
             .as_ref()
             .is_some_and(|policy| policy.tenant_id != client.tenant_id)
@@ -91,6 +91,19 @@ impl Entity {
         client_id: Uuid,
     ) -> Result<Vec<Model>, DbErr> {
         Self::find()
+            .filter(Column::ClientId.eq(client_id))
+            .order_by_desc(Column::CreatedAt)
+            .all(db)
+            .await
+    }
+
+    pub async fn find_by_client_scoped(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        client_id: Uuid,
+    ) -> Result<Vec<Model>, DbErr> {
+        Self::find()
+            .filter(Column::TenantId.eq(tenant_id))
             .filter(Column::ClientId.eq(client_id))
             .order_by_desc(Column::CreatedAt)
             .all(db)

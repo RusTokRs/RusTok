@@ -2131,7 +2131,7 @@ pub fn governance_event_summary(
                 "validation_stage_passed" => tr(locale, "passed", "пройден"),
                 "validation_stage_failed" => tr(locale, "failed", "провален"),
                 "validation_stage_blocked" => tr(locale, "is blocked", "заблокирован"),
-                _ => unreachable!(),
+                _ => tr(locale, "unknown", "неизвестно"),
             };
 
             let mut parts = vec![format!("{stage_label} {status}")];
@@ -2152,7 +2152,7 @@ pub fn governance_event_summary(
                 ),
                 "follow_up_gate_passed" => tr(locale, "passed", "пройден"),
                 "follow_up_gate_failed" => tr(locale, "failed", "провален"),
-                _ => unreachable!(),
+                _ => tr(locale, "unknown", "неизвестно"),
             };
 
             let mut parts = vec![format!("{stage_label} {status}")];
@@ -2215,7 +2215,7 @@ pub fn governance_event_summary(
                 "validation_job_started" => tr(locale, "is running", "is running"),
                 "validation_job_succeeded" => tr(locale, "succeeded", "succeeded"),
                 "validation_job_failed" => tr(locale, "failed", "failed"),
-                _ => unreachable!(),
+                _ => tr(locale, "unknown", "unknown"),
             };
 
             let mut parts = vec![format!(

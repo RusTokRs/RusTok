@@ -118,6 +118,7 @@ impl IndexMutationEventAcknowledger for ProductIndexRefreshAcknowledger {
         token: &Self::Token,
     ) -> std::result::Result<(), IndexMutationAcknowledgeFailure> {
         self.group.acknowledge(token).await.map_err(|_| {
+            // INVARIANT: ACK_FAILURE_CODE is a statically valid failure code constant.
             IndexMutationAcknowledgeFailure::retryable(ACK_FAILURE_CODE)
                 .expect("static Product Index acknowledgement failure code is valid: invariant validated at startup")
         })

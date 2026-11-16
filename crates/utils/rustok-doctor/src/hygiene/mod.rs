@@ -56,6 +56,7 @@ struct Scan<'a> {
     vendored: bool,
     services: bool,
     error_file: bool,
+    cli_file: bool,
 }
 
 impl Scan<'_> {
@@ -224,6 +225,7 @@ fn reactive_boundaries(syntax: &str) -> Vec<usize> {
     let mut reactive_depth = None;
     let mut boundaries = Vec::new();
     for captures in tokens.captures_iter(syntax) {
+        // INVARIANT: captures_iter match guarantees group 0 is present.
         let token = captures.get(0).expect("token exists");
         let delimiter = token.as_str().as_bytes()[token.len() - 1];
         if let Some(end) = closing(delimiter) {
@@ -262,6 +264,7 @@ fn transactional_publications(syntax: &str) -> Vec<usize> {
     let mut closings = Vec::new();
     let mut publications = Vec::new();
     for captures in tokens.captures_iter(syntax) {
+        // INVARIANT: captures_iter match guarantees group 0 is present.
         let token = captures.get(0).expect("token exists");
         let delimiter = token.as_str().as_bytes()[token.len() - 1];
         if captures.name("function").is_some() {
@@ -287,6 +290,7 @@ fn transactional_publications(syntax: &str) -> Vec<usize> {
                     .as_ref()
                     .is_some_and(|scope| scope.depth == closings.len())
             {
+                // INVARIANT: pending is verified Some in the condition above.
                 functions.push(pending.take().expect("pending scope exists"));
             }
             closings.push(end);
@@ -296,6 +300,7 @@ fn transactional_publications(syntax: &str) -> Vec<usize> {
                 .last()
                 .is_some_and(|scope| scope.depth == closings.len())
             {
+                // INVARIANT: functions.last() is verified Some in the condition above.
                 let scope = functions.pop().expect("function exists");
                 if scope.transaction {
                     publications.extend(scope.publications);
@@ -363,6 +368,9 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
     .iter()
     .any(|suffix| name.ends_with(suffix))
         || matches!(name.as_str(), "test.rs" | "tests.rs" | "test_support.rs");
+    let cli_file = name == "main.rs"
+        || name == "cli.rs"
+        || parts.iter().any(|part| matches!(part.as_str(), "cli" | "bin" | "xtask"));
     let mut scan = Scan {
         file,
         lines: source::lines(content),
@@ -377,6 +385,7 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
             || matches!(name.as_str(), "service.rs" | "services.rs")
             || name.ends_with("_service.rs"),
         error_file: name.contains("error"),
+        cli_file,
     };
     let syntax = scan
         .lines
@@ -433,24 +442,37 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
             && test_scopes.is_empty()
             && !pending_test
             && !test_attribute
-            && re!(r"^#\s*\[\s*allow\s*\(\s*dead_code\s*\)\s*\]").is_match(code_part)
         {
-            let next_code = scan
-                .lines
-                .iter()
-                .skip(index + 1)
-                .take(3)
-                .map(|l| l.syntax.trim())
-                .find(|s| !s.is_empty())
-                .unwrap_or("");
-            if re!(r"\b(?:pub(?:\s*\([^)]*\))?\s+)?(?:async\s+)?fn\s+").is_match(next_code) {
+            if re!(r"^#\s*\[\s*allow\s*\(\s*dead_code\s*\)\s*\]").is_match(code_part) {
+                let next_code = scan
+                    .lines
+                    .iter()
+                    .skip(index + 1)
+                    .take(3)
+                    .map(|l| l.syntax.trim())
+                    .find(|s| !s.is_empty())
+                    .unwrap_or("");
+                if re!(r"\b(?:pub(?:\s*\([^)]*\))?\s+)?(?:async\s+)?fn\s+").is_match(next_code) {
+                    scan.add(
+                        line_number,
+                        "P-STALE-ALLOW-LINT",
+                        "Suppressed Dead Code Without Expectation",
+                        Severity::Medium,
+                        "Function suppressed using bare '#[allow(dead_code)]'. Dead functions mask incomplete features or abandoned stubs.",
+                        "Either add tests/callers, delete unused code, or migrate to '#[expect(dead_code, reason = \"...\")]' if temporarily required.",
+                    );
+                }
+            } else if re!(r"^#\s*\[\s*allow\s*\(\s*(?:unused_imports|unused_mut)\s*\)\s*\]")
+                .is_match(code_part)
+                || re!(r"\(\s*#\s*\[\s*allow\s*\(\s*dead_code\s*\)\s*\]").is_match(code_part)
+            {
                 scan.add(
                     line_number,
                     "P-STALE-ALLOW-LINT",
-                    "Suppressed Dead Code Without Expectation",
+                    "Suppressed Unused Lint Without Expectation",
                     Severity::Medium,
-                    "Function suppressed using bare '#[allow(dead_code)]'. Dead functions mask incomplete features or abandoned stubs.",
-                    "Either add tests/callers, delete unused code, or migrate to '#[expect(dead_code, reason = \"...\")]' if temporarily required.",
+                    "Code suppressed using bare #[allow(...)]. Replace with genuine implementation or precise #[cfg(...)] feature gating.",
+                    "Remove the suppression attribute and guard the item with proper feature flags or domain logic.",
                 );
             }
         }
@@ -492,6 +514,7 @@ pub fn scan_source(path: &Path, content: &str) -> Vec<Finding> {
                     ),
                     "Implement required behavior and track agreed follow-up in the owner plan.",
                 );
+                // INVARIANT: finding was just added via scan.add above.
                 scan.findings.last_mut().expect("finding exists").content =
                     scan.lines[index].original.trim().to_owned();
             }
@@ -917,6 +940,17 @@ fn check_rules(
     }
 
     if !test_context && !scan.build_file {
+        if !scan.cli_file && re!(r"\b(?:println|eprintln|dbg)\s*!\s*\(").is_match(text) {
+            scan.add(
+                number,
+                "P-LOG-RAW-PRINT",
+                "Structured Logging Over Raw Print",
+                Severity::High,
+                "Direct println!, eprintln!, or dbg! in production runtime code. Use tracing::{info, warn, error, debug}!.",
+                "Replace with tracing::info!, tracing::warn!, tracing::error!, or tracing::debug!.",
+            );
+        }
+
         let static_item = static_depth.is_some_and(|scope| depth >= scope)
             || re!(r"^\s*(?:pub(?:\s*\([^)]*\))?\s+)?(?:static|const)\b").is_match(text)
             || text.contains("Lazy::new")
@@ -961,9 +995,16 @@ fn check_rules(
             && !static_item
             && !(text.contains("Regex::new") && (text.contains("static") || text.contains("const")))
         {
-            scan.add(number, "P-ZERO-PANIC-PROD", "Zero Production Panics", Severity::High,
-                "Calling .expect() or .unwrap() in production path. Return typed DomainError / PortError.",
-                "Use '?' operator with .map_err(DomainError::from) or return Result.");
+            let has_invariant = scan.lines[..index]
+                .iter()
+                .rev()
+                .take(8)
+                .any(|prev| prev.comment.contains("INVARIANT:") || prev.comment.contains("physically guaranteed:"));
+            if !has_invariant {
+                scan.add(number, "P-ZERO-PANIC-PROD", "Zero Production Panics", Severity::High,
+                    "Calling .expect() or .unwrap() in production path. Return typed DomainError / PortError.",
+                    "Use '?' operator with .map_err(DomainError::from) or return Result.");
+            }
         }
         if re!(r"\.unwrap_err\s*\(").is_match(text) {
             scan.add(
@@ -984,6 +1025,23 @@ fn check_rules(
                 "Calling panic!(...) in production path. Return typed DomainError / PortError.",
                 "return Err(DomainError::from(...));",
             );
+        }
+        if re!(r"\bunreachable!\s*\(").is_match(text) {
+            let has_invariant = scan.lines[..index]
+                .iter()
+                .rev()
+                .take(8)
+                .any(|prev| prev.comment.contains("INVARIANT:") || prev.comment.contains("physically guaranteed:"));
+            if !has_invariant {
+                scan.add(
+                    number,
+                    "P-ZERO-PANIC-PROD",
+                    "Zero Production Panics",
+                    Severity::High,
+                    "Calling unreachable!(...) in production path. Document invariant or handle branch defensively.",
+                    "Use '// INVARIANT:' or return an error/fallback value.",
+                );
+            }
         }
     }
 
@@ -1105,6 +1163,11 @@ fn check_rules(
             scan.add(number, "P-TENANT-FALLBACK-LEAK", "Tenant Fallback Leakage", Severity::Critical,
                 "Possible default tenant selector. Verify that missing tenant authority fails closed.",
                 "tenant_id.ok_or(DomainError::TenantNotFound)?");
+        }
+        if re!(r"\bif\s+[A-Za-z_]\w*\.tenant_id\s*!=\s*tenant_id\b").is_match(text) {
+            scan.add(number, "P-TENANT-FALLBACK-LEAK", "Post-Hoc In-Memory Tenant Isolation", Severity::Critical,
+                "Entity tenant checked in memory after query. Queries must filter by tenant_id at the database level to ensure fail-closed isolation.",
+                "Add .filter(Column::TenantId.eq(tenant_id)) directly to the database query.");
         }
         if publications
             .iter()

@@ -47,8 +47,10 @@ impl AlloyScriptPresentationTranslationTargetProvider {
 
     fn descriptor_value() -> TranslationTargetProviderDescriptor {
         TranslationTargetProviderDescriptor {
+            // INVARIANT: Static Alloy owner slug satisfies Translation target contract.
             owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
                 .expect("static Alloy owner slug must satisfy Translation target contract: invariant validated at startup"),
+            // INVARIANT: Static Alloy Script presentation kind satisfies Translation contract.
             resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
                 .expect("static Alloy Script presentation kind must satisfy Translation contract: invariant validated at startup"),
             display_name: "Alloy Script Presentations".to_string(),
@@ -478,10 +480,13 @@ fn parse_identity(identity: &TranslationResourceIdentity) -> Result<Uuid, PortEr
 
 fn script_presentation_identity(script_id: Uuid) -> TranslationResourceIdentity {
     TranslationResourceIdentity {
+        // INVARIANT: Static Alloy owner slug satisfies Translation target contract.
         owner_slug: OwnerSlug::new(TRANSLATION_OWNER_SLUG)
             .expect("static Alloy owner slug must satisfy Translation target contract: invariant validated at startup"),
+        // INVARIANT: Static Alloy resource kind satisfies Translation target contract.
         resource_kind: ResourceKind::new(TRANSLATION_RESOURCE_KIND)
             .expect("static Alloy resource kind must satisfy Translation target contract: invariant validated at startup"),
+        // INVARIANT: UUID Script id string satisfies Translation resource id contract.
         resource_id: ResourceId::new(script_id.to_string())
             .expect("UUID Script id must satisfy Translation target contract"),
         subresource_id: None,
@@ -515,6 +520,7 @@ fn tenant_locale_from_stored(locale: StoredLocale) -> Result<TenantLocale, PortE
 
 fn description_descriptor() -> TranslationFieldDescriptor {
     TranslationFieldDescriptor {
+        // INVARIANT: Static Alloy description field key satisfies Translation target contract.
         key: FieldKey::new(DESCRIPTION_FIELD_KEY)
             .expect("static Alloy description field key must satisfy Translation target contract: invariant validated at startup"),
         profile: TranslationValueProfile::PlainText,

@@ -264,14 +264,10 @@ async fn resolve_active_oauth_app(
     required_grant_type: &'static str,
     token_scopes: &[String],
 ) -> Result<oauth_apps::Model, (StatusCode, &'static str)> {
-    let app = OAuthApps::find_active_security_by_client_id(db, client_id)
+    let app = OAuthApps::find_active_security_by_client_id_scoped(db, tenant_id, client_id)
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
         .ok_or((StatusCode::UNAUTHORIZED, "OAuth app not found or inactive"))?;
-
-    if app.tenant_id != tenant_id {
-        return Err((StatusCode::FORBIDDEN, "Token belongs to another tenant"));
-    }
 
     if !app.supports_grant_type(required_grant_type) {
         return Err((
@@ -429,6 +425,7 @@ pub async fn resolve_current_user_from_access_token(
 
     if principal_kind == AuthPrincipalKind::DirectUser {
         let session = Sessions::find_by_id(claims.session_id)
+            .filter(crate::models::sessions::Column::TenantId.eq(tenant_id))
             .one(db)
             .await
             .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
@@ -478,6 +475,7 @@ pub async fn resolve_current_user_from_access_token(
     let (user, permissions, inferred_role, session_id, actor_kind) = match principal_kind {
         AuthPrincipalKind::DirectUser | AuthPrincipalKind::DelegatedUser => {
             let user = Users::find_by_id(claims.sub)
+                .filter(users::Column::TenantId.eq(tenant_id))
                 .one(db)
                 .await
                 .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?

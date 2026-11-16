@@ -151,8 +151,16 @@ async fn execute_remote_tool_call(
     let binding = bridge.resolve_binding_for_token(&plaintext_token).await?;
     let audit_metadata = remote_tool_audit_metadata(&input.tool_name, input.metadata.clone());
 
-    #[allow(unused_mut)]
+    #[cfg(feature = "mod-alloy")]
     let mut decision = if input.tool_name == TOOL_MCP_HEALTH {
+        rustok_mcp::McpAuthorizationDecision::allow()
+    } else {
+        binding
+            .access_context
+            .authorize_tool(&default_tool_requirement(&input.tool_name))
+    };
+    #[cfg(not(feature = "mod-alloy"))]
+    let decision = if input.tool_name == TOOL_MCP_HEALTH {
         rustok_mcp::McpAuthorizationDecision::allow()
     } else {
         binding

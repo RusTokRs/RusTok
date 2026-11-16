@@ -2027,7 +2027,6 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                             governance_reason=governance_reason.into()
                                             set_governance_reason=set_governance_reason
                                             governance_intent_action=governance_intent_action.into()
-                                            set_governance_intent_action=set_governance_intent_action
                                             governance_actions_for_form=governance_actions_for_form.into()
                                             governance_submitting=governance_submitting.into()
                                             governance_confirmation_action=governance_confirmation_action.into()

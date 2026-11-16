@@ -130,8 +130,10 @@ fn enrich_runtime_extensions_after_event_start(
     ctx: &ServerRuntimeContext,
     extensions: Arc<ModuleRuntimeExtensions>,
 ) -> Arc<ModuleRuntimeExtensions> {
-    #[allow(unused_mut)]
+    #[cfg(any(feature = "mod-pages", feature = "commerce-marketplace-financial"))]
     let mut enriched = extensions.as_ref().clone();
+    #[cfg(not(any(feature = "mod-pages", feature = "commerce-marketplace-financial")))]
+    let enriched = extensions.as_ref().clone();
 
     #[cfg(feature = "mod-pages")]
     {

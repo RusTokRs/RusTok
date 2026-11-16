@@ -53,7 +53,7 @@ impl TopicFieldService {
 
     // ── CRUD ─────────────────────────────────────────────────────────────
 
-    /// Create a new field definition.
+    /// Registers a topic custom field definition scoped to the given tenant.
     ///
     /// Enforces:
     /// - field_key format (`^[a-z][a-z0-9_]{0,127}$`)

@@ -365,12 +365,16 @@ impl TenantCacheKeyBuilder {
             self.version,
             resource,
         )
+        // INVARIANT: Fixed tenant cache key components are valid.
         .expect("tenant cache fixed key components are valid")
         .named_identity("kind", kind.as_str())
+        // INVARIANT: Tenant identifier kind is non-empty.
         .expect("tenant identifier kind is non-empty")
         .named_identity("generation", generation.to_string())
+        // INVARIANT: Tenant cache generation is a bounded decimal value.
         .expect("tenant cache generation is a bounded decimal value")
         .hashed(value)
+        // INVARIANT: Validated tenant identifier is non-empty.
         .expect("validated tenant identifier is non-empty")
         .build()
     }

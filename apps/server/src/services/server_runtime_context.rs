@@ -72,6 +72,7 @@ impl ServerSharedValues {
             Entry::Occupied(entry) => entry
                 .get()
                 .downcast_ref::<T>()
+                // INVARIANT: Entry is keyed by TypeId::of::<T>(), so downcast to T cannot fail.
                 .expect("typed shared runtime value must match its TypeId key")
                 .clone(),
             Entry::Vacant(entry) => {

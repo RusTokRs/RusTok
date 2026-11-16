@@ -565,7 +565,7 @@ fn build_module_route(route_segment: &str, query_params: &HashMap<String, String
     if filtered.is_empty() {
         return base;
     }
-    let query = serde_urlencoded::to_string(filtered)
-        .expect("serializing module route query should not fail");
+    // INVARIANT: serializing BTreeMap of strings to urlencoded is infallible
+    let query = serde_urlencoded::to_string(filtered).unwrap_or_default();
     format!("{base}?{query}")
 }
