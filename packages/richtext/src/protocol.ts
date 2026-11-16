@@ -36,6 +36,7 @@ export type RichTextHostCommand =
   | { type: 'set_editable'; payload: { editable: boolean } }
   | { type: 'focus'; payload: Record<string, never> }
   | { type: 'request_document'; payload: Record<string, never> }
+  | { type: 'ping'; payload: Record<string, never> }
   | { type: 'destroy'; payload: Record<string, never> };
 
 export type RichTextFrameEvent =
@@ -43,6 +44,7 @@ export type RichTextFrameEvent =
   | { type: 'document_changed'; payload: { document: RichTextDocument } }
   | { type: 'document'; payload: { document: RichTextDocument } }
   | { type: 'focus_changed'; payload: { focused: boolean } }
+  | { type: 'pong'; payload: Record<string, never> }
   | { type: 'error'; payload: { code: string; message: string } };
 
 export interface RichTextEnvelope<T> {

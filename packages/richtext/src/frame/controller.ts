@@ -10,6 +10,7 @@ import {
   type RichTextAuthoringContext,
   type RichTextAuthoringContextInput
 } from '../authoring';
+import { localStorageDraftStorage } from '../draft';
 import {
   MAX_PROTOCOL_OVERHEAD_BYTES,
   RICH_TEXT_PROTOCOL,
@@ -30,6 +31,7 @@ export interface ConnectRichTextFrameOptions {
   direction?: RichTextAuthoringContextInput['direction'];
   spellcheck?: boolean;
   editable?: boolean;
+  draftKey?: string;
   timeoutMs?: number;
   onDocumentChange(document: RichTextDocument): void;
   onFocusChange?(focused: boolean): void;
@@ -43,6 +45,8 @@ export class RichTextFrameController {
   private outboundSequence = 0;
   private inboundSequence = 0;
   private destroyed = false;
+  private heartbeatInterval?: number;
+  private heartbeatTimeout?: number;
   private document: RichTextDocument;
   private editable: boolean;
   private authoringContext: RichTextAuthoringContext;
@@ -53,7 +57,12 @@ export class RichTextFrameController {
 
   constructor(private readonly options: ConnectRichTextFrameOptions) {
     this.session = crypto.randomUUID();
-    this.document = options.document;
+    if (options.draftKey) {
+      const draft = localStorageDraftStorage.loadDraft(options.draftKey);
+      this.document = draft ?? options.document;
+    } else {
+      this.document = options.document;
+    }
     this.editable = options.editable ?? true;
     this.authoringContext = createRichTextAuthoringContext({
       contentLocale: options.contentLocale,
@@ -110,11 +119,27 @@ export class RichTextFrameController {
 
   destroy(): void {
     if (this.destroyed) return;
+    this.stopHeartbeat();
     if (this.port) this.send({ type: 'destroy', payload: {} });
     this.destroyed = true;
     this.cleanupHandshake?.();
     this.port?.close();
     this.port = undefined;
+  }
+
+  private startHeartbeat(): void {
+    this.heartbeatInterval = window.setInterval(() => {
+      this.send({ type: 'ping', payload: {} });
+      this.heartbeatTimeout = window.setTimeout(() => {
+        this.options.onError?.('heartbeat_timeout', 'The editor frame stopped responding.');
+        this.destroy();
+      }, 5000);
+    }, 10000);
+  }
+
+  private stopHeartbeat(): void {
+    window.clearInterval(this.heartbeatInterval);
+    window.clearTimeout(this.heartbeatTimeout);
   }
 
   private connect(): void {
@@ -160,6 +185,7 @@ export class RichTextFrameController {
           editable: this.editable
         }
       });
+      this.startHeartbeat();
     };
     this.cleanupHandshake = () => {
       window.clearTimeout(timeout);
@@ -206,6 +232,9 @@ export class RichTextFrameController {
       case 'document': {
         const document = this.acceptDocument(message.payload.document);
         if (!document) return;
+        if (this.options.draftKey) {
+          localStorageDraftStorage.saveDraft(this.options.draftKey, document);
+        }
         this.options.onDocumentChange(document);
         break;
       }
@@ -215,6 +244,10 @@ export class RichTextFrameController {
           return;
         }
         this.options.onFocusChange?.(message.payload.focused);
+        break;
+      }
+      case 'pong': {
+        window.clearTimeout(this.heartbeatTimeout);
         break;
       }
       case 'error': {

@@ -93,8 +93,8 @@
     "@rustok/commerce-admin": "file:./packages/commerce",
     "@rustok/email-admin": "file:./packages/email",
     "@rustok/events-admin": "file:./packages/events",
-    "@rustok/forum-admin": "file:./packages/forum",
     "@rustok/forms-admin": "file:./packages/forms",
+    "@rustok/forum-admin": "file:./packages/forum",
     "@rustok/iggy-connector-admin": "file:./packages/iggy-connector",
     "@rustok/mcp-admin": "file:./packages/rustok-mcp",
     "@rustok/media-admin": "file:./packages/media",
@@ -106,6 +106,7 @@
     "@rustok/richtext": "file:../../packages/richtext",
     "@rustok/search-admin": "file:./packages/search",
     "@rustok/translation-admin": "file:./packages/translation",
+    "@rustok/ui-controls": "file:../../packages/rustok-ui-controls",
     "@rustok/ui-grid": "file:../../packages/rustok-ui-grid",
     "@rustok/workflow-admin": "file:./packages/workflow",
     "@sentry/nextjs": "^11.11.0",
@@ -131,7 +132,7 @@
     "nextjs-toploader": "^3.7.15",
     "nuqs": "^2.10.2",
     "postcss": "8.5.32",
-    "react": "19.3.0",
+    "react": "19.3.1",
     "react-day-picker": "^10.0.2",
     "react-dom": "19.3.1",
     "react-dropzone": "^20.1.4",
@@ -149,8 +150,7 @@
     "uuid": "^14.0.3",
     "vaul": "^1.1.2",
     "zod": "^4.6.7",
-    "zustand": "^5.0.16",
-    "@rustok/ui-controls": "file:../../packages/rustok-ui-controls"
+    "zustand": "^5.0.16"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.7",
@@ -163,6 +163,7 @@
     "@types/uuid": "^11.0.0",
     "@typescript-eslint/eslint-plugin": "^8.72.1",
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
+    "ajv": "8.20.0",
     "grapesjs": "0.23.6",
     "grapesjs-preset-webpage": "1.0.3",
     "husky": "^9.1.7",
@@ -170,8 +171,7 @@
     "prettier": "3.9.10",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "tw-animate-css": "^1.2.4",
-    "typescript": "6.0.3",
-    "ajv": "8.20.0"
+    "typescript": "6.0.3"
   },
   "license": "BUSL-1.1"
 }

@@ -379,12 +379,40 @@ function isRecord3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// src/draft.ts
+var localStorageDraftStorage = {
+  saveDraft(key, doc) {
+    localStorage.setItem(`richtext_draft_${key}`, JSON.stringify({
+      timestamp: Date.now(),
+      doc
+    }));
+  },
+  loadDraft(key) {
+    const item = localStorage.getItem(`richtext_draft_${key}`);
+    if (!item) return void 0;
+    try {
+      const { doc } = JSON.parse(item);
+      return doc;
+    } catch {
+      return void 0;
+    }
+  },
+  clearDraft(key) {
+    localStorage.removeItem(`richtext_draft_${key}`);
+  }
+};
+
 // src/frame/controller.ts
 var RichTextFrameController = class {
   constructor(options) {
     this.options = options;
     this.session = crypto.randomUUID();
-    this.document = options.document;
+    if (options.draftKey) {
+      const draft = localStorageDraftStorage.loadDraft(options.draftKey);
+      this.document = draft ?? options.document;
+    } else {
+      this.document = options.document;
+    }
     this.editable = options.editable ?? true;
     this.authoringContext = createRichTextAuthoringContext({
       contentLocale: options.contentLocale,
@@ -404,6 +432,8 @@ var RichTextFrameController = class {
   outboundSequence = 0;
   inboundSequence = 0;
   destroyed = false;
+  heartbeatInterval;
+  heartbeatTimeout;
   document;
   editable;
   authoringContext;
@@ -446,11 +476,25 @@ var RichTextFrameController = class {
   }
   destroy() {
     if (this.destroyed) return;
+    this.stopHeartbeat();
     if (this.port) this.send({ type: "destroy", payload: {} });
     this.destroyed = true;
     this.cleanupHandshake?.();
     this.port?.close();
     this.port = void 0;
+  }
+  startHeartbeat() {
+    this.heartbeatInterval = window.setInterval(() => {
+      this.send({ type: "ping", payload: {} });
+      this.heartbeatTimeout = window.setTimeout(() => {
+        this.options.onError?.("heartbeat_timeout", "The editor frame stopped responding.");
+        this.destroy();
+      }, 5e3);
+    }, 1e4);
+  }
+  stopHeartbeat() {
+    window.clearInterval(this.heartbeatInterval);
+    window.clearTimeout(this.heartbeatTimeout);
   }
   connect() {
     const nonce = crypto.randomUUID();
@@ -490,6 +534,7 @@ var RichTextFrameController = class {
           editable: this.editable
         }
       });
+      this.startHeartbeat();
     };
     this.cleanupHandshake = () => {
       window.clearTimeout(timeout);
@@ -532,6 +577,9 @@ var RichTextFrameController = class {
       case "document": {
         const document = this.acceptDocument(message.payload.document);
         if (!document) return;
+        if (this.options.draftKey) {
+          localStorageDraftStorage.saveDraft(this.options.draftKey, document);
+        }
         this.options.onDocumentChange(document);
         break;
       }
@@ -541,6 +589,10 @@ var RichTextFrameController = class {
           return;
         }
         this.options.onFocusChange?.(message.payload.focused);
+        break;
+      }
+      case "pong": {
+        window.clearTimeout(this.heartbeatTimeout);
         break;
       }
       case "error": {

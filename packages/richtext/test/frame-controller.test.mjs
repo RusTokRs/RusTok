@@ -6,7 +6,7 @@ import { build } from 'esbuild';
 // Bundle the production controller and its canonical validators, not a protocol replica.
 const bundle = await build({
   entryPoints: [
-    new URL('../src/frame/controller.ts', import.meta.url).pathname,
+    fileURLToPath(new URL('../src/frame/controller.ts', import.meta.url)),
   ],
   bundle: true,
   write: false,
@@ -34,6 +34,8 @@ function harness(t) {
       location: { href: 'https://example.test/forum' },
       setTimeout: () => 1,
       clearTimeout() {},
+      setInterval: () => 1,
+      clearInterval() {},
       addEventListener: (name, fn) => listeners.set(name, fn),
       removeEventListener: (name) => listeners.delete(name),
     },

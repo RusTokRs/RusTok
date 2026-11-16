@@ -105,6 +105,9 @@ function receive(value: unknown): void {
     case 'focus':
       editor?.commands.focus();
       break;
+    case 'ping':
+      send({ type: 'pong', payload: {} });
+      break;
     case 'request_document':
       if (editor) send({ type: 'document', payload: { document: editor.getJSON() as RichTextDocument } });
       break;
