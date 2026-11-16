@@ -526,7 +526,7 @@ The July 29 attestation is retained for its original projection and consumer har
 |---|---|
 | Provider selection | `apps/server/src/services/product_catalog_deployment.rs` installs the selected external read and/or command runtime before ordinary bootstrap. Invalid configuration or connection aborts startup. |
 | Wire operations | `ReadProductProjection`, `ReadVariantProductProjection` and `ListPublishedProducts` cover base catalog projections. `ReadStorefrontVariantProductProjection` applies Product visibility rules when Cart resolves a SKU. `ReadVariantIdentities` and `ListProductVariantIdentities` cover `ProductVariantIdentityReadPort`. |
-| Additional reads | Filtered lists, facets and storefront detail have RPCs. External runtime schema, HTTP and tag handles remain absent unless explicitly supplied. |
+| Additional reads | Filtered lists, facets, storefront detail and Flex attached values have RPCs. Attached values require a dedicated grant. External runtime schema, HTTP and tag handles remain absent unless explicitly supplied. |
 | Mounted consumers | Pricing reads SKU identity from the selected Product provider. Local Commerce HTTP checkout passed in both profiles. Some storefront REST and Product admin paths still access local catalog services or entities. AI attributes and `product_copy` use the host-selected read port. `product_copy` also requires the selected command port. |
 | Commands | The opt-in gRPC service exposes 15 command-port operations including preview. The consumer must authorize delegation. Writes are attributed to a configured service UUID. The standalone owner lacks embedded Pricing, Shipping Profile and Media bindings. |
 | Transactions | Product, Pricing and Inventory lifecycle/bootstrap operations share a local SQL transaction. Their transaction-participant interfaces cannot cross RPC. |
@@ -537,17 +537,28 @@ Product's packaging now implements the [canonical FBA layout](../../../../docs/b
 - The domain implementation, entities, migrations, and standalone service binary live in `rustok-product` (`src/bin/service.rs` behind feature `service`).
 - Former separate crates `rustok-product-transport` and `rustok-product-catalog-service` are retired and consolidated into `rustok-product`.
 - The strict FBA layout check still fails on the Product runtime's direct Flex
-  dependency. Reconcile shared attached-value storage, Taxonomy-dependent
+  dependency. Reconcile schema/policy access, Taxonomy-dependent
   migrations and remaining provider bypasses before claiming independently
   provisioned Product storage.
 
-The Flex GraphQL host also writes Product metadata and shared localized Product
-values. Route that path through Product before moving those values to Product
-storage so the handoff has a single writer. Flex continues to own field definitions
-and policies. Product's existing migrations reference Tenant and Taxonomy tables.
+Flex GraphQL reads Product attached fields through the selected embedded or
+authenticated gRPC port. The dedicated read credential grants only
+`ReadAttachedValues` and uses the configured Product service actor. The embedded
+owner commits update and delete with the field values, revision and Product event
+in one transaction. Remote attached-field commands still need stable caller keys
+and owner receipts that replay the committed result.
+Local verification exercised the dedicated grant over loopback gRPC and read a
+localized value from the standalone Product process on a disposable PostgreSQL
+fixture. Separate-process GraphQL parity remains an end-to-end verification gate.
+The [storage cutover](../README.md#attached-value-storage-cutover) moves localized
+Product values to `product_attached_localized_values`. Create, update, reads and
+donor deletion all use the owner storage. Flex owns the field schema and policy
+contracts. Product still reads definitions from `product_field_definitions` and
+uses embedded Flex validation. The Flex schema and policy port binding remains
+open. Product's existing migrations reference Tenant and Taxonomy tables.
 Replace cross-owner deletion and synchronization behavior before provisioning a
 Product-only schema, and keep the existing installation upgrade path verifiable.
-- Cross-module foreign keys (`taxonomy_terms`, `flex_field_definition_cache_generation`) are guarded during migrations for independent database execution.
+- Historical Taxonomy foreign keys and Flex cache-generation migration dependencies remain part of the platform upgrade path.
 - Historical evidence files retain their original recorded paths and commands.
 
 The bounded remote read profile is compatible with local commands. A shared database

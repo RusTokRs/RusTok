@@ -8,6 +8,7 @@ use flex::{
     GenericAttachedFieldDefinitionService, TAXONOMY_CATEGORY_ENTITY_TYPE, load_exact_locale_values,
     load_generic_attached_shared_values,
 };
+use rustok_api::{PortActor, PortContext};
 use rustok_core::{
     MigrationSource, SecurityContext, UserRole,
     field_schema::{FieldType, FlexError},
@@ -155,6 +156,7 @@ async fn category_flex_transport_roundtrips_real_owner_and_hard_delete_cleans_va
     let english = adapter
         .update_values(
             tenant_id,
+            None,
             TAXONOMY_CATEGORY_ENTITY_TYPE,
             category_id,
             "en",
@@ -168,6 +170,7 @@ async fn category_flex_transport_roundtrips_real_owner_and_hard_delete_cleans_va
     let arabic = adapter
         .update_values(
             tenant_id,
+            None,
             TAXONOMY_CATEGORY_ENTITY_TYPE,
             category_id,
             "ar",
@@ -180,10 +183,14 @@ async fn category_flex_transport_roundtrips_real_owner_and_hard_delete_cleans_va
 
     let fallback = adapter
         .resolve_values(
-            tenant_id,
+            PortContext::new(
+                tenant_id.to_string(),
+                PortActor::system(),
+                "fr",
+                "test-category-flex",
+            ),
             TAXONOMY_CATEGORY_ENTITY_TYPE,
             category_id,
-            "fr",
             "en",
         )
         .await
@@ -195,6 +202,7 @@ async fn category_flex_transport_roundtrips_real_owner_and_hard_delete_cleans_va
         adapter
             .update_values(
                 tenant_id,
+                None,
                 TAXONOMY_CATEGORY_ENTITY_TYPE,
                 tag_id,
                 "en",
@@ -206,10 +214,9 @@ async fn category_flex_transport_roundtrips_real_owner_and_hard_delete_cleans_va
     assert!(matches!(
         adapter
             .resolve_values(
-                other_tenant_id,
+                PortContext::new(other_tenant_id.to_string(), PortActor::system(), "en", "test-category-flex"),
                 TAXONOMY_CATEGORY_ENTITY_TYPE,
                 category_id,
-                "en",
                 "en",
             )
             .await,

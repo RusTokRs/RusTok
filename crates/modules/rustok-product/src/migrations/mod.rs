@@ -64,6 +64,7 @@ mod m20261018_000037_create_product_media_releases;
 mod m20261026_000038_create_variant_axes_tables;
 pub mod m20261104_000039_create_product_brands;
 mod m20261109_000040_fix_index_graph_update_trigger;
+pub mod m20261116_000041_move_product_attached_localized_values;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -136,6 +137,7 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261026_000038_create_variant_axes_tables::Migration),
         Box::new(m20261104_000039_create_product_brands::Migration),
         Box::new(m20261109_000040_fix_index_graph_update_trigger::Migration),
+        Box::new(m20261116_000041_move_product_attached_localized_values::Migration),
     ]
 }
 
@@ -189,6 +191,13 @@ pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
         MigrationDependencyDescriptor::new(
             "m20261017_000036_add_sqlite_tenant_identity_keys",
             vec!["m20260701_000002_add_product_catalog_tenant_consistency_constraints"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261116_000041_move_product_attached_localized_values",
+            vec![
+                "m20260410_000001_cleanup_flex_attached_legacy_inline_metadata",
+                "m20261017_000036_add_sqlite_tenant_identity_keys",
+            ],
         ),
     ]
 }

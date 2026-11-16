@@ -42,13 +42,12 @@ mod attached_values_storage {
     use sea_orm::entity::prelude::*;
 
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-    #[sea_orm(table_name = "flex_attached_localized_values")]
+    #[sea_orm(table_name = "product_attached_localized_values")]
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
         pub id: Uuid,
         pub tenant_id: Uuid,
-        pub entity_type: String,
-        pub entity_id: Uuid,
+        pub product_id: Uuid,
         pub field_key: String,
         pub locale: String,
         pub value: Json,
@@ -478,6 +477,7 @@ async fn test_create_product_applies_custom_field_defaults_and_splits_localized_
     .await;
 
     let mut input = create_test_product_input();
+    input.variants[0].prices.clear();
     input.metadata = serde_json::json!({
         "marketing_copy": "English promo",
         "unknown_custom": "keep-me"
@@ -507,8 +507,7 @@ async fn test_create_product_applies_custom_field_defaults_and_splits_localized_
 
     let localized_rows = attached_values_storage::Entity::find()
         .filter(attached_values_storage::Column::TenantId.eq(tenant_id))
-        .filter(attached_values_storage::Column::EntityType.eq("product"))
-        .filter(attached_values_storage::Column::EntityId.eq(product.id))
+        .filter(attached_values_storage::Column::ProductId.eq(product.id))
         .all(&db)
         .await
         .expect("localized rows query should succeed");
@@ -526,7 +525,8 @@ async fn test_create_product_rejects_missing_required_localized_custom_field() {
 
     insert_product_field_definition(&db, tenant_id, "marketing_copy", true, true, None, 0).await;
 
-    let input = create_test_product_input();
+    let mut input = create_test_product_input();
+    input.variants[0].prices.clear();
     let error = service
         .create_product(tenant_id, actor_id, input)
         .await
@@ -553,6 +553,7 @@ async fn test_product_locale_fallback_resolves_localized_flex_metadata_from_atta
     insert_product_field_definition(&db, tenant_id, "badge", false, false, None, 1).await;
 
     let mut input = create_test_product_input();
+    input.variants[0].prices.clear();
     input.metadata = serde_json::json!({
         "marketing_copy": "English promo",
         "badge": "featured"
@@ -634,8 +635,7 @@ async fn test_product_locale_fallback_resolves_localized_flex_metadata_from_atta
 
     let localized_rows = attached_values_storage::Entity::find()
         .filter(attached_values_storage::Column::TenantId.eq(tenant_id))
-        .filter(attached_values_storage::Column::EntityType.eq("product"))
-        .filter(attached_values_storage::Column::EntityId.eq(product.id))
+        .filter(attached_values_storage::Column::ProductId.eq(product.id))
         .all(&db)
         .await
         .expect("localized rows query should succeed");

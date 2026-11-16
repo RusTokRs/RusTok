@@ -80,7 +80,9 @@ requireAll(source, [
   "OutboxTransport::new(database.clone())",
   "TransactionalEventBus::new(outbox)",
   "ProductCatalogGrpcService::new(provider.clone())",
-  ".with_variant_identity_read_port(provider)",
+  ".with_variant_identity_read_port(provider.clone())",
+  ".with_attached_values_read_port(provider)",
+  ".with_allowed_operations([ProductCatalogGrpcOperation::ReadAttachedValues])",
   "ProductCatalogGrpcBearerInterceptor::from_bearer_token(",
   "PortActor::service(config.trusted_service_actor.clone())",
   "ProductCatalogReadServiceServer::with_interceptor(service, interceptor)",
@@ -108,7 +110,7 @@ requireAll(source, [
   "SysEvents",
   "entities::{Product, ProductVariant}",
   "EntityTrait",
-  'REQUIRED_SCHEMA_TABLES: [&str; 3] = ["products", "product_variants", "sys_events"]',
+  "REQUIRED_SCHEMA_TABLES: [&str; 4]",
   "async fn verify_required_schema(database: &DatabaseConnection)",
   "Product::find()",
   "ProductVariant::find()",
@@ -116,6 +118,7 @@ requireAll(source, [
   'schema_preflight_error("products")',
   'schema_preflight_error("product_variants")',
   'schema_preflight_error("sys_events")',
+  'schema_preflight_error("product_attached_localized_values")',
   "run platform migrations before starting the service",
   "Product catalog database schema preflight passed",
 ], "Product service schema preflight");
@@ -218,7 +221,7 @@ if (registry) {
       failures.push(`Product registry ${key} must be ${value}`);
     }
   }
-  const expectedTables = ["products", "product_variants", "sys_events"];
+  const expectedTables = ["products", "product_variants", "sys_events", "product_attached_localized_values"];
   if (JSON.stringify(external.provider_host_schema_preflight_tables) !== JSON.stringify(expectedTables)) {
     failures.push("Product registry provider_host_schema_preflight_tables drift");
   }

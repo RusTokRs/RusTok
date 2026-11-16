@@ -1,6 +1,7 @@
 #[path = "variant_axes.rs"]
 pub(super) mod variant_axes;
 
+use super::attached_localized_storage;
 use super::concurrency::{ensure_expected_revision, next_revision, validate_patch_text_length};
 use super::*;
 use crate::services::catalog_schema_service::policy::lock_schema_for_product_write;
@@ -8,7 +9,7 @@ use rustok_api::{Patch, TenantLocale};
 use rustok_core::error::Error as CoreError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult};
 
-async fn find_product_for_update_in_tx(
+pub(super) async fn find_product_for_update_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     product_id: Uuid,
@@ -269,16 +270,10 @@ impl CatalogService {
             prepared_custom_fields.locale.as_deref(),
             prepared_custom_fields.localized_values.as_ref(),
         ) {
-            flex::persist_localized_values(
-                &txn,
-                tenant_id,
-                flex::PRODUCT_ENTITY_TYPE,
-                product_id,
-                locale,
-                values,
+            attached_localized_storage::replace_for_locale(
+                &txn, tenant_id, product_id, locale, values,
             )
-            .await
-            .map_err(CommerceError::from)?;
+            .await?;
         }
 
         let translation_locales = collect_translation_locales(&input.translations);
@@ -747,16 +742,10 @@ impl CatalogService {
                 prepared_custom_fields.localized_values.as_ref(),
             )
         {
-            flex::persist_localized_values(
-                &txn,
-                tenant_id,
-                flex::PRODUCT_ENTITY_TYPE,
-                product_id,
-                locale,
-                values,
+            attached_localized_storage::replace_for_locale(
+                &txn, tenant_id, product_id, locale, values,
             )
-            .await
-            .map_err(CommerceError::from)?;
+            .await?;
         }
 
         let translation_inputs = input.translations.clone();
@@ -1333,15 +1322,6 @@ impl CatalogService {
                 crate::ports::ProductInventoryDeletionBlocker::ConcurrentChange,
             ));
         }
-
-        flex::delete_attached_localized_values(
-            &txn,
-            tenant_id,
-            flex::PRODUCT_ENTITY_TYPE,
-            product_id,
-        )
-        .await
-        .map_err(CommerceError::from)?;
 
         txn.publish_product_deleted(tenant_id, Some(actor_id), product_id, &image_ids)
             .await?;

@@ -22,8 +22,8 @@ Product follows the [canonical FBA layout](../../../docs/backend/module-backend-
 The remote capability remains bounded to its supported operations.
 The strict Product FBA layout check still rejects the direct Flex runtime dependency.
 The current separate-process profile uses the platform-migrated schema. A Product-only
-database still requires separating the historical Taxonomy migration/FK boundary and
-moving shared attached Flex values into Product-owned storage.
+database still requires separating the historical Tenant and Taxonomy migration
+boundaries and providing the remaining owner capabilities.
 
 ## Known Limitations / Pending Implementation
 
@@ -40,6 +40,7 @@ providers use the same service endpoint and separate credentials. See the
 | Storefront SKU projection for Cart | A separate gRPC operation delegates lifecycle, channel and locale handling to Product. |
 | Filtered storefront list, facets and storefront detail by Product ID or handle | RPCs exist on the catalog read port. Some mounted REST, GraphQL and native paths still use local owner services. |
 | SKU identity lookup and enumeration | Both Product identity-port operations use the same remote Product owner. |
+| Flex attached values | Locale-aware reads use `ReadAttachedValues` with a dedicated credential. Update and delete currently require the embedded command provider. |
 | Schema, HTTP and tag read handles | Consumers requiring these capabilities still receive typed unavailable in the default external runtime. |
 | Native admin list/facets and schema operations | Some paths still construct embedded owner services. |
 | Product commands | Fifteen RPCs delegate to the same owner service when explicitly enabled. Separate-process write parity and recovery are still open. |
@@ -85,14 +86,30 @@ is not wired, including in this standalone profile.
 Catalog reads that must resolve stored tag relations report an unavailable
 dependency when Taxonomy is not wired.
 
+Set `RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN` on the Product service
+and on the host selecting the gRPC read provider to enable `ReadAttachedValues`.
+This credential must differ from both catalog credentials and is authorized only
+for this RPC. The host authorizes Flex callers before delegation. The Product
+service uses its configured service actor and validates the delegated tenant.
+
 ### Schema preflight
 
 The provider does not run migrations at startup. It probes `products`,
-`product_variants` and `sys_events` before tonic starts listening. When commands
+`product_variants`, `sys_events`, and `product_attached_localized_values` before tonic starts listening. When commands
 are enabled, it also checks `owner_operation_receipts`. This is a
 minimum startup check for the bounded catalog profile; it does not verify access
 to every table or dependency required by catalog workflows.
 The provider writes outbox rows but does not run a relay.
+
+### Attached-value storage cutover
+
+Apply `m20261116_000041_move_product_attached_localized_values` in a maintenance
+window with old Product and Flex GraphQL processes drained. The migration moves
+Product rows from the historical shared table and rejects further Product inserts
+or updates there. Product starts with `product_attached_localized_values` after
+the migration. Where the shared table exists, rollback moves the current Product
+rows back before restarting old binaries. Resolve any conflicting rows or invalid
+tenant/locale data before retrying a refused migration.
 
 
 ## Responsibilities
@@ -204,8 +221,8 @@ The provider writes outbox rows but does not run a relay.
   identity key that downstream cart/order/fulfillment flows consume; merchandising
   fields such as `vendor` remain display-only and are not used as seller identity.
 - Product-side split and locale-aware resolution of Flex attached custom-field
-  values, using shared `flex` attached localized storage while preserving
-  non-Flex operational metadata in `products.metadata`.
+  values. Product stores localized values in `product_attached_localized_values`
+  and preserves operational metadata in `products.metadata`.
 - Publish a module-owned Leptos admin UI package in `admin/` for catalog CRUD,
   publication lifecycle, and shipping-profile selection.
 - Publish a module-owned Leptos storefront UI package in `storefront/` for
@@ -251,8 +268,8 @@ The provider writes outbox rows but does not run a relay.
   atomic price lifecycle operations without direct persistence coupling.
 - Depends on `rustok-inventory` for inventory-owned bootstrap and availability
   operations.
-- Depends on `flex` for shared attached localized-value storage helpers used by
-  product custom-field multilingual flows.
+- Depends on `flex` for attached-field validation, locale resolution and the
+  historical schema cache-generation integration.
 - Depends on `rustok-taxonomy` for shared scope-aware tag dictionary while keeping `product_tags`
   module-owned.
 - Depends on `rustok-outbox` and `rustok-events` for transactional event publishing.

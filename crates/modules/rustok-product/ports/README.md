@@ -6,6 +6,10 @@ Publishes:
 - `ProductCatalogReadPort`: Storefront, administrative, and checkout catalog projection reads.
 - `ProductVariantIdentityReadPort`: Tenant-scoped variant identity lookup and enumeration.
 - `ProductCatalogCommandPort`: Mutating lifecycle and catalog commands.
+- `ProductAttachedValuesReadPort`: Locale-aware Product attached fields in the
+  embedded and authenticated gRPC profiles.
+- `ProductAttachedValuesWritePort`: Product attached field mutations in the
+  embedded profile. gRPC mutations need an owner receipt contract.
 - Canonical DTOs, requests, and domain models.
 - Optional `grpc-client` and `grpc-server` tonic adapters.
 
@@ -15,6 +19,9 @@ Publishes:
 - `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc`: Product catalog reads are delegated to a remote gRPC service.
 - `RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT`: gRPC endpoint URL (e.g. `https://product.internal:50051`).
 - `RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN`: Shared secret bearer token for authentication.
+- `RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN`: Optional credential
+  for `ReadAttachedValues`. Configure the same value on the consuming host and
+  Product service. Use a credential distinct from both catalog credentials.
 - `RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK=true`: Allow plaintext HTTP only on loopback interfaces (`127.0.0.1`, `::1`).
 
 Invalid configuration or connection failure stops startup immediately.
@@ -23,11 +30,19 @@ credential, tenant context and operation grant when it handles an RPC; a
 successful connection alone does not establish command-service availability.
 See the [owner's service configuration](../README.md#standalone-service-configuration).
 
+When the Product read provider is `grpc`, Flex GraphQL uses the selected remote
+attached-value port if its credential is configured. Without that binding the
+operation returns unavailable. The resolver checks the caller's Flex read
+permission before delegating to Product, which enforces tenant scope and resolves
+the requested locale with its usual fallback policy.
+
 ## Authentication
 
 - Client authentication: `ProductCatalogGrpcBearerToken` attaches `Authorization: Bearer ...` and `x-rustok-tenant-id`.
 - Server authentication: Servers must use `ProductCatalogGrpcBearerInterceptor`, which compares the complete authorization value in constant time.
 - Configured via `RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN`.
+- The ordinary catalog read credential has its existing operation grants. The
+  attached-value read credential grants only `ReadAttachedValues` on the same endpoint.
 - Note: TLS and authentication solve separate problems; TLS protects data in transit while bearer tokens authenticate callers.
 
 

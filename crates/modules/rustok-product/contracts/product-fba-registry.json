@@ -118,7 +118,7 @@
       "authentication_failure_secret_not_echoed"
     ],
     "proto": "crates/modules/rustok-product/ports/proto/rustok/product/product_catalog.proto",
-    "conformance_test": "crates/modules/rustok-product/ports/tests/port_conformance.rs",
+    "conformance_test": "crates/modules/rustok-product/tests/port_conformance.rs",
     "host_deployment": "apps/server/src/services/product_catalog_deployment.rs",
     "runtime_factory": "ProductCatalogReadRuntime::external",
     "variant_identity_port": "ProductVariantIdentityReadPort",
@@ -127,6 +127,9 @@
       "list_product_variant_identities"
     ],
     "storefront_variant_projection_operation": "read_storefront_variant_product_projection",
+    "attached_values_read_port": "ProductAttachedValuesReadPort",
+    "attached_values_read_operation": "ReadAttachedValues",
+    "attached_values_read_bearer_token_env": "RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN",
     "provider_selector_env": "RUSTOK_PRODUCT_CATALOG_PROVIDER",
     "endpoint_env": "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT",
     "bearer_token_env": "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN",
@@ -144,7 +147,8 @@
     "provider_host_schema_preflight_tables": [
       "products",
       "product_variants",
-      "sys_events"
+      "sys_events",
+      "product_attached_localized_values"
     ],
     "provider_host_schema_preflight_order": "after_connect_before_owner_and_listener",
     "provider_host_command_schema_preflight_tables": ["owner_operation_receipts"],

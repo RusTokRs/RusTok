@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use rustok_api::PortError;
 use rustok_outbox::TransactionalEventBus;
+use rustok_product_ports::{ProductAttachedValuesReadPort, ProductAttachedValuesWritePort};
 use sea_orm::DatabaseConnection;
 
 use crate::{
@@ -39,6 +40,7 @@ pub struct ProductCatalogReadRuntime {
     schema_read_port: Option<Arc<dyn ProductCatalogSchemaReadPort>>,
     storefront_http_read_port: Option<Arc<dyn ProductStorefrontHttpReadPort>>,
     storefront_tag_read_port: Option<Arc<dyn ProductStorefrontTagReadPort>>,
+    attached_values_read_port: Option<Arc<dyn ProductAttachedValuesReadPort>>,
     profile: ProductCatalogReadProfile,
 }
 
@@ -53,6 +55,7 @@ impl ProductCatalogReadRuntime {
             schema_read_port: None,
             storefront_http_read_port: None,
             storefront_tag_read_port: None,
+            attached_values_read_port: None,
             profile,
         }
     }
@@ -91,7 +94,8 @@ impl ProductCatalogReadRuntime {
             .with_schema_read_port(Arc::new(schema_service))
             .with_storefront_http_read_port(catalog.clone())
             .with_storefront_tag_read_port(catalog.clone())
-            .with_variant_identity_read_port(catalog)
+            .with_variant_identity_read_port(catalog.clone())
+            .with_attached_values_read_port(catalog)
     }
 
     pub fn external(read_port: Arc<dyn ProductCatalogReadPort>) -> Self {
@@ -152,6 +156,18 @@ impl ProductCatalogReadRuntime {
         self.storefront_tag_read_port.clone()
     }
 
+    pub fn attached_values_read_port(&self) -> Option<Arc<dyn ProductAttachedValuesReadPort>> {
+        self.attached_values_read_port.clone()
+    }
+
+    pub fn with_attached_values_read_port(
+        mut self,
+        port: Arc<dyn ProductAttachedValuesReadPort>,
+    ) -> Self {
+        self.attached_values_read_port = Some(port);
+        self
+    }
+
     pub const fn profile(&self) -> ProductCatalogReadProfile {
         self.profile
     }
@@ -180,6 +196,7 @@ impl ProductCatalogCommandProfile {
 #[derive(Clone)]
 pub struct ProductCatalogCommandRuntime {
     command_port: Arc<dyn ProductCatalogCommandPort>,
+    attached_values_write_port: Option<Arc<dyn ProductAttachedValuesWritePort>>,
     schema_write_port: Option<Arc<dyn ProductCatalogSchemaWritePort>>,
     media_reference_port: Option<Arc<dyn ProductMediaReferencePort>>,
     embedded_catalog: Option<CatalogService>,
@@ -194,6 +211,7 @@ impl ProductCatalogCommandRuntime {
     ) -> Self {
         Self {
             command_port,
+            attached_values_write_port: None,
             schema_write_port: None,
             media_reference_port: None,
             embedded_catalog: None,
@@ -368,6 +386,17 @@ impl ProductCatalogCommandRuntime {
 
     pub fn media_reference_port(&self) -> Option<Arc<dyn ProductMediaReferencePort>> {
         self.media_reference_port.clone()
+    }
+
+    pub fn with_attached_values_write_port(mut self, port: Arc<dyn ProductAttachedValuesWritePort>) -> Self {
+        self.attached_values_write_port = Some(port);
+        self
+    }
+
+    pub fn attached_values_write_port(&self) -> Option<Arc<dyn ProductAttachedValuesWritePort>> {
+        self.attached_values_write_port.clone().or_else(|| {
+            self.embedded_catalog.as_ref().map(|catalog| Arc::new(catalog.clone()) as Arc<dyn ProductAttachedValuesWritePort>)
+        })
     }
 
     /// Trusted background delivery on the exact owner snapshot used for commands.

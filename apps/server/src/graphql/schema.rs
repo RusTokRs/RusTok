@@ -209,12 +209,22 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
     let search_audience_registry = graphql_runtime_inputs
         .shared_get::<rustok_search::SearchAudienceRegistry>()
         .expect("search audience registry must be composed before GraphQL schema construction");
+    let attached_values = FlexAttachedValuesGraphqlAdapter::new(db.clone());
+    #[cfg(feature = "mod-product")]
+    let attached_values = attached_values.with_product_ports(
+        graphql_runtime_inputs
+            .shared_get::<rustok_product::ProductCatalogReadRuntime>()
+            .and_then(|runtime| runtime.attached_values_read_port()),
+        graphql_runtime_inputs
+            .shared_get::<rustok_product::ProductCatalogCommandRuntime>()
+            .and_then(|runtime| runtime.attached_values_write_port()),
+    );
     let flex_runtime = FlexGraphqlRuntime::new(
         Arc::new(FlexStandaloneSeaOrmService::new(db.clone())),
         db.clone(),
         build_field_def_registry(),
         Arc::new(field_definition_cache),
-        Arc::new(FlexAttachedValuesGraphqlAdapter::new(db.clone())),
+        Arc::new(attached_values),
     );
     let builder = Schema::build(
         Query::default(),

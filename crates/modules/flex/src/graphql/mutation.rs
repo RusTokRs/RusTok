@@ -340,13 +340,14 @@ impl FlexMutation {
         ctx: &Context<'_>,
         input: UpdateAttachedValuesInput,
     ) -> Result<AttachedValuesObject> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_UPDATE).await?;
+        let (tenant, auth) = require_access(ctx, Permission::FLEX_ENTRIES_UPDATE).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(input.entity_type)?;
         let values = runtime
             .attached_values()
             .update_values(
                 tenant.id,
+                auth.human_user_id(),
                 &entity_type,
                 input.entity_id,
                 &input.locale,
@@ -369,13 +370,13 @@ impl FlexMutation {
         entity_type: Option<String>,
         entity_id: Uuid,
     ) -> Result<DeleteFlexPayload> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_DELETE).await?;
+        let (tenant, auth) = require_access(ctx, Permission::FLEX_ENTRIES_DELETE).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
 
         runtime
             .attached_values()
-            .delete_values(tenant.id, &entity_type, entity_id)
+            .delete_values(tenant.id, auth.human_user_id(), &entity_type, entity_id)
             .await
             .map_err(map_flex_error)?;
 

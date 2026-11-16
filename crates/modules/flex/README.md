@@ -26,11 +26,16 @@ Flex is explicit product opt-in. A domain entity does not become a Flex donor me
 
 Flex is a capability owner. It owns field schemas, policies and standalone entries.
 Donor owners retain attached values and atomic updates with their aggregates.
-Flex calls a donor's port to read or edit its values. Donors use Flex's port to obtain
-definitions and policies. The [canonical FBA layout](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout)
-supports local and remote bindings. Current shared attached storage and host wiring
-remain in use pending a donor-by-donor migration that preserves Translation and
-change history. The `capability_only` classification is current module metadata.
+Flex GraphQL delegates Product attached values to Product's selected ports.
+The read port supports [embedded and gRPC deployment](../rustok-product/ports/README.md#deployment-configuration).
+Attached-value updates and deletes currently use the embedded Product port.
+Product persists its localized values in `product_attached_localized_values`.
+The [canonical FBA layout](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout)
+uses donor ports for value operations and Flex ports for schema and policy access.
+Product still reads definitions from `product_field_definitions` and uses embedded
+Flex validation. Other donors continue to use shared attached storage and host
+wiring pending migration that preserves Translation and change history. The
+`capability_only` classification is current module metadata.
 
 ## Donor policy
 
@@ -51,7 +56,7 @@ The current Flex multilingual contract is already partially live and must be tre
 - Attached-mode registered consumers are `user`, `product`, `order`, and `topic`; `taxonomy.category` uses the generic attached donor adapter rather than a category-specific field engine.
 - Standalone schema UI copy (`name`, `description`) no longer belongs in `flex_schemas`; it is stored in `flex_schema_translations`.
 - Standalone entry payloads no longer treat inline locale-aware JSON as the canonical path: shared values stay in `flex_entries.data`, while locale-aware values live in `flex_entry_localized_values`.
-- Generic attached localized value storage lives in the shared `flex` crate and persists into `flex_attached_localized_values`; Topic uses `forum_topics.metadata` for shared donor payload plus the same parallel localized-value contract.
+- Donors still on the shared storage use `flex_attached_localized_values`. Topic uses `forum_topics.metadata` for shared donor payload plus the same parallel localized-value contract. The Product migration leaves these donors and the Taxonomy Translation journal in place.
 - Cleanup migrations remove residual inline locale-aware Flex payloads from donor metadata and standalone entry base rows; runtime resolves only shared payload plus parallel localized records.
 - Authoring accepts only a valid normalized locale and prepares locale-aware updates from that exact row. Read-time fallback is a presentation concern and must never seed another locale or become input to a write.
 - Attached field-definition, attached field-policy, and standalone schemas/entries GraphQL surfaces are live through manifest-driven host composition. Policy queries expose effective classification/export admission plus whether the value is explicit; policy set/reset mutations require `flex_schemas:update`, validate the donor/field through the existing registry, and persist only through the Flex-owned policy API. GraphQL roots, runtime handle, permission checks, error mapping, event publication where applicable, and DTOs are owner-owned in `flex::graphql`. Standalone REST contract DTOs and view mappings are owner-owned in `flex::rest`, while server only supplies the Axum handler adapter, concrete standalone persistence adapter, and attached registry/cache/DB wiring through `FlexGraphqlRuntime`. Rollout/governance is enforced through the `capability_only` ghost-module manifest, `mod-flex` host wiring, explicit `flex_schemas:*` / `flex_entries:*` RBAC, and repo-side validation (`cargo xtask validate-manifest`, `cargo xtask module validate flex`, `node scripts/verify/verify-flex-multilingual-contract.mjs`, `node scripts/verify/verify-flex-standalone-contract.mjs`).

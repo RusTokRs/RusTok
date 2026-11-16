@@ -1,4 +1,6 @@
 mod admin_queries;
+mod attached_localized_storage;
+mod attached_values;
 mod attribute_filters;
 mod commands;
 pub mod concurrency;

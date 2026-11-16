@@ -100,11 +100,19 @@ impl MigrationSource for ProductModule {
     }
 
     fn migration_safety_metadata(&self) -> Vec<MigrationSafetyMetadata> {
-        vec![MigrationSafetyMetadata::new(
+        [
             "m20261109_000040_fix_index_graph_update_trigger",
-            MigrationSafetyClass::MaintenanceOnly,
-            MigrationPhaseConstraint::MaintenanceWindow,
-        )]
+            "m20261116_000041_move_product_attached_localized_values",
+        ]
+        .into_iter()
+        .map(|migration| {
+            MigrationSafetyMetadata::new(
+                migration,
+                MigrationSafetyClass::MaintenanceOnly,
+                MigrationPhaseConstraint::MaintenanceWindow,
+            )
+        })
+        .collect()
     }
 }
 

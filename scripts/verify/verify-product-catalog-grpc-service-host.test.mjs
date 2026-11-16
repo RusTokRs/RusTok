@@ -38,7 +38,7 @@ tonic = { workspace = true, optional = true, features = ["tls-ring"] }`,
 
   const ownerComposition = options.missingOwnerComposition
     ? ""
-    : `CatalogService::new(database, event_bus) OutboxTransport::new(database.clone()) TransactionalEventBus::new(outbox) ProductCatalogGrpcService::new(provider.clone()) .with_variant_identity_read_port(provider)`;
+    : `CatalogService::new(database, event_bus) OutboxTransport::new(database.clone()) TransactionalEventBus::new(outbox) ProductCatalogGrpcService::new(provider.clone()) .with_variant_identity_read_port(provider.clone()) .with_attached_values_read_port(provider) .with_allowed_operations([ProductCatalogGrpcOperation::ReadAttachedValues])`;
   const authentication = options.missingAuthentication
     ? ""
     : `ProductCatalogGrpcBearerInterceptor::from_bearer_token( PortActor::service(config.trusted_service_actor.clone()) ProductCatalogReadServiceServer::with_interceptor(service, interceptor) required_secret_env(BEARER_TOKEN_ENV) validate_service_actor(required_env(`;
@@ -48,10 +48,10 @@ tonic = { workspace = true, optional = true, features = ["tls-ring"] }`,
   const schemaPreflight = options.missingSchemaPreflight
     ? ""
     : `SysEvents entities::{Product, ProductVariant} EntityTrait
-REQUIRED_SCHEMA_TABLES: [&str; 3] = ["products", "product_variants", "sys_events"]
+REQUIRED_SCHEMA_TABLES: [&str; 4] = ["products", "product_variants", "sys_events", "product_attached_localized_values"]
 async fn verify_required_schema(database: &DatabaseConnection)
 Product::find() ProductVariant::find() SysEvents::find()
-schema_preflight_error("products") schema_preflight_error("product_variants") schema_preflight_error("sys_events")
+schema_preflight_error("products") schema_preflight_error("product_variants") schema_preflight_error("sys_events") schema_preflight_error("product_attached_localized_values")
 run platform migrations before starting the service Product catalog database schema preflight passed`;
   const listenerOrder = options.prematureListenerMarker
     ? "Product catalog gRPC service listening\nTcpListener::bind(config.bind)"
@@ -133,6 +133,7 @@ secrets_are_redacted_from_debug_output database_must_be_postgresql_and_debug_tar
           "products",
           "product_variants",
           "sys_events",
+          "product_attached_localized_values",
         ],
         provider_host_schema_preflight_order:
           "after_connect_before_owner_and_listener",

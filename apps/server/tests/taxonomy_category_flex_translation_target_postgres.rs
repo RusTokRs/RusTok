@@ -83,6 +83,7 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let source = values
         .update_values(
             tenant_id,
+            None,
             TAXONOMY_CATEGORY_ENTITY_TYPE,
             category_id,
             "en",

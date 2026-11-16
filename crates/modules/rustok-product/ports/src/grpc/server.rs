@@ -1,9 +1,9 @@
 use std::{collections::HashSet, fmt, sync::Arc};
 
 use crate::{
-    FilteredPublishedProductsRequest, ProductCatalogCommandPort, ProductCatalogReadPort,
-    ProductProjectionRequest, ProductVariantIdentityReadPort, PublishedProductsRequest,
-    StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
+    FilteredPublishedProductsRequest, ProductAttachedValuesReadPort, ProductCatalogCommandPort,
+    ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentityReadPort,
+    PublishedProductsRequest, StorefrontCatalogFacetsRequest, StorefrontProductProjectionRequest,
     StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,
     dto::{
         AddProductImageInput, CreateProductInput, CreateVariantInput, SetVariantAxesInput,
@@ -11,6 +11,7 @@ use crate::{
     },
 };
 use bytes::Bytes;
+use crate::ProductAttachedValuesWritePort;
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::service::Interceptor;
@@ -22,8 +23,8 @@ use super::auth::{
     TENANT_ID_METADATA,
 };
 use super::payloads::{
-    ProductIdPayload, ProductImageIdPayload, ProductInputPayload, ReorderProductImagesPayload,
-    UpdateProductImagePayload, VariantIdPayload, VariantInputPayload,
+    ProductIdPayload, ProductImageIdPayload, ProductInputPayload, ReadAttachedValuesPayload,
+    ReorderProductImagesPayload, UpdateProductImagePayload, VariantIdPayload, VariantInputPayload,
 };
 use super::proto::product_catalog_command_service_server::ProductCatalogCommandService;
 use super::proto::product_catalog_read_service_server::ProductCatalogReadService;
@@ -33,6 +34,7 @@ use super::proto::{JsonRequest, JsonResponse};
 pub struct ProductCatalogGrpcService<P> {
     provider: Arc<P>,
     variant_identity_read_port: Option<Arc<dyn ProductVariantIdentityReadPort>>,
+    attached_values_read_port: Option<Arc<dyn ProductAttachedValuesReadPort>>,
 }
 
 /// Authority established by a server-side authentication/authorization interceptor.
@@ -60,6 +62,7 @@ pub enum ProductCatalogGrpcOperation {
     ListFilteredPublishedProducts,
     LoadStorefrontCatalogFacets,
     ReadStorefrontProductProjection,
+    ReadAttachedValues,
     CreateProduct,
     UpdateProduct,
     PublishProduct,
@@ -75,6 +78,8 @@ pub enum ProductCatalogGrpcOperation {
     UpdateProductImage,
     DeleteProductImage,
     ReorderProductImages,
+    UpdateAttachedValues,
+    DeleteAttachedValues,
 }
 
 impl ProductCatalogGrpcOperation {
@@ -245,11 +250,23 @@ impl fmt::Debug for ProductCatalogGrpcBearerAuthenticator {
 #[derive(Clone, Debug)]
 pub struct ProductCatalogGrpcBearerInterceptor {
     authenticator: ProductCatalogGrpcBearerAuthenticator,
+    additional_authenticator: Option<ProductCatalogGrpcBearerAuthenticator>,
 }
 
 impl ProductCatalogGrpcBearerInterceptor {
     pub fn new(authenticator: ProductCatalogGrpcBearerAuthenticator) -> Self {
-        Self { authenticator }
+        Self {
+            authenticator,
+            additional_authenticator: None,
+        }
+    }
+
+    pub fn with_additional_authenticator(
+        mut self,
+        authenticator: ProductCatalogGrpcBearerAuthenticator,
+    ) -> Self {
+        self.additional_authenticator = Some(authenticator);
+        self
     }
 
     pub fn from_bearer_token(
@@ -264,7 +281,12 @@ impl ProductCatalogGrpcBearerInterceptor {
 
 impl Interceptor for ProductCatalogGrpcBearerInterceptor {
     fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
-        let authority = self.authenticator.authenticate(&request)?;
+        let authority = self.authenticator.authenticate(&request).or_else(|error| {
+            self.additional_authenticator
+                .as_ref()
+                .ok_or(error)?
+                .authenticate(&request)
+        })?;
         request.extensions_mut().insert(authority);
         Ok(request)
     }
@@ -279,6 +301,7 @@ impl<P> ProductCatalogGrpcService<P> {
         Self {
             provider,
             variant_identity_read_port: None,
+            attached_values_read_port: None,
         }
     }
 
@@ -295,6 +318,14 @@ impl<P> ProductCatalogGrpcService<P> {
             Status::unimplemented("Product SKU identity capability is not configured")
         })
     }
+
+    pub fn with_attached_values_read_port(
+        mut self,
+        provider: Arc<dyn ProductAttachedValuesReadPort>,
+    ) -> Self {
+        self.attached_values_read_port = Some(provider);
+        self
+    }
 }
 
 #[tonic::async_trait]
@@ -302,6 +333,26 @@ impl<P> ProductCatalogReadService for ProductCatalogGrpcService<P>
 where
     P: ProductCatalogReadPort + 'static,
 {
+    async fn read_attached_values(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::ReadAttachedValues,
+        )?;
+        let input: ReadAttachedValuesPayload = decode_input(&request.into_inner().input_json)?;
+        let provider = self.attached_values_read_port.as_deref().ok_or_else(|| {
+            Status::unimplemented("Product attached values capability is not configured")
+        })?;
+        let value = provider
+            .read_attached_values(context, input.product_id, &input.fallback_locale)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&value)
+    }
+
     async fn read_storefront_variant_product_projection(
         &self,
         request: Request<JsonRequest>,
@@ -475,11 +526,23 @@ where
 /// Provider-side adapter for the Product catalog command boundary.
 pub struct ProductCatalogCommandGrpcService<P> {
     provider: Arc<P>,
+    attached_values_write_port: Option<Arc<dyn ProductAttachedValuesWritePort>>,
 }
 
 impl<P> ProductCatalogCommandGrpcService<P> {
     pub fn new(provider: Arc<P>) -> Self {
-        Self { provider }
+        Self { provider, attached_values_write_port: None }
+    }
+
+    pub fn with_attached_values_write_port(mut self, provider: Arc<dyn ProductAttachedValuesWritePort>) -> Self {
+        self.attached_values_write_port = Some(provider);
+        self
+    }
+
+    fn attached_values_write_port(&self) -> Result<&dyn ProductAttachedValuesWritePort, Status> {
+        self.attached_values_write_port.as_deref().ok_or_else(|| {
+            Status::unimplemented("Product attached values write capability is not configured")
+        })
     }
 }
 
@@ -488,6 +551,19 @@ impl<P> ProductCatalogCommandService for ProductCatalogCommandGrpcService<P>
 where
     P: ProductCatalogCommandPort + 'static,
 {
+    async fn update_attached_values(&self, request: Request<JsonRequest>) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(&request, decode_context(&request.get_ref().context_json)?, ProductCatalogGrpcOperation::UpdateAttachedValues)?;
+        let input: ProductInputPayload<Option<serde_json::Value>> = decode_input(&request.into_inner().input_json)?;
+        let response = self.attached_values_write_port()?.update_attached_values(context, input.product_id, input.input).await.map_err(port_error_to_status)?;
+        json_response(&response)
+    }
+
+    async fn delete_attached_values(&self, request: Request<JsonRequest>) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(&request, decode_context(&request.get_ref().context_json)?, ProductCatalogGrpcOperation::DeleteAttachedValues)?;
+        let input: ProductIdPayload = decode_input(&request.into_inner().input_json)?;
+        self.attached_values_write_port()?.delete_attached_values(context, input.product_id).await.map_err(port_error_to_status)?;
+        json_response(&())
+    }
     async fn create_product(
         &self,
         request: Request<JsonRequest>,

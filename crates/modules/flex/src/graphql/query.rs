@@ -1,5 +1,7 @@
+use std::time::Duration;
+
 use async_graphql::{Context, Object, Result};
-use rustok_api::{Permission, graphql::PaginationInput};
+use rustok_api::{Permission, PortContext, graphql::PaginationInput};
 use uuid::Uuid;
 
 use super::{
@@ -116,18 +118,19 @@ impl FlexQuery {
         entity_id: Uuid,
         preferred_locale: String,
     ) -> Result<AttachedValuesObject> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_READ).await?;
+        let (tenant, auth) = require_access(ctx, Permission::FLEX_ENTRIES_READ).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
+        let context = PortContext::new(
+            tenant.id.to_string(),
+            auth.port_actor(),
+            preferred_locale,
+            Uuid::new_v4().to_string(),
+        )
+        .with_deadline(Duration::from_secs(5));
         let values = runtime
             .attached_values()
-            .resolve_values(
-                tenant.id,
-                &entity_type,
-                entity_id,
-                &preferred_locale,
-                &tenant.default_locale,
-            )
+            .resolve_values(context, &entity_type, entity_id, &tenant.default_locale)
             .await
             .map_err(map_flex_error)?;
 

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_graphql::{Context, FieldError, Result as GraphqlResult};
 use async_trait::async_trait;
-use rustok_api::graphql::GraphQLError;
+use rustok_api::{PortContext, graphql::GraphQLError};
 use rustok_core::field_schema::FlexError;
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
@@ -18,16 +18,16 @@ use crate::{FieldDefRegistry, FieldDefinitionCachePort, FlexStandaloneService};
 pub trait AttachedValuesGraphqlPort: Send + Sync {
     async fn resolve_values(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         entity_type: &str,
         entity_id: Uuid,
-        preferred_locale: &str,
         tenant_default_locale: &str,
     ) -> std::result::Result<Option<Value>, FlexError>;
 
     async fn update_values(
         &self,
         tenant_id: Uuid,
+        actor_id: Option<Uuid>,
         entity_type: &str,
         entity_id: Uuid,
         locale: &str,
@@ -37,6 +37,7 @@ pub trait AttachedValuesGraphqlPort: Send + Sync {
     async fn delete_values(
         &self,
         tenant_id: Uuid,
+        actor_id: Option<Uuid>,
         entity_type: &str,
         entity_id: Uuid,
     ) -> std::result::Result<(), FlexError>;

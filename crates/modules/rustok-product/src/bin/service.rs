@@ -27,7 +27,7 @@ use rustok_product_ports::grpc::{
     proto::product_catalog_command_service_server::ProductCatalogCommandServiceServer,
     proto::product_catalog_read_service_server::ProductCatalogReadServiceServer,
 };
-use sea_orm::{ConnectOptions, Database, DatabaseConnection, EntityTrait};
+use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection, EntityTrait};
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::{Identity, Server, ServerTlsConfig};
@@ -39,13 +39,20 @@ const DEFAULT_DATABASE_CONNECT_TIMEOUT_MS: u64 = 5_000;
 const DEFAULT_DATABASE_MAX_CONNECTIONS: u32 = 20;
 const MAX_DATABASE_CONNECT_TIMEOUT_MS: u64 = 30_000;
 const MAX_DATABASE_CONNECTIONS: u32 = 200;
-const REQUIRED_SCHEMA_TABLES: [&str; 3] = ["products", "product_variants", "sys_events"];
+const REQUIRED_SCHEMA_TABLES: [&str; 4] = [
+    "products",
+    "product_variants",
+    "sys_events",
+    "product_attached_localized_values",
+];
 
 const BIND_ENV: &str = "RUSTOK_PRODUCT_CATALOG_SERVICE_BIND";
 const DATABASE_URL_ENV: &str = "RUSTOK_PRODUCT_CATALOG_DATABASE_URL";
 const DATABASE_CONNECT_TIMEOUT_MS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_DATABASE_CONNECT_TIMEOUT_MS";
 const DATABASE_MAX_CONNECTIONS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_DATABASE_MAX_CONNECTIONS";
 const BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN";
+const ATTACHED_VALUES_READ_TOKEN_ENV: &str =
+    "RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN";
 const TRUSTED_SERVICE_ACTOR_ENV: &str = "RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR";
 const COMMAND_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN";
 const COMMAND_ACTOR_ID_ENV: &str = "RUSTOK_PRODUCT_CATALOG_COMMAND_ACTOR_ID";
@@ -99,6 +106,7 @@ struct ServiceConfig {
     database_max_connections: u32,
     bearer_token: RedactedSecret,
     trusted_service_actor: String,
+    attached_values_read_authentication: Option<ProductCatalogGrpcBearerAuthenticator>,
     command_authentication: Option<ProductCatalogGrpcBearerAuthenticator>,
     transport: ServiceTransport,
 }
@@ -137,8 +145,15 @@ impl ServiceConfig {
         let bearer_token = RedactedSecret::new(required_secret_env(BEARER_TOKEN_ENV)?);
         let trusted_service_actor =
             validate_service_actor(required_env(TRUSTED_SERVICE_ACTOR_ENV)?)?;
+        let command_token = env::var(COMMAND_BEARER_TOKEN_ENV).ok();
+        let attached_values_read_authentication = attached_values_read_authentication(
+            env::var(ATTACHED_VALUES_READ_TOKEN_ENV).ok().as_deref(),
+            bearer_token.expose(),
+            command_token.as_deref(),
+            &trusted_service_actor,
+        )?;
         let command_authentication = command_authentication(
-            env::var(COMMAND_BEARER_TOKEN_ENV).ok().as_deref(),
+            command_token.as_deref(),
             optional_env(COMMAND_ACTOR_ID_ENV).as_deref(),
             &bearer_token,
         )?;
@@ -157,6 +172,7 @@ impl ServiceConfig {
             database_max_connections,
             bearer_token,
             trusted_service_actor,
+            attached_values_read_authentication,
             command_authentication,
             transport,
         })
@@ -204,13 +220,17 @@ async fn run() -> Result<()> {
     let event_bus = TransactionalEventBus::new(outbox);
     let provider = Arc::new(CatalogService::new(database, event_bus));
     let command_provider = provider.clone();
-    let service =
-        ProductCatalogGrpcService::new(provider.clone()).with_variant_identity_read_port(provider);
-    let interceptor = ProductCatalogGrpcBearerInterceptor::from_bearer_token(
+    let mut service = ProductCatalogGrpcService::new(provider.clone())
+        .with_variant_identity_read_port(provider.clone());
+    let mut interceptor = ProductCatalogGrpcBearerInterceptor::from_bearer_token(
         config.bearer_token.expose(),
         PortActor::service(config.trusted_service_actor.clone()),
     )
     .map_err(|error| anyhow!("Product catalog service authentication is invalid: {error}"))?;
+    if let Some(authentication) = config.attached_values_read_authentication {
+        service = service.with_attached_values_read_port(provider);
+        interceptor = interceptor.with_additional_authenticator(authentication);
+    }
     let service = ProductCatalogReadServiceServer::with_interceptor(service, interceptor);
     let command_service = config.command_authentication.map(|authentication| {
         ProductCatalogCommandServiceServer::with_interceptor(
@@ -276,6 +296,13 @@ async fn verify_required_schema(database: &DatabaseConnection) -> Result<()> {
         .one(database)
         .await
         .map_err(|_| schema_preflight_error("sys_events"))?;
+    database
+        .execute_unprepared(
+            "SELECT id, tenant_id, product_id, field_key, locale, value, created_at, updated_at
+         FROM product_attached_localized_values LIMIT 0",
+        )
+        .await
+        .map_err(|_| schema_preflight_error("product_attached_localized_values"))?;
 
     Ok(())
 }
@@ -334,6 +361,29 @@ fn validate_service_actor(value: String) -> Result<String> {
         bail!("{TRUSTED_SERVICE_ACTOR_ENV} must be 1..=128 visible non-whitespace ASCII bytes");
     }
     Ok(value)
+}
+
+fn attached_values_read_authentication(
+    token: Option<&str>,
+    read_token: &str,
+    command_token: Option<&str>,
+    service_actor: &str,
+) -> Result<Option<ProductCatalogGrpcBearerAuthenticator>> {
+    let Some(token) = token else {
+        return Ok(None);
+    };
+    if token == read_token || Some(token) == command_token {
+        bail!(
+            "{ATTACHED_VALUES_READ_TOKEN_ENV} must differ from the catalog read and command credentials"
+        );
+    }
+    let authentication =
+        ProductCatalogGrpcBearerAuthenticator::new(token, PortActor::service(service_actor))
+            .map_err(|error| {
+                anyhow!("Product attached values read authentication is invalid: {error}")
+            })?
+            .with_allowed_operations([ProductCatalogGrpcOperation::ReadAttachedValues]);
+    Ok(Some(authentication))
 }
 
 fn command_authentication(
@@ -502,8 +552,9 @@ async fn shutdown_signal() {
 #[cfg(test)]
 mod tests {
     use super::{
-        REQUIRED_SCHEMA_TABLES, RedactedSecret, ServiceTransport, command_authentication,
-        validate_database_url, validate_service_actor, validate_transport_security,
+        REQUIRED_SCHEMA_TABLES, RedactedSecret, ServiceTransport,
+        attached_values_read_authentication, command_authentication, validate_database_url,
+        validate_service_actor, validate_transport_security,
     };
     use std::{net::SocketAddr, path::PathBuf};
 
@@ -531,7 +582,12 @@ mod tests {
     fn required_schema_tables_are_owner_and_outbox_tables() {
         assert_eq!(
             REQUIRED_SCHEMA_TABLES,
-            ["products", "product_variants", "sys_events"]
+            [
+                "products",
+                "product_variants",
+                "sys_events",
+                "product_attached_localized_values"
+            ]
         );
     }
 
@@ -575,6 +631,22 @@ mod tests {
         );
         assert!(validate_service_actor(" caller".to_string()).is_err());
         assert!(validate_service_actor("caller service".to_string()).is_err());
+    }
+
+    #[test]
+    fn attached_values_read_requires_a_distinct_credential_when_enabled() {
+        let configure = |token| {
+            attached_values_read_authentication(
+                token,
+                "read-secret",
+                Some("write-secret"),
+                "gateway",
+            )
+        };
+        assert!(configure(None).unwrap().is_none());
+        assert!(configure(Some("read-secret")).is_err());
+        assert!(configure(Some("write-secret")).is_err());
+        assert!(configure(Some("attached-secret")).unwrap().is_some());
     }
 
     #[test]

@@ -6,12 +6,14 @@ use sea_orm::{
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
+#[cfg(feature = "mod-product")]
+use flex::PRODUCT_ENTITY_TYPE;
 #[allow(unused_imports)]
 use flex::{
     AttachedEntityRef, FlexMappedErrorKind, GenericAttachedFieldDefinitionService,
-    ORDER_ENTITY_TYPE, PRODUCT_ENTITY_TYPE, TAXONOMY_CATEGORY_ENTITY_TYPE, TOPIC_ENTITY_TYPE,
-    USER_ENTITY_TYPE, delete_attached_localized_values, delete_generic_attached_values,
-    load_exact_locale_values, load_generic_attached_shared_values, load_localized_values_by_locale,
+    ORDER_ENTITY_TYPE, TAXONOMY_CATEGORY_ENTITY_TYPE, TOPIC_ENTITY_TYPE, USER_ENTITY_TYPE,
+    delete_attached_localized_values, delete_generic_attached_values, load_exact_locale_values,
+    load_generic_attached_shared_values, load_localized_values_by_locale,
     lock_attached_translation_schema_in_tx, map_flex_error, merge_donor_flex_metadata,
     persist_localized_values, persist_prepared_generic_attached_values,
     prepare_attached_values_create, prepare_attached_values_update,
@@ -19,10 +21,13 @@ use flex::{
     resolve_attached_payload, resolve_generic_attached_values, split_donor_metadata,
 };
 use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
+#[cfg(feature = "mod-product")]
+use rustok_product_ports::{ProductAttachedValuesReadPort, ProductAttachedValuesWritePort};
+#[cfg(feature = "mod-product")]
+use std::sync::Arc;
 
 use crate::error::{Error, Result as ServerResult};
 use crate::services::order_field_service::OrderFieldService;
-use crate::services::product_field_service::ProductFieldService;
 use crate::services::topic_field_service::TopicFieldService;
 use crate::services::user_field_service::UserFieldService;
 
@@ -91,208 +96,6 @@ impl FlexAttachedValuesService {
         )
         .await
     }
-    /// Legacy split prepare boundary retained for server callers that still stage writes.
-    /// Canonical registered donor mutations should use [`Self::update_registered_generic_values`]
-    /// so preparation and persistence observe one schema/owner transaction.
-    #[deprecated(note = "use update_registered_generic_values for registered donors")]
-    pub async fn prepare_registered_generic_update(
-        db: &DatabaseConnection,
-        tenant_id: Uuid,
-        entity_type: &str,
-        entity_id: Uuid,
-        locale: &str,
-        payload: Option<Value>,
-    ) -> ServerResult<PreparedAttachedValuesWrite> {
-        ensure_registered_owner_exists(db, tenant_id, entity_type, entity_id).await?;
-        let schema = load_schema(db, tenant_id, entity_type)
-            .await
-            .map_err(map_flex_host_error)?;
-        prepare_generic_attached_values_update(
-            db,
-            attached_ref(tenant_id, entity_type, entity_id),
-            schema,
-            locale,
-            payload,
-        )
-        .await
-        .map_err(map_flex_host_error)
-    }
-
-    /// Compatibility persistence boundary for an already-prepared registered donor write.
-    /// It still shares the schema/owner locks and advances the donor revision, so a staged
-    /// legacy write can never mutate attached values invisibly to Translation CAS.
-    #[deprecated(note = "use update_registered_generic_values for registered donors")]
-    pub async fn persist_registered_generic_values(
-        db: &DatabaseConnection,
-        tenant_id: Uuid,
-        entity_type: &str,
-        entity_id: Uuid,
-        prepared: &PreparedAttachedValuesWrite,
-    ) -> ServerResult<()> {
-        match entity_type {
-            USER_ENTITY_TYPE => {
-                let txn = db.begin().await?;
-                let user = crate::models::_entities::users::Entity::find_by_id(entity_id)
-                    .filter(crate::models::_entities::users::Column::TenantId.eq(tenant_id))
-                    .one(&txn)
-                    .await?
-                    .ok_or(Error::NotFound)?;
-                let schema = load_schema(db, tenant_id, entity_type)
-                    .await
-                    .map_err(map_flex_host_error)?;
-                if let Some(flex_meta) = prepared.metadata.as_ref() {
-                    let new_metadata =
-                        merge_donor_flex_metadata(&schema, &user.metadata, flex_meta);
-                    let mut active: crate::models::_entities::users::ActiveModel = user.into();
-                    active.metadata = sea_orm::ActiveValue::Set(new_metadata);
-                    active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
-                    active.update(&txn).await?;
-                }
-                if let (Some(loc), Some(values)) = (
-                    prepared.locale.as_deref(),
-                    prepared.localized_values.as_ref(),
-                ) {
-                    persist_localized_values(&txn, tenant_id, entity_type, entity_id, loc, values)
-                        .await
-                        .map_err(map_flex_host_error)?;
-                }
-                txn.commit().await?;
-                Ok(())
-            }
-            #[cfg(feature = "mod-product")]
-            PRODUCT_ENTITY_TYPE => {
-                let txn = db.begin().await?;
-                let product = load_product_for_compat_write(&txn, tenant_id, entity_id).await?;
-                let schema = load_schema(db, tenant_id, entity_type)
-                    .await
-                    .map_err(map_flex_host_error)?;
-                if let Some(flex_meta) = prepared.metadata.as_ref() {
-                    let new_metadata =
-                        merge_donor_flex_metadata(&schema, &product.metadata, flex_meta);
-                    let current_revision = product.revision;
-                    let mut active: rustok_product::entities::product::ActiveModel = product.into();
-                    active.metadata = sea_orm::ActiveValue::Set(new_metadata);
-                    active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
-                    bump_product_compat_revision(&mut active, current_revision)?;
-                    active.update(&txn).await?;
-                }
-                if let (Some(loc), Some(values)) = (
-                    prepared.locale.as_deref(),
-                    prepared.localized_values.as_ref(),
-                ) {
-                    persist_localized_values(&txn, tenant_id, entity_type, entity_id, loc, values)
-                        .await
-                        .map_err(map_flex_host_error)?;
-                }
-                txn.commit().await?;
-                Ok(())
-            }
-            #[cfg(feature = "mod-order")]
-            ORDER_ENTITY_TYPE => {
-                let txn = db.begin().await?;
-                let order = rustok_order::entities::order::Entity::find_by_id(entity_id)
-                    .filter(rustok_order::entities::order::Column::TenantId.eq(tenant_id))
-                    .one(&txn)
-                    .await?
-                    .ok_or(Error::NotFound)?;
-                let schema = load_schema(db, tenant_id, entity_type)
-                    .await
-                    .map_err(map_flex_host_error)?;
-                if let Some(flex_meta) = prepared.metadata.as_ref() {
-                    let new_metadata =
-                        merge_donor_flex_metadata(&schema, &order.metadata, flex_meta);
-                    let mut active: rustok_order::entities::order::ActiveModel = order.into();
-                    active.metadata = sea_orm::ActiveValue::Set(new_metadata);
-                    active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
-                    active.update(&txn).await?;
-                }
-                if let (Some(loc), Some(values)) = (
-                    prepared.locale.as_deref(),
-                    prepared.localized_values.as_ref(),
-                ) {
-                    persist_localized_values(&txn, tenant_id, entity_type, entity_id, loc, values)
-                        .await
-                        .map_err(map_flex_host_error)?;
-                }
-                txn.commit().await?;
-                Ok(())
-            }
-            #[cfg(feature = "mod-forum")]
-            TOPIC_ENTITY_TYPE => {
-                let txn = db.begin().await?;
-                let topic = rustok_forum::entities::forum_topic::Entity::find_by_id(entity_id)
-                    .filter(rustok_forum::entities::forum_topic::Column::TenantId.eq(tenant_id))
-                    .one(&txn)
-                    .await?
-                    .ok_or(Error::NotFound)?;
-                let schema = load_schema(db, tenant_id, entity_type)
-                    .await
-                    .map_err(map_flex_host_error)?;
-                if let Some(flex_meta) = prepared.metadata.as_ref() {
-                    let new_metadata =
-                        merge_donor_flex_metadata(&schema, &topic.metadata, flex_meta);
-                    let mut active: rustok_forum::entities::forum_topic::ActiveModel = topic.into();
-                    active.metadata = sea_orm::ActiveValue::Set(new_metadata);
-                    active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
-                    active.update(&txn).await?;
-                }
-                if let (Some(loc), Some(values)) = (
-                    prepared.locale.as_deref(),
-                    prepared.localized_values.as_ref(),
-                ) {
-                    persist_localized_values(&txn, tenant_id, entity_type, entity_id, loc, values)
-                        .await
-                        .map_err(map_flex_host_error)?;
-                }
-                txn.commit().await?;
-                Ok(())
-            }
-            #[cfg(feature = "mod-taxonomy")]
-            TAXONOMY_CATEGORY_ENTITY_TYPE => {
-                let txn = db.begin().await?;
-                let _schema = lock_attached_translation_schema_in_tx(&txn, tenant_id, entity_type)
-                    .await
-                    .map_err(map_flex_host_error)?;
-                let owner =
-                    rustok_taxonomy::lock_category_owner_revision_in_tx(&txn, tenant_id, entity_id)
-                        .await
-                        .map_err(map_taxonomy_owner_error)?;
-                let entity = attached_ref(tenant_id, entity_type, entity_id);
-                let before_shared = load_generic_attached_shared_values(&txn, entity.clone())
-                    .await
-                    .map_err(map_flex_host_error)?;
-                let before_localized = match prepared.locale.as_deref() {
-                    Some(locale) if prepared.localized_values.is_some() => {
-                        load_exact_locale_values(&txn, tenant_id, entity_type, entity_id, locale)
-                            .await
-                            .map_err(map_flex_host_error)?
-                    }
-                    _ => None,
-                };
-                let changed =
-                    prepared_write_changed(&before_shared, before_localized.as_ref(), prepared);
-                if changed {
-                    persist_prepared_generic_attached_values(&txn, entity, prepared)
-                        .await
-                        .map_err(map_flex_host_error)?;
-                    rustok_taxonomy::advance_category_owner_revision_in_tx(
-                        &txn,
-                        tenant_id,
-                        entity_id,
-                        owner.revision,
-                    )
-                    .await
-                    .map_err(map_taxonomy_owner_error)?;
-                }
-                txn.commit().await?;
-                Ok(())
-            }
-            other => Err(Error::BadRequest(format!(
-                "generic Flex owner adapter is not registered for {other}"
-            ))),
-        }
-    }
-
     /// Canonical exact-locale mutation for a registered generic donor.
     ///
     /// Lock order is Flex schema generation -> donor owner. The write is prepared from
@@ -340,50 +143,6 @@ impl FlexAttachedValuesService {
                 let mut active: crate::models::_entities::users::ActiveModel = user.into();
                 active.metadata = sea_orm::ActiveValue::Set(new_metadata);
                 active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
-                active.update(&txn).await?;
-
-                if let (Some(loc), Some(values)) = (
-                    prepared.locale.as_deref(),
-                    prepared.localized_values.as_ref(),
-                ) {
-                    persist_localized_values(&txn, tenant_id, entity_type, entity_id, loc, values)
-                        .await
-                        .map_err(map_flex_host_error)?;
-                }
-                txn.commit().await?;
-                Ok(())
-            }
-            #[cfg(feature = "mod-product")]
-            PRODUCT_ENTITY_TYPE => {
-                let txn = db.begin().await?;
-                let schema = load_schema(db, tenant_id, entity_type)
-                    .await
-                    .map_err(map_flex_host_error)?;
-                let product = load_product_for_compat_write(&txn, tenant_id, entity_id).await?;
-                let entity = attached_ref(tenant_id, entity_type, entity_id);
-                let prepared = prepare_attached_values_update(
-                    &txn,
-                    entity,
-                    schema.clone(),
-                    locale,
-                    &product.metadata,
-                    payload,
-                )
-                .await
-                .map_err(map_flex_host_error)?;
-
-                let new_metadata = match prepared.metadata.as_ref() {
-                    Some(flex_meta) => {
-                        merge_donor_flex_metadata(&schema, &product.metadata, flex_meta)
-                    }
-                    None => product.metadata.clone(),
-                };
-
-                let current_revision = product.revision;
-                let mut active: rustok_product::entities::product::ActiveModel = product.into();
-                active.metadata = sea_orm::ActiveValue::Set(new_metadata);
-                active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
-                bump_product_compat_revision(&mut active, current_revision)?;
                 active.update(&txn).await?;
 
                 if let (Some(loc), Some(values)) = (
@@ -573,24 +332,6 @@ impl FlexAttachedValuesService {
                 .await
                 .map_err(map_flex_host_error)
             }
-            #[cfg(feature = "mod-product")]
-            PRODUCT_ENTITY_TYPE => {
-                let product = rustok_product::entities::product::Entity::find_by_id(entity_id)
-                    .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id))
-                    .one(db)
-                    .await?
-                    .ok_or(Error::NotFound)?;
-                resolve_attached_payload(
-                    db,
-                    attached_ref(tenant_id, entity_type, entity_id),
-                    schema,
-                    &product.metadata,
-                    preferred_locale,
-                    tenant_default_locale,
-                )
-                .await
-                .map_err(map_flex_host_error)
-            }
             #[cfg(feature = "mod-order")]
             ORDER_ENTITY_TYPE => {
                 let order = rustok_order::entities::order::Entity::find_by_id(entity_id)
@@ -667,27 +408,6 @@ impl FlexAttachedValuesService {
                 let mut active: crate::models::_entities::users::ActiveModel = user.into();
                 active.metadata = sea_orm::ActiveValue::Set(serde_json::Value::Object(reserved));
                 active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
-                active.update(&txn).await?;
-
-                delete_attached_localized_values(&txn, tenant_id, entity_type, entity_id)
-                    .await
-                    .map_err(map_flex_host_error)?;
-                txn.commit().await?;
-                Ok(())
-            }
-            #[cfg(feature = "mod-product")]
-            PRODUCT_ENTITY_TYPE => {
-                let txn = db.begin().await?;
-                let product = load_product_for_compat_write(&txn, tenant_id, entity_id).await?;
-                let schema = load_schema(db, tenant_id, entity_type)
-                    .await
-                    .map_err(map_flex_host_error)?;
-                let (reserved, _) = split_donor_metadata(&schema, &product.metadata);
-                let current_revision = product.revision;
-                let mut active: rustok_product::entities::product::ActiveModel = product.into();
-                active.metadata = sea_orm::ActiveValue::Set(serde_json::Value::Object(reserved));
-                active.updated_at = sea_orm::ActiveValue::Set(chrono::Utc::now().into());
-                bump_product_compat_revision(&mut active, current_revision)?;
                 active.update(&txn).await?;
 
                 delete_attached_localized_values(&txn, tenant_id, entity_type, entity_id)
@@ -817,11 +537,32 @@ impl FlexAttachedValuesService {
 #[derive(Clone)]
 pub struct FlexAttachedValuesGraphqlAdapter {
     db: DatabaseConnection,
+    #[cfg(feature = "mod-product")]
+    product_read: Option<Arc<dyn ProductAttachedValuesReadPort>>,
+    #[cfg(feature = "mod-product")]
+    product_write: Option<Arc<dyn ProductAttachedValuesWritePort>>,
 }
 
 impl FlexAttachedValuesGraphqlAdapter {
     pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+        Self {
+            db,
+            #[cfg(feature = "mod-product")]
+            product_read: None,
+            #[cfg(feature = "mod-product")]
+            product_write: None,
+        }
+    }
+
+    #[cfg(feature = "mod-product")]
+    pub fn with_product_ports(
+        mut self,
+        read: Option<Arc<dyn ProductAttachedValuesReadPort>>,
+        write: Option<Arc<dyn ProductAttachedValuesWritePort>>,
+    ) -> Self {
+        self.product_read = read;
+        self.product_write = write;
+        self
     }
 }
 
@@ -829,18 +570,29 @@ impl FlexAttachedValuesGraphqlAdapter {
 impl flex::graphql::AttachedValuesGraphqlPort for FlexAttachedValuesGraphqlAdapter {
     async fn resolve_values(
         &self,
-        tenant_id: Uuid,
+        context: rustok_api::PortContext,
         entity_type: &str,
         entity_id: Uuid,
-        preferred_locale: &str,
         tenant_default_locale: &str,
     ) -> Result<Option<Value>, FlexError> {
+        #[cfg(feature = "mod-product")]
+        if entity_type == PRODUCT_ENTITY_TYPE {
+            return self
+                .product_read
+                .as_ref()
+                .ok_or_else(product_values_unavailable)?
+                .read_attached_values(context, entity_id, tenant_default_locale)
+                .await
+                .map_err(|error| map_product_attached_error(error, entity_id));
+        }
+        let tenant_id = Uuid::parse_str(&context.tenant_id)
+            .map_err(|_| FlexError::Database("Invalid attached values tenant context".into()))?;
         FlexAttachedValuesService::resolve_registered_generic_values(
             &self.db,
             tenant_id,
             entity_type,
             entity_id,
-            preferred_locale,
+            &context.locale,
             tenant_default_locale,
         )
         .await
@@ -850,11 +602,22 @@ impl flex::graphql::AttachedValuesGraphqlPort for FlexAttachedValuesGraphqlAdapt
     async fn update_values(
         &self,
         tenant_id: Uuid,
+        _actor_id: Option<Uuid>,
         entity_type: &str,
         entity_id: Uuid,
         locale: &str,
         payload: Option<Value>,
     ) -> Result<Option<Value>, FlexError> {
+        #[cfg(feature = "mod-product")]
+        if entity_type == PRODUCT_ENTITY_TYPE {
+            return self
+                .product_write
+                .as_ref()
+                .ok_or_else(product_values_unavailable)?
+                .update_attached_values(tenant_id, _actor_id, entity_id, locale, payload)
+                .await
+                .map_err(|error| map_product_attached_error(error, entity_id));
+        }
         FlexAttachedValuesService::update_registered_generic_values(
             &self.db,
             tenant_id,
@@ -880,9 +643,20 @@ impl flex::graphql::AttachedValuesGraphqlPort for FlexAttachedValuesGraphqlAdapt
     async fn delete_values(
         &self,
         tenant_id: Uuid,
+        _actor_id: Option<Uuid>,
         entity_type: &str,
         entity_id: Uuid,
     ) -> Result<(), FlexError> {
+        #[cfg(feature = "mod-product")]
+        if entity_type == PRODUCT_ENTITY_TYPE {
+            return self
+                .product_write
+                .as_ref()
+                .ok_or_else(product_values_unavailable)?
+                .delete_attached_values(tenant_id, _actor_id, entity_id)
+                .await
+                .map_err(|error| map_product_attached_error(error, entity_id));
+        }
         FlexAttachedValuesService::delete_registered_generic_values(
             &self.db,
             tenant_id,
@@ -891,6 +665,65 @@ impl flex::graphql::AttachedValuesGraphqlPort for FlexAttachedValuesGraphqlAdapt
         )
         .await
         .map_err(|error| map_host_error_to_flex(error, entity_id))
+    }
+}
+
+#[cfg(feature = "mod-product")]
+fn product_values_unavailable() -> FlexError {
+    FlexError::Database(
+        "Product attached values are unavailable in the selected deployment".to_owned(),
+    )
+}
+
+#[cfg(feature = "mod-product")]
+fn map_product_attached_error(error: rustok_api::PortError, product_id: Uuid) -> FlexError {
+    match error.kind {
+        rustok_api::PortErrorKind::NotFound => FlexError::NotFound(product_id),
+        rustok_api::PortErrorKind::Validation => FlexError::UnknownEntityType(error.message),
+        _ => FlexError::Database(error.message),
+    }
+}
+
+#[cfg(all(test, feature = "mod-product"))]
+mod product_attached_values_tests {
+    use flex::graphql::AttachedValuesGraphqlPort;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn missing_product_ports_fail_before_touching_local_storage() {
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        let adapter = FlexAttachedValuesGraphqlAdapter::new(db);
+        let tenant = Uuid::new_v4();
+        let id = Uuid::new_v4();
+        let context = rustok_api::PortContext::new(
+            tenant.to_string(),
+            rustok_api::PortActor::system(),
+            "en",
+            "test-attached-values",
+        )
+        .with_deadline(std::time::Duration::from_secs(5));
+
+        for error in [
+            adapter
+                .resolve_values(context, PRODUCT_ENTITY_TYPE, id, "en")
+                .await
+                .unwrap_err(),
+            adapter
+                .update_values(tenant, None, PRODUCT_ENTITY_TYPE, id, "en", None)
+                .await
+                .unwrap_err(),
+            adapter
+                .delete_values(tenant, None, PRODUCT_ENTITY_TYPE, id)
+                .await
+                .unwrap_err(),
+        ] {
+            assert!(matches!(
+                error,
+                FlexError::Database(message)
+                    if message == "Product attached values are unavailable in the selected deployment"
+            ));
+        }
     }
 }
 
@@ -970,41 +803,6 @@ fn normalized_object(value: Option<&Value>) -> Value {
     )
 }
 
-/// Loads the product aggregate row under an exclusive lock on backends that support it.
-///
-/// The Flex host compatibility path mutates document fields of the Product aggregate, so it must
-/// serialize with the Product owner exactly like the owner's own write methods do.
-#[cfg(feature = "mod-product")]
-async fn load_product_for_compat_write(
-    txn: &sea_orm::DatabaseTransaction,
-    tenant_id: Uuid,
-    entity_id: Uuid,
-) -> ServerResult<rustok_product::entities::product::Model> {
-    let query = rustok_product::entities::product::Entity::find_by_id(entity_id)
-        .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id));
-    let product = match sea_orm::ConnectionTrait::get_database_backend(txn) {
-        sea_orm::DatabaseBackend::Postgres | sea_orm::DatabaseBackend::MySql => {
-            use sea_orm::QuerySelect;
-            query.lock_exclusive().one(txn).await?
-        }
-        _ => query.one(txn).await?,
-    };
-
-    product.ok_or(Error::NotFound)
-}
-
-/// Bumps the Product aggregate revision for one host-side compatibility write.
-#[cfg(feature = "mod-product")]
-fn bump_product_compat_revision(
-    active: &mut rustok_product::entities::product::ActiveModel,
-    current_revision: i32,
-) -> ServerResult<()> {
-    let next = rustok_product::next_product_revision(current_revision)
-        .map_err(|error| Error::Message(format!("Product revision bump failed: {error}")))?;
-    active.revision = sea_orm::ActiveValue::Set(next);
-    Ok(())
-}
-
 async fn ensure_registered_owner_exists<C>(
     db: &C,
     tenant_id: Uuid,
@@ -1018,15 +816,6 @@ where
         USER_ENTITY_TYPE => {
             let exists = crate::models::_entities::users::Entity::find_by_id(entity_id)
                 .filter(crate::models::_entities::users::Column::TenantId.eq(tenant_id))
-                .one(db)
-                .await?
-                .is_some();
-            if exists { Ok(()) } else { Err(Error::NotFound) }
-        }
-        #[cfg(feature = "mod-product")]
-        PRODUCT_ENTITY_TYPE => {
-            let exists = rustok_product::entities::product::Entity::find_by_id(entity_id)
-                .filter(rustok_product::entities::product::Column::TenantId.eq(tenant_id))
                 .one(db)
                 .await?
                 .is_some();
@@ -1108,7 +897,6 @@ async fn load_schema(
 ) -> Result<CustomFieldsSchema, FlexError> {
     match entity_type {
         USER_ENTITY_TYPE => UserFieldService::get_schema(db, tenant_id).await,
-        PRODUCT_ENTITY_TYPE => ProductFieldService::get_schema(db, tenant_id).await,
         ORDER_ENTITY_TYPE => OrderFieldService::get_schema(db, tenant_id).await,
         TOPIC_ENTITY_TYPE => TopicFieldService::get_schema(db, tenant_id).await,
         #[cfg(feature = "mod-taxonomy")]
