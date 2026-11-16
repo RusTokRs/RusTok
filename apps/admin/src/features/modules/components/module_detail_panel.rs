@@ -1255,6 +1255,108 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                 });
                             })
                         };
+                        let on_unyank_release = {
+                            let module_slug_for_actions = module_slug_for_actions.clone();
+                            let release_version = release_version.clone();
+                            Callback::new(move |_| {
+                                set_governance_intent_action.set(Some("unyank".to_string()));
+                                let reason = governance_reason.get_untracked().trim().to_string();
+                                let reason_code =
+                                    governance_reason_code.get_untracked().trim().to_string();
+                                let dry_run = governance_dry_run.get_untracked();
+                                let governance_actions =
+                                    governance_actions_for_form.get_untracked();
+                                if !dry_run
+                                    && governance_action_reason_required(
+                                        &governance_actions,
+                                        "unyank",
+                                    )
+                                    && reason.is_empty()
+                                {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Reason is required.", "Нужно указать причину.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if !dry_run
+                                    && governance_action_reason_code_required(
+                                        &governance_actions,
+                                        "unyank",
+                                    )
+                                    && reason_code.is_empty()
+                                {
+                                    set_governance_error.set(Some(
+                                        tr(locale, "Reason code is required.", "Нужно указать reason code.")
+                                            .to_string(),
+                                    ));
+                                    return;
+                                }
+                                if let Some(message) = governance_action_reason_code_validation_message(
+                                    &governance_actions,
+                                    "unyank",
+                                    &reason_code,
+                                    locale,
+                                ) {
+                                    set_governance_error.set(Some(message));
+                                    return;
+                                }
+                                if !dry_run
+                                    && governance_confirmation_action.get_untracked().as_deref()
+                                        != Some("unyank")
+                                {
+                                    set_governance_confirmation_action
+                                        .set(Some("unyank".to_string()));
+                                    set_governance_feedback.set(Some(
+                                        destructive_governance_confirmation_message(
+                                            "unyank",
+                                            &module_slug_for_actions,
+                                            Some(&release_version),
+                                            None,
+                                            locale,
+                                        ),
+                                    ));
+                                    set_governance_error.set(None);
+                                    set_governance_result.set(None);
+                                    return;
+                                }
+                                set_governance_confirmation_action.set(None);
+                                set_governance_submitting.set(true);
+                                set_governance_feedback.set(None);
+                                set_governance_error.set(None);
+                                let token = access_token.get_untracked();
+                                let tenant = tenant_slug.get_untracked();
+                                let module_slug_for_actions = module_slug_for_actions.clone();
+                                let release_version = release_version.clone();
+                                spawn_local(async move {
+                                    match transport::unyank_registry_release(
+                                        module_slug_for_actions.clone(),
+                                        release_version.clone(),
+                                        reason,
+                                        reason_code,
+                                        dry_run,
+                                        token,
+                                        tenant,
+                                    )
+                                    .await
+                                    {
+                                        Ok(result) => {
+                                            set_governance_feedback.set(Some(
+                                                registry_mutation_result_summary(&result, locale),
+                                            ));
+                                            set_governance_result.set(Some(result));
+                                            set_governance_contract_refresh_nonce.update(|value| *value += 1);
+                                            on_refresh_detail.run(());
+                                        }
+                                        Err(error) => {
+                                            set_governance_error
+                                                .set(Some(error.to_string()));
+                                        }
+                                    }
+                                    set_governance_submitting.set(false);
+                                });
+                            })
+                        };
                         let on_governance_refresh = {
                             Callback::new(move |_| {
                                 set_governance_intent_action.set(None);
@@ -2043,6 +2145,7 @@ pub fn ModuleDetailPanel(input: ModuleDetailPanelInput) -> impl IntoView {
                                             on_reject=on_reject_request
                                             on_transfer_owner=on_transfer_owner
                                             on_yank_release=on_yank_release
+                                            on_unyank_release=on_unyank_release
                                             on_refresh=on_governance_refresh
                                         />
                                     </Show>

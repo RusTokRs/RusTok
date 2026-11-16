@@ -195,10 +195,11 @@ impl ForumCategoryAudienceVisibilityService {
         // Bind the empty result to the exact viewer before evaluator validation.
         if facts == ForumAudienceFacts::default() {
             facts.tenant_id = tenant_id;
-            facts.user_id = viewer
-                .security
-                .user_id
-                .expect("authenticated category viewer validated");
+            facts.user_id = viewer.security.user_id.ok_or_else(|| {
+                ForumError::Validation(
+                    "Forum category audience authenticated viewer is missing user_id".to_string(),
+                )
+            })?;
         }
 
         Ok(

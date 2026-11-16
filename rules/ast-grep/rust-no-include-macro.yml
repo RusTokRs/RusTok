@@ -14,3 +14,5 @@ ignores:
   - "**/tests/**"
 rule:
   pattern: 'include!($$$ARGS)'
+  not:
+    pattern: 'include!(concat!(env!("OUT_DIR"), $$$REST))'

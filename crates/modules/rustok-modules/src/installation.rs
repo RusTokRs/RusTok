@@ -7978,13 +7978,7 @@ fn valid_repository_segment(value: &str) -> bool {
     })
 }
 
-pub(crate) fn valid_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
-}
+pub(crate) use crate::artifact::valid_digest;
 
 pub(crate) fn sha256_digest(bytes: &[u8]) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(bytes)))

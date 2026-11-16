@@ -455,6 +455,7 @@ pub fn ModulesList(
     let (recovery_refreshing, set_recovery_refreshing) = signal(false);
     let (recovery_action_operation_id, set_recovery_action_operation_id) =
         signal::<Option<String>>(None);
+    #[cfg_attr(not(target_arch = "wasm32"), allow(unused_variables))]
     let (live_subscription_connected, set_live_subscription_connected) = signal(false);
     let token = use_token();
     let tenant = use_tenant();

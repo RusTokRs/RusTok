@@ -276,6 +276,7 @@ fn required_contribution_permissions(enabled_modules: &HashSet<String>) -> Vec<S
 /// effective snapshot actually grants. `effective_permissions_grant`
 /// applies the same exact-or-manage rule as
 /// `rustok_api::has_effective_permission` on the server.
+#[cfg(not(feature = "ssr"))]
 fn granted_contribution_permissions(required: &[String], effective: &[String]) -> Vec<String> {
     required
         .iter()

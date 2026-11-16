@@ -5,6 +5,7 @@ use std::{
 };
 
 use axum::extract::FromRef;
+use rustok_core::ModuleRuntimeExtensions;
 use sea_orm::DatabaseConnection;
 
 use crate::auth::AuthConfig;
@@ -227,6 +228,18 @@ impl ServerRuntimeContext {
         self.shared_values
             .get_or_insert_with(rustok_modules::ModuleEffectivePolicyCache::new)
     }
+
+    pub fn module_runtime_extensions(&self) -> Arc<ModuleRuntimeExtensions> {
+        // INVARIANT: ModuleRuntimeExtensions is registered in ServerRuntimeContext during bootstrap_app_runtime before any request handlers execute.
+        self.shared_get::<Arc<ModuleRuntimeExtensions>>()
+            .expect("ModuleRuntimeExtensions not initialized; bootstrap_app_runtime must run first")
+    }
+}
+
+pub fn module_runtime_extensions_from_ctx(
+    ctx: &ServerRuntimeContext,
+) -> Arc<ModuleRuntimeExtensions> {
+    ctx.module_runtime_extensions()
 }
 
 #[derive(Clone)]

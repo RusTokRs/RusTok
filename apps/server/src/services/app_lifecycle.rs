@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 
 #[cfg(feature = "mod-seo")]
-use crate::services::app_runtime::module_runtime_extensions_from_ctx;
+use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 #[cfg(feature = "mod-seo")]
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::{
@@ -960,6 +960,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         }
     };
 
+    #[cfg(feature = "mod-product")]
     let product_index_refresh_drain = async {
         if let Some(worker) = runtime_ctx
             .shared_take::<crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle>()
@@ -971,7 +972,10 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
             .await;
         }
     };
+    #[cfg(not(feature = "mod-product"))]
+    let product_index_refresh_drain = std::future::ready(());
 
+    #[cfg(feature = "mod-social_graph")]
     let social_graph_index_drain = async {
         if let Some(worker) = runtime_ctx
             .shared_take::<crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle>()
@@ -983,7 +987,10 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
             .await;
         }
     };
+    #[cfg(not(feature = "mod-social_graph"))]
+    let social_graph_index_drain = std::future::ready(());
 
+    #[cfg(feature = "mod-social_graph")]
     let social_graph_position_observer_drain = async {
         if let Some(worker) = runtime_ctx
             .shared_take::<crate::services::social_graph_index_position_observer::SocialGraphIndexPositionObserverHandle>()
@@ -995,7 +1002,10 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
             .await;
         }
     };
+    #[cfg(not(feature = "mod-social_graph"))]
+    let social_graph_position_observer_drain = std::future::ready(());
 
+    #[cfg(feature = "mod-social_graph")]
     let social_graph_poison_observer_drain = async {
         if let Some(worker) = runtime_ctx
             .shared_take::<crate::services::social_graph_index_poison_observer::SocialGraphIndexPoisonObserverHandle>()
@@ -1007,6 +1017,8 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
             .await;
         }
     };
+    #[cfg(not(feature = "mod-social_graph"))]
+    let social_graph_poison_observer_drain = std::future::ready(());
 
     #[cfg(feature = "mod-notifications")]
     let notification_outbox_drain = async {

@@ -1356,7 +1356,6 @@ impl StaticTenantLifecycleStore {
         if module_slugs.is_empty() {
             return Ok(BTreeMap::new());
         }
-        let fallback_slug = module_slugs.iter().next().cloned().unwrap_or_default();
         let mut snapshots = module_slugs
             .iter()
             .map(|module_slug| {

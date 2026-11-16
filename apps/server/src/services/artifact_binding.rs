@@ -15,13 +15,12 @@ use rustok_modules::{
     ModuleRuntimeBinding, SharedArtifactBindingExecutor, artifact_binding_request_digest,
     dispatch_artifact_command_binding, dispatch_artifact_http_binding,
 };
+use rustok_rbac::SeaOrmArtifactPermissionAuthorizer;
 use uuid::Uuid;
 
 use crate::{
     error::{Error, Result, http_error},
-    services::{
-        artifact_ui::require_artifact_permission, server_runtime_context::ServerRuntimeContext,
-    },
+    services::server_runtime_context::ServerRuntimeContext,
 };
 
 /// One transport-neutral invocation shape selected only after the host has
@@ -195,6 +194,48 @@ pub(crate) async fn dispatch_artifact_binding_operation(
             )
             .await
         }
+    }
+}
+
+/// Checks the dynamic, admitted permission required for one artifact surface.
+pub(crate) async fn is_artifact_permission_authorized(
+    ctx: &ServerRuntimeContext,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    installation: &InstalledModuleArtifact,
+    permission: &str,
+) -> Result<bool> {
+    SeaOrmArtifactPermissionAuthorizer::new(ctx.db_clone())
+        .is_authorized(
+            tenant_id,
+            actor_id,
+            installation.installation_id,
+            permission,
+        )
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "artifact RBAC authorization failed");
+            Error::InternalServerError
+        })
+}
+
+/// Enforces an admitted artifact permission with the same opaque forbidden
+/// response for every server transport.
+pub(crate) async fn require_artifact_permission(
+    ctx: &ServerRuntimeContext,
+    tenant_id: Uuid,
+    actor_id: Uuid,
+    installation: &InstalledModuleArtifact,
+    permission: &str,
+) -> Result<()> {
+    if is_artifact_permission_authorized(ctx, tenant_id, actor_id, installation, permission).await?
+    {
+        Ok(())
+    } else {
+        Err(http_error(rustok_web::HttpError::forbidden(
+            "forbidden",
+            "Permission denied for artifact binding",
+        )))
     }
 }
 

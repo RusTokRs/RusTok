@@ -45,13 +45,37 @@ pub struct ForumModuleSettings {
     pub max_edit_window_minutes: u32,
 }
 
+/// Strongly typed error returned when validating forum module settings fails.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, serde::Serialize, serde::Deserialize)]
+#[error("{0}")]
+pub struct ForumSettingsValidationError(pub String);
+
+impl From<&str> for ForumSettingsValidationError {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<String> for ForumSettingsValidationError {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl std::ops::Deref for ForumSettingsValidationError {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl ForumModuleSettings {
     /// Tenant-settings invariant: every combination that would make every
     /// create/update fail closed must be rejected at write time, not at
     /// runtime. This validator is the single owner for cross-field forum
     /// settings; the host `put_settings` path should call it before
     /// persisting.
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), ForumSettingsValidationError> {
         if self.max_topic_title_length != 0
             && self.min_topic_title_length != 0
             && self.min_topic_title_length > self.max_topic_title_length
@@ -59,7 +83,8 @@ impl ForumModuleSettings {
             return Err(format!(
                 "min_topic_title_length ({}) cannot exceed max_topic_title_length ({})",
                 self.min_topic_title_length, self.max_topic_title_length
-            ));
+            )
+            .into());
         }
         if self.max_post_body_length != 0
             && self.min_post_body_length != 0
@@ -68,43 +93,50 @@ impl ForumModuleSettings {
             return Err(format!(
                 "min_post_body_length ({}) cannot exceed max_post_body_length ({})",
                 self.min_post_body_length, self.max_post_body_length
-            ));
+            )
+            .into());
         }
         if self.topics_per_page == 0 || self.topics_per_page > 100 {
             return Err(format!(
                 "topics_per_page must be between 1 and 100, got {}",
                 self.topics_per_page
-            ));
+            )
+            .into());
         }
         if self.replies_per_page == 0 || self.replies_per_page > 100 {
             return Err(format!(
                 "replies_per_page must be between 1 and 100, got {}",
                 self.replies_per_page
-            ));
+            )
+            .into());
         }
         if self.default_topic_sort != "latest_reply" && self.default_topic_sort != "top" {
             return Err(format!(
                 "default_topic_sort must be 'latest_reply' or 'top', got '{}'",
                 self.default_topic_sort
-            ));
+            )
+            .into());
         }
         if self.rate_limit_new_topic_seconds > 86_400 {
             return Err(format!(
                 "rate_limit_new_topic_seconds must be <= 86400, got {}",
                 self.rate_limit_new_topic_seconds
-            ));
+            )
+            .into());
         }
         if self.rate_limit_new_reply_seconds > 86_400 {
             return Err(format!(
                 "rate_limit_new_reply_seconds must be <= 86400, got {}",
                 self.rate_limit_new_reply_seconds
-            ));
+            )
+            .into());
         }
         if self.max_edit_window_minutes > 525_600 {
             return Err(format!(
                 "max_edit_window_minutes must be <= 525600 (1 year), got {}",
                 self.max_edit_window_minutes
-            ));
+            )
+            .into());
         }
         Ok(())
     }

@@ -179,6 +179,7 @@ fn forum_graphql_storefront_topic_list_locale_resolution_counter() -> Option<&'s
             ),
             &["outcome"],
         )
+        // INVARIANT: valid alphanumeric metric name and label names.
         .expect("Forum GraphQL storefront topic-list locale metric descriptor must be valid")
     });
 

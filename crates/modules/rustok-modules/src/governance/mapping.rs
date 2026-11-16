@@ -731,6 +731,15 @@ pub(crate) fn derive_governance_actions(
             true,
         ));
     }
+    if latest_release.is_some_and(|release| release.status == "yanked") {
+        actions.push(governance_action(
+            "unyank",
+            true,
+            true,
+            REGISTRY_UNYANK_REASON_CODES,
+            true,
+        ));
+    }
     let mut seen = std::collections::HashSet::new();
     actions
         .into_iter()

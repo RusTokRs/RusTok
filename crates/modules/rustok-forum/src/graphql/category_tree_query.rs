@@ -130,6 +130,7 @@ fn forum_graphql_category_tree_locale_resolution_counter() -> Option<&'static In
             ),
             &["outcome"],
         )
+        // INVARIANT: valid alphanumeric metric name and label names.
         .expect("Forum GraphQL category-tree locale metric descriptor must be valid")
     });
 

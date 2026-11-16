@@ -508,6 +508,41 @@ flowchart TD
   ```
 * **Detection:** Run `rg -ni 'DROP (DATABASE|ROLE) IF EXISTS|drop_postgres_database_if_exists' crates` and trace ownership on each cleanup path. Pre-create the fixture name and verify that the attempt fails while the original resource survives.
 
+### Pattern 27: Strongly-Typed Domain & Library Errors (`P-TYPED-DOMAIN-ERROR`)
+
+* **Category:** API design & error handling. **Dimension:** Branch completeness & anti-swallowing.
+* **Problem:** Using bare `String`, `&str`, or `anyhow::Error` as error types in library crates or domain modules erases error identity, loses compiler-checked variant discrimination, prevents callers from cleanly handling and matching domain outcomes, and forces string inspection.
+* **Pattern Solution:** Define strongly-typed error enums via `#[derive(thiserror::Error)]` in each module or library. Ensure every failure path returns a typed error variant that callers can match on.
+  ```rust
+  #[derive(Debug, thiserror::Error)]
+  pub enum ModuleOperationError {
+      #[error("module '{0}' was not found")]
+      NotFound(String),
+      #[error("invalid module state: {0}")]
+      InvalidState(String),
+  }
+  ```
+* **Detection:** Doctor checks for `Result<..., String>`, `Result<..., &str>`, or `anyhow::` in non-test, non-CLI library and module code.
+
+### Pattern 28: Idiomatic Pattern Matching Over Check-Then-Unwrap (`P-CHECK-THEN-UNWRAP`)
+
+* **Category:** Reliability & idiomatic Rust. **Dimension:** Branch completeness & order of operations.
+* **Problem:** Checking an `Option` or `Result` with `.is_some()`, `.is_none()`, `.is_ok()`, or `.is_err()` and then unwrapping with `.unwrap()` or `.expect()` in subsequent statements bypasses Rust's affine type system. If the variable is mutated, shadowed, or refactored, the unwrap can panic. Furthermore, developers are often tempted to silence `P-ZERO-PANIC-PROD` with dummy invariant comments rather than binding the value atomically.
+* **Pattern Solution:** Use idiomatic Rust pattern matching (`if let Some(val) = ...`, `if let Ok(val) = ...`, or `match`) to bind the inner value safely and atomically without panic-prone unwraps.
+  ```rust
+  // Anti-pattern: check-then-unwrap
+  if user.is_some() {
+      let u = user.unwrap();
+      process(u);
+  }
+
+  // Idiomatic pattern: atomic binding
+  if let Some(u) = user {
+      process(u);
+  }
+  ```
+* **Detection:** Doctor checks for `if <var>.is_some()` or `if <var>.is_ok()` followed by `<var>.unwrap()` or `<var>.expect(...)` in the subsequent scope window.
+
 ---
 
 ## 3. Summary Matrix
@@ -554,9 +589,11 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-UNBOUNDED-ALLOC-OOM` | Preconditions & bounds | Network payload lengths validated against max limit | Critical: vector allocated from unvalidated byte buffer length |
 | `P-CANONICAL-DIGEST` | Cryptographic integrity | Variable-length elements prefixed with length in signatures/hashes | Manual |
 | `P-PTR-ARG` | API design | Borrowed slices used instead of &String, &Vec, &PathBuf | High: &String, &Vec, or &PathBuf in function parameters |
-| `P-BLOCKING-IO-IN-ASYNC` | Concurrency | Asynchronous tasks use non-blocking I/O or spawn_blocking | High: synchronous std::fs in async fn |
+| `P-BLOCKING-IO-IN-ASYNC` | Concurrency | Asynchronous tasks use non-blocking I/O or spawn_blocking | High: synchronous std::fs or std::process::Command in async fn |
 | `P-STALE-ALLOW-LINT` | Code completeness | Unused code tested, deleted, or marked with #[expect(..., reason = "...")] | Medium: bare #[allow(dead_code)], #[allow(unused_imports)], or #[allow(unused_mut)] |
 | `P-LOG-RAW-PRINT` | Observability | Production code uses tracing macros instead of raw stdout/stderr prints | High: direct println!, eprintln!, or dbg! in non-CLI/non-test code |
+| `P-TYPED-DOMAIN-ERROR` | Error handling | Library and domain modules propagate strongly-typed domain errors with thiserror | High: Result with bare String, &str, or anyhow in domain/library signatures |
+| `P-CHECK-THEN-UNWRAP` | Reliability | Atomic pattern matching (if let / match) used instead of check-then-unwrap | High: if .is_some()/.is_ok() followed by .unwrap()/.expect() |
 
 ---
 

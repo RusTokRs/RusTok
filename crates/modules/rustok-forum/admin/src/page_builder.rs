@@ -21,6 +21,7 @@ const FORUM_BLOCK_CATEGORY: &str = "forum";
 
 static GENERATED_FORUM_CONTRIBUTION_MANIFEST: LazyLock<ModuleContributionManifest> =
     LazyLock::new(|| {
+        // INVARIANT: build-time generated and validated contribution manifest JSON.
         serde_json::from_str(GENERATED_FORUM_CONTRIBUTION_MANIFEST_JSON)
             .expect("build-generated Forum contribution manifest must deserialize")
     });

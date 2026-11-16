@@ -98,6 +98,7 @@ impl CategoryTaxonomyTreeReadService {
             .await?;
 
         categories.sort_by_key(|category| {
+            // INVARIANT: categories are bounded by load_bound_categories for all category_ids.
             let projected = canonical
                 .get(&category.id)
                 .expect("canonical projection cardinality checked before tree sort");

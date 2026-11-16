@@ -1216,7 +1216,7 @@ async fn read_cargo_output<R>(
     mut reader: R,
     budget: Arc<AtomicUsize>,
     failure_sender: tokio::sync::mpsc::Sender<String>,
-) -> Result<Vec<u8>, String>
+) -> CliCoreResult<Vec<u8>>
 where
     R: AsyncRead + Unpin,
 {
@@ -1228,7 +1228,7 @@ where
             Err(error) => {
                 let message = format!("Cargo output read failed: {error}");
                 let _ = failure_sender.send(message.clone()).await;
-                return Err(message);
+                return Err(command_failed(message));
             }
         };
         if read == 0 {
@@ -1238,18 +1238,17 @@ where
         if previous.saturating_add(read) > MAX_LOCAL_CARGO_OUTPUT_BYTES {
             let message = "Cargo output exceeded the local authoring limit".to_string();
             let _ = failure_sender.send(message.clone()).await;
-            return Err(message);
+            return Err(command_failed(message));
         }
         output.extend_from_slice(&buffer[..read]);
     }
 }
 
 async fn collect_cargo_output(
-    task: tokio::task::JoinHandle<Result<Vec<u8>, String>>,
+    task: tokio::task::JoinHandle<CliCoreResult<Vec<u8>>>,
 ) -> CliCoreResult<Vec<u8>> {
     task.await
         .map_err(|error| command_failed(format!("Cargo output task failed: {error}")))?
-        .map_err(command_failed)
 }
 
 fn write_rendered_project(root: &Path, rendered: &RenderedModule) -> CliCoreResult<()> {

@@ -238,6 +238,37 @@ fn lifecycle_actions_fail_closed_for_unpassed_approval_gates() {
 }
 
 #[test]
+fn lifecycle_actions_advertise_yank_and_unyank_according_to_release_status() {
+    let active_release = ModuleGovernanceReleaseSnapshot {
+        version: "1.0.0".to_string(),
+        status: "active".to_string(),
+        publisher_principal: serde_json::json!({"kind": "user"}),
+        checksum_sha256: Some("sha256:test".to_string()),
+        published_at: "2026-07-22T00:00:00Z".to_string(),
+        yanked_reason: None,
+        yanked_by_principal: None,
+        yanked_at: None,
+    };
+    let actions = derive_governance_actions(None, Some(&active_release), None, &[]);
+    assert!(actions.iter().any(|action| action.key == "yank"));
+    assert!(!actions.iter().any(|action| action.key == "unyank"));
+
+    let yanked_release = ModuleGovernanceReleaseSnapshot {
+        version: "1.0.0".to_string(),
+        status: "yanked".to_string(),
+        publisher_principal: serde_json::json!({"kind": "user"}),
+        checksum_sha256: Some("sha256:test".to_string()),
+        published_at: "2026-07-22T00:00:00Z".to_string(),
+        yanked_reason: Some("security".to_string()),
+        yanked_by_principal: None,
+        yanked_at: Some("2026-07-22T01:00:00Z".to_string()),
+    };
+    let actions = derive_governance_actions(None, Some(&yanked_release), None, &[]);
+    assert!(actions.iter().any(|action| action.key == "unyank"));
+    assert!(!actions.iter().any(|action| action.key == "yank"));
+}
+
+#[test]
 fn lifecycle_rejects_unknown_durable_artifact_origin() {
     let request = GovernanceRequestRow {
         snapshot: governance_request_snapshot("approved", "unknown_origin"),

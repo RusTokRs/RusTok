@@ -25,7 +25,7 @@ use tokio::task::JoinHandle;
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::StopHandle;
-use crate::services::app_runtime::module_runtime_extensions_from_ctx;
+use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 

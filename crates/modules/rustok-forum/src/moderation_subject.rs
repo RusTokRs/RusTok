@@ -48,6 +48,7 @@ impl ForumModerationSubjectAdapterFactory {
     }
 
     fn adapter_key(self) -> ModerationSubjectAdapterKey {
+        // INVARIANT: FORUM_MODERATION_MODULE is a valid compile-time slug constant.
         ModerationSubjectAdapterKey::new(FORUM_MODERATION_MODULE, self.kind)
             .expect("static Forum moderation adapter key is valid: invariant validated at startup")
     }

@@ -17,7 +17,13 @@ use rustok_api::{
 };
 use rustok_sandbox::{CapabilityName, RHAI_SOURCE_MEDIA_TYPE, SandboxExecutorKind};
 
-use crate::installation::valid_digest;
+pub(crate) fn valid_digest(value: &str) -> bool {
+    value.len() == 71
+        && value.starts_with("sha256:")
+        && value[7..]
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+}
 use crate::{artifact_schema::validates_ui_contribution, build::ModuleBuildRequest};
 
 /// The current immutable descriptor contract. Schema documents are bundled in
@@ -43,17 +49,28 @@ const MAX_DESCRIPTOR_CAPABILITIES: usize = 64;
 const MAX_DESCRIPTOR_REQUIRED_FEATURES: usize = 32;
 const JSON_SCHEMA_DRAFT_2020_12: &str = "https://json-schema.org/draft/2020-12/schema";
 
+/// Error returned when parsing a module version requirement fails.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ModuleVersionRequirementError {
+    #[error("version requirement must not be empty; use `*` for any version")]
+    Empty,
+    #[error("invalid semantic version requirement: {0}")]
+    Parse(String),
+}
+
 /// Parses the one canonical module version-requirement representation.
 ///
 /// A requirement string is always explicit in typed module contracts: `*`
 /// means any version, while an empty or whitespace-only value is invalid.
 /// Host file formats that use omission for “any” must canonicalize that
 /// omission to `*` before constructing these contracts.
-pub(crate) fn parse_module_version_requirement(value: &str) -> Result<VersionReq, String> {
+pub(crate) fn parse_module_version_requirement(
+    value: &str,
+) -> Result<VersionReq, ModuleVersionRequirementError> {
     if value.trim().is_empty() {
-        return Err("version requirement must not be empty; use `*` for any version".to_string());
+        return Err(ModuleVersionRequirementError::Empty);
     }
-    VersionReq::parse(value).map_err(|error| error.to_string())
+    VersionReq::parse(value).map_err(|error| ModuleVersionRequirementError::Parse(error.to_string()))
 }
 
 /// Stable OCI layer media type for immutable Rhai source artifacts.

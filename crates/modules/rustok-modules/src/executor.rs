@@ -51,7 +51,32 @@ pub struct ModuleLifecycleToggleRequest {
     pub policy_transition: Option<ModulePolicyRevisionTransition>,
     /// Host-composed schema or resolution failure. The owner checks the
     /// journal for replay before rejecting a new command with unavailable evidence.
-    pub static_settings_schema: Option<Result<HashMap<String, crate::ModuleSettingSpec>, String>>,
+    pub static_settings_schema:
+        Option<Result<HashMap<String, crate::ModuleSettingSpec>, StaticSettingsSchemaResolutionError>>,
+}
+
+/// Typed error wrapper for host static settings schema resolution failure.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error, serde::Serialize, serde::Deserialize)]
+#[error("{0}")]
+pub struct StaticSettingsSchemaResolutionError(pub String);
+
+impl From<&str> for StaticSettingsSchemaResolutionError {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<String> for StaticSettingsSchemaResolutionError {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl std::ops::Deref for StaticSettingsSchemaResolutionError {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -172,7 +197,7 @@ pub async fn execute_module_toggle(
         && let Some(Err(reason)) = &request.static_settings_schema
     {
         return Err(ModuleLifecycleExecutionError::SettingsSchemaUnavailable(
-            reason.clone(),
+            reason.to_string(),
         ));
     }
     if request.policy_transition.is_some() && policy_transition_coordinator.is_none() {

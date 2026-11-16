@@ -1169,3 +1169,40 @@ pub async fn yank_registry_release_native(
         ))
     }
 }
+
+#[server(prefix = "/api/fn", endpoint = "admin/registry-unyank-release")]
+pub async fn unyank_registry_release_native(
+    token: String,
+    tenant: String,
+    slug: String,
+    version: String,
+    reason: String,
+    reason_code: String,
+    dry_run: bool,
+) -> Result<RegistryMutationResult, ServerFnError> {
+    #[cfg(feature = "ssr")]
+    {
+        registry_governance_request_native(
+            reqwest::Method::POST,
+            "/v2/catalog/unyank".to_string(),
+            token,
+            tenant,
+            &RegistryYankPayload {
+                schema_version: REGISTRY_MUTATION_SCHEMA_VERSION,
+                dry_run,
+                slug,
+                version,
+                reason: Some(reason),
+                reason_code: Some(reason_code),
+            },
+        )
+        .await
+    }
+    #[cfg(not(feature = "ssr"))]
+    {
+        let _ = (token, tenant, slug, version, reason, reason_code, dry_run);
+        Err(ServerFnError::new(
+            "admin/registry-unyank-release requires the `ssr` feature",
+        ))
+    }
+}

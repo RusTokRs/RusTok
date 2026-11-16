@@ -45,6 +45,7 @@ pub fn GovernanceForm(
     on_reject: Callback<()>,
     on_transfer_owner: Callback<()>,
     on_yank_release: Callback<()>,
+    on_unyank_release: Callback<()>,
     on_refresh: Callback<()>,
 ) -> impl IntoView {
     view! {
@@ -266,6 +267,22 @@ pub fn GovernanceForm(
                 </Button>
                 <Button
                     class="h-8 px-3 py-1 text-xs"
+                    disabled=Signal::derive(move || governance_submitting.get() || !governance_action_available(&governance_actions_for_form.get(), "unyank"))
+                    on_click=Callback::new(move |_| on_unyank_release.run(()))
+                >
+                    {move || {
+                        if !governance_dry_run.get()
+                            && governance_confirmation_action.get().as_deref()
+                                == Some("unyank")
+                        {
+                            tr(locale, "Confirm unyank", "Подтвердить возврат")
+                        } else {
+                            tr(locale, "Unyank", "Unyank")
+                        }
+                    }}
+                </Button>
+                <Button
+                    class="h-8 px-3 py-1 text-xs"
                     disabled=Signal::derive(move || governance_submitting.get())
                     on_click=Callback::new(move |_| on_refresh.run(()))
                 >
@@ -286,6 +303,7 @@ pub fn GovernanceForm(
                                     Some("reject") => on_reject.run(()),
                                     Some("owner-transfer") => on_transfer_owner.run(()),
                                     Some("yank") => on_yank_release.run(()),
+                                    Some("unyank") => on_unyank_release.run(()),
                                     _ => {}
                                 }
                             })

@@ -16,7 +16,7 @@ const js =
     )
     .replace(/export async function /g, 'async function ')
     .replace(/export const /g, 'const ') +
-  '\nmodule.exports = { fetchRegistryPublishRequestStatus, holdRegistryPublishRequest, rollbackModuleTransition };';
+  '\nmodule.exports = { fetchRegistryPublishRequestStatus, holdRegistryPublishRequest, rollbackModuleTransition, yankRegistryRelease, unyankRegistryRelease };';
 
 function client() {
   const requests = [];
@@ -107,4 +107,55 @@ test('transition rollback sends the owner operation and the supplied replay key'
   });
   assert.equal(graphqlCalls[0][2], 'token');
   assert.equal(graphqlCalls[0][3], 'tenant');
+});
+
+test('yank and unyank registry release post to their canonical REST endpoints with payload', async () => {
+  const { api, requests } = client();
+  const opts = { token: 'token-123', tenantSlug: 'tenant-456' };
+
+  await api.yankRegistryRelease(
+    'mod-a',
+    '1.2.3',
+    'vulnerability detected',
+    'cve_patch',
+    false,
+    opts,
+    'yank-key'
+  );
+
+  await api.unyankRegistryRelease(
+    'mod-a',
+    '1.2.3',
+    'false alarm resolved',
+    'reinstated',
+    false,
+    opts,
+    'unyank-key'
+  );
+
+  assert.equal(requests[0].url, 'https://api.example.test/v2/catalog/yank');
+  assert.equal(requests[0].method, 'POST');
+  assert.equal(requests[0].headers['Idempotency-Key'], 'yank-key');
+  assert.equal(requests[0].headers.Authorization, 'Bearer token-123');
+  assert.deepEqual(JSON.parse(requests[0].body), {
+    schema_version: 1,
+    dry_run: false,
+    slug: 'mod-a',
+    version: '1.2.3',
+    reason: 'vulnerability detected',
+    reason_code: 'cve_patch'
+  });
+
+  assert.equal(requests[1].url, 'https://api.example.test/v2/catalog/unyank');
+  assert.equal(requests[1].method, 'POST');
+  assert.equal(requests[1].headers['Idempotency-Key'], 'unyank-key');
+  assert.equal(requests[1].headers.Authorization, 'Bearer token-123');
+  assert.deepEqual(JSON.parse(requests[1].body), {
+    schema_version: 1,
+    dry_run: false,
+    slug: 'mod-a',
+    version: '1.2.3',
+    reason: 'false alarm resolved',
+    reason_code: 'reinstated'
+  });
 });

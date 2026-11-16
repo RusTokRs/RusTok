@@ -1,4 +1,3 @@
-use anyhow::Context;
 use axum::routing::get;
 use axum::{
     Router,
@@ -134,10 +133,14 @@ impl ForumHttpRuntime {
 }
 
 impl ForumHttpRuntime {
-    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+    fn from_host(runtime: &HostRuntimeContext) -> Result<Self, crate::error::ForumError> {
         let event_bus = runtime
             .shared_get::<TransactionalEventBus>()
-            .context("forum HTTP routes require TransactionalEventBus in HostRuntimeContext")?;
+            .ok_or_else(|| {
+                crate::error::ForumError::Validation(
+                    "forum HTTP routes require TransactionalEventBus in HostRuntimeContext".to_string(),
+                )
+            })?;
         let settings_providers = match (
             runtime.shared_get::<SharedStaticModuleSettingsReader>(),
             runtime.shared_get::<SharedStaticModuleSettingsTransactionReader>(),
@@ -300,7 +303,7 @@ pub(crate) fn map_forum_error(error: crate::ForumError) -> HttpError {
     }
 }
 
-pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
+pub fn axum_router(runtime: &HostRuntimeContext) -> Result<Router, crate::error::ForumError> {
     let state = ForumHttpRuntime::from_host(runtime)?;
     Ok(Router::new()
         .route(

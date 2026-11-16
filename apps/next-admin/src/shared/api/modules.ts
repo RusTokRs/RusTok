@@ -1475,3 +1475,28 @@ export async function yankRegistryRelease(
     idempotencyKey
   );
 }
+
+export async function unyankRegistryRelease(
+  slug: string,
+  version: string,
+  reason: string,
+  reasonCode: string,
+  dryRun = false,
+  opts: GqlOpts = {},
+  idempotencyKey?: string
+): Promise<RegistryMutationResult> {
+  return governanceRestRequest(
+    'POST',
+    '/v2/catalog/unyank',
+    {
+      schema_version: 1,
+      dry_run: dryRun,
+      slug,
+      version,
+      reason,
+      reason_code: reasonCode
+    },
+    opts,
+    idempotencyKey
+  );
+}

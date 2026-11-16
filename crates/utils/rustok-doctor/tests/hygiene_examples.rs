@@ -836,3 +836,143 @@ pub fn map_status(val: &str) -> &'static str {
     let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
     assert!(findings.iter().all(|f| f.pattern_id != "P-ZERO-PANIC-PROD"));
 }
+
+#[test]
+fn identifies_bare_string_error_in_result() {
+    let source = r#"
+pub fn parse_input(raw: &str) -> Result<Parsed, String> {
+    Ok(Parsed)
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let error_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-TYPED-DOMAIN-ERROR")
+        .collect();
+
+    assert_eq!(error_findings.len(), 1);
+    assert_eq!(error_findings[0].line, 2);
+    assert!(error_findings[0].message.contains("String"));
+}
+
+#[test]
+fn identifies_bare_str_slice_error_in_result() {
+    let source = r#"
+pub fn check_status(raw: &str) -> Result<(), &'static str> {
+    Ok(())
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let error_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-TYPED-DOMAIN-ERROR")
+        .collect();
+
+    assert_eq!(error_findings.len(), 1);
+    assert_eq!(error_findings[0].line, 2);
+}
+
+#[test]
+fn identifies_anyhow_in_domain_service() {
+    let source = r#"
+pub fn run_operation() -> Result<(), DomainError> {
+    let _ = anyhow::bail!("failed");
+    Ok(())
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let error_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-TYPED-DOMAIN-ERROR")
+        .collect();
+
+    assert_eq!(error_findings.len(), 1);
+    assert_eq!(error_findings[0].line, 3);
+}
+
+#[test]
+fn allows_strongly_typed_domain_errors_in_result() {
+    let source = r#"
+pub fn parse_settings() -> Result<std::collections::BTreeMap<String, String>, DomainError> {
+    Ok(Default::default())
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    assert!(findings.iter().all(|f| f.pattern_id != "P-TYPED-DOMAIN-ERROR"));
+}
+
+#[test]
+fn identifies_check_then_unwrap_pattern() {
+    let source = r#"
+pub fn extract_value(opt: Option<String>) -> String {
+    if opt.is_some() {
+        opt.unwrap()
+    } else {
+        "default".to_string()
+    }
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let check_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-CHECK-THEN-UNWRAP")
+        .collect();
+
+    assert_eq!(check_findings.len(), 1);
+    assert_eq!(check_findings[0].line, 3);
+    assert!(check_findings[0].message.contains("opt"));
+}
+
+#[test]
+fn identifies_check_then_expect_pattern() {
+    let source = r#"
+pub fn extract_result(res: Result<String, DomainError>) -> String {
+    if res.is_ok() {
+        res.expect("validated")
+    } else {
+        "fallback".to_string()
+    }
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let check_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-CHECK-THEN-UNWRAP")
+        .collect();
+
+    assert_eq!(check_findings.len(), 1);
+    assert_eq!(check_findings[0].line, 3);
+}
+
+#[test]
+fn allows_idiomatic_pattern_matching() {
+    let source = r#"
+pub fn extract_value(opt: Option<String>) -> String {
+    if let Some(val) = opt {
+        val
+    } else {
+        "default".to_string()
+    }
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    assert!(findings.iter().all(|f| f.pattern_id != "P-CHECK-THEN-UNWRAP"));
+}
+
+#[test]
+fn identifies_sync_process_command_in_async_fn() {
+    let source = r#"
+pub async fn execute_task() -> Result<(), DomainError> {
+    let status = std::process::Command::new("ls").status()?;
+    Ok(())
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let blocking_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-BLOCKING-IO-IN-ASYNC")
+        .collect();
+
+    assert_eq!(blocking_findings.len(), 1);
+    assert_eq!(blocking_findings[0].line, 3);
+}

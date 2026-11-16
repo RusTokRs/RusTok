@@ -73,7 +73,10 @@ pub struct ModuleLifecycleDbWriter<'a> {
     settings_schema_validators: ArtifactSchemaValidatorCache,
     static_settings_schema: Option<(
         String,
-        Result<HashMap<String, crate::ModuleSettingSpec>, String>,
+        Result<
+            HashMap<String, crate::ModuleSettingSpec>,
+            crate::executor::StaticSettingsSchemaResolutionError,
+        >,
     )>,
 }
 
@@ -324,7 +327,10 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
         module_slug: String,
         schema: HashMap<String, crate::ModuleSettingSpec>,
     ) -> Self {
-        self.with_static_settings_schema_result(module_slug, Ok(schema))
+        self.with_static_settings_schema_result(
+            module_slug,
+            Ok::<_, crate::executor::StaticSettingsSchemaResolutionError>(schema),
+        )
     }
 
     /// Preserve a schema resolution failure until the owner has checked
@@ -332,9 +338,12 @@ impl<'a> ModuleLifecycleDbWriter<'a> {
     pub fn with_static_settings_schema_result(
         mut self,
         module_slug: String,
-        schema: Result<HashMap<String, crate::ModuleSettingSpec>, String>,
+        schema: Result<
+            HashMap<String, crate::ModuleSettingSpec>,
+            impl Into<crate::executor::StaticSettingsSchemaResolutionError>,
+        >,
     ) -> Self {
-        self.static_settings_schema = Some((module_slug, schema));
+        self.static_settings_schema = Some((module_slug, schema.map_err(Into::into)));
         self
     }
 

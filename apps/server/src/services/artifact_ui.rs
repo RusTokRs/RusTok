@@ -10,11 +10,14 @@ use rustok_modules::{
     ArtifactInstallationResolveError, ArtifactUiProjectionError, InstalledModuleArtifact,
     ModuleControlPlane, find_artifact_ui_action_binding,
 };
-use rustok_rbac::SeaOrmArtifactPermissionAuthorizer;
 use uuid::Uuid;
 
+pub(crate) use crate::services::artifact_binding::{
+    is_artifact_permission_authorized, require_artifact_permission,
+};
+
 use crate::{
-    error::{Error, Result, http_error},
+    error::{Error, Result},
     services::{
         artifact_binding::{ArtifactBindingOperation, dispatch_artifact_binding_operation},
         server_runtime_context::ServerRuntimeContext,
@@ -36,48 +39,6 @@ pub(crate) async fn resolve_artifact_installation(
             | ArtifactInstallationResolveError::NotActiveSelection => Error::NotFound,
             other => Error::Message(other.to_string()),
         })
-}
-
-/// Checks the dynamic, admitted permission required for one artifact surface.
-pub(crate) async fn is_artifact_permission_authorized(
-    ctx: &ServerRuntimeContext,
-    tenant_id: Uuid,
-    actor_id: Uuid,
-    installation: &InstalledModuleArtifact,
-    permission: &str,
-) -> Result<bool> {
-    SeaOrmArtifactPermissionAuthorizer::new(ctx.db_clone())
-        .is_authorized(
-            tenant_id,
-            actor_id,
-            installation.installation_id,
-            permission,
-        )
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "artifact UI RBAC authorization failed");
-            Error::InternalServerError
-        })
-}
-
-/// Enforces an admitted artifact permission with the same opaque forbidden
-/// response for every server transport.
-pub(crate) async fn require_artifact_permission(
-    ctx: &ServerRuntimeContext,
-    tenant_id: Uuid,
-    actor_id: Uuid,
-    installation: &InstalledModuleArtifact,
-    permission: &str,
-) -> Result<()> {
-    if is_artifact_permission_authorized(ctx, tenant_id, actor_id, installation, permission).await?
-    {
-        Ok(())
-    } else {
-        Err(http_error(rustok_web::HttpError::forbidden(
-            "forbidden",
-            "Permission denied for artifact binding",
-        )))
-    }
 }
 
 /// Returns only localized contributions that the actor may render. There is

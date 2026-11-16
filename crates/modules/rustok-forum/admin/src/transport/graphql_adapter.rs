@@ -17,7 +17,7 @@ const CATEGORY_QUERY: &str = "query ForumAdminCategory($id: UUID!, $locale: Stri
 const CREATE_CATEGORY_MUTATION: &str = "mutation ForumAdminCreateCategory($input: CreateForumCategoryInput!) { createForumCategory(input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales name slug description icon color parent_id: parentId position topic_count: topicCount reply_count: replyCount moderated } }";
 const UPDATE_CATEGORY_MUTATION: &str = "mutation ForumAdminUpdateCategory($id: UUID!, $input: UpdateForumCategoryInput!) { updateForumCategory(id: $id, input: $input) { id requested_locale: requestedLocale locale effective_locale: effectiveLocale available_locales: availableLocales name slug description icon color parent_id: parentId position topic_count: topicCount reply_count: replyCount moderated } }";
 const MOVE_CATEGORY_MUTATION: &str = "mutation ForumAdminMoveCategory($categoryId: UUID!, $input: MoveForumCategoryInput!) { moveForumCategory(categoryId: $categoryId, input: $input) { moved { id } } }";
-#[allow(dead_code)]
+#[expect(dead_code, reason = "reserved for future category topic policy mutation")]
 const SET_CATEGORY_TOPIC_POLICY_MUTATION: &str = "mutation ForumAdminSetCategoryTopicPolicy($categoryId: UUID!, $input: UpdateForumCategoryTopicPolicyInput!) { setForumCategoryTopicPolicy(categoryId: $categoryId, input: $input) { category_id allows_topics } }";
 const ARCHIVE_CATEGORY_SUBTREE_MUTATION: &str = "mutation ForumAdminArchiveCategorySubtree($categoryId: UUID!) { archiveForumCategorySubtree(categoryId: $categoryId) { root_id archived } }";
 const RESTORE_CATEGORY_SUBTREE_MUTATION: &str = "mutation ForumAdminRestoreCategorySubtree($categoryId: UUID!) { restoreForumCategorySubtree(categoryId: $categoryId) { root_id archived } }";
@@ -301,7 +301,7 @@ struct MoveCategoryInput {
 }
 
 #[derive(Debug, Serialize)]
-#[allow(dead_code)]
+#[expect(dead_code, reason = "reserved for future category topic policy mutation variables")]
 struct CategoryTopicPolicyVariables {
     #[serde(rename = "categoryId")]
     category_id: String,
@@ -309,7 +309,7 @@ struct CategoryTopicPolicyVariables {
 }
 
 #[derive(Debug, Serialize)]
-#[allow(dead_code)]
+#[expect(dead_code, reason = "reserved for future category topic policy input")]
 struct UpdateCategoryTopicPolicyInput {
     #[serde(rename = "allows_topics")]
     allows_topics: bool,
@@ -477,7 +477,7 @@ pub async fn delete_category(
     }
 }
 
-#[allow(dead_code)]
+#[expect(dead_code, reason = "reserved for future category topic policy mutation helper")]
 pub async fn set_category_topic_policy(
     token: Option<String>,
     tenant_slug: Option<String>,
