@@ -413,12 +413,16 @@ pub fn attach_commerce_provider_registries(
                 server
                     .shared_get::<rustok_outbox::TransactionalEventBus>()
                     .map(|event_bus| {
-                        rustok_product::ProductCatalogReadRuntime::in_process_with_collaborators(
+                        rustok_product::ProductCatalogReadRuntime::in_process_with_flex_schema(
                             server.db_clone(),
                             event_bus,
                             product_pricing.clone(),
                             product_inventory.clone(),
                             product_taxonomy.clone(),
+                            Some(Arc::new(flex::FlexAttachedFieldReadService::new(
+                                server.db_clone(),
+                                super::field_definition_registry_bootstrap::build_field_def_registry(),
+                            ))),
                         )
                     })
             });

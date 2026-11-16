@@ -16,7 +16,6 @@ use rustok_product::{
         UpdateVariantInput, VariantAxesPreviewResponse, VariantAxisConfigResponse, VariantResponse,
     },
 };
-use rustok_product_ports::ProductAttachedValuesReadPort;
 use rustok_product_ports::grpc::{
     GrpcProductCatalogCommandProvider, GrpcProductCatalogReadProvider,
     ProductCatalogCommandGrpcService, ProductCatalogGrpcBearerAuthenticator,
@@ -25,6 +24,7 @@ use rustok_product_ports::grpc::{
     proto::product_catalog_command_service_server::ProductCatalogCommandServiceServer,
     proto::product_catalog_read_service_server::ProductCatalogReadServiceServer,
 };
+use rustok_product_ports::{ProductAttachedValuesReadPort, ProductAttachedValuesWritePort};
 use tokio::sync::oneshot;
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::{Endpoint, Server};
@@ -725,10 +725,22 @@ async fn loopback_grpc_provider_executes_the_product_catalog_command_port_contra
         ProductCatalogGrpcOperation::CreateProduct,
         ProductCatalogGrpcOperation::DeleteProduct,
     ]);
+    let attached_token =
+        ProductCatalogGrpcBearerToken::new("loopback-attached-write-token").unwrap();
+    let attached_authentication = ProductCatalogGrpcBearerAuthenticator::from_token(
+        attached_token.clone(),
+        PortActor::service("trusted-product-attached-values"),
+    )
+    .with_allowed_operations([
+        ProductCatalogGrpcOperation::UpdateAttachedValues,
+        ProductCatalogGrpcOperation::DeleteAttachedValues,
+    ]);
 
     let server_service = ProductCatalogCommandServiceServer::with_interceptor(
-        ProductCatalogCommandGrpcService::new(provider.clone()),
-        ProductCatalogGrpcBearerInterceptor::new(authentication),
+        ProductCatalogCommandGrpcService::new(provider.clone())
+            .with_attached_values_write_port(provider),
+        ProductCatalogGrpcBearerInterceptor::new(authentication)
+            .with_additional_authenticator(attached_authentication),
     );
     let read_service = ProductCatalogReadServiceServer::with_interceptor(
         ProductCatalogGrpcService::new(Arc::new(MockProductCatalogReadPort {
@@ -822,6 +834,55 @@ async fn loopback_grpc_provider_executes_the_product_catalog_command_port_contra
     let remote = remote
         .with_bearer_token("loopback-command-token")
         .expect("bearer token should be accepted");
+    let denied = remote
+        .delete_attached_values(write_context.clone(), product_id)
+        .await
+        .unwrap_err();
+    assert_eq!(denied.code, "product.attached_values_write_unavailable");
+    let remote = remote.with_attached_values_authentication(
+        ProductCatalogGrpcBearerToken::new("loopback-command-token").unwrap(),
+    );
+    let denied = remote
+        .delete_attached_values(write_context.clone(), product_id)
+        .await
+        .unwrap_err();
+    assert_eq!(denied.kind, PortErrorKind::Forbidden);
+    let remote = remote.with_attached_values_authentication(attached_token.clone());
+    let mut missing_key = write_context.clone();
+    missing_key.idempotency_key = None;
+    let denied = remote
+        .delete_attached_values(missing_key, product_id)
+        .await
+        .unwrap_err();
+    assert_eq!(denied.code, "port.idempotency_key_required");
+    let denied = remote
+        .update_attached_values(
+            write_context.clone(),
+            product_id,
+            Some(serde_json::Value::Null),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(denied.code, "product.attached_values_invalid");
+    let expected = Some(serde_json::json!({"tagline":"grpc"}));
+    assert_eq!(
+        remote
+            .update_attached_values(write_context.clone(), product_id, expected.clone())
+            .await
+            .unwrap(),
+        expected
+    );
+    remote
+        .delete_attached_values(write_context.clone(), product_id)
+        .await
+        .unwrap();
+    let remote = remote.with_authentication(attached_token);
+    let denied = remote
+        .delete_product(write_context.clone(), product_id)
+        .await
+        .unwrap_err();
+    assert_eq!(denied.kind, PortErrorKind::Forbidden);
+    let remote = remote.with_bearer_token("loopback-command-token").unwrap();
 
     let created = remote
         .create_product(write_context.clone(), create_input)
@@ -840,4 +901,36 @@ async fn loopback_grpc_provider_executes_the_product_catalog_command_port_contra
     server
         .await
         .expect("loopback Product command gRPC server task should stop");
+}
+
+#[async_trait]
+impl ProductAttachedValuesWritePort for MockProductCatalogCommandPort {
+    async fn update_attached_values(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        values: Option<serde_json::Value>,
+    ) -> Result<Option<serde_json::Value>, PortError> {
+        self.delete_attached_values(context, product_id).await?;
+        Ok(values)
+    }
+
+    async fn delete_attached_values(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+    ) -> Result<(), PortError> {
+        context.require_write_semantics()?;
+        assert_eq!(
+            context.actor,
+            PortActor::service("trusted-product-attached-values")
+        );
+        assert_eq!(context.tenant_id, self.tenant_id.to_string());
+        assert_eq!(product_id, self.product_id);
+        assert_eq!(
+            context.idempotency_key.as_deref(),
+            Some("idemp-create-product")
+        );
+        Ok(())
+    }
 }

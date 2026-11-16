@@ -404,9 +404,16 @@ where
     T: DeserializeOwned,
     F: Future<Output = Result<T, CommerceError>>,
 {
-    execute_receipted_catalog_command(service, context, tenant_id, operation, request, future, |error| {
-        product_command_error(context, operation, error)
-    }).await
+    execute_receipted_catalog_command(
+        service,
+        context,
+        tenant_id,
+        operation,
+        request,
+        future,
+        |error| product_command_error(context, operation, error),
+    )
+    .await
 }
 
 pub(crate) async fn execute_receipted_catalog_command<T, F, E>(

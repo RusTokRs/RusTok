@@ -1,5 +1,6 @@
 use std::{collections::HashSet, fmt, sync::Arc};
 
+use crate::ProductAttachedValuesWritePort;
 use crate::{
     FilteredPublishedProductsRequest, ProductAttachedValuesReadPort, ProductCatalogCommandPort,
     ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentityReadPort,
@@ -11,7 +12,6 @@ use crate::{
     },
 };
 use bytes::Bytes;
-use crate::ProductAttachedValuesWritePort;
 use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::service::Interceptor;
@@ -531,10 +531,16 @@ pub struct ProductCatalogCommandGrpcService<P> {
 
 impl<P> ProductCatalogCommandGrpcService<P> {
     pub fn new(provider: Arc<P>) -> Self {
-        Self { provider, attached_values_write_port: None }
+        Self {
+            provider,
+            attached_values_write_port: None,
+        }
     }
 
-    pub fn with_attached_values_write_port(mut self, provider: Arc<dyn ProductAttachedValuesWritePort>) -> Self {
+    pub fn with_attached_values_write_port(
+        mut self,
+        provider: Arc<dyn ProductAttachedValuesWritePort>,
+    ) -> Self {
         self.attached_values_write_port = Some(provider);
         self
     }
@@ -551,17 +557,39 @@ impl<P> ProductCatalogCommandService for ProductCatalogCommandGrpcService<P>
 where
     P: ProductCatalogCommandPort + 'static,
 {
-    async fn update_attached_values(&self, request: Request<JsonRequest>) -> Result<Response<JsonResponse>, Status> {
-        let context = trusted_context(&request, decode_context(&request.get_ref().context_json)?, ProductCatalogGrpcOperation::UpdateAttachedValues)?;
-        let input: ProductInputPayload<Option<serde_json::Value>> = decode_input(&request.into_inner().input_json)?;
-        let response = self.attached_values_write_port()?.update_attached_values(context, input.product_id, input.input).await.map_err(port_error_to_status)?;
+    async fn update_attached_values(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::UpdateAttachedValues,
+        )?;
+        let input: ProductInputPayload<Option<serde_json::Value>> =
+            decode_input(&request.into_inner().input_json)?;
+        let response = self
+            .attached_values_write_port()?
+            .update_attached_values(context, input.product_id, input.input)
+            .await
+            .map_err(port_error_to_status)?;
         json_response(&response)
     }
 
-    async fn delete_attached_values(&self, request: Request<JsonRequest>) -> Result<Response<JsonResponse>, Status> {
-        let context = trusted_context(&request, decode_context(&request.get_ref().context_json)?, ProductCatalogGrpcOperation::DeleteAttachedValues)?;
+    async fn delete_attached_values(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::DeleteAttachedValues,
+        )?;
         let input: ProductIdPayload = decode_input(&request.into_inner().input_json)?;
-        self.attached_values_write_port()?.delete_attached_values(context, input.product_id).await.map_err(port_error_to_status)?;
+        self.attached_values_write_port()?
+            .delete_attached_values(context, input.product_id)
+            .await
+            .map_err(port_error_to_status)?;
         json_response(&())
     }
     async fn create_product(

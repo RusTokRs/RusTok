@@ -29,7 +29,7 @@ use crate::registry::{
 };
 
 pub const GENERIC_ATTACHED_FIELD_DEFINITIONS_TABLE: &str = "flex_attached_field_definitions";
-pub const MAX_GENERIC_ATTACHED_FIELDS_PER_TENANT: usize = 50;
+pub const MAX_GENERIC_ATTACHED_FIELDS_PER_TENANT: usize = flex_ports::MAX_FLEX_ATTACHED_FIELDS;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "flex_attached_field_definitions")]

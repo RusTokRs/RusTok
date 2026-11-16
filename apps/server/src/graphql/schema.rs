@@ -217,7 +217,11 @@ pub fn build_schema(dependencies: GraphqlSchemaDependencies) -> AppSchema {
             .and_then(|runtime| runtime.attached_values_read_port()),
         graphql_runtime_inputs
             .shared_get::<rustok_product::ProductCatalogCommandRuntime>()
-            .and_then(|runtime| runtime.attached_values_write_port()),
+            .and_then(|runtime| {
+                runtime
+                    .attached_values_write_port()
+                    .map(|port| (runtime.profile(), port))
+            }),
     );
     let flex_runtime = FlexGraphqlRuntime::new(
         Arc::new(FlexStandaloneSeaOrmService::new(db.clone())),

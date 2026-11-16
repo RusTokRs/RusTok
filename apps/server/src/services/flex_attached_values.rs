@@ -540,7 +540,10 @@ pub struct FlexAttachedValuesGraphqlAdapter {
     #[cfg(feature = "mod-product")]
     product_read: Option<Arc<dyn ProductAttachedValuesReadPort>>,
     #[cfg(feature = "mod-product")]
-    product_write: Option<Arc<dyn ProductAttachedValuesWritePort>>,
+    product_write: Option<(
+        rustok_product::ProductCatalogCommandProfile,
+        Arc<dyn ProductAttachedValuesWritePort>,
+    )>,
 }
 
 impl FlexAttachedValuesGraphqlAdapter {
@@ -558,7 +561,10 @@ impl FlexAttachedValuesGraphqlAdapter {
     pub fn with_product_ports(
         mut self,
         read: Option<Arc<dyn ProductAttachedValuesReadPort>>,
-        write: Option<Arc<dyn ProductAttachedValuesWritePort>>,
+        write: Option<(
+            rustok_product::ProductCatalogCommandProfile,
+            Arc<dyn ProductAttachedValuesWritePort>,
+        )>,
     ) -> Self {
         self.product_read = read;
         self.product_write = write;
@@ -585,8 +591,7 @@ impl flex::graphql::AttachedValuesGraphqlPort for FlexAttachedValuesGraphqlAdapt
                 .await
                 .map_err(|error| map_product_attached_error(error, entity_id));
         }
-        let tenant_id = Uuid::parse_str(&context.tenant_id)
-            .map_err(|_| FlexError::Database("Invalid attached values tenant context".into()))?;
+        let tenant_id = attached_values_tenant(&context)?;
         FlexAttachedValuesService::resolve_registered_generic_values(
             &self.db,
             tenant_id,
@@ -601,23 +606,26 @@ impl flex::graphql::AttachedValuesGraphqlPort for FlexAttachedValuesGraphqlAdapt
 
     async fn update_values(
         &self,
-        tenant_id: Uuid,
-        _actor_id: Option<Uuid>,
+        context: rustok_api::PortContext,
         entity_type: &str,
         entity_id: Uuid,
-        locale: &str,
         payload: Option<Value>,
-    ) -> Result<Option<Value>, FlexError> {
+    ) -> Result<Option<Value>, flex::graphql::AttachedValuesCommandError> {
         #[cfg(feature = "mod-product")]
         if entity_type == PRODUCT_ENTITY_TYPE {
-            return self
+            let (profile, port) = self
                 .product_write
                 .as_ref()
-                .ok_or_else(product_values_unavailable)?
-                .update_attached_values(tenant_id, _actor_id, entity_id, locale, payload)
+                .ok_or_else(product_values_unavailable)?;
+            let context =
+                product_write_context(context, *profile, entity_id, "update_attached_values")?;
+            return port
+                .update_attached_values(context, entity_id, payload)
                 .await
-                .map_err(|error| map_product_attached_error(error, entity_id));
+                .map_err(Into::into);
         }
+        let tenant_id = attached_values_tenant(&context)?;
+        let locale = &context.locale;
         FlexAttachedValuesService::update_registered_generic_values(
             &self.db,
             tenant_id,
@@ -637,35 +645,100 @@ impl flex::graphql::AttachedValuesGraphqlPort for FlexAttachedValuesGraphqlAdapt
             locale,
         )
         .await
-        .map_err(|error| map_host_error_to_flex(error, entity_id))
+        .map_err(|error| map_host_error_to_flex(error, entity_id).into())
     }
 
     async fn delete_values(
         &self,
-        tenant_id: Uuid,
-        _actor_id: Option<Uuid>,
+        context: rustok_api::PortContext,
         entity_type: &str,
         entity_id: Uuid,
-    ) -> Result<(), FlexError> {
+    ) -> Result<(), flex::graphql::AttachedValuesCommandError> {
         #[cfg(feature = "mod-product")]
         if entity_type == PRODUCT_ENTITY_TYPE {
-            return self
+            let (profile, port) = self
                 .product_write
                 .as_ref()
-                .ok_or_else(product_values_unavailable)?
-                .delete_attached_values(tenant_id, _actor_id, entity_id)
+                .ok_or_else(product_values_unavailable)?;
+            let context =
+                product_write_context(context, *profile, entity_id, "delete_attached_values")?;
+            return port
+                .delete_attached_values(context, entity_id)
                 .await
-                .map_err(|error| map_product_attached_error(error, entity_id));
+                .map_err(Into::into);
         }
         FlexAttachedValuesService::delete_registered_generic_values(
             &self.db,
-            tenant_id,
+            attached_values_tenant(&context)?,
             entity_type,
             entity_id,
         )
         .await
-        .map_err(|error| map_host_error_to_flex(error, entity_id))
+        .map_err(|error| map_host_error_to_flex(error, entity_id).into())
     }
+}
+
+fn attached_values_tenant(context: &rustok_api::PortContext) -> Result<Uuid, FlexError> {
+    Uuid::parse_str(&context.tenant_id)
+        .map_err(|_| FlexError::Database("Invalid attached values tenant context".into()))
+}
+
+#[cfg(feature = "mod-product")]
+fn product_write_context(
+    mut context: rustok_api::PortContext,
+    profile: rustok_product::ProductCatalogCommandProfile,
+    product_id: Uuid,
+    operation: &str,
+) -> Result<rustok_api::PortContext, flex::graphql::AttachedValuesCommandError> {
+    use rustok_api::PortError;
+    let tenant_id = attached_values_tenant(&context)?;
+    let actor_id = Uuid::parse_str(&context.actor.id)
+        .ok()
+        .filter(|id| !id.is_nil())
+        .ok_or_else(|| {
+            PortError::validation("product.actor_id_invalid", "Product actor is invalid")
+        })?;
+    let key = match context.idempotency_key.take() {
+        Some(key) if (1..=191).contains(&key.trim().len()) => key,
+        Some(_) => {
+            return Err(PortError::validation(
+                "product.idempotency_invalid",
+                "idempotencyKey must contain 1 to 191 bytes",
+            )
+            .into());
+        }
+        None if profile == rustok_product::ProductCatalogCommandProfile::EmbeddedNative => {
+            Uuid::new_v4().to_string()
+        }
+        None => {
+            return Err(PortError::validation(
+                "port.idempotency_key_required",
+                "idempotencyKey is required for remote Product writes",
+            )
+            .into());
+        }
+    };
+    let namespace = match context.actor.kind {
+        rustok_api::PortActorKind::User => "flex-product-user",
+        rustok_api::PortActorKind::Service => "flex-product-service",
+        rustok_api::PortActorKind::System => {
+            return Err(PortError::forbidden(
+                "product.actor_invalid",
+                "Product attached values require an authenticated actor",
+            )
+            .into());
+        }
+    };
+    Ok(
+        context.with_idempotency_key(rustok_outbox::idempotency::scoped_caller_idempotency_key(
+            namespace,
+            tenant_id,
+            actor_id,
+            operation,
+            Some(product_id),
+            &key,
+        )),
+    )
 }
 
 #[cfg(feature = "mod-product")]
@@ -686,9 +759,44 @@ fn map_product_attached_error(error: rustok_api::PortError, product_id: Uuid) ->
 
 #[cfg(all(test, feature = "mod-product"))]
 mod product_attached_values_tests {
-    use flex::graphql::AttachedValuesGraphqlPort;
+    use flex::graphql::{AttachedValuesCommandError, AttachedValuesGraphqlPort};
 
     use super::*;
+
+    #[test]
+    fn remote_product_keys_are_required_and_scoped_to_authenticated_callers() {
+        use rustok_api::{PortActor, PortContext};
+        use rustok_product::ProductCatalogCommandProfile::{EmbeddedNative, External};
+        let tenant = Uuid::new_v4();
+        let product = Uuid::new_v4();
+        let actor = Uuid::new_v4().to_string();
+        let context =
+            PortContext::new(tenant.to_string(), PortActor::user(&actor), "en", "request");
+        let scope = |context, profile| {
+            product_write_context(context, profile, product, "update_attached_values")
+        };
+        assert!(
+            matches!(scope(context.clone(), External), Err(AttachedValuesCommandError::Owner(error)) if error.code == "port.idempotency_key_required")
+        );
+        assert!(
+            scope(context.clone(), EmbeddedNative)
+                .unwrap()
+                .idempotency_key
+                .is_some()
+        );
+        let scoped = scope(context.clone().with_idempotency_key("client-key"), External).unwrap();
+        let mut retry = context.with_idempotency_key(" client-key ");
+        retry.correlation_id = "second-request".into();
+        assert_eq!(
+            scope(retry.clone(), External).unwrap().idempotency_key,
+            scoped.idempotency_key
+        );
+        retry.actor = PortActor::service(actor);
+        assert_ne!(
+            scope(retry, External).unwrap().idempotency_key,
+            scoped.idempotency_key
+        );
+    }
 
     #[tokio::test]
     async fn missing_product_ports_fail_before_touching_local_storage() {
@@ -704,23 +812,24 @@ mod product_attached_values_tests {
         )
         .with_deadline(std::time::Duration::from_secs(5));
 
+        let read_error = adapter
+            .resolve_values(context.clone(), PRODUCT_ENTITY_TYPE, id, "en")
+            .await
+            .unwrap_err();
+        assert!(matches!(read_error, FlexError::Database(_)));
         for error in [
             adapter
-                .resolve_values(context, PRODUCT_ENTITY_TYPE, id, "en")
+                .update_values(context.clone(), PRODUCT_ENTITY_TYPE, id, None)
                 .await
                 .unwrap_err(),
             adapter
-                .update_values(tenant, None, PRODUCT_ENTITY_TYPE, id, "en", None)
-                .await
-                .unwrap_err(),
-            adapter
-                .delete_values(tenant, None, PRODUCT_ENTITY_TYPE, id)
+                .delete_values(context, PRODUCT_ENTITY_TYPE, id)
                 .await
                 .unwrap_err(),
         ] {
             assert!(matches!(
                 error,
-                FlexError::Database(message)
+                AttachedValuesCommandError::Flex(FlexError::Database(message))
                     if message == "Product attached values are unavailable in the selected deployment"
             ));
         }

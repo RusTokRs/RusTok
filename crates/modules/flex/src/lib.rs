@@ -9,6 +9,7 @@
 pub mod attached;
 pub mod attached_definitions;
 pub mod attached_field_policy;
+mod attached_field_read;
 pub mod attached_storage;
 pub mod attached_translation;
 pub mod attached_translation_changes;
@@ -41,6 +42,11 @@ pub mod standalone_translation_policy_target;
 pub mod standalone_translation_progress_target;
 pub mod standalone_translation_target;
 
+pub use attached_field_read::FlexAttachedFieldReadService;
+pub use flex_ports::{
+    FlexAttachedFieldPolicyReadPort, FlexAttachedSchema, FlexAttachedSchemaReadPort,
+    FlexVersionedAttachedSchema, FlexVersionedAttachedSchemaReadPort,
+};
 pub use module::FlexModule;
 
 pub use attached::{

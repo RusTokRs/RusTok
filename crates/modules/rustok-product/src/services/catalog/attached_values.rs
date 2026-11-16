@@ -3,8 +3,8 @@ use chrono::Utc;
 use rustok_api::{PortActorKind, PortContext, PortError, normalize_locale_tag};
 use rustok_core::field_schema::CustomFieldsSchema;
 use rustok_events::DomainEvent;
-use rustok_product_ports::{ProductAttachedValuesReadPort, ProductAttachedValuesWritePort};
 use rustok_product_ports::attached_values::validate_attached_values_patch;
+use rustok_product_ports::{ProductAttachedValuesReadPort, ProductAttachedValuesWritePort};
 use sea_orm::{
     AccessMode, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait,
     IsolationLevel, QueryFilter, Set, TransactionTrait,
@@ -15,9 +15,12 @@ use uuid::Uuid;
 use super::attached_localized_storage;
 use super::commands::find_product_for_update_in_tx;
 use super::concurrency::next_revision;
-use super::helpers::{load_product_custom_fields_schema, resolve_product_attached_payload};
+use super::helpers::resolve_product_attached_payload;
 use crate::catalog_command_port::execute_receipted_catalog_command;
-use crate::services::write_transaction::{ProductWriteTransaction, record_product_operation_result};
+use crate::services::flex_schema_projection::ProductFlexSchemaSource;
+use crate::services::write_transaction::{
+    ProductWriteTransaction, record_product_operation_result,
+};
 use crate::{CatalogService, CommerceError, CommerceResult, entities::product};
 
 const PRODUCT_OWNER_METADATA_KEYS: &[&str] = &["tags", "shipping_profile", "shipping_profile_slug"];
@@ -53,7 +56,7 @@ impl ProductAttachedValuesReadPort for CatalogService {
             .await
             .map_err(|error| attached_values_error(error.into()))?
             .ok_or_else(|| attached_values_error(CommerceError::ProductNotFound(product_id)))?;
-        let schema = load_attached_fields_schema(&snapshot, tenant_id)
+        let schema = load_attached_fields_schema(&snapshot, self.flex_schema_source, tenant_id)
             .await
             .map_err(attached_values_error)?;
         let values = resolve_values(
@@ -86,7 +89,10 @@ impl ProductAttachedValuesWritePort for CatalogService {
         let (tenant_id, actor_id) = attached_write_scope(&context, product_id)?;
         validate_attached_values_patch(values.as_ref())?;
         let locale = normalize_locale_tag(&context.locale).ok_or_else(|| {
-            PortError::validation("product.attached_values_invalid", "Custom field locale is invalid")
+            PortError::validation(
+                "product.attached_values_invalid",
+                "Custom field locale is invalid",
+            )
         })?;
         let request = serde_json::json!({
             "actor_kind": context.actor.kind,
@@ -96,10 +102,21 @@ impl ProductAttachedValuesWritePort for CatalogService {
             "values": values,
         });
         execute_receipted_catalog_command(
-            self, &context, tenant_id, "update_attached_values", &request,
-            self.update_attached_values_in_owner(tenant_id, event_actor_id(&context, actor_id), product_id, &locale, values),
+            self,
+            &context,
+            tenant_id,
+            "update_attached_values",
+            &request,
+            self.update_attached_values_in_owner(
+                tenant_id,
+                event_actor_id(&context, actor_id),
+                product_id,
+                &locale,
+                values,
+            ),
             |error| error.0,
-        ).await
+        )
+        .await
     }
 
     async fn delete_attached_values(
@@ -114,10 +131,19 @@ impl ProductAttachedValuesWritePort for CatalogService {
             "product_id": product_id,
         });
         execute_receipted_catalog_command(
-            self, &context, tenant_id, "delete_attached_values", &request,
-            self.delete_attached_values_in_owner(tenant_id, event_actor_id(&context, actor_id), product_id),
+            self,
+            &context,
+            tenant_id,
+            "delete_attached_values",
+            &request,
+            self.delete_attached_values_in_owner(
+                tenant_id,
+                event_actor_id(&context, actor_id),
+                product_id,
+            ),
             |error| error.0,
-        ).await
+        )
+        .await
     }
 }
 
@@ -136,7 +162,7 @@ impl CatalogService {
         let row = find_product_for_update_in_tx(&txn, tenant_id, product_id)
             .await
             .map_err(attached_values_error)?;
-        let schema = load_attached_fields_schema(&*txn, tenant_id)
+        let schema = load_attached_fields_schema(&*txn, self.flex_schema_source, tenant_id)
             .await
             .map_err(attached_values_error)?;
         if let Some(values) = values.as_ref().and_then(Value::as_object) {
@@ -148,7 +174,8 @@ impl CatalogService {
                 return Err(PortError::validation(
                     "product.attached_field_unknown",
                     "Product custom field is not defined",
-                ).into());
+                )
+                .into());
             }
         }
 
@@ -198,7 +225,7 @@ impl CatalogService {
         let row = find_product_for_update_in_tx(&txn, tenant_id, product_id)
             .await
             .map_err(attached_values_error)?;
-        let schema = load_attached_fields_schema(&*txn, tenant_id)
+        let schema = load_attached_fields_schema(&*txn, self.flex_schema_source, tenant_id)
             .await
             .map_err(attached_values_error)?;
         let (reserved, _) = flex::split_donor_metadata(&schema, &row.metadata);
@@ -227,15 +254,21 @@ impl From<PortError> for AttachedValuesWriteError {
     }
 }
 
-fn attached_write_scope(context: &PortContext, product_id: Uuid) -> Result<(Uuid, Uuid), PortError> {
+fn attached_write_scope(
+    context: &PortContext,
+    product_id: Uuid,
+) -> Result<(Uuid, Uuid), PortError> {
     context.require_write_semantics()?;
     let tenant_id = Uuid::parse_str(&context.tenant_id).map_err(|_| {
         PortError::validation("product.tenant_id_invalid", "Product tenant is invalid")
     })?;
     validate_product_identity(tenant_id, product_id)?;
-    let actor_id = Uuid::parse_str(&context.actor.id).ok().filter(|id| !id.is_nil()).ok_or_else(|| {
-        PortError::validation("product.actor_id_invalid", "Product actor is invalid")
-    })?;
+    let actor_id = Uuid::parse_str(&context.actor.id)
+        .ok()
+        .filter(|id| !id.is_nil())
+        .ok_or_else(|| {
+            PortError::validation("product.actor_id_invalid", "Product actor is invalid")
+        })?;
     Ok((tenant_id, actor_id))
 }
 
@@ -255,9 +288,10 @@ fn validate_product_identity(tenant_id: Uuid, product_id: Uuid) -> Result<(), Po
 
 async fn load_attached_fields_schema(
     db: &impl ConnectionTrait,
+    source: ProductFlexSchemaSource,
     tenant_id: Uuid,
 ) -> CommerceResult<CustomFieldsSchema> {
-    let schema = load_product_custom_fields_schema(db, tenant_id).await?;
+    let schema = source.load(db, tenant_id).await?;
     let definitions = schema
         .active_definitions()
         .into_iter()

@@ -5,6 +5,7 @@ use rustok_api::{PLATFORM_FALLBACK_LOCALE, locale_tags_match};
 use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition};
 
 use super::attached_localized_storage;
+use crate::services::flex_schema_projection::ProductFlexSchemaSource;
 pub fn normalize_public_channel_slug(channel_slug: Option<&str>) -> Option<String> {
     channel_slug
         .map(str::trim)
@@ -419,10 +420,28 @@ pub async fn prepare_product_custom_fields_for_create<C>(
 where
     C: ConnectionTrait,
 {
+    prepare_product_custom_fields_and_schema_for_create(
+        conn,
+        ProductFlexSchemaSource::Shared,
+        tenant_id,
+        locale,
+        payload,
+    )
+    .await
+    .map(|(prepared, _)| prepared)
+}
+
+pub(super) async fn prepare_product_custom_fields_and_schema_for_create(
+    conn: &impl ConnectionTrait,
+    source: ProductFlexSchemaSource,
+    tenant_id: Uuid,
+    locale: &str,
+    payload: Value,
+) -> CommerceResult<(flex::PreparedAttachedValuesWrite, CustomFieldsSchema)> {
     reject_reserved_tag_metadata(&payload)?;
-    let schema = load_product_custom_fields_schema(conn, tenant_id).await?;
-    flex::prepare_donor_attached_values_create(schema, &payload, locale)
-        .map_err(CommerceError::from)
+    let schema = source.load(conn, tenant_id).await?;
+    let prepared = flex::prepare_donor_attached_values_create(schema.clone(), &payload, locale)?;
+    Ok((prepared, schema))
 }
 
 pub async fn prepare_product_custom_fields_for_update<C>(
@@ -436,18 +455,40 @@ pub async fn prepare_product_custom_fields_for_update<C>(
 where
     C: ConnectionTrait,
 {
+    prepare_product_custom_fields_and_schema_for_update(
+        conn,
+        ProductFlexSchemaSource::Shared,
+        tenant_id,
+        product_id,
+        locale,
+        existing_metadata,
+        payload,
+    )
+    .await
+    .map(|(prepared, _)| prepared)
+}
+
+pub(super) async fn prepare_product_custom_fields_and_schema_for_update(
+    conn: &impl ConnectionTrait,
+    source: ProductFlexSchemaSource,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    locale: &str,
+    existing_metadata: &Value,
+    payload: Value,
+) -> CommerceResult<(flex::PreparedAttachedValuesWrite, CustomFieldsSchema)> {
     reject_reserved_tag_metadata(&payload)?;
-    let schema = load_product_custom_fields_schema(conn, tenant_id).await?;
+    let schema = source.load(conn, tenant_id).await?;
     let existing_localized =
         attached_localized_storage::load_exact(conn, tenant_id, product_id, locale).await?;
-    flex::prepare_donor_attached_values_update_from_values(
-        schema,
+    let prepared = flex::prepare_donor_attached_values_update_from_values(
+        schema.clone(),
         locale,
         existing_metadata,
         existing_localized,
         Some(&payload),
-    )
-    .map_err(CommerceError::from)
+    )?;
+    Ok((prepared, schema))
 }
 
 pub(super) async fn resolve_product_attached_payload<C>(

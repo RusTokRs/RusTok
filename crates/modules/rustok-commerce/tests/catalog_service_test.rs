@@ -650,6 +650,142 @@ async fn test_product_locale_fallback_resolves_localized_flex_metadata_from_atta
             && row.locale == "ru"
             && row.value == serde_json::json!("Русский промо текст")
     }));
+
+    use flex::{
+        FieldDefinitionView, FlexAttachedSchema, FlexAttachedSchemaReadPort,
+        FlexVersionedAttachedSchema,
+    };
+    use rustok_api::{PortActor, PortContext, PortError, PortErrorKind};
+    use rustok_product::services::flex_schema_projection::ProductFlexSchemaProjection;
+    use rustok_product::{ProductCatalogReadPort, ProductProjectionRequest};
+    use sea_orm_migration::{MigrationTrait, SchemaManager};
+    use std::{sync::Arc, time::Duration};
+
+    struct SchemaProvider(Result<FlexAttachedSchema, PortError>);
+    #[async_trait::async_trait]
+    impl FlexAttachedSchemaReadPort for SchemaProvider {
+        async fn read_attached_schema(
+            &self,
+            context: PortContext,
+            entity_type: &str,
+        ) -> Result<FlexAttachedSchema, PortError> {
+            assert_eq!(entity_type, "product");
+            assert_eq!(context.deadline_ms, Some(5_000));
+            self.0.clone()
+        }
+    }
+
+    let context = PortContext::new(
+        tenant_id.to_string(),
+        PortActor::user(actor_id.to_string()),
+        "en",
+        "test-flex-schema",
+    )
+    .with_deadline(Duration::from_secs(5));
+    let request = ProductProjectionRequest {
+        product_id: product.id,
+        locale: Some("fr".into()),
+        fallback_locale: Some("ru".into()),
+    };
+    let missing = service
+        .clone()
+        .with_flex_schema_read_port(Arc::new(SchemaProvider(Err(PortError::unavailable(
+            "flex.unavailable",
+            "Flex unavailable",
+        )))));
+    let error = missing
+        .read_product_projection(context.clone(), request.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, PortErrorKind::Unavailable);
+
+    let definitions = product_field_definitions_storage::Entity::find()
+        .all(&db)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|row| FieldDefinitionView {
+            id: row.id,
+            field_key: row.field_key,
+            field_type: row.field_type,
+            label: row.label,
+            description: row.description,
+            is_localized: row.is_localized,
+            is_required: row.is_required,
+            default_value: row.default_value,
+            validation: row.validation,
+            position: row.position,
+            is_active: row.is_active,
+            created_at: row.created_at.to_rfc3339(),
+            updated_at: row.updated_at.to_rfc3339(),
+        })
+        .collect();
+    let schema = FlexAttachedSchema {
+        tenant_id,
+        entity_type: "product".into(),
+        definitions,
+    };
+    rustok_product::migrations::m20261116_000042_add_product_flex_schema_projection::Migration
+        .up(&SchemaManager::new(&db))
+        .await
+        .unwrap();
+    let projected = service
+        .clone()
+        .with_flex_schema_read_port(Arc::new(SchemaProvider(Ok(schema.clone()))))
+        .with_projected_flex_schema();
+    let error = projected
+        .read_product_projection(context.clone(), request.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, PortErrorKind::Unavailable);
+    ProductFlexSchemaProjection::new(db.clone())
+        .apply(
+            tenant_id,
+            FlexVersionedAttachedSchema {
+                revision: 0,
+                schema: schema.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    db.execute_unprepared("DROP TABLE product_field_definitions")
+        .await
+        .unwrap();
+    let selected = service.with_flex_schema_read_port(Arc::new(SchemaProvider(Ok(schema))));
+    assert_eq!(
+        selected
+            .read_product_projection(context.clone(), request.clone())
+            .await
+            .unwrap()
+            .metadata,
+        fallback_product.metadata
+    );
+    assert_eq!(
+        projected
+            .read_product_projection(context, request)
+            .await
+            .unwrap()
+            .metadata,
+        fallback_product.metadata
+    );
+    let mut standalone_input = create_test_product_input();
+    standalone_input.variants[0].prices.clear();
+    standalone_input.metadata = serde_json::json!({"marketing_copy": "Projection only"});
+    let standalone_product = projected
+        .create_product(tenant_id, actor_id, standalone_input)
+        .await
+        .unwrap();
+    assert_eq!(
+        standalone_product.metadata["marketing_copy"],
+        "Projection only"
+    );
+    let localized = attached_values_storage::Entity::find()
+        .filter(attached_values_storage::Column::ProductId.eq(standalone_product.id))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(localized.value, serde_json::json!("Projection only"));
 }
 
 // =============================================================================
@@ -1795,6 +1931,101 @@ fn catalog_receipt_context(tenant_id: Uuid, actor_id: Uuid, key: &str) -> rustok
     .with_claim(rustok_api::Permission::PRODUCTS_MANAGE.to_string())
     .with_idempotency_key(key)
     .with_deadline(std::time::Duration::from_secs(5))
+}
+
+#[tokio::test]
+async fn catalog_metadata_commands_keep_the_schema_used_to_validate_the_receipt() {
+    use rustok_product::ProductCatalogCommandPort;
+    use sea_orm::sea_query::Expr;
+
+    let (db, service) = setup().await;
+    let tenant_id = Uuid::new_v4();
+    let actor_id = Uuid::new_v4();
+    insert_product_field_definition(&db, tenant_id, "marketing_copy", true, false, None, 0).await;
+    db.execute_unprepared(
+        "CREATE TRIGGER deactivate_schema_during_product_create AFTER INSERT ON products
+         BEGIN
+           UPDATE product_field_definitions SET is_active = FALSE
+           WHERE tenant_id = NEW.tenant_id AND field_key = 'marketing_copy';
+         END;
+         CREATE TRIGGER deactivate_schema_during_product_update AFTER UPDATE OF metadata ON products
+         BEGIN
+           UPDATE product_field_definitions SET is_active = FALSE
+           WHERE tenant_id = NEW.tenant_id AND field_key = 'marketing_copy';
+         END;",
+    )
+    .await
+    .unwrap();
+
+    let mut input = create_test_product_input();
+    input.variants[0].prices.clear();
+    input.metadata = serde_json::json!({"marketing_copy": "Original"});
+    let create_context = catalog_receipt_context(tenant_id, actor_id, "create-pinned-schema");
+    let created =
+        ProductCatalogCommandPort::create_product(&service, create_context.clone(), input.clone())
+            .await
+            .unwrap();
+    assert_eq!(created.metadata["marketing_copy"], "Original");
+    assert!(
+        service
+            .get_product(tenant_id, created.id)
+            .await
+            .unwrap()
+            .metadata
+            .get("marketing_copy")
+            .is_none()
+    );
+
+    use product_field_definitions_storage::{Column, Entity};
+    Entity::update_many()
+        .col_expr(Column::IsActive, Expr::value(true))
+        .filter(Column::TenantId.eq(tenant_id))
+        .exec(&db)
+        .await
+        .unwrap();
+
+    let update = UpdateProductInput {
+        metadata: Some(serde_json::json!({"marketing_copy": "Changed"})),
+        expected_revision: Some(created.revision),
+        ..Default::default()
+    };
+    let update_context = catalog_receipt_context(tenant_id, actor_id, "update-pinned-schema");
+    let updated = ProductCatalogCommandPort::update_product(
+        &service,
+        update_context.clone(),
+        created.id,
+        update.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(updated.metadata["marketing_copy"], "Changed");
+
+    let stored = service.get_product(tenant_id, created.id).await.unwrap();
+    assert!(stored.metadata.get("marketing_copy").is_none());
+    assert_eq!(stored.revision, created.revision + 1);
+    let replay_create = ProductCatalogCommandPort::create_product(&service, create_context, input)
+        .await
+        .unwrap();
+    let replay_update =
+        ProductCatalogCommandPort::update_product(&service, update_context, created.id, update)
+            .await
+            .unwrap();
+    assert_eq!(
+        serde_json::to_value(&replay_create).unwrap(),
+        serde_json::to_value(&created).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(&replay_update).unwrap(),
+        serde_json::to_value(&updated).unwrap()
+    );
+    assert_eq!(
+        service
+            .get_product(tenant_id, created.id)
+            .await
+            .unwrap()
+            .revision,
+        stored.revision
+    );
 }
 
 #[tokio::test]

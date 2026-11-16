@@ -35,7 +35,8 @@ pub trait ProductAttachedValuesWritePort: Send + Sync {
 pub fn validate_attached_values_patch(values: Option<&Value>) -> Result<(), PortError> {
     if values.is_some_and(|values| !values.is_object()) {
         return Err(PortError::validation(
-            "product.attached_values_invalid", "Expected a custom field object",
+            "product.attached_values_invalid",
+            "Expected a custom field object",
         ));
     }
     Ok(())

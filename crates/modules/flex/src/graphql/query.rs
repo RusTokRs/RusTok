@@ -1,12 +1,10 @@
-use std::time::Duration;
-
 use async_graphql::{Context, Object, Result};
-use rustok_api::{Permission, PortContext, graphql::PaginationInput};
+use rustok_api::{Permission, graphql::PaginationInput};
 use uuid::Uuid;
 
 use super::{
     AttachedFieldPolicyObject, AttachedValuesObject, FieldDefinitionObject, FlexEntryObject,
-    FlexSchemaObject, StandaloneFieldPolicyObject, bad_user_input, map_attached_field_policy_error,
+    FlexSchemaObject, StandaloneFieldPolicyObject, attached_values_context, bad_user_input,
     map_flex_error, map_standalone_field_policy_error, require_access, resolve_entity_type,
     runtime::runtime,
 };
@@ -72,7 +70,7 @@ impl FlexQuery {
         ctx: &Context<'_>,
         entity_type: Option<String>,
     ) -> Result<Vec<AttachedFieldPolicyObject>> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_SCHEMAS_LIST).await?;
+        let (tenant, auth) = require_access(ctx, Permission::FLEX_SCHEMAS_LIST).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
         let definitions = crate::list_field_definitions_with_cache(
@@ -88,26 +86,31 @@ impl FlexQuery {
             .into_iter()
             .map(|definition| definition.field_key)
             .collect::<Vec<_>>();
-        let mut resolutions = crate::resolve_attached_field_policy_resolutions(
-            runtime.db(),
-            tenant.id,
-            &entity_type,
-            &field_keys,
-        )
-        .await
-        .map_err(map_attached_field_policy_error)?;
+        let context = attached_values_context(&auth, tenant.default_locale, None);
+        let mut resolutions = runtime
+            .attached_policy_read()
+            .read_attached_field_policies(context, &entity_type, &field_keys)
+            .await
+            .map_err(super::map_flex_attached_policy_read_error)?;
 
-        Ok(field_keys
+        field_keys
             .into_iter()
             .map(|field_key| {
-                let resolution = resolutions.remove(&field_key).unwrap_or_default();
-                AttachedFieldPolicyObject::from_resolution(
+                let resolution = resolutions.remove(&field_key).ok_or_else(|| {
+                    super::map_flex_attached_policy_read_error(
+                        rustok_api::PortError::invariant_violation(
+                            "flex.attached_policy_incomplete",
+                            "Flex attached policy result is incomplete",
+                        ),
+                    )
+                })?;
+                Ok(AttachedFieldPolicyObject::from_resolution(
                     entity_type.clone(),
                     field_key,
                     resolution,
-                )
+                ))
             })
-            .collect())
+            .collect()
     }
 
     /// Resolve attached custom-field values for one real donor instance.
@@ -121,13 +124,7 @@ impl FlexQuery {
         let (tenant, auth) = require_access(ctx, Permission::FLEX_ENTRIES_READ).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
-        let context = PortContext::new(
-            tenant.id.to_string(),
-            auth.port_actor(),
-            preferred_locale,
-            Uuid::new_v4().to_string(),
-        )
-        .with_deadline(Duration::from_secs(5));
+        let context = attached_values_context(&auth, preferred_locale, None);
         let values = runtime
             .attached_values()
             .resolve_values(context, &entity_type, entity_id, &tenant.default_locale)

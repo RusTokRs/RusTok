@@ -1,10 +1,17 @@
 use std::collections::HashMap;
+use std::{sync::Arc, time::Duration};
 
 use flex::{
     CreateFieldDefinitionCommand, FieldDefinitionService, FlexModule,
     GenericAttachedFieldDefinitionService, TAXONOMY_CATEGORY_ENTITY_TYPE,
     UpdateFieldDefinitionCommand,
 };
+use flex::{
+    FieldDefRegistry, FlexAttachedFieldPolicy, FlexAttachedFieldPolicyReadPort,
+    FlexAttachedFieldReadService, FlexAttachedSchemaReadPort, FlexDataClassification,
+    upsert_attached_field_policy,
+};
+use rustok_api::{PortActor, PortContext};
 use rustok_core::{
     MigrationSource,
     field_schema::{FieldType, FlexError},
@@ -46,6 +53,98 @@ fn create_command(field_key: &str, is_localized: bool) -> CreateFieldDefinitionC
         validation: None,
         position: None,
     }
+}
+
+#[tokio::test]
+async fn published_flex_read_ports_preserve_schema_scope_and_policy_provenance() {
+    let db = setup().await;
+    let tenant = Uuid::new_v4();
+    let store = Arc::new(GenericAttachedFieldDefinitionService::new(
+        TAXONOMY_CATEGORY_ENTITY_TYPE,
+    ));
+    let mut active = create_command("tagline", true);
+    active.default_value = Some(serde_json::json!("Default copy"));
+    store.create(&db, tenant, None, active).await.unwrap();
+    let (inactive, _) = store
+        .create(&db, tenant, None, create_command("obsolete", false))
+        .await
+        .unwrap();
+    store
+        .deactivate(&db, tenant, None, inactive.id)
+        .await
+        .unwrap();
+    let policy = FlexAttachedFieldPolicy {
+        classification: FlexDataClassification::Public,
+        ai_export_allowed: true,
+    };
+    upsert_attached_field_policy(
+        &db,
+        tenant,
+        TAXONOMY_CATEGORY_ENTITY_TYPE,
+        "tagline",
+        policy,
+    )
+    .await
+    .unwrap();
+
+    let mut registry = FieldDefRegistry::new();
+    registry.register(store);
+    let provider = FlexAttachedFieldReadService::new(db, registry);
+    let context = |tenant: Uuid| {
+        PortContext::new(
+            tenant.to_string(),
+            PortActor::system(),
+            "en",
+            "flex-read-ports",
+        )
+        .with_deadline(Duration::from_secs(5))
+    };
+    let schema = provider
+        .read_attached_schema(context(tenant), TAXONOMY_CATEGORY_ENTITY_TYPE)
+        .await
+        .unwrap();
+    schema
+        .verify_scope(tenant, TAXONOMY_CATEGORY_ENTITY_TYPE)
+        .unwrap();
+    assert_eq!(schema.definitions.len(), 1);
+    assert!(schema.definitions[0].is_localized);
+    assert_eq!(
+        schema.definitions[0].default_value,
+        Some(serde_json::json!("Default copy"))
+    );
+
+    let other = Uuid::new_v4();
+    assert!(
+        provider
+            .read_attached_schema(context(other), TAXONOMY_CATEGORY_ENTITY_TYPE)
+            .await
+            .unwrap()
+            .definitions
+            .is_empty()
+    );
+    let keys = ["tagline".into(), "obsolete".into()];
+    let resolutions = provider
+        .read_attached_field_policies(context(tenant), TAXONOMY_CATEGORY_ENTITY_TYPE, &keys)
+        .await
+        .unwrap();
+    assert_eq!(resolutions["tagline"].policy, policy);
+    assert!(resolutions["tagline"].explicit);
+    assert_eq!(resolutions["obsolete"], Default::default());
+    let other_resolutions = provider
+        .read_attached_field_policies(context(other), TAXONOMY_CATEGORY_ENTITY_TYPE, &keys)
+        .await
+        .unwrap();
+    assert_eq!(other_resolutions["tagline"], Default::default());
+    let mut invalid = context(tenant);
+    invalid.deadline_ms = None;
+    assert_eq!(
+        provider
+            .read_attached_schema(invalid, TAXONOMY_CATEGORY_ENTITY_TYPE)
+            .await
+            .unwrap_err()
+            .code,
+        "port.deadline_required"
+    );
 }
 
 #[tokio::test]

@@ -8,8 +8,8 @@ Publishes:
 - `ProductCatalogCommandPort`: Mutating lifecycle and catalog commands.
 - `ProductAttachedValuesReadPort`: Locale-aware Product attached fields in the
   embedded and authenticated gRPC profiles.
-- `ProductAttachedValuesWritePort`: Product attached field mutations in the
-  embedded profile. gRPC mutations need an owner receipt contract.
+- `ProductAttachedValuesWritePort`: Update and delete Product attached fields
+  with a deadline and a stable key. Embedded and gRPC commands share the owner receipt.
 - Canonical DTOs, requests, and domain models.
 - Optional `grpc-client` and `grpc-server` tonic adapters.
 
@@ -22,6 +22,10 @@ Publishes:
 - `RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN`: Optional credential
   for `ReadAttachedValues`. Configure the same value on the consuming host and
   Product service. Use a credential distinct from both catalog credentials.
+- `RUSTOK_PRODUCT_ATTACHED_VALUES_WRITE_GRPC_BEARER_TOKEN`: Optional credential
+  for `UpdateAttachedValues` and `DeleteAttachedValues`. Set it on the Product
+  service and the host selecting gRPC commands. It must differ from the catalog
+  credentials and the attached-value read credential.
 - `RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK=true`: Allow plaintext HTTP only on loopback interfaces (`127.0.0.1`, `::1`).
 
 Invalid configuration or connection failure stops startup immediately.
@@ -36,6 +40,15 @@ operation returns unavailable. The resolver checks the caller's Flex read
 permission before delegating to Product, which enforces tenant scope and resolves
 the requested locale with its usual fallback policy.
 
+Flex GraphQL accepts `idempotencyKey` on `updateAttachedValues` and
+`deleteAttachedValues`. The remote Product command profile requires it. Reuse
+the same key and payload to retry a logical command. The host scopes the key to
+the authenticated principal, tenant, operation and product. A successful retry
+returns the committed result, including the original update snapshot. A key
+reused with a different payload returns `CONFLICT`.
+Embedded callers may omit the key. Such a call receives a fresh key, so client
+retries need an explicit key for deduplication in embedded mode as well.
+
 ## Authentication
 
 - Client authentication: `ProductCatalogGrpcBearerToken` attaches `Authorization: Bearer ...` and `x-rustok-tenant-id`.
@@ -43,6 +56,10 @@ the requested locale with its usual fallback policy.
 - Configured via `RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN`.
 - The ordinary catalog read credential has its existing operation grants. The
   attached-value read credential grants only `ReadAttachedValues` on the same endpoint.
+- The attached-value write credential grants only the two donor mutations.
+  The Product service authenticates them as its configured command service actor.
+  The Product event includes the human actor on embedded user requests. Service
+  requests carry no human attribution in that event.
 - Note: TLS and authentication solve separate problems; TLS protects data in transit while bearer tokens authenticate callers.
 
 

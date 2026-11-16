@@ -14,6 +14,8 @@ const GRPC_ENDPOINT_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT";
 const GRPC_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN";
 const ATTACHED_VALUES_READ_TOKEN_ENV: &str =
     "RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN";
+const ATTACHED_VALUES_WRITE_TOKEN_ENV: &str =
+    "RUSTOK_PRODUCT_ATTACHED_VALUES_WRITE_GRPC_BEARER_TOKEN";
 const COMMAND_GRPC_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN";
 const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN";
 const CONNECT_TIMEOUT_MS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS";
@@ -31,6 +33,7 @@ struct ProductDeploymentConfig {
     read: ProductCatalogDeployment,
     command: ProductCatalogDeployment,
     attached_values_read_token: Option<ProductCatalogBearerSecret>,
+    attached_values_write_token: Option<ProductCatalogBearerSecret>,
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -134,7 +137,7 @@ pub async fn configure_product_catalog_deployment(ctx: &ServerRuntimeContext) ->
                     "remote Product catalog command authentication configuration failed: {error}"
                 ))
             })?;
-            let provider = GrpcProductCatalogReadConnectionConfig::new(remote.endpoint)
+            let mut provider = GrpcProductCatalogReadConnectionConfig::new(remote.endpoint)
                 .with_tls_domain(remote.tls_domain)
                 .with_connect_timeout(Duration::from_millis(remote.connect_timeout_ms))
                 .allow_insecure_loopback(remote.allow_insecure_loopback)
@@ -146,7 +149,17 @@ pub async fn configure_product_catalog_deployment(ctx: &ServerRuntimeContext) ->
                     ))
                 })?
                 .with_authentication(authentication);
-            let runtime = ProductCatalogCommandRuntime::external(Arc::new(provider));
+            let attached_values_enabled = config.attached_values_write_token.is_some();
+            if let Some(token) = config.attached_values_write_token {
+                let authentication = ProductCatalogGrpcBearerToken::new(token.expose())
+                    .map_err(|error| Error::Message(format!("remote Product attached values write authentication configuration failed: {error}")))?;
+                provider = provider.with_attached_values_authentication(authentication);
+            }
+            let provider = Arc::new(provider);
+            let mut runtime = ProductCatalogCommandRuntime::external(provider.clone());
+            if attached_values_enabled {
+                runtime = runtime.with_attached_values_write_port(provider);
+            }
             ctx.shared_insert(runtime);
 
             tracing::info!(
@@ -178,6 +191,8 @@ fn deployment_from_environment() -> std::result::Result<ProductDeploymentConfig,
             bearer_token: optional_secret_env(GRPC_BEARER_TOKEN_ENV).as_deref(),
             attached_values_read_token: optional_secret_env(ATTACHED_VALUES_READ_TOKEN_ENV)
                 .as_deref(),
+            attached_values_write_token: optional_secret_env(ATTACHED_VALUES_WRITE_TOKEN_ENV)
+                .as_deref(),
             command_bearer_token: optional_secret_env(COMMAND_GRPC_BEARER_TOKEN_ENV).as_deref(),
             tls_domain: optional_env(TLS_DOMAIN_ENV).as_deref(),
             connect_timeout_ms: optional_env(CONNECT_TIMEOUT_MS_ENV).as_deref(),
@@ -191,6 +206,7 @@ struct ProductGrpcEnvironment<'a> {
     endpoint: Option<&'a str>,
     bearer_token: Option<&'a str>,
     attached_values_read_token: Option<&'a str>,
+    attached_values_write_token: Option<&'a str>,
     command_bearer_token: Option<&'a str>,
     tls_domain: Option<&'a str>,
     connect_timeout_ms: Option<&'a str>,
@@ -205,6 +221,7 @@ fn parse_product_deployment_config(
         endpoint,
         bearer_token,
         attached_values_read_token,
+        attached_values_write_token,
         command_bearer_token,
         tls_domain,
         connect_timeout_ms,
@@ -219,6 +236,7 @@ fn parse_product_deployment_config(
     let bearer_token = bearer_token.filter(|value| !value.is_empty());
     let command_bearer_token = command_bearer_token.filter(|value| !value.is_empty());
     let attached_values_read_token = attached_values_read_token.filter(|value| !value.is_empty());
+    let attached_values_write_token = attached_values_write_token.filter(|value| !value.is_empty());
     let tls_domain = normalize_optional(tls_domain);
     let timeout = parse_timeout(connect_timeout_ms)?;
     let allow_insecure_loopback_is_configured = allow_insecure_loopback
@@ -244,6 +262,24 @@ fn parse_product_deployment_config(
             ));
         }
     }
+    if let Some(token) = attached_values_write_token {
+        if !command_remote {
+            return Err(format!(
+                "{ATTACHED_VALUES_WRITE_TOKEN_ENV} requires a grpc command provider"
+            ));
+        }
+        if [
+            bearer_token,
+            command_bearer_token,
+            attached_values_read_token,
+        ]
+        .contains(&Some(token))
+        {
+            return Err(format!(
+                "{ATTACHED_VALUES_WRITE_TOKEN_ENV} must differ from the other Product credentials"
+            ));
+        }
+    }
     if !read_remote && !command_remote {
         if endpoint.is_some()
             || bearer_token.is_some()
@@ -257,6 +293,7 @@ fn parse_product_deployment_config(
             read: ProductCatalogDeployment::Embedded,
             command: ProductCatalogDeployment::Embedded,
             attached_values_read_token: None,
+            attached_values_write_token: None,
         });
     }
     let endpoint = endpoint.ok_or_else(|| {
@@ -294,6 +331,8 @@ fn parse_product_deployment_config(
             COMMAND_GRPC_BEARER_TOKEN_ENV,
         )?,
         attached_values_read_token: attached_values_read_token.map(ProductCatalogBearerSecret::new),
+        attached_values_write_token: attached_values_write_token
+            .map(ProductCatalogBearerSecret::new),
     })
 }
 
@@ -502,6 +541,7 @@ mod tests {
                 bearer_token: Some("catalog-secret"),
                 command_bearer_token: Some("command-secret"),
                 attached_values_read_token: None,
+                attached_values_write_token: None,
                 tls_domain: Some("product-catalog.internal"),
                 connect_timeout_ms: Some("3000"),
                 allow_insecure_loopback: Some("false"),
@@ -642,6 +682,43 @@ mod tests {
         assert_eq!(
             config.attached_values_read_token,
             Some(ProductCatalogBearerSecret::new("attached-secret"))
+        );
+    }
+
+    #[test]
+    fn attached_values_write_credential_requires_remote_commands_and_a_distinct_secret() {
+        let parse = |provider, token| {
+            parse_product_deployment_config(
+                None,
+                Some("grpc"),
+                provider,
+                ProductGrpcEnvironment {
+                    endpoint: Some("https://product-catalog.internal:7443"),
+                    bearer_token: Some("catalog-secret"),
+                    command_bearer_token: provider.map(|_| "command-secret"),
+                    attached_values_read_token: Some("attached-read-secret"),
+                    attached_values_write_token: Some(token),
+                    ..Default::default()
+                },
+            )
+        };
+        assert!(
+            parse(None, "attached-write-secret")
+                .unwrap_err()
+                .contains("requires a grpc command provider")
+        );
+        for token in ["catalog-secret", "command-secret", "attached-read-secret"] {
+            assert!(
+                parse(Some("grpc"), token)
+                    .unwrap_err()
+                    .contains("must differ")
+            );
+        }
+        assert!(
+            parse(Some("grpc"), "attached-write-secret")
+                .unwrap()
+                .attached_values_write_token
+                .is_some()
         );
     }
 }

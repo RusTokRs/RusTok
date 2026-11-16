@@ -541,21 +541,44 @@ Product's packaging now implements the [canonical FBA layout](../../../../docs/b
   migrations and remaining provider bypasses before claiming independently
   provisioned Product storage.
 
-Flex GraphQL reads Product attached fields through the selected embedded or
-authenticated gRPC port. The dedicated read credential grants only
-`ReadAttachedValues` and uses the configured Product service actor. The embedded
-owner commits update and delete with the field values, revision and Product event
-in one transaction. Remote attached-field commands still need stable caller keys
-and owner receipts that replay the committed result.
-Local verification exercised the dedicated grant over loopback gRPC and read a
-localized value from the standalone Product process on a disposable PostgreSQL
-fixture. Separate-process GraphQL parity remains an end-to-end verification gate.
+Flex GraphQL reads and writes Product attached fields through the selected
+embedded or authenticated gRPC ports. The read credential grants
+`ReadAttachedValues`. The write credential grants `UpdateAttachedValues` and
+`DeleteAttachedValues`. Both profiles commit the exact command result with the
+field values, revision and Product event in one transaction. GraphQL requires a
+stable caller key for remote writes and exposes the owner code and retryability
+on errors. Embedded GraphQL callers without a supplied key receive a fresh key.
+Local verification exercised the dedicated grants over loopback gRPC. Tests
+against the standalone Product process and disposable PostgreSQL verified a
+localized read, the original update snapshot after a subsequent edit, conflict
+on a changed payload, and delete replay after fields were restored. Replays did
+not add Product revisions, outbox events or Index refresh records.
+Separate-process GraphQL parity remains an end-to-end verification gate.
 The [storage cutover](../README.md#attached-value-storage-cutover) moves localized
 Product values to `product_attached_localized_values`. Create, update, reads and
 donor deletion all use the owner storage. Flex owns the field schema and policy
-contracts. Product still reads definitions from `product_field_definitions` and
-uses embedded Flex validation. The Flex schema and policy port binding remains
-open. Product's existing migrations reference Tenant and Taxonomy tables.
+contracts. The modular host binds `FlexAttachedSchemaReadPort` to Product and
+variant catalog projections. The Flex provider reads active definitions through
+the existing registry, with tenant and donor scope on the response. A selected
+provider failure propagates to the caller. Flex GraphQL uses the attached policy
+port for classification and AI-export admission with explicit/default provenance.
+
+The default shared profile uses `product_field_definitions` for transaction-bound
+workflows. The optional projected profile loads complete Flex snapshots from the
+Product database for catalog reads, commands and attached values. Create and
+metadata updates capture the definitions once inside the write transaction.
+Preparation and the committed response use that snapshot. A replay returns the
+stored response even when the definitions have changed. Later reads use the
+current definitions.
+
+The embedded Flex versioned read provider uses a per-tenant revision installed
+on the legacy definition store. `ProductFlexSchemaProjection::refresh` accepts
+that provider over the portable read contract and writes only to Product's own
+database. Product accepts newer versions atomically, recognizes exact replays and
+rejects equal revisions with conflicting content. Cross-process snapshot transport,
+initial seeding and refresh scheduling still need deployment wiring. Product still imports
+Flex validation helpers and a published migration calls the Flex cache trigger helper.
+Product's existing migrations reference Tenant and Taxonomy tables.
 Replace cross-owner deletion and synchronization behavior before provisioning a
 Product-only schema, and keep the existing installation upgrade path verifiable.
 - Historical Taxonomy foreign keys and Flex cache-generation migration dependencies remain part of the platform upgrade path.

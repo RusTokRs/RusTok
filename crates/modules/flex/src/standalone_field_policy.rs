@@ -94,7 +94,7 @@ mod policy_entity {
         pub schema_id: Uuid,
         #[sea_orm(primary_key, auto_increment = false)]
         pub field_key: String,
-        pub classification: FlexDataClassification,
+        pub classification: String,
         pub ai_export_allowed: bool,
         pub created_at: DateTimeWithTimeZone,
         pub updated_at: DateTimeWithTimeZone,
@@ -167,7 +167,11 @@ where
         .map_err(|error| FlexStandaloneFieldPolicyError::Storage(error.to_string()))?;
     for row in rows {
         let policy = FlexStandaloneFieldPolicy {
-            classification: row.classification,
+            classification: row.classification.parse().map_err(|_| {
+                FlexStandaloneFieldPolicyError::Storage(
+                    "Invalid stored standalone field classification".into(),
+                )
+            })?,
             ai_export_allowed: row.ai_export_allowed,
         };
         policy.validate()?;
@@ -221,7 +225,7 @@ where
         tenant_id: Set(tenant_id),
         schema_id: Set(schema_id),
         field_key: Set(field_key.to_string()),
-        classification: Set(policy.classification),
+        classification: Set(policy.classification.as_str().to_owned()),
         ai_export_allowed: Set(policy.ai_export_allowed),
         created_at: Set(now),
         updated_at: Set(now),

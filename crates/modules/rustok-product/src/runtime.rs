@@ -81,10 +81,31 @@ impl ProductCatalogReadRuntime {
         inventory_port: Option<Arc<dyn crate::ports::ProductInventoryPort>>,
         taxonomy_port: Option<Arc<dyn crate::ports::ProductTaxonomyPort>>,
     ) -> Self {
+        Self::in_process_with_flex_schema(
+            db,
+            event_bus,
+            pricing_port,
+            inventory_port,
+            taxonomy_port,
+            None,
+        )
+    }
+
+    pub fn in_process_with_flex_schema(
+        db: DatabaseConnection,
+        event_bus: TransactionalEventBus,
+        pricing_port: Option<Arc<dyn crate::ProductPricingPort>>,
+        inventory_port: Option<Arc<dyn crate::ports::ProductInventoryPort>>,
+        taxonomy_port: Option<Arc<dyn crate::ports::ProductTaxonomyPort>>,
+        flex_schema: Option<Arc<dyn flex_ports::FlexAttachedSchemaReadPort>>,
+    ) -> Self {
         let mut catalog = CatalogService::new(db.clone(), event_bus.clone());
         catalog.pricing_port = pricing_port;
         catalog.inventory_port = inventory_port;
         catalog.taxonomy_port = taxonomy_port.clone();
+        if let Some(port) = flex_schema {
+            catalog = catalog.with_flex_schema_read_port(port);
+        }
         let catalog = Arc::new(catalog);
         let mut schema_service = ProductCatalogSchemaService::new(db, event_bus);
         if let Some(taxonomy) = taxonomy_port {
@@ -388,14 +409,19 @@ impl ProductCatalogCommandRuntime {
         self.media_reference_port.clone()
     }
 
-    pub fn with_attached_values_write_port(mut self, port: Arc<dyn ProductAttachedValuesWritePort>) -> Self {
+    pub fn with_attached_values_write_port(
+        mut self,
+        port: Arc<dyn ProductAttachedValuesWritePort>,
+    ) -> Self {
         self.attached_values_write_port = Some(port);
         self
     }
 
     pub fn attached_values_write_port(&self) -> Option<Arc<dyn ProductAttachedValuesWritePort>> {
         self.attached_values_write_port.clone().or_else(|| {
-            self.embedded_catalog.as_ref().map(|catalog| Arc::new(catalog.clone()) as Arc<dyn ProductAttachedValuesWritePort>)
+            self.embedded_catalog
+                .as_ref()
+                .map(|catalog| Arc::new(catalog.clone()) as Arc<dyn ProductAttachedValuesWritePort>)
         })
     }
 

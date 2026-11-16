@@ -88,7 +88,7 @@ ${security}
 ${schemaPreflight}
 ${startupOrder}
 ${secretLeak}
-config.command_authentication.map ProductCatalogGrpcBearerInterceptor::new(authentication) .add_optional_service(command_service) .with_allowed_operations(ProductCatalogGrpcOperation::COMMAND)
+config.command_authentication.map ProductCatalogGrpcBearerInterceptor::new(authentication) .add_optional_service(command_service) .with_allowed_operations(ProductCatalogGrpcOperation::COMMAND) .with_attached_values_write_port(command_provider) ProductCatalogGrpcOperation::UpdateAttachedValues ProductCatalogGrpcOperation::DeleteAttachedValues
 ServerTlsConfig::new().identity(identity) .serve_with_incoming_shutdown(TcpListenerStream::new(listener), shutdown_signal())
 DATABASE_URL_ENV: &str = "RUSTOK_PRODUCT_CATALOG_DATABASE_URL"
 BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN"

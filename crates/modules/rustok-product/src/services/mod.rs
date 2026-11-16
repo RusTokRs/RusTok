@@ -2,6 +2,7 @@ pub mod catalog;
 mod catalog_attribute_terms;
 pub mod catalog_schema;
 pub mod catalog_schema_service;
+pub mod flex_schema_projection;
 mod index_channel_relation;
 mod index_channel_relation_convergence;
 mod index_channel_relation_freshness;

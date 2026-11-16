@@ -28,12 +28,26 @@ Flex is a capability owner. It owns field schemas, policies and standalone entri
 Donor owners retain attached values and atomic updates with their aggregates.
 Flex GraphQL delegates Product attached values to Product's selected ports.
 The read port supports [embedded and gRPC deployment](../rustok-product/ports/README.md#deployment-configuration).
-Attached-value updates and deletes currently use the embedded Product port.
+Update and delete go through the selected Product command port. Remote Product
+mutations require the GraphQL `idempotencyKey` argument. Product persists the
+result atomically with the donor values, revision and event.
 Product persists its localized values in `product_attached_localized_values`.
 The [canonical FBA layout](../../../docs/backend/module-backend-implementation.md#remote-fba-module-layout)
 uses donor ports for value operations and Flex ports for schema and policy access.
-Product still reads definitions from `product_field_definitions` and uses embedded
-Flex validation. Other donors continue to use shared attached storage and host
+[`flex-ports`](ports/README.md) publishes attached schema and policy reads without
+storage or a Flex runtime dependency. The host registers an embedded Flex provider
+for the catalog's Product and variant projections. It reads active Product definitions
+through the existing registry. Flex GraphQL resolves explicit and default governance
+policies through the policy port.
+
+For the legacy `product` definition store, a migration installs a per-tenant
+revision that advances in the transaction editing `product_field_definitions`,
+including reorder and deactivation. The embedded versioned read port returns a
+full snapshot and asks the consumer to retry if a concurrent edit crosses the
+read. The initial revision is zero, including for tenants with existing
+definitions. Product can import the snapshot into its own database. Cross-process
+delivery of definition snapshots and remote policy access remain pending.
+Other donors continue to use shared attached storage and host
 wiring pending migration that preserves Translation and change history. The
 `capability_only` classification is current module metadata.
 

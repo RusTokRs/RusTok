@@ -40,10 +40,18 @@ async fn attached_values_preserve_owner_metadata_and_commit_with_revision_and_ou
         .await
         .unwrap();
     SysEventsMigration.up(&manager).await.unwrap();
+    rustok_outbox::migration::create_owner_operation_receipts_table(&manager)
+        .await
+        .unwrap();
 
     let tenant = Uuid::new_v4();
     let id = Uuid::new_v4();
-    let actor = Some(Uuid::new_v4());
+    let actor = Uuid::new_v4();
+    let write = |tenant: Uuid, locale: &str, key: &str| {
+        let mut context = read_context(tenant, locale).with_idempotency_key(key);
+        context.actor = PortActor::user(actor.to_string());
+        context
+    };
     let now = Utc::now();
     product::ActiveModel {
         id: Set(id),
@@ -113,10 +121,8 @@ async fn attached_values_preserve_owner_metadata_and_commit_with_revision_and_ou
     assert_eq!(
         catalog
             .update_attached_values(
-                tenant,
-                actor,
+                write(tenant, "en", "initial"),
                 id,
-                "en",
                 Some(json!({"badge": "gold", "tagline": "Hello"})),
             )
             .await
@@ -124,7 +130,11 @@ async fn attached_values_preserve_owner_metadata_and_commit_with_revision_and_ou
         Some(json!({"badge": "gold", "tagline": "Hello"}))
     );
     catalog
-        .update_attached_values(tenant, actor, id, "ru", Some(json!({"tagline": "Привет"})))
+        .update_attached_values(
+            write(tenant, "ru", "add-ru"),
+            id,
+            Some(json!({"tagline": "Привет"})),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -144,10 +154,8 @@ async fn attached_values_preserve_owner_metadata_and_commit_with_revision_and_ou
     assert_eq!(
         catalog
             .update_attached_values(
-                tenant,
-                actor,
+                write(tenant, "en", "reserved-field"),
                 id,
-                "en",
                 Some(json!({"shipping_profile": "bypass"})),
             )
             .await
@@ -157,7 +165,7 @@ async fn attached_values_preserve_owner_metadata_and_commit_with_revision_and_ou
     );
     assert_eq!(
         catalog
-            .delete_attached_values(Uuid::new_v4(), actor, id)
+            .delete_attached_values(write(Uuid::new_v4(), "en", "foreign-delete"), id)
             .await
             .unwrap_err()
             .kind,
@@ -183,7 +191,7 @@ async fn attached_values_preserve_owner_metadata_and_commit_with_revision_and_ou
     .unwrap();
     assert!(
         catalog
-            .delete_attached_values(tenant, actor, id)
+            .delete_attached_values(write(tenant, "en", "failed-delete"), id)
             .await
             .is_err()
     );
@@ -205,7 +213,7 @@ async fn attached_values_preserve_owner_metadata_and_commit_with_revision_and_ou
         .unwrap();
 
     catalog
-        .delete_attached_values(tenant, actor, id)
+        .delete_attached_values(write(tenant, "en", "delete"), id)
         .await
         .unwrap();
     assert_eq!(
@@ -226,4 +234,59 @@ async fn attached_values_preserve_owner_metadata_and_commit_with_revision_and_ou
         json!({"source": "erp", "shipping_profile": "standard"})
     );
     assert_eq!(SysEvents::find().count(&db).await.unwrap(), 3);
+
+    let latest = Some(json!({"badge": "platinum", "tagline": "New"}));
+    assert_eq!(
+        catalog
+            .update_attached_values(write(tenant, "en", "repopulate"), id, latest.clone())
+            .await
+            .unwrap(),
+        latest
+    );
+    let mut original = write(tenant, "EN", "initial");
+    original.correlation_id = "retry".to_owned();
+    let original_values = Some(json!({"tagline": "Hello", "badge": "gold"}));
+    assert_eq!(
+        catalog
+            .update_attached_values(original, id, original_values.clone())
+            .await
+            .unwrap(),
+        original_values
+    );
+    let conflict = catalog
+        .update_attached_values(write(tenant, "en", "initial"), id, latest.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(conflict.code, "product.idempotency_conflict");
+    let mut foreign_actor = write(tenant, "en", "initial");
+    foreign_actor.actor = PortActor::service(Uuid::new_v4().to_string());
+    assert_eq!(
+        catalog
+            .update_attached_values(foreign_actor, id, original_values)
+            .await
+            .unwrap_err()
+            .kind,
+        PortErrorKind::Conflict
+    );
+    catalog
+        .delete_attached_values(write(tenant, "ru", "delete"), id)
+        .await
+        .unwrap();
+    assert_eq!(
+        catalog
+            .read_attached_values(read_context(tenant, "en"), id, "en")
+            .await
+            .unwrap(),
+        latest
+    );
+    assert_eq!(
+        product::Entity::find_by_id(id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap()
+            .revision,
+        5
+    );
+    assert_eq!(SysEvents::find().count(&db).await.unwrap(), 4);
 }

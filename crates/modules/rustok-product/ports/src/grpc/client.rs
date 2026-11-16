@@ -10,6 +10,7 @@
 
 use std::time::Duration;
 
+use crate::attached_values::{ProductAttachedValuesWritePort, validate_attached_values_patch};
 use crate::{
     FilteredPublishedProductsRequest, ProductAttachedValuesReadPort, ProductCatalogCommandPort,
     ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentitiesRequest,
@@ -24,7 +25,6 @@ use crate::{
     },
 };
 use async_trait::async_trait;
-use crate::attached_values::{ProductAttachedValuesWritePort, validate_attached_values_patch};
 use rustok_api::{PortContext, PortError, PortErrorKind};
 use serde::{Serialize, de::DeserializeOwned};
 use tonic::metadata::{Ascii, MetadataValue};
@@ -380,9 +380,15 @@ impl GrpcProductCatalogCommandProvider {
         input: &impl Serialize,
     ) -> Result<Request<JsonRequest>, PortError> {
         context.require_write_semantics()?;
-        let authentication = self.attached_values_authentication.as_ref().ok_or_else(|| {
-            PortError::unavailable("product.attached_values_write_unavailable", "Product attached values write is unavailable")
-        })?;
+        let authentication = self
+            .attached_values_authentication
+            .as_ref()
+            .ok_or_else(|| {
+                PortError::unavailable(
+                    "product.attached_values_write_unavailable",
+                    "Product attached values write is unavailable",
+                )
+            })?;
         let payload = JsonRequest {
             context_json: encode(context)?,
             input_json: encode(input)?,
@@ -400,14 +406,36 @@ impl ProductAttachedValuesWritePort for GrpcProductCatalogCommandProvider {
         values: Option<serde_json::Value>,
     ) -> Result<Option<serde_json::Value>, PortError> {
         validate_attached_values_patch(values.as_ref())?;
-        let request = self.attached_values_request(&context, &ProductInputPayload { product_id, input: values })?;
-        let response = self.client.clone().update_attached_values(request).await.map_err(status_to_port_error)?.into_inner();
+        let request = self.attached_values_request(
+            &context,
+            &ProductInputPayload {
+                product_id,
+                input: values,
+            },
+        )?;
+        let response = self
+            .client
+            .clone()
+            .update_attached_values(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
         decode(&response.output_json)
     }
 
-    async fn delete_attached_values(&self, context: PortContext, product_id: Uuid) -> Result<(), PortError> {
+    async fn delete_attached_values(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+    ) -> Result<(), PortError> {
         let request = self.attached_values_request(&context, &ProductIdPayload { product_id })?;
-        let response = self.client.clone().delete_attached_values(request).await.map_err(status_to_port_error)?.into_inner();
+        let response = self
+            .client
+            .clone()
+            .delete_attached_values(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
         decode(&response.output_json)
     }
 }
