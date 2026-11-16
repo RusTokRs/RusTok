@@ -124,11 +124,7 @@ if (evidence) {
   }
 }
 
-requireText(
-  cargoLock,
-  'name = "rustok-product-catalog-service"',
-  "Cargo.lock Product service package entry",
-);
+requireText(cargoLock, 'name = "rustok-product"', "Cargo.lock Product owner package entry");
 
 if (productRegistry) {
   if (productRegistry.status !== "boundary_ready") {
@@ -183,7 +179,7 @@ requireText(
 );
 requireText(
   productPlan,
-  "Product remains `boundary_ready` rather than `transport_verified`",
+  "Product remains `boundary_ready`",
   "Product implementation plan",
 );
 requireText(

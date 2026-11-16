@@ -5718,6 +5718,7 @@ dependencies = [
  "async-graphql",
  "async-trait",
  "chrono",
+ "flex-ports",
  "hex",
  "regex",
  "rustok-api",
@@ -5733,6 +5734,17 @@ dependencies = [
  "tokio",
  "tracing",
  "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "flex-ports"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "rustok-api",
+ "serde",
+ "serde_json",
  "uuid",
 ]
 
@@ -17224,6 +17236,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "flex",
+ "flex-ports",
  "hex",
  "regex",
  "rust_decimal",

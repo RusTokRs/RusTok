@@ -22,28 +22,28 @@ function fixture(options = {}) {
 
   write(
     root,
-    "crates/modules/rustok-product-transport/Cargo.toml",
-    `thiserror.workspace = true\nurl.workspace = true\nsha2.workspace = true\nsubtle = "2"\ntonic = { workspace = true, features = ["tls-ring", "tls-webpki-roots"] }`,
+    "crates/modules/rustok-product/ports/Cargo.toml",
+    `thiserror.workspace = true\nurl.workspace = true\nsha2 = { workspace = true, optional = true }\nsubtle = { version = "2", optional = true }\ntonic = { workspace = true, features = ["tls-ring", "tls-webpki-roots"] }`,
   );
   write(
     root,
-    "crates/modules/rustok-product-transport/src/lib.rs",
+    "crates/modules/rustok-product/ports/src/grpc/mod.rs",
     `pub mod auth; pub mod connection; GrpcProductCatalogReadConnectionConfig GrpcProductCatalogReadConnectionError ValidatedGrpcProductCatalogReadConnection ProductCatalogGrpcBearerToken`,
   );
   const connection = options.missingTls
     ? `pub struct GrpcProductCatalogReadConnectionConfig; pub fn validated( Url::parse(value.trim()) !parsed.username().is_empty() parsed.password().is_some() parsed.query().is_some() parsed.fragment().is_some() !matches!(parsed.path(), "" | "/") "http" if allow_insecure_loopback && is_loopback_host(parsed.host()) => false InsecureEndpointForbidden MAX_CONNECT_TIMEOUT_MS timeout_ms == 0 || timeout_ms > MAX_CONNECT_TIMEOUT_MS .connect_timeout(validated.connect_timeout) .tcp_keepalive(Some(Duration::from_secs(30))) pub async fn connect(`
     : `pub struct GrpcProductCatalogReadConnectionConfig; pub fn validated( Url::parse(value.trim()) !parsed.username().is_empty() parsed.password().is_some() parsed.query().is_some() parsed.fragment().is_some() !matches!(parsed.path(), "" | "/") "https" => true "http" if allow_insecure_loopback && is_loopback_host(parsed.host()) => false InsecureEndpointForbidden MAX_CONNECT_TIMEOUT_MS timeout_ms == 0 || timeout_ms > MAX_CONNECT_TIMEOUT_MS ClientTlsConfig::new().with_webpki_roots() tls.domain_name(domain) .connect_timeout(validated.connect_timeout) .tcp_keepalive(Some(Duration::from_secs(30))) pub async fn connect(`;
-  write(root, "crates/modules/rustok-product-transport/src/connection.rs", connection);
+  write(root, "crates/modules/rustok-product/ports/src/grpc/connection.rs", connection);
   write(
     root,
-    "crates/modules/rustok-product-transport/README.md",
+    "crates/modules/rustok-product/ports/README.md",
     `RUSTOK_PRODUCT_DEPLOYMENT=embedded RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc RUSTOK_PRODUCT_CATALOG_GRPC_ENDPOINT RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN RUSTOK_PRODUCT_CATALOG_GRPC_ALLOW_INSECURE_LOOPBACK=true Invalid configuration or connection failure stops startup`,
   );
 
   write(
     root,
     "apps/server/Cargo.toml",
-    `mod-product   = ["dep:rustok-product", "dep:rustok-product-transport"\nrustok-product-transport = { path = "../../crates/modules/rustok-product-transport", optional = true }`,
+    `mod-product   = ["dep:rustok-product", "dep:rustok-product-ports"\nrustok-product-ports = { workspace = true, optional = true, features = ["grpc-client", "grpc-server"] }`,
   );
   write(
     root,

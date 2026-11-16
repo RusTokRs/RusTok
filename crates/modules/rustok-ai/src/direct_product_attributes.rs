@@ -13,7 +13,7 @@ use crate::model::{AiProductAttributesTaskInput, DirectExecutionTarget, ToolTrac
 use crate::service::{AiHostRuntime, AiOperatorContext};
 use crate::{AiError, AiResult};
 use rustok_ai_product::{PRODUCT_ATTRIBUTES_TASK_SLUG, PRODUCT_ATTRIBUTES_TOOL_NAME};
-use rustok_product::{ProductProjectionRequest, dto::ProductResponse};
+use rustok_product_ports::{ProductProjectionRequest, dto::ProductResponse};
 
 const PRODUCT_CATALOG_READ_DEADLINE: Duration = Duration::from_secs(3);
 

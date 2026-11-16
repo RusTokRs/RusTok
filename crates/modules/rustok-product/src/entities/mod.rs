@@ -1,4 +1,5 @@
 pub mod product;
+pub(crate) mod product_attached_localized_value;
 pub mod product_attribute_group;
 pub mod product_brand;
 pub mod product_image;

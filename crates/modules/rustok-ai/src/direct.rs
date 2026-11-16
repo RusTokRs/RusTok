@@ -22,8 +22,7 @@ use rustok_ai_product::{
 use rustok_api::{Patch, PortActor, PortContext};
 use rustok_core::infer_user_role_from_permissions;
 use rustok_media::{MediaService, UploadInput, UpsertTranslationInput};
-use rustok_product::CatalogService;
-use rustok_product::dto::{ProductTranslationInput, UpdateProductInput};
+use rustok_product_ports::dto::{ProductTranslationInput, UpdateProductInput};
 use rustok_storage::StorageRuntime;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -535,6 +534,12 @@ impl DirectTaskHandler for ProductCopyHandler {
     ) -> AiResult<DirectExecutionResult> {
         let input: AiProductCopyTaskInput =
             serde_json::from_value(request.task_input_json.clone()).map_err(AiError::Json)?;
+        let read_port = runtime.product_catalog_read_port().ok_or_else(|| {
+            AiError::Runtime("Product catalog read capability is unavailable".to_owned())
+        })?;
+        let command_port = runtime.product_catalog_command_port().ok_or_else(|| {
+            AiError::Runtime("Product catalog command capability is unavailable".to_owned())
+        })?;
         let started = std::time::Instant::now();
         let port_context = direct_operator_port_context(
             operator,
@@ -542,25 +547,17 @@ impl DirectTaskHandler for ProductCopyHandler {
             PRODUCT_COPY_TASK_SLUG,
             Duration::from_secs(30),
         );
-        let product = if let Some(read_port) = runtime.product_catalog_read_port() {
-            read_port
-                .read_product_projection(
-                    port_context.clone(),
-                    rustok_product::ProductProjectionRequest {
-                        product_id: input.product_id,
-                        locale: Some(request.resolved_locale.clone()),
-                        fallback_locale: request.requested_locale.clone(),
-                    },
-                )
-                .await
-                .map_err(|err| AiError::Runtime(err.to_string()))?
-        } else {
-            let catalog = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-            catalog
-                .get_product(operator.tenant_id, input.product_id)
-                .await
-                .map_err(|err| AiError::Runtime(err.to_string()))?
-        };
+        let product = read_port
+            .read_product_projection(
+                port_context.clone(),
+                rustok_product_ports::ProductProjectionRequest {
+                    product_id: input.product_id,
+                    locale: Some(request.resolved_locale.clone()),
+                    fallback_locale: request.requested_locale.clone(),
+                },
+            )
+            .await
+            .map_err(|err| AiError::Runtime(err.to_string()))?;
         // The copy is generated over multiple model round-trips; sending the revision that was read
         // keeps a concurrent operator edit from being overwritten by the machine translation.
         let expected_revision = product.revision;
@@ -649,26 +646,14 @@ impl DirectTaskHandler for ProductCopyHandler {
             expected_revision: Some(expected_revision),
         };
 
-        let updated = if let Some(command_port) = runtime.product_catalog_command_port() {
-            let command_ctx = port_context
-                .clone()
-                .with_idempotency_key(format!("ai-product-copy:{}:{expected_revision}", product.id));
-            command_port
-                .update_product(command_ctx, product.id, update_input)
-                .await
-                .map_err(|err| AiError::Runtime(err.to_string()))?
-        } else {
-            let catalog = CatalogService::new(runtime.db_clone(), runtime.event_bus());
-            catalog
-                .update_product(
-                    operator.tenant_id,
-                    operator.user_id,
-                    product.id,
-                    update_input,
-                )
-                .await
-                .map_err(|err| AiError::Runtime(err.to_string()))?
-        };
+        let command_ctx = port_context.with_idempotency_key(format!(
+            "ai-product-copy:{}:{expected_revision}",
+            product.id
+        ));
+        let updated = command_port
+            .update_product(command_ctx, product.id, update_input)
+            .await
+            .map_err(|err| AiError::Runtime(err.to_string()))?;
 
         let target_translation = updated
             .translations
@@ -966,7 +951,7 @@ struct ProductSourceTranslation {
 }
 
 fn resolve_product_source_translation(
-    product: &rustok_product::dto::ProductResponse,
+    product: &rustok_product_ports::dto::ProductResponse,
     source_locale: Option<&str>,
     target_locale: &str,
     input: &AiProductCopyTaskInput,
@@ -1228,7 +1213,7 @@ pub(crate) async fn generate_product_attributes(
     system_prompt: Option<&str>,
     target_locale: &str,
     input: &AiProductAttributesTaskInput,
-    product: Option<&rustok_product::dto::ProductResponse>,
+    product: Option<&rustok_product_ports::dto::ProductResponse>,
 ) -> AiResult<GeneratedProductAttributes> {
     let locale_instruction = concat!(
         "Return valid JSON only with keys: `brand`, `material`, `color`, `size`, `dimensions`, ",
@@ -1297,9 +1282,9 @@ struct ProductCopyGenerationRequest<'a> {
     provider_config: &'a AiProviderConfig,
     system_prompt: Option<&'a str>,
     target_locale: &'a str,
-    product: &'a rustok_product::dto::ProductResponse,
+    product: &'a rustok_product_ports::dto::ProductResponse,
     source_translation: &'a ProductSourceTranslation,
-    current_target_translation: Option<&'a rustok_product::dto::ProductTranslationResponse>,
+    current_target_translation: Option<&'a rustok_product_ports::dto::ProductTranslationResponse>,
     copy_instructions: Option<&'a str>,
 }
 
@@ -1695,6 +1680,7 @@ mod tests {
     use std::{
         collections::BTreeMap,
         sync::{Arc, Mutex},
+        time::Duration,
     };
 
     use super::direct_order_tasks::{OrderAnalyticsHandler, OrderOpsAssistantHandler};
@@ -1706,7 +1692,7 @@ mod tests {
         normalize_tag_list,
     };
     use crate::{
-        AiHostRuntime, AiOperatorContext, AiProviderTargetCatalog, ProviderEgressPolicy,
+        AiError, AiHostRuntime, AiOperatorContext, AiProviderTargetCatalog, ProviderEgressPolicy,
         ProviderSlug, ProviderTargetAuth,
         engine::InferenceEngine,
         model::{
@@ -1724,7 +1710,7 @@ mod tests {
     use rustok_ai_media::{media_ai_verticals, normalize_image_size};
     use rustok_ai_order::order_ai_verticals;
     use rustok_ai_product::product_ai_verticals;
-    use rustok_api::{PortContext, PortError};
+    use rustok_api::{PortActor, PortContext, PortError};
     use rustok_core::{MigrationSource, Rbac, UserRole, registry::ModuleRegistry};
     use rustok_order::{
         CheckoutCompletionPort, CheckoutCompletionSnapshot, CheckoutResultRequest,
@@ -2434,8 +2420,7 @@ mod tests {
 
         let event_bus =
             TransactionalEventBus::new(Arc::new(OutboxTransport::new(database.clone())));
-        let product_port: Arc<dyn ProductCatalogReadPort> =
-            Arc::new(CatalogService::new(database.clone(), event_bus.clone()));
+        let product_port = Arc::new(CatalogService::new(database.clone(), event_bus.clone()));
         let runtime = AiHostRuntime::new(
             database.clone(),
             event_bus,
@@ -2444,7 +2429,8 @@ mod tests {
             ProviderEgressPolicy::default(),
             AiProviderTargetCatalog::default(),
         )
-        .with_product_catalog_read_port(Some(product_port));
+        .with_product_catalog_read_port(Some(product_port.clone()))
+        .with_product_catalog_command_port(Some(product_port));
         (runtime, operator, product_id)
     }
 
@@ -2685,7 +2671,106 @@ mod tests {
     #[tokio::test]
     async fn direct_product_copy_updates_only_the_requested_locale_through_catalog_owner() {
         let (runtime, operator, product_id) = product_runtime().await;
-        let request = DirectExecutionRequest {
+        let catalog = CatalogService::new(runtime.db_clone(), runtime.event_bus());
+        assert_product_copy_updates_target_locale(&runtime, &operator, product_id, &catalog).await;
+    }
+
+    #[tokio::test]
+    async fn direct_product_copy_refuses_missing_command_port_even_with_local_product_tables() {
+        let (runtime, operator, product_id) = product_runtime().await;
+        let runtime = runtime.with_product_catalog_command_port(None);
+        let result = ProductCopyHandler
+            .execute(&runtime, &operator, product_copy_request(product_id))
+            .await;
+        assert!(matches!(
+            result,
+            Err(AiError::Runtime(ref message))
+                if message == "Product catalog command capability is unavailable"
+        ));
+    }
+
+    #[tokio::test]
+    async fn direct_product_copy_reads_and_writes_through_grpc_without_local_product_tables() {
+        use rustok_product_ports::grpc::{
+            GrpcProductCatalogCommandProvider, GrpcProductCatalogReadProvider,
+            ProductCatalogCommandGrpcService, ProductCatalogGrpcBearerAuthenticator,
+            ProductCatalogGrpcBearerInterceptor, ProductCatalogGrpcOperation,
+            ProductCatalogGrpcService,
+            proto::product_catalog_command_service_server::ProductCatalogCommandServiceServer,
+            proto::product_catalog_read_service_server::ProductCatalogReadServiceServer,
+        };
+        use tokio_stream::wrappers::TcpListenerStream;
+        use tonic::transport::{Endpoint, Server};
+
+        let (owner, operator, product_id) = product_runtime().await;
+        let catalog = Arc::new(CatalogService::new(owner.db_clone(), owner.event_bus()));
+        let read_service = ProductCatalogReadServiceServer::with_interceptor(
+            ProductCatalogGrpcService::new(catalog.clone()),
+            ProductCatalogGrpcBearerInterceptor::from_bearer_token(
+                "product-copy-read-test",
+                PortActor::service("product-copy-test"),
+            )
+            .unwrap(),
+        );
+        let command_service = ProductCatalogCommandServiceServer::with_interceptor(
+            ProductCatalogCommandGrpcService::new(catalog.clone()),
+            ProductCatalogGrpcBearerInterceptor::new(
+                ProductCatalogGrpcBearerAuthenticator::new(
+                    "product-copy-command-test",
+                    PortActor::service(operator.user_id.to_string()),
+                )
+                .unwrap()
+                .with_allowed_operations([ProductCatalogGrpcOperation::UpdateProduct]),
+            ),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = Endpoint::from_shared(format!("http://{}", listener.local_addr().unwrap()))
+            .unwrap()
+            .connect_timeout(Duration::from_secs(5));
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            Server::builder()
+                .add_service(read_service)
+                .add_service(command_service)
+                .serve_with_incoming_shutdown(TcpListenerStream::new(listener), async {
+                    let _ = shutdown_rx.await;
+                })
+                .await
+                .unwrap();
+        });
+        let read_port = GrpcProductCatalogReadProvider::connect(endpoint.clone())
+            .await
+            .unwrap()
+            .with_bearer_token("product-copy-read-test")
+            .unwrap();
+        let command_port = GrpcProductCatalogCommandProvider::connect(endpoint)
+            .await
+            .unwrap()
+            .with_bearer_token("product-copy-command-test")
+            .unwrap();
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let runtime = AiHostRuntime::new(
+            db.clone(),
+            TransactionalEventBus::new(Arc::new(OutboxTransport::new(db))),
+            ModuleRegistry::new(),
+            SecretResolverRegistry::builder().build(),
+            ProviderEgressPolicy::default(),
+            AiProviderTargetCatalog::default(),
+        )
+        .with_product_catalog_read_port(Some(Arc::new(read_port)))
+        .with_product_catalog_command_port(Some(Arc::new(command_port)));
+
+        assert_product_copy_updates_target_locale(&runtime, &operator, product_id, &catalog).await;
+        drop(runtime);
+        shutdown_tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), server)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
+    fn product_copy_request(product_id: Uuid) -> DirectExecutionRequest {
+        DirectExecutionRequest {
             task_slug: rustok_ai_product::PRODUCT_COPY_TASK_SLUG.to_string(),
             task_input_json: json!(AiProductCopyTaskInput {
                 product_id,
@@ -2700,10 +2785,17 @@ mod tests {
             provider_config: provider_config(),
             provider: Arc::new(ProductCopyEngine),
             stream_emitter: None,
-        };
+        }
+    }
 
+    async fn assert_product_copy_updates_target_locale(
+        runtime: &AiHostRuntime,
+        operator: &AiOperatorContext,
+        product_id: Uuid,
+        catalog: &CatalogService,
+    ) {
         let result = ProductCopyHandler
-            .execute(&runtime, &operator, request)
+            .execute(runtime, operator, product_copy_request(product_id))
             .await
             .unwrap();
 
@@ -2720,7 +2812,6 @@ mod tests {
             Some("Product copy saved for the selected locale.")
         );
 
-        let catalog = rustok_product::CatalogService::new(runtime.db_clone(), runtime.event_bus());
         let persisted = catalog
             .get_product(operator.tenant_id, product_id)
             .await

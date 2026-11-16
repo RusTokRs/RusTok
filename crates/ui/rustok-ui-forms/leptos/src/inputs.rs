@@ -410,13 +410,13 @@ pub fn FormNumberInput(
     #[prop(optional, into)]
     placeholder: Option<String>,
     /// Minimum value constraint.
-    #[prop(optional)]
+    #[prop(optional_no_strip)]
     min: Option<f64>,
     /// Maximum value constraint.
-    #[prop(optional)]
+    #[prop(optional_no_strip)]
     max: Option<f64>,
     /// Step interval.
-    #[prop(optional)]
+    #[prop(optional_no_strip)]
     step: Option<f64>,
     /// Disabled state.
     #[prop(optional, into)]

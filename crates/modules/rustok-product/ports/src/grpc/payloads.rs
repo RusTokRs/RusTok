@@ -9,6 +9,12 @@ pub(crate) struct ProductIdPayload {
 }
 
 #[derive(Serialize, Deserialize)]
+pub(crate) struct ReadAttachedValuesPayload {
+    pub product_id: Uuid,
+    pub fallback_locale: String,
+}
+
+#[derive(Serialize, Deserialize)]
 pub(crate) struct VariantIdPayload {
     pub variant_id: Uuid,
 }

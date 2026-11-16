@@ -50,6 +50,8 @@ pub fn DataGrid<T, K, KF>(
     #[prop(optional)] on_sort_change: Option<Callback<SortState>>,
     #[prop(optional)] selection: Option<RwSignal<RowSelection>>,
     #[prop(optional)] on_selection_change: Option<Callback<RowSelection>>,
+    #[prop(optional)] column_widths: Option<RwSignal<ColumnWidths>>,
+    #[prop(optional)] on_column_widths_change: Option<Callback<ColumnWidths>>,
     #[prop(optional)] bulk_actions: Option<Callback<usize, AnyView>>,
     /// Accessible name of the table, announced by screen readers.
     #[prop(optional)]
@@ -66,7 +68,7 @@ where
     provide_context(messages.clone());
     let grid_loading = messages.text("grid.loading");
     let local_columns = RwSignal::new(columns);
-    let local_widths = RwSignal::new(ColumnWidths::new());
+    let local_widths = column_widths.unwrap_or_else(|| RwSignal::new(ColumnWidths::new()));
     let local_filters = filters.unwrap_or_else(|| RwSignal::new(ColumnFilters::new()));
     let local_sort = sort_state.unwrap_or_else(|| RwSignal::new(SortState::default()));
     let local_selection = selection.unwrap_or_else(|| RwSignal::new(RowSelection::new()));
@@ -136,6 +138,9 @@ where
             local_widths.update(|widths| {
                 widths.set_clamped(col_id, width, min, max);
             });
+            if let Some(on_widths) = on_column_widths_change {
+                on_widths.run(local_widths.get_untracked());
+            }
         }
     });
 

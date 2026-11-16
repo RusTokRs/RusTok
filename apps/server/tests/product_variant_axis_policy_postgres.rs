@@ -1590,14 +1590,14 @@ async fn attribute_definition_contract(url: &str) -> TestResult<()> {
         .applied
     );
 
-    let category = owner
+    let lifecycle_category = owner
         .create_category(tenant, actor, category("lifecycle_product", None))
         .await?;
     owner
         .bind_category_attribute(
             tenant,
             actor,
-            category_binding(category.id, color.id, VariantAxisPolicy::Allowed),
+            category_binding(lifecycle_category.id, color.id, VariantAxisPolicy::Allowed),
         )
         .await?;
     let product = catalog
@@ -1606,7 +1606,7 @@ async fn attribute_definition_contract(url: &str) -> TestResult<()> {
             actor,
             product(
                 "lifecycle_sku",
-                category.id,
+                lifecycle_category.id,
                 vec![VariantAxisInput {
                     attribute_id: color.id,
                     position: 0,

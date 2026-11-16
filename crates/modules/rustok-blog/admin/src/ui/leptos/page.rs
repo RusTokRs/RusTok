@@ -311,7 +311,7 @@ pub(super) fn render(state: BlogAdminPageState) -> impl IntoView {
                                 </Alert>
                             }
                         })}
-                        <Form state=form_state dirty_tracker=dirty_tracker auto_submitting=false on_submit=submit_post class="mt-5 space-y-4">
+                        <Form state=form_state dirty_tracker=Some(dirty_tracker) auto_submitting=false on_submit=submit_post class="mt-5 space-y-4">
                             <FormError />
                             <FormField name="title">
                                 <FormLabel>{form_copy_view.with_value(|value| value.title_label.clone())}</FormLabel>

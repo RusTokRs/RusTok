@@ -35,13 +35,14 @@ use rustok_product::entities::{
     product_tag, product_translation, product_variant, product_variant_axis,
     product_variant_axis_value, variant_translation,
 };
+use rustok_product::migrations::m20261116_000041_move_product_attached_localized_values::Migration as ProductAttachedValuesMigration;
 use rustok_taxonomy::entities::{
     taxonomy_category_hierarchy, taxonomy_category_presentation, taxonomy_term,
     taxonomy_term_alias, taxonomy_term_route_key, taxonomy_term_translation, translation_change,
 };
 use rustok_tenant::entities::tenant_module;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, DbBackend, Schema, Statement};
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 
 pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     if db.get_database_backend() != DbBackend::Sqlite {
@@ -498,6 +499,22 @@ pub async fn ensure_commerce_schema(db: &DatabaseConnection) {
     .await;
     ensure_tenant_tables(db).await;
     ensure_field_definition_tables(db).await;
+    let migration_manager = SchemaManager::new(db);
+    if !migration_manager
+        .has_table("product_attached_localized_values")
+        .await
+        .unwrap()
+    {
+        db.execute_unprepared(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_products_tenant_id ON products (tenant_id, id)",
+        )
+        .await
+        .unwrap();
+        ProductAttachedValuesMigration
+            .up(&migration_manager)
+            .await
+            .unwrap();
+    }
     ensure_product_attribute_tables(db).await;
     ensure_catalog_category_tables(db).await;
     create_entity_table(

@@ -1,4 +1,6 @@
 mod admin_queries;
+mod attached_localized_storage;
+mod attached_values;
 mod attribute_filters;
 mod commands;
 pub mod concurrency;
@@ -87,6 +89,7 @@ use rustok_outbox::TransactionalEventBus;
 
 use crate::ProductCatalogSchemaService;
 
+use super::flex_schema_projection::ProductFlexSchemaSource;
 use super::write_transaction::{
     ProductWriteTransaction, current_product_operation_id, record_product_operation_result,
 };
@@ -141,6 +144,8 @@ pub struct CatalogService {
     pub(crate) pricing_port: Option<std::sync::Arc<dyn ProductPricingPort>>,
     pub(crate) inventory_port: Option<std::sync::Arc<dyn crate::ports::ProductInventoryPort>>,
     pub(crate) taxonomy_port: Option<std::sync::Arc<dyn crate::ports::ProductTaxonomyPort>>,
+    flex_schema_read_port: Option<std::sync::Arc<dyn flex_ports::FlexAttachedSchemaReadPort>>,
+    flex_schema_source: ProductFlexSchemaSource,
 }
 
 impl CatalogService {
@@ -153,7 +158,22 @@ impl CatalogService {
             pricing_port: None,
             inventory_port: None,
             taxonomy_port: None,
+            flex_schema_read_port: None,
+            flex_schema_source: ProductFlexSchemaSource::Shared,
         }
+    }
+
+    pub fn with_flex_schema_read_port(
+        mut self,
+        port: std::sync::Arc<dyn flex_ports::FlexAttachedSchemaReadPort>,
+    ) -> Self {
+        self.flex_schema_read_port = Some(port);
+        self
+    }
+
+    pub fn with_projected_flex_schema(mut self) -> Self {
+        self.flex_schema_source = ProductFlexSchemaSource::Projection;
+        self
     }
 
     pub fn with_media_reference_port(

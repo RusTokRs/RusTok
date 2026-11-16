@@ -10,13 +10,14 @@
 
 use std::time::Duration;
 
+use crate::attached_values::{ProductAttachedValuesWritePort, validate_attached_values_patch};
 use crate::{
-    FilteredPublishedProductsRequest, ProductCatalogCommandPort, ProductCatalogReadPort,
-    ProductProjectionRequest, ProductVariantIdentitiesRequest, ProductVariantIdentityListRequest,
-    ProductVariantIdentityReadPort, ProductVariantIdentitySnapshot, PublishedProductsRequest,
-    StorefrontCatalogFacet, StorefrontCatalogFacetsRequest, StorefrontProductList,
-    StorefrontProductProjectionRequest, StorefrontVariantProductProjectionRequest,
-    VariantProductProjectionRequest,
+    FilteredPublishedProductsRequest, ProductAttachedValuesReadPort, ProductCatalogCommandPort,
+    ProductCatalogReadPort, ProductProjectionRequest, ProductVariantIdentitiesRequest,
+    ProductVariantIdentityListRequest, ProductVariantIdentityReadPort,
+    ProductVariantIdentitySnapshot, PublishedProductsRequest, StorefrontCatalogFacet,
+    StorefrontCatalogFacetsRequest, StorefrontProductList, StorefrontProductProjectionRequest,
+    StorefrontVariantProductProjectionRequest, VariantProductProjectionRequest,
     dto::{
         AddProductImageInput, CreateProductInput, CreateVariantInput, ProductImageResponse,
         ProductResponse, SetVariantAxesInput, UpdateProductImageInput, UpdateProductInput,
@@ -33,8 +34,8 @@ use uuid::Uuid;
 
 use super::auth::{AUTHORIZATION_METADATA, TENANT_ID_METADATA};
 use super::payloads::{
-    ProductIdPayload, ProductImageIdPayload, ProductInputPayload, ReorderProductImagesPayload,
-    UpdateProductImagePayload, VariantIdPayload, VariantInputPayload,
+    ProductIdPayload, ProductImageIdPayload, ProductInputPayload, ReadAttachedValuesPayload,
+    ReorderProductImagesPayload, UpdateProductImagePayload, VariantIdPayload, VariantInputPayload,
 };
 use super::proto::JsonRequest;
 use super::proto::product_catalog_command_service_client::ProductCatalogCommandServiceClient;
@@ -45,6 +46,7 @@ use super::{ProductCatalogGrpcAuthenticationError, ProductCatalogGrpcBearerToken
 pub struct GrpcProductCatalogReadProvider {
     client: ProductCatalogReadServiceClient<Channel>,
     authentication: Option<ProductCatalogGrpcBearerToken>,
+    attached_values_authentication: Option<ProductCatalogGrpcBearerToken>,
 }
 
 impl GrpcProductCatalogReadProvider {
@@ -52,6 +54,7 @@ impl GrpcProductCatalogReadProvider {
         Self {
             client: ProductCatalogReadServiceClient::new(channel),
             authentication: None,
+            attached_values_authentication: None,
         }
     }
 
@@ -74,6 +77,14 @@ impl GrpcProductCatalogReadProvider {
         self
     }
 
+    pub fn with_attached_values_authentication(
+        mut self,
+        authentication: ProductCatalogGrpcBearerToken,
+    ) -> Self {
+        self.attached_values_authentication = Some(authentication);
+        self
+    }
+
     /// Validates and installs the deployment bearer credential used for every RPC.
     pub fn with_bearer_token(
         self,
@@ -92,6 +103,42 @@ impl GrpcProductCatalogReadProvider {
             input_json: encode(input)?,
         };
         grpc_request(payload, context, self.authentication.as_ref())
+    }
+}
+
+#[async_trait]
+impl ProductAttachedValuesReadPort for GrpcProductCatalogReadProvider {
+    async fn read_attached_values(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        fallback_locale: &str,
+    ) -> Result<Option<serde_json::Value>, PortError> {
+        context.require_read_semantics()?;
+        let authentication = self
+            .attached_values_authentication
+            .as_ref()
+            .ok_or_else(|| {
+                PortError::unavailable(
+                    "product.attached_values_read_unavailable",
+                    "Product attached values read is unavailable",
+                )
+            })?;
+        let payload = JsonRequest {
+            context_json: encode(&context)?,
+            input_json: encode(&ReadAttachedValuesPayload {
+                product_id,
+                fallback_locale: fallback_locale.to_owned(),
+            })?,
+        };
+        let response = self
+            .client
+            .clone()
+            .read_attached_values(grpc_request(payload, &context, Some(authentication))?)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
     }
 }
 
@@ -270,6 +317,7 @@ impl ProductVariantIdentityReadPort for GrpcProductCatalogReadProvider {
 pub struct GrpcProductCatalogCommandProvider {
     client: ProductCatalogCommandServiceClient<Channel>,
     authentication: Option<ProductCatalogGrpcBearerToken>,
+    attached_values_authentication: Option<ProductCatalogGrpcBearerToken>,
 }
 
 impl GrpcProductCatalogCommandProvider {
@@ -277,6 +325,7 @@ impl GrpcProductCatalogCommandProvider {
         Self {
             client: ProductCatalogCommandServiceClient::new(channel),
             authentication: None,
+            attached_values_authentication: None,
         }
     }
 
@@ -315,6 +364,79 @@ impl GrpcProductCatalogCommandProvider {
             input_json: encode(input)?,
         };
         grpc_request(payload, context, self.authentication.as_ref())
+    }
+
+    pub fn with_attached_values_authentication(
+        mut self,
+        authentication: ProductCatalogGrpcBearerToken,
+    ) -> Self {
+        self.attached_values_authentication = Some(authentication);
+        self
+    }
+
+    fn attached_values_request(
+        &self,
+        context: &PortContext,
+        input: &impl Serialize,
+    ) -> Result<Request<JsonRequest>, PortError> {
+        context.require_write_semantics()?;
+        let authentication = self
+            .attached_values_authentication
+            .as_ref()
+            .ok_or_else(|| {
+                PortError::unavailable(
+                    "product.attached_values_write_unavailable",
+                    "Product attached values write is unavailable",
+                )
+            })?;
+        let payload = JsonRequest {
+            context_json: encode(context)?,
+            input_json: encode(input)?,
+        };
+        grpc_request(payload, context, Some(authentication))
+    }
+}
+
+#[async_trait]
+impl ProductAttachedValuesWritePort for GrpcProductCatalogCommandProvider {
+    async fn update_attached_values(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+        values: Option<serde_json::Value>,
+    ) -> Result<Option<serde_json::Value>, PortError> {
+        validate_attached_values_patch(values.as_ref())?;
+        let request = self.attached_values_request(
+            &context,
+            &ProductInputPayload {
+                product_id,
+                input: values,
+            },
+        )?;
+        let response = self
+            .client
+            .clone()
+            .update_attached_values(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn delete_attached_values(
+        &self,
+        context: PortContext,
+        product_id: Uuid,
+    ) -> Result<(), PortError> {
+        let request = self.attached_values_request(&context, &ProductIdPayload { product_id })?;
+        let response = self
+            .client
+            .clone()
+            .delete_attached_values(request)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
     }
 }
 

@@ -413,12 +413,16 @@ pub fn attach_commerce_provider_registries(
                 server
                     .shared_get::<rustok_outbox::TransactionalEventBus>()
                     .map(|event_bus| {
-                        rustok_product::ProductCatalogReadRuntime::in_process_with_collaborators(
+                        rustok_product::ProductCatalogReadRuntime::in_process_with_flex_schema(
                             server.db_clone(),
                             event_bus,
                             product_pricing.clone(),
                             product_inventory.clone(),
                             product_taxonomy.clone(),
+                            Some(Arc::new(flex::FlexAttachedFieldReadService::new(
+                                server.db_clone(),
+                                super::field_definition_registry_bootstrap::build_field_def_registry(),
+                            ))),
                         )
                     })
             });
@@ -568,14 +572,29 @@ pub fn attach_commerce_provider_registries(
         };
 
     #[cfg(all(feature = "mod-ai", feature = "mod-product"))]
-    let host = if let Some(runtime) =
-        server.shared_get::<rustok_product::ProductCatalogCommandRuntime>()
-    {
-        host.with_shared_value(rustok_ai::SharedAiProductCatalogCommandPort(
-            runtime.command_port(),
-        ))
-    } else {
-        host
+    let host = match (
+        server.shared_get::<rustok_product::ProductCatalogReadRuntime>(),
+        server.shared_get::<rustok_product::ProductCatalogCommandRuntime>(),
+    ) {
+        // The revision used by product_copy must come from the authority that accepts the write.
+        // External read and command runtimes selected at startup share a configured endpoint.
+        (Some(read), Some(command))
+            if matches!(
+                (read.profile(), command.profile()),
+                (
+                    rustok_product::ProductCatalogReadProfile::EmbeddedNative,
+                    rustok_product::ProductCatalogCommandProfile::EmbeddedNative
+                ) | (
+                    rustok_product::ProductCatalogReadProfile::External,
+                    rustok_product::ProductCatalogCommandProfile::External
+                )
+            ) =>
+        {
+            host.with_shared_value(rustok_ai::SharedAiProductCatalogCommandPort(
+                command.command_port(),
+            ))
+        }
+        _ => host,
     };
 
     Ok(host)
@@ -838,6 +857,10 @@ mod product_catalog_read_port_tests {
             host.shared_get::<rustok_ai::SharedAiProductCatalogReadPort>()
                 .is_some()
         );
+        assert!(
+            host.shared_get::<rustok_ai::SharedAiProductCatalogCommandPort>()
+                .is_some()
+        );
     }
 
     #[tokio::test]
@@ -867,6 +890,11 @@ mod product_catalog_read_port_tests {
             attached
                 .shared_get::<rustok_ai::SharedAiProductCatalogReadPort>()
                 .is_some()
+        );
+        assert!(
+            attached
+                .shared_get::<rustok_ai::SharedAiProductCatalogCommandPort>()
+                .is_none()
         );
     }
 }

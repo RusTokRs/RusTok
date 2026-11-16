@@ -268,8 +268,8 @@ pub trait ProductInventoryPort: Send + Sync {
     ) -> Result<(), CommerceError>;
 }
 
-/// Default no-op inventory implementation used when running Product in standalone microservice mode
-/// or in tests without an inventory service attached.
+/// Inventory behavior for a Product profile without an attached Inventory provider.
+/// A missing provider cannot attest that a nonempty SKU deletion is safe.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NoopProductInventoryPort;
 
@@ -329,8 +329,41 @@ impl ProductInventoryPort for NoopProductInventoryPort {
         _txn: &DatabaseTransaction,
         _tenant_id: Uuid,
         _actor_id: Uuid,
-        _variant_ids: &[Uuid],
+        variant_ids: &[Uuid],
     ) -> Result<(), CommerceError> {
-        Ok(())
+        if variant_ids.is_empty() {
+            return Ok(());
+        }
+        Err(CommerceError::InventoryDeletionBlocked(
+            ProductInventoryDeletionBlocker::StateUnverified,
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use sea_orm::{Database, TransactionTrait};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn missing_inventory_cannot_attest_sku_deletion() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let txn = db.begin().await.unwrap();
+        let tenant_id = Uuid::new_v4();
+        let actor_id = Uuid::new_v4();
+        let port = NoopProductInventoryPort;
+
+        assert!(matches!(
+            port.delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &[Uuid::new_v4()])
+                .await,
+            Err(CommerceError::InventoryDeletionBlocked(
+                ProductInventoryDeletionBlocker::StateUnverified
+            ))
+        ));
+        port.delete_records_for_variants_in_tx(&txn, tenant_id, actor_id, &[])
+            .await
+            .unwrap();
+        txn.rollback().await.unwrap();
     }
 }

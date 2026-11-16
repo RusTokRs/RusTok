@@ -111,6 +111,12 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
     /// Emitted after every selection change.
     #[props(default)]
     on_selection_change: Option<EventHandler<RowSelection>>,
+    /// Persisted column widths.
+    #[props(default)]
+    column_widths: Option<ColumnWidths>,
+    /// Emitted after every column resize.
+    #[props(default)]
+    on_column_widths_change: Option<EventHandler<ColumnWidths>>,
     /// Renders actions for the current selection, e.g. "delete selected".
     #[props(default)]
     bulk_actions: Option<Callback<usize, Element>>,
@@ -124,12 +130,13 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
     let initial_sort = sort_state.clone().unwrap_or_default();
     let initial_selection = selection.clone().unwrap_or_default();
     let initial_pagination = pagination.unwrap_or_default();
+    let initial_widths = column_widths.clone().unwrap_or_default();
 
     let mut local_filters = use_signal(move || initial_filters);
     let mut local_sort = use_signal(move || initial_sort);
     let mut local_selection = use_signal(move || initial_selection);
     let mut local_pagination = use_signal(move || initial_pagination);
-    let mut local_widths = use_signal(ColumnWidths::new);
+    let mut local_widths = use_signal(move || initial_widths);
     // Visibility overrides instead of an owned copy of `columns`: the column
     // list stays a prop, so a re-labelled or re-ordered set flows straight in.
     let mut visibility = use_signal(BTreeMap::<String, bool>::new);
@@ -139,6 +146,7 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
     let sort_controlled = sort_state.is_some() && on_sort_change.is_some();
     let selection_controlled = selection.is_some() && on_selection_change.is_some();
     let pagination_controlled = pagination.is_some() && !client_side;
+    let widths_controlled = column_widths.is_some() && on_column_widths_change.is_some();
 
     let current_filters = if filters_controlled {
         filters.clone().unwrap_or_default()
@@ -155,7 +163,12 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
     } else {
         local_selection.read().clone()
     };
-    let widths = local_widths.read().clone();
+    let current_widths = if widths_controlled {
+        column_widths.clone().unwrap_or_default()
+    } else {
+        local_widths.read().clone()
+    };
+    let widths = current_widths.clone();
 
     let total_rows = data.len();
     let mut current_pagination = if pagination_controlled {
@@ -210,6 +223,7 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
     let sort_now = Rc::new(current_sort.clone());
     let selection_now = Rc::new(current_selection.clone());
     let columns_now = Rc::new(effective_columns.clone());
+    let widths_now = Rc::new(current_widths.clone());
 
     // Applies a pagination intent and returns the state that was actually
     // adopted — never an out-of-range page a user managed to click.
@@ -312,6 +326,8 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
         }
     });
 
+    let widths_for_resize = Rc::clone(&widths_now);
+
     rsx! {
         div { class: "w-full rounded-xl border border-border/80 bg-card shadow-sm flex flex-col overflow-hidden",
 
@@ -374,7 +390,14 @@ pub fn DataGrid<T: Clone + PartialEq + 'static>(
                                 .find(|column| column.id.as_str() == id)
                                 .map(|column| (column.width.min, column.width.max));
                             if let Some((min, max)) = bounds {
-                                local_widths.write().set_clamped(id, width, min, max);
+                                if !widths_controlled {
+                                    local_widths.write().set_clamped(id.clone(), width, min, max);
+                                }
+                                if let Some(ref handler) = on_column_widths_change {
+                                    let mut next = (*widths_for_resize).clone();
+                                    next.set_clamped(id, width, min, max);
+                                    handler.call(next);
+                                }
                             }
                         },
                         on_filter_change: move |(id, value): (String, FilterValue)| {

@@ -46,11 +46,12 @@ impl ProductCatalogReadPort for crate::CatalogService {
         context.require_policy(PortCallPolicy::read())?;
         let tenant_id = parse_port_tenant_id(&context, owner_operation)?;
         let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
-        self.get_product_with_locale_fallback(
+        self.get_product_for_catalog_read(
             tenant_id,
             request.product_id,
             locale,
             request.fallback_locale.as_deref(),
+            &context,
         )
         .await
         .map_err(|error| product_error_to_port_error(&context, owner_operation, error))
@@ -74,11 +75,12 @@ impl ProductCatalogReadPort for crate::CatalogService {
             })?;
         let locale = request.locale.as_deref().unwrap_or(context.locale.as_str());
 
-        self.get_product_with_locale_fallback(
+        self.get_product_for_catalog_read(
             tenant_id,
             variant.product_id,
             locale,
             request.fallback_locale.as_deref(),
+            &context,
         )
         .await
         .map_err(|error| product_error_to_port_error(&context, owner_operation, error))

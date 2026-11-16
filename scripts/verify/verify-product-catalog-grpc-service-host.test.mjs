@@ -22,20 +22,23 @@ function fixture(options = {}) {
   write(root, "Cargo.toml", `members = ["crates/modules/*"]`);
   write(
     root,
-    "crates/modules/rustok-product-catalog-service/Cargo.toml",
-    `name = "rustok-product-catalog-service"
+    "crates/modules/rustok-product/Cargo.toml",
+    `name = "rustok-product"
+name = "rustok-product-catalog-service"
+path = "src/bin/service.rs"
+required-features = ["service"]
 rustok-api.workspace = true
 rustok-outbox.workspace = true
-rustok-product.workspace = true
-rustok-product-transport = { path = "../rustok-product-transport" }
-rustok-telemetry.workspace = true
+rustok-product-ports.workspace = true
+service = ["rustok-product-ports/grpc-server"]
+rustok-telemetry = { workspace = true, optional = true }
 sea-orm.workspace = true
-tonic = { workspace = true, features = ["tls-ring"] }`,
+tonic = { workspace = true, optional = true, features = ["tls-ring"] }`,
   );
 
   const ownerComposition = options.missingOwnerComposition
     ? ""
-    : `CatalogService::new(database, event_bus) OutboxTransport::new(database.clone()) TransactionalEventBus::new(outbox) ProductCatalogGrpcService::new(provider.clone()) .with_variant_identity_read_port(provider)`;
+    : `CatalogService::new(database, event_bus) OutboxTransport::new(database.clone()) TransactionalEventBus::new(outbox) ProductCatalogGrpcService::new(provider.clone()) .with_variant_identity_read_port(provider.clone()) .with_attached_values_read_port(provider) .with_allowed_operations([ProductCatalogGrpcOperation::ReadAttachedValues])`;
   const authentication = options.missingAuthentication
     ? ""
     : `ProductCatalogGrpcBearerInterceptor::from_bearer_token( PortActor::service(config.trusted_service_actor.clone()) ProductCatalogReadServiceServer::with_interceptor(service, interceptor) required_secret_env(BEARER_TOKEN_ENV) validate_service_actor(required_env(`;
@@ -45,24 +48,39 @@ tonic = { workspace = true, features = ["tls-ring"] }`,
   const schemaPreflight = options.missingSchemaPreflight
     ? ""
     : `SysEvents entities::{Product, ProductVariant} EntityTrait
-REQUIRED_SCHEMA_TABLES: [&str; 3] = ["products", "product_variants", "sys_events"]
+REQUIRED_SCHEMA_TABLES: [&str; 4] = ["products", "product_variants", "sys_events", "product_attached_localized_values"]
 async fn verify_required_schema(database: &DatabaseConnection)
 Product::find() ProductVariant::find() SysEvents::find()
-schema_preflight_error("products") schema_preflight_error("product_variants") schema_preflight_error("sys_events")
+schema_preflight_error("products") schema_preflight_error("product_variants") schema_preflight_error("sys_events") schema_preflight_error("product_attached_localized_values")
 run platform migrations before starting the service Product catalog database schema preflight passed`;
+  const listenerOrder = options.prematureListenerMarker
+    ? "Product catalog gRPC service listening\nTcpListener::bind(config.bind)"
+    : "TcpListener::bind(config.bind)\nProduct catalog gRPC service listening";
+  const commandSchemaPreflight = options.missingCommandSchemaPreflight
+    ? ""
+    : `let commands_enabled = config.command_authentication.is_some();
+if commands_enabled {
+idempotency::verify_readable_schema(&database)
+schema_preflight_error("owner_operation_receipts")
+}
+Product catalog database schema preflight passed`;
   const startupOrder = options.misorderedSchemaPreflight
     ? `verify_required_schema(&database).await?;
 let database = connect_database(&config).await?;
+${commandSchemaPreflight}
 let outbox = Arc::new(OutboxTransport::new(database.clone()));
-let mut server = Server::builder();`
+let mut server = Server::builder();
+${listenerOrder}`
     : `let database = connect_database(&config).await?;
 verify_required_schema(&database).await?;
+${commandSchemaPreflight}
 let outbox = Arc::new(OutboxTransport::new(database.clone()));
-let mut server = Server::builder();`;
+let mut server = Server::builder();
+${listenerOrder}`;
   const secretLeak = options.leakedSecret ? "bearer_token = %token" : "";
   write(
     root,
-    "crates/modules/rustok-product-catalog-service/src/main.rs",
+    "crates/modules/rustok-product/src/bin/service.rs",
     `
 ${ownerComposition}
 ${authentication}
@@ -70,8 +88,8 @@ ${security}
 ${schemaPreflight}
 ${startupOrder}
 ${secretLeak}
-config.command_authentication.map ProductCatalogGrpcBearerInterceptor::new(authentication) .add_optional_service(command_service) .with_allowed_operations(ProductCatalogGrpcOperation::COMMAND)
-ServerTlsConfig::new().identity(identity) .serve_with_shutdown(config.bind, shutdown_signal())
+config.command_authentication.map ProductCatalogGrpcBearerInterceptor::new(authentication) .add_optional_service(command_service) .with_allowed_operations(ProductCatalogGrpcOperation::COMMAND) .with_attached_values_write_port(command_provider) ProductCatalogGrpcOperation::UpdateAttachedValues ProductCatalogGrpcOperation::DeleteAttachedValues
+ServerTlsConfig::new().identity(identity) .serve_with_incoming_shutdown(TcpListenerStream::new(listener), shutdown_signal())
 DATABASE_URL_ENV: &str = "RUSTOK_PRODUCT_CATALOG_DATABASE_URL"
 BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN"
 TRUSTED_SERVICE_ACTOR_ENV: &str = "RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR"
@@ -88,8 +106,8 @@ secrets_are_redacted_from_debug_output database_must_be_postgresql_and_debug_tar
   );
   write(
     root,
-    "crates/modules/rustok-product-catalog-service/README.md",
-    `optionally expose \`ProductCatalogCommandPort\` CatalogService ProductCatalogGrpcService ProductCatalogGrpcBearerInterceptor OutboxTransport command service is registered only when both command variables are set does not run migrations at startup ## Schema preflight products product_variants sys_events before tonic starts listening does not silently continue with partial readiness RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_CERT_PATH RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR cargo run -p rustok-product-catalog-service does not claim this command was executed boundary_ready`,
+    "crates/modules/rustok-product/README.md",
+    `## Standalone service configuration \`ProductCatalogCommandPort\` CatalogService ProductCatalogGrpcService ProductCatalogGrpcBearerInterceptor OutboxTransport command service is registered only when both command variables are set does not run migrations at startup ### Schema preflight products product_variants sys_events before tonic starts listening does not silently continue with partial readiness RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_CERT_PATH RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR cargo run -p rustok-product --bin rustok-product-catalog-service --features service does not claim this command was executed boundary_ready`,
   );
 
   write(
@@ -102,9 +120,9 @@ secrets_are_redacted_from_debug_output database_must_be_postgresql_and_debug_tar
           "scripts/verify/verify-product-catalog-grpc-service-host.mjs",
       },
       external_transport: {
-        provider_host_crate: "rustok-product-catalog-service",
+        provider_host_crate: "rustok-product",
         provider_host_source:
-          "crates/modules/rustok-product-catalog-service/src/main.rs",
+          "crates/modules/rustok-product/src/bin/service.rs",
         provider_host_binary: "rustok-product-catalog-service",
         provider_host_database: "postgresql",
         provider_host_transport_security: "tls_or_explicit_loopback",
@@ -115,9 +133,11 @@ secrets_are_redacted_from_debug_output database_must_be_postgresql_and_debug_tar
           "products",
           "product_variants",
           "sys_events",
+          "product_attached_localized_values",
         ],
         provider_host_schema_preflight_order:
           "after_connect_before_owner_and_listener",
+        provider_host_command_schema_preflight_tables: ["owner_operation_receipts"],
         provider_host_schema_preflight_status: options.falseSchemaExecution
           ? "runtime_verified"
           : "source_complete_execution_pending",
@@ -132,7 +152,7 @@ secrets_are_redacted_from_debug_output database_must_be_postgresql_and_debug_tar
     "crates/modules/rustok-product/docs/implementation-plan.md",
     options.missingPlan
       ? "Product plan"
-      : "standalone Product catalog service host is source-complete rustok-product-catalog-service OutboxTransport TLS-by-default schema preflight is source-complete products product_variants sys_events Schema-preflight execution evidence remains open provider-host execution evidence remains open Product remains `boundary_ready` cargo run -p rustok-product-catalog-service verify-product-catalog-grpc-service-host.mjs",
+      : "standalone Product catalog service host is source-complete rustok-product-catalog-service OutboxTransport TLS-by-default schema preflight is source-complete products product_variants sys_events Schema-preflight execution evidence remains open provider-host execution evidence remains open Product remains `boundary_ready` cargo run -p rustok-product --bin rustok-product-catalog-service --features service verify-product-catalog-grpc-service-host.mjs",
   );
   return root;
 }
@@ -184,6 +204,14 @@ test("guard rejects missing schema preflight", () => {
 
 test("guard rejects schema preflight after owner composition", () => {
   reject({ misorderedSchemaPreflight: true }, /startup preflight order/);
+});
+
+test("guard requires the receipt check before starting a command provider", () => {
+  reject({ missingCommandSchemaPreflight: true }, /startup preflight order/);
+});
+
+test("guard rejects the listening marker before the bind", () => {
+  reject({ prematureListenerMarker: true }, /startup preflight order/);
 });
 
 test("guard rejects credential logging", () => {

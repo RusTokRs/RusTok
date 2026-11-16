@@ -404,6 +404,32 @@ where
     T: DeserializeOwned,
     F: Future<Output = Result<T, CommerceError>>,
 {
+    execute_receipted_catalog_command(
+        service,
+        context,
+        tenant_id,
+        operation,
+        request,
+        future,
+        |error| product_command_error(context, operation, error),
+    )
+    .await
+}
+
+pub(crate) async fn execute_receipted_catalog_command<T, F, E>(
+    service: &CatalogService,
+    context: &PortContext,
+    tenant_id: Uuid,
+    operation: &'static str,
+    request: &serde_json::Value,
+    future: F,
+    map_error: impl FnOnce(E) -> PortError,
+) -> Result<T, PortError>
+where
+    T: DeserializeOwned,
+    E: From<CommerceError>,
+    F: Future<Output = Result<T, E>>,
+{
     let admission = idempotency::admit(
         service.database(),
         idempotency::OwnerOperationScope::Tenant(tenant_id),
@@ -440,7 +466,7 @@ where
     match result {
         Ok(value) => Ok(value),
         Err(error) => {
-            let error = product_command_error(context, operation, error);
+            let error = map_error(error);
             // Await rollback before making a deterministic failure terminal.
             // Unknown storage/commit outcomes retain their reclaimable lease.
             fail_product_operation_receipt(service.database(), lease, &error)

@@ -5,7 +5,6 @@
 //! contract keyed by `(tenant_id, entity_type, field_key)`. Missing policy is always fail-closed.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -16,128 +15,31 @@ use sea_orm::{
     ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     sea_query::OnConflict,
 };
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::is_valid_flex_entity_type;
 
 pub const FLEX_ATTACHED_FIELD_POLICIES_TABLE: &str = "flex_attached_field_policies";
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    EnumIter,
-    DeriveActiveEnum,
-    Serialize,
-    Deserialize,
-)]
-#[sea_orm(rs_type = "String", db_type = "String(StringLen::N(32))")]
-#[serde(rename_all = "snake_case")]
-pub enum FlexDataClassification {
-    #[sea_orm(string_value = "public")]
-    Public,
-    #[sea_orm(string_value = "tenant_private")]
-    TenantPrivate,
-    #[sea_orm(string_value = "personal")]
-    Personal,
-    #[sea_orm(string_value = "sensitive")]
-    Sensitive,
-    #[sea_orm(string_value = "secret")]
-    Secret,
-    #[sea_orm(string_value = "immutable_transaction")]
-    ImmutableTransaction,
-}
+pub use flex_ports::{
+    FlexAttachedFieldPolicy, FlexAttachedFieldPolicyError, FlexAttachedFieldPolicyResolution,
+    FlexAttachedFieldPolicyResult, FlexDataClassification,
+};
 
-impl FlexDataClassification {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Public => "public",
-            Self::TenantPrivate => "tenant_private",
-            Self::Personal => "personal",
-            Self::Sensitive => "sensitive",
-            Self::Secret => "secret",
-            Self::ImmutableTransaction => "immutable_transaction",
+pub(crate) fn translation_data_classification(
+    value: FlexDataClassification,
+) -> TranslationDataClassification {
+    match value {
+        FlexDataClassification::Public => TranslationDataClassification::Public,
+        FlexDataClassification::TenantPrivate => TranslationDataClassification::TenantPrivate,
+        FlexDataClassification::Personal => TranslationDataClassification::Personal,
+        FlexDataClassification::Sensitive => TranslationDataClassification::Sensitive,
+        FlexDataClassification::Secret => TranslationDataClassification::Secret,
+        FlexDataClassification::ImmutableTransaction => {
+            TranslationDataClassification::ImmutableTransaction
         }
     }
 }
-
-impl From<FlexDataClassification> for TranslationDataClassification {
-    fn from(value: FlexDataClassification) -> Self {
-        match value {
-            FlexDataClassification::Public => Self::Public,
-            FlexDataClassification::TenantPrivate => Self::TenantPrivate,
-            FlexDataClassification::Personal => Self::Personal,
-            FlexDataClassification::Sensitive => Self::Sensitive,
-            FlexDataClassification::Secret => Self::Secret,
-            FlexDataClassification::ImmutableTransaction => Self::ImmutableTransaction,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FlexAttachedFieldPolicy {
-    pub classification: FlexDataClassification,
-    pub ai_export_allowed: bool,
-}
-
-impl Default for FlexAttachedFieldPolicy {
-    fn default() -> Self {
-        Self {
-            classification: FlexDataClassification::TenantPrivate,
-            ai_export_allowed: false,
-        }
-    }
-}
-
-impl FlexAttachedFieldPolicy {
-    pub fn validate(self) -> FlexAttachedFieldPolicyResult<()> {
-        if self.ai_export_allowed
-            && matches!(
-                self.classification,
-                FlexDataClassification::Secret | FlexDataClassification::ImmutableTransaction
-            )
-        {
-            return Err(FlexAttachedFieldPolicyError::Invalid(
-                "AI export cannot be enabled for secret or immutable-transaction attached fields"
-                    .to_string(),
-            ));
-        }
-        Ok(())
-    }
-}
-
-/// Effective attached-field policy together with provenance.
-///
-/// `explicit=false` means no policy row exists and the returned policy is the fail-closed default.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct FlexAttachedFieldPolicyResolution {
-    pub policy: FlexAttachedFieldPolicy,
-    pub explicit: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FlexAttachedFieldPolicyError {
-    Invalid(String),
-    Storage(String),
-}
-
-impl fmt::Display for FlexAttachedFieldPolicyError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Invalid(message) | Self::Storage(message) => formatter.write_str(message),
-        }
-    }
-}
-
-impl std::error::Error for FlexAttachedFieldPolicyError {}
-
-pub type FlexAttachedFieldPolicyResult<T> = Result<T, FlexAttachedFieldPolicyError>;
 
 mod policy_entity {
     use super::*;
@@ -151,7 +53,7 @@ mod policy_entity {
         pub entity_type: String,
         #[sea_orm(primary_key, auto_increment = false)]
         pub field_key: String,
-        pub classification: FlexDataClassification,
+        pub classification: String,
         pub ai_export_allowed: bool,
         pub created_at: DateTimeWithTimeZone,
         pub updated_at: DateTimeWithTimeZone,
@@ -224,7 +126,11 @@ where
         .map_err(|error| FlexAttachedFieldPolicyError::Storage(error.to_string()))?;
     for row in rows {
         let policy = FlexAttachedFieldPolicy {
-            classification: row.classification,
+            classification: row.classification.parse().map_err(|_| {
+                FlexAttachedFieldPolicyError::Storage(
+                    "Invalid stored attached field classification".into(),
+                )
+            })?,
             ai_export_allowed: row.ai_export_allowed,
         };
         policy.validate()?;
@@ -278,7 +184,7 @@ where
         tenant_id: Set(tenant_id),
         entity_type: Set(entity_type.to_string()),
         field_key: Set(field_key.to_string()),
-        classification: Set(policy.classification),
+        classification: Set(policy.classification.as_str().to_owned()),
         ai_export_allowed: Set(policy.ai_export_allowed),
         created_at: Set(now),
         updated_at: Set(now),

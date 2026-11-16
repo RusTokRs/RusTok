@@ -383,6 +383,10 @@ The current live baseline includes:
 - `flex_attached_localized_values`
 - `flex_field_definition_cache_generation`
 
+Product stores its localized attached fields in `product_attached_localized_values`,
+with a tenant-scoped foreign key to `products`. The Product cutover moves only
+Product rows. Donors pending migration continue to use the shared table.
+
 Current-state conclusion:
 
 - schema-level language-agnostic state lives in base tables

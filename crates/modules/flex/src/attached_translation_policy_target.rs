@@ -197,7 +197,8 @@ fn apply_policy(
     field: &mut rustok_translation_targets::TranslationFieldSnapshot,
     policy: FlexAttachedFieldPolicy,
 ) {
-    field.descriptor.classification = policy.classification.into();
+    field.descriptor.classification =
+        crate::attached_field_policy::translation_data_classification(policy.classification);
     field.descriptor.ai_export_allowed = policy.ai_export_allowed;
 }
 

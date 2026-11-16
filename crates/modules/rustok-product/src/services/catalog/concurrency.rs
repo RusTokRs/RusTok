@@ -42,12 +42,7 @@ pub(crate) fn revision_conflict_of(message: &str) -> Option<RevisionConflictFact
 }
 
 /// Returns the next aggregate revision, refusing an exhausted counter.
-///
-/// Published for the host-side compatibility writers that still mutate the `products` row
-/// directly (`apps/server` Flex attached values). Those writers must bump the revision in the same
-/// transaction as their document write, otherwise a predecessor revision read by an operator would
-/// stay valid across their change.
-pub fn next_revision(current_revision: i32) -> CommerceResult<i32> {
+pub(crate) fn next_revision(current_revision: i32) -> CommerceResult<i32> {
     current_revision
         .checked_add(1)
         .filter(|next| *next > 0)

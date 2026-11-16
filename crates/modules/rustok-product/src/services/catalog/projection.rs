@@ -1,6 +1,56 @@
 use super::*;
 use crate::ProductFulfillmentRequirement;
+use rustok_api::{PortContext, PortError, PortErrorKind};
+use rustok_core::{error::Error as CoreError, field_schema::CustomFieldsSchema};
 use sea_orm::FromQueryResult;
+
+struct ProductProjectionRead<'a> {
+    locale: &'a str,
+    fallback_locale: Option<&'a str>,
+    variant_limit: Option<u64>,
+    schema: ProductProjectionSchema<'a>,
+}
+
+enum ProductProjectionSchema<'a> {
+    Connection,
+    CatalogRead(&'a PortContext),
+    Pinned(&'a CustomFieldsSchema),
+}
+
+async fn catalog_flex_schema(
+    port: &dyn flex_ports::FlexAttachedSchemaReadPort,
+    context: &PortContext,
+    tenant_id: Uuid,
+) -> CommerceResult<CustomFieldsSchema> {
+    let donor = flex::PRODUCT_ENTITY_TYPE;
+    let snapshot = port
+        .read_attached_schema(context.clone(), donor)
+        .await
+        .map_err(flex_schema_error)?;
+    snapshot
+        .verify_scope(tenant_id, donor)
+        .map_err(flex_schema_error)?;
+    let definitions = snapshot
+        .definitions
+        .iter()
+        .map(flex::field_definition_from_source)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| CoreError::Internal("Flex attached schema is invalid".into()))?;
+    Ok(CustomFieldsSchema::new(definitions))
+}
+
+fn flex_schema_error(error: PortError) -> CommerceError {
+    match error.kind {
+        PortErrorKind::Forbidden => {
+            CoreError::Forbidden("Flex attached schema access denied".into())
+        }
+        PortErrorKind::InvariantViolation => {
+            CoreError::Internal("Flex attached schema is invalid".into())
+        }
+        _ => CoreError::External("Flex attached schema is unavailable".into()),
+    }
+    .into()
+}
 
 #[derive(FromQueryResult)]
 struct AxisRow {
@@ -459,11 +509,34 @@ impl CatalogService {
         .await
     }
 
+    pub(crate) async fn get_product_for_catalog_read(
+        &self,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        locale: &str,
+        fallback_locale: Option<&str>,
+        context: &PortContext,
+    ) -> CommerceResult<ProductResponse> {
+        self.get_product_projection_in(
+            &self.db,
+            tenant_id,
+            product_id,
+            ProductProjectionRead {
+                locale,
+                fallback_locale,
+                variant_limit: None,
+                schema: ProductProjectionSchema::CatalogRead(context),
+            },
+        )
+        .await
+    }
+
     /// Build the public snapshot on the write connection before its commit.
     pub(super) async fn get_product_in<
         C: ConnectionTrait
             + crate::ports::pricing::AsPricingConnection
-            + crate::ports::AsInventoryConnection,
+            + crate::ports::AsInventoryConnection
+            + crate::ports::AsTaxonomyConnection,
     >(
         &self,
         conn: &C,
@@ -473,6 +546,64 @@ impl CatalogService {
         fallback_locale: Option<&str>,
         variant_limit: Option<u64>,
     ) -> CommerceResult<ProductResponse> {
+        self.get_product_projection_in(
+            conn,
+            tenant_id,
+            product_id,
+            ProductProjectionRead {
+                locale,
+                fallback_locale,
+                variant_limit,
+                schema: ProductProjectionSchema::Connection,
+            },
+        )
+        .await
+    }
+
+    /// Project the command result, reusing the definitions from preparation when available.
+    pub(super) async fn get_product_write_response(
+        &self,
+        txn: &ProductWriteTransaction,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        locale: &str,
+        schema: Option<&CustomFieldsSchema>,
+    ) -> CommerceResult<ProductResponse> {
+        self.get_product_projection_in(
+            txn,
+            tenant_id,
+            product_id,
+            ProductProjectionRead {
+                locale,
+                fallback_locale: None,
+                variant_limit: None,
+                schema: schema.map_or(
+                    ProductProjectionSchema::Connection,
+                    ProductProjectionSchema::Pinned,
+                ),
+            },
+        )
+        .await
+    }
+
+    async fn get_product_projection_in<
+        C: ConnectionTrait
+            + crate::ports::pricing::AsPricingConnection
+            + crate::ports::AsInventoryConnection
+            + crate::ports::AsTaxonomyConnection,
+    >(
+        &self,
+        conn: &C,
+        tenant_id: Uuid,
+        product_id: Uuid,
+        read: ProductProjectionRead<'_>,
+    ) -> CommerceResult<ProductResponse> {
+        let ProductProjectionRead {
+            locale,
+            fallback_locale,
+            variant_limit,
+            schema,
+        } = read;
         debug!(product_id = %product_id, "Fetching product");
 
         let product = entities::product::Entity::find_by_id(product_id)
@@ -543,14 +674,35 @@ impl CatalogService {
                 tag_locale,
                 fallback_locale.or(Some(PLATFORM_FALLBACK_LOCALE)),
             ),
-            resolve_product_metadata(
-                conn,
-                tenant_id,
-                product_id,
-                &product.metadata,
-                locale,
-                fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE),
-            ),
+            async {
+                let fallback = fallback_locale.unwrap_or(PLATFORM_FALLBACK_LOCALE);
+                let loaded;
+                let schema = match schema {
+                    ProductProjectionSchema::Pinned(schema) => schema,
+                    ProductProjectionSchema::CatalogRead(context)
+                        if self.flex_schema_source == ProductFlexSchemaSource::Shared
+                            && let Some(port) = &self.flex_schema_read_port =>
+                    {
+                        loaded = catalog_flex_schema(port.as_ref(), context, tenant_id).await?;
+                        &loaded
+                    }
+                    ProductProjectionSchema::Connection
+                    | ProductProjectionSchema::CatalogRead(_) => {
+                        loaded = self.flex_schema_source.load(conn, tenant_id).await?;
+                        &loaded
+                    }
+                };
+                resolve_product_metadata_with_schema(
+                    conn,
+                    tenant_id,
+                    product_id,
+                    &product.metadata,
+                    locale,
+                    fallback,
+                    schema,
+                )
+                .await
+            },
         )?;
 
         let variant_ids: Vec<Uuid> = variants.iter().map(|v| v.id).collect();
@@ -808,7 +960,8 @@ impl CatalogService {
     pub(super) async fn get_variant_in<
         C: ConnectionTrait
             + crate::ports::pricing::AsPricingConnection
-            + crate::ports::AsInventoryConnection,
+            + crate::ports::AsInventoryConnection
+            + crate::ports::AsTaxonomyConnection,
     >(
         &self,
         conn: &C,

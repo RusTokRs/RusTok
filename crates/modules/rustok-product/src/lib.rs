@@ -87,7 +87,6 @@ pub use runtime::{
     ProductCatalogCommandProfile, ProductCatalogCommandRuntime, ProductCatalogReadProfile,
     ProductCatalogReadRuntime,
 };
-pub use services::catalog::concurrency::next_revision as next_product_revision;
 pub use services::{
     AdminProductList, AdminProductListItem, AdminProductListQuery, AdminProductListQueryExt,
     CatalogService, MAX_CATALOG_FACET_VALUES, MAX_CATALOG_FACETS,

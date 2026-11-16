@@ -31,7 +31,7 @@ pub fn Form(
     state: RwSignal<FormState>,
     /// Optional dirty field tracker. If provided, inputs automatically mark
     /// modified fields and `<ResetButton>` resets the tracker.
-    #[prop(optional, into)]
+    #[prop(optional_no_strip)]
     dirty_tracker: Option<RwSignal<DirtyTracker>>,
     /// Called when the form is submitted.
     #[prop(into)]

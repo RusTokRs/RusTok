@@ -100,8 +100,7 @@ requireAll('apps/server/src/services/field_definition_registry_bootstrap.rs', [
 ]);
 
 requireAll('apps/server/src/services/flex_attached_values.rs', [
-  'prepare_registered_generic_update',
-  'persist_registered_generic_values',
+  'update_registered_generic_values',
   'resolve_registered_generic_values',
   'delete_registered_generic_values',
   'pub struct FlexAttachedValuesGraphqlAdapter',
@@ -119,7 +118,8 @@ requireAll('apps/server/src/services/flex_attached_values.rs', [
 
 requireAll('apps/server/src/graphql/schema.rs', [
   'FlexAttachedValuesGraphqlAdapter',
-  'Arc::new(FlexAttachedValuesGraphqlAdapter::new(db.clone()))',
+  'FlexAttachedValuesGraphqlAdapter::new(db.clone())',
+  'Arc::new(attached_values)',
 ]);
 
 requireAll('apps/server/tests/taxonomy_category_flex_attached_postgres.rs', [

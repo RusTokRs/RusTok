@@ -88,12 +88,29 @@ where
     .await?
     .unwrap_or_else(|| Value::Object(Map::new()));
 
+    prepare_attached_values_update_from_values(
+        schema,
+        exact_locale.as_str(),
+        existing_metadata,
+        existing_localized,
+        payload,
+    )
+}
+
+/// Prepare an attached update from the exact-locale values loaded by the donor owner.
+pub fn prepare_attached_values_update_from_values(
+    schema: CustomFieldsSchema,
+    locale: &str,
+    existing_metadata: &Value,
+    existing_localized: Value,
+    payload: Option<Value>,
+) -> Result<PreparedAttachedValuesWrite, FlexError> {
     prepare_write(
         schema,
         payload,
         existing_metadata.clone(),
         existing_localized,
-        exact_locale.as_str(),
+        &canonical_locale(locale)?,
     )
 }
 
@@ -190,6 +207,33 @@ pub async fn prepare_donor_attached_values_update<C>(
 where
     C: ConnectionTrait,
 {
+    let locale = canonical_locale(locale)?;
+    let existing_localized = load_exact_locale_values(
+        db,
+        entity.tenant_id,
+        entity.entity_type,
+        entity.entity_id,
+        &locale,
+    )
+    .await?
+    .unwrap_or_else(|| Value::Object(Map::new()));
+    prepare_donor_attached_values_update_from_values(
+        schema,
+        &locale,
+        existing_donor_metadata,
+        existing_localized,
+        donor_patch,
+    )
+}
+
+/// Prepare a donor metadata patch and its exact-locale values without querying storage.
+pub fn prepare_donor_attached_values_update_from_values(
+    schema: CustomFieldsSchema,
+    locale: &str,
+    existing_donor_metadata: &Value,
+    existing_localized: Value,
+    donor_patch: Option<&Value>,
+) -> Result<PreparedAttachedValuesWrite, FlexError> {
     let (existing_reserved, existing_flex) = split_donor_metadata(&schema, existing_donor_metadata);
     let (reserved_patch, flex_patch) = match donor_patch {
         Some(patch) => {
@@ -199,15 +243,13 @@ where
         None => (Map::new(), None),
     };
     let merged_reserved = merge_reserved_donor_patch(existing_reserved, reserved_patch);
-    let mut prepared = prepare_attached_values_update(
-        db,
-        entity,
+    let mut prepared = prepare_attached_values_update_from_values(
         schema,
         locale,
         &Value::Object(existing_flex),
+        existing_localized,
         flex_patch,
-    )
-    .await?;
+    )?;
     prepared.metadata = Some(merge_reserved_donor_metadata(
         merged_reserved,
         prepared.metadata,
@@ -295,30 +337,63 @@ where
     );
 
     for input in inputs {
-        let (mut shared_values, legacy_localized) =
-            split_existing_metadata(input.shared_metadata, &localized_keys);
-        let resolved_localized =
-            localized_by_entity
-                .get(&input.entity_id)
-                .and_then(|localized_by_locale| {
-                    resolve_localized_values(localized_by_locale, &candidates)
-                });
-
-        if let Some(localized) = resolved_localized {
-            for (key, value) in localized {
-                shared_values.insert(key, value);
-            }
-        }
-
-        for (key, value) in legacy_localized {
-            shared_values.entry(key).or_insert(value);
-        }
-
-        let payload = (!shared_values.is_empty()).then_some(Value::Object(shared_values));
+        let payload = resolve_with_locale_candidates(
+            input.shared_metadata,
+            &localized_keys,
+            localized_by_entity.get(&input.entity_id),
+            &candidates,
+        );
         resolved.insert(input.entity_id, payload);
     }
 
     Ok(resolved)
+}
+
+/// Resolve an attached payload using normalized locale rows supplied by the donor owner.
+pub fn resolve_attached_payload_from_values(
+    schema: &CustomFieldsSchema,
+    shared_metadata: &Value,
+    localized_by_locale: &BTreeMap<String, Map<String, Value>>,
+    preferred_locale: &str,
+    tenant_default_locale: &str,
+) -> Result<Option<Value>, FlexError> {
+    if schema.active_definitions().is_empty() {
+        return normalize_owner_payload(shared_metadata);
+    }
+    let (_, localized_keys) = split_definitions(schema);
+    let candidates = build_locale_candidates(
+        [
+            Some(preferred_locale),
+            Some(tenant_default_locale),
+            Some(PLATFORM_FALLBACK_LOCALE),
+        ],
+        true,
+    );
+    Ok(resolve_with_locale_candidates(
+        shared_metadata,
+        &localized_keys,
+        Some(localized_by_locale),
+        &candidates,
+    ))
+}
+
+fn resolve_with_locale_candidates(
+    shared_metadata: &Value,
+    localized_keys: &HashSet<String>,
+    localized_by_locale: Option<&BTreeMap<String, Map<String, Value>>>,
+    candidates: &[String],
+) -> Option<Value> {
+    let (mut shared_values, legacy_localized) =
+        split_existing_metadata(shared_metadata, localized_keys);
+    if let Some(localized) =
+        localized_by_locale.and_then(|rows| resolve_localized_values(rows, candidates))
+    {
+        shared_values.extend(localized);
+    }
+    for (key, value) in legacy_localized {
+        shared_values.entry(key).or_insert(value);
+    }
+    (!shared_values.is_empty()).then_some(Value::Object(shared_values))
 }
 
 pub async fn resolve_attached_payload<C>(

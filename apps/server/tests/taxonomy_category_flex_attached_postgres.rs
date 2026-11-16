@@ -2,12 +2,13 @@
 
 use std::collections::HashMap;
 
-use flex::graphql::AttachedValuesGraphqlPort;
+use flex::graphql::{AttachedValuesCommandError, AttachedValuesGraphqlPort};
 use flex::{
     AttachedEntityRef, CreateFieldDefinitionCommand, FieldDefinitionService, FlexModule,
     GenericAttachedFieldDefinitionService, TAXONOMY_CATEGORY_ENTITY_TYPE, load_exact_locale_values,
     load_generic_attached_shared_values,
 };
+use rustok_api::{PortActor, PortContext};
 use rustok_core::{
     MigrationSource, SecurityContext, UserRole,
     field_schema::{FieldType, FlexError},
@@ -152,12 +153,19 @@ async fn category_flex_transport_roundtrips_real_owner_and_hard_delete_cleans_va
         .expect("localized Category definition should create");
 
     let adapter = FlexAttachedValuesGraphqlAdapter::new(db.clone());
+    let context = |locale| {
+        PortContext::new(
+            tenant_id.to_string(),
+            PortActor::system(),
+            locale,
+            "test-category-flex",
+        )
+    };
     let english = adapter
         .update_values(
-            tenant_id,
+            context("en"),
             TAXONOMY_CATEGORY_ENTITY_TYPE,
             category_id,
-            "en",
             Some(json!({"badge": "gold", "tagline": "Hello"})),
         )
         .await
@@ -167,10 +175,9 @@ async fn category_flex_transport_roundtrips_real_owner_and_hard_delete_cleans_va
 
     let arabic = adapter
         .update_values(
-            tenant_id,
+            context("ar"),
             TAXONOMY_CATEGORY_ENTITY_TYPE,
             category_id,
-            "ar",
             Some(json!({"tagline": "مرحبا"})),
         )
         .await
@@ -180,10 +187,14 @@ async fn category_flex_transport_roundtrips_real_owner_and_hard_delete_cleans_va
 
     let fallback = adapter
         .resolve_values(
-            tenant_id,
+            PortContext::new(
+                tenant_id.to_string(),
+                PortActor::system(),
+                "fr",
+                "test-category-flex",
+            ),
             TAXONOMY_CATEGORY_ENTITY_TYPE,
             category_id,
-            "fr",
             "en",
         )
         .await
@@ -194,22 +205,20 @@ async fn category_flex_transport_roundtrips_real_owner_and_hard_delete_cleans_va
     assert!(matches!(
         adapter
             .update_values(
-                tenant_id,
+                context("en"),
                 TAXONOMY_CATEGORY_ENTITY_TYPE,
                 tag_id,
-                "en",
                 Some(json!({"badge": "forbidden"})),
             )
             .await,
-        Err(FlexError::NotFound(id)) if id == tag_id
+        Err(AttachedValuesCommandError::Flex(FlexError::NotFound(id))) if id == tag_id
     ));
     assert!(matches!(
         adapter
             .resolve_values(
-                other_tenant_id,
+                PortContext::new(other_tenant_id.to_string(), PortActor::system(), "en", "test-category-flex"),
                 TAXONOMY_CATEGORY_ENTITY_TYPE,
                 category_id,
-                "en",
                 "en",
             )
             .await,

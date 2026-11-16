@@ -1,6 +1,7 @@
 #[path = "variant_axes.rs"]
 pub(super) mod variant_axes;
 
+use super::attached_localized_storage;
 use super::concurrency::{ensure_expected_revision, next_revision, validate_patch_text_length};
 use super::*;
 use crate::services::catalog_schema_service::policy::lock_schema_for_product_write;
@@ -8,7 +9,7 @@ use rustok_api::{Patch, TenantLocale};
 use rustok_core::error::Error as CoreError;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult};
 
-async fn find_product_for_update_in_tx(
+pub(super) async fn find_product_for_update_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
     product_id: Uuid,
@@ -208,14 +209,18 @@ impl CatalogService {
         let now = Utc::now();
         debug!(product_id = %product_id, "Generated product ID");
 
+        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
+        lock_schema_for_product_write(&txn, tenant_id).await?;
         let preferred_locale = preferred_product_locale_from_translations(&input.translations);
-        let prepared_custom_fields = prepare_product_custom_fields_for_create(
-            &self.db,
-            tenant_id,
-            preferred_locale.as_str(),
-            input.metadata.clone(),
-        )
-        .await?;
+        let (prepared_custom_fields, custom_fields_schema) =
+            prepare_product_custom_fields_and_schema_for_create(
+                &txn,
+                self.flex_schema_source,
+                tenant_id,
+                preferred_locale.as_str(),
+                input.metadata.clone(),
+            )
+            .await?;
         let product_metadata = prepared_custom_fields
             .metadata
             .clone()
@@ -226,8 +231,6 @@ impl CatalogService {
             product_metadata,
         );
 
-        let txn = ProductWriteTransaction::begin(&self.db, self.event_bus.clone()).await?;
-        lock_schema_for_product_write(&txn, tenant_id).await?;
         validate_variant_axis_configuration_in(
             &txn,
             tenant_id,
@@ -269,16 +272,10 @@ impl CatalogService {
             prepared_custom_fields.locale.as_deref(),
             prepared_custom_fields.localized_values.as_ref(),
         ) {
-            flex::persist_localized_values(
-                &txn,
-                tenant_id,
-                flex::PRODUCT_ENTITY_TYPE,
-                product_id,
-                locale,
-                values,
+            attached_localized_storage::replace_for_locale(
+                &txn, tenant_id, product_id, locale, values,
             )
-            .await
-            .map_err(CommerceError::from)?;
+            .await?;
         }
 
         let translation_locales = collect_translation_locales(&input.translations);
@@ -517,13 +514,12 @@ impl CatalogService {
         }
 
         let result = self
-            .get_product_in(
+            .get_product_write_response(
                 &txn,
                 tenant_id,
                 product_id,
                 preferred_locale.as_str(),
-                None,
-                None,
+                Some(&custom_fields_schema),
             )
             .await?;
         record_product_operation_result(&result);
@@ -629,8 +625,9 @@ impl CatalogService {
             .unwrap_or_else(|| preferred_product_locale_from_metadata(&existing_product.metadata));
         let prepared_custom_fields = if let Some(metadata) = input.metadata.clone() {
             Some(
-                prepare_product_custom_fields_for_update(
+                prepare_product_custom_fields_and_schema_for_update(
                     &txn,
+                    self.flex_schema_source,
                     tenant_id,
                     product_id,
                     preferred_locale.as_str(),
@@ -652,7 +649,7 @@ impl CatalogService {
             shipping_profile_input,
             prepared_custom_fields
                 .as_ref()
-                .and_then(|prepared| prepared.metadata.clone()),
+                .and_then(|(prepared, _)| prepared.metadata.clone()),
             existing_product.metadata.clone(),
         );
         if matches!(shipping_profile_patch, Patch::Clear) {
@@ -741,22 +738,16 @@ impl CatalogService {
 
         product_active.update(&txn).await?;
 
-        if let Some(prepared_custom_fields) = prepared_custom_fields.as_ref()
+        if let Some((prepared_custom_fields, _)) = prepared_custom_fields.as_ref()
             && let (Some(locale), Some(values)) = (
                 prepared_custom_fields.locale.as_deref(),
                 prepared_custom_fields.localized_values.as_ref(),
             )
         {
-            flex::persist_localized_values(
-                &txn,
-                tenant_id,
-                flex::PRODUCT_ENTITY_TYPE,
-                product_id,
-                locale,
-                values,
+            attached_localized_storage::replace_for_locale(
+                &txn, tenant_id, product_id, locale, values,
             )
-            .await
-            .map_err(CommerceError::from)?;
+            .await?;
         }
 
         let translation_inputs = input.translations.clone();
@@ -953,13 +944,12 @@ impl CatalogService {
         }
 
         let result = self
-            .get_product_in(
+            .get_product_write_response(
                 &txn,
                 tenant_id,
                 product_id,
                 preferred_locale.as_str(),
-                None,
-                None,
+                prepared_custom_fields.as_ref().map(|(_, schema)| schema),
             )
             .await?;
         record_product_operation_result(&result);
@@ -1333,15 +1323,6 @@ impl CatalogService {
                 crate::ports::ProductInventoryDeletionBlocker::ConcurrentChange,
             ));
         }
-
-        flex::delete_attached_localized_values(
-            &txn,
-            tenant_id,
-            flex::PRODUCT_ENTITY_TYPE,
-            product_id,
-        )
-        .await
-        .map_err(CommerceError::from)?;
 
         txn.publish_product_deleted(tenant_id, Some(actor_id), product_id, &image_ids)
             .await?;

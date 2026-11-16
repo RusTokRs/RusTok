@@ -20,6 +20,10 @@ Product follows the [canonical FBA layout](../../../docs/backend/module-backend-
 - The modular monolith remains the default deployment mode.
 
 The remote capability remains bounded to its supported operations.
+The strict Product FBA layout check still rejects the direct Flex runtime dependency.
+The current separate-process profile uses the platform-migrated schema. A Product-only
+database still requires separating the historical Tenant and Taxonomy migration
+boundaries and providing the remaining owner capabilities.
 
 ## Known Limitations / Pending Implementation
 
@@ -36,10 +40,17 @@ providers use the same service endpoint and separate credentials. See the
 | Storefront SKU projection for Cart | A separate gRPC operation delegates lifecycle, channel and locale handling to Product. |
 | Filtered storefront list, facets and storefront detail by Product ID or handle | RPCs exist on the catalog read port. Some mounted REST, GraphQL and native paths still use local owner services. |
 | SKU identity lookup and enumeration | Both Product identity-port operations use the same remote Product owner. |
+| Flex attached values | Locale-aware reads and receipted update/delete use dedicated credentials on the selected read and command providers. |
+| Flex schema reads | The host injects the embedded Flex schema-read port for Product and variant catalog projections. The standalone service can instead use a local, versioned projection of Flex definitions for catalog reads, commands and attached values. |
 | Schema, HTTP and tag read handles | Consumers requiring these capabilities still receive typed unavailable in the default external runtime. |
 | Native admin list/facets and schema operations | Some paths still construct embedded owner services. |
 | Product commands | Fifteen RPCs delegate to the same owner service when explicitly enabled. Separate-process write parity and recovery are still open. |
 | Product/Pricing/Inventory transactions and external capabilities | Inventory still requires local Product identity in shared transactions. The standalone owner lacks the embedded Pricing, Shipping Profile and Media bindings. |
+
+Product create and metadata update capture the Flex schema once on the write
+connection and reuse it for the committed response. The receipt stores that
+response for retries. Later catalog reads resolve fields against the current
+schema.
 
 The July 29 maintainer attestation records historical harness results without an exact
 source commit or retained raw logs. The conformance fixture now includes `ProductResponse.brands`.
@@ -49,11 +60,79 @@ The retained standalone PostgreSQL probe exercises the six original read RPCs. C
 in both profiles. The AI GraphQL attribute task passed locally with a separate Product service
 and separate PostgreSQL databases. The catalog-read track remains `boundary_ready` pending
 the combined deployment capture.
-AI `product_copy` still uses local Product reads and writes. A database split requires migrating
-these callers and defining how transactions, owner events and dependent data are handled.
+AI `product_copy` uses the Product read and command ports selected by the host and fails
+before generation if either is missing. The host enables this write workflow when
+both ports are embedded or both use the configured Product gRPC endpoint, so the
+revision comes from the authority that accepts the write. A database split still
+requires routing the remaining callers and defining how transactions, owner events
+and dependent data are handled.
 Product publishes a contracts-only build without ORM dependencies in `rustok-product-ports`
 (in `ports/`), and composes the standalone service in `src/bin/service.rs` behind feature `service`.
 See the [coverage and verification work](docs/implementation-plan.md#fba-deployment-scope-review-2026-11-06).
+
+## Standalone service configuration
+
+Start the provider on an externally migrated PostgreSQL database:
+
+```sh
+cargo run -p rustok-product --bin rustok-product-catalog-service --features service
+```
+
+Set `RUSTOK_PRODUCT_CATALOG_DATABASE_URL`, `RUSTOK_PRODUCT_CATALOG_GRPC_BEARER_TOKEN`
+and `RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR`. Set
+`RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_CERT_PATH` and
+`RUSTOK_PRODUCT_CATALOG_SERVICE_TLS_KEY_PATH` together. For a local loopback test,
+`RUSTOK_PRODUCT_CATALOG_SERVICE_ALLOW_INSECURE_LOOPBACK=true` permits plaintext.
+The command service is registered only when both command variables are set:
+`RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN` and
+`RUSTOK_PRODUCT_CATALOG_COMMAND_ACTOR_ID` (a non-nil UUID).
+The command credential must differ from the read credential. Product and SKU
+deletion fail with `product.inventory_deletion_state_unverified` when Inventory
+is not wired, including in this standalone profile.
+Catalog reads that must resolve stored tag relations report an unavailable
+dependency when Taxonomy is not wired.
+
+Set `RUSTOK_PRODUCT_USE_FLEX_SCHEMA_PROJECTION=true` to select Product's local
+Flex schema projection. The service checks that the projection table is present
+at startup. Seed each tenant before routing traffic that needs field definitions.
+The composition code can call `ProductFlexSchemaProjection::refresh(context,
+source)` with the Product database and a Flex versioned read provider. The
+provider can use a separate database. Repeated snapshots are idempotent, older
+snapshots are ignored, and conflicting snapshots with the same revision are
+rejected. The selected profile returns unavailable for unseeded tenants.
+Snapshot transport and bootstrap/refresh scheduling between separate processes
+still need deployment wiring. Restore the revision counters together with their
+source definitions and reseed the consumer if the source version history changes.
+
+Set `RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN` on the Product service
+and on the host selecting the gRPC read provider to enable `ReadAttachedValues`.
+This credential must differ from both catalog credentials and is authorized only
+for this RPC. The host authorizes Flex callers before delegation. The Product
+service uses its configured service actor and validates the delegated tenant.
+For `UpdateAttachedValues` and `DeleteAttachedValues`, enable catalog commands
+and set `RUSTOK_PRODUCT_ATTACHED_VALUES_WRITE_GRPC_BEARER_TOKEN` on both processes.
+Use a credential distinct from the configured catalog and attached-value read
+credentials. Retrying a command uses the original key and payload. See the
+[caller contract](ports/README.md#deployment-configuration).
+
+### Schema preflight
+
+The provider does not run migrations at startup. It probes `products`,
+`product_variants`, `sys_events`, and `product_attached_localized_values` before tonic starts listening. When commands
+are enabled, it also checks `owner_operation_receipts`. This is a
+minimum startup check for the bounded catalog profile; it does not verify access
+to every table or dependency required by catalog workflows.
+The provider writes outbox rows but does not run a relay.
+
+### Attached-value storage cutover
+
+Apply `m20261116_000041_move_product_attached_localized_values` in a maintenance
+window with old Product and Flex GraphQL processes drained. The migration moves
+Product rows from the historical shared table and rejects further Product inserts
+or updates there. Product starts with `product_attached_localized_values` after
+the migration. Where the shared table exists, rollback moves the current Product
+rows back before restarting old binaries. Resolve any conflicting rows or invalid
+tenant/locale data before retrying a refused migration.
 
 
 ## Responsibilities
@@ -165,8 +244,8 @@ See the [coverage and verification work](docs/implementation-plan.md#fba-deploym
   identity key that downstream cart/order/fulfillment flows consume; merchandising
   fields such as `vendor` remain display-only and are not used as seller identity.
 - Product-side split and locale-aware resolution of Flex attached custom-field
-  values, using shared `flex` attached localized storage while preserving
-  non-Flex operational metadata in `products.metadata`.
+  values. Product stores localized values in `product_attached_localized_values`
+  and preserves operational metadata in `products.metadata`.
 - Publish a module-owned Leptos admin UI package in `admin/` for catalog CRUD,
   publication lifecycle, and shipping-profile selection.
 - Publish a module-owned Leptos storefront UI package in `storefront/` for
@@ -212,8 +291,8 @@ See the [coverage and verification work](docs/implementation-plan.md#fba-deploym
   atomic price lifecycle operations without direct persistence coupling.
 - Depends on `rustok-inventory` for inventory-owned bootstrap and availability
   operations.
-- Depends on `flex` for shared attached localized-value storage helpers used by
-  product custom-field multilingual flows.
+- Depends on `flex` for attached-field validation, locale resolution and the
+  historical schema cache-generation integration.
 - Depends on `rustok-taxonomy` for shared scope-aware tag dictionary while keeping `product_tags`
   module-owned.
 - Depends on `rustok-outbox` and `rustok-events` for transactional event publishing.

@@ -4,8 +4,8 @@ use chrono::{Duration, Utc};
 use rustok_api::PortError;
 use rustok_core::generate_id;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
+    QueryFilter, QuerySelect, Set,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -45,6 +45,12 @@ mod entity {
     pub enum Relation {}
 
     impl ActiveModelBehavior for ActiveModel {}
+}
+
+/// Checks that the database role can read the receipt schema without reading any stored receipts.
+pub async fn verify_readable_schema(connection: &impl ConnectionTrait) -> Result<(), DbErr> {
+    entity::Entity::find().limit(0).all(connection).await?;
+    Ok(())
 }
 
 /// The outcome of admitting a durable owner operation.
@@ -524,6 +530,17 @@ mod tests {
     use sea_orm_migration::{MigrationTrait, SchemaManager};
 
     use crate::SysEventsMigration;
+
+    #[tokio::test]
+    async fn receipt_schema_probe_requires_migrations() {
+        let database = Database::connect("sqlite::memory:").await.unwrap();
+        assert!(verify_readable_schema(&database).await.is_err());
+        SysEventsMigration
+            .up(&SchemaManager::new(&database))
+            .await
+            .unwrap();
+        verify_readable_schema(&database).await.unwrap();
+    }
 
     #[test]
     fn caller_key_scope_is_stable_and_binds_command_identity() {

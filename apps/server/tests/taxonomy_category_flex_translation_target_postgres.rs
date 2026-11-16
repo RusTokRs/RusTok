@@ -82,10 +82,9 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
     let values = FlexAttachedValuesGraphqlAdapter::new(seed_connection.clone());
     let source = values
         .update_values(
-            tenant_id,
+            read_context(tenant_id, "seed-attached-values"),
             TAXONOMY_CATEGORY_ENTITY_TYPE,
             category_id,
-            "en",
             Some(json!({"tagline": "Launch category"})),
         )
         .await?

@@ -20,6 +20,7 @@ members = [
     "crates/utils/*",
     "crates/workers/*",
     "crates/modules/*",
+    "crates/modules/flex/ports",
     "crates/modules/rustok-forms/admin",
     "crates/modules/rustok-seo/admin",
     "crates/modules/rustok-seo/storefront",
@@ -470,6 +471,7 @@ rustok-social-graph-cli = { path = "crates/modules/rustok-social-graph/cli" }
 rustok-auth-cli = { path = "crates/modules/rustok-auth/cli" }
 rustok-rbac-cli = { path = "crates/modules/rustok-rbac/cli" }
 flex = { path = "crates/modules/flex" }
+flex-ports = { path = "crates/modules/flex/ports" }
 alloy = { path = "crates/modules/alloy" }
 rustok-workflow = { path = "crates/modules/rustok-workflow" }
 schemars = "1.2"

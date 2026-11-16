@@ -7,9 +7,8 @@ use rustok_core::ModuleRegistry;
 use rustok_migrations::Migrator;
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 use rustok_product::{
-    CatalogService, ProductModule,
+    CatalogService, ProductModule, ProductStatus,
     dto::{CreateProductInput, CreateVariantInput, ProductTranslationInput, UpdateProductInput},
-    entities::product::ProductStatus,
 };
 use rustok_server::{
     auth::AuthConfig,

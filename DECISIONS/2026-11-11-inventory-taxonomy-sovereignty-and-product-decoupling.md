@@ -46,7 +46,7 @@ Mirror the established and verified `ProductPricingPort` pattern across both Inv
 - When no inventory port is attached (e.g. standalone microservice deployment or isolated Product tests):
   - Catalog projections report zero/unmanaged stock gracefully without failing SQL queries.
   - Bootstrap with empty quantities is a safe no-op.
-  - Variant deletion skips inventory table cleanup.
+  - Product and variant deletion with affected SKUs fails with `StateUnverified`. A missing provider cannot verify that Inventory has no stock or retained history for those SKUs.
 - Relocate the concrete adapter (`InventoryProductInventoryPortAdapter`) to `crates/modules/rustok-inventory`.
 - `rustok-inventory` depends on `rustok-product` (strictly acyclic: `inventory -> product`).
 - Remove `rustok-inventory` from `crates/modules/rustok-product/Cargo.toml`.
@@ -58,8 +58,8 @@ Mirror the established and verified `ProductPricingPort` pattern across both Inv
   - `sync_category_in_tx`: synchronize created/updated catalog categories into the taxonomy tree.
 - `CatalogService` accepts an optional `Arc<dyn ProductTaxonomyPort>` via `with_taxonomy_port(...)`.
 - When no taxonomy port is attached:
-  - Tags are presented by their raw IDs/slugs without foreign table lookups.
-  - Category creation persists local catalog category records without foreign table mutations.
+  - Tag reads with stored relations report a dependency failure. Reads without tag relations do not call Taxonomy.
+  - Category creation that requires Taxonomy synchronization fails if the provider is absent.
 - Relocate the concrete adapter (`TaxonomyProductTaxonomyPortAdapter`) to `crates/modules/rustok-taxonomy`.
 - `rustok-taxonomy` depends on `rustok-product` (strictly acyclic: `taxonomy -> product`).
 - Remove `rustok-taxonomy` from `crates/modules/rustok-product/Cargo.toml`.
@@ -93,7 +93,7 @@ Mirror the established and verified `ProductPricingPort` pattern across both Inv
 ## Data, transaction, and concurrency boundary
 
 - The `*_in_tx` operations of both ports run on the `&DatabaseTransaction` of the Product write. In the monolith the Product mutation and the Inventory or Taxonomy mutation therefore commit or roll back together.
-- The read operations of `ProductInventoryPort` take an `InventoryConnection<'a>`, which is either the connection or an open transaction, so a projection assembled inside a write can read through that write's transaction.
+- Read operations accept `InventoryConnection<'a>` or `TaxonomyConnection<'a>` as appropriate. These embedded seams let a projection assembled during a write reuse that transaction and see its updates.
 - The provider decides whether the transaction it is given is sufficient. The port reports a refusal as a finite blocker (`ProductInventoryDeletionBlocker`, `ProductInventoryQuantityBlocker`), including unsupported isolation and a concurrent change.
 - One catalog deletion is bounded to `MAX_CATALOG_DELETE_VARIANTS` (256) variants; the deletion blocker `LimitExceeded` reports a larger request.
 
@@ -108,12 +108,12 @@ Mirror the established and verified `ProductPricingPort` pattern across both Inv
 
 - The decision text adds no event. Stock notifications stay with Inventory: the quantity blockers `EventUnrepresentable` and `PublicationUnverified` are part of the port contract.
 - The storefront and catalog projections of Product read stock through `load_available_quantities` and `load_available_inventory_by_variant_for_public_channel`. Without an attached inventory port they report zero or unmanaged stock.
-- Tag names in Product projections come from `resolve_tag_names`. Without an attached taxonomy port a tag is presented by its raw id or slug.
+- Tag names in Product projections come from `resolve_term_names`. Stored relations require a configured Taxonomy provider to resolve their names.
 
 ## Failure semantics
 
-- No inventory port attached: stock reads return zero or unmanaged stock, a bootstrap with empty quantities is a no-op, and variant deletion skips inventory cleanup. None of these fails the Product operation.
-- No taxonomy port attached: tag names are not resolved and category creation writes only the local catalog category.
+- No inventory port attached: stock reads return zero or unmanaged stock, a bootstrap with empty quantities is a no-op, and deletion of affected SKUs fails with `StateUnverified`.
+- No taxonomy port attached: resolving stored tag relations reports an unavailable dependency. Operations that require Taxonomy writes fail without committing the Product write.
 - A port attached and the provider refuses: the refusal reaches the caller as `CommerceError::InventoryDeletionBlocked` or `CommerceError::InventoryQuantityBlocked` with the blocker. Inside a Product write the error fails the operation and the transaction is not committed.
 - Not decided here: the outcome of a Product write that supplies non-zero initial quantities when no inventory port is attached. The pricing decision this one mirrors fails closed in the matching case (`PricingProviderRequired`).
 
@@ -146,4 +146,4 @@ No other alternative is recorded for this decision.
 
 - `rustok-inventory` and `rustok-taxonomy` gain a Cargo dependency on `rustok-product`; `rustok-product` loses both.
 - `rustok-product-catalog-service` can run against a schema that holds only the Product tables.
-- Stock, tag names, inventory cleanup at variant deletion, and the taxonomy copy of a category now depend on the composition root attaching the ports. A deployment that omits them does not fail: it shows zero or unmanaged stock and raw tag ids, leaves inventory records behind when variants are deleted, and creates categories without their taxonomy node.
+- The host wires Inventory and Taxonomy for profiles that need them. Without those providers the bounded profile can still show unmanaged stock. Deletion that affects SKU inventory, resolution of stored tag relations, and category synchronization require their respective providers.

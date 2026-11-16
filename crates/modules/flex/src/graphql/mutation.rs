@@ -339,21 +339,21 @@ impl FlexMutation {
         &self,
         ctx: &Context<'_>,
         input: UpdateAttachedValuesInput,
+        idempotency_key: Option<String>,
     ) -> Result<AttachedValuesObject> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_UPDATE).await?;
+        let (_, auth) = require_access(ctx, Permission::FLEX_ENTRIES_UPDATE).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(input.entity_type)?;
         let values = runtime
             .attached_values()
             .update_values(
-                tenant.id,
+                super::attached_values_context(&auth, input.locale, idempotency_key),
                 &entity_type,
                 input.entity_id,
-                &input.locale,
                 input.values,
             )
             .await
-            .map_err(map_flex_error)?;
+            .map_err(super::map_attached_values_command_error)?;
 
         Ok(AttachedValuesObject {
             entity_type,
@@ -368,16 +368,21 @@ impl FlexMutation {
         ctx: &Context<'_>,
         entity_type: Option<String>,
         entity_id: Uuid,
+        idempotency_key: Option<String>,
     ) -> Result<DeleteFlexPayload> {
-        let (tenant, _) = require_access(ctx, Permission::FLEX_ENTRIES_DELETE).await?;
+        let (tenant, auth) = require_access(ctx, Permission::FLEX_ENTRIES_DELETE).await?;
         let runtime = runtime(ctx)?;
         let entity_type = resolve_entity_type(entity_type)?;
 
         runtime
             .attached_values()
-            .delete_values(tenant.id, &entity_type, entity_id)
+            .delete_values(
+                super::attached_values_context(&auth, tenant.default_locale, idempotency_key),
+                &entity_type,
+                entity_id,
+            )
             .await
-            .map_err(map_flex_error)?;
+            .map_err(super::map_attached_values_command_error)?;
 
         Ok(DeleteFlexPayload { success: true })
     }

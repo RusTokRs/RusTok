@@ -14,6 +14,7 @@ service ProductCatalogReadService {
   rpc ListFilteredPublishedProducts(JsonRequest) returns (JsonResponse);
   rpc LoadStorefrontCatalogFacets(JsonRequest) returns (JsonResponse);
   rpc ReadStorefrontProductProjection(JsonRequest) returns (JsonResponse);
+  rpc ReadAttachedValues(JsonRequest) returns (JsonResponse);
 }
 
 service ProductCatalogCommandService {
@@ -32,6 +33,8 @@ service ProductCatalogCommandService {
   rpc UpdateProductImage(JsonRequest) returns (JsonResponse);
   rpc DeleteProductImage(JsonRequest) returns (JsonResponse);
   rpc ReorderProductImages(JsonRequest) returns (JsonResponse);
+  rpc UpdateAttachedValues(JsonRequest) returns (JsonResponse);
+  rpc DeleteAttachedValues(JsonRequest) returns (JsonResponse);
 }
 
 message JsonRequest {

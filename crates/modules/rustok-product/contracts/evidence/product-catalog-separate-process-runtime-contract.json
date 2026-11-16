@@ -15,7 +15,11 @@
       "args": [
         "run",
         "-p",
-        "rustok-product-catalog-service"
+        "rustok-product",
+        "--bin",
+        "rustok-product-catalog-service",
+        "--features",
+        "service"
       ]
     },
     "probe": {
@@ -23,7 +27,7 @@
       "args": [
         "run",
         "-p",
-        "rustok-product-ports",
+        "rustok-product",
         "--example",
         "product_catalog_runtime_probe"
       ]

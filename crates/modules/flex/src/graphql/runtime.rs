@@ -2,13 +2,16 @@ use std::sync::Arc;
 
 use async_graphql::{Context, FieldError, Result as GraphqlResult};
 use async_trait::async_trait;
-use rustok_api::graphql::GraphQLError;
+use rustok_api::{PortContext, PortError, graphql::GraphQLError};
 use rustok_core::field_schema::FlexError;
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::{FieldDefRegistry, FieldDefinitionCachePort, FlexStandaloneService};
+use crate::{
+    FieldDefRegistry, FieldDefinitionCachePort, FlexAttachedFieldPolicyReadPort,
+    FlexAttachedFieldReadService, FlexStandaloneService,
+};
 
 /// Host-owned attached-value operations exposed through the generic Flex GraphQL transport.
 ///
@@ -18,28 +21,55 @@ use crate::{FieldDefRegistry, FieldDefinitionCachePort, FlexStandaloneService};
 pub trait AttachedValuesGraphqlPort: Send + Sync {
     async fn resolve_values(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         entity_type: &str,
         entity_id: Uuid,
-        preferred_locale: &str,
         tenant_default_locale: &str,
     ) -> std::result::Result<Option<Value>, FlexError>;
 
     async fn update_values(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         entity_type: &str,
         entity_id: Uuid,
-        locale: &str,
         payload: Option<Value>,
-    ) -> std::result::Result<Option<Value>, FlexError>;
+    ) -> std::result::Result<Option<Value>, AttachedValuesCommandError>;
 
     async fn delete_values(
         &self,
-        tenant_id: Uuid,
+        context: PortContext,
         entity_type: &str,
         entity_id: Uuid,
-    ) -> std::result::Result<(), FlexError>;
+    ) -> std::result::Result<(), AttachedValuesCommandError>;
+}
+
+#[derive(Debug)]
+pub enum AttachedValuesCommandError {
+    Flex(FlexError),
+    Owner(PortError),
+}
+
+impl std::fmt::Display for AttachedValuesCommandError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Flex(error) => error.fmt(formatter),
+            Self::Owner(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for AttachedValuesCommandError {}
+
+impl From<FlexError> for AttachedValuesCommandError {
+    fn from(error: FlexError) -> Self {
+        Self::Flex(error)
+    }
+}
+
+impl From<PortError> for AttachedValuesCommandError {
+    fn from(error: PortError) -> Self {
+        Self::Owner(error)
+    }
 }
 
 pub struct FlexGraphqlRuntime {
@@ -48,6 +78,7 @@ pub struct FlexGraphqlRuntime {
     field_registry: FieldDefRegistry,
     field_definition_cache: Arc<dyn FieldDefinitionCachePort>,
     attached_values: Arc<dyn AttachedValuesGraphqlPort>,
+    attached_policy_read: FlexAttachedFieldReadService,
 }
 
 impl FlexGraphqlRuntime {
@@ -58,12 +89,15 @@ impl FlexGraphqlRuntime {
         field_definition_cache: Arc<dyn FieldDefinitionCachePort>,
         attached_values: Arc<dyn AttachedValuesGraphqlPort>,
     ) -> Self {
+        let attached_policy_read =
+            FlexAttachedFieldReadService::new(db.clone(), field_registry.clone());
         Self {
             standalone_service,
             db,
             field_registry,
             field_definition_cache,
             attached_values,
+            attached_policy_read,
         }
     }
 
@@ -85,6 +119,10 @@ impl FlexGraphqlRuntime {
 
     pub(crate) fn attached_values(&self) -> &dyn AttachedValuesGraphqlPort {
         self.attached_values.as_ref()
+    }
+
+    pub(crate) fn attached_policy_read(&self) -> &dyn FlexAttachedFieldPolicyReadPort {
+        &self.attached_policy_read
     }
 }
 

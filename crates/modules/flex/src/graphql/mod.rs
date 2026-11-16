@@ -5,14 +5,17 @@ mod query;
 mod runtime;
 mod types;
 
-use async_graphql::{Context, FieldError, Result};
+use std::time::Duration;
+
+use async_graphql::{Context, ErrorExtensions, FieldError, Result};
 use rustok_api::{
-    AuthContext, Permission, TenantContext, graphql::GraphQLError, has_effective_permission,
+    AuthContext, Permission, PortContext, PortErrorKind, TenantContext, graphql::GraphQLError,
+    has_effective_permission,
 };
 
 pub use mutation::FlexMutation;
 pub use query::FlexQuery;
-pub use runtime::{AttachedValuesGraphqlPort, FlexGraphqlRuntime};
+pub use runtime::{AttachedValuesCommandError, AttachedValuesGraphqlPort, FlexGraphqlRuntime};
 pub use types::*;
 
 async fn require_access(
@@ -55,6 +58,47 @@ fn map_flex_error(error: rustok_core::field_schema::FlexError) -> FieldError {
     }
 }
 
+fn attached_values_context(
+    auth: &AuthContext,
+    locale: String,
+    idempotency_key: Option<String>,
+) -> PortContext {
+    let mut context = PortContext::new(
+        auth.tenant_id.to_string(),
+        auth.port_actor(),
+        locale,
+        uuid::Uuid::new_v4().to_string(),
+    )
+    .with_deadline(Duration::from_secs(5));
+    context.idempotency_key = idempotency_key;
+    context
+}
+
+fn map_attached_values_command_error(error: AttachedValuesCommandError) -> FieldError {
+    let error = match error {
+        AttachedValuesCommandError::Flex(error) => return map_flex_error(error),
+        AttachedValuesCommandError::Owner(error) => error,
+    };
+    let field_error = match error.kind {
+        PortErrorKind::Validation => <FieldError as GraphQLError>::bad_user_input(&error.message),
+        PortErrorKind::NotFound => <FieldError as GraphQLError>::not_found(&error.message),
+        PortErrorKind::Conflict => <FieldError as GraphQLError>::conflict(&error.message),
+        PortErrorKind::Forbidden => <FieldError as GraphQLError>::permission_denied(&error.message),
+        PortErrorKind::Unavailable | PortErrorKind::Timeout => {
+            <FieldError as GraphQLError>::internal_error(
+                "Product attached values are temporarily unavailable",
+            )
+        }
+        PortErrorKind::InvariantViolation => <FieldError as GraphQLError>::internal_error(
+            "Product attached values could not be saved safely",
+        ),
+    };
+    field_error.extend_with(|_, extensions| {
+        extensions.set("ownerCode", error.code);
+        extensions.set("retryable", error.retryable);
+    })
+}
+
 fn map_attached_field_policy_error(error: crate::FlexAttachedFieldPolicyError) -> FieldError {
     match error {
         crate::FlexAttachedFieldPolicyError::Invalid(message) => {
@@ -65,6 +109,13 @@ fn map_attached_field_policy_error(error: crate::FlexAttachedFieldPolicyError) -
                 "Flex attached field policy storage failed",
             )
         }
+    }
+}
+
+fn map_flex_attached_policy_read_error(error: rustok_api::PortError) -> FieldError {
+    match error.kind {
+        PortErrorKind::Validation => <FieldError as GraphQLError>::bad_user_input(&error.message),
+        _ => <FieldError as GraphQLError>::internal_error("Flex attached field policy read failed"),
     }
 }
 

@@ -62,12 +62,14 @@
 
 pub mod button;
 pub mod context;
+pub mod dynamic;
 pub mod field;
 pub mod form;
 pub mod inputs;
 
 pub use button::{ButtonSize, ButtonVariant, ResetButton, SubmitButton};
 pub use context::{FieldContext, FormContext};
+pub use dynamic::DynamicForm;
 pub use field::{
     FormControl, FormDescription, FormError, FormField, FormHelperText, FormItem, FormLabel,
     FormMessage,

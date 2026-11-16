@@ -9,6 +9,7 @@
 pub mod attached;
 pub mod attached_definitions;
 pub mod attached_field_policy;
+mod attached_field_read;
 pub mod attached_storage;
 pub mod attached_translation;
 pub mod attached_translation_changes;
@@ -41,6 +42,11 @@ pub mod standalone_translation_policy_target;
 pub mod standalone_translation_progress_target;
 pub mod standalone_translation_target;
 
+pub use attached_field_read::FlexAttachedFieldReadService;
+pub use flex_ports::{
+    FlexAttachedFieldPolicyReadPort, FlexAttachedSchema, FlexAttachedSchemaReadPort,
+    FlexVersionedAttachedSchema, FlexVersionedAttachedSchemaReadPort,
+};
 pub use module::FlexModule;
 
 pub use attached::{
@@ -48,8 +54,10 @@ pub use attached::{
     delete_attached_localized_values, load_exact_locale_values, load_localized_values_by_locale,
     merge_donor_flex_metadata, merge_reserved_donor_metadata, merge_reserved_donor_patch,
     persist_localized_values, prepare_attached_values_create, prepare_attached_values_update,
-    prepare_donor_attached_values_create, prepare_donor_attached_values_update,
-    resolve_attached_payload, resolve_attached_payloads, split_donor_metadata,
+    prepare_attached_values_update_from_values, prepare_donor_attached_values_create,
+    prepare_donor_attached_values_update, prepare_donor_attached_values_update_from_values,
+    resolve_attached_payload, resolve_attached_payload_from_values, resolve_attached_payloads,
+    split_donor_metadata,
 };
 pub use attached_definitions::{
     GENERIC_ATTACHED_FIELD_DEFINITIONS_TABLE, GenericAttachedFieldDefinitionService,
