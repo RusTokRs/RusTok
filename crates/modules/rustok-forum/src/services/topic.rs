@@ -748,6 +748,7 @@ impl TopicService {
         Ok(tags)
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn load_topic_tags_for_topics(
         &self,
         tenant_id: Uuid,

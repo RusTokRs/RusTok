@@ -375,6 +375,7 @@ mod tests {
             event_bus,
             audience_facts: None,
             settings_providers: crate::services::ForumSettingsProviders::default(),
+            taxonomy_port: std::sync::Arc::new(crate::ports::taxonomy::NoopForumTaxonomyPort),
         };
         let app = Router::new()
             .route(

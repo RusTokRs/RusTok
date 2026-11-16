@@ -58,6 +58,7 @@ impl ForumHttpRuntime {
         crate::CategoryService::new(self.db_clone()).with_taxonomy_port(self.taxonomy_port.clone())
     }
 
+    #[allow(dead_code)]
     pub(crate) fn category_route_service(&self) -> crate::ForumCategoryRouteService {
         crate::ForumCategoryRouteService::new(self.db_clone()).with_port(self.taxonomy_port.clone())
     }
@@ -467,6 +468,8 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> Result<Router, crate::error:
 mod tests {
     use super::ForumHttpRuntime;
     use super::ensure_forum_module_enabled;
+    use std::sync::Arc;
+    use crate::ports::taxonomy::NoopForumTaxonomyPort;
     use axum::http::StatusCode;
     use sea_orm::{ConnectionTrait, Database};
     use uuid::Uuid;
@@ -490,6 +493,7 @@ mod tests {
             event_bus,
             audience_facts: None,
             settings_providers: crate::ForumSettingsProviders::default(),
+            taxonomy_port: Arc::new(NoopForumTaxonomyPort),
         }
     }
 
@@ -556,6 +560,7 @@ mod tests {
                 event_bus,
                 audience_facts: None,
                 settings_providers: crate::ForumSettingsProviders::default(),
+                taxonomy_port: Arc::new(NoopForumTaxonomyPort),
             }
         };
 
