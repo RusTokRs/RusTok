@@ -296,7 +296,7 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
 - Once started, the opt-in Product Index, Social Graph Index, Forum Search
   inbox, and Forum Search contract consumers are required readiness workers.
   Their durable broker offsets remain uncommitted on terminal delivery failure;
-  liveness readiness therefore turns unhealthy if a consumer exits instead of
+  the readiness probe therefore turns unhealthy if a consumer exits instead of
   leaving the HTTP host green while its projection queue is stalled.
 - Outbox relay polling, claim leases, retry backoff, and outbox-retention
   polling are each capped at one day. Relay batches are capped at 10,000 events,
