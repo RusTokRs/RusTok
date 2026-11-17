@@ -377,6 +377,10 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
 - OAuth browser-session and consent flows use the same case-insensitive Bearer authentication scheme
   parsing as the HTTP authentication boundary; the browser-session helper requires exactly one Bearer
   token and does not silently accept Basic or multi-token authorization values.
+  Repeated `Authorization` fields are rejected. When an `Authorization` header is present but
+  malformed, consent does not fall back to a cookie from a different principal. OAuth browser
+  cookies are read across all Cookie fields and duplicate `rustok_oauth_browser_session` names
+  fail closed instead of using an order-dependent token.
 - Marketplace registry/governance REST handlers extract `ServerRuntimeContext`; catalog projection,
   artifact storage and remote executor policy are read through DB/settings/shared handles neutral runtime.
 - Per-registry marketplace freshness is projected through
