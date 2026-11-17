@@ -210,12 +210,16 @@ initialization propagates as an internal auth error rather than substituting
 an empty hash.
 
 OAuth refresh requests may retain the original scopes by omitting `scope` or
-request a non-empty subset of the currently authorized scopes. The server
-rejects an empty explicit scope or a widening request with `invalid_scope`,
-and persists the narrowed grant on the rotated credential. Reuse detection
-revokes the scoped OAuth token family; on a persistence error it returns
-`server_error` rather than swallowing the failed security effect. Automatic
-durable retry after the client stops retrying is not established.
+request a non-empty subset of the currently authorized scopes. Authorization
+and client-credentials requests also preserve scope presence: omission selects
+the configured default, while an explicitly empty or whitespace-only value
+fails with `invalid_scope`. Consent grants must contain at least one scope.
+The `refresh_token` grant is valid only when the app also declares
+`authorization_code`. The server persists narrowed scopes on rotated
+credentials. Reuse detection revokes the scoped OAuth token family; on a
+persistence error it returns `server_error` rather than swallowing the failed
+security effect. Automatic durable retry after the client stops retrying is
+not established.
 
 GraphQL request-preparation policies classify only the operation selected by
 `operationName` (or the sole operation when no name is required). The selected
@@ -343,13 +347,25 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   revocation, credential change, code replay, and refresh reuse revoke the whole
   family, so an already-issued access JWT is fenced before its signed TTL. Delegated
   rows also capture the consent epoch (`consent_granted_at`); a consent revoke/re-grant
-  cannot resurrect older tokens.
+  cannot resurrect older tokens. Code exchange locks the active app and delegated
+  subject in the persistence transaction, then rechecks the client-secret hash,
+  authorization-code grant, current scopes, registered redirect URI, subject status,
+  and password-change epoch before consuming the code. Refresh rotation similarly
+  locks the app and subject and rechecks the client-secret hash, refresh grant,
+  current scopes, subject status, and password-change epoch before consuming the
+  refresh token. Client-credentials issuance locks and rechecks its app before
+  persisting the access row. App, consent, password, and user-status revocation also
+  invalidate outstanding authorization codes, preventing pending credentials from
+  surviving a later reactivation.
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
 - OAuth grant admission uses the exact persisted `grant_types` set. Manifest-managed first-party admin/storefront
   applications declare `authorization_code`, `refresh_token`, and `client_credentials` explicitly; the auth
-  model does not expand `refresh_token` implicitly for auto-created applications.
+  model does not expand `refresh_token` implicitly for auto-created applications. Third-party web redirect
+  URIs require HTTPS; mobile clients may use HTTP only on loopback and may use reverse-domain private-use
+  schemes. First-party managed apps may use loopback HTTP only when their configured public URL is itself
+  loopback HTTP, keeping local development separate from production web-client policy.
 - The OAuth token endpoint resolves clients through the security-only OAuth app lookup, so token issuance does
   not depend on tenant locale or `oauth_app_translations` presentation data.
 - Auth self-service endpoints (`/api/auth/me`, sessions, password change, profile, and history) require
@@ -372,7 +388,7 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   and build WebSocket extract `ServerRuntimeContext`; DB/shared runtime semantics do not depend on a
   framework-global context. Optional module HTTP composition recognizes manifest-declared Axum routers:
   `rustok-blog` is merged from its `HostRuntimeContext` entrypoint.
-- Channel runtime surface remains a thin transport around `rustok-channel`: `/api/channels/*` already covers bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints and request-level `resolution_trace` diagnostics, while the resolution pipeline, REST/control-plane DTOs and rule-payload mapping helpers live in the module. Request-level `tenant`, `channel` and `locale` middleware receive `ServerRuntimeContext`, and auth context receives `ServerAuthRuntime`. For host resolution, the propagated `ChannelContext.target_type/target_value` identifies the concrete web-domain target that matched the effective host, while non-host resolution retains the channel's primary/first target representation.
+- Channel runtime surface remains a thin transport around `rustok-channel`: `/api/channels/*` already covers bootstrap, channel CRUD-lite, policy-set/rule authoring endpoints and request-level `resolution_trace` diagnostics, while the resolution pipeline, REST/control-plane DTOs and rule-payload mapping helpers live in the module. Request-level `tenant`, `channel` and `locale` middleware receive `ServerRuntimeContext`, and auth context receives `ServerAuthRuntime`. For host resolution, the propagated `ChannelContext.target_type/target_value` identifies the concrete web-domain target that matched the effective host, while non-host resolution retains the channel's primary/first target representation. Channel REST mutations invalidate the local cache immediately and publish the durable generation to other replicas; the five-second database reconciliation remains the recovery path if fan-out is unavailable.
 - Module-owned event listeners are assembled from `ModuleRegistry` into a common `EventDispatcher`; `apps/server` no longer holds separate host-owned index/search/workflow listener paths.
 - Server migrator is the backend composition root for module-owned schema: content-family modules (`blog`, `pages`, `comments`) and search must connect here via `crates/modules/rustok-*/src/migrations`, otherwise external Next/Leptos admin surfaces get a working route shell without the needed tables.
 - Product/search title filtering helpers are not server-owned services: product translation
@@ -537,7 +553,7 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
 - Registry artifacts are never read or written through server-local filesystem paths: persisted state stores only `artifact_storage_key`, owner services call the shared `ObjectStore` directly, and `GET /v2/catalog/publish/{request_id}/artifact/download` uses native signing with stream fallback. Validation is selected by immutable artifact origin: platform-built and external-prebuilt uploads retain the bounded metadata-bundle contract, while `alloy_authored` accepts only the bounded canonical Rhai workspace media type. Final Alloy staging still requires that upload checksum to equal the reviewed source-revision digest.
 - `POST /v2/catalog/publish/{request_id}/author-signature` accepts an authenticated platform-scoped command context plus immutable signature reference, SHA-256, signer, policy revision, and body idempotency key. It never accepts the signed artifact digest: `rustok-modules` locks the publish request, derives its current attached-artifact checksum, persists the signature digest in the immutable evidence fact verified at final publication, and records an exact-replay receipt over the context and signature facts before returning the owner status snapshot.
 - Alloy release staging is host-composed on both transports: `POST /api/alloy/scripts/{id}/releases/stage` and the manifest-owned GraphQL `stageRelease` mutation require the authenticated tenant's current script revision, `scripts:manage` plus `modules:manage`, reviewed source digest, publish request ID, and idempotency key. They delegate all marketplace writes to `rustok-modules`; final promotion remains the registry governance approval operation, and publish-status `nextStep` now points Alloy-authored requests to this staging boundary instead of implying direct approval.
-- Alloy marketplace import is host-composed on authenticated HTTP `POST /api/alloy/releases/import`, GraphQL `importPublishedRelease`, and remote MCP `alloy_import_published_release` on `/api/mcp/runtime/tools/call` and `/api/mcp/runtime/tools/stream`. The server derives tenant and actor identity, requires `scripts.manage` plus `modules.manage`, and injects an owner-backed source provider that accepts only the exact active publication projection and verified digest-pinned CAS workspace. The adapter cannot read catalog DTOs, upload objects, or mutable OCI tags. Generic stdio MCP does not advertise this tool because it lacks the server's durable tenant-bound composition. Imported-draft preview and workspace-test execution resolve the immutable parent reference through the owner to the exact active tenant installation and policy on every run; inactive, disabled, stale, mismatched, or missing parent state fails closed without a default policy fallback.
+- Alloy marketplace import is host-composed on authenticated HTTP `POST /api/alloy/releases/import`, GraphQL `importPublishedRelease`, and remote MCP `alloy_import_published_release` on `/api/mcp/runtime/tools/call` and `/api/mcp/runtime/tools/stream`. The server derives tenant and actor identity, verifies identity-to-binding tenant equality, requires `scripts.manage` plus `modules.manage`, and injects an owner-backed source provider that accepts only the exact active publication projection and verified digest-pinned CAS workspace. The adapter cannot read catalog DTOs, upload objects, or mutable OCI tags. Generic stdio MCP does not advertise this tool because it lacks the server's durable tenant-bound composition. Imported-draft preview and workspace-test execution resolve the immutable parent reference through the owner to the exact active tenant installation and policy on every run; inactive, disabled, stale, mismatched, or missing parent state fails closed without a default policy fallback.
 - Marketplace catalog transport exposes only the current `GET /catalog` and
   `GET /catalog/{slug}` contracts. The server router and outbound registry
   clients do not probe or serve version-suffixed compatibility paths.
@@ -556,7 +572,7 @@ idempotencyKey)` is the corresponding headless action path. It resolves the
   request context, and accept only an exact admitted installation, registered
   permission key, and idempotency key. The routes never write static
   `role_permissions` and do not auto-grant anything at installation time.
-- MCP remote bootstrap surface `POST /api/mcp/runtime/bootstrap` performs a server-owned token-to-runtime-binding handshake for non-stdio transport: accepts Bearer/plaintext MCP token, returns tenant/client/token binding and effective access context, updates last-used timestamps and writes an audit event `remote_session_bootstrapped` with correlation id. Remote tool transport is complemented by `POST /api/mcp/runtime/tools/call` for JSON invocations and `POST /api/mcp/runtime/tools/stream` for SSE invocations of core registry tools (`mcp_health`, `mcp_whoami`, `list_modules`, `query_modules`, `module_exists`, `module_details`), Alloy scaffold draft tools (`alloy_scaffold_module`, `alloy_review_module_scaffold`, `alloy_apply_module_scaffold`), remote-only Alloy script authoring tools, and source-free deleted-evidence retention tools. Script authoring and retention authority resolve the durable binding, require `scripts.manage`, verify identity-to-binding tenant equality, derive actor provenance, and construct the same `SharedAlloyRuntime::scoped` owner service used by HTTP/GraphQL. They return source-redacted authoring evidence or source-free retention state, and generic stdio/in-process MCP cannot advertise those owner-bound names. Scaffold tools use the server-owned persisted draft store, so stage/review/apply go through `mcp_scaffold_drafts`, tenant/client binding, and audit surface, rather than process-local memory of the MCP runtime.
+- MCP remote bootstrap surface `POST /api/mcp/runtime/bootstrap` performs a server-owned token-to-runtime-binding handshake for non-stdio transport: accepts Bearer/plaintext MCP token, returns tenant/client/token binding and effective access context, updates last-used timestamps and writes an audit event `remote_session_bootstrapped` with correlation id. Remote tool transport is complemented by `POST /api/mcp/runtime/tools/call` for JSON invocations and `POST /api/mcp/runtime/tools/stream` for SSE invocations of core registry tools (`mcp_health`, `mcp_whoami`, `list_modules`, `query_modules`, `module_exists`, `module_details`), Alloy scaffold draft tools (`alloy_scaffold_module`, `alloy_review_module_scaffold`, `alloy_apply_module_scaffold`), remote-only Alloy script authoring tools, published-release import, and source-free deleted-evidence retention tools. Script authoring, published-release import, and retention authority resolve the durable binding, require their declared permissions, verify identity-to-binding tenant equality, derive actor provenance, and construct the same `SharedAlloyRuntime::scoped` owner service used by HTTP/GraphQL where applicable. Source-bearing authoring and published-release import metadata is redacted before audit persistence; retention remains source-free. Generic stdio/in-process MCP cannot advertise those owner-bound names. Scaffold tools use the server-owned persisted draft store, so stage/review/apply go through `mcp_scaffold_drafts`, tenant/client binding, and audit surface, rather than process-local memory of the MCP runtime.
 - The hybrid product installer is introduced through `rustok-installer` and
   `rustok-installer-persistence`. The latter owns the shared SeaORM database,
   durable-state, and bootstrap-writer adapter. `/api/install/*` delegates plan,

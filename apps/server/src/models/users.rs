@@ -23,7 +23,9 @@ impl Model {
         issued_at: chrono::DateTime<chrono::Utc>,
     ) -> bool {
         self.password_changed_at
-            .map(|changed_at| issued_at <= changed_at.with_timezone(&chrono::Utc))
+            .map(|changed_at| {
+                issued_at.timestamp() <= changed_at.with_timezone(&chrono::Utc).timestamp()
+            })
             .unwrap_or(false)
     }
 
@@ -101,15 +103,21 @@ impl Entity {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Duration, Utc};
+    use chrono::{Duration, TimeZone, Utc};
 
     #[test]
     fn delegated_credential_epoch_rejects_tokens_issued_at_or_before_change() {
         let mut user = Model::default_service_user(Uuid::new_v4(), Uuid::new_v4());
-        let changed_at = Utc::now();
+        let changed_at = Utc.timestamp_opt(1_800_000_000, 900_000_000).unwrap();
         user.password_changed_at = Some(changed_at.into());
 
         assert!(user.rejects_delegated_token_issued_at(changed_at - Duration::seconds(1)));
+        assert!(
+            user.rejects_delegated_token_issued_at(
+                Utc.timestamp_opt(1_800_000_000, 100_000_000).unwrap()
+            ),
+            "credential and password change in the same JWT second must be rejected"
+        );
         assert!(user.rejects_delegated_token_issued_at(changed_at));
         assert!(!user.rejects_delegated_token_issued_at(changed_at + Duration::seconds(1)));
     }

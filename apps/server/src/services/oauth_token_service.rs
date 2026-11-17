@@ -3,8 +3,8 @@ use chrono::Utc;
 use rustok_api::context::scope_matches;
 use rustok_auth::{TokenRequest, TokenResponse};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, Set, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbBackend,
+    EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -112,11 +112,28 @@ impl OAuthTokenService {
             CLIENT_CREDENTIALS_GRANT => {
                 require_grant(&app, CLIENT_CREDENTIALS_GRANT)?;
                 authenticate_client(&app, request, true).await?;
-                let requested = parse_requested_scopes(request.scope.as_deref());
-                let scopes = validate_requested_scopes(&app, &requested)?;
-                let prepared = prepare_service_access_token(&app, auth_config, &scopes)?;
-                prepared.access_model.insert(db).await.map_err(|_| {
-                    OAuthTokenProtocolError::server_error("Failed to persist access token")
+                let tx = db.begin().await.map_err(|_| {
+                    OAuthTokenProtocolError::server_error(
+                        "Failed to begin client-credentials exchange",
+                    )
+                })?;
+                let current_app = lock_active_oauth_app(&tx, app.id, tenant_id).await?;
+                ensure_client_secret_unchanged(&app, &current_app)?;
+                require_grant(&current_app, CLIENT_CREDENTIALS_GRANT)?;
+                let scopes = validate_requested_scopes(&current_app, request.scope.as_deref())?;
+                let prepared = prepare_service_access_token(&current_app, auth_config, &scopes)?;
+                prepared
+                    .access_model
+                    .clone()
+                    .insert(&tx)
+                    .await
+                    .map_err(|_| {
+                        OAuthTokenProtocolError::server_error("Failed to persist access token")
+                    })?;
+                tx.commit().await.map_err(|_| {
+                    OAuthTokenProtocolError::server_error(
+                        "Failed to commit client-credentials exchange",
+                    )
                 })?;
 
                 TokenResponse {
@@ -153,7 +170,7 @@ impl OAuthTokenService {
                 )
                 .await?;
 
-                commit_authorization_code_exchange(db, &authorization, &prepared).await?;
+                commit_authorization_code_exchange(db, &app, &authorization, &prepared).await?;
                 prepared.into_response(&scopes)
             }
             REFRESH_TOKEN_GRANT => {
@@ -190,7 +207,7 @@ impl OAuthTokenService {
                 )
                 .await?;
 
-                commit_refresh_rotation(db, &current, &prepared).await?;
+                commit_refresh_rotation(db, &app, &current, &prepared).await?;
                 prepared.into_response(&scopes)
             }
             other => {
@@ -292,25 +309,27 @@ async fn authenticate_client(
     }
 }
 
-fn parse_requested_scopes(value: Option<&str>) -> Vec<String> {
-    value
-        .unwrap_or_default()
-        .split_whitespace()
-        .filter(|scope| !scope.is_empty())
-        .map(str::to_string)
-        .collect()
+fn parse_requested_scopes(value: &str) -> Vec<String> {
+    value.split_whitespace().map(str::to_string).collect()
 }
 
 fn validate_requested_scopes(
     app: &oauth_apps::Model,
-    requested: &[String],
+    requested: Option<&str>,
 ) -> Result<Vec<String>, OAuthTokenProtocolError> {
     let allowed = app.scopes_list();
-    if requested.is_empty() {
+    let Some(requested) = requested else {
         return Ok(allowed);
+    };
+
+    let requested = parse_requested_scopes(requested);
+    if requested.is_empty() {
+        return Err(OAuthTokenProtocolError::invalid_scope(
+            "Requested scope must not be empty",
+        ));
     }
-    validate_scope_subset(&allowed, requested)?;
-    Ok(requested.to_vec())
+    validate_scope_subset(&allowed, &requested)?;
+    Ok(requested)
 }
 
 fn scopes_for_refresh(
@@ -321,7 +340,7 @@ fn scopes_for_refresh(
         return Ok(current.to_vec());
     };
 
-    let narrowed = parse_requested_scopes(Some(requested));
+    let narrowed = parse_requested_scopes(requested);
     if narrowed.is_empty() {
         return Err(OAuthTokenProtocolError::invalid_scope(
             "Refresh scope must not be empty",
@@ -376,6 +395,11 @@ async fn validate_authorization_code(
     if code.redirect_uri != redirect_uri {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "redirect_uri does not match the authorization request",
+        ));
+    }
+    if !app.redirect_uris_list().contains(&code.redirect_uri) {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Authorization code redirect URI is no longer registered",
         ));
     }
     if code.code_challenge_method != "S256" {
@@ -656,6 +680,13 @@ where
         .filter(oauth_tokens::Column::RevokedAt.is_null())
         .exec(db)
         .await?;
+    oauth_codes::Entity::update_many()
+        .col_expr(oauth_codes::Column::UsedAt, Expr::value(now))
+        .filter(oauth_codes::Column::TenantId.eq(tenant_id))
+        .filter(oauth_codes::Column::UserId.eq(user_id))
+        .filter(oauth_codes::Column::UsedAt.is_null())
+        .exec(db)
+        .await?;
     Ok(revoked.rows_affected)
 }
 
@@ -690,6 +721,158 @@ async fn validate_active_subject_and_consent(
     }
 
     Ok((user, consent_granted_at))
+}
+
+async fn lock_active_oauth_app<C>(
+    db: &C,
+    app_id: Uuid,
+    tenant_id: Uuid,
+) -> Result<oauth_apps::Model, OAuthTokenProtocolError>
+where
+    C: ConnectionTrait,
+{
+    let query = || {
+        oauth_apps::Entity::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+    };
+    let app = match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query()
+            .lock_exclusive()
+            .one(db)
+            .await
+            .map_err(|_| OAuthTokenProtocolError::server_error("Failed to lock OAuth client"))?,
+        DbBackend::Sqlite => {
+            let app = query()
+                .one(db)
+                .await
+                .map_err(|_| OAuthTokenProtocolError::server_error("Failed to read OAuth client"))?;
+            if let Some(app) = app.as_ref() {
+                let locked = oauth_apps::Entity::update_many()
+                    .col_expr(
+                        oauth_apps::Column::UpdatedAt,
+                        Expr::col(oauth_apps::Column::UpdatedAt),
+                    )
+                    .filter(oauth_apps::Column::Id.eq(app.id))
+                    .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+                    .exec(db)
+                    .await
+                    .map_err(|_| {
+                        OAuthTokenProtocolError::server_error("Failed to lock OAuth client")
+                    })?;
+                if locked.rows_affected != 1 {
+                    return Err(OAuthTokenProtocolError::invalid_client(
+                        "OAuth client changed during token issuance",
+                    ));
+                }
+                query()
+                    .one(db)
+                    .await
+                    .map_err(|_| {
+                        OAuthTokenProtocolError::server_error("Failed to reload OAuth client")
+                    })?
+            } else {
+                None
+            }
+        }
+        _ => {
+            return Err(OAuthTokenProtocolError::server_error(
+                "Unsupported database backend for OAuth token issuance",
+            ));
+        }
+    };
+    let app = app.ok_or_else(|| {
+        OAuthTokenProtocolError::invalid_client("OAuth client is unavailable")
+    })?;
+    if !app.is_active() {
+        return Err(OAuthTokenProtocolError::invalid_client(
+            "OAuth client is inactive",
+        ));
+    }
+    Ok(app)
+}
+
+async fn lock_active_oauth_subject<C>(
+    db: &C,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    credential_issued_at: sea_orm::prelude::DateTimeWithTimeZone,
+) -> Result<users::Model, OAuthTokenProtocolError>
+where
+    C: ConnectionTrait,
+{
+    let query = || {
+        Users::find_by_id(user_id).filter(users::Column::TenantId.eq(tenant_id))
+    };
+    let user = match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query()
+            .lock_exclusive()
+            .one(db)
+            .await
+            .map_err(|_| OAuthTokenProtocolError::server_error("Failed to lock OAuth subject"))?,
+        DbBackend::Sqlite => {
+            let user = query()
+                .one(db)
+                .await
+                .map_err(|_| OAuthTokenProtocolError::server_error("Failed to read OAuth subject"))?;
+            if let Some(user) = user.as_ref() {
+                let locked = users::Entity::update_many()
+                    .col_expr(
+                        users::Column::UpdatedAt,
+                        Expr::col(users::Column::UpdatedAt),
+                    )
+                    .filter(users::Column::Id.eq(user.id))
+                    .filter(users::Column::TenantId.eq(tenant_id))
+                    .exec(db)
+                    .await
+                    .map_err(|_| {
+                        OAuthTokenProtocolError::server_error("Failed to lock OAuth subject")
+                    })?;
+                if locked.rows_affected != 1 {
+                    return Err(OAuthTokenProtocolError::invalid_grant(
+                        "OAuth subject changed during token issuance",
+                    ));
+                }
+                query()
+                    .one(db)
+                    .await
+                    .map_err(|_| {
+                        OAuthTokenProtocolError::server_error("Failed to reload OAuth subject")
+                    })?
+            } else {
+                None
+            }
+        }
+        _ => {
+            return Err(OAuthTokenProtocolError::server_error(
+                "Unsupported database backend for OAuth token issuance",
+            ));
+        }
+    };
+    let user = user.ok_or_else(|| {
+        OAuthTokenProtocolError::invalid_grant("OAuth subject is unavailable")
+    })?;
+    if !user.is_active()
+        || user.rejects_delegated_token_issued_at(credential_issued_at.with_timezone(&Utc))
+    {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "OAuth subject is inactive or its credentials changed",
+        ));
+    }
+    Ok(user)
+}
+
+fn ensure_client_secret_unchanged(
+    authenticated_app: &oauth_apps::Model,
+    current_app: &oauth_apps::Model,
+) -> Result<(), OAuthTokenProtocolError> {
+    if authenticated_app.client_secret_hash.as_deref()
+        != current_app.client_secret_hash.as_deref()
+    {
+        return Err(OAuthTokenProtocolError::invalid_client(
+            "OAuth client credentials changed during token issuance",
+        ));
+    }
+    Ok(())
 }
 
 struct PreparedServiceToken {
@@ -869,12 +1052,29 @@ async fn prepare_user_tokens(
 
 async fn commit_authorization_code_exchange(
     db: &DatabaseConnection,
+    authenticated_app: &oauth_apps::Model,
     code: &oauth_codes::Model,
     prepared: &PreparedUserTokens,
 ) -> Result<(), OAuthTokenProtocolError> {
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin authorization-code exchange")
     })?;
+    let current_app = lock_active_oauth_app(&tx, authenticated_app.id, code.tenant_id).await?;
+    ensure_client_secret_unchanged(authenticated_app, &current_app)?;
+    require_grant(&current_app, AUTHORIZATION_CODE_GRANT)?;
+    if !current_app.redirect_uris_list().contains(&code.redirect_uri) {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Authorization code redirect URI is no longer registered",
+        ));
+    }
+    validate_scope_subset(&current_app.scopes_list(), &code.scopes_list())?;
+    lock_active_oauth_subject(
+        &tx,
+        code.tenant_id,
+        code.user_id,
+        code.created_at.clone(),
+    )
+    .await?;
 
     if !consume_authorization_code(&tx, code).await? {
         // A concurrent exchange won the CAS. If the code is now marked used,
@@ -917,12 +1117,28 @@ async fn commit_authorization_code_exchange(
 
 async fn commit_refresh_rotation(
     db: &DatabaseConnection,
+    authenticated_app: &oauth_apps::Model,
     current: &oauth_tokens::Model,
     prepared: &PreparedUserTokens,
 ) -> Result<(), OAuthTokenProtocolError> {
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin refresh-token rotation")
     })?;
+    let current_app = lock_active_oauth_app(&tx, authenticated_app.id, current.tenant_id).await?;
+    ensure_client_secret_unchanged(authenticated_app, &current_app)?;
+    require_grant(&current_app, REFRESH_TOKEN_GRANT)?;
+    validate_scope_subset(&current_app.scopes_list(), &current.scopes_list())?;
+    let user_id = current.user_id.ok_or_else(|| {
+        OAuthTokenProtocolError::invalid_grant("Refresh token has no associated user")
+    })?;
+    lock_active_oauth_subject(
+        &tx,
+        current.tenant_id,
+        user_id,
+        current.created_at.clone(),
+    )
+    .await?;
+
     let now = Utc::now();
     let consumed = OAuthTokens::update_many()
         .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
@@ -1014,7 +1230,9 @@ mod tests {
         PreparedUserTokens, REFRESH_TOKEN_GRANT, commit_refresh_rotation, refresh_family_deadline,
         require_grant, resolve_client, scopes_for_refresh, validate_requested_scopes,
     };
-    use crate::models::{oauth_apps, oauth_authorization_codes as oauth_codes, oauth_tokens};
+    use crate::models::{
+        oauth_apps, oauth_authorization_codes as oauth_codes, oauth_tokens, tenants, users,
+    };
     use chrono::Utc;
     use rustok_auth::TokenRequest;
     use sea_orm::{
@@ -1175,6 +1393,24 @@ mod tests {
         db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_tokens::Entity)))
             .await
             .expect("oauth_tokens table");
+        db.execute_unprepared(
+            r#"CREATE TABLE oauth_authorization_codes (
+                id TEXT PRIMARY KEY NOT NULL,
+                app_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                tenant_id TEXT NOT NULL,
+                code_hash TEXT NOT NULL,
+                redirect_uri TEXT NOT NULL,
+                scopes TEXT NOT NULL,
+                code_challenge TEXT NOT NULL,
+                code_challenge_method TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                used_at TEXT NULL,
+                created_at TEXT NOT NULL
+            )"#,
+        )
+        .await
+        .expect("oauth_authorization_codes table");
 
         let tenant_id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
@@ -1202,6 +1438,25 @@ mod tests {
         .await
         .expect("insert delegated refresh token");
 
+        let code_id = Uuid::new_v4();
+        oauth_codes::ActiveModel {
+            id: Set(code_id),
+            app_id: Set(Uuid::new_v4()),
+            user_id: Set(user_id),
+            tenant_id: Set(tenant_id),
+            code_hash: Set("pending-authorization-code".to_string()),
+            redirect_uri: Set("https://client.example/callback".to_string()),
+            scopes: Set(serde_json::json!(["openid"])),
+            code_challenge: Set("challenge".to_string()),
+            code_challenge_method: Set("S256".to_string()),
+            expires_at: Set((now + chrono::Duration::minutes(10)).into()),
+            used_at: Set(None),
+            created_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert pending authorization code");
+
         let revoked = super::revoke_user_delegated_tokens_in_tx(&db, tenant_id, user_id, now)
             .await
             .expect("revoke delegated tokens");
@@ -1213,6 +1468,13 @@ mod tests {
             .expect("query token")
             .expect("token exists");
         assert!(stored.revoked_at.is_some());
+
+        let stored_code = oauth_codes::Entity::find_by_id(code_id)
+            .one(&db)
+            .await
+            .expect("query authorization code")
+            .expect("authorization code exists");
+        assert!(stored_code.used_at.is_some());
 
         let second = super::revoke_user_delegated_tokens_in_tx(&db, tenant_id, user_id, now)
             .await
@@ -1270,15 +1532,37 @@ mod tests {
     }
 
     #[test]
+    fn client_credentials_defaults_scopes_only_when_scope_is_omitted() {
+        let app = app(
+            serde_json::json!(["catalog:*", "profile"]),
+            serde_json::json!(["client_credentials"]),
+        );
+
+        assert_eq!(
+            validate_requested_scopes(&app, None).unwrap(),
+            app.scopes_list()
+        );
+        assert_eq!(
+            validate_requested_scopes(&app, Some("catalog:read")).unwrap(),
+            vec!["catalog:read".to_string()]
+        );
+        for empty in ["", "   \t"] {
+            assert_eq!(
+                validate_requested_scopes(&app, Some(empty)).unwrap_err().error,
+                "invalid_scope"
+            );
+        }
+    }
+
+    #[test]
     fn client_credentials_rejects_partial_scope_truncation() {
         let app = app(
             serde_json::json!(["catalog:*"]),
             serde_json::json!(["client_credentials"]),
         );
-        assert!(validate_requested_scopes(&app, &["catalog:read".to_string()]).is_ok());
+        assert!(validate_requested_scopes(&app, Some("catalog:read")).is_ok());
         assert!(
-            validate_requested_scopes(&app, &["catalog:read".to_string(), "admin:*".to_string()])
-                .is_err()
+            validate_requested_scopes(&app, Some("catalog:read admin:*")).is_err()
         );
     }
 
@@ -1350,6 +1634,17 @@ mod tests {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("SQLite database");
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        db.execute_raw(backend.build(&schema.create_table_from_entity(tenants::Entity)))
+            .await
+            .expect("tenants table");
+        db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_apps::Entity)))
+            .await
+            .expect("OAuth apps table");
+        db.execute_raw(backend.build(&schema.create_table_from_entity(users::Entity)))
+            .await
+            .expect("users table");
         db.execute_unprepared(
             r#"CREATE TABLE oauth_tokens (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -1373,16 +1668,39 @@ mod tests {
         .await
         .expect("OAuth token table");
 
+        let tenant_id = Uuid::new_v4();
+        let mut tenant = tenants::ActiveModel::new("Refresh test tenant", "refresh-test-tenant");
+        tenant.id = Set(tenant_id);
+        tenant.insert(&db).await.expect("insert tenant");
+        let app_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let mut client = app(
+            serde_json::json!(["profile"]),
+            serde_json::json!(["authorization_code", "refresh_token"]),
+        );
+        client.id = app_id;
+        client.tenant_id = tenant_id;
+        let active_app: crate::models::_entities::oauth_apps::ActiveModel = client.clone().into();
+        active_app.insert(&db).await.expect("insert OAuth app");
+        let mut subject = users::ActiveModel::new(
+            tenant_id,
+            "refresh-rotation@example.com",
+            "unused-password-hash",
+        );
+        subject.id = Set(user_id);
+        subject.insert(&db).await.expect("insert OAuth subject");
+
         let now = chrono::Utc::now();
+        let current_id = Uuid::new_v4();
         let current = oauth_tokens::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            app_id: Set(Uuid::new_v4()),
-            user_id: Set(Some(Uuid::new_v4())),
-            tenant_id: Set(Uuid::new_v4()),
+            id: Set(current_id),
+            app_id: Set(app_id),
+            user_id: Set(Some(user_id)),
+            tenant_id: Set(tenant_id),
             token_hash: Set("current-hash".to_string()),
-            family_id: Set(None),
+            family_id: Set(Some(current_id)),
             authorization_code_id: Set(None),
-            grant_type: Set("refresh_token".to_string()),
+            grant_type: Set("authorization_code".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
             consent_granted_at: Set(None),
             scopes: Set(serde_json::json!(["profile"])),
@@ -1404,7 +1722,7 @@ mod tests {
                 user_id: Set(current.user_id),
                 tenant_id: Set(current.tenant_id),
                 token_hash: Set(format!("access-{hash}")),
-                family_id: Set(None),
+                family_id: Set(Some(current_id)),
                 authorization_code_id: Set(None),
                 grant_type: Set("authorization_code".to_string()),
                 token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
@@ -1423,9 +1741,9 @@ mod tests {
                 user_id: Set(current.user_id),
                 tenant_id: Set(current.tenant_id),
                 token_hash: Set(hash.to_string()),
-                family_id: Set(None),
+                family_id: Set(Some(current_id)),
                 authorization_code_id: Set(None),
-                grant_type: Set("refresh_token".to_string()),
+                grant_type: Set("authorization_code".to_string()),
                 token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
                 consent_granted_at: Set(None),
                 scopes: Set(serde_json::json!(["profile"])),
@@ -1438,10 +1756,10 @@ mod tests {
             expires_in: 900,
         };
 
-        commit_refresh_rotation(&db, &current, &replacement("replacement-1"))
+        commit_refresh_rotation(&db, &client, &current, &replacement("replacement-1"))
             .await
             .expect("first rotation");
-        let replay = commit_refresh_rotation(&db, &current, &replacement("replacement-2"))
+        let replay = commit_refresh_rotation(&db, &client, &current, &replacement("replacement-2"))
             .await
             .expect_err("refresh token replay must fail");
 
@@ -1452,6 +1770,60 @@ mod tests {
                 .await
                 .expect("token count"),
             3
+        );
+
+        let mut changed_subject: users::ActiveModel = users::Entity::find_by_id(user_id)
+            .one(&db)
+            .await
+            .expect("load refresh subject")
+            .expect("refresh subject exists")
+            .into();
+        changed_subject.password_changed_at =
+            Set(Some((now + chrono::Duration::seconds(2)).into()));
+        changed_subject
+            .update(&db)
+            .await
+            .expect("record password change");
+
+        let pre_change_id = Uuid::new_v4();
+        let pre_change = oauth_tokens::ActiveModel {
+            id: Set(pre_change_id),
+            app_id: Set(app_id),
+            user_id: Set(Some(user_id)),
+            tenant_id: Set(tenant_id),
+            token_hash: Set("pre-change-refresh".to_string()),
+            family_id: Set(Some(current_id)),
+            authorization_code_id: Set(None),
+            grant_type: Set("authorization_code".to_string()),
+            token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+            consent_granted_at: Set(None),
+            scopes: Set(serde_json::json!(["profile"])),
+            expires_at: Set((now + chrono::Duration::hours(1)).into()),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert pre-change refresh token");
+        let stale_credential = commit_refresh_rotation(
+            &db,
+            &client,
+            &pre_change,
+            &replacement("replacement-after-password-change"),
+        )
+        .await
+        .expect_err("refresh issued before password change must fail");
+        assert_eq!(stale_credential.error, "invalid_grant");
+        let unchanged = oauth_tokens::Entity::find_by_id(pre_change_id)
+            .one(&db)
+            .await
+            .expect("reload pre-change token")
+            .expect("pre-change token exists");
+        assert!(
+            unchanged.revoked_at.is_none(),
+            "rejected stale refresh must not consume the credential"
         );
     }
 

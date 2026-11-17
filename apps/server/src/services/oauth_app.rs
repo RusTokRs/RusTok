@@ -120,9 +120,10 @@ impl OAuthAppService {
         )?;
         validate_app_display_fields(&input.name, Some(&input.slug), input.icon_url.as_deref())?;
         // `(tenant_id, slug)` is a unique index. Probing first turns a colliding
-        // slug into a 409 the caller can act on, instead of a 500 raised from a
-        // constraint violation deep inside the insert transaction.
-        ensure_slug_available(db, tenant_id, &input.slug).await?;
+        // slug into a 409 the caller can act on; the insert-error path below
+        // repeats the check to preserve that result when concurrent creates race.
+        let slug = input.slug.clone();
+        ensure_slug_available(db, tenant_id, &slug).await?;
 
         let client_id = Uuid::new_v4();
         let client_secret_plain = generate_client_secret()?;
@@ -157,8 +158,32 @@ impl OAuthAppService {
             updated_at: Set(Utc::now().into()),
         }
         .insert(db)
-        .await
-        .map_err(|error| Error::Message(format!("failed to insert oauth app: {error}")))?;
+        .await;
+
+        let app = match app {
+            Ok(app) => app,
+            Err(insert_error) => {
+                match ensure_slug_available(db, tenant_id, &slug).await {
+                    Err(error @ Error::Conflict(_)) => return Err(error),
+                    Err(error) => {
+                        tracing::error!(
+                            %error,
+                            tenant_id = %tenant_id,
+                            slug = %slug,
+                            "Failed to recheck OAuth app slug after insert failure"
+                        );
+                    }
+                    Ok(()) => {}
+                }
+                tracing::error!(
+                    %insert_error,
+                    tenant_id = %tenant_id,
+                    slug = %slug,
+                    "Failed to insert OAuth app"
+                );
+                return Err(Error::InternalServerError);
+            }
+        };
 
         Ok(CreateOAuthAppResult {
             app,
@@ -402,6 +427,18 @@ impl OAuthAppService {
             .await
             .map_err(|_| Error::InternalServerError)?;
 
+        crate::models::oauth_authorization_codes::Entity::update_many()
+            .col_expr(
+                crate::models::oauth_authorization_codes::Column::UsedAt,
+                Expr::value(now),
+            )
+            .filter(crate::models::oauth_authorization_codes::Column::AppId.eq(app_id))
+            .filter(crate::models::oauth_authorization_codes::Column::TenantId.eq(tenant_id))
+            .filter(crate::models::oauth_authorization_codes::Column::UsedAt.is_null())
+            .exec(&tx)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
+
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
 
         Ok(updated)
@@ -623,6 +660,12 @@ impl OAuthAppService {
         tenant_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<()> {
+        if scopes.is_empty() {
+            return Err(Error::BadRequest(
+                "OAuth consent must include at least one scope".to_string(),
+            ));
+        }
+
         let app = OAuthApps::find_by_id(app_id)
             .filter(oauth_apps::Column::TenantId.eq(tenant_id))
             .one(db)
@@ -753,6 +796,19 @@ impl OAuthAppService {
                     .add(oauth_tokens::Column::TenantId.eq(tenant_id))
                     .add(oauth_tokens::Column::RevokedAt.is_null()),
             )
+            .exec(&tx)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
+
+        crate::models::oauth_authorization_codes::Entity::update_many()
+            .col_expr(
+                crate::models::oauth_authorization_codes::Column::UsedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .filter(crate::models::oauth_authorization_codes::Column::AppId.eq(app_id))
+            .filter(crate::models::oauth_authorization_codes::Column::UserId.eq(user_id))
+            .filter(crate::models::oauth_authorization_codes::Column::TenantId.eq(tenant_id))
+            .filter(crate::models::oauth_authorization_codes::Column::UsedAt.is_null())
             .exec(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
@@ -896,6 +952,21 @@ pub async fn sync_app_connections(
                 .await
                 .map_err(|error| {
                     tracing::error!(%error, %tenant_id, app_id = %app.id, "Failed to revoke orphan OAuth app tokens");
+                    Error::InternalServerError
+                })?;
+
+            crate::models::oauth_authorization_codes::Entity::update_many()
+                .col_expr(
+                    crate::models::oauth_authorization_codes::Column::UsedAt,
+                    Expr::value(now),
+                )
+                .filter(crate::models::oauth_authorization_codes::Column::AppId.eq(app.id))
+                .filter(crate::models::oauth_authorization_codes::Column::TenantId.eq(tenant_id))
+                .filter(crate::models::oauth_authorization_codes::Column::UsedAt.is_null())
+                .exec(&tx)
+                .await
+                .map_err(|error| {
+                    tracing::error!(%error, %tenant_id, app_id = %app.id, "Failed to invalidate orphan OAuth app authorization codes");
                     Error::InternalServerError
                 })?;
         }
@@ -1070,12 +1141,14 @@ async fn upsert_first_party_app(
     let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
     let grant_types_vec: Vec<String> = grant_types.iter().map(|s| s.to_string()).collect();
     let granted_permissions_vec = validate_granted_permissions(granted_permissions.to_vec())?;
+    let allow_loopback_http = public_url_uses_loopback_http(public_url);
     validate_managed_app_configuration(
         "first_party",
         redirect_uris,
         &scopes_vec,
         &grant_types_vec,
         &granted_permissions_vec,
+        allow_loopback_http,
     )?;
 
     let existing = OAuthApps::find()
@@ -1406,6 +1479,7 @@ fn validate_manual_app_configuration(
         scopes,
         grant_types,
         granted_permissions,
+        app_type == "mobile",
     )
 }
 
@@ -1415,6 +1489,7 @@ fn validate_managed_app_configuration(
     scopes: &[String],
     grant_types: &[String],
     granted_permissions: &[String],
+    allow_loopback_http: bool,
 ) -> Result<()> {
     validate_app_configuration(
         app_type,
@@ -1422,6 +1497,7 @@ fn validate_managed_app_configuration(
         scopes,
         grant_types,
         granted_permissions,
+        allow_loopback_http,
     )
 }
 
@@ -1431,6 +1507,7 @@ fn validate_app_configuration(
     scopes: &[String],
     grant_types: &[String],
     granted_permissions: &[String],
+    allow_loopback_http: bool,
 ) -> Result<()> {
     if scopes.is_empty() {
         return Err(Error::BadRequest(
@@ -1455,6 +1532,14 @@ fn validate_app_configuration(
         }
     }
 
+    if grant_types.iter().any(|item| item == "refresh_token")
+        && !grant_types.iter().any(|item| item == "authorization_code")
+    {
+        return Err(Error::BadRequest(
+            "refresh_token grant requires authorization_code grant".to_string(),
+        ));
+    }
+
     if app_type == "service" && grant_types.iter().any(|item| item == "authorization_code") {
         return Err(Error::BadRequest(
             "Service apps cannot use authorization_code grant".to_string(),
@@ -1477,7 +1562,7 @@ fn validate_app_configuration(
     }
 
     for redirect_uri in redirect_uris {
-        validate_redirect_uri(app_type, redirect_uri)?;
+        validate_redirect_uri(app_type, redirect_uri, allow_loopback_http)?;
     }
 
     Ok(())
@@ -1485,10 +1570,15 @@ fn validate_app_configuration(
 
 /// Redirect URIs are compared byte-for-byte at authorize time, so the
 /// registered value itself must be a safe absolute URI: no fragment
-/// (RFC 6749 section 3.1.2), no user info, TLS everywhere except
-/// loopback (RFC 8252 section 7.3), and private-use schemes only for
-/// native/mobile apps (RFC 8252 section 7.1).
-fn validate_redirect_uri(app_type: &str, redirect_uri: &str) -> Result<()> {
+/// (RFC 6749 section 3.1.2), no user info, and HTTPS for web clients.
+/// HTTP loopback is limited to native mobile clients and manifest-managed
+/// first-party apps whose configured public URL is itself loopback (local
+/// development). Private-use schemes remain limited to native/mobile apps.
+fn validate_redirect_uri(
+    app_type: &str,
+    redirect_uri: &str,
+    allow_loopback_http: bool,
+) -> Result<()> {
     let invalid = |reason: &str| {
         Error::BadRequest(format!("Invalid redirect URI '{redirect_uri}': {reason}"))
     };
@@ -1508,14 +1598,15 @@ fn validate_redirect_uri(app_type: &str, redirect_uri: &str) -> Result<()> {
             }
         }
         "http" => {
-            let host = url.host_str().unwrap_or_default();
-            let loopback = host == "localhost"
-                || host
-                    .parse::<std::net::IpAddr>()
-                    .is_ok_and(|ip| ip.is_loopback());
+            let loopback = url.host_str().is_some_and(is_loopback_host);
             if !loopback {
                 return Err(invalid(
                     "http is only allowed for loopback hosts; use https",
+                ));
+            }
+            if !allow_loopback_http {
+                return Err(invalid(
+                    "http loopback redirects are only allowed for native mobile apps or first-party local development",
                 ));
             }
         }
@@ -1526,10 +1617,43 @@ fn validate_redirect_uri(app_type: &str, redirect_uri: &str) -> Result<()> {
             if app_type != "mobile" {
                 return Err(invalid("custom schemes are only allowed for mobile apps"));
             }
+            if !is_private_use_redirect_scheme(scheme) {
+                return Err(invalid(
+                    "mobile custom schemes must use reverse-domain private-use names",
+                ));
+            }
         }
     }
 
     Ok(())
+}
+
+fn is_private_use_redirect_scheme(scheme: &str) -> bool {
+    let mut labels = scheme.split('.');
+    labels.next().is_some_and(|label| !label.is_empty())
+        && scheme.contains('.')
+        && labels.all(|label| !label.is_empty())
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    let host = host
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .unwrap_or(host);
+    host.trim_end_matches('.').eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
+}
+
+fn public_url_uses_loopback_http(public_url: &str) -> bool {
+    Url::parse(public_url).is_ok_and(|url| {
+        url.scheme() == "http"
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.fragment().is_none()
+            && url.host_str().is_some_and(is_loopback_host)
+    })
 }
 
 fn build_manifest_managed_metadata(public_url: &str) -> serde_json::Value {
@@ -1589,6 +1713,50 @@ mod tests {
     };
     use sea_orm_migration::SchemaManager;
     use serial_test::serial;
+
+    #[tokio::test]
+    #[serial]
+    async fn empty_oauth_consent_is_rejected_before_app_lookup() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let error = OAuthAppService::grant_consent(
+            &db,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            tenant.id,
+            Vec::new(),
+        )
+        .await
+        .expect_err("empty consent must be rejected");
+        assert!(matches!(error, Error::BadRequest(_)));
+    }
+
+    async fn insert_pending_authorization_code(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+        user_id: Uuid,
+        tenant_id: Uuid,
+    ) -> Uuid {
+        let now = Utc::now();
+        let id = Uuid::new_v4();
+        oauth_authorization_codes::ActiveModel {
+            id: Set(id),
+            app_id: Set(app_id),
+            user_id: Set(user_id),
+            tenant_id: Set(tenant_id),
+            code_hash: Set(format!("pending-{id}")),
+            redirect_uri: Set("https://partner.example.com/oauth/callback".to_string()),
+            scopes: Set(serde_json::json!(["catalog:read"])),
+            code_challenge: Set("challenge".to_string()),
+            code_challenge_method: Set("S256".to_string()),
+            expires_at: Set((now + chrono::Duration::minutes(10)).into()),
+            used_at: Set(None),
+            created_at: Set(now.into()),
+        }
+        .insert(db)
+        .await
+        .expect("insert pending authorization code");
+        id
+    }
 
     async fn test_db_with_tenant() -> (DatabaseConnection, tenants::Model) {
         let db = setup_test_db_with_migrations::<Migrator>().await;
@@ -1777,6 +1945,114 @@ mod tests {
     }
 
     #[test]
+    fn third_party_web_clients_reject_http_loopback_redirect_uris() {
+        for redirect_uri in [
+            "http://localhost:3000/auth/callback",
+            "http://127.0.0.1:3000/auth/callback",
+            "http://[::1]:3000/auth/callback",
+        ] {
+            let result = validate_manual_app_configuration(
+                "third_party",
+                &[redirect_uri.to_string()],
+                &["profile".to_string()],
+                &["authorization_code".to_string()],
+                &[],
+            );
+            assert!(
+                result.is_err(),
+                "third-party web clients must use HTTPS: {redirect_uri}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_mobile_clients_accept_ipv4_and_ipv6_loopback_http_redirect_uris() {
+        for redirect_uri in [
+            "http://localhost:3000/auth/callback",
+            "http://127.0.0.1:3000/auth/callback",
+            "http://[::1]:3000/auth/callback",
+        ] {
+            let result = validate_manual_app_configuration(
+                "mobile",
+                &[redirect_uri.to_string()],
+                &["profile".to_string()],
+                &["authorization_code".to_string()],
+                &[],
+            );
+            assert!(
+                result.is_ok(),
+                "native mobile clients may use loopback HTTP: {redirect_uri}"
+            );
+        }
+    }
+
+    #[test]
+    fn mobile_custom_redirect_schemes_must_use_reverse_domain_private_use_names() {
+        for redirect_uri in [
+            "ftp://example.com/callback",
+            "mailto:callback@example.com",
+            "tel:+15551234567",
+            "urn:example:oauth",
+            "myapp://callback",
+        ] {
+            assert!(
+                validate_redirect_uri("mobile", redirect_uri, true).is_err(),
+                "registered URI schemes must not be accepted as private-use schemes: {redirect_uri}"
+            );
+        }
+
+        assert!(
+            validate_redirect_uri("mobile", "com.example.app:/oauth/callback", true).is_ok(),
+            "reverse-domain private-use schemes are supported for native apps"
+        );
+    }
+
+    #[test]
+    fn mobile_and_first_party_clients_reject_non_loopback_http_redirect_uris() {
+        for app_type in ["mobile", "first_party"] {
+            assert!(
+                validate_redirect_uri(app_type, "http://example.com/callback", true).is_err(),
+                "{app_type} must not use cleartext HTTP on a non-loopback host"
+            );
+        }
+    }
+
+    #[test]
+    fn first_party_loopback_http_is_allowed_only_for_loopback_public_urls() {
+        let redirect_uris = vec!["http://localhost:3000/auth/callback".to_string()];
+        let scopes = vec!["profile".to_string()];
+        let grant_types = vec!["authorization_code".to_string()];
+
+        assert!(public_url_uses_loopback_http("http://localhost:3000"));
+        assert!(public_url_uses_loopback_http("http://[::1]:3000"));
+        assert!(!public_url_uses_loopback_http("https://localhost:3000"));
+        assert!(!public_url_uses_loopback_http("http://admin.example.com"));
+
+        assert!(
+            validate_managed_app_configuration(
+                "first_party",
+                &redirect_uris,
+                &scopes,
+                &grant_types,
+                &[],
+                public_url_uses_loopback_http("http://localhost:3000"),
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_managed_app_configuration(
+                "first_party",
+                &redirect_uris,
+                &scopes,
+                &grant_types,
+                &[],
+                public_url_uses_loopback_http("https://admin.example.com"),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn authorization_code_requires_redirect_uri() {
         let result = validate_manual_app_configuration(
             "third_party",
@@ -1787,6 +2063,47 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn refresh_token_grant_requires_authorization_code_for_all_app_types() {
+        let scopes = vec!["profile".to_string()];
+        let refresh_only = vec!["refresh_token".to_string()];
+
+        assert!(
+            validate_manual_app_configuration(
+                "third_party",
+                &[],
+                &scopes,
+                &refresh_only,
+                &[],
+            )
+            .is_err()
+        );
+        assert!(
+            validate_managed_app_configuration(
+                "first_party",
+                &[],
+                &scopes,
+                &refresh_only,
+                &[],
+                false,
+            )
+            .is_err()
+        );
+
+        let authorization_and_refresh =
+            vec!["authorization_code".to_string(), "refresh_token".to_string()];
+        assert!(
+            validate_manual_app_configuration(
+                "third_party",
+                &["https://client.example/callback".to_string()],
+                &scopes,
+                &authorization_and_refresh,
+                &[],
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -2668,6 +2985,37 @@ mod tests {
         .await
         .expect("insert oauth token");
 
+        OAuthAppService::grant_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect("grant user consent");
+        let consent_code_id =
+            insert_pending_authorization_code(&db, created.app.id, token_user.id, tenant.id).await;
+        OAuthAppService::revoke_user_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+        )
+        .await
+        .expect("revoke user consent");
+        let consent_code = oauth_authorization_codes::Entity::find_by_id(consent_code_id)
+            .one(&db)
+            .await
+            .expect("load consent-bound code")
+            .expect("consent-bound code exists");
+        assert!(
+            consent_code.used_at.is_some(),
+            "consent revocation must invalidate pending authorization codes"
+        );
+
+        let app_code_id =
+            insert_pending_authorization_code(&db, created.app.id, token_user.id, tenant.id).await;
         let revoked = OAuthAppService::revoke_app(&db, created.app.tenant_id, created.app.id)
             .await
             .expect("revoke app");
@@ -2681,6 +3029,16 @@ mod tests {
             .expect("load oauth tokens");
         assert_eq!(revoked_tokens.len(), 1);
         assert!(revoked_tokens[0].revoked_at.is_some());
+
+        let app_code = oauth_authorization_codes::Entity::find_by_id(app_code_id)
+            .one(&db)
+            .await
+            .expect("load app-bound code")
+            .expect("app-bound code exists");
+        assert!(
+            app_code.used_at.is_some(),
+            "app revocation must invalidate pending authorization codes"
+        );
     }
 
     #[tokio::test]
@@ -2879,6 +3237,17 @@ mod tests {
         .await
         .expect("insert orphan app");
 
+        let orphan_user = crate::models::users::ActiveModel::new(
+            tenant.id,
+            "orphan-oauth-code-user@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("insert orphan authorization-code user");
+        let orphan_code_id =
+            insert_pending_authorization_code(&db, orphan_app.id, orphan_user.id, tenant.id).await;
+
         let auto_created_for_another_manifest_entry = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
@@ -3022,6 +3391,15 @@ mod tests {
         assert!(
             token.revoked_at.is_some(),
             "removed managed app must revoke its tokens"
+        );
+        let orphan_code = oauth_authorization_codes::Entity::find_by_id(orphan_code_id)
+            .one(&db)
+            .await
+            .expect("read orphan authorization code")
+            .expect("orphan authorization code remains as used evidence");
+        assert!(
+            orphan_code.used_at.is_some(),
+            "removing a managed app must invalidate its pending authorization codes"
         );
 
         OAuthAppService::touch_last_used(&db, next_admin.id)

@@ -23,6 +23,7 @@ use crate::error::{Error, Result, http_error};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::middleware::channel::invalidate_tenant_channel_cache;
 use crate::models::oauth_apps;
+use crate::services::channel_cache_invalidation::publish_channel_resolution_invalidation;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 async fn bootstrap(
@@ -669,7 +670,11 @@ fn forbidden_error(description: impl Into<String>) -> Error {
 }
 
 async fn invalidate_channel_resolution_cache(ctx: &ServerRuntimeContext, tenant_id: Uuid) {
+    // The local version fence protects this process immediately; publishing the
+    // durable generation lets other replicas invalidate without waiting for the
+    // five-second reconciliation fallback.
     invalidate_tenant_channel_cache(ctx, tenant_id).await;
+    publish_channel_resolution_invalidation(ctx, tenant_id).await;
 }
 
 pub fn router() -> crate::routes::ServerRouter {
