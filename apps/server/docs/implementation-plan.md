@@ -25,6 +25,14 @@ the full-stack audit ledger. Work is isolated in
   dashboard and legacy-mutation policies to only the operation selected for
   execution. Module and legacy-mutation fragment walkers now terminate on
   cyclic fragment graphs while preserving detection of reachable protected fields.
+- Channel REST authorization now reads the authenticated token's effective
+  permissions (including OAuth scope restrictions), not persisted grants that
+  could widen authority beyond the token. It also rejects tenant mismatches.
+- DLQ listing/replay treats a top-level event-envelope tenant as authoritative;
+  nested legacy tenant fallback applies only when the top-level key is absent.
+  Replay repeats the tenant predicate within its atomic status update.
+- The GraphQL selected-operation helper reads the parser's operation-name map
+  keys, not a nonexistent field on the operation AST.
 - Blank `OTEL_SERVICE_NAME` no longer masks a usable `RUSTOK_SERVICE_NAME`.
 - Focused tests cover the added behavioral branches. Cargo, formatting,
   SQLite/PostgreSQL concurrency and real-HTTP tests are **not run** in this
