@@ -248,7 +248,11 @@ impl RateLimiter {
         let counter = requests
             .entry(key.to_string())
             .and_upsert_with(|maybe| async move {
-                advance_request_counter(maybe.map(|entry| entry.into_value()), Instant::now(), window)
+                advance_request_counter(
+                    maybe.map(|entry| entry.into_value()),
+                    Instant::now(),
+                    window,
+                )
             })
             .await
             .into_value();
@@ -879,7 +883,10 @@ mod fixed_window_tests {
             window,
         );
         assert_eq!(updated.count, 1);
-        assert_eq!(updated.window_start, start + window + Duration::from_secs(1));
+        assert_eq!(
+            updated.window_start,
+            start + window + Duration::from_secs(1)
+        );
     }
 }
 
