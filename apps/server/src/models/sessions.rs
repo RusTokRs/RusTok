@@ -93,7 +93,10 @@ mod tests {
     fn legacy_session_expires_after_original_absolute_cap() {
         let now = Utc::now();
         let legacy = session(now - Duration::days(SESSION_ABSOLUTE_LIFETIME_DAYS + 1));
-        assert!(!legacy.is_active(), "a long sliding TTL must not revive an old lineage");
+        assert!(
+            !legacy.is_active(),
+            "a long sliding TTL must not revive an old lineage"
+        );
     }
 
     #[test]
