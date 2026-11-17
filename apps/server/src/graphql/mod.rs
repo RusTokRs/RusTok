@@ -113,6 +113,7 @@ mod operation_selection_tests {
         let single = async_graphql::parser::parse_query("query Public { ping }")
             .expect("document should parse");
         assert_eq!(selected_operations(&single, None).len(), 1);
+        assert_eq!(selected_operations(&single, Some("Public")).len(), 1);
 
         let anonymous = async_graphql::parser::parse_query("{ ping }")
             .expect("document should parse");
