@@ -1087,3 +1087,40 @@ guarantee.
 This remains an explicit limitation for the next continuation; no stronger
 replay guarantee is claimed.
 
+
+
+## P13 — Acknowledge root-event projections before outbox completion (2026-11-18)
+
+The sealed contract path already awaited matching module handlers, but root
+`DomainEvent` delivery only broadcast into an in-memory channel. The outbox
+relay could mark a row dispatched before root projections completed; handler
+errors after the configured retry budget were logged and swallowed. In the
+Iggy profile, a local root-projection failure was also swallowed after remote
+acceptance, leaving no durable local retry.
+
+### Implemented
+
+- Added an acknowledged root-delivery path through the existing explicit module
+  listener registry. It waits for every matching handler and propagates handler,
+  capacity, and shutdown failures to the outbox relay.
+- The single-node `outbox` profile now uses the acknowledged local target.
+  The `outbox_iggy` profile also returns local projection failures so the
+  canonical outbox envelope is retried unchanged.
+- An unavailable local registry is rejected before irreversible remote
+  publication. A projection failure after remote acceptance may still cause
+  the same envelope to be published again; remote consumers must be idempotent.
+- Added regression coverage for handler completion, projection failure,
+  explicit empty registries, primary refusal, and retry with the same event ID.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-core --lib
+cargo test -p rustok-core --lib events::contract_delivery
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::event_transport_factory
+```
+

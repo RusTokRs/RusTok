@@ -77,8 +77,10 @@ Windows must use an external Iggy deployment. See the
 1. A module writes its business state and outbox event in one transaction.
 2. `rustok-outbox` claims and retries pending records.
 3. The selected relay target receives the event.
-4. Local module listeners receive an idempotent local fan-out after the primary
-   target accepts the event.
+4. Local module listeners acknowledge completion of every matching handler
+   before the relay marks the outbox row dispatched. If local projection fails
+   after Iggy accepts the event, the relay retries the same envelope; remote
+   consumers must therefore be idempotent.
 
 Settings and runtime locations:
 
@@ -122,6 +124,6 @@ workers are separate runtime paths.
 Worker hosts keep the dispatcher and its listener registry active even when the
 composed module set has no handlers. An explicit empty registry lets remote-only
 sealed event families reach the configured broker while required local families
-still fail closed. It also gives the single-node outbox target a local receiver,
-so root events are not retried or dead-lettered solely because no module handler
-was registered.
+still fail closed. It also lets the single-node outbox target distinguish an
+intentionally empty registry from an uninitialized dispatcher, so root events
+without a matching local handler can be acknowledged without a broadcast receiver.

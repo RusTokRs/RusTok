@@ -121,7 +121,7 @@ impl EventDispatcher {
         }
         let registration = self
             .bus
-            .bind_contract_listeners(self.handlers.clone(), self.config.max_concurrent)?;
+            .bind_contract_listeners(self.handlers.clone(), self.config.clone())?;
         Ok(self.start_inner(Some(registration)))
     }
 
@@ -334,7 +334,7 @@ impl EventDispatcher {
         consumer_runtime.record_dispatch_latency(&event_type, dispatch_started_at);
     }
 
-    async fn handle_with_retry(
+    pub(super) async fn handle_with_retry(
         handler: Arc<dyn EventHandler>,
         envelope: EventEnvelope,
         config: &DispatcherConfig,

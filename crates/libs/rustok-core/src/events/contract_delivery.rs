@@ -1,7 +1,8 @@
-//! Acknowledged sealed-family delivery for the existing module-listener bus.
+//! Acknowledged local module delivery for the existing listener bus.
 //!
 //! This is not a second queue: OutboxRelay retains durable work and retries until every
-//! matching handler has completed. Remote cursor consumers remain transport-owned.
+//! matching root or sealed-family handler has completed. Remote cursor consumers remain
+//! transport-owned.
 
 use std::fmt;
 use std::sync::{
@@ -12,16 +13,19 @@ use std::time::Instant;
 
 use rustok_events::{ContractEventEnvelope, ContractEventPayload};
 use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
-use super::{EventBus, EventHandler};
+use super::{DispatcherConfig, EventBus, EventDispatcher, EventEnvelope, EventHandler};
 use crate::{Error, Result};
 
 pub(super) type ContractListenerRegistry = Arc<RwLock<Option<Weak<ContractListenerSet>>>>;
 
 pub(super) struct ContractListenerSet {
     handlers: Vec<Arc<dyn EventHandler>>,
+    config: DispatcherConfig,
     active: AtomicBool,
     capacity: Arc<Semaphore>,
+    handler_capacity: Arc<Semaphore>,
 }
 
 impl fmt::Debug for ContractListenerSet {
@@ -41,7 +45,7 @@ impl ContractListenerSet {
     fn require_active(&self) -> Result<()> {
         if !self.active.load(Ordering::Acquire) {
             return Err(Error::External(
-                "sealed module listeners are not running".to_owned(),
+                "module listeners are not running".to_owned(),
             ));
         }
         Ok(())
@@ -51,6 +55,90 @@ impl ContractListenerSet {
         self.handlers
             .iter()
             .any(|handler| handler.handles_contract(payload))
+    }
+
+    /// Delivers a root event through the same registered module handlers as the
+    /// broadcast dispatcher, but waits for every matching handler before allowing
+    /// the outbox relay to acknowledge the event.
+    async fn deliver_root(&self, envelope: &EventEnvelope) -> Result<()> {
+        self.require_active()?;
+        let handlers = self
+            .handlers
+            .iter()
+            .filter(|handler| handler.handles(&envelope.event))
+            .cloned()
+            .collect::<Vec<_>>();
+        if handlers.is_empty() {
+            return self.require_active();
+        }
+
+        // Refuse rather than queueing unbounded durable work in memory. The
+        // outbox keeps ownership and retries when the local dispatcher is busy.
+        let _delivery_permit = Arc::clone(&self.capacity)
+            .try_acquire_owned()
+            .map_err(|_| {
+                Error::External("root module listener capacity is exhausted".to_owned())
+            })?;
+
+        if self.config.fail_fast {
+            for handler in handlers {
+                self.require_active()?;
+                let _handler_permit = Arc::clone(&self.handler_capacity)
+                    .acquire_owned()
+                    .await
+                    .map_err(|_| {
+                    Error::External("root handler capacity is closed".to_owned())
+                })?;
+                EventDispatcher::handle_with_retry(
+                    handler,
+                    envelope.clone(),
+                    &self.config,
+                )
+                .await?;
+            }
+        } else {
+            let mut tasks = JoinSet::new();
+            for handler in handlers {
+                let handler_capacity = Arc::clone(&self.handler_capacity);
+                let config = self.config.clone();
+                let envelope = envelope.clone();
+                tasks.spawn(async move {
+                    let _handler_permit = handler_capacity
+                        .acquire_owned()
+                        .await
+                        .map_err(|_| {
+                            Error::External("root handler capacity is closed".to_owned())
+                        })?;
+                    EventDispatcher::handle_with_retry(handler, envelope, &config).await
+                });
+            }
+
+            let mut first_error = None;
+            while let Some(result) = tasks.join_next().await {
+                match result {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => {
+                        if first_error.is_none() {
+                            first_error = Some(error);
+                        }
+                    }
+                    Err(error) => {
+                        if first_error.is_none() {
+                            first_error = Some(Error::External(format!(
+                                "root event handler task failed: {error}"
+                            )));
+                        }
+                    }
+                }
+            }
+            if let Some(error) = first_error {
+                return Err(error);
+            }
+        }
+
+        // If shutdown raced an in-flight idempotent projection, retain durable
+        // work rather than acknowledging an ambiguous handoff.
+        self.require_active()
     }
 
     async fn deliver(&self, envelope: &ContractEventEnvelope) -> Result<()> {
@@ -116,11 +204,11 @@ impl EventBus {
     pub(super) fn bind_contract_listeners(
         &self,
         handlers: Vec<Arc<dyn EventHandler>>,
-        max_concurrent: usize,
+        config: DispatcherConfig,
     ) -> Result<ContractListenerRegistration> {
-        if max_concurrent > Semaphore::MAX_PERMITS {
+        if config.max_concurrent > Semaphore::MAX_PERMITS {
             return Err(Error::Validation(
-                "sealed listener concurrency exceeds the supported semaphore bound".to_owned(),
+                "module listener concurrency exceeds the supported semaphore bound".to_owned(),
             ));
         }
         let mut registry = self
@@ -133,18 +221,27 @@ impl EventBus {
             .is_some_and(|state| state.active.load(Ordering::Acquire))
         {
             return Err(Error::External(
-                "sealed module listeners are already bound to this bus".to_owned(),
+                "module listeners are already bound to this bus".to_owned(),
             ));
         }
+        let max_concurrent = config.max_concurrent.max(1);
         let state = Arc::new(ContractListenerSet {
             handlers,
+            config,
             active: AtomicBool::new(true),
-            capacity: Arc::new(Semaphore::new(max_concurrent.max(1))),
+            capacity: Arc::new(Semaphore::new(max_concurrent)),
+            handler_capacity: Arc::new(Semaphore::new(max_concurrent)),
         });
         // The bus must not retain handlers that can themselves own an EventBus clone.
         // Only the running registration/dispatcher owns this set; avoid an Arc cycle.
         *registry = Some(Arc::downgrade(&state));
         Ok(ContractListenerRegistration { state })
+    }
+
+    /// Refuses local delivery until the host has bound a live module listener registry.
+    /// This check is performed before irreversible remote publication.
+    pub fn ensure_local_listeners_running(&self) -> Result<()> {
+        self.contract_listener_set()?.require_active()
     }
 
     fn contract_listener_set(&self) -> Result<Arc<ContractListenerSet>> {
@@ -155,7 +252,7 @@ impl EventBus {
             .and_then(Weak::upgrade)
             .ok_or_else(|| {
                 Error::External(
-                    "sealed module listeners are not bound to the delivery bus".to_owned(),
+                    "module listeners are not bound to the delivery bus".to_owned(),
                 )
             })
     }
@@ -170,12 +267,28 @@ impl EventBus {
         Ok(state.handles(payload))
     }
 
+    /// Delivers a root envelope and waits for every matching module handler.
+    /// This acknowledged path is used by the durable outbox relay.
+    pub async fn publish_root_envelope_and_wait(&self, envelope: EventEnvelope) -> Result<()> {
+        envelope
+            .validate_registered_schema()
+            .map_err(|error| Error::Validation(error.to_string()))?;
+        let state = self.contract_listener_set()?;
+        state.deliver_root(&envelope).await?;
+        self.record_root_published(&envelope);
+        Ok(())
+    }
+
     /// Delivers the unchanged sealed envelope and awaits all matching module handlers.
-    /// Root envelopes retain the established root-only broadcast path.
+    /// Root envelopes use the same acknowledged local-delivery boundary.
     pub async fn publish_contract_envelope(&self, envelope: ContractEventEnvelope) -> Result<()> {
         let payload = envelope.payload().map_err(invalid_envelope)?;
         if matches!(payload, ContractEventPayload::Root(_)) {
-            return self.publish_envelope(envelope.into_root_envelope().map_err(invalid_envelope)?);
+            return self
+                .publish_root_envelope_and_wait(
+                    envelope.into_root_envelope().map_err(invalid_envelope)?,
+                )
+                .await;
         }
         let state = self.contract_listener_set()?;
         state.deliver(&envelope).await?;
@@ -262,12 +375,126 @@ mod tests {
         })
     }
 
+    fn config(max_concurrent: usize) -> DispatcherConfig {
+        DispatcherConfig {
+            max_concurrent,
+            ..DispatcherConfig::default()
+        }
+    }
+
+    fn root_envelope() -> EventEnvelope {
+        EventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: Uuid::new_v4(),
+            },
+        )
+    }
+
+    struct RootListener {
+        calls: Arc<AtomicUsize>,
+        failure: bool,
+        entered: Option<Arc<Notify>>,
+        release: Option<Arc<Notify>>,
+    }
+
+    #[async_trait]
+    impl EventHandler for RootListener {
+        fn name(&self) -> &'static str {
+            "root_delivery_regression"
+        }
+
+        fn handles(&self, event: &DomainEvent) -> bool {
+            matches!(event, DomainEvent::TenantUpdated { .. })
+        }
+
+        async fn handle(&self, _envelope: &EventEnvelope) -> Result<()> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if let Some(entered) = &self.entered {
+                entered.notify_one();
+            }
+            if let Some(release) = &self.release {
+                release.notified().await;
+            }
+            if self.failure {
+                return Err(Error::External("root projection failed".to_owned()));
+            }
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn acknowledged_root_delivery_waits_for_handlers_and_propagates_failure() {
+        let bus = EventBus::new();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let entered = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let _binding = bus
+            .bind_contract_listeners(
+                vec![Arc::new(RootListener {
+                    calls: Arc::clone(&calls),
+                    failure: false,
+                    entered: Some(entered.clone()),
+                    release: Some(release.clone()),
+                })],
+                config(1),
+            )
+            .unwrap();
+
+        let envelope = root_envelope();
+        let task = tokio::spawn({
+            let bus = bus.clone();
+            let envelope = envelope.clone();
+            async move { bus.publish_root_envelope_and_wait(envelope).await }
+        });
+        entered.notified().await;
+        assert!(!task.is_finished(), "root delivery must await its handler");
+        release.notify_one();
+        task.await.unwrap().unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(bus.stats().events_published(), 1);
+
+        let failing_bus = EventBus::new();
+        let failing_calls = Arc::new(AtomicUsize::new(0));
+        let _failing_binding = failing_bus
+            .bind_contract_listeners(
+                vec![Arc::new(RootListener {
+                    calls: Arc::clone(&failing_calls),
+                    failure: true,
+                    entered: None,
+                    release: None,
+                })],
+                config(1),
+            )
+            .unwrap();
+        assert!(
+            failing_bus
+                .publish_root_envelope_and_wait(root_envelope())
+                .await
+                .is_err(),
+            "a failed root projection must keep the outbox event retryable"
+        );
+        assert_eq!(failing_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(failing_bus.stats().events_published(), 0);
+    }
+
+    #[tokio::test]
+    async fn acknowledged_root_delivery_accepts_an_explicit_empty_registry() {
+        let bus = EventBus::new();
+        let _binding = bus.bind_contract_listeners(vec![], config(1)).unwrap();
+        bus.publish_root_envelope_and_wait(root_envelope())
+            .await
+            .expect("an initialized empty registry accepts an unhandled root event");
+        assert_eq!(bus.stats().events_published(), 1);
+    }
+
     #[tokio::test]
     async fn unbound_and_unmatched_sealed_delivery_are_not_success() {
         let bus = EventBus::new();
         // Invalid configuration refuses before acquiring/poisoning the registry lock.
         assert!(matches!(
-            bus.bind_contract_listeners(vec![], usize::MAX),
+            bus.bind_contract_listeners(vec![], config(usize::MAX)),
             Err(Error::Validation(_))
         ));
         let oversized_queue = super::super::DispatcherConfig {
@@ -280,7 +507,7 @@ mod tests {
             Err(Error::Validation(_))
         ));
         assert!(bus.publish_contract_envelope(envelope()).await.is_err());
-        let _binding = bus.bind_contract_listeners(vec![], 1).unwrap();
+        let _binding = bus.bind_contract_listeners(vec![], config(1)).unwrap();
         assert!(!bus.has_contract_handler(&envelope()).unwrap());
         assert!(bus.publish_contract_envelope(envelope()).await.is_err());
     }
@@ -300,7 +527,7 @@ mod tests {
                     entered: Some(entered.clone()),
                     release: Some(release.clone()),
                 })],
-                1,
+                config(1),
             )
             .unwrap();
         let task = tokio::spawn({
@@ -321,7 +548,7 @@ mod tests {
         let bus = EventBus::new();
         let calls = Arc::new(AtomicUsize::new(0));
         let _binding = bus
-            .bind_contract_listeners(vec![listener(&calls, true)], 1)
+            .bind_contract_listeners(vec![listener(&calls, true)], config(1))
             .unwrap();
         let envelope = envelope();
         for _ in 0..2 {
@@ -340,14 +567,14 @@ mod tests {
         let bus = EventBus::new();
         let calls = Arc::new(AtomicUsize::new(0));
         let binding = bus
-            .bind_contract_listeners(vec![listener(&calls, false)], 1)
+            .bind_contract_listeners(vec![listener(&calls, false)], config(1))
             .unwrap();
-        assert!(bus.bind_contract_listeners(vec![], 1).is_err());
+        assert!(bus.bind_contract_listeners(vec![], config(1)).is_err());
         binding.state.close();
         assert!(bus.has_contract_handler(&envelope()).is_err());
         assert!(bus.publish_contract_envelope(envelope()).await.is_err());
         let _replacement = bus
-            .bind_contract_listeners(vec![listener(&calls, false)], 1)
+            .bind_contract_listeners(vec![listener(&calls, false)], config(1))
             .unwrap();
         drop(binding);
         bus.publish_contract_envelope(envelope()).await.unwrap();
@@ -368,7 +595,7 @@ mod tests {
                     entered: Some(entered.clone()),
                     release: Some(release.clone()),
                 })],
-                1,
+                config(1),
             )
             .unwrap();
         let task = tokio::spawn({
