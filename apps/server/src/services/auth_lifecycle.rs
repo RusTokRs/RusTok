@@ -526,7 +526,9 @@ impl AuthLifecycleService {
                 // Run a full Argon2 verification against a dummy hash so
                 // an unknown email takes as long as a wrong password:
                 // without this, login latency enumerates accounts.
-                verify_password_async(password.to_string(), crate::auth::dummy_password_hash())
+                let dummy_hash =
+                    crate::auth::dummy_password_hash().map_err(AuthLifecycleError::from)?;
+                verify_password_async(password.to_string(), dummy_hash)
                     .await
                     .map_err(AuthLifecycleError::from)?;
                 return Err(AuthLifecycleError::InvalidCredentials);
