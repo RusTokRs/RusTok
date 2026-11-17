@@ -428,7 +428,7 @@ async fn create_resolution_rule(
     let rule = service
         .create_resolution_rule(
             policy_set_id,
-            create_resolution_rule_input(input).map_err(Error::BadRequest)?,
+            create_resolution_rule_input(input).map_err(map_channel_error)?,
         )
         .await
         .map_err(map_channel_error)?;

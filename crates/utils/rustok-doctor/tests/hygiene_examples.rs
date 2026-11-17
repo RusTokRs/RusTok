@@ -533,8 +533,7 @@ fn secured_read_max(buf: [u8; 4]) -> Result<(), ()> {
 
 #[test]
 fn detects_real_channel_admin_client_per_request() {
-    let channel_file =
-        include_str!("../../../modules/rustok-channel/admin/src/transport/rest_adapter.rs");
+    let channel_file = include_str!("fixtures/channel_admin_rest_adapter.rs");
     let findings = rustok_doctor::scan_source(
         Path::new("crates/modules/rustok-channel/admin/src/transport/rest_adapter.rs"),
         channel_file,
@@ -662,7 +661,7 @@ fn expected_stub() {
 
 #[test]
 fn detects_real_fulfillment_and_pages_pointer_args() {
-    let fulfillment_source = include_str!("../../../modules/rustok-fulfillment/admin/src/core.rs");
+    let fulfillment_source = include_str!("fixtures/fulfillment_admin_core.rs");
     let findings = rustok_doctor::scan_source(
         Path::new("crates/modules/rustok-fulfillment/admin/src/core.rs"),
         fulfillment_source,
