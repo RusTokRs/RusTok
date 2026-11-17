@@ -1142,7 +1142,7 @@ mod lifecycle_tests {
 
     #[tokio::test]
     async fn empty_listener_set_binds_an_explicit_registry_for_transport_routing() {
-        use rustok_core::events::MemoryTransport;
+        use rustok_core::events::{EventTransport, MemoryTransport};
         use rustok_events::{
             ContractEventEnvelope, DomainEvent, EventEnvelope, ProductIndexRefreshEvent,
         };
