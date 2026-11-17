@@ -75,6 +75,14 @@ Invite acceptance and user-admin revocation share a transaction-scoped
 cannot be retroactively revoked, and replayed revocations do not publish another
 `UserInviteRevoked` event.
 
+OAuth consent grants and revocations lock the app row and then the subject row,
+matching token issuance's lock order before reading or changing consent. This
+prevents an exchange from committing a token against consent that was revoked
+first, and prevents grants after an app or user becomes inactive. Manual OAuth
+app edits mark lifecycle, credential, identity, and runtime-owned columns
+`NotSet`; a stale edit cannot reactivate a revoked client or erase a newer
+`last_used_at` value.
+
 ## Mandatory platform baseline
 
 For `apps/server`, the mandatory baseline consists of two layers.
