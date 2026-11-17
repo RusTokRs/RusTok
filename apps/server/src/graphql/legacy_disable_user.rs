@@ -28,15 +28,18 @@ fn selection_contains_disable_user(
             Selection::FragmentSpread(fragment) => {
                 let fragment_name = fragment.node.fragment_name.node.as_str();
                 visited_fragments.insert(fragment_name.to_owned())
-                    && document.fragments.get(fragment_name).is_some_and(|definition| {
-                        selection_contains_disable_user(
-                            operation_type,
-                            &definition.node.selection_set.node,
-                            document,
-                            visited_fragments,
-                        )
-                    })
-            },
+                    && document
+                        .fragments
+                        .get(fragment_name)
+                        .is_some_and(|definition| {
+                            selection_contains_disable_user(
+                                operation_type,
+                                &definition.node.selection_set.node,
+                                document,
+                                visited_fragments,
+                            )
+                        })
+            }
             Selection::InlineFragment(fragment) => selection_contains_disable_user(
                 operation_type,
                 &fragment.node.selection_set.node,
@@ -168,8 +171,14 @@ mod tests {
         )
         .expect("document should parse");
 
-        assert!(!document_contains_disable_user(&document, Some("PublicInfo")));
-        assert!(document_contains_disable_user(&document, Some("DisableAccount")));
+        assert!(!document_contains_disable_user(
+            &document,
+            Some("PublicInfo")
+        ));
+        assert!(document_contains_disable_user(
+            &document,
+            Some("DisableAccount")
+        ));
     }
 
     #[test]
