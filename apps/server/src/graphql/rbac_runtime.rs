@@ -216,13 +216,17 @@ mod tests {
         let db = sea_orm::Database::connect("sqlite::memory:")
             .await
             .expect("SQLite database");
+        db.execute_unprepared("CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL)")
+            .await
+            .expect("create roles table");
+        db.execute_unprepared("CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL)")
+            .await
+            .expect("create users table");
         db.execute_unprepared(
-            "CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL);
-             CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL);
-             CREATE TABLE user_roles (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, role_id TEXT NOT NULL);",
+            "CREATE TABLE user_roles (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, role_id TEXT NOT NULL)",
         )
         .await
-        .expect("create RBAC tables");
+        .expect("create user_roles table");
 
         let tenant_a = Uuid::new_v4();
         let tenant_b = Uuid::new_v4();
