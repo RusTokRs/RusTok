@@ -398,17 +398,48 @@ struct LocalEventDeliveryTransport {
 #[async_trait]
 impl EventTransport for LocalEventDeliveryTransport {
     async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
-        self.local
+        let event_id = envelope.id;
+        let event_type = envelope.event.event_type();
+        if let Err(error) = self
+            .local
             .event_bus()
             .publish_root_envelope_and_wait(envelope)
             .await
+        {
+            EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
+            rustok_telemetry::metrics::record_event_error(event_type, "local_delivery");
+            tracing::error!(
+                event_id = %event_id,
+                event_type,
+                error = %error,
+                "Local root-event delivery failed"
+            );
+            return Err(error);
+        }
+        Ok(())
     }
 
     async fn publish_contract(
         &self,
         envelope: ContractEventEnvelope,
     ) -> rustok_core::Result<()> {
-        self.local.publish_contract(envelope).await
+        let event_id = envelope.id();
+        let event_type = envelope.event_type().to_owned();
+        if let Err(error) = self.local.publish_contract(envelope).await {
+            EVENT_LOCAL_DELIVERY_FAILURE_TOTAL.fetch_add(1, Ordering::Relaxed);
+            rustok_telemetry::metrics::record_event_error(
+                &event_type,
+                "local_contract_delivery",
+            );
+            tracing::error!(
+                %event_id,
+                %event_type,
+                error = %error,
+                "Local contract delivery failed"
+            );
+            return Err(error);
+        }
+        Ok(())
     }
 
     fn reliability_level(&self) -> ReliabilityLevel {
@@ -601,6 +632,35 @@ mod tests {
             Ok(_) => panic!("retention polling must remain bounded"),
         };
         assert!(error.to_string().contains("interval_seconds must be between"));
+    }
+
+    #[tokio::test]
+    async fn single_node_outbox_target_counts_local_root_projection_failures() {
+        let local = MemoryTransport::with_capacity(8);
+        let listener_bus = local.event_bus();
+        let target = LocalEventDeliveryTransport { local };
+        let handled = Arc::new(Mutex::new(vec![]));
+        let running = listen_root(
+            listener_bus,
+            handled.clone(),
+            Arc::new(AtomicBool::new(true)),
+        );
+        let envelope = EventEnvelope::new(
+            Uuid::from_u128(11),
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: Uuid::from_u128(11),
+            },
+        );
+        let failures_before = event_local_delivery_metrics_snapshot().failure_total;
+
+        assert!(target.publish(envelope).await.is_err());
+        assert_eq!(handled.lock().unwrap().len(), 1);
+        assert!(
+            event_local_delivery_metrics_snapshot().failure_total > failures_before,
+            "single-node local delivery failures must be observable"
+        );
+        running.stop().await.expect("root dispatcher stop");
     }
 
     #[tokio::test]
