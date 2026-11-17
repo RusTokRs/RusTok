@@ -106,6 +106,32 @@ This contract does not include:
 For example, `WorkflowCronScheduler` remains a separate background runtime path and is not
 published as an `event_listener`.
 
+## Acknowledged local root projections (2026-11-18; source only)
+
+The Outbox relay's root `DomainEvent` path now uses the same explicit
+`EventHandler` registry as sealed local delivery. It waits for every matching
+module handler and returns handler, capacity, or listener-lifecycle failures to
+the Outbox relay instead of acknowledging the row after an in-memory broadcast.
+An initialized empty registry is valid when no module handler matches a root
+event; an absent or inactive registry is not.
+
+For `outbox`, the relay acknowledges only after local module handlers complete.
+For `outbox_iggy`, the configured primary accepts the unchanged envelope first,
+then local module handlers must complete. A local failure can resend the same
+event identity to Iggy, so remote consumers remain at-least-once and must be
+idempotent. This path does not notify arbitrary broadcast subscribers or
+acknowledge a remote persistent receive/cursor.
+
+The generic `EventBus.publish_envelope` broadcast API remains best-effort.
+The Outbox root path does not broadcast to arbitrary EventBus subscribers; it
+invokes only registered local module handlers through
+`publish_root_envelope_and_wait`.
+The in-process EventBus-to-Outbox compatibility bridge remains process-local
+until its first outbox insert; business mutations requiring atomic event
+durability must use `TransactionalEventBus`.
+
+See the [accepted root-delivery decision](../../DECISIONS/2026-11-18-acknowledged-root-event-delivery.md).
+
 ## Content and Orchestration Events
 
 A distinction must be made between:
@@ -241,7 +267,8 @@ Existing EventHandler/module registry/dispatcher/EventBus/Memory now offer expli
 opt-in through `start_with_contract_delivery`. Handlers validate the canonical frame and are
 awaited under bounded concurrency; unbound/closed/no-handler/capacity/failure paths refuse local
 acknowledgement. A Weak bus binding follows the running task's lifecycle and avoids handler/bus
-cycles. Root wire/APIs and best-effort root broadcast do not acquire this stronger guarantee.
+cycles. Root wire/API shapes remain unchanged. The generic broadcast API stays best-effort; the Outbox
+relay's root path has a separate acknowledged local module-handler boundary, documented below.
 This is not another event bus, in-memory fallback queue or domain publisher; Outbox remains the
 single durable retry/DLQ owner.
 

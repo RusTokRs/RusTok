@@ -138,14 +138,25 @@ database error. Root OutboxTransport publication is idempotent by envelope ID:
 a retry is accepted only when the stored canonical envelope exactly matches
 the retry payload.
 
-Backpressure permits are released after persistence, for lagged messages, and
-when queued messages are discarded during task teardown. The effective
-backpressure depth is clamped to the broadcast channel capacity so the channel
-cannot silently overflow before the controller rejects new publications.
+A hard admission bound is always installed at the broadcast channel capacity,
+even when `events.backpressure.enabled = false`. Disabling that option only
+disables the configurable early warning/critical thresholds; it never permits
+Tokio's broadcast ring to overwrite an event that the publisher was told it
+accepted. When enabled, the configured queue depth is capped at the ring
+capacity. Permits are released after persistence, for explicitly reported
+lagged messages, and when queued messages are discarded during task teardown.
 
-During graceful shutdown the shared stop signal asks the forwarder to drain
-already accepted messages. The server allows up to 30 seconds for this drain
-before aborting the task.
+The receiver is subscribed before `event_bus_from_context` returns the bus to
+publishers, avoiding a first-publish startup race. Graceful shutdown is
+two-phase: the global stop signal first quiesces and joins producers; only
+after the other registered worker drains complete does the server signal the
+forwarder to drain its remaining accepted events. The server allows up to
+30 seconds for this final drain before a forced abort.
+
+This bridge is still process-local until the first outbox insert. A process
+crash or forced abort before persistence can lose an in-memory publication;
+business mutations that require atomic state/event durability must publish
+through `TransactionalEventBus`, not this compatibility bridge.
 
 
 The event forwarder is included in worker readiness once it has been started.

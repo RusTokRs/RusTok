@@ -77,36 +77,43 @@ impl Drop for AbortOnDropEventForwarderTask {
 }
 
 #[derive(Clone)]
-pub struct EventForwarderHandle(Arc<AbortOnDropEventForwarderTask>);
+pub struct EventForwarderHandle {
+    task: Arc<AbortOnDropEventForwarderTask>,
+    stop_tx: watch::Sender<bool>,
+}
 
 impl EventForwarderHandle {
     #[cfg(test)]
-    pub(crate) fn for_shutdown_test(
-        mut stop_rx: watch::Receiver<bool>,
-    ) -> (Self, Vec<tokio::task::AbortHandle>) {
+    pub(crate) fn for_shutdown_test() -> (Self, Vec<tokio::task::AbortHandle>) {
+        let (stop_tx, mut stop_rx) = watch::channel(false);
         let task = tokio::spawn(async move {
-            if !*stop_rx.borrow() {
-                let _ = stop_rx.changed().await;
-            }
+            let _ = stop_rx.changed().await;
         });
         let tasks = vec![task.abort_handle()];
-        (Self::new(task), tasks)
+        (Self::new(task, stop_tx), tasks)
     }
 
-    fn new(task: JoinHandle<()>) -> Self {
-        Self(Arc::new(AbortOnDropEventForwarderTask::new(task)))
+    fn new(task: JoinHandle<()>, stop_tx: watch::Sender<bool>) -> Self {
+        Self {
+            task: Arc::new(AbortOnDropEventForwarderTask::new(task)),
+            stop_tx,
+        }
     }
 
     pub fn is_running(&self) -> bool {
-        self.0.is_running()
+        self.task.is_running()
     }
 
     pub(crate) fn abort(&self) {
-        self.0.abort();
+        self.task.abort();
+    }
+
+    pub(crate) fn request_stop(&self) {
+        self.stop_tx.send_replace(true);
     }
 
     pub(crate) fn take_task(&self) -> Option<JoinHandle<()>> {
-        self.0.take_task()
+        self.task.take_task()
     }
 }
 
@@ -156,8 +163,21 @@ fn ensure_event_forwarder(ctx: &ServerRuntimeContext, bus: Arc<EventBus>) {
     }
 
     let transport = shared_transport;
-    let task = tokio::spawn(supervise_event_forwarder(bus, transport, stop.subscribe()));
-    ctx.shared_insert(EventForwarderHandle::new(task));
+    // The forwarder has a dedicated drain signal. The global StopHandle first
+    // quiesces producers; shutdown requests this signal only after they have
+    // joined, so a final in-flight publication cannot race an empty-queue exit.
+    let (forwarder_stop_tx, forwarder_stop_rx) = watch::channel(false);
+    // Subscribe before returning the bus to publishers. Spawning a task and
+    // subscribing inside it leaves a startup window where broadcast::send
+    // reports no receivers and the first accepted domain event is rejected.
+    let initial_receiver = EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
+    let task = tokio::spawn(supervise_event_forwarder(
+        bus,
+        transport,
+        forwarder_stop_rx,
+        initial_receiver,
+    ));
+    ctx.shared_insert(EventForwarderHandle::new(task, forwarder_stop_tx));
 }
 
 pub(crate) fn take_forwarder_task_for_shutdown(
@@ -169,20 +189,23 @@ pub(crate) fn take_forwarder_task_for_shutdown(
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     ctx.shared_take::<EventForwarderHandle>()
-        .and_then(|forwarder| forwarder.take_task())
+        .and_then(|forwarder| {
+            forwarder.request_stop();
+            forwarder.take_task()
+        })
 }
 
 async fn supervise_event_forwarder(
     bus: Arc<EventBus>,
     transport: Arc<dyn EventTransport>,
     mut stop_rx: watch::Receiver<bool>,
+    initial_receiver: EventForwarderReceiver,
 ) {
+    let mut next_receiver = Some(initial_receiver);
     loop {
-        if *stop_rx.borrow() {
-            return;
-        }
-
-        let receiver = EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
+        let receiver = next_receiver
+            .take()
+            .unwrap_or_else(|| EventForwarderReceiver::new(bus.subscribe(), bus.backpressure()));
         let outcome = AssertUnwindSafe(run_event_forwarder(
             receiver,
             Arc::clone(&transport),
@@ -191,6 +214,9 @@ async fn supervise_event_forwarder(
         .catch_unwind()
         .await;
 
+        // run_event_forwarder owns the drain even when stop was requested
+        // before this supervisor was first polled. Do not return before the
+        // initial receiver has persisted its already-accepted queue.
         if *stop_rx.borrow() {
             return;
         }
@@ -419,48 +445,72 @@ pub fn transactional_event_bus_from_context(ctx: &ServerRuntimeContext) -> Trans
 }
 
 fn build_event_bus(ctx: &ServerRuntimeContext, settings: Option<&RustokSettings>) -> EventBus {
-    let Some(runtime) =
-        ctx.shared_get::<Arc<crate::services::event_transport_factory::EventRuntime>>()
-    else {
-        return EventBus::default();
-    };
-    let channel_capacity = runtime.channel_capacity.max(1);
+    const DEFAULT_WARNING_THRESHOLD: f64 = 0.999;
+    const HARD_CAPACITY_THRESHOLD: f64 = 1.0;
 
-    let Some(settings) = settings else {
-        tracing::warn!(
-            "Rustok settings unavailable while creating EventBus; backpressure disabled"
-        );
-        return EventBus::with_capacity(channel_capacity);
-    };
+    let runtime_capacity = ctx
+        .shared_get::<Arc<crate::services::event_transport_factory::EventRuntime>>()
+        .map(|runtime| runtime.channel_capacity);
+    // EventBus can be requested before EventRuntime is composed. Still honor the
+    // validated bootstrap capacity instead of silently falling back to the core
+    // default, and always guard the durable forwarder's broadcast ring.
+    let channel_capacity = runtime_capacity
+        .or_else(|| settings.map(|settings| settings.events.channel_capacity))
+        .unwrap_or(128)
+        .max(1);
+
+    let backpressure = settings.map(|settings| &settings.events.backpressure);
+    let (max_queue_depth, warning_threshold, critical_threshold) =
+        match backpressure.filter(|config| config.enabled) {
+            Some(config) => {
+                let configured_max_depth = config.max_queue_depth.max(1);
+                let max_queue_depth = configured_max_depth.min(channel_capacity);
+                if configured_max_depth > channel_capacity {
+                    tracing::warn!(
+                        configured_max_depth,
+                        channel_capacity,
+                        "Clamping EventBus backpressure depth to broadcast capacity to prevent lagged event loss"
+                    );
+                }
+                (
+                    max_queue_depth,
+                    config.warning_threshold,
+                    config.critical_threshold,
+                )
+            }
+            None => {
+                if settings.is_none() {
+                    tracing::warn!(
+                        capacity = channel_capacity,
+                        "Rustok settings unavailable while creating EventBus; enforcing the broadcast hard-capacity guard"
+                    );
+                }
+                // Disabling configurable backpressure must not disable the hard
+                // admission bound: otherwise a slow/unavailable outbox writer can
+                // let Tokio overwrite events before the forwarder persists them.
+                (
+                    channel_capacity,
+                    DEFAULT_WARNING_THRESHOLD,
+                    HARD_CAPACITY_THRESHOLD,
+                )
+            }
+        };
 
     tracing::debug!(
         capacity = channel_capacity,
-        backpressure = settings.events.backpressure.enabled,
-        "Building EventBus from runtime context"
+        max_queue_depth,
+        configurable_backpressure = backpressure.is_some_and(|config| config.enabled),
+        "Building bounded EventBus from runtime context"
     );
 
-    if settings.events.backpressure.enabled {
-        let config = &settings.events.backpressure;
-        let configured_max_depth = config.max_queue_depth.max(1);
-        let max_queue_depth = configured_max_depth.min(channel_capacity);
-        if configured_max_depth > channel_capacity {
-            tracing::warn!(
-                configured_max_depth,
-                channel_capacity,
-                "Clamping EventBus backpressure depth to broadcast capacity to prevent lagged event loss"
-            );
-        }
-        return EventBus::with_backpressure(
-            channel_capacity,
-            BackpressureController::new(BackpressureConfig::new(
-                max_queue_depth,
-                config.warning_threshold,
-                config.critical_threshold,
-            )),
-        );
-    }
-
-    EventBus::with_capacity(channel_capacity)
+    EventBus::with_backpressure(
+        channel_capacity,
+        BackpressureController::new(BackpressureConfig::new(
+            max_queue_depth,
+            warning_threshold,
+            critical_threshold,
+        )),
+    )
 }
 
 #[cfg(test)]
@@ -485,7 +535,9 @@ mod tests {
 
     #[tokio::test]
     async fn event_forwarder_handle_reports_terminal_task() {
-        let handle = EventForwarderHandle::new(tokio::spawn(std::future::pending()));
+        let (stop_tx, _stop_rx) = watch::channel(false);
+        let handle =
+            EventForwarderHandle::new(tokio::spawn(std::future::pending()), stop_tx);
         assert!(handle.is_running());
 
         handle.abort();
@@ -579,6 +631,196 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn default_event_bus_enforces_the_broadcast_hard_capacity_bound() {
+        use rustok_events::{DomainEvent, EventEnvelope};
+        use uuid::Uuid;
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        let mut settings = RustokSettings::default();
+        settings.events.channel_capacity = 2;
+        let ctx = ServerRuntimeContext::new(db, settings);
+        let bus = super::build_event_bus(&ctx, Some(ctx.settings()));
+        let mut receiver = bus.subscribe();
+
+        let first_tenant = Uuid::new_v4();
+        let first = EventEnvelope::new(
+            first_tenant,
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: first_tenant,
+            },
+        );
+        let second_tenant = Uuid::new_v4();
+        let second = EventEnvelope::new(
+            second_tenant,
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: second_tenant,
+            },
+        );
+        let third_tenant = Uuid::new_v4();
+        let third = EventEnvelope::new(
+            third_tenant,
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: third_tenant,
+            },
+        );
+
+        bus.publish_envelope(first.clone()).unwrap();
+        bus.publish_envelope(second.clone()).unwrap();
+        assert!(
+            bus.publish_envelope(third).is_err(),
+            "disabled soft backpressure must still reject before the broadcast ring overwrites"
+        );
+        assert_eq!(receiver.recv().await.unwrap().id, first.id);
+        assert_eq!(receiver.recv().await.unwrap().id, second.id);
+        assert_eq!(
+            bus.backpressure()
+                .expect("hard capacity guard is always installed")
+                .current_depth(),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn forwarder_stays_live_until_in_flight_producers_finish() {
+        use async_trait::async_trait;
+        use rustok_events::{DomainEvent, EventEnvelope};
+        use uuid::Uuid;
+
+        struct RecordingTransport {
+            accepted: Mutex<Vec<EventEnvelope>>,
+        }
+
+        #[async_trait]
+        impl EventTransport for RecordingTransport {
+            async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
+                self.accepted.lock().unwrap().push(envelope);
+                Ok(())
+            }
+
+            fn reliability_level(&self) -> ReliabilityLevel {
+                ReliabilityLevel::InMemory
+            }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+
+        let backpressure = BackpressureController::new(BackpressureConfig::new(8, 0.7, 1.0));
+        let bus = Arc::new(EventBus::with_backpressure(8, backpressure));
+        let receiver = EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
+        let transport = Arc::new(RecordingTransport {
+            accepted: Mutex::new(vec![]),
+        });
+        let (forwarder_stop_tx, forwarder_stop_rx) = watch::channel(false);
+        let forwarder = tokio::spawn(run_event_forwarder(
+            receiver,
+            transport.clone(),
+            forwarder_stop_rx,
+        ));
+
+        // Simulate the global worker stop arriving while a producer still owns
+        // an in-flight operation. The forwarder must not consume that signal;
+        // it is stopped only after the producer has published and joined.
+        let (producer_stop_tx, mut producer_stop_rx) = watch::channel(false);
+        let producer_bus = Arc::clone(&bus);
+        let producer = tokio::spawn(async move {
+            producer_stop_rx.changed().await.unwrap();
+            let tenant_id = Uuid::new_v4();
+            let envelope = EventEnvelope::new(
+                tenant_id,
+                None,
+                DomainEvent::TenantUpdated { tenant_id },
+            );
+            producer_bus.publish_envelope(envelope.clone()).unwrap();
+            envelope
+        });
+
+        producer_stop_tx.send_replace(true);
+        let envelope = producer.await.unwrap();
+        forwarder_stop_tx.send_replace(true);
+        tokio::time::timeout(Duration::from_secs(3), forwarder)
+            .await
+            .expect("forwarder should drain after producer completion")
+            .expect("forwarder task should join");
+
+        assert_eq!(transport.accepted.lock().unwrap().as_slice(), &[envelope]);
+        assert_eq!(
+            bus.backpressure().expect("hard capacity guard").current_depth(),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn supervisor_drains_initial_queue_when_stop_precedes_first_poll() {
+        use async_trait::async_trait;
+        use rustok_events::{DomainEvent, EventEnvelope};
+        use uuid::Uuid;
+
+        struct RecordingTransport {
+            accepted: Mutex<Vec<EventEnvelope>>,
+        }
+
+        #[async_trait]
+        impl EventTransport for RecordingTransport {
+            async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
+                self.accepted.lock().unwrap().push(envelope);
+                Ok(())
+            }
+
+            fn reliability_level(&self) -> ReliabilityLevel {
+                ReliabilityLevel::InMemory
+            }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+
+        let backpressure = BackpressureController::new(BackpressureConfig::new(8, 0.7, 1.0));
+        let bus = Arc::new(EventBus::with_backpressure(8, backpressure));
+        let initial_receiver = EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
+        let tenant_id = Uuid::new_v4();
+        let envelope = EventEnvelope::new(
+            tenant_id,
+            None,
+            DomainEvent::TenantUpdated { tenant_id },
+        );
+        bus.publish_envelope(envelope.clone())
+            .expect("the pre-subscribed receiver accepts the event");
+
+        let transport = Arc::new(RecordingTransport {
+            accepted: Mutex::new(vec![]),
+        });
+        let (stop_tx, stop_rx) = watch::channel(true);
+        let task = tokio::spawn(super::supervise_event_forwarder(
+            bus.clone(),
+            transport.clone(),
+            stop_rx,
+            initial_receiver,
+        ));
+
+        tokio::time::timeout(Duration::from_secs(3), task)
+            .await
+            .expect("supervisor should drain before exiting")
+            .expect("supervisor task should join");
+        assert_eq!(
+            transport.accepted.lock().unwrap().as_slice(),
+            std::slice::from_ref(&envelope)
+        );
+        assert_eq!(
+            bus.backpressure().expect("hard capacity guard").current_depth(),
+            0
+        );
+        drop(stop_tx);
+    }
+
+    #[tokio::test]
     async fn event_bus_from_context_is_idempotent() {
         let db = Database::connect("sqlite::memory:")
             .await
@@ -591,6 +833,72 @@ mod tests {
         assert!(Arc::ptr_eq(&bus1.stats(), &bus2.stats()));
         assert!(ctx.shared_get::<SharedEventBus>().is_some());
         assert!(ctx.shared_get::<EventForwarderHandle>().is_some());
+    }
+
+    #[tokio::test]
+    async fn event_bus_from_context_subscribes_before_returning_to_publishers() {
+        use async_trait::async_trait;
+        use rustok_core::events::{EventEnvelope, EventTransport, ReliabilityLevel};
+        use rustok_events::DomainEvent;
+        use uuid::Uuid;
+
+        struct RecordingTransport {
+            accepted: Mutex<Vec<EventEnvelope>>,
+        }
+
+        #[async_trait]
+        impl EventTransport for RecordingTransport {
+            async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
+                self.accepted.lock().unwrap().push(envelope);
+                Ok(())
+            }
+
+            fn reliability_level(&self) -> ReliabilityLevel {
+                ReliabilityLevel::InMemory
+            }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let transport = Arc::new(RecordingTransport {
+            accepted: Mutex::new(vec![]),
+        });
+        let transport_trait: Arc<dyn EventTransport> = transport.clone();
+        ctx.shared_insert(transport_trait);
+
+        let bus = event_bus_from_context(&ctx);
+        let tenant_id = Uuid::new_v4();
+        let envelope = EventEnvelope::new(
+            tenant_id,
+            None,
+            DomainEvent::TenantUpdated { tenant_id },
+        );
+        bus.publish_envelope(envelope.clone())
+            .expect("forwarder receiver must be installed before the bus is returned");
+
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                if transport.accepted.lock().unwrap().as_slice() == std::slice::from_ref(&envelope) {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("forwarder should persist the first event");
+
+        let task = super::take_forwarder_task_for_shutdown(&ctx)
+            .expect("forwarder should be registered");
+        tokio::time::timeout(Duration::from_secs(3), task)
+            .await
+            .expect("forwarder should drain and stop")
+            .expect("forwarder task should join");
     }
 
     #[tokio::test]

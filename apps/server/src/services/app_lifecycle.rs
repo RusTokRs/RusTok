@@ -1230,7 +1230,6 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         channel_cache_invalidation_drain,
         rbac_cache_invalidation_drain,
         rbac_generation_watchdog_drain,
-        event_forwarder_drain,
         cache_redis_status_drain,
         field_definition_cache_invalidation_drain,
         field_definition_cache_reconciliation_drain,
@@ -1254,6 +1253,11 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         forum_search_drain,
         forum_search_contract_consumer_drain,
     );
+
+    // The event forwarder is deliberately last: producers receive the global
+    // stop first and are joined above; only then may the forwarder observe an
+    // empty queue and exit without racing a final in-flight publication.
+    event_forwarder_drain.await;
 }
 
 /// Guard a task handle so cancellation of the shutdown future cannot turn a
@@ -2303,9 +2307,7 @@ mod tests {
         tasks.extend(other);
         let (watchdog, other) = RbacInvalidationGenerationWatchdogHandle::for_shutdown_test();
         tasks.extend(other);
-        let stop = super::StopHandle::ensure(&ctx);
-        let (forwarder, other) =
-            EventForwarderHandle::for_shutdown_test(stop.subscribe());
+        let (forwarder, other) = EventForwarderHandle::for_shutdown_test();
         tasks.extend(other);
         // Retain clones to prove shutdown does not rely on the last Arc being dropped.
         ctx.shared_insert(channel.clone());

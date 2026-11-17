@@ -1126,7 +1126,7 @@ cargo test -p rustok-server --lib services::event_transport_factory
 
 
 
-## P14 — Durable retry and graceful shutdown for the in-process event forwarder (2026-11-18)
+## P14 — Retry and graceful shutdown for the in-process event forwarder (2026-11-18)
 
 The server event forwarder previously consumed an in-memory event and only
 logged a transport error. A transient database failure therefore lost the
@@ -1148,8 +1148,9 @@ the forwarder immediately, discarding queued or in-flight events.
 - The effective backpressure depth is clamped to the broadcast capacity, and
   permit acquisition uses compare-and-swap so concurrent publishers cannot
   exceed the configured critical depth.
-- Shutdown now signals the forwarder to drain accepted messages and allows up
-  to 30 seconds before a forced abort.
+- Shutdown signals the forwarder to drain accepted messages and allows up to
+  30 seconds before forced abort. P17 orders this dedicated drain after producer
+  workers have joined.
 - Added regression coverage for transient transport failure, shutdown draining,
   permit release, concurrent backpressure acquisition, and idempotent outbox
   retries.
@@ -1203,3 +1204,41 @@ Codified the recurring failure patterns found in the server audit in
 atomic backpressure reservation, durable idempotent forwarding, acknowledged
 projection delivery, and cooperative shutdown. Each invariant now includes a
 specific regression check so future changes can preserve the same guarantees.
+
+
+## P17 — Close event-forwarder admission and shutdown races (2026-11-18)
+
+The P14 bridge still had two loss windows: with the default
+`backpressure.enabled = false`, the Tokio broadcast ring could overwrite
+accepted events while the forwarder retried a failed outbox write; and the
+shared stop signal let the forwarder drain concurrently with producers that
+were still completing in-flight work. A third startup race allowed the first
+publisher to run before the spawned forwarder had subscribed.
+
+### Implemented
+
+- Install a hard admission controller for the server-owned EventBus-to-Outbox
+  forwarder bus, including when configurable backpressure is disabled. The hard
+  depth equals the broadcast capacity; enabling backpressure adds configurable
+  early thresholds and a possibly smaller depth.
+- Honor configured `channel_capacity` even when EventBus is requested before
+  EventRuntime has been composed.
+- Subscribe the initial forwarder receiver synchronously before returning the
+  EventBus to its first publisher; supervised restarts create a fresh receiver.
+- Give the forwarder a dedicated stop signal. The global stop first quiesces
+  producers; the forwarder is stopped and drained only after all other
+  registered worker drains have joined.
+- Add regressions for default hard admission, first-publish subscription, and
+  producer-first shutdown draining.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::event_bus
+cargo test -p rustok-server --lib services::app_lifecycle
+```
+
