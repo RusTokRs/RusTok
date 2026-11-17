@@ -731,10 +731,15 @@ impl AuthLifecycleService {
         } else {
             sessions::Column::TokenHash
         };
-        let query = sessions::Entity::find()
+        let mut query = sessions::Entity::find()
             .filter(sessions::Column::TenantId.eq(tenant_id))
-            .filter(column.eq(token_hash))
-            .filter(sessions::Column::RevokedAt.is_null());
+            .filter(column.eq(token_hash));
+        // Preserve the refresh API contract: a matching revoked current
+        // token returns SessionExpired rather than looking like an unknown
+        // token. The previous-token logout fallback only selects live rows.
+        if previous_hash {
+            query = query.filter(sessions::Column::RevokedAt.is_null());
+        }
 
         let session = match txn.get_database_backend() {
             DatabaseBackend::Postgres | DatabaseBackend::MySql => query
