@@ -1124,3 +1124,47 @@ cargo check -p rustok-server --lib
 cargo test -p rustok-server --lib services::event_transport_factory
 ```
 
+
+
+## P14 — Durable retry and graceful shutdown for the in-process event forwarder (2026-11-18)
+
+The server event forwarder previously consumed an in-memory event and only
+logged a transport error. A transient database failure therefore lost the
+event before it reached the durable outbox. Backpressure accounting also had
+no release path for forwarded events or lagged messages, and the configured
+queue depth could exceed the Tokio broadcast ring capacity, allowing the ring
+to drop events before backpressure rejected new publishers. Shutdown aborted
+the forwarder immediately, discarding queued or in-flight events.
+
+### Implemented
+
+- The forwarder retries the same envelope with bounded exponential delay until
+  the transport accepts it; transport panics are caught and retried as well.
+- Root OutboxTransport publication is idempotent by envelope ID and verifies
+  exact canonical facts before accepting a duplicate, covering ambiguous
+  database commit responses.
+- Backpressure permits are released after persistence, for lagged messages,
+  and when queued messages are discarded during task teardown.
+- The effective backpressure depth is clamped to the broadcast capacity, and
+  permit acquisition uses compare-and-swap so concurrent publishers cannot
+  exceed the configured critical depth.
+- Shutdown now signals the forwarder to drain accepted messages and allows up
+  to 30 seconds before a forced abort.
+- Added regression coverage for transient transport failure, shutdown draining,
+  permit release, concurrent backpressure acquisition, and idempotent outbox
+  retries.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-core --lib
+cargo test -p rustok-core --lib events::backpressure
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::event_bus
+cargo test -p rustok-server --lib services::app_lifecycle
+cargo test -p rustok-outbox --test sqlite_transport_regression_test
+```
+

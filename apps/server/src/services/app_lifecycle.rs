@@ -990,8 +990,12 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         if let Some(task) =
             crate::services::event_bus::take_forwarder_task_for_shutdown(runtime_ctx)
         {
-            task.abort();
-            await_runtime_worker_shutdown("Event forwarder", Some(task)).await;
+            await_runtime_worker_shutdown_with_timeout(
+                "Event forwarder",
+                Some(task),
+                Duration::from_secs(30),
+            )
+            .await;
         }
     };
 
@@ -2290,7 +2294,9 @@ mod tests {
         tasks.extend(other);
         let (watchdog, other) = RbacInvalidationGenerationWatchdogHandle::for_shutdown_test();
         tasks.extend(other);
-        let (forwarder, other) = EventForwarderHandle::for_shutdown_test();
+        let stop = super::StopHandle::ensure(&ctx);
+        let (forwarder, other) =
+            EventForwarderHandle::for_shutdown_test(stop.subscribe());
         tasks.extend(other);
         // Retain clones to prove shutdown does not rely on the last Arc being dropped.
         ctx.shared_insert(channel.clone());

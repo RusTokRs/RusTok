@@ -68,6 +68,13 @@ impl Default for BackpressureConfig {
     }
 }
 
+fn threshold_depth(max_queue_depth: usize, threshold: f64) -> usize {
+    if max_queue_depth == 0 {
+        return 0;
+    }
+    ((max_queue_depth as f64 * threshold).ceil() as usize).clamp(1, max_queue_depth)
+}
+
 impl BackpressureConfig {
     /// Creates a new configuration with custom values
     pub fn new(max_queue_depth: usize, warning_threshold: f64, critical_threshold: f64) -> Self {
@@ -88,12 +95,12 @@ impl BackpressureConfig {
 
     /// Calculate warning threshold in absolute terms
     pub fn warning_depth(&self) -> usize {
-        (self.max_queue_depth as f64 * self.warning_threshold) as usize
+        threshold_depth(self.max_queue_depth, self.warning_threshold)
     }
 
     /// Calculate critical threshold in absolute terms
     pub fn critical_depth(&self) -> usize {
-        (self.max_queue_depth as f64 * self.critical_threshold) as usize
+        threshold_depth(self.max_queue_depth, self.critical_threshold)
     }
 }
 
@@ -172,11 +179,11 @@ impl BackpressureController {
     ///
     /// Returns Ok(()) if the event can be enqueued, or an error if rejected.
     pub fn try_acquire(&self) -> Result<(), BackpressureError> {
-        let current = self.current_depth.load(Ordering::Relaxed);
-        let state = self.calculate_state(current);
+        let mut current = self.current_depth.load(Ordering::Relaxed);
 
-        match state {
-            BackpressureState::Critical => {
+        loop {
+            let state = self.calculate_state(current);
+            if state == BackpressureState::Critical {
                 self.events_rejected.fetch_add(1, Ordering::Relaxed);
                 self.critical_count.fetch_add(1, Ordering::Relaxed);
                 tracing::warn!(
@@ -184,26 +191,32 @@ impl BackpressureController {
                     max_depth = self.config.max_queue_depth,
                     "Event queue at critical capacity, rejecting event"
                 );
-                Err(BackpressureError::QueueFull {
+                return Err(BackpressureError::QueueFull {
                     current,
                     max: self.config.max_queue_depth,
-                })
+                });
             }
-            BackpressureState::Warning => {
-                self.warning_count.fetch_add(1, Ordering::Relaxed);
-                self.events_accepted.fetch_add(1, Ordering::Relaxed);
-                self.current_depth.fetch_add(1, Ordering::Relaxed);
-                tracing::debug!(
-                    current_depth = current + 1,
-                    max_depth = self.config.max_queue_depth,
-                    "Event queue approaching capacity (warning threshold)"
-                );
-                Ok(())
-            }
-            BackpressureState::Normal => {
-                self.events_accepted.fetch_add(1, Ordering::Relaxed);
-                self.current_depth.fetch_add(1, Ordering::Relaxed);
-                Ok(())
+
+            let next = current.saturating_add(1);
+            match self.current_depth.compare_exchange_weak(
+                current,
+                next,
+                Ordering::AcqRel,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    self.events_accepted.fetch_add(1, Ordering::Relaxed);
+                    if state == BackpressureState::Warning {
+                        self.warning_count.fetch_add(1, Ordering::Relaxed);
+                        tracing::debug!(
+                            current_depth = next,
+                            max_depth = self.config.max_queue_depth,
+                            "Event queue approaching capacity (warning threshold)"
+                        );
+                    }
+                    return Ok(());
+                }
+                Err(actual) => current = actual,
             }
         }
     }
@@ -443,6 +456,35 @@ mod tests {
             controller.release();
         }
         assert_eq!(controller.state(), BackpressureState::Normal);
+    }
+
+    #[test]
+    fn concurrent_acquire_never_exceeds_critical_capacity() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let controller = Arc::new(BackpressureController::new(BackpressureConfig::new(
+            100, 0.7, 0.9,
+        )));
+        let mut handles = Vec::new();
+
+        for _ in 0..16 {
+            let controller = Arc::clone(&controller);
+            handles.push(thread::spawn(move || {
+                for _ in 0..100 {
+                    let _ = controller.try_acquire();
+                }
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let metrics = controller.metrics();
+        assert_eq!(metrics.current_depth, 90);
+        assert_eq!(metrics.events_accepted, 90);
+        assert_eq!(metrics.events_rejected, 1_510);
     }
 
     #[test]

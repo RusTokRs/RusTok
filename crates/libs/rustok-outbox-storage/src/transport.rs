@@ -283,9 +283,46 @@ impl TransactionalEventWriter for OutboxTransport {
 #[async_trait]
 impl EventTransport for OutboxTransport {
     async fn publish(&self, envelope: EventEnvelope) -> Result<()> {
-        entity::Entity::insert(Self::model_from_envelope(envelope)?)
+        let envelope_id = envelope.id;
+        let event_type = envelope.event_type.clone();
+        let schema_version = i16::try_from(envelope.schema_version).map_err(|_| {
+            Error::Validation(format!(
+                "outbox schema_version {} exceeds database SMALLINT range",
+                envelope.schema_version
+            ))
+        })?;
+        let payload = serde_json::to_value(&envelope)?;
+        let active_model = Self::model_from_envelope(envelope)?;
+
+        let affected = entity::Entity::insert(active_model)
+            .on_conflict(
+                OnConflict::column(entity::Column::Id)
+                    .do_nothing()
+                    .to_owned(),
+            )
             .exec_without_returning(&self.db)
             .await?;
+        if affected == 1 {
+            return Ok(());
+        }
+        if affected != 0 {
+            return Err(Error::Internal(format!(
+                "outbox write for event {envelope_id} affected {affected} rows"
+            )));
+        }
+
+        let stored = entity::Entity::find_by_id(envelope_id)
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("sys_event {envelope_id}")))?;
+        if stored.event_type != event_type
+            || stored.schema_version != schema_version
+            || stored.payload != payload
+        {
+            return Err(Error::Validation(format!(
+                "outbox event id {envelope_id} already belongs to different canonical facts"
+            )));
+        }
         Ok(())
     }
 

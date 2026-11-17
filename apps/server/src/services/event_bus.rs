@@ -8,13 +8,16 @@ use rustok_core::events::{
 };
 use rustok_core::{EventBus, EventConsumerRuntime};
 use rustok_outbox::TransactionalEventBus;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 use tokio::task::JoinHandle;
 
 use crate::common::settings::RustokSettings;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+use crate::services::app_lifecycle::StopHandle;
 
 const EVENT_FORWARDER_RESTART_DELAY: Duration = Duration::from_secs(1);
+const EVENT_FORWARDER_INITIAL_RETRY_DELAY: Duration = Duration::from_millis(100);
+const EVENT_FORWARDER_MAX_RETRY_DELAY: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 pub struct SharedEventBus(pub Arc<EventBus>);
@@ -78,8 +81,14 @@ pub struct EventForwarderHandle(Arc<AbortOnDropEventForwarderTask>);
 
 impl EventForwarderHandle {
     #[cfg(test)]
-    pub(crate) fn for_shutdown_test() -> (Self, Vec<tokio::task::AbortHandle>) {
-        let task = tokio::spawn(std::future::pending());
+    pub(crate) fn for_shutdown_test(
+        mut stop_rx: watch::Receiver<bool>,
+    ) -> (Self, Vec<tokio::task::AbortHandle>) {
+        let task = tokio::spawn(async move {
+            if !*stop_rx.borrow() {
+                let _ = stop_rx.changed().await;
+            }
+        });
         let tasks = vec![task.abort_handle()];
         (Self::new(task), tasks)
     }
@@ -133,10 +142,8 @@ fn ensure_event_forwarder(ctx: &ServerRuntimeContext, bus: Arc<EventBus>) {
             .unwrap_or(default_transport)
     };
 
-    if ctx
-        .shared_get::<crate::services::app_lifecycle::StopHandle>()
-        .is_some_and(|stop| stop.is_stopping())
-    {
+    let stop = StopHandle::ensure(ctx);
+    if stop.is_stopping() {
         return;
     }
 
@@ -149,7 +156,7 @@ fn ensure_event_forwarder(ctx: &ServerRuntimeContext, bus: Arc<EventBus>) {
     }
 
     let transport = shared_transport;
-    let task = tokio::spawn(supervise_event_forwarder(bus, transport));
+    let task = tokio::spawn(supervise_event_forwarder(bus, transport, stop.subscribe()));
     ctx.shared_insert(EventForwarderHandle::new(task));
 }
 
@@ -165,12 +172,28 @@ pub(crate) fn take_forwarder_task_for_shutdown(
         .and_then(|forwarder| forwarder.take_task())
 }
 
-async fn supervise_event_forwarder(bus: Arc<EventBus>, transport: Arc<dyn EventTransport>) {
+async fn supervise_event_forwarder(
+    bus: Arc<EventBus>,
+    transport: Arc<dyn EventTransport>,
+    mut stop_rx: watch::Receiver<bool>,
+) {
     loop {
-        let receiver = bus.subscribe();
-        let outcome = AssertUnwindSafe(run_event_forwarder(receiver, Arc::clone(&transport)))
-            .catch_unwind()
-            .await;
+        if *stop_rx.borrow() {
+            return;
+        }
+
+        let receiver = EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
+        let outcome = AssertUnwindSafe(run_event_forwarder(
+            receiver,
+            Arc::clone(&transport),
+            stop_rx.clone(),
+        ))
+        .catch_unwind()
+        .await;
+
+        if *stop_rx.borrow() {
+            return;
+        }
 
         if outcome.is_err() {
             tracing::error!("Event forwarder panicked; restarting");
@@ -178,39 +201,205 @@ async fn supervise_event_forwarder(bus: Arc<EventBus>, transport: Arc<dyn EventT
             tracing::error!("Event forwarder exited unexpectedly; restarting");
         }
         rustok_telemetry::metrics::record_event_error("server_event_forwarder", "worker_restart");
-        tokio::time::sleep(EVENT_FORWARDER_RESTART_DELAY).await;
+
+        tokio::select! {
+            _ = tokio::time::sleep(EVENT_FORWARDER_RESTART_DELAY) => {}
+            changed = stop_rx.changed() => {
+                if changed.is_err() || *stop_rx.borrow() {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+struct EventForwarderReceiver {
+    receiver: broadcast::Receiver<EventEnvelope>,
+    backpressure: Option<Arc<BackpressureController>>,
+}
+
+impl EventForwarderReceiver {
+    fn new(
+        receiver: broadcast::Receiver<EventEnvelope>,
+        backpressure: Option<Arc<BackpressureController>>,
+    ) -> Self {
+        Self {
+            receiver,
+            backpressure,
+        }
+    }
+
+    async fn recv(
+        &mut self,
+    ) -> std::result::Result<EventEnvelope, broadcast::error::RecvError> {
+        self.receiver.recv().await
+    }
+
+    fn try_recv(
+        &mut self,
+    ) -> std::result::Result<EventEnvelope, broadcast::error::TryRecvError> {
+        self.receiver.try_recv()
+    }
+}
+
+impl Drop for EventForwarderReceiver {
+    fn drop(&mut self) {
+        release_backpressure_slots(&self.backpressure, self.receiver.len());
+    }
+}
+
+struct BackpressureSlotGuard(Option<Arc<BackpressureController>>);
+
+impl Drop for BackpressureSlotGuard {
+    fn drop(&mut self) {
+        if let Some(backpressure) = &self.0 {
+            backpressure.release();
+        }
+    }
+}
+
+fn release_backpressure_slots(
+    backpressure: &Option<Arc<BackpressureController>>,
+    count: usize,
+) {
+    if let Some(backpressure) = backpressure {
+        for _ in 0..count {
+            backpressure.release();
+        }
+    }
+}
+
+async fn publish_event_with_retry(
+    envelope: EventEnvelope,
+    transport: Arc<dyn EventTransport>,
+    backpressure: Option<Arc<BackpressureController>>,
+) {
+    let _slot = BackpressureSlotGuard(backpressure);
+    let event_id = envelope.id;
+    let event_type = envelope.event.event_type();
+    let mut attempt = 0_u64;
+    let mut retry_delay = EVENT_FORWARDER_INITIAL_RETRY_DELAY;
+
+    loop {
+        attempt += 1;
+        let outcome = AssertUnwindSafe(transport.publish(envelope.clone()))
+            .catch_unwind()
+            .await;
+        match outcome {
+            Ok(Ok(())) => {
+                if attempt > 1 {
+                    tracing::info!(
+                        event_id = %event_id,
+                        event_type,
+                        attempts = attempt,
+                        "Domain event persisted after forwarder retries"
+                    );
+                }
+                return;
+            }
+            Ok(Err(error)) => {
+                tracing::warn!(
+                    event_id = %event_id,
+                    event_type,
+                    attempts = attempt,
+                    error = %error,
+                    "Failed to persist domain event; retrying the same envelope"
+                );
+            }
+            Err(_) => {
+                tracing::error!(
+                    event_id = %event_id,
+                    event_type,
+                    attempts = attempt,
+                    "Event transport panicked; retrying the same envelope"
+                );
+            }
+        }
+        rustok_telemetry::metrics::record_event_error("server_event_forwarder", "publish");
+        tokio::time::sleep(retry_delay).await;
+        retry_delay = retry_delay
+            .saturating_mul(2)
+            .min(EVENT_FORWARDER_MAX_RETRY_DELAY);
     }
 }
 
 async fn run_event_forwarder(
-    mut receiver: broadcast::Receiver<EventEnvelope>,
+    mut receiver: EventForwarderReceiver,
     transport: Arc<dyn EventTransport>,
+    mut stop_rx: watch::Receiver<bool>,
 ) {
     let consumer_runtime = EventConsumerRuntime::new("server_event_forwarder");
     consumer_runtime.restarted("worker_start");
+    let mut stopping = *stop_rx.borrow();
 
     loop {
-        match receiver.recv().await {
-            Ok(envelope) => {
-                if let Err(error) = transport.publish(envelope).await {
-                    tracing::error!("Failed to publish domain event to transport: {error}");
+        if stopping {
+            match receiver.try_recv() {
+                Ok(envelope) => {
+                    publish_event_with_retry(
+                        envelope,
+                        Arc::clone(&transport),
+                        receiver.backpressure.clone(),
+                    )
+                    .await;
+                }
+                Err(broadcast::error::TryRecvError::Lagged(skipped)) => {
+                    release_backpressure_slots(&receiver.backpressure, skipped as usize);
+                    consumer_runtime.lagged(skipped);
+                    tracing::warn!(
+                        skipped,
+                        "Server event forwarder lagged while draining its shutdown queue"
+                    );
                     rustok_telemetry::metrics::record_event_error(
                         "server_event_forwarder",
-                        "publish",
+                        "lagged",
                     );
                 }
+                Err(
+                    broadcast::error::TryRecvError::Empty
+                    | broadcast::error::TryRecvError::Closed,
+                ) => {
+                    consumer_runtime.closed();
+                    return;
+                }
             }
-            Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                consumer_runtime.lagged(skipped);
-                tracing::warn!(
-                    skipped,
-                    "Server event forwarder lagged; {skipped} domain events dropped from broadcast queue"
-                );
-                rustok_telemetry::metrics::record_event_error("server_event_forwarder", "lagged");
+            continue;
+        }
+
+        tokio::select! {
+            biased;
+            changed = stop_rx.changed() => {
+                if changed.is_err() || *stop_rx.borrow() {
+                    stopping = true;
+                }
             }
-            Err(broadcast::error::RecvError::Closed) => {
-                consumer_runtime.closed();
-                return;
+            received = receiver.recv() => {
+                match received {
+                    Ok(envelope) => {
+                        publish_event_with_retry(
+                            envelope,
+                            Arc::clone(&transport),
+                            receiver.backpressure.clone(),
+                        )
+                        .await;
+                    }
+                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                        release_backpressure_slots(&receiver.backpressure, skipped as usize);
+                        consumer_runtime.lagged(skipped);
+                        tracing::warn!(
+                            skipped,
+                            "Server event forwarder lagged; {skipped} domain events dropped from broadcast queue"
+                        );
+                        rustok_telemetry::metrics::record_event_error(
+                            "server_event_forwarder",
+                            "lagged",
+                        );
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        consumer_runtime.closed();
+                        return;
+                    }
+                }
             }
         }
     }
@@ -235,46 +424,64 @@ fn build_event_bus(ctx: &ServerRuntimeContext, settings: Option<&RustokSettings>
     else {
         return EventBus::default();
     };
+    let channel_capacity = runtime.channel_capacity.max(1);
 
     let Some(settings) = settings else {
         tracing::warn!(
             "Rustok settings unavailable while creating EventBus; backpressure disabled"
         );
-        return EventBus::with_capacity(runtime.channel_capacity);
+        return EventBus::with_capacity(channel_capacity);
     };
 
     tracing::debug!(
-        capacity = runtime.channel_capacity,
+        capacity = channel_capacity,
         backpressure = settings.events.backpressure.enabled,
         "Building EventBus from runtime context"
     );
 
     if settings.events.backpressure.enabled {
         let config = &settings.events.backpressure;
+        let configured_max_depth = config.max_queue_depth.max(1);
+        let max_queue_depth = configured_max_depth.min(channel_capacity);
+        if configured_max_depth > channel_capacity {
+            tracing::warn!(
+                configured_max_depth,
+                channel_capacity,
+                "Clamping EventBus backpressure depth to broadcast capacity to prevent lagged event loss"
+            );
+        }
         return EventBus::with_backpressure(
-            runtime.channel_capacity,
+            channel_capacity,
             BackpressureController::new(BackpressureConfig::new(
-                config.max_queue_depth,
+                max_queue_depth,
                 config.warning_threshold,
                 config.critical_threshold,
             )),
         );
     }
 
-    EventBus::with_capacity(runtime.channel_capacity)
+    EventBus::with_capacity(channel_capacity)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        EventForwarderHandle, SharedEventBus, event_bus_from_context,
-        transactional_event_bus_from_context,
+        EventForwarderHandle, EventForwarderReceiver, SharedEventBus, event_bus_from_context,
+        run_event_forwarder, transactional_event_bus_from_context,
     };
     use crate::common::settings::RustokSettings;
     use crate::services::server_runtime_context::ServerRuntimeContext;
     use rustok_core::EventBus;
+    use rustok_core::events::{
+        BackpressureConfig, BackpressureController, EventTransport, ReliabilityLevel,
+    };
     use sea_orm::Database;
-    use std::sync::Arc;
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use std::time::Duration;
+    use tokio::sync::watch;
 
     #[tokio::test]
     async fn event_forwarder_handle_reports_terminal_task() {
@@ -293,6 +500,87 @@ mod tests {
         let shared = SharedEventBus(Arc::clone(&bus));
         let cloned = shared.clone();
         assert!(Arc::ptr_eq(&shared.0, &cloned.0));
+    }
+
+    #[tokio::test]
+    async fn event_forwarder_retries_and_drains_before_releasing_backpressure() {
+        use async_trait::async_trait;
+        use rustok_core::events::{EventTransport, ReliabilityLevel};
+        use rustok_events::{DomainEvent, EventEnvelope};
+        use std::sync::{
+            Arc, Mutex,
+            atomic::{AtomicUsize, Ordering},
+        };
+        use uuid::Uuid;
+
+        struct FlakyTransport {
+            attempts: AtomicUsize,
+            accepted: Mutex<Vec<EventEnvelope>>,
+        }
+
+        #[async_trait]
+        impl EventTransport for FlakyTransport {
+            async fn publish(&self, envelope: EventEnvelope) -> rustok_core::Result<()> {
+                let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
+                if attempt == 0 {
+                    return Err(rustok_core::Error::External(
+                        "temporary outbox failure".to_owned(),
+                    ));
+                }
+                self.accepted.lock().unwrap().push(envelope);
+                Ok(())
+            }
+
+            fn reliability_level(&self) -> ReliabilityLevel {
+                ReliabilityLevel::InMemory
+            }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+
+        let backpressure = BackpressureController::new(BackpressureConfig::new(8, 0.5, 0.75));
+        let bus = EventBus::with_backpressure(8, backpressure);
+        let receiver =
+            EventForwarderReceiver::new(bus.subscribe(), bus.backpressure());
+        let transport = Arc::new(FlakyTransport {
+            attempts: AtomicUsize::new(0),
+            accepted: Mutex::new(vec![]),
+        });
+        let (stop_tx, stop_rx) = watch::channel(false);
+        let task = tokio::spawn(run_event_forwarder(
+            receiver,
+            transport.clone(),
+            stop_rx,
+        ));
+
+        let tenant_id = Uuid::new_v4();
+        let envelope = EventEnvelope::new(
+            tenant_id,
+            None,
+            DomainEvent::TenantUpdated { tenant_id },
+        );
+        bus.publish_envelope(envelope.clone())
+            .expect("event should enter the in-memory bus");
+
+        // Stop immediately: the forwarder must still retry and persist the
+        // already-accepted envelope before it exits.
+        stop_tx.send_replace(true);
+        tokio::time::timeout(Duration::from_secs(3), task)
+            .await
+            .expect("forwarder should drain its accepted queue")
+            .expect("forwarder task should join");
+
+        assert_eq!(transport.attempts.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            transport.accepted.lock().unwrap().as_slice(),
+            &[envelope]
+        );
+        assert_eq!(
+            bus.backpressure().expect("backpressure enabled").current_depth(),
+            0
+        );
     }
 
     #[tokio::test]

@@ -127,3 +127,22 @@ sealed event families reach the configured broker while required local families
 still fail closed. It also lets the single-node outbox target distinguish an
 intentionally empty registry from an uninitialized dispatcher, so root events
 without a matching local handler can be acknowledged without a broadcast receiver.
+
+
+## Event forwarder reliability
+
+The in-process event forwarder is a bridge into the durable outbox. It retries
+the exact same envelope with bounded exponential delay until the transport
+accepts it, rather than consuming and discarding the event on a transient
+database error. Root OutboxTransport publication is idempotent by envelope ID:
+a retry is accepted only when the stored canonical envelope exactly matches
+the retry payload.
+
+Backpressure permits are released after persistence, for lagged messages, and
+when queued messages are discarded during task teardown. The effective
+backpressure depth is clamped to the broadcast channel capacity so the channel
+cannot silently overflow before the controller rejects new publications.
+
+During graceful shutdown the shared stop signal asks the forwarder to drain
+already accepted messages. The server allows up to 30 seconds for this drain
+before aborting the task.
