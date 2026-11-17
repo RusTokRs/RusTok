@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::prelude::{ServerFnError, server};
 
 #[cfg(feature = "ssr")]
 use super::*;

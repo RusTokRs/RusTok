@@ -359,7 +359,7 @@ pub(super) fn ProductVariantCreateSection(
                     <p class="text-xs">{text("product-combinations-noPrice")}</p>
                     <label class="block"><span>{text("product-variantCreate-quantity")}</span><Input r#type="number" value=quantity set_value=set_quantity /></label>
                     <CreateInventoryPolicy draft=draft editable=editable locale=locale.get_value() />
-                    <Button r#type="submit" disabled=(!editable.get())>{text("product-variantCreate-save")}</Button>
+                    <Button r#type="submit" disabled=!editable.get()>{text("product-variantCreate-save")}</Button>
                 </fieldset>
                 </form>
             </Show>

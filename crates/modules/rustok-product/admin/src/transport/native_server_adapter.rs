@@ -344,6 +344,7 @@ fn map_category_record(
     }
 }
 
+#[cfg(feature = "ssr")]
 fn first_non_empty(values: impl IntoIterator<Item = String>) -> String {
     values
         .into_iter()
