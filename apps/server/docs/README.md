@@ -292,12 +292,11 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   its initialization fence with shutdown. Shutdown signals workers first, then
   waits for bootstrap to finish registering handles before taking the drain
   snapshot, so concurrent bootstrap cannot orphan newly spawned workers.
-- Outbox relay intervals must fit the monotonic clock, exponential backoff
-  must fit its signed millisecond representation, batches are capped at 10,000
-  events, and in-flight delivery concurrency is capped at 128. Outbox retention
-  polling is capped at one day. Invalid relay/retention resource or timing
-  configuration fails validation instead of wrapping retry delays, disabling
-  pruning for unbounded periods, or allowing unbounded batch/task allocation.
+- Outbox relay polling, claim leases, retry backoff, and outbox-retention
+  polling are each capped at one day. Relay batches are capped at 10,000 events
+  and in-flight delivery concurrency at 128. Invalid relay/retention resource
+  or timing configuration fails validation instead of delaying recovery for
+  unbounded periods, wrapping retry delays, or allowing unbounded allocation.
 - App runtime rate-limit bootstrap and shared limiter registration use `ServerRuntimeContext`.
   In-memory fixed-window counters sample time inside the serialized per-key update;
   a request delayed behind another cannot apply an obsolete window timestamp.
