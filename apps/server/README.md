@@ -112,9 +112,9 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
   token digest. Older revoked generations are rejected as unknown but cannot
   trigger full-lineage theft revocation. The durable rotation-history and
   incident-reconciliation contract remains open; see the implementation plan.
-- OAuth refresh-token reuse revocation currently logs persistence failures and
-  returns an invalid-grant response, so a detected compromised family may remain
-  live after a database failure. Durable or retryable revocation evidence and
+- OAuth refresh-token reuse now propagates failed revocation persistence as
+  `server_error`, allowing the caller to retry after a storage outage instead of
+  falsely reporting only an invalid grant. Durable incident/retry evidence and
   two-replica failure-injection verification remain pending.
 
 ## Acknowledged sealed delivery (source only)

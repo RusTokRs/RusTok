@@ -45,12 +45,19 @@ the full-stack audit ledger. Work is isolated in
   GitHub-API-only editing environment; the maintainer must run focused checks
   before merge. Broader server inspection is unfinished.
 
+Additional follow-up: OAuth refresh-token reuse detection now propagates
+database read/write failures as `server_error` (instead of reporting only
+`invalid_grant`) and a fault-injection test covers retry after recovery.
+First-party logout also accepts the immediately preceding rotated cookie
+under the session row lock, revoking its live successor after a lost refresh
+response.
+
 Remaining auth contract gaps requiring owner-level design and verification:
 the in-place first-party refresh session stores only the immediately previous
-digest, so replay of older generations is denied but does not revoke the
-active lineage. OAuth token reuse detection currently has best-effort
-revocation on database errors without durable retry/incident reconciliation.
-These are not closed by this pass and must not be reported as remediated.
+digest, so replay/logout of still older generations cannot identify or revoke
+the live lineage. OAuth still has no durable retry/incident reconciliation if
+the caller does not retry after a revocation outage. These are not closed by
+this pass and must not be reported as remediated.
 
 
 ## Server Engineering Audit Continuation (2026-10-28)

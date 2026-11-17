@@ -193,7 +193,11 @@ timestamps fail closed rather than panicking.
 Cookie-session logout treats a missing, expired, or already-revoked refresh
 token idempotently, but returns a failure when revocation persistence or
 transactional event publication fails. The server must not claim logout
-success while a refresh token could remain valid. Multiple cookies with the
+success while a refresh token could remain valid. A cookie containing the
+immediately previous refresh token (for example, when a rotation response
+was lost) also revokes its still-live successor session under the same row
+lock. Older generations are not represented in the in-place session row and
+remain an open incident-detection gap. Multiple cookies with the
 `rustok-session` name are rejected, including across repeated Cookie headers,
 rather than selecting an order-dependent token. First-party session validity,
 new issuance and refresh rotation enforce the original 90-day absolute expiry
@@ -204,7 +208,10 @@ an empty hash.
 OAuth refresh requests may retain the original scopes by omitting `scope` or
 request a non-empty subset of the currently authorized scopes. The server
 rejects an empty explicit scope or a widening request with `invalid_scope`,
-and persists the narrowed grant on the rotated credential.
+and persists the narrowed grant on the rotated credential. Reuse detection
+revokes the scoped OAuth token family; on a persistence error it returns
+`server_error` rather than swallowing the failed security effect. Automatic
+durable retry after the client stops retrying is not established.
 
 GraphQL request-preparation policies classify only the operation selected by
 `operationName` (or the sole operation when no name is required). The selected
