@@ -25,6 +25,7 @@
     "test:verify:rust-constructor-arity": "node scripts/verify/verify-rust-constructor-arity.test.mjs",
     "verify:workflow-action-pins": "node scripts/verify/verify-workflow-action-pins.mjs",
     "generate:tokens:flutter": "node scripts/generate/generate-flutter-tokens.mjs",
+    "generate:tokens": "node scripts/generate/generate-ui-tokens.mjs",
     "verify:ui:parity": "node scripts/verify/verify-ui-parity.mjs",
     "verify:ui:grid-parity": "node scripts/verify/verify-ui-grid-parity.mjs",
     "test:verify:ui:grid-parity": "node scripts/verify/verify-ui-grid-parity.test.mjs",
