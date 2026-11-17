@@ -15,6 +15,7 @@ use super::{
 };
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseTransaction, FromQueryResult, Statement};
 use serde_json::Value;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::error::{CommerceError, CommerceResult};
@@ -29,6 +30,7 @@ const PRODUCT_TAXONOMY_SCOPE: &str = "product";
 const TAXONOMY_CATEGORY_ROUTE_KEY_MAX_BYTES: usize = 120;
 
 impl ProductCatalogSchemaService {
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, %actor_id, slug = %input.slug))]
     pub async fn create_category(
         &self,
         tenant_id: Uuid,
@@ -121,6 +123,7 @@ impl ProductCatalogSchemaService {
         list_categories_from_taxonomy(self, tenant_id, &locale).await
     }
 
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, %actor_id, category_id = %input.category_id, code = %input.code))]
     pub async fn create_category_group(
         &self,
         tenant_id: Uuid,
@@ -169,6 +172,7 @@ impl ProductCatalogSchemaService {
         Ok(result)
     }
 
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, %actor_id, category_id = %input.category_id))]
     pub async fn set_category_schema_mode(
         &self,
         tenant_id: Uuid,

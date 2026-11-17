@@ -9,6 +9,7 @@ use super::{
     load_schema_group_id,
 };
 use sea_orm::{ConnectionTrait, FromQueryResult, Statement};
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::error::{CommerceError, CommerceResult};
@@ -19,6 +20,7 @@ use rustok_core::generate_id;
 use rustok_events::DomainEvent;
 
 impl ProductCatalogSchemaService {
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, %actor_id, code = %input.code))]
     pub async fn create_schema(
         &self,
         tenant_id: Uuid,
@@ -114,6 +116,7 @@ impl ProductCatalogSchemaService {
         )
     }
 
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, %actor_id, schema_id = %input.schema_id, code = %input.code))]
     pub async fn create_schema_group(
         &self,
         tenant_id: Uuid,

@@ -39,6 +39,7 @@ use rustok_events::DomainEvent;
 const PRODUCT_SCHEMA_RECEIPT_OWNER: &str = "product";
 
 impl ProductCatalogSchemaService {
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, %actor_id, code = %input.code))]
     pub async fn create_attribute(
         &self,
         tenant_id: Uuid,
@@ -141,6 +142,7 @@ impl ProductCatalogSchemaService {
         Ok(result)
     }
 
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, %actor_id, attribute_id = %input.attribute_id, code = %input.code))]
     pub async fn create_attribute_option(
         &self,
         tenant_id: Uuid,
