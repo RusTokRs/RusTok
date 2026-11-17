@@ -3208,6 +3208,23 @@ mod tests {
             "consent revocation must invalidate pending authorization codes"
         );
 
+        let mut inactive_user: crate::models::users::ActiveModel = token_user.clone().into();
+        inactive_user.status = Set(rustok_core::UserStatus::Inactive);
+        inactive_user
+            .update(&db)
+            .await
+            .expect("deactivate consent subject");
+        let grant_for_inactive_user = OAuthAppService::grant_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect_err("inactive user must not receive new consent");
+        assert!(matches!(grant_for_inactive_user, Error::Unauthorized(_)));
+
         let app_code_id =
             insert_pending_authorization_code(&db, created.app.id, token_user.id, tenant.id).await;
         let revoked = OAuthAppService::revoke_app(&db, created.app.tenant_id, created.app.id)
