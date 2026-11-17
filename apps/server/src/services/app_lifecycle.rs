@@ -389,6 +389,11 @@ pub(crate) fn additional_runtime_worker_snapshots(
     use crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle;
     #[cfg(feature = "mod-product")]
     use crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle;
+    use crate::services::forum_search_inbox_worker::{
+        ForumSearchContractConsumerWorkerHandle, ForumSearchInboxWorkerHandle,
+    };
+    use crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle;
+    use crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle;
 
     let local = ctx.settings().runtime.runs_background_workers();
     let listeners_required = ctx
@@ -431,6 +436,40 @@ pub(crate) fn additional_runtime_worker_snapshots(
             required: local,
             finished: ctx.shared_map::<ModuleTransitionWatchdogHandle, _>(
                 ModuleTransitionWatchdogHandle::is_finished,
+            ),
+        },
+        // These durable broker consumers deliberately stop with their source
+        // offset uncommitted on poison/receive failures. Once started, their
+        // liveness is part of readiness so a dead consumer cannot leave the
+        // HTTP host green while its projection queue is stalled.
+        RuntimeWorkerSnapshot {
+            name: "product_index_refresh",
+            required: local
+                && ctx.shared_contains::<ProductIndexRefreshWorkerHandle>(),
+            finished: ctx.shared_map::<ProductIndexRefreshWorkerHandle, _>(|worker| {
+                !worker.is_ready()
+            }),
+        },
+        RuntimeWorkerSnapshot {
+            name: "social_graph_index",
+            required: local && ctx.shared_contains::<SocialGraphIndexWorkerHandle>(),
+            finished: ctx.shared_map::<SocialGraphIndexWorkerHandle, _>(
+                SocialGraphIndexWorkerHandle::is_finished,
+            ),
+        },
+        RuntimeWorkerSnapshot {
+            name: "forum_search_inbox",
+            required: local && ctx.shared_contains::<ForumSearchInboxWorkerHandle>(),
+            finished: ctx.shared_map::<ForumSearchInboxWorkerHandle, _>(
+                ForumSearchInboxWorkerHandle::is_finished,
+            ),
+        },
+        RuntimeWorkerSnapshot {
+            name: "forum_search_contract_consumer",
+            required: local
+                && ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>(),
+            finished: ctx.shared_map::<ForumSearchContractConsumerWorkerHandle, _>(
+                |worker| worker.is_finished(),
             ),
         },
         RuntimeWorkerSnapshot {
