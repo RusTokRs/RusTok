@@ -480,9 +480,10 @@ mod tests {
         let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(db, settings);
         crate::services::cache_runtime::ensure_cache_service(&ctx);
 
-        let error = build_event_runtime(&ctx)
-            .await
-            .expect_err("invalid retention settings must fail event runtime bootstrap");
+        let error = match build_event_runtime(&ctx).await {
+            Err(error) => error,
+            Ok(_) => panic!("invalid retention settings must fail event runtime bootstrap"),
+        };
         assert!(error.to_string().contains("retention_days"));
         assert!(
             !ctx.shared_contains::<crate::services::tenant_cache_generation::TenantCacheGenerationListenerHandle>(),
@@ -510,8 +511,10 @@ mod tests {
             batch_size: 100,
             interval_seconds: MAX_OUTBOX_RETENTION_INTERVAL_SECONDS + 1,
         };
-        let error = resolve_outbox_retention(&ctx, &settings)
-            .expect_err("retention polling must remain bounded");
+        let error = match resolve_outbox_retention(&ctx, &settings) {
+            Err(error) => error,
+            Ok(_) => panic!("retention polling must remain bounded"),
+        };
         assert!(error.to_string().contains("interval_seconds must be between"));
     }
 
