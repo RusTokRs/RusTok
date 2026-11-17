@@ -514,8 +514,7 @@ mod tests {
             "#,
         )
         .operation_name("SensitiveUsers");
-        classify_sensitive_graphql_document(&mut sensitive_request)
-            .expect("query should parse");
+        classify_sensitive_graphql_document(&mut sensitive_request).expect("query should parse");
         let policy = sensitive_request
             .data
             .get(&std::any::TypeId::of::<SensitiveGraphqlDocumentPolicy>())
@@ -718,7 +717,10 @@ mod tests {
 
         assert!(response.errors.is_empty());
         assert_eq!(
-            response.data.into_json().expect("response should serialize"),
+            response
+                .data
+                .into_json()
+                .expect("response should serialize"),
             json!({"ping": "pong"})
         );
 
