@@ -101,6 +101,26 @@ impl std::fmt::Debug for RotateSecretResult {
     }
 }
 
+/// Build an update model that writes only fields editable through the
+/// manual-app API. A stale full-row ActiveModel can otherwise restore
+/// lifecycle and runtime-owned values (for example, reactivate an app after
+/// a concurrent revoke or erase a newer last_used_at timestamp).
+fn manual_app_update_base(app: oauth_apps::Model) -> OAuthAppActiveModel {
+    let mut active: OAuthAppActiveModel = app.into();
+    active.slug = ActiveValue::NotSet;
+    active.app_type = ActiveValue::NotSet;
+    active.client_id = ActiveValue::NotSet;
+    active.client_secret_hash = ActiveValue::NotSet;
+    active.manifest_ref = ActiveValue::NotSet;
+    active.auto_created = ActiveValue::NotSet;
+    active.is_active = ActiveValue::NotSet;
+    active.revoked_at = ActiveValue::NotSet;
+    active.last_used_at = ActiveValue::NotSet;
+    active.metadata = ActiveValue::NotSet;
+    active.created_at = ActiveValue::NotSet;
+    active
+}
+
 pub struct OAuthAppService;
 
 impl OAuthAppService {
@@ -225,13 +245,10 @@ impl OAuthAppService {
 
         // Go through the ActiveModel wrapper: name/description are
         // translation-owned (`#[sea_orm(ignore)]` here) and its update
-        // path syncs them into oauth_app_translations. The stored
-        // client secret is explicitly excluded via NotSet so this
-        // (possibly stale) read can never revert a concurrent secret
-        // rotation.
-        let existing_secret_hash = app.client_secret_hash.clone();
-        let mut active: OAuthAppActiveModel = app.into();
-        active.client_secret_hash = ActiveValue::NotSet;
+        // path syncs them into oauth_app_translations. The base model marks
+        // immutable, lifecycle and runtime-owned columns NotSet so this
+        // pre-read cannot undo a concurrent revoke, secret rotation or use.
+        let mut active = manual_app_update_base(app);
         active.name = Set(input.name);
         active.description = Set(input.description);
         active.icon_url = Set(input.icon_url);
@@ -245,17 +262,10 @@ impl OAuthAppService {
         active.granted_permissions = Set(to_json_array(&granted_permissions)?);
         active.updated_at = Set(Utc::now().into());
 
-        let mut updated = active
+        active
             .update(db)
             .await
-            .map_err(|_| Error::InternalServerError)?;
-        // The update above deliberately leaves the stored secret
-        // untouched (NotSet); reflect the pre-existing hash in the
-        // returned model instead of reporting "no secret".
-        if updated.client_secret_hash.is_none() {
-            updated.client_secret_hash = existing_secret_hash;
-        }
-        Ok(updated)
+            .map_err(|_| Error::InternalServerError)
     }
 
     /// Find an active app by its public client_id scoped to a tenant
@@ -2847,6 +2857,83 @@ mod tests {
             validate_app_display_fields("name", Some("  "), None),
             Err(Error::BadRequest(_))
         ));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn stale_manual_app_update_cannot_restore_revocation_or_last_used_state() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let created = oauth_apps::scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::create_app(
+                &db,
+                tenant.id,
+                CreateOAuthAppInput {
+                    name: "Race-safe app".to_string(),
+                    slug: "race-safe-app".to_string(),
+                    description: Some("Initial".to_string()),
+                    app_type: "third_party".to_string(),
+                    icon_url: None,
+                    redirect_uris: vec!["https://partner.example.com/callback".to_string()],
+                    scopes: vec!["catalog:read".to_string()],
+                    grant_types: vec![
+                        "authorization_code".to_string(),
+                        "refresh_token".to_string(),
+                    ],
+                    granted_permissions: vec![],
+                },
+            ),
+        )
+        .await
+        .expect("create manual app");
+
+        let stale = OAuthAppsEntity::find_by_id(created.app.id)
+            .one(&db)
+            .await
+            .expect("read stale app")
+            .expect("app exists");
+        OAuthAppService::touch_last_used(&db, stale.id)
+            .await
+            .expect("record runtime use");
+        let used_at = OAuthAppsEntity::find_by_id(stale.id)
+            .one(&db)
+            .await
+            .expect("read last-used timestamp")
+            .and_then(|app| app.last_used_at)
+            .expect("runtime use timestamp");
+
+        OAuthAppService::revoke_app(&db, tenant.id, stale.id)
+            .await
+            .expect("revoke app");
+
+        let mut update = manual_app_update_base(stale);
+        update.name = Set("Updated after revoke".to_string());
+        update.description = Set(Some("Updated metadata".to_string()));
+        update.icon_url = Set(None);
+        update.redirect_uris = Set(serde_json::json!([
+            "https://partner.example.com/updated-callback"
+        ]));
+        update.scopes = Set(serde_json::json!(["catalog:*"]));
+        update.grant_types = Set(serde_json::json!(["authorization_code", "refresh_token"]));
+        update.granted_permissions = Set(serde_json::json!([]));
+        update.updated_at = Set(Utc::now().into());
+
+        oauth_apps::scope_runtime_copy_locale("en".to_string(), update.update(&db))
+            .await
+            .expect("apply stale editable-field update");
+
+        let stored = OAuthAppsEntity::find_by_id(created.app.id)
+            .one(&db)
+            .await
+            .expect("reload app")
+            .expect("app remains present");
+        assert!(!stored.is_active, "stale update must not reactivate a revoked app");
+        assert!(stored.revoked_at.is_some(), "revocation timestamp must survive");
+        assert_eq!(
+            stored.last_used_at,
+            Some(used_at),
+            "stale update must not erase a newer runtime-owned use timestamp"
+        );
     }
 
     #[tokio::test]
