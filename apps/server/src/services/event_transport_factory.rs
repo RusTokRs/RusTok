@@ -109,6 +109,18 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
             // Keep the application-facing transport concrete so TransactionalEventBus can
             // downcast to OutboxTransport and write into the caller's database transaction.
             let outbox_transport = Arc::new(OutboxTransport::new(ctx.db_clone()));
+            // Validate local DB-backed components before connecting/starting the external
+            // Iggy transport. A bad retention policy or artifact projector must not leave
+            // a broker process or connector alive after bootstrap fails.
+            let outbox_retention =
+                resolve_outbox_retention(ctx, &settings.events.outbox_retention)?;
+            let artifact_projector = ModuleControlPlane::new(ctx.db_clone())
+                .artifact_event_projector(ArtifactEventDeliveryConfig::default())
+                .map_err(|error| {
+                    Error::BadRequest(format!(
+                        "Failed to initialize durable artifact event projection: {error}"
+                    ))
+                })?;
             let (relay_target, listener_bus, iggy_mode) = match delivery_profile {
                 EventDeliveryProfile::Outbox => {
                     let transport = MemoryTransport::with_capacity(channel_capacity);
@@ -142,13 +154,6 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                     (transport, listener_bus, Some(iggy_config.mode))
                 }
             };
-            let artifact_projector = ModuleControlPlane::new(ctx.db_clone())
-                .artifact_event_projector(ArtifactEventDeliveryConfig::default())
-                .map_err(|error| {
-                    Error::BadRequest(format!(
-                        "Failed to initialize durable artifact event projection: {error}"
-                    ))
-                })?;
             let relay_target: Arc<dyn EventTransport> = Arc::new(
                 ArtifactEventProjectionTransport::new(artifact_projector, relay_target),
             );
@@ -174,9 +179,6 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                     ..RelayConfig::default()
                 }),
             };
-
-            let outbox_retention =
-                resolve_outbox_retention(ctx, &settings.events.outbox_retention)?;
 
             EventRuntime {
                 delivery_profile,
