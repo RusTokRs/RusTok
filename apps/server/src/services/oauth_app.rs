@@ -3172,7 +3172,7 @@ mod tests {
         .await
         .expect("insert oauth token");
 
-        OAuthAppService::grant_consent(
+        crate::services::oauth_consent_service::OAuthConsentService::grant_consent_strict(
             &db,
             created.app.id,
             token_user.id,
@@ -3180,7 +3180,7 @@ mod tests {
             vec!["catalog:read".to_string()],
         )
         .await
-        .expect("grant user consent");
+        .expect("grant user consent through the strict admin path");
         let consent_code_id =
             insert_pending_authorization_code(&db, created.app.id, token_user.id, tenant.id).await;
         OAuthAppService::revoke_user_consent(
@@ -3207,6 +3207,21 @@ mod tests {
             .update(&db)
             .await
             .expect("deactivate consent subject");
+        let strict_grant_for_inactive_user =
+            crate::services::oauth_consent_service::OAuthConsentService::grant_consent_strict(
+                &db,
+                created.app.id,
+                token_user.id,
+                tenant.id,
+                vec!["catalog:read".to_string()],
+            )
+            .await
+            .expect_err("strict grant must reject an inactive user");
+        assert!(matches!(
+            strict_grant_for_inactive_user,
+            Error::Unauthorized(_)
+        ));
+
         let grant_for_inactive_user = OAuthAppService::grant_consent(
             &db,
             created.app.id,
@@ -3215,7 +3230,7 @@ mod tests {
             vec!["catalog:read".to_string()],
         )
         .await
-        .expect_err("inactive user must not receive new consent");
+        .expect_err("ordinary grant must reject an inactive user");
         assert!(matches!(grant_for_inactive_user, Error::Unauthorized(_)));
 
         let app_code_id =
