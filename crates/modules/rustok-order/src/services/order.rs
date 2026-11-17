@@ -1517,7 +1517,11 @@ fn validate_return_resolution_links(
                 ));
             }
         }
-        Some(_) => unreachable!("resolution_type is normalized before link validation"),
+        Some(other) => {
+            return Err(OrderError::Validation(format!(
+                "unsupported return resolution type: {other}"
+            )));
+        }
     }
     Ok(())
 }
@@ -1554,16 +1558,15 @@ async fn load_order_custom_fields_schema(
     let definitions = rows
         .into_iter()
         .map(order_field_definition_from_row)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(OrderError::Validation)?;
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(CustomFieldsSchema::new(definitions))
 }
 
 fn order_field_definition_from_row(
     row: order_field_definitions_storage::Model,
-) -> Result<FieldDefinition, String> {
-    field_definition_from_source(&row)
+) -> OrderResult<FieldDefinition> {
+    field_definition_from_source(&row).map_err(OrderError::Validation)
 }
 
 fn split_order_metadata_payload(
