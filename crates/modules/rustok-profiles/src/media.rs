@@ -92,6 +92,7 @@ pub fn validate_profile_media_asset(
     slot: ProfileMediaSlot,
     asset: &MediaItem,
 ) -> ProfileResult<()> {
+    // INVARIANT: Validate that the port-provided media asset strictly matches the target profile tenant.
     if asset.tenant_id != tenant_id {
         return Err(ProfileError::Validation(format!(
             "profile {} media must belong to the current tenant",
