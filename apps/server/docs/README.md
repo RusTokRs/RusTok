@@ -210,12 +210,16 @@ initialization propagates as an internal auth error rather than substituting
 an empty hash.
 
 OAuth refresh requests may retain the original scopes by omitting `scope` or
-request a non-empty subset of the currently authorized scopes. The server
-rejects an empty explicit scope or a widening request with `invalid_scope`,
-and persists the narrowed grant on the rotated credential. Reuse detection
-revokes the scoped OAuth token family; on a persistence error it returns
-`server_error` rather than swallowing the failed security effect. Automatic
-durable retry after the client stops retrying is not established.
+request a non-empty subset of the currently authorized scopes. Authorization
+and client-credentials requests also preserve scope presence: omission selects
+the configured default, while an explicitly empty or whitespace-only value
+fails with `invalid_scope`. Consent grants must contain at least one scope.
+The `refresh_token` grant is valid only when the app also declares
+`authorization_code`. The server persists narrowed scopes on rotated
+credentials. Reuse detection revokes the scoped OAuth token family; on a
+persistence error it returns `server_error` rather than swallowing the failed
+security effect. Automatic durable retry after the client stops retrying is
+not established.
 
 GraphQL request-preparation policies classify only the operation selected by
 `operationName` (or the sole operation when no name is required). The selected
@@ -343,13 +347,23 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   revocation, credential change, code replay, and refresh reuse revoke the whole
   family, so an already-issued access JWT is fenced before its signed TTL. Delegated
   rows also capture the consent epoch (`consent_granted_at`); a consent revoke/re-grant
-  cannot resurrect older tokens.
+  cannot resurrect older tokens. Code exchange and refresh rotation lock the active
+  app and delegated subject in the persistence transaction, then recheck the current
+  client secret fingerprint, grant, scopes, redirect registration, subject status,
+  and password-change epoch before consuming the one-shot credential. Client-credentials
+  issuance similarly locks and rechecks its app before persisting the access row.
+  App, consent, password, and user-status revocation also invalidate outstanding
+  authorization codes, preventing pending credentials from surviving a later
+  reactivation.
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
 - OAuth grant admission uses the exact persisted `grant_types` set. Manifest-managed first-party admin/storefront
   applications declare `authorization_code`, `refresh_token`, and `client_credentials` explicitly; the auth
-  model does not expand `refresh_token` implicitly for auto-created applications.
+  model does not expand `refresh_token` implicitly for auto-created applications. Third-party web redirect
+  URIs require HTTPS; mobile clients may use HTTP only on loopback and may use reverse-domain private-use
+  schemes. First-party managed apps may use loopback HTTP only when their configured public URL is itself
+  loopback HTTP, keeping local development separate from production web-client policy.
 - The OAuth token endpoint resolves clients through the security-only OAuth app lookup, so token issuance does
   not depend on tenant locale or `oauth_app_translations` presentation data.
 - Auth self-service endpoints (`/api/auth/me`, sessions, password change, profile, and history) require
