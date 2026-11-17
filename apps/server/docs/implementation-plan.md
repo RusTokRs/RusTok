@@ -1057,6 +1057,6 @@ Not run in this task, at the user's request. Run before merge:
 ```bash
 cargo fmt --all -- --check
 cargo check -p rustok-server --lib --features mod-comments
-cargo test -p rustok-server --lib services::app_lifecycle::tests::comments_listener_and_audit_handoff_workers_are_required_when_started
+cargo test -p rustok-server --lib services::app_lifecycle::lifecycle_tests::comments_listener_and_audit_handoff_workers_are_required_when_started
 ```
 
