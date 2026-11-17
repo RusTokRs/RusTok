@@ -265,6 +265,24 @@ flowchart TD
 
 ---
 
+### Pattern 10A: Selected GraphQL Operation Policy (`P-GQL-SELECTED-OP`)
+
+- **Category:** GraphQL transport security and request correctness.
+- **Logic dimensions:** Preconditions and bounds, branch completeness.
+- **Observed behavior:** A GraphQL document can contain several named operations, but the executor runs only the operation selected by `operationName`. A request-preparation security policy that scans every operation can reject a harmless selected operation because an unselected operation contains an admin, tenant, service-principal, or legacy mutation field. This is a false authorization denial and a request-level availability defect.
+- **Remediation:** Parse the document and classify only the operation the executor will run. A missing operation name selects the sole operation; a multi-operation document without a name is invalid and has no selected operation. `operationName` selects the executed AST operation; it is never itself an authorization grant. Permissions and field policy remain server-owned.
+- **Verification:** In a multi-operation document, select a public operation beside an unselected sensitive operation and verify it executes; select the sensitive operation and verify its guard still denies; cover a single named operation and a multi-operation document without a name.
+- **Detection:** Review GraphQL `prepare_request` classifiers for unfiltered `document.operations.iter()` loops and ensure their policy input matches the operation passed to `NextExecute`.
+
+### Pattern 10B: Cycle-Safe GraphQL Fragment Traversal (`P-GQL-FRAGMENT-CYCLE`)
+
+- **Category:** GraphQL parser hardening and denial-of-service resistance.
+- **Logic dimensions:** Preconditions and bounds, algorithmic correctness.
+- **Observed behavior:** GraphQL fragment spreads form a directed graph, not a guaranteed tree. The parser can produce an AST containing cyclic fragment references; GraphQL validation rejects the cycle later, but host `prepare_request` security classifiers run before that validation. Recursive fragment inspection without a visited set can therefore recurse indefinitely and overflow the request task's stack before the normal validation error is returned.
+- **Remediation:** Track visited fragment names per selected operation before descending into a spread. When classification depends on traversal context, include that context in the visited key. Continue inspecting the first visit so sensitive fields reachable through a cycle are still detected; do not rely on later GraphQL validation to protect earlier host preflight code.
+- **Verification:** Cover self-cycles and multi-fragment cycles, with a sensitive field in the reachable fragment; classification must terminate and still detect the field.
+- **Detection:** Review recursive `Selection::FragmentSpread` handlers in GraphQL request-preparation policies for cycle guards.
+
 ### Pattern 11: Transactional Batching & Anti-N+1 (`P-BATCH-QUERY`)
 * **Category:** Algorithmic & Concurrency Performance
 * **Problem:** Executing per-item queries inside a transaction can increase round trips and extend lock duration. Measure the affected path and check transaction semantics before changing it.
