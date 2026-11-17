@@ -1530,6 +1530,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn refresh_cookie_lifetime_never_exceeds_the_issued_session_deadline() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Cookie tenant", "cookie-lifetime")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let password_hash = hash_password("Password123!").expect("hash password");
+        let user = users::ActiveModel::new(tenant.id, "cookie@example.com", &password_hash)
+            .insert(&db)
+            .await
+            .expect("user");
+        let config = test_auth_config("cookie-lifetime-secret", 600, 365 * 24 * 3600);
+        let (_user, login_tokens) = AuthLifecycleService::login_with_config(
+            &db,
+            &config,
+            tenant.id,
+            &user.email,
+            "Password123!",
+            None,
+            None,
+            false,
+        )
+        .await
+        .expect("login");
+
+        let maximum = (sessions::SESSION_ABSOLUTE_LIFETIME_DAYS * 24 * 3600) as u64;
+        assert!(login_tokens.refresh_expires_in > maximum - 5);
+        assert!(login_tokens.refresh_expires_in <= maximum);
+
+        let session = sessions::Entity::find()
+            .filter(sessions::Column::TokenHash.eq(hash_refresh_token(
+                &login_tokens.refresh_token,
+            )))
+            .one(&db)
+            .await
+            .expect("read session")
+            .expect("session should exist");
+
+        // Simulate a lineage approaching its absolute deadline; rotation
+        // must return only the remaining lifetime, not a fresh 90 days.
+        let created_at = Utc::now() - Duration::days(89);
+        let mut active: sessions::ActiveModel = session.into();
+        active.created_at = Set(created_at.into());
+        active.absolute_expires_at =
+            Set(Some((created_at + Duration::days(90)).into()));
+        active
+            .update(&db)
+            .await
+            .expect("age the session");
+
+        let (_user, rotated) = AuthLifecycleService::refresh_with_config_db(
+            &db,
+            &config,
+            tenant.id,
+            &login_tokens.refresh_token,
+            false,
+        )
+        .await
+        .expect("refresh");
+        assert!(rotated.refresh_expires_in > 0);
+        assert!(rotated.refresh_expires_in <= 24 * 3600);
+    }
+
+    #[tokio::test]
     async fn unknown_login_still_returns_invalid_credentials_after_dummy_verification() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let config = test_auth_config("unknown-account-secret", 3600, 86400);
