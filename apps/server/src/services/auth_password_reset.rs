@@ -1,8 +1,8 @@
 use chrono::Utc;
 use rustok_events::DomainEvent;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set, TransactionTrait,
-    sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set,
+    TransactionTrait, sea_query::Expr,
 };
 
 use crate::auth::{
@@ -61,15 +61,8 @@ impl AuthLifecycleService {
 
         // The initial active-user check precedes password hashing and may race
         // with deactivation. Keep status and credential state in the atomic CAS.
-        if !update_password_if_active(
-            &tx,
-            tenant_id,
-            user.id,
-            &previous_hash,
-            &new_hash,
-            now,
-        )
-        .await?
+        if !update_password_if_active(&tx, tenant_id, user.id, &previous_hash, &new_hash, now)
+            .await?
         {
             tx.rollback().await.map_err(AuthLifecycleError::from)?;
             return Err(AuthLifecycleError::InvalidResetToken);
@@ -131,7 +124,10 @@ async fn update_password_if_active<C: ConnectionTrait>(
     now: chrono::DateTime<Utc>,
 ) -> Result<bool, AuthLifecycleError> {
     let updated = users::Entity::update_many()
-        .col_expr(users::Column::PasswordHash, Expr::value(new_hash.to_owned()))
+        .col_expr(
+            users::Column::PasswordHash,
+            Expr::value(new_hash.to_owned()),
+        )
         .col_expr(users::Column::PasswordChangedAt, Expr::value(now))
         .col_expr(users::Column::UpdatedAt, Expr::value(now))
         .filter(users::Column::Id.eq(user_id))
