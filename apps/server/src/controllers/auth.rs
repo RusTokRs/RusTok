@@ -309,7 +309,7 @@ fn build_session_cookie(refresh_token: &str, max_age_secs: u64, secure: bool) ->
 
 fn parse_session_cookie(headers: &axum::http::HeaderMap) -> Result<Option<String>> {
     let mut token: Option<String> = None;
-    for header in headers.get_all(axum::http::header::COOKIE) {
+    for header in headers.get_all(axum::http::header::COOKIE).iter() {
         let value = header
             .to_str()
             .map_err(|_| Error::BadRequest("Invalid session Cookie header".into()))?;
