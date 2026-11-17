@@ -822,8 +822,7 @@ impl AuthLifecycleService {
             Self::session_expiration(now, config.refresh_expiration)?,
             absolute_deadline,
         );
-        let refresh_expires_in =
-            expires_at.signed_duration_since(now).num_seconds().max(0) as u64;
+        let refresh_expires_in = expires_at.signed_duration_since(now).num_seconds().max(0) as u64;
 
         let session_id = session.id;
         let replaced_token_hash = session.token_hash.clone();
@@ -1311,8 +1310,7 @@ impl AuthLifecycleService {
         let refresh_token = generate_refresh_token().map_err(AuthLifecycleError::from)?;
         let token_hash = hash_refresh_token(&refresh_token);
         let expires_at = Self::session_expiration(now, config.refresh_expiration)?;
-        let refresh_expires_in =
-            expires_at.signed_duration_since(now).num_seconds().max(0) as u64;
+        let refresh_expires_in = expires_at.signed_duration_since(now).num_seconds().max(0) as u64;
 
         let session = sessions::ActiveModel::new(
             tenant_id, user.id, token_hash, expires_at, ip_address, user_agent,
@@ -1560,9 +1558,7 @@ mod tests {
         assert!(login_tokens.refresh_expires_in <= maximum);
 
         let session = sessions::Entity::find()
-            .filter(sessions::Column::TokenHash.eq(hash_refresh_token(
-                &login_tokens.refresh_token,
-            )))
+            .filter(sessions::Column::TokenHash.eq(hash_refresh_token(&login_tokens.refresh_token)))
             .one(&db)
             .await
             .expect("read session")
@@ -1573,12 +1569,8 @@ mod tests {
         let created_at = Utc::now() - Duration::days(89);
         let mut active: sessions::ActiveModel = session.into();
         active.created_at = Set(created_at.into());
-        active.absolute_expires_at =
-            Set(Some((created_at + Duration::days(90)).into()));
-        active
-            .update(&db)
-            .await
-            .expect("age the session");
+        active.absolute_expires_at = Set(Some((created_at + Duration::days(90)).into()));
+        active.update(&db).await.expect("age the session");
 
         let (_user, rotated) = AuthLifecycleService::refresh_with_config_db(
             &db,
@@ -1608,7 +1600,10 @@ mod tests {
             false,
         )
         .await;
-        assert!(matches!(result, Err(AuthLifecycleError::InvalidCredentials)));
+        assert!(matches!(
+            result,
+            Err(AuthLifecycleError::InvalidCredentials)
+        ));
     }
 
     #[tokio::test]
