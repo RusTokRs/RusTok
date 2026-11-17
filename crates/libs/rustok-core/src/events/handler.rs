@@ -129,6 +129,9 @@ impl EventDispatcher {
         let contract_listeners = registration
             .as_ref()
             .map(|registration| Arc::clone(&registration.state));
+        let shared_handler_capacity = contract_listeners
+            .as_ref()
+            .map(|listeners| Arc::clone(&listeners.handler_capacity));
         let handlers = Arc::new(self.handlers);
         let config = self.config;
         let mut receiver = self.bus.subscribe();
@@ -151,7 +154,8 @@ impl EventDispatcher {
                 }
 
                 let max_concurrent = config.max_concurrent.max(1);
-                let semaphore = Arc::new(Semaphore::new(max_concurrent));
+                let semaphore = shared_handler_capacity
+                    .unwrap_or_else(|| Arc::new(Semaphore::new(max_concurrent)));
                 let queue = Arc::new(Semaphore::new(queue_capacity));
                 let mut in_flight = JoinSet::new();
 
@@ -278,6 +282,10 @@ impl EventDispatcher {
         if config.fail_fast {
             for handler in matching_handlers {
                 let envelope = envelope.clone();
+                let Ok(_permit) = Arc::clone(&semaphore).acquire_owned().await else {
+                    error!("Event dispatcher handler semaphore closed");
+                    break;
+                };
                 if let Err(error) = Self::handle_with_retry(handler, envelope, &config).await {
                     error!(
                         event_type = event_type.as_str(),

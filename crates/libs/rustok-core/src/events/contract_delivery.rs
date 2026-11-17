@@ -25,7 +25,7 @@ pub(super) struct ContractListenerSet {
     config: DispatcherConfig,
     active: AtomicBool,
     capacity: Arc<Semaphore>,
-    handler_capacity: Arc<Semaphore>,
+    pub(super) handler_capacity: Arc<Semaphore>,
 }
 
 impl fmt::Debug for ContractListenerSet {
@@ -35,6 +35,20 @@ impl fmt::Debug for ContractListenerSet {
             .field("active", &self.active.load(Ordering::Acquire))
             .finish()
     }
+}
+
+async fn handle_root_handler(
+    handler: Arc<dyn EventHandler>,
+    envelope: EventEnvelope,
+    config: &DispatcherConfig,
+) -> Result<()> {
+    let event_type = envelope.event.event_type();
+    let handler_name = handler.name();
+    let result = EventDispatcher::handle_with_retry(handler, envelope, config).await;
+    if result.is_err() {
+        rustok_telemetry::metrics::record_event_error(event_type, handler_name);
+    }
+    result
 }
 
 impl ContractListenerSet {
@@ -89,12 +103,7 @@ impl ContractListenerSet {
                     .map_err(|_| {
                     Error::External("root handler capacity is closed".to_owned())
                 })?;
-                EventDispatcher::handle_with_retry(
-                    handler,
-                    envelope.clone(),
-                    &self.config,
-                )
-                .await?;
+                handle_root_handler(handler, envelope.clone(), &self.config).await?;
             }
         } else {
             let mut tasks = JoinSet::new();
@@ -109,7 +118,7 @@ impl ContractListenerSet {
                         .map_err(|_| {
                             Error::External("root handler capacity is closed".to_owned())
                         })?;
-                    EventDispatcher::handle_with_retry(handler, envelope, &config).await
+                    handle_root_handler(handler, envelope, &config).await
                 });
             }
 
@@ -303,7 +312,7 @@ fn invalid_envelope(error: rustok_events::EventContractEnvelopeError) -> Error {
 
 fn poisoned_registry() -> Error {
     Error::External(
-        "sealed module listener registry is unavailable; restart the runtime".to_owned(),
+        "module listener registry is unavailable; restart the runtime".to_owned(),
     )
 }
 

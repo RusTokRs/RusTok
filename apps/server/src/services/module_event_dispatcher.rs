@@ -1184,12 +1184,11 @@ mod lifecycle_tests {
                 .expect("an empty registry is initialized, not unavailable")
         );
 
+        let tenant_id = Uuid::new_v4();
         let root_event = EventEnvelope::new(
-            Uuid::new_v4(),
+            tenant_id,
             None,
-            DomainEvent::TenantUpdated {
-                tenant_id: Uuid::new_v4(),
-            },
+            DomainEvent::TenantUpdated { tenant_id },
         );
         memory
             .publish(root_event)
