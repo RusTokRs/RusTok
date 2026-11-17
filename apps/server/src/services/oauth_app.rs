@@ -1507,6 +1507,14 @@ fn validate_app_configuration(
         }
     }
 
+    if grant_types.iter().any(|item| item == "refresh_token")
+        && !grant_types.iter().any(|item| item == "authorization_code")
+    {
+        return Err(Error::BadRequest(
+            "refresh_token grant requires authorization_code grant".to_string(),
+        ));
+    }
+
     if app_type == "service" && grant_types.iter().any(|item| item == "authorization_code") {
         return Err(Error::BadRequest(
             "Service apps cannot use authorization_code grant".to_string(),
@@ -2030,6 +2038,47 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn refresh_token_grant_requires_authorization_code_for_all_app_types() {
+        let scopes = vec!["profile".to_string()];
+        let refresh_only = vec!["refresh_token".to_string()];
+
+        assert!(
+            validate_manual_app_configuration(
+                "third_party",
+                &[],
+                &scopes,
+                &refresh_only,
+                &[],
+            )
+            .is_err()
+        );
+        assert!(
+            validate_managed_app_configuration(
+                "first_party",
+                &[],
+                &scopes,
+                &refresh_only,
+                &[],
+                false,
+            )
+            .is_err()
+        );
+
+        let authorization_and_refresh =
+            vec!["authorization_code".to_string(), "refresh_token".to_string()];
+        assert!(
+            validate_manual_app_configuration(
+                "third_party",
+                &["https://client.example/callback".to_string()],
+                &scopes,
+                &authorization_and_refresh,
+                &[],
+            )
+            .is_ok()
+        );
     }
 
     #[test]
