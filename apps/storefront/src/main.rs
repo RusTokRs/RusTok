@@ -156,7 +156,11 @@ fn resolve_csr_enabled_modules(
     }
 
     #[cfg(debug_assertions)]
-    if _query_params.get("rustok_debug_modules").map(|v| v.as_str()) == Some("true") {
+    if _query_params
+        .get("rustok_debug_modules")
+        .map(|v| v.as_str())
+        == Some("true")
+    {
         return vec![
             "content".into(),
             "cart".into(),

@@ -70,7 +70,8 @@ pub(crate) fn parse_module_version_requirement(
     if value.trim().is_empty() {
         return Err(ModuleVersionRequirementError::Empty);
     }
-    VersionReq::parse(value).map_err(|error| ModuleVersionRequirementError::Parse(error.to_string()))
+    VersionReq::parse(value)
+        .map_err(|error| ModuleVersionRequirementError::Parse(error.to_string()))
 }
 
 /// Stable OCI layer media type for immutable Rhai source artifacts.

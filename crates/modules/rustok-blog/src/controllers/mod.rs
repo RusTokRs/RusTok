@@ -95,7 +95,8 @@ impl BlogHttpRuntime {
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| {
                 crate::BlogError::Validation(
-                    "blog HTTP routes require TransactionalEventBus in HostRuntimeContext".to_string(),
+                    "blog HTTP routes require TransactionalEventBus in HostRuntimeContext"
+                        .to_string(),
                 )
             })?;
         let category_delete_cleanup = runtime

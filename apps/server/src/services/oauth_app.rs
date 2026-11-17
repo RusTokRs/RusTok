@@ -2177,14 +2177,8 @@ mod tests {
         let refresh_only = vec!["refresh_token".to_string()];
 
         assert!(
-            validate_manual_app_configuration(
-                "third_party",
-                &[],
-                &scopes,
-                &refresh_only,
-                &[],
-            )
-            .is_err()
+            validate_manual_app_configuration("third_party", &[], &scopes, &refresh_only, &[],)
+                .is_err()
         );
         assert!(
             validate_managed_app_configuration(
@@ -2198,8 +2192,10 @@ mod tests {
             .is_err()
         );
 
-        let authorization_and_refresh =
-            vec!["authorization_code".to_string(), "refresh_token".to_string()];
+        let authorization_and_refresh = vec![
+            "authorization_code".to_string(),
+            "refresh_token".to_string(),
+        ];
         assert!(
             validate_manual_app_configuration(
                 "third_party",
@@ -3183,14 +3179,9 @@ mod tests {
         .expect("grant user consent through the strict admin path");
         let consent_code_id =
             insert_pending_authorization_code(&db, created.app.id, token_user.id, tenant.id).await;
-        OAuthAppService::revoke_user_consent(
-            &db,
-            created.app.id,
-            token_user.id,
-            tenant.id,
-        )
-        .await
-        .expect("revoke user consent");
+        OAuthAppService::revoke_user_consent(&db, created.app.id, token_user.id, tenant.id)
+            .await
+            .expect("revoke user consent");
         let consent_code = oauth_authorization_codes::Entity::find_by_id(consent_code_id)
             .one(&db)
             .await

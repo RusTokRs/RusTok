@@ -2,7 +2,7 @@ use rustok_core::events::BackpressureState;
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::common::settings::{GuardrailRolloutMode, RustokSettings, RuntimeHostMode};
+use crate::common::settings::{GuardrailRolloutMode, RuntimeHostMode, RustokSettings};
 use crate::middleware::rate_limit::{
     SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter,
 };

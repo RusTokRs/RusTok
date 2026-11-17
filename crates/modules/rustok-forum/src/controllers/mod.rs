@@ -139,7 +139,8 @@ impl ForumHttpRuntime {
             .shared_get::<TransactionalEventBus>()
             .ok_or_else(|| {
                 crate::error::ForumError::Validation(
-                    "forum HTTP routes require TransactionalEventBus in HostRuntimeContext".to_string(),
+                    "forum HTTP routes require TransactionalEventBus in HostRuntimeContext"
+                        .to_string(),
                 )
             })?;
         let settings_providers = match (
@@ -468,10 +469,10 @@ pub fn axum_router(runtime: &HostRuntimeContext) -> Result<Router, crate::error:
 mod tests {
     use super::ForumHttpRuntime;
     use super::ensure_forum_module_enabled;
-    use std::sync::Arc;
     use crate::ports::taxonomy::NoopForumTaxonomyPort;
     use axum::http::StatusCode;
     use sea_orm::{ConnectionTrait, Database};
+    use std::sync::Arc;
     use uuid::Uuid;
 
     async fn runtime_with_module_table() -> ForumHttpRuntime {

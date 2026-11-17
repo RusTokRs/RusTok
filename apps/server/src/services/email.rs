@@ -289,7 +289,10 @@ where
 {
     let stop_handle = crate::services::app_lifecycle::StopHandle::ensure(ctx);
     if stop_handle.is_stopping() {
-        tracing::warn!(task = task_name, "Server runtime is stopping; skipping background email delivery");
+        tracing::warn!(
+            task = task_name,
+            "Server runtime is stopping; skipping background email delivery"
+        );
         return tokio::spawn(std::future::ready(()));
     }
 
@@ -306,7 +309,10 @@ where
                 tracing::warn!(task = task_name, error = %error, "Background email delivery failed");
             }
             Err(_) => {
-                tracing::error!(task = task_name, "Background email delivery panicked unexpectedly");
+                tracing::error!(
+                    task = task_name,
+                    "Background email delivery panicked unexpectedly"
+                );
             }
         }
     })
@@ -555,10 +561,11 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_auth_email_task_executes_and_logs() {
-        use sea_orm::DatabaseConnection;
         use crate::common::settings::RustokSettings;
+        use sea_orm::DatabaseConnection;
 
-        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let ctx =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
         let (called_tx, mut called_rx) = tokio::sync::mpsc::channel(1);
 
         let handle = spawn_auth_email_task(&ctx, "test_task", move || async move {
@@ -572,11 +579,12 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_auth_email_task_skips_when_stopping() {
-        use sea_orm::DatabaseConnection;
         use crate::common::settings::RustokSettings;
         use crate::services::app_lifecycle::StopHandle;
+        use sea_orm::DatabaseConnection;
 
-        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let ctx =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
         let stop_handle = StopHandle::ensure(&ctx);
         stop_handle.stop().await;
 
@@ -592,10 +600,11 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_auth_email_task_catches_panics_cleanly() {
-        use sea_orm::DatabaseConnection;
         use crate::common::settings::RustokSettings;
+        use sea_orm::DatabaseConnection;
 
-        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let ctx =
+            ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
         let handle = spawn_auth_email_task(&ctx, "test_panicking_task", || async {
             panic!("deliberate panic for test");
             #[allow(unreachable_code)]

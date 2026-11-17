@@ -721,8 +721,16 @@ fn build_install_plan(params: BuildInstallPlanParams) -> Result<InstallPlan, Str
     let instance_root = require_text("Instance root", params.instance_root)?;
     let tenant_name = require_text("Tenant name", params.tenant_name)?;
     let admin_email = require_text("Admin email", params.admin_email)?;
-    require_secret("Database URL", &params.database_url, &params.database_secret_key)?;
-    require_secret("Admin password", &params.admin_password, &params.admin_secret_key)?;
+    require_secret(
+        "Database URL",
+        &params.database_url,
+        &params.database_secret_key,
+    )?;
+    require_secret(
+        "Admin password",
+        &params.admin_password,
+        &params.admin_secret_key,
+    )?;
 
     Ok(InstallPlan {
         placement: InstancePlacement::new(instance_root),

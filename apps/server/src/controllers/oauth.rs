@@ -1251,13 +1251,14 @@ async fn revoke_handler_inner(
         error_description: "Invalid client_id format".to_string(),
     })?;
 
-    let app = OAuthAppService::find_security_by_client_id_scoped(ctx.db(), tenant_ctx.id, client_id)
-        .await
-        .map_err(|_| oauth_client_lookup_error())?
-        .ok_or_else(|| TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Unknown client_id".to_string(),
-        })?;
+    let app =
+        OAuthAppService::find_security_by_client_id_scoped(ctx.db(), tenant_ctx.id, client_id)
+            .await
+            .map_err(|_| oauth_client_lookup_error())?
+            .ok_or_else(|| TokenErrorResponse {
+                error: "invalid_client".to_string(),
+                error_description: "Unknown client_id".to_string(),
+            })?;
 
     // Verify client_secret if the app has one
     if let Some(secret_hash) = &app.client_secret_hash {

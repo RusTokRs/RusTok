@@ -1164,8 +1164,12 @@ impl AuthLifecycleService {
         let txn = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
         let token_hash = hash_refresh_token(refresh_token);
 
-        let session = match Self::find_refresh_session_for_update_in_tx(&txn, tenant_id, &token_hash)
-            .await?
+        let session = match Self::find_refresh_session_for_update_in_tx(
+            &txn,
+            tenant_id,
+            &token_hash,
+        )
+        .await?
         {
             Some(session) => Some(session),
             None => {
@@ -2375,9 +2379,9 @@ mod tests {
         let tx = db.begin().await.expect("transaction");
         assert!(
             AuthLifecycleService::find_refresh_session_for_update_in_tx(&tx, tenant.id, &old_hash)
-            .await
-            .expect("current-token query")
-            .is_none()
+                .await
+                .expect("current-token query")
+                .is_none()
         );
         assert!(
             AuthLifecycleService::find_previous_refresh_session_for_logout_in_tx(
@@ -2918,7 +2922,7 @@ mod tests {
 
         assert!(matches!(
             AuthLifecycleService::logout_by_refresh_token_runtime(&runtime, tenant.id, old_cookie)
-            .await,
+                .await,
             Err(AuthLifecycleError::InvalidRefreshToken)
         ));
     }

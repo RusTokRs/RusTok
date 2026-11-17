@@ -4,14 +4,14 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 
 #[cfg(feature = "mod-seo")]
-use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
-#[cfg(feature = "mod-seo")]
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::{
     EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig, spawn_outbox_relay_worker,
 };
 use crate::services::outbox_retention_worker::spawn_outbox_retention_worker;
 use crate::services::server_runtime_context::ServerRuntimeContext;
+#[cfg(feature = "mod-seo")]
+use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 use rustok_modules::ModuleControlPlane;
 #[cfg(feature = "mod-seo")]
 use rustok_seo::{SeoApplicationServices, SeoWorkerAuthorization};

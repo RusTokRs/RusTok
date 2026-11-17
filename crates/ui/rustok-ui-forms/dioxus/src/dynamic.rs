@@ -22,7 +22,10 @@ use crate::inputs::{
 
 /// Individual dynamic field renderer mapping a [`FieldDescriptor`] to the appropriate input control.
 #[component]
-fn DynamicFieldItem(field: FieldDescriptor, mut values: Signal<HashMap<String, String>>) -> Element {
+fn DynamicFieldItem(
+    field: FieldDescriptor,
+    mut values: Signal<HashMap<String, String>>,
+) -> Element {
     let name = field.name.clone();
     let cur_val = values.read().get(&name).cloned().unwrap_or_default();
     let cur_bool = cur_val == "true" || cur_val == "1";

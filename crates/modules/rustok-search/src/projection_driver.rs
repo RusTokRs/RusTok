@@ -130,7 +130,8 @@ impl SearchProjectionDriver {
         self.ensure_postgres()?;
         if tenant_id.is_nil() || entity_id.is_nil() {
             return Err(Error::Validation(
-                "Search entity refresh requires valid non-nil tenant and entity identifiers".to_owned(),
+                "Search entity refresh requires valid non-nil tenant and entity identifiers"
+                    .to_owned(),
             ));
         }
         validate_entity_type(entity_type)?;
@@ -193,7 +194,8 @@ impl SearchProjectionDriver {
         self.ensure_postgres()?;
         if tenant_id.is_nil() || entity_id.is_nil() {
             return Err(Error::Validation(
-                "Search entity deletion requires valid non-nil tenant and entity identifiers".to_owned(),
+                "Search entity deletion requires valid non-nil tenant and entity identifiers"
+                    .to_owned(),
             ));
         }
         validate_entity_type(entity_type)?;

@@ -87,7 +87,9 @@ pub fn TabsList(
     children: Children,
 ) -> impl IntoView {
     let ctx = use_tabs_context();
-    let effective_orientation = orientation.or_else(|| ctx.map(|c| c.orientation)).unwrap_or(Orientation::Horizontal);
+    let effective_orientation = orientation
+        .or_else(|| ctx.map(|c| c.orientation))
+        .unwrap_or(Orientation::Horizontal);
     let custom = (!class.trim().is_empty()).then_some(class.as_str());
     let full_class = tabs_list_classes(effective_orientation, custom);
     let aria_label = (!aria_label.trim().is_empty()).then_some(aria_label);
@@ -99,21 +101,39 @@ pub fn TabsList(
             use leptos::wasm_bindgen::JsCast;
             let key = event.key();
             let is_horizontal = effective_orientation == Orientation::Horizontal;
-            let is_next = (is_horizontal && key == "ArrowRight") || (!is_horizontal && key == "ArrowDown");
-            let is_prev = (is_horizontal && key == "ArrowLeft") || (!is_horizontal && key == "ArrowUp");
+            let is_next =
+                (is_horizontal && key == "ArrowRight") || (!is_horizontal && key == "ArrowDown");
+            let is_prev =
+                (is_horizontal && key == "ArrowLeft") || (!is_horizontal && key == "ArrowUp");
             let is_home = key == "Home";
             let is_end = key == "End";
 
             if is_next || is_prev || is_home || is_end {
-                let Some(target) = event.target().and_then(|t| t.dyn_into::<web_sys::Element>().ok()) else { return; };
-                let Ok(Some(list)) = target.closest("[role='tablist']") else { return; };
-                let Ok(tabs) = list.query_selector_all("[role='tab']:not(:disabled)") else { return; };
+                let Some(target) = event
+                    .target()
+                    .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                else {
+                    return;
+                };
+                let Ok(Some(list)) = target.closest("[role='tablist']") else {
+                    return;
+                };
+                let Ok(tabs) = list.query_selector_all("[role='tab']:not(:disabled)") else {
+                    return;
+                };
                 let len = tabs.length() as usize;
-                if len == 0 { return; }
+                if len == 0 {
+                    return;
+                }
 
-                let current_tab = target.closest("[role='tab']").ok().flatten().unwrap_or(target);
+                let current_tab = target
+                    .closest("[role='tab']")
+                    .ok()
+                    .flatten()
+                    .unwrap_or(target);
                 let current_index = (0..len).find(|&i| {
-                    tabs.item(i as u32).map_or(false, |node| node.is_same_node(Some(&current_tab)))
+                    tabs.item(i as u32)
+                        .map_or(false, |node| node.is_same_node(Some(&current_tab)))
                 });
 
                 let target_index = if is_home {
@@ -123,7 +143,9 @@ pub fn TabsList(
                 } else if is_next {
                     current_index.map(|i| (i + 1) % len).unwrap_or(0)
                 } else {
-                    current_index.map(|i| if i == 0 { len - 1 } else { i - 1 }).unwrap_or(len - 1)
+                    current_index
+                        .map(|i| if i == 0 { len - 1 } else { i - 1 })
+                        .unwrap_or(len - 1)
                 };
 
                 if let Some(next_node) = tabs.item(target_index as u32) {
@@ -188,10 +210,20 @@ pub fn TabsTrigger(
 
     let full_class = move || {
         let c = custom.get_value();
-        tabs_trigger_classes(is_active.get(), disabled, (!c.trim().is_empty()).then_some(c.as_str()))
+        tabs_trigger_classes(
+            is_active.get(),
+            disabled,
+            (!c.trim().is_empty()).then_some(c.as_str()),
+        )
     };
 
-    let data_state = move || if is_active.get() { "active" } else { "inactive" };
+    let data_state = move || {
+        if is_active.get() {
+            "active"
+        } else {
+            "inactive"
+        }
+    };
     let orientation_str = ctx.map(|c| c.orientation.as_str()).unwrap_or("horizontal");
 
     let val_for_click = value.clone();
@@ -254,10 +286,19 @@ pub fn TabsContent(
 
     let full_class = move || {
         let c = custom.get_value();
-        tabs_content_classes(is_active.get(), (!c.trim().is_empty()).then_some(c.as_str()))
+        tabs_content_classes(
+            is_active.get(),
+            (!c.trim().is_empty()).then_some(c.as_str()),
+        )
     };
 
-    let data_state = move || if is_active.get() { "active" } else { "inactive" };
+    let data_state = move || {
+        if is_active.get() {
+            "active"
+        } else {
+            "inactive"
+        }
+    };
     let orientation_str = ctx.map(|c| c.orientation.as_str()).unwrap_or("horizontal");
 
     view! {

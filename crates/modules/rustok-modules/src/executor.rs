@@ -51,8 +51,9 @@ pub struct ModuleLifecycleToggleRequest {
     pub policy_transition: Option<ModulePolicyRevisionTransition>,
     /// Host-composed schema or resolution failure. The owner checks the
     /// journal for replay before rejecting a new command with unavailable evidence.
-    pub static_settings_schema:
-        Option<Result<HashMap<String, crate::ModuleSettingSpec>, StaticSettingsSchemaResolutionError>>,
+    pub static_settings_schema: Option<
+        Result<HashMap<String, crate::ModuleSettingSpec>, StaticSettingsSchemaResolutionError>,
+    >,
 }
 
 /// Typed error wrapper for host static settings schema resolution failure.

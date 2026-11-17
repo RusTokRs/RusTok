@@ -249,10 +249,7 @@ mod tests {
                 }),
                 9_i64,
             ),
-            (
-                serde_json::json!({"event": {"tenant_id": tenant_b}}),
-                3_i64,
-            ),
+            (serde_json::json!({"event": {"tenant_id": tenant_b}}), 3_i64),
             (serde_json::json!({"tenant_id": tenant_b}), 5_i64),
         ];
 

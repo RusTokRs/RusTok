@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use crate::backend::RevisionBackend;
 use crate::{
-    ChangeSource, RetentionPolicy, Revision, RevisionDiff, RevisionError, RevisionEvent,
-    RevisionMetadata, RevisionTracker, Revisionable, compute_diff,
+    compute_diff, ChangeSource, RetentionPolicy, Revision, RevisionDiff, RevisionError,
+    RevisionEvent, RevisionMetadata, RevisionTracker, Revisionable,
 };
 
 /// Main service for managing content revisions.

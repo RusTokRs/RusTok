@@ -1363,7 +1363,9 @@ where
     .one(conn)
     .await?
     .ok_or_else(|| {
-        CommerceError::Database(sea_orm::DbErr::Custom("INSERT RETURNING id must return a row".to_string()))
+        CommerceError::Database(sea_orm::DbErr::Custom(
+            "INSERT RETURNING id must return a row".to_string(),
+        ))
     })?
     .id;
 

@@ -44,7 +44,8 @@ impl Entity {
             return Ok(None);
         }
 
-        let policy = mcp_policies::Entity::find_by_client_scoped(db, client.tenant_id, client.id).await?;
+        let policy =
+            mcp_policies::Entity::find_by_client_scoped(db, client.tenant_id, client.id).await?;
         if policy
             .as_ref()
             .is_some_and(|policy| policy.tenant_id != client.tenant_id)

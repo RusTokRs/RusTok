@@ -67,7 +67,11 @@ async fn ensure_search_admin_permission(
         .map_err(|_| <async_graphql::FieldError as GraphQLError>::unauthenticated())?;
     let tenant = ctx.data::<rustok_api::TenantContext>()?;
 
-    if auth.tenant_id.is_nil() || tenant.id.is_nil() || auth.tenant_id != tenant.id || auth.user_id.is_nil() {
+    if auth.tenant_id.is_nil()
+        || tenant.id.is_nil()
+        || auth.tenant_id != tenant.id
+        || auth.user_id.is_nil()
+    {
         tracing::warn!(
             auth_tenant_id = %auth.tenant_id,
             resolved_tenant_id = %tenant.id,
