@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use async_graphql::extensions::{
@@ -14,6 +15,7 @@ fn selection_contains_disable_user(
     operation_type: OperationType,
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
+    visited_fragments: &mut BTreeSet<String>,
 ) -> bool {
     selection_set
         .items
@@ -23,20 +25,23 @@ fn selection_contains_disable_user(
                 operation_type == OperationType::Mutation
                     && field.node.name.node.as_str() == "disableUser"
             }
-            Selection::FragmentSpread(fragment) => document
-                .fragments
-                .get(&fragment.node.fragment_name.node)
-                .is_some_and(|definition| {
-                    selection_contains_disable_user(
-                        operation_type,
-                        &definition.node.selection_set.node,
-                        document,
-                    )
-                }),
+            Selection::FragmentSpread(fragment) => {
+                let fragment_name = fragment.node.fragment_name.node.as_str();
+                visited_fragments.insert(fragment_name.to_owned())
+                    && document.fragments.get(fragment_name).is_some_and(|definition| {
+                        selection_contains_disable_user(
+                            operation_type,
+                            &definition.node.selection_set.node,
+                            document,
+                            visited_fragments,
+                        )
+                    })
+            },
             Selection::InlineFragment(fragment) => selection_contains_disable_user(
                 operation_type,
                 &fragment.node.selection_set.node,
                 document,
+                visited_fragments,
             ),
         })
 }
@@ -52,6 +57,7 @@ fn document_contains_disable_user(
                 operation.node.ty,
                 &operation.node.selection_set.node,
                 document,
+                &mut BTreeSet::new(),
             )
         })
 }
@@ -129,6 +135,23 @@ mod tests {
             "#,
         )
         .expect("query should parse");
+
+        assert!(document_contains_disable_user(&document, None));
+    }
+
+    #[test]
+    fn cyclic_fragments_are_bounded_and_legacy_disable_is_still_detected() {
+        let document = async_graphql::parser::parse_query(
+            r#"
+                mutation DisableAccount { ...A }
+                fragment A on Mutation { ...B }
+                fragment B on Mutation {
+                    ...A
+                    disableUser(id: "00000000-0000-0000-0000-000000000001") { id }
+                }
+            "#,
+        )
+        .expect("cyclic document should parse");
 
         assert!(document_contains_disable_user(&document, None));
     }
