@@ -1034,3 +1034,29 @@ cargo test -p rustok-server --lib services::notification_fanout_worker
 cargo test -p rustok-server --lib services::notification_candidate_worker
 ```
 
+
+
+## P11 — Comments worker readiness visibility (2026-11-18)
+
+The Comments TCP listener and schedule-audit handoff worker already had bounded
+shutdown drains, but neither appeared in the runtime worker snapshots. A task
+could therefore terminate unexpectedly while the HTTP health endpoint remained
+green.
+
+### Implemented
+
+- The optional Comments TCP listener and schedule-audit handoff worker are now
+  included in readiness whenever their handles are present.
+- Added a lifecycle regression test that verifies both workers are required
+  while running and are removed by the normal shutdown drain.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib --features mod-comments
+cargo test -p rustok-server --lib services::app_lifecycle::tests::comments_listener_and_audit_handoff_workers_are_required_when_started
+```
+

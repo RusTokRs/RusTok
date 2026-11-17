@@ -397,6 +397,10 @@ pub(crate) fn additional_runtime_worker_snapshots(
     use crate::services::notification_candidate_worker::NotificationCandidateWorkerHandle;
     use crate::services::notification_fanout_worker::NotificationFanoutWorkerHandle;
     use crate::services::notification_outbox_intake_worker::NotificationOutboxIntakeWorkerHandle;
+    #[cfg(feature = "mod-comments")]
+    use crate::services::comments_provider_runtime::{
+        CommentsTcpDelegationScheduleAuditHandoffWorkerHandle, CommentsTcpListenerTask,
+    };
 
     let local = ctx.settings().runtime.runs_background_workers();
     let listeners_required = ctx
@@ -473,6 +477,21 @@ pub(crate) fn additional_runtime_worker_snapshots(
                 && ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>(),
             finished: ctx.shared_map::<ForumSearchContractConsumerWorkerHandle, _>(
                 |worker| worker.is_finished(),
+            ),
+        },
+        #[cfg(feature = "mod-comments")]
+        RuntimeWorkerSnapshot {
+            name: "comments_tcp_listener",
+            required: local && ctx.shared_contains::<CommentsTcpListenerTask>(),
+            finished: ctx.shared_map::<CommentsTcpListenerTask, _>(|task| task.0.is_finished()),
+        },
+        #[cfg(feature = "mod-comments")]
+        RuntimeWorkerSnapshot {
+            name: "comments_schedule_audit_handoff",
+            required: local
+                && ctx.shared_contains::<CommentsTcpDelegationScheduleAuditHandoffWorkerHandle>(),
+            finished: ctx.shared_map::<CommentsTcpDelegationScheduleAuditHandoffWorkerHandle, _>(
+                CommentsTcpDelegationScheduleAuditHandoffWorkerHandle::is_finished,
             ),
         },
         RuntimeWorkerSnapshot {
@@ -2296,6 +2315,52 @@ mod tests {
         assert!(!ctx.shared_contains::<RbacCacheInvalidationListenerHandle>());
         assert!(!ctx.shared_contains::<RbacInvalidationGenerationWatchdogHandle>());
         assert!(!ctx.shared_contains::<EventForwarderHandle>());
+    }
+
+    #[cfg(feature = "mod-comments")]
+    #[tokio::test]
+    async fn comments_listener_and_audit_handoff_workers_are_required_when_started() {
+        use crate::common::settings::RuntimeHostMode;
+        use crate::services::comments_provider_runtime::{
+            CommentsTcpDelegationScheduleAuditHandoffWorkerHandle, CommentsTcpListenerTask,
+        };
+        use super::additional_runtime_worker_snapshots;
+
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            settings,
+        );
+        let stop = super::StopHandle::ensure(&ctx);
+
+        let mut listener_stop = stop.subscribe();
+        let listener_task = tokio::spawn(async move {
+            let _ = listener_stop.changed().await;
+        });
+        ctx.shared_insert(CommentsTcpListenerTask(listener_task));
+
+        let mut handoff_stop = stop.subscribe();
+        let handoff_task = tokio::spawn(async move {
+            let _ = handoff_stop.changed().await;
+        });
+        ctx.shared_insert(CommentsTcpDelegationScheduleAuditHandoffWorkerHandle::for_test(
+            handoff_task,
+        ));
+
+        let snapshots = additional_runtime_worker_snapshots(&ctx);
+        for name in ["comments_tcp_listener", "comments_schedule_audit_handoff"] {
+            let snapshot = snapshots
+                .iter()
+                .find(|snapshot| snapshot.name == name)
+                .expect("started Comments worker must be visible to readiness");
+            assert!(snapshot.required, "{name} must be required after startup");
+            assert_eq!(snapshot.finished, Some(false), "{name} should be live");
+        }
+
+        super::shutdown_runtime_workers(&ctx).await;
+        assert!(!ctx.shared_contains::<CommentsTcpListenerTask>());
+        assert!(!ctx.shared_contains::<CommentsTcpDelegationScheduleAuditHandoffWorkerHandle>());
     }
 
     #[tokio::test]
