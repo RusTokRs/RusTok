@@ -283,6 +283,15 @@ flowchart TD
 - **Verification:** Cover self-cycles and multi-fragment cycles, with a sensitive field in the reachable fragment; classification must terminate and still detect the field.
 - **Detection:** Review recursive `Selection::FragmentSpread` handlers in GraphQL request-preparation policies for cycle guards.
 
+### Pattern 10C: Token-Effective Authority on REST (`P-TOKEN-CEILING`)
+
+- **Category:** Authentication, OAuth, and RBAC authorization.
+- **Logic dimensions:** Preconditions, authorization, and branch completeness.
+- **Observed behavior:** In the server's [channel REST controller](../../apps/server/src/controllers/channel.rs), an authenticated `CurrentUser` has a token-effective permission snapshot, but the prior channel-management guard re-resolved persisted RBAC grants by user ID. Unlike the GraphQL execution path, the REST handler had no task-local RBAC request scope. An OAuth token narrowed to unrelated scopes could therefore be admitted on the strength of its user's broader database grants.
+- **Remediation:** Enforce the current authenticated token's effective permissions at the REST admission boundary; do not silently re-resolve unscoped user grants when the token carries a narrower ceiling. Also bind actor tenant to the routed tenant before allowing writes. Owner-defined RBAC semantics (including implied manage permissions) still apply through `has_effective_permission`.
+- **Verification:** With a privileged underlying/inferred role, supply a permission snapshot without the required token-effective manage grant and verify denial; allow valid effective manage grants and deny a mismatched tenant.
+- **Detection:** Review authenticated HTTP handlers for `RbacService::has_permission`, `RbacService::has_any_permission` or `get_user_permissions` calls that receive only tenant/user IDs while a token-effective `CurrentUser` is available.
+
 ### Pattern 11: Transactional Batching & Anti-N+1 (`P-BATCH-QUERY`)
 * **Category:** Algorithmic & Concurrency Performance
 * **Problem:** Executing per-item queries inside a transaction can increase round trips and extend lock duration. Measure the affected path and check transaction semantics before changing it.
@@ -581,6 +590,7 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-BOUNDED-TREE` | Algorithmic bounds | Deep, wide, and cyclic input respects the declared budget | Manual |
 | `P-GQL-SELECTED-OP` | GraphQL authorization | Only the operation selected for execution is classified | Manual |
 | `P-GQL-FRAGMENT-CYCLE` | GraphQL parser safety | Cyclic fragment graphs terminate while retaining reachable field detection | Manual |
+| `P-TOKEN-CEILING` | OAuth/RBAC authorization | REST gates cannot widen the effective token permissions by rereading grants | Manual |
 | `P-BATCH-QUERY` | Performance and concurrency | Query count stays bounded without changing lock or result semantics | Heuristic: transaction query in a loop |
 | `P-ZERO-PANIC-PROD` | Reliability | Runtime inputs cannot trigger panic paths | Heuristic: panic-prone calls |
 | `P-HOTPATH-ALLOC` | Allocation | Invalid requests avoid unnecessary allocations on the affected path | Heuristic: early clone |
