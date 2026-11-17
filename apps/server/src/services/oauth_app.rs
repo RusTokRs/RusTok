@@ -1641,6 +1641,22 @@ mod tests {
     use sea_orm_migration::SchemaManager;
     use serial_test::serial;
 
+    #[tokio::test]
+    #[serial]
+    async fn empty_oauth_consent_is_rejected_before_app_lookup() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let error = OAuthAppService::grant_consent(
+            &db,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            tenant.id,
+            Vec::new(),
+        )
+        .await
+        .expect_err("empty consent must be rejected");
+        assert!(matches!(error, Error::BadRequest(_)));
+    }
+
     async fn test_db_with_tenant() -> (DatabaseConnection, tenants::Model) {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         ensure_oauth_schema(&db).await;

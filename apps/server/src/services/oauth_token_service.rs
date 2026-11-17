@@ -1287,7 +1287,7 @@ mod tests {
             validate_requested_scopes(&app, Some("catalog:read")).unwrap(),
             vec!["catalog:read".to_string()]
         );
-        for empty in ["", "   \\t"] {
+        for empty in ["", "   \t"] {
             assert_eq!(
                 validate_requested_scopes(&app, Some(empty)).unwrap_err().error,
                 "invalid_scope"

@@ -1416,7 +1416,7 @@ mod tests {
             validate_authorization_scopes(Some("profile"), &allowed).unwrap(),
             vec!["profile".to_string()]
         );
-        for empty in ["", "   \\t"] {
+        for empty in ["", "   \t"] {
             assert_eq!(
                 validate_authorization_scopes(Some(empty), &allowed)
                     .unwrap_err()
