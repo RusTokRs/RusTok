@@ -14,6 +14,7 @@ const MAX_OUTBOX_RELAY_CONCURRENCY: usize = 128;
 const MAX_OUTBOX_RELAY_INTERVAL_MS: u64 = 86_400_000;
 const MAX_OUTBOX_RELAY_CLAIM_TTL_MS: u64 = 86_400_000;
 const MAX_OUTBOX_RELAY_BACKOFF_MS: u64 = 86_400_000;
+const MAX_EVENT_CHANNEL_CAPACITY: usize = 65_536;
 
 const DEFAULT_TENANT_ID: Uuid = Uuid::from_u128(1);
 
@@ -880,10 +881,14 @@ impl RustokSettings {
             )));
         }
 
-        if parsed.events.channel_capacity == 0 {
+        if parsed.events.channel_capacity == 0
+            || parsed.events.channel_capacity > MAX_EVENT_CHANNEL_CAPACITY
+        {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "rustok.events.channel_capacity must be > 0",
+                format!(
+                    "rustok.events.channel_capacity must be between 1 and {MAX_EVENT_CHANNEL_CAPACITY}"
+                ),
             )));
         }
 
@@ -1822,6 +1827,17 @@ mod tests {
         let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        let oversized_channel = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "channel_capacity": usize::MAX
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(oversized_channel))
+            .expect_err("event channel capacity must remain bounded");
+        assert!(error.to_string().contains("channel_capacity must be between"));
 
         let oversized_batch = serde_json::json!({
             "rustok": {
