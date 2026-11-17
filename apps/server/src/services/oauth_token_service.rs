@@ -865,7 +865,9 @@ fn ensure_client_secret_unchanged(
     authenticated_app: &oauth_apps::Model,
     current_app: &oauth_apps::Model,
 ) -> Result<(), OAuthTokenProtocolError> {
-    if authenticated_app.client_secret_hash != current_app.client_secret_hash {
+    if authenticated_app.client_secret_hash.as_deref()
+        != current_app.client_secret_hash.as_deref()
+    {
         return Err(OAuthTokenProtocolError::invalid_client(
             "OAuth client credentials changed during token issuance",
         ));
