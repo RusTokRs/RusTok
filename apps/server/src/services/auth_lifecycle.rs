@@ -28,6 +28,9 @@ pub struct AuthTokens {
     pub access_token: String,
     pub refresh_token: String,
     pub expires_in: u64,
+    /// Remaining lifetime of the persisted refresh session, bounded by its
+    /// original absolute deadline. Used for the browser cookie Max-Age.
+    pub refresh_expires_in: u64,
     pub effective_role: rustok_core::UserRole,
     /// Effective RBAC permission snapshot (`"{resource}:{action}"` strings)
     /// resolved on the same transaction that issued the session, so every
@@ -819,6 +822,8 @@ impl AuthLifecycleService {
             Self::session_expiration(now, config.refresh_expiration)?,
             absolute_deadline,
         );
+        let refresh_expires_in =
+            expires_at.signed_duration_since(now).num_seconds().max(0) as u64;
 
         let session_id = session.id;
         let replaced_token_hash = session.token_hash.clone();
@@ -854,6 +859,7 @@ impl AuthLifecycleService {
                 access_token,
                 refresh_token: new_refresh_token,
                 expires_in: config.access_expiration,
+                refresh_expires_in,
                 effective_role,
                 permissions: effective_permissions,
             },
@@ -1305,6 +1311,8 @@ impl AuthLifecycleService {
         let refresh_token = generate_refresh_token().map_err(AuthLifecycleError::from)?;
         let token_hash = hash_refresh_token(&refresh_token);
         let expires_at = Self::session_expiration(now, config.refresh_expiration)?;
+        let refresh_expires_in =
+            expires_at.signed_duration_since(now).num_seconds().max(0) as u64;
 
         let session = sessions::ActiveModel::new(
             tenant_id, user.id, token_hash, expires_at, ip_address, user_agent,
@@ -1329,6 +1337,7 @@ impl AuthLifecycleService {
             access_token,
             refresh_token,
             expires_in: config.access_expiration,
+            refresh_expires_in,
             effective_role,
             permissions: effective_permissions,
         })
