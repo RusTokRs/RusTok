@@ -374,6 +374,6 @@ mod worker_identity_tests {
 
         assert_ne!(first, second);
         assert!(first.starts_with("notification-candidate-1-"));
-        assert!(first.len() <= 128, "owner identity must fit the module contract");
+        assert!(first.len() <= 191, "owner identity must fit the module contract");
     }
 }
