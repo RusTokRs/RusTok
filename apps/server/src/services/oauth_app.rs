@@ -3020,6 +3020,10 @@ mod tests {
         .expect("update app");
 
         assert_eq!(updated.name, "Partner app v2");
+        assert!(
+            updated.can_rotate_secret(),
+            "an editable update must retain the current stored credential state"
+        );
         assert_eq!(
             updated.redirect_uris_list(),
             vec!["https://partner.example.com/oauth/callback".to_string()]
