@@ -583,7 +583,10 @@ mod tests {
             .await;
         assert!(public.errors.is_empty());
         assert_eq!(
-            public.data.into_json().expect("public result should serialize")["echoText"],
+            public
+                .data
+                .into_json()
+                .expect("public result should serialize")["echoText"],
             "ok"
         );
 
