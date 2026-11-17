@@ -112,8 +112,7 @@ impl OAuthTokenService {
             CLIENT_CREDENTIALS_GRANT => {
                 require_grant(&app, CLIENT_CREDENTIALS_GRANT)?;
                 authenticate_client(&app, request, true).await?;
-                let requested = parse_requested_scopes(request.scope.as_deref());
-                let scopes = validate_requested_scopes(&app, &requested)?;
+                let scopes = validate_requested_scopes(&app, request.scope.as_deref())?;
                 let prepared = prepare_service_access_token(&app, auth_config, &scopes)?;
                 prepared.access_model.insert(db).await.map_err(|_| {
                     OAuthTokenProtocolError::server_error("Failed to persist access token")
@@ -303,14 +302,21 @@ fn parse_requested_scopes(value: Option<&str>) -> Vec<String> {
 
 fn validate_requested_scopes(
     app: &oauth_apps::Model,
-    requested: &[String],
+    requested: Option<&str>,
 ) -> Result<Vec<String>, OAuthTokenProtocolError> {
     let allowed = app.scopes_list();
-    if requested.is_empty() {
+    let Some(requested) = requested else {
         return Ok(allowed);
+    };
+
+    let requested = parse_requested_scopes(Some(requested));
+    if requested.is_empty() {
+        return Err(OAuthTokenProtocolError::invalid_scope(
+            "Requested scope must not be empty",
+        ));
     }
-    validate_scope_subset(&allowed, requested)?;
-    Ok(requested.to_vec())
+    validate_scope_subset(&allowed, &requested)?;
+    Ok(requested)
 }
 
 fn scopes_for_refresh(
@@ -1270,15 +1276,34 @@ mod tests {
     }
 
     #[test]
+    fn client_credentials_defaults_scopes_only_when_scope_is_omitted() {
+        let app = app(
+            serde_json::json!(["catalog:*", "profile"]),
+            serde_json::json!(["client_credentials"]),
+        );
+
+        assert_eq!(validate_requested_scopes(&app, None).unwrap(), app.scopes_list());
+        assert_eq!(
+            validate_requested_scopes(&app, Some("catalog:read")).unwrap(),
+            vec!["catalog:read".to_string()]
+        );
+        for empty in ["", "   \\t"] {
+            assert_eq!(
+                validate_requested_scopes(&app, Some(empty)).unwrap_err().error,
+                "invalid_scope"
+            );
+        }
+    }
+
+    #[test]
     fn client_credentials_rejects_partial_scope_truncation() {
         let app = app(
             serde_json::json!(["catalog:*"]),
             serde_json::json!(["client_credentials"]),
         );
-        assert!(validate_requested_scopes(&app, &["catalog:read".to_string()]).is_ok());
+        assert!(validate_requested_scopes(&app, Some("catalog:read")).is_ok());
         assert!(
-            validate_requested_scopes(&app, &["catalog:read".to_string(), "admin:*".to_string()])
-                .is_err()
+            validate_requested_scopes(&app, Some("catalog:read admin:*")).is_err()
         );
     }
 

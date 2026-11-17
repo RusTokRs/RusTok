@@ -623,6 +623,12 @@ impl OAuthAppService {
         tenant_id: Uuid,
         scopes: Vec<String>,
     ) -> Result<()> {
+        if scopes.is_empty() {
+            return Err(Error::BadRequest(
+                "OAuth consent must include at least one scope".to_string(),
+            ));
+        }
+
         let app = OAuthApps::find_by_id(app_id)
             .filter(oauth_apps::Column::TenantId.eq(tenant_id))
             .one(db)
