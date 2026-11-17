@@ -438,7 +438,7 @@ async fn validate_refresh_token(
             // token replayed after the grace window, that is theft
             // evidence: revoke the whole family before failing closed
             // (RFC 9700 refresh-token reuse guidance).
-            detect_oauth_refresh_reuse(db, app.id, tenant_id, &token_hash).await;
+            detect_oauth_refresh_reuse(db, app.id, tenant_id, &token_hash).await?;
             return Err(OAuthTokenProtocolError::invalid_grant(
                 "Refresh token is invalid, expired, or already used",
             ));
@@ -520,17 +520,15 @@ async fn resolve_refresh_family(
     })
 }
 
-/// OAuth refresh-token reuse detection: a presented hash that belongs
-/// to an already-rotated (revoked) token and is replayed after the
-/// grace window can only have been copied, so every live token in the
-/// family is revoked. Best-effort by design — the caller fails closed
-/// with invalid_grant regardless of the outcome here.
+/// Detect a replayed revoked OAuth refresh token and durably revoke the
+/// entire active family. A DB failure must propagate so callers can retry.
+/// Invalid/unknown tokens without a revoked record remain invalid_grant.
 async fn detect_oauth_refresh_reuse(
     db: &DatabaseConnection,
     app_id: Uuid,
     tenant_id: Uuid,
     token_hash: &str,
-) {
+) -> Result<(), OAuthTokenProtocolError> {
     let stale = OAuthTokens::find()
         .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
         .filter(oauth_tokens::Column::AppId.eq(app_id))
@@ -539,15 +537,19 @@ async fn detect_oauth_refresh_reuse(
         .filter(oauth_tokens::Column::TokenKind.eq(oauth_tokens::TOKEN_KIND_REFRESH))
         .filter(oauth_tokens::Column::RevokedAt.is_not_null())
         .one(db)
-        .await;
-    let Ok(Some(stale)) = stale else {
-        return;
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, %app_id, %tenant_id, "Failed to check OAuth refresh token reuse");
+            OAuthTokenProtocolError::server_error("Failed to check refresh-token reuse")
+        })?;
+    let Some(stale) = stale else {
+        return Ok(());
     };
     let Some(revoked_at) = stale.revoked_at else {
-        return;
+        return Ok(());
     };
     if Utc::now().timestamp() - revoked_at.timestamp() < OAUTH_REFRESH_REUSE_GRACE_SECONDS {
-        return;
+        return Ok(());
     }
 
     let family_id = stale.family_id.unwrap_or(stale.id);
@@ -559,7 +561,7 @@ async fn detect_oauth_refresh_reuse(
     );
 
     let now = Utc::now();
-    if let Err(error) = OAuthTokens::update_many()
+    OAuthTokens::update_many()
         .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
         .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
         .filter(oauth_tokens::Column::AppId.eq(app_id))
@@ -572,13 +574,15 @@ async fn detect_oauth_refresh_reuse(
         )
         .exec(db)
         .await
-    {
-        tracing::error!(
-            %error,
-            family_id = %family_id,
-            "failed to revoke OAuth refresh token family after reuse detection"
-        );
-    }
+        .map_err(|error| {
+            tracing::error!(
+                %error,
+                family_id = %family_id,
+                "failed to revoke OAuth refresh token family after reuse detection"
+            );
+            OAuthTokenProtocolError::server_error("Failed to revoke replayed refresh-token family")
+        })?;
+    Ok(())
 }
 
 /// Revoke the delegated token lineage issued from one authorization code.
@@ -935,7 +939,7 @@ async fn commit_refresh_rotation(
             OAuthTokenProtocolError::server_error("Failed to roll back refresh-token rotation")
         })?;
         detect_oauth_refresh_reuse(db, current.app_id, current.tenant_id, &current.token_hash)
-            .await;
+            .await?;
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Refresh token is invalid, expired, or already used",
         ));
@@ -1040,6 +1044,88 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    #[tokio::test]
+    async fn refresh_reuse_revocation_failure_is_reported_and_can_be_retried() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_tokens::Entity)))
+            .await
+            .expect("oauth_tokens table");
+
+        let app_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let family_id = Uuid::new_v4();
+        let now = Utc::now();
+        let make_token = |id, hash: &str, revoked_at| oauth_tokens::ActiveModel {
+            id: Set(id),
+            app_id: Set(app_id),
+            user_id: Set(Some(user_id)),
+            tenant_id: Set(tenant_id),
+            token_hash: Set(hash.to_string()),
+            family_id: Set(Some(family_id)),
+            authorization_code_id: Set(None),
+            grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
+            token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+            consent_granted_at: Set(None),
+            scopes: Set(serde_json::json!(["openid"])),
+            expires_at: Set((now + chrono::Duration::days(1)).into()),
+            revoked_at: Set(revoked_at),
+            last_used_at: Set(None),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        };
+        make_token(family_id, "stale-hash", Some((now - chrono::Duration::minutes(2)).into()))
+            .insert(&db)
+            .await
+            .expect("insert revoked root");
+        let live_id = Uuid::new_v4();
+        make_token(live_id, "live-hash", None)
+            .insert(&db)
+            .await
+            .expect("insert live descendant");
+
+        db.execute_unprepared(
+            "CREATE TRIGGER fail_refresh_reuse_revocation BEFORE UPDATE ON oauth_tokens
+             BEGIN SELECT RAISE(FAIL, 'simulated persistence failure'); END;",
+        )
+        .await
+        .expect("create fault injection");
+
+        let error = super::detect_oauth_refresh_reuse(&db, app_id, tenant_id, "stale-hash")
+            .await
+            .expect_err("revocation persistence failure must propagate");
+        assert_eq!(error.error, "server_error");
+        assert!(
+            oauth_tokens::Entity::find_by_id(live_id)
+                .one(&db)
+                .await
+                .expect("lookup")
+                .expect("live token")
+                .revoked_at
+                .is_none()
+        );
+
+        db.execute_unprepared("DROP TRIGGER fail_refresh_reuse_revocation")
+            .await
+            .expect("remove fault injection");
+        super::detect_oauth_refresh_reuse(&db, app_id, tenant_id, "stale-hash")
+            .await
+            .expect("retry must revoke the active lineage");
+        assert!(
+            oauth_tokens::Entity::find_by_id(live_id)
+                .one(&db)
+                .await
+                .expect("lookup")
+                .expect("descendant")
+                .revoked_at
+                .is_some()
+        );
     }
 
     #[tokio::test]
