@@ -113,7 +113,9 @@ impl OAuthTokenService {
                 require_grant(&app, CLIENT_CREDENTIALS_GRANT)?;
                 authenticate_client(&app, request, true).await?;
                 let tx = db.begin().await.map_err(|_| {
-                    OAuthTokenProtocolError::server_error("Failed to begin client-credentials exchange")
+                    OAuthTokenProtocolError::server_error(
+                        "Failed to begin client-credentials exchange",
+                    )
                 })?;
                 let current_app = lock_active_oauth_app(&tx, app.id, tenant_id).await?;
                 ensure_client_secret_unchanged(&app, &current_app)?;
@@ -129,7 +131,9 @@ impl OAuthTokenService {
                         OAuthTokenProtocolError::server_error("Failed to persist access token")
                     })?;
                 tx.commit().await.map_err(|_| {
-                    OAuthTokenProtocolError::server_error("Failed to commit client-credentials exchange")
+                    OAuthTokenProtocolError::server_error(
+                        "Failed to commit client-credentials exchange",
+                    )
                 })?;
 
                 TokenResponse {
@@ -336,7 +340,7 @@ fn scopes_for_refresh(
         return Ok(current.to_vec());
     };
 
-    let narrowed = parse_requested_scopes(Some(requested));
+    let narrowed = parse_requested_scopes(requested);
     if narrowed.is_empty() {
         return Err(OAuthTokenProtocolError::invalid_scope(
             "Refresh scope must not be empty",
