@@ -69,6 +69,7 @@ requireMarkers(native, [
   "CASE WHEN payload->'tenant_id' IS NOT NULL THEN payload->>'tenant_id' = $2 ELSE payload->'event'->>'tenant_id' = $2 END",
   "CASE WHEN json_type(payload, '$.tenant_id') IS NOT NULL THEN json_extract(payload, '$.tenant_id') = ?2 ELSE json_extract(payload, '$.event.tenant_id') = ?2 END",
   'operational_queries_prefer_canonical_tenant_over_legacy_fallback',
+  'operational_counts_do_not_cross_canonical_tenant_boundary',
 ], nativePath);
 
 if (native.includes('tenant.map(|tenant| tenant.slug)')) {
