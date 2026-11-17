@@ -1002,3 +1002,35 @@ cargo test -p rustok-server --lib services::module_event_dispatcher
 cargo test -p rustok-server --lib services::event_transport_factory
 ```
 
+
+
+## P10 — Unique notification lease-owner identities (2026-11-18)
+
+The server adapters previously derived the distributed lease owner for
+notification fanout and candidate work from a process-local atomic counter.
+Every replica therefore started with the same owner string (for example,
+`notification-fanout-1`). The owner services fence completion by comparing
+that string and the lease expiry. If a slow worker outlived its lease and another
+replica reclaimed the row with the same owner string, the stale worker could
+mistake the new lease for its own and commit after the reclaim.
+
+### Implemented
+
+- Fanout and candidate lease-owner IDs now include a fresh UUID for each worker
+  instance. The local atomic instance ID remains only for host-local handle
+  identity and diagnostics.
+- Added regression tests proving that two worker instances with the same local
+  counter value receive different lease-owner IDs and remain within the owner
+  contract's length limit.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::notification_fanout_worker
+cargo test -p rustok-server --lib services::notification_candidate_worker
+```
+
