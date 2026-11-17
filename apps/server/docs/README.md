@@ -33,6 +33,14 @@ attempts all-users fan-out. These checks do not cover every immutable
 transaction-spanning revocation fence. See the
 [request-snapshot decision](../../../DECISIONS/2026-11-02-invalidated-rbac-request-scope.md).
 
+Tenant-bound channel REST handlers authorize against the authenticated
+`CurrentUser.permissions` snapshot, including the OAuth token ceiling, rather
+than looking up broader persisted user grants without a request scope. DLQ
+list/replay scope is derived from the canonical top-level outbox envelope tenant
+when present, with a nested-event fallback for legacy rows only. Replays repeat
+the tenant predicate in the atomic status transition; the preceding read does
+not grant permission to update a different tenant's event.
+
 Artifact purge previews call `ModuleControlPlane` owner projections. Data purge
 accepts an exact installation, positive namespace revision, reason, and
 idempotency UUID; the authenticated server supplies tenant/actor command
