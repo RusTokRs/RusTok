@@ -138,24 +138,22 @@ where
     match db.get_database_backend() {
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await,
         DbBackend::Sqlite => {
-            let app = query().one(db).await?;
-            if let Some(app) = app.as_ref() {
-                let locked = oauth_apps::Entity::update_many()
-                    .col_expr(
-                        oauth_apps::Column::UpdatedAt,
-                        Expr::col(oauth_apps::Column::UpdatedAt),
-                    )
-                    .filter(oauth_apps::Column::Id.eq(app.id))
-                    .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-                    .exec(db)
-                    .await?;
-                if locked.rows_affected != 1 {
-                    return Ok(None);
-                }
-                query().one(db).await
-            } else {
-                Ok(None)
+            // Acquire the SQLite write fence before reading. A read-first
+            // deferred transaction can fail with SQLITE_BUSY_SNAPSHOT when
+            // another writer commits between the read and lock upgrade.
+            let locked = oauth_apps::Entity::update_many()
+                .col_expr(
+                    oauth_apps::Column::UpdatedAt,
+                    Expr::col(oauth_apps::Column::UpdatedAt),
+                )
+                .filter(oauth_apps::Column::Id.eq(app_id))
+                .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+                .exec(db)
+                .await?;
+            if locked.rows_affected != 1 {
+                return Ok(None);
             }
+            query().one(db).await
         }
         _ => Err(sea_orm::DbErr::Custom(
             "unsupported database backend for OAuth app mutation locking".to_string(),
@@ -176,21 +174,16 @@ where
     match db.get_database_backend() {
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await,
         DbBackend::Sqlite => {
-            let user = query().one(db).await?;
-            if let Some(user) = user.as_ref() {
-                let locked = users::Entity::update_many()
-                    .col_expr(users::Column::UpdatedAt, Expr::col(users::Column::UpdatedAt))
-                    .filter(users::Column::Id.eq(user.id))
-                    .filter(users::Column::TenantId.eq(tenant_id))
-                    .exec(db)
-                    .await?;
-                if locked.rows_affected != 1 {
-                    return Ok(None);
-                }
-                query().one(db).await
-            } else {
-                Ok(None)
+            let locked = users::Entity::update_many()
+                .col_expr(users::Column::UpdatedAt, Expr::col(users::Column::UpdatedAt))
+                .filter(users::Column::Id.eq(user_id))
+                .filter(users::Column::TenantId.eq(tenant_id))
+                .exec(db)
+                .await?;
+            if locked.rows_affected != 1 {
+                return Ok(None);
             }
+            query().one(db).await
         }
         _ => Err(sea_orm::DbErr::Custom(
             "unsupported database backend for OAuth subject mutation locking".to_string(),
