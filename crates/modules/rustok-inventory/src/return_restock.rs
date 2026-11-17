@@ -381,6 +381,7 @@ fn validate_replay(
     item_id: Uuid,
     expected_location: Option<Uuid>,
 ) -> Result<(), PortError> {
+    // INVARIANT: Replay validation verifies previously persisted ledger row tenant matches current context.
     if saved.tenant_id != tenant_id
         || saved.return_item_id != line.return_item_id
         || saved.return_id != line.return_id

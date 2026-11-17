@@ -51,6 +51,7 @@ pub(super) fn next_progress(
     action: ShipmentStockAction,
 ) -> Result<(i32, i32), PortError> {
     if let Some(saved) = saved {
+        // INVARIANT: Verify loaded proof belongs to current tenant and expected batch/line context.
         if saved.tenant_id != tenant_id
             || saved.order_id != batch.order_id
             || saved.fulfillment_id != batch.fulfillment_id

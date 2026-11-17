@@ -8,6 +8,7 @@ use sea_orm::{
     Statement,
 };
 use std::collections::HashMap;
+use tracing::instrument;
 use uuid::Uuid;
 
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
@@ -116,6 +117,7 @@ impl BootstrapService {
         Ok(location)
     }
 
+    #[instrument(skip(conn))]
     pub async fn create_initial_records_in_tx(
         conn: &sea_orm::DatabaseTransaction,
         location: &entities::stock_location::Model,
@@ -213,6 +215,7 @@ impl BootstrapService {
     }
 
     /// Caller owns commit/rollback, including canonical stock notification and Product effects.
+    #[instrument(skip(txn))]
     pub async fn update_initial_quantity_in_tx(
         txn: &sea_orm::DatabaseTransaction,
         tenant_id: Uuid,
@@ -277,6 +280,7 @@ impl BootstrapService {
 
     /// Remove only proved empty bookkeeping; never purge stock or retained history.
     /// The caller must propagate errors and roll back the enclosing transaction.
+    #[instrument(skip(txn))]
     pub async fn delete_records_for_variants_in_tx(
         txn: &sea_orm::DatabaseTransaction,
         tenant_id: Uuid,

@@ -7,6 +7,7 @@ use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseTransaction, DbBackend, DbErr, EntityTrait,
     FromQueryResult, QueryFilter, QueryOrder, QuerySelect, Select, Statement,
 };
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::entities::{inventory_item, inventory_level, reservation_item, stock_location};
@@ -119,6 +120,7 @@ struct DeletionPlan {
     levels: Vec<Level>,
 }
 
+#[instrument(skip(txn))]
 pub(super) async fn delete_records(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,

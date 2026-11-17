@@ -208,6 +208,7 @@ impl SelectedQuantityRelease {
         }
         let mut owned_locations = BTreeMap::new();
         for location in locations {
+            // INVARIANT: Ensure queried locations strictly match the caller's tenant boundary.
             if location.tenant_id != tenant_id
                 || !self.released_by_location.contains_key(&location.id)
                 || owned_locations.insert(location.id, location).is_some()
