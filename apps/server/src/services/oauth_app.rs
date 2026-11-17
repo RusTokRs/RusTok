@@ -262,10 +262,24 @@ impl OAuthAppService {
         active.granted_permissions = Set(to_json_array(&granted_permissions)?);
         active.updated_at = Set(Utc::now().into());
 
-        active
+        let mut updated = active
             .update(db)
             .await
-            .map_err(|_| Error::InternalServerError)
+            .map_err(|_| Error::InternalServerError)?;
+        // The ActiveModel update deliberately leaves these columns NotSet.
+        // Refresh their projection after commit so the response does not
+        // report a stale secret/lifecycle/use snapshot from the initial read.
+        let current = OAuthApps::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+            .one(db)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or(Error::NotFound)?;
+        updated.client_secret_hash = current.client_secret_hash;
+        updated.is_active = current.is_active;
+        updated.revoked_at = current.revoked_at;
+        updated.last_used_at = current.last_used_at;
+        Ok(updated)
     }
 
     /// Find an active app by its public client_id scoped to a tenant
