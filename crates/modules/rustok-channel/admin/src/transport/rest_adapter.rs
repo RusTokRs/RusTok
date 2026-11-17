@@ -27,6 +27,11 @@ fn api_url(path: &str) -> String {
     }
 }
 
+fn http_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(reqwest::Client::new)
+}
+
 pub(super) async fn get_json<T>(
     path: &str,
     token: Option<String>,
@@ -35,8 +40,7 @@ pub(super) async fn get_json<T>(
 where
     T: DeserializeOwned,
 {
-    let client = reqwest::Client::new();
-    let mut request = client.get(api_url(path));
+    let mut request = http_client().get(api_url(path));
     if let Some(token) = token {
         request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"));
     }
@@ -68,8 +72,7 @@ where
     B: Serialize + ?Sized,
     T: DeserializeOwned,
 {
-    let client = reqwest::Client::new();
-    let mut request = client
+    let mut request = http_client()
         .post(api_url(path))
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .json(body);
@@ -104,8 +107,7 @@ where
     B: Serialize + ?Sized,
     T: DeserializeOwned,
 {
-    let client = reqwest::Client::new();
-    let mut request = client
+    let mut request = http_client()
         .patch(api_url(path))
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .json(body);
@@ -138,8 +140,7 @@ pub(super) async fn delete_json<T>(
 where
     T: DeserializeOwned,
 {
-    let client = reqwest::Client::new();
-    let mut request = client.delete(api_url(path));
+    let mut request = http_client().delete(api_url(path));
     if let Some(token) = token {
         request = request.header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"));
     }
