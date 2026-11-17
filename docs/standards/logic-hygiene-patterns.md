@@ -579,6 +579,8 @@ The evidence column describes how to verify the invariant at its owner. “Manua
 | `P-CONFIG-BOUND` | Preconditions | All writers reject invalid combinations and limits | Manual |
 | `P-DEAD-TWIN` | Ownership | Active callers and exports show whether an implementation is redundant | Heuristic: broad inner lint suppression |
 | `P-BOUNDED-TREE` | Algorithmic bounds | Deep, wide, and cyclic input respects the declared budget | Manual |
+| `P-GQL-SELECTED-OP` | GraphQL authorization | Only the operation selected for execution is classified | Manual |
+| `P-GQL-FRAGMENT-CYCLE` | GraphQL parser safety | Cyclic fragment graphs terminate while retaining reachable field detection | Manual |
 | `P-BATCH-QUERY` | Performance and concurrency | Query count stays bounded without changing lock or result semantics | Heuristic: transaction query in a loop |
 | `P-ZERO-PANIC-PROD` | Reliability | Runtime inputs cannot trigger panic paths | Heuristic: panic-prone calls |
 | `P-HOTPATH-ALLOC` | Allocation | Invalid requests avoid unnecessary allocations on the affected path | Heuristic: early clone |
