@@ -293,7 +293,7 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   waits for bootstrap to finish registering handles before taking the drain
   snapshot, so concurrent bootstrap cannot orphan newly spawned workers.
 - Outbox relay intervals must fit the monotonic clock, exponential backoff
-  must fit its signed millisecond representation, batches are capped at 100,000
+  must fit its signed millisecond representation, batches are capped at 10,000
   events, and in-flight delivery concurrency is capped at 128. Outbox retention
   polling is capped at one day. Invalid relay/retention resource or timing
   configuration fails validation instead of wrapping retry delays, disabling
