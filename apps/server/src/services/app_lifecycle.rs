@@ -1653,7 +1653,8 @@ async fn seo_worker_loop(
 #[cfg(test)]
 mod tests {
     use super::{
-        OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, connect_runtime_workers_with_runtime,
+        OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, ServerBootstrapInitializationLock,
+        connect_runtime_workers_with_runtime, shutdown_runtime_workers,
     };
     use crate::common::settings::RustokSettings;
     use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -1666,6 +1667,35 @@ mod tests {
     use crate::services::event_transport_factory::{
         EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig,
     };
+
+    #[tokio::test]
+    async fn shutdown_waits_for_server_bootstrap_before_draining_workers() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let initialization = ServerBootstrapInitializationLock::ensure(&ctx);
+        let guard = initialization.lock().await;
+        let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
+        let shutdown_ctx = ctx.clone();
+        let shutdown = tokio::spawn(async move {
+            shutdown_runtime_workers(&shutdown_ctx).await;
+            let _ = finished_tx.send(());
+        });
+
+        tokio::task::yield_now().await;
+        assert!(
+            finished_rx.try_recv().is_err(),
+            "shutdown must not take its worker snapshot during bootstrap"
+        );
+
+        drop(guard);
+        tokio::time::timeout(Duration::from_secs(5), finished_rx)
+            .await
+            .expect("shutdown should continue after bootstrap releases its lock")
+            .expect("shutdown completion signal");
+        shutdown.await.expect("shutdown task joins");
+    }
 
     #[tokio::test]
     async fn background_worker_startup_fails_when_required_durable_storage_is_missing() {
