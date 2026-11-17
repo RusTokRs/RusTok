@@ -26,6 +26,6 @@ fn module_metadata_matches_contract() {
     let module = crate::ModerationModule;
     assert_eq!(module.slug(), "moderation");
     assert_eq!(module.name(), "Moderation");
-    assert_eq!(module.kind(), ModuleKind::Core);
+    assert_eq!(module.kind(), ModuleKind::Optional);
     assert!(module.dependencies().is_empty());
 }
