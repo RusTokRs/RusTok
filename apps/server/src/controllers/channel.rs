@@ -5,7 +5,7 @@ use axum::{
     response::Response,
     routing::{delete, get, patch, post},
 };
-use rustok_api::Permission;
+use rustok_api::{Permission, has_effective_permission};
 use rustok_channel::{
     AvailableChannelModuleItem, AvailableChannelOauthAppItem, BindChannelModuleInput,
     BindChannelOauthAppInput, ChannelBootstrapResponse, ChannelResponse, ChannelService,
@@ -23,7 +23,6 @@ use crate::error::{Error, Result, http_error};
 use crate::extractors::{auth::CurrentUser, tenant::CurrentTenant};
 use crate::middleware::channel::invalidate_tenant_channel_cache;
 use crate::models::oauth_apps;
-use crate::services::rbac_service::RbacService;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 async fn bootstrap(
@@ -40,7 +39,7 @@ async fn bootstrap(
         "Handling channel bootstrap request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
 
     let service = ChannelService::new(ctx.db_clone());
     let channels = service
@@ -105,7 +104,7 @@ async fn create_channel(
         "Handling create channel request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
 
     input.slug = input.slug.trim().to_string();
     input.name = input.name.trim().to_string();
@@ -140,7 +139,7 @@ async fn create_target(
         "Handling create channel target request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
     input.target_type = input.target_type.trim().to_string();
@@ -174,7 +173,7 @@ async fn set_default_channel(
         "Handling set default channel request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
     let service = ChannelService::new(ctx.db_clone());
@@ -202,7 +201,7 @@ async fn update_target(
         "Handling update channel target request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
     input.target_type = input.target_type.trim().to_string();
@@ -237,7 +236,7 @@ async fn delete_target(
         "Handling delete channel target request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
     let service = ChannelService::new(ctx.db_clone());
@@ -265,7 +264,7 @@ async fn bind_module(
         "Handling bind module to channel request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
     input.module_slug = input.module_slug.trim().to_string();
@@ -300,7 +299,7 @@ async fn bind_oauth_app(
         "Handling bind oauth app to channel request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
     ensure_oauth_app_belongs_to_tenant(&ctx, tenant.id, input.oauth_app_id).await?;
 
@@ -328,7 +327,7 @@ async fn delete_module_binding(
         "Handling delete module binding request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
     let service = ChannelService::new(ctx.db_clone());
@@ -355,7 +354,7 @@ async fn delete_oauth_app_binding(
         "Handling delete oauth app binding request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, channel_id).await?;
 
     let service = ChannelService::new(ctx.db_clone());
@@ -381,7 +380,7 @@ async fn create_resolution_policy_set(
         "Handling create resolution policy set request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
 
     input.slug = input.slug.trim().to_string();
     input.name = input.name.trim().to_string();
@@ -416,7 +415,7 @@ async fn create_resolution_rule(
         "Handling create resolution rule request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
     ensure_channel_belongs_to_tenant(&ctx, tenant.id, input.action_channel_id).await?;
 
@@ -452,7 +451,7 @@ async fn update_resolution_rule(
         "Handling update resolution rule request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
 
     if let Some(action_channel_id) = input.action_channel_id {
@@ -493,7 +492,7 @@ async fn reorder_resolution_rules(
         "Handling reorder resolution rules request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
 
     let service = ChannelService::new(ctx.db_clone());
@@ -524,7 +523,7 @@ async fn activate_resolution_policy_set(
         "Handling activate resolution policy set request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
 
     let service = ChannelService::new(ctx.db_clone());
@@ -551,7 +550,7 @@ async fn delete_resolution_rule(
         "Handling delete resolution rule request"
     );
 
-    ensure_channel_manage_access(&ctx, tenant.id, current.user.id).await?;
+    ensure_channel_manage_access(tenant.id, &current)?;
     ensure_policy_set_belongs_to_tenant(&ctx, tenant.id, policy_set_id).await?;
 
     let service = ChannelService::new(ctx.db_clone());
@@ -564,35 +563,24 @@ async fn delete_resolution_rule(
     Ok(json_response(rule))
 }
 
-async fn ensure_channel_manage_access(
-    ctx: &ServerRuntimeContext,
-    tenant_id: Uuid,
-    user_id: Uuid,
-) -> Result<()> {
-    let allowed = RbacService::has_any_permission(
-        ctx.db(),
-        &tenant_id,
-        &user_id,
-        &[Permission::SETTINGS_MANAGE, Permission::MODULES_MANAGE],
-    )
-    .await
-    .map_err(|error| {
-        tracing::error!(
-            tenant_id = %tenant_id,
-            user_id = %user_id,
-            %error,
-            "Failed to evaluate RBAC permissions for channel management"
-        );
-        Error::InternalServerError
-    })?;
-
-    if !allowed {
-        return Err(forbidden_error(
-            "Permission denied: settings:manage or modules:manage required",
-        ));
+/// Authorize from the token's effective permission ceiling, not the user's
+/// persisted grants. REST handlers do not install a GraphQL RBAC task-local scope,
+/// so re-resolving persisted grants here could widen an OAuth-scoped token.
+fn ensure_channel_manage_access(tenant_id: Uuid, current: &CurrentUser) -> Result<()> {
+    if current.user.tenant_id != tenant_id {
+        return Err(Error::NotFound);
     }
 
-    Ok(())
+    if [Permission::SETTINGS_MANAGE, Permission::MODULES_MANAGE]
+        .iter()
+        .any(|required| has_effective_permission(&current.permissions, required))
+    {
+        return Ok(());
+    }
+
+    Err(forbidden_error(
+        "Permission denied: settings:manage or modules:manage required",
+    ))
 }
 
 async fn ensure_channel_belongs_to_tenant(
@@ -732,6 +720,50 @@ pub fn router() -> crate::routes::ServerRouter {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn channel_management_uses_effective_token_permissions_not_persisted_role() {
+        use crate::models::users;
+        use rustok_api::AuthPrincipalKind;
+        use rustok_core::{SecurityActorKind, UserRole};
+
+        let tenant_id = Uuid::new_v4();
+        let other_tenant = Uuid::new_v4();
+        let principal = |permissions: Vec<Permission>| CurrentUser {
+            user: users::Model::default_service_user(Uuid::new_v4(), tenant_id),
+            session_id: Uuid::new_v4(),
+            permissions,
+            // Even a high persisted/inferred role cannot widen the token ceiling.
+            inferred_role: UserRole::SuperAdmin,
+            actor_kind: SecurityActorKind::User,
+            principal_kind: AuthPrincipalKind::DirectUser,
+            client_id: None,
+            scopes: Vec::new(),
+            grant_type: "direct".to_string(),
+            access_token_expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+        };
+
+        assert!(super::ensure_channel_manage_access(
+            tenant_id,
+            &principal(vec![Permission::USERS_READ])
+        ).is_err());
+        assert!(super::ensure_channel_manage_access(
+            tenant_id,
+            &principal(Vec::new())
+        ).is_err());
+        assert!(super::ensure_channel_manage_access(
+            tenant_id,
+            &principal(vec![Permission::SETTINGS_MANAGE])
+        ).is_ok());
+        assert!(super::ensure_channel_manage_access(
+            tenant_id,
+            &principal(vec![Permission::MODULES_MANAGE])
+        ).is_ok());
+        assert!(super::ensure_channel_manage_access(
+            other_tenant,
+            &principal(vec![Permission::SETTINGS_MANAGE])
+        ).is_err());
+    }
+
     use super::map_channel_error;
     use axum::{http::StatusCode, response::IntoResponse};
     use rustok_channel::ChannelError;
