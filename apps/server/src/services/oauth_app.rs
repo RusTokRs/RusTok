@@ -3233,6 +3233,17 @@ mod tests {
             app_code.used_at.is_some(),
             "app revocation must invalidate pending authorization codes"
         );
+
+        let grant_after_revoke = OAuthAppService::grant_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect_err("revoked app must not receive new consent");
+        assert!(matches!(grant_after_revoke, Error::NotFound));
     }
 
     #[tokio::test]
