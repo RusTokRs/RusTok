@@ -65,6 +65,7 @@ pub type OutboxRetentionRuntimeConfig =
 /// keeping every delivered row forever.
 const MAX_OUTBOX_RETENTION_DAYS: u64 = 3_650;
 const MAX_OUTBOX_RETENTION_BATCH_SIZE: u64 = 100_000;
+const MAX_OUTBOX_RETENTION_INTERVAL_SECONDS: u64 = 86_400;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct OutboxRelaySupervisorMetricsSnapshot {
@@ -243,10 +244,12 @@ fn resolve_outbox_retention(
             "events.outbox_retention.batch_size must be between 1 and {MAX_OUTBOX_RETENTION_BATCH_SIZE}"
         )));
     }
-    if settings.interval_seconds == 0 {
-        return Err(Error::BadRequest(
-            "events.outbox_retention.interval_seconds must be greater than zero".to_string(),
-        ));
+    if settings.interval_seconds == 0
+        || settings.interval_seconds > MAX_OUTBOX_RETENTION_INTERVAL_SECONDS
+    {
+        return Err(Error::BadRequest(format!(
+            "events.outbox_retention.interval_seconds must be between 1 and {MAX_OUTBOX_RETENTION_INTERVAL_SECONDS}"
+        )));
     }
 
     let retention = rustok_outbox::OutboxRetentionConfig {
@@ -491,6 +494,23 @@ mod tests {
             !ctx.shared_contains::<crate::services::cache_redis_status_monitor::CacheRedisStatusMonitorHandle>(),
             "Redis status monitor must not start before runtime validation succeeds"
         );
+    }
+
+    #[test]
+    fn outbox_retention_rejects_intervals_that_can_disable_pruning() {
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            crate::common::settings::RustokSettings::default(),
+        );
+        let settings = crate::common::settings::OutboxRetentionSettings {
+            enabled: true,
+            retention_days: 30,
+            batch_size: 100,
+            interval_seconds: MAX_OUTBOX_RETENTION_INTERVAL_SECONDS + 1,
+        };
+        let error = resolve_outbox_retention(&ctx, &settings)
+            .expect_err("retention polling must remain bounded");
+        assert!(error.to_string().contains("interval_seconds must be between"));
     }
 
     #[tokio::test]
