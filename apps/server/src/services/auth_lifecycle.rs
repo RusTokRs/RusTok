@@ -1343,7 +1343,7 @@ impl AuthLifecycleService {
         let ttl = Duration::try_seconds(ttl_seconds)
             .ok_or(AuthLifecycleError::Internal(Error::InternalServerError))?;
         // Bound first, then do one checked addition. The previous path added
-        // the 90-day cap with , which can panic for a representable time
+        // the 90-day cap with unchecked addition, which can panic for a representable time
         // close to chrono's upper boundary even if the requested TTL was small.
         let bounded_ttl = ttl.min(Duration::days(sessions::SESSION_ABSOLUTE_LIFETIME_DAYS));
         now.checked_add_signed(bounded_ttl)
