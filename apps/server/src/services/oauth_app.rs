@@ -402,6 +402,18 @@ impl OAuthAppService {
             .await
             .map_err(|_| Error::InternalServerError)?;
 
+        crate::models::oauth_authorization_codes::Entity::update_many()
+            .col_expr(
+                crate::models::oauth_authorization_codes::Column::UsedAt,
+                Expr::value(now),
+            )
+            .filter(crate::models::oauth_authorization_codes::Column::AppId.eq(app_id))
+            .filter(crate::models::oauth_authorization_codes::Column::TenantId.eq(tenant_id))
+            .filter(crate::models::oauth_authorization_codes::Column::UsedAt.is_null())
+            .exec(&tx)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
+
         tx.commit().await.map_err(|_| Error::InternalServerError)?;
 
         Ok(updated)
@@ -762,6 +774,19 @@ impl OAuthAppService {
             .exec(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?;
+
+        crate::models::oauth_authorization_codes::Entity::update_many()
+            .col_expr(
+                crate::models::oauth_authorization_codes::Column::UsedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .filter(crate::models::oauth_authorization_codes::Column::AppId.eq(app_id))
+            .filter(crate::models::oauth_authorization_codes::Column::UserId.eq(user_id))
+            .filter(crate::models::oauth_authorization_codes::Column::TenantId.eq(tenant_id))
+            .filter(crate::models::oauth_authorization_codes::Column::UsedAt.is_null())
+            .exec(&tx)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
         tracing::debug!(
             app_id = %app_id,
             user_id = %user_id,
@@ -902,6 +927,21 @@ pub async fn sync_app_connections(
                 .await
                 .map_err(|error| {
                     tracing::error!(%error, %tenant_id, app_id = %app.id, "Failed to revoke orphan OAuth app tokens");
+                    Error::InternalServerError
+                })?;
+
+            crate::models::oauth_authorization_codes::Entity::update_many()
+                .col_expr(
+                    crate::models::oauth_authorization_codes::Column::UsedAt,
+                    Expr::value(now),
+                )
+                .filter(crate::models::oauth_authorization_codes::Column::AppId.eq(app.id))
+                .filter(crate::models::oauth_authorization_codes::Column::TenantId.eq(tenant_id))
+                .filter(crate::models::oauth_authorization_codes::Column::UsedAt.is_null())
+                .exec(&tx)
+                .await
+                .map_err(|error| {
+                    tracing::error!(%error, %tenant_id, app_id = %app.id, "Failed to invalidate orphan OAuth app authorization codes");
                     Error::InternalServerError
                 })?;
         }

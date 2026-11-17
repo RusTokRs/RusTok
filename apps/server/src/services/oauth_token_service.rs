@@ -676,6 +676,13 @@ where
         .filter(oauth_tokens::Column::RevokedAt.is_null())
         .exec(db)
         .await?;
+    oauth_codes::Entity::update_many()
+        .col_expr(oauth_codes::Column::UsedAt, Expr::value(now))
+        .filter(oauth_codes::Column::TenantId.eq(tenant_id))
+        .filter(oauth_codes::Column::UserId.eq(user_id))
+        .filter(oauth_codes::Column::UsedAt.is_null())
+        .exec(db)
+        .await?;
     Ok(revoked.rows_affected)
 }
 
