@@ -26,6 +26,8 @@ pub async fn initialize_server_context(
     jwt_secret: &str,
     database_uri: &str,
 ) -> Result<()> {
+    let initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
+    let _initialization_guard = initialization.lock().await;
     check_production_secrets(
         jwt_secret,
         database_uri,
