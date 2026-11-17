@@ -193,6 +193,12 @@ request a non-empty subset of the currently authorized scopes. The server
 rejects an empty explicit scope or a widening request with `invalid_scope`,
 and persists the narrowed grant on the rotated credential.
 
+GraphQL HTTP request-preparation policies classify only the operation selected by
+`operationName` (or the sole operation when no name is required). The selected
+operation is an execution selector, not an authorization grant: field permissions
+remain enforced by server-owned policy. Fragment-spread classification is
+cycle-safe because host preflight runs before GraphQL's normal document validation.
+
 ## Runtime surface
 
 - `/api/graphql` and `/api/fn/*` are parallel transport layers; Leptos server functions do not replace the GraphQL API.
