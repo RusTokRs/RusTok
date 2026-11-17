@@ -283,6 +283,25 @@ impl ModuleArtifactMaintenanceInitializationLock {
     }
 }
 
+/// Serializes the complete server bootstrap against competing bootstraps and
+/// the shutdown drain. Several worker starters intentionally use a
+/// check-then-insert sequence; this host-level fence makes that sequence
+/// single-owner for one ServerRuntimeContext.
+#[derive(Clone, Default)]
+pub(crate) struct ServerBootstrapInitializationLock(
+    std::sync::Arc<tokio::sync::Mutex<()>>,
+);
+
+impl ServerBootstrapInitializationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+
+    pub(crate) async fn lock(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.0.lock().await
+    }
+}
+
 pub struct ModuleWorkSchedulerHandle {
     instance_id: u64,
     _handle: JoinHandle<()>,
@@ -637,6 +656,12 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     let stop = StopHandle::ensure(runtime_ctx);
     tracing::info!("Stopping background workers");
     stop.stop().await;
+
+    // Wait for any in-flight bootstrap to finish registering its workers
+    // before taking the shutdown snapshot. The stop signal above ensures a
+    // bootstrap that was already running will not start long-lived work.
+    let bootstrap_initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
+    let _bootstrap_guard = bootstrap_initialization.lock().await;
 
     let timeout_duration = Duration::from_secs(5);
 
