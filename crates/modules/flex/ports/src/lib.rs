@@ -33,6 +33,7 @@ pub struct FlexAttachedSchema {
 impl FlexAttachedSchema {
     pub fn verify_scope(&self, tenant_id: Uuid, entity_type: &str) -> Result<(), PortError> {
         let mut keys = HashSet::with_capacity(self.definitions.len().min(MAX_FLEX_ATTACHED_FIELDS));
+        // INVARIANT: In-memory verification ensuring the received attached schema DTO matches caller tenant and entity scope.
         if self.tenant_id != tenant_id
             || self.entity_type != entity_type
             || self.definitions.len() > MAX_FLEX_ATTACHED_FIELDS
