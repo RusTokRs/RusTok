@@ -880,6 +880,17 @@ impl OAuthAppService {
         tenant_id: Uuid,
     ) -> Result<()> {
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        // Match token issuance's app-then-user lock order. Without these
+        // fences an exchange can read active consent, then commit a new token
+        // after this revocation has already committed.
+        lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or(Error::NotFound)?;
+        lock_oauth_user_for_mutation(&tx, user_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or(Error::NotFound)?;
         let consent = OAuthConsents::find_active_consent(&tx, app_id, user_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?;
