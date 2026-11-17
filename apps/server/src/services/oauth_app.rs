@@ -1070,12 +1070,14 @@ async fn upsert_first_party_app(
     let scopes_vec: Vec<String> = scopes.iter().map(|s| s.to_string()).collect();
     let grant_types_vec: Vec<String> = grant_types.iter().map(|s| s.to_string()).collect();
     let granted_permissions_vec = validate_granted_permissions(granted_permissions.to_vec())?;
+    let allow_loopback_http = public_url_uses_loopback_http(public_url);
     validate_managed_app_configuration(
         "first_party",
         redirect_uris,
         &scopes_vec,
         &grant_types_vec,
         &granted_permissions_vec,
+        allow_loopback_http,
     )?;
 
     let existing = OAuthApps::find()
@@ -1406,6 +1408,7 @@ fn validate_manual_app_configuration(
         scopes,
         grant_types,
         granted_permissions,
+        app_type == "mobile",
     )
 }
 
@@ -1415,6 +1418,7 @@ fn validate_managed_app_configuration(
     scopes: &[String],
     grant_types: &[String],
     granted_permissions: &[String],
+    allow_loopback_http: bool,
 ) -> Result<()> {
     validate_app_configuration(
         app_type,
@@ -1422,6 +1426,7 @@ fn validate_managed_app_configuration(
         scopes,
         grant_types,
         granted_permissions,
+        allow_loopback_http,
     )
 }
 
@@ -1431,6 +1436,7 @@ fn validate_app_configuration(
     scopes: &[String],
     grant_types: &[String],
     granted_permissions: &[String],
+    allow_loopback_http: bool,
 ) -> Result<()> {
     if scopes.is_empty() {
         return Err(Error::BadRequest(
@@ -1477,7 +1483,7 @@ fn validate_app_configuration(
     }
 
     for redirect_uri in redirect_uris {
-        validate_redirect_uri(app_type, redirect_uri)?;
+        validate_redirect_uri(app_type, redirect_uri, allow_loopback_http)?;
     }
 
     Ok(())
@@ -1485,10 +1491,15 @@ fn validate_app_configuration(
 
 /// Redirect URIs are compared byte-for-byte at authorize time, so the
 /// registered value itself must be a safe absolute URI: no fragment
-/// (RFC 6749 section 3.1.2), no user info, TLS everywhere except
-/// loopback (RFC 8252 section 7.3), and private-use schemes only for
-/// native/mobile apps (RFC 8252 section 7.1).
-fn validate_redirect_uri(app_type: &str, redirect_uri: &str) -> Result<()> {
+/// (RFC 6749 section 3.1.2), no user info, and HTTPS for web clients.
+/// HTTP loopback is limited to native mobile clients and manifest-managed
+/// first-party apps whose configured public URL is itself loopback (local
+/// development). Private-use schemes remain limited to native/mobile apps.
+fn validate_redirect_uri(
+    app_type: &str,
+    redirect_uri: &str,
+    allow_loopback_http: bool,
+) -> Result<()> {
     let invalid = |reason: &str| {
         Error::BadRequest(format!("Invalid redirect URI '{redirect_uri}': {reason}"))
     };
@@ -1508,14 +1519,15 @@ fn validate_redirect_uri(app_type: &str, redirect_uri: &str) -> Result<()> {
             }
         }
         "http" => {
-            let host = url.host_str().unwrap_or_default();
-            let loopback = host == "localhost"
-                || host
-                    .parse::<std::net::IpAddr>()
-                    .is_ok_and(|ip| ip.is_loopback());
+            let loopback = url.host_str().is_some_and(is_loopback_host);
             if !loopback {
                 return Err(invalid(
                     "http is only allowed for loopback hosts; use https",
+                ));
+            }
+            if !allow_loopback_http {
+                return Err(invalid(
+                    "http loopback redirects are only allowed for native mobile apps or first-party local development",
                 ));
             }
         }
@@ -1530,6 +1542,27 @@ fn validate_redirect_uri(app_type: &str, redirect_uri: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    let host = host
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .unwrap_or(host);
+    host.trim_end_matches('.').eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
+}
+
+fn public_url_uses_loopback_http(public_url: &str) -> bool {
+    Url::parse(public_url).is_ok_and(|url| {
+        url.scheme() == "http"
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.fragment().is_none()
+            && url.host_str().is_some_and(is_loopback_host)
+    })
 }
 
 fn build_manifest_managed_metadata(public_url: &str) -> serde_json::Value {
@@ -1774,6 +1807,93 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn third_party_web_clients_reject_http_loopback_redirect_uris() {
+        for redirect_uri in [
+            "http://localhost:3000/auth/callback",
+            "http://127.0.0.1:3000/auth/callback",
+            "http://[::1]:3000/auth/callback",
+        ] {
+            let result = validate_manual_app_configuration(
+                "third_party",
+                &[redirect_uri.to_string()],
+                &["profile".to_string()],
+                &["authorization_code".to_string()],
+                &[],
+            );
+            assert!(
+                result.is_err(),
+                "third-party web clients must use HTTPS: {redirect_uri}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_mobile_clients_accept_ipv4_and_ipv6_loopback_http_redirect_uris() {
+        for redirect_uri in [
+            "http://localhost:3000/auth/callback",
+            "http://127.0.0.1:3000/auth/callback",
+            "http://[::1]:3000/auth/callback",
+        ] {
+            let result = validate_manual_app_configuration(
+                "mobile",
+                &[redirect_uri.to_string()],
+                &["profile".to_string()],
+                &["authorization_code".to_string()],
+                &[],
+            );
+            assert!(
+                result.is_ok(),
+                "native mobile clients may use loopback HTTP: {redirect_uri}"
+            );
+        }
+    }
+
+    #[test]
+    fn mobile_and_first_party_clients_reject_non_loopback_http_redirect_uris() {
+        for app_type in ["mobile", "first_party"] {
+            assert!(
+                validate_redirect_uri(app_type, "http://example.com/callback", true).is_err(),
+                "{app_type} must not use cleartext HTTP on a non-loopback host"
+            );
+        }
+    }
+
+    #[test]
+    fn first_party_loopback_http_is_allowed_only_for_loopback_public_urls() {
+        let redirect_uris = vec!["http://localhost:3000/auth/callback".to_string()];
+        let scopes = vec!["profile".to_string()];
+        let grant_types = vec!["authorization_code".to_string()];
+
+        assert!(public_url_uses_loopback_http("http://localhost:3000"));
+        assert!(public_url_uses_loopback_http("http://[::1]:3000"));
+        assert!(!public_url_uses_loopback_http("https://localhost:3000"));
+        assert!(!public_url_uses_loopback_http("http://admin.example.com"));
+
+        assert!(
+            validate_managed_app_configuration(
+                "first_party",
+                &redirect_uris,
+                &scopes,
+                &grant_types,
+                &[],
+                public_url_uses_loopback_http("http://localhost:3000"),
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_managed_app_configuration(
+                "first_party",
+                &redirect_uris,
+                &scopes,
+                &grant_types,
+                &[],
+                public_url_uses_loopback_http("https://admin.example.com"),
+            )
+            .is_err()
+        );
     }
 
     #[test]
