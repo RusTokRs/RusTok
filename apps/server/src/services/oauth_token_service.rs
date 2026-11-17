@@ -200,7 +200,8 @@ impl OAuthTokenService {
             }
         };
 
-        if let Err(error) = OAuthAppService::touch_last_used_scoped(db, app.tenant_id, app.id).await {
+        if let Err(error) = OAuthAppService::touch_last_used_scoped(db, app.tenant_id, app.id).await
+        {
             tracing::warn!(app_id = %app.id, tenant_id = %app.tenant_id, error = %error, "Failed to update OAuth app usage timestamp");
         }
 
@@ -236,10 +237,11 @@ async fn resolve_client(
     let client_id = required(request.client_id.as_deref(), "client_id is required")?;
     let client_id = Uuid::parse_str(client_id)
         .map_err(|_| OAuthTokenProtocolError::invalid_client("Invalid client_id format"))?;
-    let app = oauth_apps::Entity::find_active_security_by_client_id_scoped(db, tenant_id, client_id)
-        .await
-        .map_err(|_| OAuthTokenProtocolError::server_error("Failed to resolve OAuth client"))?
-        .ok_or_else(|| OAuthTokenProtocolError::invalid_client("Unknown or inactive client"))?;
+    let app =
+        oauth_apps::Entity::find_active_security_by_client_id_scoped(db, tenant_id, client_id)
+            .await
+            .map_err(|_| OAuthTokenProtocolError::server_error("Failed to resolve OAuth client"))?
+            .ok_or_else(|| OAuthTokenProtocolError::invalid_client("Unknown or inactive client"))?;
 
     Ok(app)
 }
@@ -1190,7 +1192,9 @@ mod tests {
         );
         for empty in ["", "   \t"] {
             assert_eq!(
-                scopes_for_refresh(&original, Some(empty)).unwrap_err().error,
+                scopes_for_refresh(&original, Some(empty))
+                    .unwrap_err()
+                    .error,
                 "invalid_scope"
             );
         }
