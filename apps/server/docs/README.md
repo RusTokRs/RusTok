@@ -267,6 +267,10 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
 - Settings and system GraphQL resolvers receive `ServerRuntimeContext`, DB, and schema-owned
   `TransactionalEventBus` through GraphQL data. They do not extract or adapt a framework-global
   application context.
+- Module event dispatcher startup requires `EventRuntime` before launching any
+  dependent Product Media release, Commerce paid-order label, marketplace financial,
+  or Payment provider recovery workers. A missing event runtime fails bootstrap
+  without leaving detached module-owned recovery tasks running.
 - App runtime rate-limit bootstrap and shared limiter registration use `ServerRuntimeContext`.
   In-memory fixed-window counters sample time inside the serialized per-key update;
   a request delayed behind another cannot apply an obsolete window timestamp.
