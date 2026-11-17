@@ -1142,10 +1142,14 @@ mod lifecycle_tests {
 
     #[tokio::test]
     async fn empty_listener_set_binds_an_explicit_registry_for_transport_routing() {
-        use rustok_events::{ContractEventEnvelope, ProductIndexRefreshEvent};
+        use rustok_core::events::MemoryTransport;
+        use rustok_events::{
+            ContractEventEnvelope, DomainEvent, EventEnvelope, ProductIndexRefreshEvent,
+        };
         use uuid::Uuid;
 
-        let bus = EventBus::new();
+        let memory = MemoryTransport::with_capacity(8);
+        let bus = memory.event_bus();
         let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
             sea_orm::DatabaseConnection::default(),
             RustokSettings::default(),
@@ -1179,6 +1183,18 @@ mod lifecycle_tests {
             !bus.has_contract_handler(&remote_only)
                 .expect("an empty registry is initialized, not unavailable")
         );
+
+        let root_event = EventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            DomainEvent::TenantUpdated {
+                tenant_id: Uuid::new_v4(),
+            },
+        );
+        memory
+            .publish(root_event)
+            .await
+            .expect("the empty dispatcher must keep the root-event receiver bound");
 
         let handle = ctx
             .shared_take::<ModuleEventDispatcherHandle>()
