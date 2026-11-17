@@ -617,6 +617,7 @@ where
     let mut localized_text = None;
 
     match &patch.value {
+        // INVARIANT: Clear returns early above before this match.
         ProductAttributeValuePatchValue::Clear => unreachable!(),
         ProductAttributeValuePatchValue::Text(value) if definition.is_localized => {
             localized_text = Some(value.clone())

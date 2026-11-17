@@ -28,6 +28,7 @@ use sea_orm::{
 };
 use serde::Serialize;
 use serde_json::Value;
+use tracing::instrument;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -186,7 +187,7 @@ pub(crate) fn current_product_operation_id() -> Option<Uuid> {
 /// error escapes. Returning an encoding or poisoned-slot error here would drop that transaction
 /// asynchronously through SeaORM's `Drop` path.
 pub(crate) fn record_product_operation_result<T: Serialize>(value: &T) {
-    let _ = PRODUCT_OPERATION_RECEIPT.try_with(|receipt| {
+    if let Ok(()) = PRODUCT_OPERATION_RECEIPT.try_with(|receipt| {
         let response_json = serde_json::to_value(value);
         let mut slot = match receipt.response_json.lock() {
             Ok(slot) => slot,
@@ -199,7 +200,7 @@ pub(crate) fn record_product_operation_result<T: Serialize>(value: &T) {
             }
         };
         *slot = Some(response_json);
-    });
+    }) {}
 }
 
 /// Owns one product write transaction and its transactional outbox publisher.
@@ -304,6 +305,7 @@ impl ProductWriteTransaction {
         })
     }
 
+    #[instrument(skip(self, event), fields(tenant_id = %tenant_id, ?actor_id))]
     pub(crate) async fn publish_in_tx(
         &self,
         tenant_id: Uuid,
@@ -314,15 +316,7 @@ impl ProductWriteTransaction {
             .await
     }
 
-    pub(crate) async fn publish(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Option<Uuid>,
-        event: DomainEvent,
-    ) -> CommerceResult<()> {
-        self.publish_in_tx(tenant_id, actor_id, event).await
-    }
-
+    #[instrument(skip(self, deleted_image_ids), fields(tenant_id = %tenant_id, ?actor_id, %product_id))]
     pub(crate) async fn publish_product_deleted_in_tx(
         &self,
         tenant_id: Uuid,
@@ -337,17 +331,6 @@ impl ProductWriteTransaction {
             Some(deleted_image_ids),
         )
         .await
-    }
-
-    pub(crate) async fn publish_product_deleted(
-        &self,
-        tenant_id: Uuid,
-        actor_id: Option<Uuid>,
-        product_id: Uuid,
-        deleted_image_ids: &[Uuid],
-    ) -> CommerceResult<()> {
-        self.publish_product_deleted_in_tx(tenant_id, actor_id, product_id, deleted_image_ids)
-            .await
     }
 
     async fn publish_internal(

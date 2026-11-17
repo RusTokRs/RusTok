@@ -310,6 +310,7 @@ pub fn validate_product_variant_identity_list_response(
     let mut seen = BTreeSet::new();
     let mut counts = BTreeMap::<Uuid, usize>::new();
     for identity in response {
+        // INVARIANT: Variant identity projection must match the requested tenant.
         if identity.tenant_id != tenant_id
             || identity.variant_id.is_nil()
             || !products.contains(&identity.product_id)

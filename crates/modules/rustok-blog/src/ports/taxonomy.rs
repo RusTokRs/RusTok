@@ -1093,10 +1093,10 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
             BlogTaxonomyConnection::Transaction(tx) => tx.query_all_raw(query).await,
         };
         if let Ok(rows) = rows_res {
-            let set: HashSet<Uuid> = rows
-                .into_iter()
-                .filter_map(|r| r.try_get::<Uuid>("", "id").ok())
-                .collect();
+            let mut set = HashSet::new();
+            for r in rows {
+                set.insert(r.try_get::<Uuid>("", "id")?);
+            }
             if !set.is_empty() {
                 return Ok(set);
             }
@@ -1111,10 +1111,11 @@ impl BlogTaxonomyPort for NoopBlogTaxonomyPort {
             BlogTaxonomyConnection::Transaction(tx) => tx.query_all_raw(usage_query).await,
         };
         if let Ok(rows) = usage_res {
-            return Ok(rows
-                .into_iter()
-                .filter_map(|r| r.try_get::<Uuid>("", "tag_id").ok())
-                .collect());
+            let mut set = HashSet::new();
+            for r in rows {
+                set.insert(r.try_get::<Uuid>("", "tag_id")?);
+            }
+            return Ok(set);
         }
         Ok(HashSet::new())
     }

@@ -9,6 +9,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseTransaction, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder,
 };
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::entities::{
@@ -94,6 +95,7 @@ pub struct CreatePromotedPostInput {
 }
 
 /// Inserts a promoted blog post and its translations within the caller's transaction.
+#[instrument(skip(txn, input), fields(tenant_id = %input.tenant_id, post_id = %input.post_id))]
 pub async fn create_promoted_post_in_tx(
     txn: &DatabaseTransaction,
     input: CreatePromotedPostInput,
@@ -267,6 +269,7 @@ pub async fn load_post_for_demotion_in_tx(
 }
 
 /// Deletes a demoted blog post, its translations, and cleans up its tag usage within the transaction.
+#[instrument(skip(txn), fields(tenant_id = %tenant_id, post_id = %post_id))]
 pub async fn delete_demoted_post_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,

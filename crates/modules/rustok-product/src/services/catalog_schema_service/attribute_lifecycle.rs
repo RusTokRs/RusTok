@@ -15,6 +15,7 @@ use super::*;
 use crate::services::write_transaction::record_product_operation_result;
 use sea_orm::TransactionTrait;
 use sha2::{Digest, Sha256};
+use tracing::instrument;
 
 pub const MAX_ATTRIBUTE_LIFECYCLE_ROWS: usize = 1000;
 pub const MAX_ATTRIBUTE_REFERENCE_EXAMPLES: usize = 8;
@@ -537,6 +538,7 @@ impl ProductCatalogSchemaService {
         })
     }
 
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, %actor_id, attribute_id = %input.attribute_id))]
     pub async fn update_attribute_definition(
         &self,
         tenant_id: Uuid,

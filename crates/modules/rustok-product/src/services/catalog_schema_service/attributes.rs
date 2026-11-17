@@ -12,6 +12,7 @@ use rustok_outbox_storage::idempotency;
 use sea_orm::{ConnectionTrait, DatabaseConnection, FromQueryResult, Statement};
 use serde::Serialize;
 use std::collections::HashMap;
+use tracing::instrument;
 use uuid::Uuid;
 
 use crate::error::{CommerceError, CommerceResult};

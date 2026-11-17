@@ -17,6 +17,7 @@ impl PostService {
     /// Walking by (scheduled_at, id) bounds each database read and keeps
     /// forward progress even when the oldest rows cannot be published.
     /// A run can inspect more than `limit` rows if there are failures.
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, limit))]
     pub async fn publish_scheduled_posts(
         &self,
         tenant_id: Uuid,

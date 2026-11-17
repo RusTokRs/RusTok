@@ -7,6 +7,7 @@ use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, QueryOrder, QuerySelect,
 };
+use tracing::instrument;
 use uuid::Uuid;
 
 use super::category::{
@@ -68,6 +69,7 @@ impl CategoryService {
         self
     }
 
+    #[instrument(skip(self, security, input), fields(tenant_id = %tenant_id))]
     pub async fn create(
         &self,
         tenant_id: Uuid,
@@ -101,6 +103,7 @@ impl CategoryService {
         .await
     }
 
+    #[instrument(skip(self, security, input), fields(tenant_id = %tenant_id, %category_id))]
     pub async fn update(
         &self,
         tenant_id: Uuid,
@@ -113,6 +116,7 @@ impl CategoryService {
             .await
     }
 
+    #[instrument(skip(self, security), fields(tenant_id = %tenant_id, %category_id))]
     pub async fn delete(
         &self,
         tenant_id: Uuid,

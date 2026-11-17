@@ -12,6 +12,7 @@ use sea_orm::TransactionTrait;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
+use tracing::instrument;
 
 const PREVIEW_REQUIRED: &str = "product variant axes: preview required";
 const STALE_PREVIEW: &str = "product variant axes: stale preview";
@@ -513,6 +514,7 @@ impl CatalogService {
 
     /// Existing durable command/result shape, with explicit preview predecessor and optional
     /// full target tuples. The receipt wrapper replays completed historical requests first.
+    #[instrument(skip(self, input), fields(tenant_id = %tenant_id, %actor_id, %product_id))]
     pub async fn set_variant_axes(
         &self,
         tenant_id: Uuid,

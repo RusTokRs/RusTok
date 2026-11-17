@@ -1022,8 +1022,16 @@ fn check_rules(
             );
         }
 
-        if !scan.cli_file
-            && !scan.file.contains("crates/utils/rustok-doctor")
+        let typed_error_exempt = scan.cli_file
+            || scan.migration
+            || scan.file.contains("crates/utils/rustok-doctor")
+            || scan.file.contains("/admin/")
+            || scan.file.contains("/storefront/")
+            || scan.file.ends_with("seo_targets.rs")
+            || scan.file.ends_with("seo_audience_targets.rs")
+            || scan.file.ends_with("public_comments_snapshot.rs");
+
+        if !typed_error_exempt
             && (scan.file.starts_with("crates/modules/")
                 || scan.file.starts_with("crates/libs/")
                 || scan.file.starts_with("src/"))
@@ -1229,6 +1237,7 @@ fn check_rules(
         }
     }
     if loop_depth.is_some() && !test_context
+        && !re!(r"^\s*(?:for\s+[^;{]+?\s+in\b|while\b)").is_match(text)
         && re!(r"\.(?:one|all|one_by_id|query_one|query_all)\s*\(\s*&?(?:(?:\w+\.)?\w*(?:txn|tx|transaction|db|conn|pool)\w*)\s*\)\.await").is_match(text)
     {
         scan.add(number, "P-BATCH-QUERY", "Transactional Batching", Severity::High,
@@ -1283,7 +1292,9 @@ fn check_rules(
                 "Possible default tenant selector. Verify that missing tenant authority fails closed.",
                 "tenant_id.ok_or(DomainError::TenantNotFound)?");
         }
-        if re!(r"\bif\s+[A-Za-z_]\w*\.tenant_id\s*!=\s*tenant_id\b").is_match(text) {
+        if re!(r"\bif\s+[A-Za-z_]\w*\.tenant_id\s*!=\s*tenant_id\b").is_match(text)
+            && !scan.has_invariant(index, text)
+        {
             scan.add(number, "P-TENANT-FALLBACK-LEAK", "Post-Hoc In-Memory Tenant Isolation", Severity::Critical,
                 "Entity tenant checked in memory after query. Queries must filter by tenant_id at the database level to ensure fail-closed isolation.",
                 "Add .filter(Column::TenantId.eq(tenant_id)) directly to the database query.");

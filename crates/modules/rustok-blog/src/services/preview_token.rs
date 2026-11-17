@@ -444,6 +444,7 @@ impl PreviewTokenService {
 
 /// Deletes every preview token of a post inside the caller's transaction. A deleted
 /// post must not leave a token that still resolves to a preview read.
+#[instrument(skip(txn), fields(tenant_id = %tenant_id, post_id = %post_id))]
 pub(crate) async fn delete_post_preview_tokens_in_tx(
     txn: &sea_orm::DatabaseTransaction,
     tenant_id: Uuid,
