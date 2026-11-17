@@ -14,8 +14,15 @@ impl Model {
     /// constraint. Legacy rows without an explicit deadline are bounded by
     /// their original creation time rather than granted a fresh lifetime.
     pub fn absolute_deadline(&self) -> DateTime<Utc> {
-        let original_cap =
-            self.created_at.with_timezone(&Utc) + Duration::days(SESSION_ABSOLUTE_LIFETIME_DAYS);
+        let Some(original_cap) = self
+            .created_at
+            .with_timezone(&Utc)
+            .checked_add_signed(Duration::days(SESSION_ABSOLUTE_LIFETIME_DAYS))
+        else {
+            // An unrepresentable persisted timestamp must never make an
+            // otherwise invalid session valid (or panic in a request).
+            return DateTime::<Utc>::MIN_UTC;
+        };
         self.absolute_expires_at
             .as_ref()
             .map(|deadline| deadline.with_timezone(&Utc).min(original_cap))
@@ -97,6 +104,14 @@ mod tests {
 
         current.absolute_expires_at = Some((now - Duration::seconds(1)).into());
         assert!(!current.is_active());
+    }
+
+    #[test]
+    fn corrupted_timestamp_cannot_overflow_absolute_expiry_check() {
+        let created_at = DateTime::<Utc>::MAX_UTC;
+        let record = session(created_at);
+        assert!(!record.is_active());
+        assert_eq!(record.absolute_deadline(), DateTime::<Utc>::MIN_UTC);
     }
 
     #[test]
