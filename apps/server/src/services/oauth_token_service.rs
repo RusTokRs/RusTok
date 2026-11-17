@@ -1765,6 +1765,60 @@ mod tests {
                 .expect("token count"),
             3
         );
+
+        let mut changed_subject: users::ActiveModel = users::Entity::find_by_id(user_id)
+            .one(&db)
+            .await
+            .expect("load refresh subject")
+            .expect("refresh subject exists")
+            .into();
+        changed_subject.password_changed_at =
+            Set(Some((now + chrono::Duration::seconds(2)).into()));
+        changed_subject
+            .update(&db)
+            .await
+            .expect("record password change");
+
+        let pre_change_id = Uuid::new_v4();
+        let pre_change = oauth_tokens::ActiveModel {
+            id: Set(pre_change_id),
+            app_id: Set(app_id),
+            user_id: Set(Some(user_id)),
+            tenant_id: Set(tenant_id),
+            token_hash: Set("pre-change-refresh".to_string()),
+            family_id: Set(Some(current_id)),
+            authorization_code_id: Set(None),
+            grant_type: Set("authorization_code".to_string()),
+            token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+            consent_granted_at: Set(None),
+            scopes: Set(serde_json::json!(["profile"])),
+            expires_at: Set((now + chrono::Duration::hours(1)).into()),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert pre-change refresh token");
+        let stale_credential = commit_refresh_rotation(
+            &db,
+            &client,
+            &pre_change,
+            &replacement("replacement-after-password-change"),
+        )
+        .await
+        .expect_err("refresh issued before password change must fail");
+        assert_eq!(stale_credential.error, "invalid_grant");
+        let unchanged = oauth_tokens::Entity::find_by_id(pre_change_id)
+            .one(&db)
+            .await
+            .expect("reload pre-change token")
+            .expect("pre-change token exists");
+        assert!(
+            unchanged.revoked_at.is_none(),
+            "rejected stale refresh must not consume the credential"
+        );
     }
 
     #[tokio::test]
