@@ -3,8 +3,8 @@ use chrono::Utc;
 use rustok_api::context::scope_matches;
 use rustok_auth::{TokenRequest, TokenResponse};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, Set, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbBackend,
+    EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -112,10 +112,24 @@ impl OAuthTokenService {
             CLIENT_CREDENTIALS_GRANT => {
                 require_grant(&app, CLIENT_CREDENTIALS_GRANT)?;
                 authenticate_client(&app, request, true).await?;
-                let scopes = validate_requested_scopes(&app, request.scope.as_deref())?;
-                let prepared = prepare_service_access_token(&app, auth_config, &scopes)?;
-                prepared.access_model.insert(db).await.map_err(|_| {
-                    OAuthTokenProtocolError::server_error("Failed to persist access token")
+                let tx = db.begin().await.map_err(|_| {
+                    OAuthTokenProtocolError::server_error("Failed to begin client-credentials exchange")
+                })?;
+                let current_app = lock_active_oauth_app(&tx, app.id, tenant_id).await?;
+                ensure_client_secret_unchanged(&app, &current_app)?;
+                require_grant(&current_app, CLIENT_CREDENTIALS_GRANT)?;
+                let scopes = validate_requested_scopes(&current_app, request.scope.as_deref())?;
+                let prepared = prepare_service_access_token(&current_app, auth_config, &scopes)?;
+                prepared
+                    .access_model
+                    .clone()
+                    .insert(&tx)
+                    .await
+                    .map_err(|_| {
+                        OAuthTokenProtocolError::server_error("Failed to persist access token")
+                    })?;
+                tx.commit().await.map_err(|_| {
+                    OAuthTokenProtocolError::server_error("Failed to commit client-credentials exchange")
                 })?;
 
                 TokenResponse {
@@ -152,7 +166,7 @@ impl OAuthTokenService {
                 )
                 .await?;
 
-                commit_authorization_code_exchange(db, &authorization, &prepared).await?;
+                commit_authorization_code_exchange(db, &app, &authorization, &prepared).await?;
                 prepared.into_response(&scopes)
             }
             REFRESH_TOKEN_GRANT => {
@@ -189,7 +203,7 @@ impl OAuthTokenService {
                 )
                 .await?;
 
-                commit_refresh_rotation(db, &current, &prepared).await?;
+                commit_refresh_rotation(db, &app, &current, &prepared).await?;
                 prepared.into_response(&scopes)
             }
             other => {
@@ -377,6 +391,11 @@ async fn validate_authorization_code(
     if code.redirect_uri != redirect_uri {
         return Err(OAuthTokenProtocolError::invalid_grant(
             "redirect_uri does not match the authorization request",
+        ));
+    }
+    if !app.redirect_uris_list().contains(&code.redirect_uri) {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Authorization code redirect URI is no longer registered",
         ));
     }
     if code.code_challenge_method != "S256" {
@@ -693,6 +712,156 @@ async fn validate_active_subject_and_consent(
     Ok((user, consent_granted_at))
 }
 
+async fn lock_active_oauth_app<C>(
+    db: &C,
+    app_id: Uuid,
+    tenant_id: Uuid,
+) -> Result<oauth_apps::Model, OAuthTokenProtocolError>
+where
+    C: ConnectionTrait,
+{
+    let query = || {
+        oauth_apps::Entity::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+    };
+    let app = match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query()
+            .lock_exclusive()
+            .one(db)
+            .await
+            .map_err(|_| OAuthTokenProtocolError::server_error("Failed to lock OAuth client"))?,
+        DbBackend::Sqlite => {
+            let app = query()
+                .one(db)
+                .await
+                .map_err(|_| OAuthTokenProtocolError::server_error("Failed to read OAuth client"))?;
+            if let Some(app) = app.as_ref() {
+                let locked = oauth_apps::Entity::update_many()
+                    .col_expr(
+                        oauth_apps::Column::UpdatedAt,
+                        Expr::col(oauth_apps::Column::UpdatedAt),
+                    )
+                    .filter(oauth_apps::Column::Id.eq(app.id))
+                    .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+                    .exec(db)
+                    .await
+                    .map_err(|_| {
+                        OAuthTokenProtocolError::server_error("Failed to lock OAuth client")
+                    })?;
+                if locked.rows_affected != 1 {
+                    return Err(OAuthTokenProtocolError::invalid_client(
+                        "OAuth client changed during token issuance",
+                    ));
+                }
+                query()
+                    .one(db)
+                    .await
+                    .map_err(|_| {
+                        OAuthTokenProtocolError::server_error("Failed to reload OAuth client")
+                    })?
+            } else {
+                None
+            }
+        }
+        _ => {
+            return Err(OAuthTokenProtocolError::server_error(
+                "Unsupported database backend for OAuth token issuance",
+            ));
+        }
+    };
+    let app = app.ok_or_else(|| {
+        OAuthTokenProtocolError::invalid_client("OAuth client is unavailable")
+    })?;
+    if !app.is_active() {
+        return Err(OAuthTokenProtocolError::invalid_client(
+            "OAuth client is inactive",
+        ));
+    }
+    Ok(app)
+}
+
+async fn lock_active_oauth_subject<C>(
+    db: &C,
+    tenant_id: Uuid,
+    user_id: Uuid,
+    credential_issued_at: sea_orm::prelude::DateTimeWithTimeZone,
+) -> Result<users::Model, OAuthTokenProtocolError>
+where
+    C: ConnectionTrait,
+{
+    let query = || {
+        Users::find_by_id(user_id).filter(users::Column::TenantId.eq(tenant_id))
+    };
+    let user = match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query()
+            .lock_exclusive()
+            .one(db)
+            .await
+            .map_err(|_| OAuthTokenProtocolError::server_error("Failed to lock OAuth subject"))?,
+        DbBackend::Sqlite => {
+            let user = query()
+                .one(db)
+                .await
+                .map_err(|_| OAuthTokenProtocolError::server_error("Failed to read OAuth subject"))?;
+            if let Some(user) = user.as_ref() {
+                let locked = users::Entity::update_many()
+                    .col_expr(
+                        users::Column::UpdatedAt,
+                        Expr::col(users::Column::UpdatedAt),
+                    )
+                    .filter(users::Column::Id.eq(user.id))
+                    .filter(users::Column::TenantId.eq(tenant_id))
+                    .exec(db)
+                    .await
+                    .map_err(|_| {
+                        OAuthTokenProtocolError::server_error("Failed to lock OAuth subject")
+                    })?;
+                if locked.rows_affected != 1 {
+                    return Err(OAuthTokenProtocolError::invalid_grant(
+                        "OAuth subject changed during token issuance",
+                    ));
+                }
+                query()
+                    .one(db)
+                    .await
+                    .map_err(|_| {
+                        OAuthTokenProtocolError::server_error("Failed to reload OAuth subject")
+                    })?
+            } else {
+                None
+            }
+        }
+        _ => {
+            return Err(OAuthTokenProtocolError::server_error(
+                "Unsupported database backend for OAuth token issuance",
+            ));
+        }
+    };
+    let user = user.ok_or_else(|| {
+        OAuthTokenProtocolError::invalid_grant("OAuth subject is unavailable")
+    })?;
+    if !user.is_active()
+        || user.rejects_delegated_token_issued_at(credential_issued_at.with_timezone(&Utc))
+    {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "OAuth subject is inactive or its credentials changed",
+        ));
+    }
+    Ok(user)
+}
+
+fn ensure_client_secret_unchanged(
+    authenticated_app: &oauth_apps::Model,
+    current_app: &oauth_apps::Model,
+) -> Result<(), OAuthTokenProtocolError> {
+    if authenticated_app.client_secret_hash != current_app.client_secret_hash {
+        return Err(OAuthTokenProtocolError::invalid_client(
+            "OAuth client credentials changed during token issuance",
+        ));
+    }
+    Ok(())
+}
+
 struct PreparedServiceToken {
     access_token: String,
     access_model: oauth_tokens::ActiveModel,
@@ -870,12 +1039,29 @@ async fn prepare_user_tokens(
 
 async fn commit_authorization_code_exchange(
     db: &DatabaseConnection,
+    authenticated_app: &oauth_apps::Model,
     code: &oauth_codes::Model,
     prepared: &PreparedUserTokens,
 ) -> Result<(), OAuthTokenProtocolError> {
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin authorization-code exchange")
     })?;
+    let current_app = lock_active_oauth_app(&tx, authenticated_app.id, code.tenant_id).await?;
+    ensure_client_secret_unchanged(authenticated_app, &current_app)?;
+    require_grant(&current_app, AUTHORIZATION_CODE_GRANT)?;
+    if !current_app.redirect_uris_list().contains(&code.redirect_uri) {
+        return Err(OAuthTokenProtocolError::invalid_grant(
+            "Authorization code redirect URI is no longer registered",
+        ));
+    }
+    validate_scope_subset(&current_app.scopes_list(), &code.scopes_list())?;
+    lock_active_oauth_subject(
+        &tx,
+        code.tenant_id,
+        code.user_id,
+        code.created_at.clone(),
+    )
+    .await?;
 
     if !consume_authorization_code(&tx, code).await? {
         // A concurrent exchange won the CAS. If the code is now marked used,
@@ -918,12 +1104,28 @@ async fn commit_authorization_code_exchange(
 
 async fn commit_refresh_rotation(
     db: &DatabaseConnection,
+    authenticated_app: &oauth_apps::Model,
     current: &oauth_tokens::Model,
     prepared: &PreparedUserTokens,
 ) -> Result<(), OAuthTokenProtocolError> {
     let tx = db.begin().await.map_err(|_| {
         OAuthTokenProtocolError::server_error("Failed to begin refresh-token rotation")
     })?;
+    let current_app = lock_active_oauth_app(&tx, authenticated_app.id, current.tenant_id).await?;
+    ensure_client_secret_unchanged(authenticated_app, &current_app)?;
+    require_grant(&current_app, REFRESH_TOKEN_GRANT)?;
+    validate_scope_subset(&current_app.scopes_list(), &current.scopes_list())?;
+    let user_id = current.user_id.ok_or_else(|| {
+        OAuthTokenProtocolError::invalid_grant("Refresh token has no associated user")
+    })?;
+    lock_active_oauth_subject(
+        &tx,
+        current.tenant_id,
+        user_id,
+        current.created_at.clone(),
+    )
+    .await?;
+
     let now = Utc::now();
     let consumed = OAuthTokens::update_many()
         .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
