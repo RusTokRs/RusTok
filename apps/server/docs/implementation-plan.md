@@ -1060,3 +1060,30 @@ cargo check -p rustok-server --lib --features mod-comments
 cargo test -p rustok-server --lib services::app_lifecycle::lifecycle_tests::comments_listener_and_audit_handoff_workers_are_required_when_started
 ```
 
+
+
+## P12 — Notification intake versus outbox retention (deferred cross-owner gate)
+
+The optional notification intake worker reads supported events directly from
+`sys_events` until an accepted intake receipt or permanent rejection exists.
+The generic outbox retention worker independently deletes dispatched
+`sys_events` rows older than its retention window (30 days by default) and
+does not consult notification intake receipts.
+
+If notification intake is enabled but unavailable or backlogged beyond the
+retention window, an already-dispatched event can be pruned before intake sees
+it. This is a bounded replay guarantee, not an unlimited downstream-consumer
+guarantee.
+
+### Boundary
+
+- This is not fixed by adding notification-table queries to `apps/server` or
+  `rustok-outbox`; the receipt table is notification-owned.
+- A correct fix needs a cross-owner retention contract, such as a registered
+  consumer watermark or retention hold that the outbox owner can honor.
+- Until that contract exists, notification intake must remain healthy and its
+  retention window must exceed the maximum expected intake outage.
+
+This remains an explicit limitation for the next continuation; no stronger
+replay guarantee is claimed.
+

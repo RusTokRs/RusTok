@@ -91,6 +91,27 @@ Settings and runtime locations:
 - transport assembly: `apps/server/src/services/event_transport_factory.rs`
 - GraphQL control plane: `apps/server/src/graphql/settings/`
 
+## Retention boundary
+
+The generic outbox retention worker prunes delivered `sys_events` rows older
+than its retention window (30 days by default). The optional notification outbox
+intake independently scans supported `sys_events` rows until it records an
+intake receipt or permanent rejection; generic outbox retention does not consult
+those notification-owned receipts.
+
+Consequently, when notification intake is enabled, it must keep up within the
+outbox retention window. A prolonged intake outage or backlog can allow a
+previously dispatched event to be pruned before notification intake sees it.
+The current retention contract protects relay delivery, not every downstream
+consumer that reads the outbox table directly. Do not assume notification
+intake has an unbounded replay window.
+
+A stronger guarantee requires a cross-owner retention contract, such as a
+consumer watermark or retention hold owned by the outbox/notification modules.
+The server must not query notification-owned tables directly to emulate that
+contract. Until then, keep intake healthy and configure the retention window
+above the maximum expected intake outage.
+
 ## Module-owned listeners
 
 Modules publish their event handlers through
