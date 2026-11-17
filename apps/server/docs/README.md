@@ -70,6 +70,11 @@ OAuth translation snapshots use the `rustok-auth` lifecycle enum directly.
 Its serialized `active` and `archived` values match persisted owner lifecycle
 spelling; server translation queries use SeaQuery's expression trait.
 
+Invite acceptance and user-admin revocation share a transaction-scoped
+`auth_invites` row fence. The first committed transition wins; accepted invites
+cannot be retroactively revoked, and replayed revocations do not publish another
+`UserInviteRevoked` event.
+
 ## Mandatory platform baseline
 
 For `apps/server`, the mandatory baseline consists of two layers.
