@@ -2831,15 +2831,44 @@ mod tests {
             .await
             .expect("revoke session");
 
-        // Query the same way list_sessions does
-        let rows = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::UserId.eq(user.id))
-            .filter(sessions::Column::RevokedAt.is_null())
-            .filter(sessions::Column::ExpiresAt.gt(Utc::now()))
-            .order_by_desc(sessions::Column::CreatedAt)
-            .limit(50)
-            .all(&db)
+        // An explicitly expired absolute lineage must not appear as active,
+        // even if its sliding expiry is still in the future.
+        let mut expired_absolute = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "tok-expired-absolute".to_string(),
+            now + Duration::hours(2),
+            None,
+            None,
+        );
+        expired_absolute.absolute_expires_at = Set(Some((now - Duration::days(1)).into()));
+        expired_absolute
+            .insert(&db)
+            .await
+            .expect("create absolute-expired session");
+
+        // Pre-migration rows had no absolute deadline column; they still
+        // expire 90 days after their original creation.
+        let created_at = now - Duration::days(sessions::SESSION_ABSOLUTE_LIFETIME_DAYS + 1);
+        let mut expired_legacy = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "tok-expired-legacy".to_string(),
+            now + Duration::hours(2),
+            None,
+            None,
+        );
+        expired_legacy.absolute_expires_at = Set(None);
+        expired_legacy.created_at = Set(created_at.into());
+        expired_legacy.updated_at = Set(created_at.into());
+        expired_legacy
+            .insert(&db)
+            .await
+            .expect("create legacy expired session");
+
+        // The test must exercise the actual service, not duplicate its SQL
+        // filters: otherwise newly introduced validity fences go untested.
+        let rows = AuthLifecycleService::list_sessions_db(&db, tenant.id, user.id, 50)
             .await
             .expect("list sessions");
 
@@ -2875,14 +2904,7 @@ mod tests {
             .unwrap_or_else(|_| panic!("create session {i}"));
         }
 
-        let rows = sessions::Entity::find()
-            .filter(sessions::Column::TenantId.eq(tenant.id))
-            .filter(sessions::Column::UserId.eq(user.id))
-            .filter(sessions::Column::RevokedAt.is_null())
-            .filter(sessions::Column::ExpiresAt.gt(Utc::now()))
-            .order_by_desc(sessions::Column::CreatedAt)
-            .limit(3)
-            .all(&db)
+        let rows = AuthLifecycleService::list_sessions_db(&db, tenant.id, user.id, 3)
             .await
             .expect("list sessions with limit");
 
