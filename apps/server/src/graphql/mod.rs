@@ -116,4 +116,3 @@ mod operation_selection_tests {
         assert!(selected_operations(&multiple, None).is_empty());
     }
 }
-
