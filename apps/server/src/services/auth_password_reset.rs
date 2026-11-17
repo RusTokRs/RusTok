@@ -29,6 +29,7 @@ impl AuthLifecycleService {
     ) -> Result<(), AuthLifecycleError> {
         let claims = decode_password_reset_token(config, token)
             .map_err(|_| AuthLifecycleError::InvalidResetToken)?;
+        // INVARIANT: Validate that the reset token was signed for the requested tenant before looking up the user.
         if claims.tenant_id != tenant_id {
             return Err(AuthLifecycleError::InvalidResetToken);
         }

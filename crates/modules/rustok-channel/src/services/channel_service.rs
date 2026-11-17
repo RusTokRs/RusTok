@@ -122,6 +122,23 @@ impl ChannelService {
         Ok(to_channel_response(model))
     }
 
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, channel_id = %channel_id))]
+    pub async fn get_channel_for_tenant(
+        &self,
+        tenant_id: Uuid,
+        channel_id: Uuid,
+    ) -> ChannelResult<ChannelResponse> {
+        if tenant_id.is_nil() || channel_id.is_nil() {
+            return Err(ChannelError::NotFound(channel_id));
+        }
+        let model = channel::Entity::find_by_id(channel_id)
+            .filter(channel::Column::TenantId.eq(tenant_id))
+            .one(&self.db)
+            .await?
+            .ok_or(ChannelError::NotFound(channel_id))?;
+        Ok(to_channel_response(model))
+    }
+
     #[instrument(skip(self), fields(channel_id = %channel_id))]
     pub async fn get_channel(&self, channel_id: Uuid) -> ChannelResult<ChannelResponse> {
         if channel_id.is_nil() {
@@ -1195,6 +1212,23 @@ impl ChannelService {
             return Err(ChannelError::NotFound(policy_set_id));
         }
         let model = channel_resolution_policy_set::Entity::find_by_id(policy_set_id)
+            .one(&self.db)
+            .await?
+            .ok_or(ChannelError::NotFound(policy_set_id))?;
+        Ok(to_channel_resolution_policy_set_response(model))
+    }
+
+    #[instrument(skip(self), fields(tenant_id = %tenant_id, policy_set_id = %policy_set_id))]
+    pub async fn get_resolution_policy_set_for_tenant(
+        &self,
+        tenant_id: Uuid,
+        policy_set_id: Uuid,
+    ) -> ChannelResult<ChannelResolutionPolicySetResponse> {
+        if tenant_id.is_nil() || policy_set_id.is_nil() {
+            return Err(ChannelError::NotFound(policy_set_id));
+        }
+        let model = channel_resolution_policy_set::Entity::find_by_id(policy_set_id)
+            .filter(channel_resolution_policy_set::Column::TenantId.eq(tenant_id))
             .one(&self.db)
             .await?
             .ok_or(ChannelError::NotFound(policy_set_id))?;

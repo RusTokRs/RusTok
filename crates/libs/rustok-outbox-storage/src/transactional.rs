@@ -452,7 +452,7 @@ where
     })
 }
 
-#[allow(dead_code)]
+#[cfg(not(feature = "test-transport-fallback"))]
 fn transactional_transport_required(transport: &dyn EventTransport) -> rustok_core::Error {
     rustok_core::Error::Validation(format!(
         "transactional event publishing requires OutboxTransport; configured transport reliability is {:?}",

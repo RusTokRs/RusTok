@@ -602,12 +602,9 @@ async fn ensure_channel_belongs_to_tenant(
 ) -> Result<ChannelResponse> {
     let service = ChannelService::new(ctx.db_clone());
     let channel = service
-        .get_channel(channel_id)
+        .get_channel_for_tenant(tenant_id, channel_id)
         .await
         .map_err(map_channel_error)?;
-    if channel.tenant_id != tenant_id {
-        return Err(Error::NotFound);
-    }
     Ok(channel)
 }
 
@@ -617,13 +614,10 @@ async fn ensure_policy_set_belongs_to_tenant(
     policy_set_id: Uuid,
 ) -> Result<()> {
     let service = ChannelService::new(ctx.db_clone());
-    let policy_set = service
-        .get_resolution_policy_set(policy_set_id)
+    service
+        .get_resolution_policy_set_for_tenant(tenant_id, policy_set_id)
         .await
         .map_err(map_channel_error)?;
-    if policy_set.tenant_id != tenant_id {
-        return Err(Error::NotFound);
-    }
     Ok(())
 }
 

@@ -71,14 +71,10 @@ async fn ensure_channel_belongs_to_tenant(
     channel_id: uuid::Uuid,
 ) -> Result<ChannelRecord, ServerFnError> {
     let channel = service
-        .get_channel(channel_id)
+        .get_channel_for_tenant(tenant_id, channel_id)
         .await
         .map_err(ServerFnError::new)?;
-    let mapped = map_channel_record(channel);
-    if mapped.tenant_id != tenant_id.to_string() {
-        return Err(ServerFnError::new("Channel not found"));
-    }
-    Ok(mapped)
+    Ok(map_channel_record(channel))
 }
 
 #[cfg(feature = "ssr")]
@@ -88,14 +84,10 @@ async fn ensure_policy_set_belongs_to_tenant(
     policy_set_id: uuid::Uuid,
 ) -> Result<ChannelResolutionPolicySetRecord, ServerFnError> {
     let policy_set = service
-        .get_resolution_policy_set(policy_set_id)
+        .get_resolution_policy_set_for_tenant(tenant_id, policy_set_id)
         .await
         .map_err(ServerFnError::new)?;
-    let mapped = map_policy_set_record(policy_set);
-    if mapped.tenant_id != tenant_id.to_string() {
-        return Err(ServerFnError::new("Policy set not found"));
-    }
-    Ok(mapped)
+    Ok(map_policy_set_record(policy_set))
 }
 
 #[cfg(feature = "ssr")]
@@ -404,7 +396,7 @@ pub(super) async fn channel_bootstrap_native() -> Result<ChannelAdminBootstrap, 
                 "#,
                 vec![tenant.id.into(), effective_locale.clone().into()],
             ),
-            _ => unreachable!("unsupported SeaORM database backend"),
+            _ => return Err(ServerFnError::new("unsupported database backend")),
         };
         let oauth_rows = db.query_all_raw(stmt).await.map_err(ServerFnError::new)?;
         let oauth_apps = oauth_rows
@@ -763,7 +755,7 @@ pub(super) async fn channel_bind_oauth_app_native(
                 "#,
                 vec![tenant.id.into(), oauth_app_uuid.into()],
             ),
-            _ => unreachable!("unsupported SeaORM database backend"),
+            _ => return Err(ServerFnError::new("unsupported database backend")),
         };
         let exists = db
             .query_one_raw(stmt)
