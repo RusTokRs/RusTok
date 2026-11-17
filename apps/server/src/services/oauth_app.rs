@@ -8,15 +8,15 @@ use crate::models::oauth_consents::{
     ActiveModel as OAuthConsentActiveModel, Entity as OAuthConsents,
 };
 use crate::models::oauth_tokens::{self, Entity as OAuthTokens};
-use crate::models::tenants;
+use crate::models::{tenants, users};
 use chrono::Utc;
 use reqwest::Url;
 use rustok_api::Permission;
 use rustok_api::context::scope_matches;
 use rustok_core::{Rbac, UserRole};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend,
+    EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use std::str::FromStr;
 use subtle::ConstantTimeEq;
@@ -25,7 +25,7 @@ use uuid::Uuid;
 /// Outcome classification for one consent-grant attempt: a unique-index
 /// race against a concurrent first grant is retryable, everything else
 /// is a plain internal failure.
-enum GrantConsentAttempt {
+pub(crate) enum GrantConsentAttempt {
     UniqueRace,
     Fatal(Error),
 }
@@ -119,6 +119,83 @@ fn manual_app_update_base(app: oauth_apps::Model) -> OAuthAppActiveModel {
     active.metadata = ActiveValue::NotSet;
     active.created_at = ActiveValue::NotSet;
     active
+}
+
+/// Lock an OAuth app in the same order used by token issuance. Consent
+/// grants/revocations use this fence so they cannot race a token exchange that
+/// has already validated the app.
+pub(crate) async fn lock_oauth_app_for_mutation<C>(
+    db: &C,
+    app_id: Uuid,
+    tenant_id: Uuid,
+) -> Result<Option<oauth_apps::Model>, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    let query = || {
+        OAuthApps::find_by_id(app_id).filter(oauth_apps::Column::TenantId.eq(tenant_id))
+    };
+    match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await,
+        DbBackend::Sqlite => {
+            let app = query().one(db).await?;
+            if let Some(app) = app.as_ref() {
+                let locked = oauth_apps::Entity::update_many()
+                    .col_expr(
+                        oauth_apps::Column::UpdatedAt,
+                        Expr::col(oauth_apps::Column::UpdatedAt),
+                    )
+                    .filter(oauth_apps::Column::Id.eq(app.id))
+                    .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+                    .exec(db)
+                    .await?;
+                if locked.rows_affected != 1 {
+                    return Ok(None);
+                }
+                query().one(db).await
+            } else {
+                Ok(None)
+            }
+        }
+        _ => Err(sea_orm::DbErr::Custom(
+            "unsupported database backend for OAuth app mutation locking".to_string(),
+        )),
+    }
+}
+
+/// Lock a user subject in the same app-then-user order used by token issuance.
+pub(crate) async fn lock_oauth_user_for_mutation<C>(
+    db: &C,
+    user_id: Uuid,
+    tenant_id: Uuid,
+) -> Result<Option<users::Model>, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    let query = || users::Entity::find_by_id(user_id).filter(users::Column::TenantId.eq(tenant_id));
+    match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await,
+        DbBackend::Sqlite => {
+            let user = query().one(db).await?;
+            if let Some(user) = user.as_ref() {
+                let locked = users::Entity::update_many()
+                    .col_expr(users::Column::UpdatedAt, Expr::col(users::Column::UpdatedAt))
+                    .filter(users::Column::Id.eq(user.id))
+                    .filter(users::Column::TenantId.eq(tenant_id))
+                    .exec(db)
+                    .await?;
+                if locked.rows_affected != 1 {
+                    return Ok(None);
+                }
+                query().one(db).await
+            } else {
+                Ok(None)
+            }
+        }
+        _ => Err(sea_orm::DbErr::Custom(
+            "unsupported database backend for OAuth subject mutation locking".to_string(),
+        )),
+    }
 }
 
 pub struct OAuthAppService;
@@ -740,11 +817,29 @@ impl OAuthAppService {
             .begin()
             .await
             .map_err(|_| GrantConsentAttempt::Fatal(Error::InternalServerError))?;
+        Self::grant_consent_in_transaction(&tx, app_id, user_id, tenant_id, scopes_json).await?;
+        tx.commit().await.map_err(GrantConsentAttempt::classify)?;
+        Ok(())
+    }
+
+    /// Upsert consent on a caller-owned transaction. Strict admin paths first
+    /// lock the app and subject rows, then call this helper so a grant cannot
+    /// commit against a client/user that became inactive during validation.
+    pub(crate) async fn grant_consent_in_transaction<C>(
+        db: &C,
+        app_id: Uuid,
+        user_id: Uuid,
+        tenant_id: Uuid,
+        scopes_json: &serde_json::Value,
+    ) -> std::result::Result<(), GrantConsentAttempt>
+    where
+        C: ConnectionTrait,
+    {
         let existing = OAuthConsents::find()
             .filter(crate::models::oauth_consents::Column::AppId.eq(app_id))
             .filter(crate::models::oauth_consents::Column::UserId.eq(user_id))
             .filter(crate::models::oauth_consents::Column::TenantId.eq(tenant_id))
-            .one(&tx)
+            .one(db)
             .await
             .map_err(|_| GrantConsentAttempt::Fatal(Error::InternalServerError))?;
 
@@ -755,7 +850,7 @@ impl OAuthAppService {
                 active.granted_at = Set(Utc::now().into());
                 active.revoked_at = Set(None);
                 active
-                    .update(&tx)
+                    .update(db)
                     .await
                     .map_err(GrantConsentAttempt::classify)?;
             }
@@ -769,13 +864,11 @@ impl OAuthAppService {
                     granted_at: Set(Utc::now().into()),
                     revoked_at: Set(None),
                 }
-                .insert(&tx)
+                .insert(db)
                 .await
                 .map_err(GrantConsentAttempt::classify)?;
             }
         }
-
-        tx.commit().await.map_err(GrantConsentAttempt::classify)?;
         Ok(())
     }
 
