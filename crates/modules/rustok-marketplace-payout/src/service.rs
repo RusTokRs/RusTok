@@ -379,6 +379,7 @@ fn validate_ledger_entry(
             "tenant_id and entry.id must not be nil".to_string(),
         ));
     }
+    // INVARIANT: In-memory input validation that the port-provided ledger entry matches the payout tenant scope.
     if entry.tenant_id != tenant_id {
         return Err(MarketplacePayoutError::Validation(format!(
             "ledger entry {} does not match payout tenant scope",
