@@ -1829,9 +1829,18 @@ mod tests {
                 }
             }
         });
-        let error = RustokSettings::from_settings(&Some(oversized_interval))
-            .expect_err("relay interval must fit monotonic clock");
-        assert!(error.to_string().contains("relay_interval_ms exceeds"));
+        let monotonic_clock_supports_interval = std::time::Instant::now()
+            .checked_add(std::time::Duration::from_millis(u64::MAX))
+            .is_some();
+        let interval_result = RustokSettings::from_settings(&Some(oversized_interval));
+        assert_eq!(
+            interval_result.is_ok(),
+            monotonic_clock_supports_interval,
+            "relay interval acceptance must match the platform monotonic-clock range"
+        );
+        if let Err(error) = interval_result {
+            assert!(error.to_string().contains("relay_interval_ms exceeds"));
+        }
     }
 
     #[test]
