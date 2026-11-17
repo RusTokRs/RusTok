@@ -1411,3 +1411,77 @@ tracing::info!(%user_id, %tenant_id, "User authenticated successfully");
 Detection: `cargo xtask doctor hygiene --crate <crate>` or
 `rg -n '\b(println|eprintln|dbg)!\s*\(' crates/ apps/`.
 Doctor flags raw print macros in non-test, non-CLI production crates.
+
+
+## Distributed event delivery, leases, and backpressure
+
+### Lease ownership must be unique across replicas
+
+A process-local counter is not a distributed lease identity. If two replicas
+both claim work as `worker-1`, an expired lease can be reclaimed by the second
+replica while the stale first worker still presents the same owner string. The
+stale worker can then pass an owner-equality check and commit work under the
+new lease.
+
+**Invariant:** every lease owner token is unique across concurrent replicas and
+worker restarts. Use a per-instance UUID or a storage-issued fencing token;
+keep any local counter only for diagnostics. Validate the token against the
+storage column's actual length.
+
+**Regression check:** create two workers with the same local instance number
+and assert that their lease owner tokens differ. Also verify the serialized
+token fits the owner column.
+
+### Backpressure reservation must be atomic and match the real queue
+
+A load-then-increment sequence is a check-then-act race: concurrent producers
+can all observe capacity below the critical threshold and collectively exceed
+it. With a bounded broadcast ring, a controller configured larger than the
+ring can also accept messages that Tokio has already overwritten for a slow
+receiver.
+
+**Invariant:** reserve queue capacity with a compare-and-swap loop, and never
+configure the logical queue depth above the underlying channel capacity.
+Every successful reservation must be released exactly once after processing,
+on send failure, for lagged messages, and when a receiver is dropped or
+cancelled.
+
+**Regression check:** race concurrent acquisitions against a known critical
+depth and assert the accepted count never exceeds it. Exercise send failure,
+normal completion, lag, cancellation, and receiver teardown to ensure the
+depth returns to zero.
+
+### Durable forwarders must retry the same identity
+
+Consuming an in-memory event and logging a failed database write is data loss.
+Retrying a write without idempotent storage semantics is also unsafe: an
+ambiguous commit can succeed in storage while returning an error to the caller,
+and a naive retry then fails on the duplicate primary key.
+
+**Invariant:** keep the original envelope and its ID until durable persistence
+is confirmed. The outbox insert must accept an exact duplicate of the same
+canonical envelope, but reject reuse of that ID for different facts. Do not
+acknowledge downstream delivery merely because an event entered a broadcast
+queue; wait for all required local handlers to complete.
+
+**Regression check:** force a transient transport failure and assert that the
+same envelope ID is retried and persisted once. Publish the same envelope twice
+and assert one row; reuse its ID with different payload and assert a conflict.
+For projection delivery, block a handler and verify the relay call remains
+pending, then fail the handler and verify the relay receives an error.
+
+### Shutdown must drain durable handoffs before aborting
+
+Aborting a worker while it owns an accepted but not-yet-persisted event discards
+the only copy of that event. A shutdown signal should stop new work, allow
+already accepted work to reach durable storage, and use a bounded timeout only
+as the final fallback.
+
+**Invariant:** signal and join event-forwarding workers cooperatively. Drain
+their accepted queue before dropping the receiver; after the deadline, abort
+and release any in-memory capacity reservations so the host cannot leak
+backpressure state.
+
+**Regression check:** request shutdown with queued events and a transient
+transport failure, then assert that the worker retries, persists the same
+envelope, releases all queue permits, and exits before the shutdown deadline.

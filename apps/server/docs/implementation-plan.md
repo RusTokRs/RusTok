@@ -1194,3 +1194,12 @@ cargo check -p rustok-server --lib
 cargo test -p rustok-server --lib services::app_lifecycle::tests::shutdown_aborts_invalidation_and_event_supervisors_even_with_live_clones
 ```
 
+
+
+## P16 — Cross-cutting event-delivery invariants documented (2026-11-18)
+
+Codified the recurring failure patterns found in the server audit in
+`docs/standards/logic-hygiene-patterns.md`: replica-unique lease ownership,
+atomic backpressure reservation, durable idempotent forwarding, acknowledged
+projection delivery, and cooperative shutdown. Each invariant now includes a
+specific regression check so future changes can preserve the same guarantees.
