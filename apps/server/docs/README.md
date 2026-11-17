@@ -347,14 +347,16 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   revocation, credential change, code replay, and refresh reuse revoke the whole
   family, so an already-issued access JWT is fenced before its signed TTL. Delegated
   rows also capture the consent epoch (`consent_granted_at`); a consent revoke/re-grant
-  cannot resurrect older tokens. Code exchange and refresh rotation lock the active
-  app and delegated subject in the persistence transaction, then recheck the current
-  client secret fingerprint, grant, scopes, redirect registration, subject status,
-  and password-change epoch before consuming the one-shot credential. Client-credentials
-  issuance similarly locks and rechecks its app before persisting the access row.
-  App, consent, password, and user-status revocation also invalidate outstanding
-  authorization codes, preventing pending credentials from surviving a later
-  reactivation.
+  cannot resurrect older tokens. Code exchange locks the active app and delegated
+  subject in the persistence transaction, then rechecks the client-secret hash,
+  authorization-code grant, current scopes, registered redirect URI, subject status,
+  and password-change epoch before consuming the code. Refresh rotation similarly
+  locks the app and subject and rechecks the client-secret hash, refresh grant,
+  current scopes, subject status, and password-change epoch before consuming the
+  refresh token. Client-credentials issuance locks and rechecks its app before
+  persisting the access row. App, consent, password, and user-status revocation also
+  invalidate outstanding authorization codes, preventing pending credentials from
+  surviving a later reactivation.
 - Access-token authentication resolves active OAuth applications through a security-only lookup that does
   not hydrate tenant locale or presentation translations; authentication must not depend on
   `oauth_app_translations`.
