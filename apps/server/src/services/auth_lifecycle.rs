@@ -2879,6 +2879,56 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn logout_with_previous_cookie_revokes_the_rotated_active_session() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Lost refresh response", "lost-refresh-response")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "lost-response@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+
+        let old_cookie = "cookie-before-rotation";
+        let mut active = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            hash_refresh_token("new-cookie-not-yet-received"),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        );
+        active.previous_token_hash = Set(Some(hash_refresh_token(old_cookie)));
+        active.previous_token_revoked_at = Set(Some(Utc::now().into()));
+        let session = active.insert(&db).await.expect("rotated session");
+
+        let runtime =
+            ServerRuntimeContext::new(db.clone(), crate::common::RustokSettings::default());
+        AuthLifecycleService::logout_by_refresh_token_runtime(&runtime, tenant.id, old_cookie)
+            .await
+            .expect("previous cookie still revokes the current session");
+
+        let stored = sessions::Entity::find_by_id(session.id)
+            .one(&db)
+            .await
+            .expect("read session")
+            .expect("session exists");
+        assert!(stored.revoked_at.is_some());
+
+        assert!(matches!(
+            AuthLifecycleService::logout_by_refresh_token_runtime(
+                &runtime,
+                tenant.id,
+                old_cookie
+            )
+            .await,
+            Err(AuthLifecycleError::InvalidRefreshToken)
+        ));
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn logout_by_refresh_token_is_tenant_scoped_and_single_transaction() {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         let tenant_a = tenants::ActiveModel::new("Logout Token Tenant A", "logout-token-a")
