@@ -199,6 +199,7 @@ pub fn governance_action_label(action_key: &str, locale: Locale) -> &'static str
         "reject" => tr(locale, "Reject", "Reject"),
         "owner_transfer" => tr(locale, "Owner transfer", "Owner transfer"),
         "yank" => tr(locale, "Yank", "Yank"),
+        "unyank" => tr(locale, "Unyank", "Unyank"),
         _ => tr(locale, "governance action", "governance-действие"),
     }
 }
@@ -419,6 +420,7 @@ pub fn destructive_governance_action_label(action: &str, locale: Locale) -> &'st
         "reject" => tr(locale, "Reject", "Отклонить"),
         "owner-transfer" => tr(locale, "Owner transfer", "Передать владение"),
         "yank" => tr(locale, "Yank", "Отозвать"),
+        "unyank" => tr(locale, "Unyank", "Восстановить"),
         _ => tr(locale, "Confirm action", "Подтвердить действие"),
     }
 }
@@ -472,6 +474,19 @@ pub fn destructive_governance_confirmation_message(
                 locale,
                 "The release will leave the active catalog trail and remain only in history.",
                 "Релиз уйдёт из активного каталога и останется только в истории."
+            )
+        ),
+        "unyank" => format!(
+            "{} `{}`{} . {}",
+            tr(locale, "Unyank release for module", "Восстановить релиз модуля"),
+            module_slug,
+            release_version
+                .map(|version| format!(" v{version}"))
+                .unwrap_or_default(),
+            tr(
+                locale,
+                "The release will return to the active catalog trail.",
+                "Релиз вернётся в активный каталог."
             )
         ),
         _ => tr(
@@ -2131,7 +2146,7 @@ pub fn governance_event_summary(
                 "validation_stage_passed" => tr(locale, "passed", "пройден"),
                 "validation_stage_failed" => tr(locale, "failed", "провален"),
                 "validation_stage_blocked" => tr(locale, "is blocked", "заблокирован"),
-                _ => unreachable!(),
+                _ => tr(locale, "unknown", "неизвестно"),
             };
 
             let mut parts = vec![format!("{stage_label} {status}")];
@@ -2152,7 +2167,7 @@ pub fn governance_event_summary(
                 ),
                 "follow_up_gate_passed" => tr(locale, "passed", "пройден"),
                 "follow_up_gate_failed" => tr(locale, "failed", "провален"),
-                _ => unreachable!(),
+                _ => tr(locale, "unknown", "неизвестно"),
             };
 
             let mut parts = vec![format!("{stage_label} {status}")];
@@ -2215,7 +2230,7 @@ pub fn governance_event_summary(
                 "validation_job_started" => tr(locale, "is running", "is running"),
                 "validation_job_succeeded" => tr(locale, "succeeded", "succeeded"),
                 "validation_job_failed" => tr(locale, "failed", "failed"),
-                _ => unreachable!(),
+                _ => tr(locale, "unknown", "unknown"),
             };
 
             let mut parts = vec![format!(

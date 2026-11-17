@@ -479,6 +479,24 @@ async fn hydrate_tenant_default_or_identifier(
 }
 
 impl Entity {
+    /// Security-only OAuth client lookup for token authentication scoped to a tenant.
+    pub async fn find_active_security_by_client_id_scoped(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        client_id: Uuid,
+    ) -> Result<Option<Model>, DbErr> {
+        Entity::find()
+            .filter(
+                Condition::all()
+                    .add(Column::TenantId.eq(tenant_id))
+                    .add(Column::ClientId.eq(client_id))
+                    .add(Column::IsActive.eq(true))
+                    .add(Column::RevokedAt.is_null()),
+            )
+            .one(db)
+            .await
+    }
+
     /// Security-only OAuth client lookup for token authentication.
     ///
     /// Unlike presentation-oriented `find_active_by_client_id`, this method never
@@ -498,6 +516,27 @@ impl Entity {
             )
             .one(db)
             .await
+    }
+
+    pub async fn find_active_by_client_id_scoped(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        client_id: Uuid,
+    ) -> Result<Option<Model>, DbErr> {
+        let model = Entity::find()
+            .filter(
+                Condition::all()
+                    .add(Column::TenantId.eq(tenant_id))
+                    .add(Column::ClientId.eq(client_id))
+                    .add(Column::IsActive.eq(true))
+                    .add(Column::RevokedAt.is_null()),
+            )
+            .one(db)
+            .await?;
+        match model {
+            Some(model) => Ok(Some(hydrate_tenant_default_or_identifier(db, model).await?)),
+            None => Ok(None),
+        }
     }
 
     pub async fn find_active_by_client_id(

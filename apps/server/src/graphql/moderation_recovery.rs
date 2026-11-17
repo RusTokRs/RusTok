@@ -82,7 +82,7 @@ impl ModerationRecoveryMutation {
         .map_err(map_port_error)
     }
 
-    /// Create a new case and immutable decision for a producer-supplied fresh subject revision.
+    /// Initiates an immutable re-review case and decision for a producer-supplied fresh subject revision.
     ///
     /// The historical case/decision are never mutated or retargeted. Subject identity, scope,
     /// queue and policy routing are copied from the source case; only the monotonic subject

@@ -409,6 +409,7 @@ fn forum_graphql_locale_resolution_counter() -> Option<&'static IntCounterVec> {
             ),
             &["resource", "outcome"],
         )
+        // INVARIANT: valid alphanumeric metric name and label names.
         .expect("Forum GraphQL locale resolution metric descriptor must be valid")
     });
 
@@ -468,6 +469,7 @@ fn forum_graphql_unread_topic_state_counter() -> Option<&'static IntCounterVec> 
             ),
             &["state"],
         )
+        // INVARIANT: valid alphanumeric metric name and label names.
         .expect("Forum GraphQL unread-topic state metric descriptor must be valid")
     });
 

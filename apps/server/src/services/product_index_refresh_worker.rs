@@ -25,7 +25,7 @@ use tokio::task::JoinHandle;
 use crate::common::settings::EventDeliveryProfile;
 use crate::error::{Error, Result};
 use crate::services::app_lifecycle::StopHandle;
-use crate::services::app_runtime::module_runtime_extensions_from_ctx;
+use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 use crate::services::event_transport_factory::EventRuntime;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
@@ -118,6 +118,7 @@ impl IndexMutationEventAcknowledger for ProductIndexRefreshAcknowledger {
         token: &Self::Token,
     ) -> std::result::Result<(), IndexMutationAcknowledgeFailure> {
         self.group.acknowledge(token).await.map_err(|_| {
+            // INVARIANT: ACK_FAILURE_CODE is a statically valid failure code constant.
             IndexMutationAcknowledgeFailure::retryable(ACK_FAILURE_CODE)
                 .expect("static Product Index acknowledgement failure code is valid: invariant validated at startup")
         })

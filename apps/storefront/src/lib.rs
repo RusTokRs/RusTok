@@ -539,15 +539,13 @@ async fn render_canonical_pages_response(
     if_none_match: Option<&str>,
 ) -> Response {
     let seo_context = match fetch_seo_page_context(locale, route_segment, &query_params).await {
-        Ok(Some(resolved)) if resolved.route.redirect.is_some() => {
-            let redirect = resolved
-                .route
-                .redirect
-                .as_ref()
-                .expect("checked is_some above");
-            return redirect_response(redirect.target_url.as_str(), Some(redirect.status_code));
+        Ok(Some(resolved)) => {
+            if let Some(redirect) = resolved.route.redirect.as_ref() {
+                return redirect_response(redirect.target_url.as_str(), Some(redirect.status_code));
+            }
+            Some(resolved)
         }
-        Ok(seo_context) => seo_context,
+        Ok(None) => None,
         Err(error) => {
             tracing::warn!(%error, "Pages storefront SEO composition load failed");
             None
@@ -668,20 +666,30 @@ async fn render_module_page_response(
     }
 
     match fetch_seo_page_context(locale, route_segment, &query_params).await {
-        Ok(Some(resolved)) if resolved.route.redirect.is_some() => {
-            let redirect = resolved
-                .route
-                .redirect
-                .as_ref()
-                .expect("checked is_some above");
-            redirect_response(redirect.target_url.as_str(), Some(redirect.status_code))
+        Ok(Some(resolved)) => {
+            if let Some(redirect) = resolved.route.redirect.as_ref() {
+                redirect_response(redirect.target_url.as_str(), Some(redirect.status_code))
+            } else {
+                storefront_html_response(
+                    render_module_page_with_nonce(
+                        locale,
+                        route_segment,
+                        query_params,
+                        Some(&resolved),
+                        csp_nonce,
+                        None,
+                    )
+                    .await,
+                    csp_nonce.is_some(),
+                )
+            }
         }
-        Ok(seo_context) => storefront_html_response(
+        Ok(None) => storefront_html_response(
             render_module_page_with_nonce(
                 locale,
                 route_segment,
                 query_params,
-                seo_context.as_ref(),
+                None,
                 csp_nonce,
                 None,
             )

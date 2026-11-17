@@ -394,12 +394,11 @@ fn HeaderGlobalSearchResultRow(
     let subtitle = admin_result_subtitle(&item);
 
     view! {
-        <button
-            type="button"
+        <a
+            href=href
             class="flex w-full flex-col gap-1 border-t border-border px-4 py-3 text-left hover:bg-accent hover:text-accent-foreground"
             on:mousedown=move |ev: MouseEvent| {
                 ev.prevent_default();
-                let _ = &href;
                 on_select.run(());
             }
         >
@@ -411,7 +410,7 @@ fn HeaderGlobalSearchResultRow(
             </div>
             <p class="text-xs text-muted-foreground">{subtitle}</p>
             <div class="text-[11px] text-muted-foreground">{format!("score {:.3}", item.score)}</div>
-        </button>
+        </a>
     }
 }
 

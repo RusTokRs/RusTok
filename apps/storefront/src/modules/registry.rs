@@ -46,15 +46,15 @@ fn page_registry() -> &'static RwLock<Vec<StorefrontPageRegistration>> {
 }
 
 pub fn register_component(component: StorefrontComponentRegistration) {
-    let mut components = registry().write().expect("storefront module registry lock");
-    components.push(component);
+    if let Ok(mut components) = registry().write() {
+        components.push(component);
+    }
 }
 
 pub fn register_page(page: StorefrontPageRegistration) {
-    let mut pages = page_registry()
-        .write()
-        .expect("storefront page registry lock");
-    pages.push(page);
+    if let Ok(mut pages) = page_registry().write() {
+        pages.push(page);
+    }
 }
 
 pub fn components_for_slot(
@@ -63,16 +63,19 @@ pub fn components_for_slot(
 ) -> Vec<StorefrontComponentRegistration> {
     let components = registry()
         .read()
-        .expect("storefront module registry lock")
-        .iter()
-        .filter(|component| component.slot == slot)
-        .filter(|component| match (component.module_slug, enabled_modules) {
-            (Some(module_slug), Some(enabled)) => enabled.contains(module_slug),
-            (Some(_), None) => false,
-            (None, _) => true,
+        .map(|guard| {
+            guard
+                .iter()
+                .filter(|component| component.slot == slot)
+                .filter(|component| match (component.module_slug, enabled_modules) {
+                    (Some(module_slug), Some(enabled)) => enabled.contains(module_slug),
+                    (Some(_), None) => false,
+                    (None, _) => true,
+                })
+                .cloned()
+                .collect::<Vec<_>>()
         })
-        .cloned()
-        .collect::<Vec<_>>();
+        .unwrap_or_default();
 
     let mut sorted = components;
     sorted.sort_by(|left, right| {
@@ -95,10 +98,13 @@ pub fn page_for_route_segment(
 ) -> StorefrontPageLookup {
     let page = page_registry()
         .read()
-        .expect("storefront page registry lock")
-        .iter()
-        .find(|page| page.route_segment == route_segment)
-        .cloned();
+        .ok()
+        .and_then(|guard| {
+            guard
+                .iter()
+                .find(|page| page.route_segment == route_segment)
+                .cloned()
+        });
 
     let Some(page) = page else {
         return StorefrontPageLookup::Missing;

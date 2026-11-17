@@ -1848,6 +1848,7 @@ fn CategoriesPage(
 
                 <div class="mt-6">
                     <SeoEntityPanel
+                        // INVARIANT: builtin SEO target slug constant.
                         target_kind=SeoTargetSlug::new(seo_builtin_slug::FORUM_CATEGORY).expect("builtin SEO target slug")
                         target_id=Signal::derive(move || editing_id.get())
                         locale=Signal::derive(move || locale.get())
@@ -2521,6 +2522,7 @@ fn TopicsPage(
                 </section>
 
                 <SeoEntityPanel
+                    // INVARIANT: builtin SEO target slug constant.
                     target_kind=SeoTargetSlug::new(seo_builtin_slug::FORUM_TOPIC).expect("builtin SEO target slug")
                     target_id=Signal::derive(move || editing_id.get())
                     locale=Signal::derive(move || locale.get())

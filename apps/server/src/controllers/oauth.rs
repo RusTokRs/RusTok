@@ -789,20 +789,13 @@ async fn validate_authorize_request(
         error_description: "Invalid client_id format".to_string(),
     })?;
 
-    let app = OAuthAppService::find_security_by_client_id(ctx.db(), client_id)
+    let app = OAuthAppService::find_security_by_client_id_scoped(ctx.db(), tenant_id, client_id)
         .await
         .map_err(|_| oauth_client_lookup_error())?
         .ok_or_else(|| TokenErrorResponse {
             error: "invalid_client".to_string(),
             error_description: "Unknown client_id".to_string(),
         })?;
-
-    if app.tenant_id != tenant_id {
-        return Err(TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Client not registered for this tenant".to_string(),
-        });
-    }
 
     if !app.supports_grant_type("authorization_code") {
         return Err(TokenErrorResponse {
@@ -1218,20 +1211,13 @@ async fn revoke_handler_inner(
         error_description: "Invalid client_id format".to_string(),
     })?;
 
-    let app = OAuthAppService::find_security_by_client_id(ctx.db(), client_id)
+    let app = OAuthAppService::find_security_by_client_id_scoped(ctx.db(), tenant_ctx.id, client_id)
         .await
         .map_err(|_| oauth_client_lookup_error())?
         .ok_or_else(|| TokenErrorResponse {
             error: "invalid_client".to_string(),
             error_description: "Unknown client_id".to_string(),
         })?;
-
-    if app.tenant_id != tenant_ctx.id {
-        return Err(TokenErrorResponse {
-            error: "invalid_client".to_string(),
-            error_description: "Client not registered for this tenant".to_string(),
-        });
-    }
 
     // Verify client_secret if the app has one
     if let Some(secret_hash) = &app.client_secret_hash {

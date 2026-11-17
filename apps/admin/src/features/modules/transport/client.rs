@@ -623,6 +623,29 @@ pub async fn yank_registry_release(
     .map_err(|error| ApiError::Graphql(error.to_string()))
 }
 
+pub async fn unyank_registry_release(
+    slug: String,
+    version: String,
+    reason: String,
+    reason_code: String,
+    dry_run: bool,
+    token: Option<String>,
+    tenant_slug: Option<String>,
+) -> Result<RegistryMutationResult, ApiError> {
+    let token = token.ok_or(ApiError::Unauthorized)?;
+    unyank_registry_release_native(
+        token,
+        tenant_slug.unwrap_or_default(),
+        slug,
+        version,
+        reason,
+        reason_code,
+        dry_run,
+    )
+    .await
+    .map_err(|error| ApiError::Graphql(error.to_string()))
+}
+
 const TRANSITION_CHECKPOINT_QUERY: &str = r#"
 query GetTransitionCheckpoint($opId: UUID!) {
     moduleTransitionCheckpoint(operationId: $opId) {

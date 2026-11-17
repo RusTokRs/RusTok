@@ -2,7 +2,6 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     TransactionTrait,
 };
-#[allow(unused_imports)]
 use serde_json::{Map, Value};
 use uuid::Uuid;
 

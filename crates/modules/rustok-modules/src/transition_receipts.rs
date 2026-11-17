@@ -38,6 +38,7 @@ pub enum TransitionReceiptError {
 }
 
 fn compute_digest<T: Serialize>(value: &T) -> String {
+    // INVARIANT: transition receipts contain only valid serializable data
     let bytes = serde_json::to_vec(value).expect("receipt serialization must succeed");
     let hash = Sha256::digest(&bytes);
     format!("sha256:{}", hex::encode(hash))

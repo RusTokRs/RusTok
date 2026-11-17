@@ -598,7 +598,10 @@ where
     let http = binding
         .http
         .as_ref()
-        .expect("HTTP binding was selected only when it has an HTTP contract");
+        .ok_or_else(|| ModuleDispatchError::BindingPhaseMismatch {
+            binding_id: binding.id.clone(),
+            phase: ExecutionPhase::Http,
+        })?;
     let body_bytes = serde_json::to_vec(&body)
         .map_err(|error| ModuleDispatchError::ArtifactHttpEnvelope(error.to_string()))?;
     if body_bytes.len() as u64 > http.max_body_bytes {

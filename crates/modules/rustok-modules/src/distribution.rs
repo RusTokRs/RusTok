@@ -1025,6 +1025,7 @@ impl TerminalBuildFields {
                 bundle_root_digest: Some(evidence.bundle_root_digest.clone()),
                 role_set_digest: Some(evidence.role_set_digest.clone()),
                 role_artifacts_json: Some(
+                    // INVARIANT: validated role artifacts contain only serializable fields
                     serde_json::to_string(&evidence.roles)
                         .expect("validated role artifacts must serialize"),
                 ),

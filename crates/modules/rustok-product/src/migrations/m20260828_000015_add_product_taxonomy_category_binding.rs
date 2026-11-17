@@ -63,7 +63,9 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        if manager.has_table("taxonomy_terms").await? {
+        if manager.get_database_backend() == DatabaseBackend::Postgres
+            && manager.has_table("taxonomy_terms").await?
+        {
             manager
                 .create_foreign_key(
                     ForeignKey::create()

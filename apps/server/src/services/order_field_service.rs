@@ -53,7 +53,7 @@ impl OrderFieldService {
 
     // ── CRUD ─────────────────────────────────────────────────────────────
 
-    /// Create a new field definition.
+    /// Registers an order custom field definition scoped to the given tenant.
     ///
     /// Enforces:
     /// - field_key format (`^[a-z][a-z0-9_]{0,127}$`)

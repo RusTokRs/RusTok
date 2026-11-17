@@ -24,20 +24,19 @@ impl Model {
 }
 
 impl Entity {
-    /// Atomically reserve an unused, unexpired authorization code for exchange.
-    ///
-    /// Only one concurrent caller can move `used_at` from NULL. The returned
-    /// model is a one-shot exchange lease: `used_at` is cleared in-memory so the
-    /// existing validation path can continue, while the persisted row remains
-    /// consumed and all competing exchanges fail closed.
-    pub async fn find_by_hash(
+    /// Atomically reserve an unused, unexpired authorization code with tenant and client scope.
+    pub async fn find_by_hash_scoped(
         db: &DatabaseConnection,
+        tenant_id: Uuid,
+        app_id: Uuid,
         code_hash: &str,
     ) -> Result<Option<Model>, DbErr> {
         let now = chrono::Utc::now();
         let reserved = Self::update_many()
             .col_expr(oauth_authorization_codes::Column::UsedAt, Expr::value(now))
             .filter(oauth_authorization_codes::Column::CodeHash.eq(code_hash))
+            .filter(oauth_authorization_codes::Column::TenantId.eq(tenant_id))
+            .filter(oauth_authorization_codes::Column::AppId.eq(app_id))
             .filter(oauth_authorization_codes::Column::UsedAt.is_null())
             .filter(oauth_authorization_codes::Column::ExpiresAt.gt(now))
             .exec(db)
@@ -49,6 +48,8 @@ impl Entity {
 
         let mut code = Self::find()
             .filter(oauth_authorization_codes::Column::CodeHash.eq(code_hash))
+            .filter(oauth_authorization_codes::Column::TenantId.eq(tenant_id))
+            .filter(oauth_authorization_codes::Column::AppId.eq(app_id))
             .one(db)
             .await?;
         if let Some(code) = code.as_mut() {

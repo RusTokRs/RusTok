@@ -249,10 +249,10 @@ impl McpManagementService {
             return Ok(None);
         };
 
-        let policy = mcp_policies::Entity::find_by_client(db, client.id)
+        let policy = mcp_policies::Entity::find_by_client_scoped(db, tenant_id, client.id)
             .await
             .map_err(map_db_err)?;
-        let tokens = mcp_tokens::Entity::find_by_client(db, client.id)
+        let tokens = mcp_tokens::Entity::find_by_client_scoped(db, tenant_id, client.id)
             .await
             .map_err(map_db_err)?;
         let effective_access_context = policy
@@ -295,7 +295,7 @@ impl McpManagementService {
         }
 
         if input.revoke_existing_tokens {
-            revoke_active_tokens_txn(&txn, client.id).await?;
+            revoke_active_tokens_txn(&txn, tenant_id, client.id).await?;
         }
 
         let (token, plaintext_token) = insert_token(
@@ -356,6 +356,7 @@ impl McpManagementService {
         let metadata = normalize_metadata(input.metadata);
 
         let policy = if let Some(existing) = mcp_policies::Entity::find()
+            .filter(mcp_policies::Column::TenantId.eq(tenant_id))
             .filter(mcp_policies::Column::ClientId.eq(client.id))
             .one(&txn)
             .await
@@ -469,7 +470,7 @@ impl McpManagementService {
         let txn = db.begin().await.map_err(map_db_err)?;
         let client = lock_client_for_update_txn(&txn, tenant_id, client_id).await?;
 
-        revoke_active_tokens_txn(&txn, client.id).await?;
+        revoke_active_tokens_txn(&txn, tenant_id, client.id).await?;
 
         let mut active: mcp_clients::ActiveModel = client.clone().into();
         active.is_active = Set(false);
@@ -877,11 +878,12 @@ async fn require_client(
         .ok_or(Error::NotFound)
 }
 
-async fn revoke_active_tokens_txn<C>(db: &C, client_id: Uuid) -> Result<()>
+async fn revoke_active_tokens_txn<C>(db: &C, tenant_id: Uuid, client_id: Uuid) -> Result<()>
 where
     C: ConnectionTrait,
 {
     let tokens = mcp_tokens::Entity::find()
+        .filter(mcp_tokens::Column::TenantId.eq(tenant_id))
         .filter(mcp_tokens::Column::ClientId.eq(client_id))
         .filter(mcp_tokens::Column::RevokedAt.is_null())
         .all(db)

@@ -8,7 +8,7 @@ use crate::graphql::rbac_runtime::rbac_graphql_role_writer_from_context;
 use crate::graphql::search_rate_limit::search_graphql_rate_limiter_from_context;
 use crate::graphql::{AppSchema, GraphqlSchemaDependencies, SharedGraphqlSchema, build_schema};
 use crate::services::app_lifecycle::StopHandle;
-use crate::services::app_runtime::module_runtime_extensions_from_ctx;
+use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 use crate::services::build_event_hub::build_event_hub_from_context;
 use crate::services::commerce_provider_runtime::attach_commerce_provider_registries;
 use crate::services::event_bus::{event_bus_from_context, transactional_event_bus_from_context};

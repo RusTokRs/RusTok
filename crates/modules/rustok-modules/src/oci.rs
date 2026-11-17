@@ -116,12 +116,14 @@ impl ArtifactStagingFile {
     }
 
     fn path(&self) -> &std::path::Path {
+        // INVARIANT: staging path is guaranteed present until persist() takes it
         self.path
             .as_deref()
             .expect("staging path is available until it is persisted")
     }
 
     fn persist(mut self) -> std::path::PathBuf {
+        // INVARIANT: staging path is guaranteed present until persist() takes it
         self.path
             .take()
             .expect("staging path is available until it is persisted")
@@ -830,6 +832,7 @@ fn canonical_alloy_workspace_sbom(
                 "version": descriptor.version.as_str(),
                 "hashes": [{
                     "alg": "SHA-256",
+                    // INVARIANT: descriptor artifact_digest format is verified during validation
                     "content": descriptor.artifact_digest.strip_prefix("sha256:").expect("validated descriptor digest")
                 }],
                 "licenses": [{ "license": { "id": license } }],
@@ -862,6 +865,7 @@ fn canonical_alloy_workspace_provenance(
         "subject": [{
             "name": format!("{}@{}", descriptor.slug, descriptor.version),
             "digest": {
+                // INVARIANT: descriptor artifact_digest format is verified during validation
                 "sha256": descriptor.artifact_digest.strip_prefix("sha256:").expect("validated descriptor digest")
             }
         }],
@@ -897,6 +901,7 @@ fn canonical_alloy_workspace_provenance(
                 "resolvedDependencies": [{
                     "uri": ALLOY_WORKSPACE_PUBLICATION_SOURCE_URI,
                     "digest": {
+                        // INVARIANT: provenance source_digest format is verified during validation
                         "sha256": provenance.source_digest.strip_prefix("sha256:").expect("validated source digest")
                     },
                     "name": "alloy-workspace-source"

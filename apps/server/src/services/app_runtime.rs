@@ -312,12 +312,7 @@ async fn initialize_module_work_runtime(
     Ok(())
 }
 
-pub fn module_runtime_extensions_from_ctx(
-    ctx: &ServerRuntimeContext,
-) -> Arc<ModuleRuntimeExtensions> {
-    ctx.shared_get::<Arc<ModuleRuntimeExtensions>>()
-        .expect("ModuleRuntimeExtensions not initialized; bootstrap_app_runtime must run first")
-}
+pub use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 
 async fn init_storage(ctx: &ServerRuntimeContext) -> Result<()> {
     use rustok_storage::StorageRuntime;

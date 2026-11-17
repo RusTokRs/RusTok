@@ -63,7 +63,7 @@ pub use reconciliation_query::{
     GqlForumCounterReconciliationReport, GqlForumNotificationReconciliationStatus,
     GqlForumSolutionDrift, GqlForumSolutionReconciliationReport,
 };
-pub use runtime_data::{ForumGraphqlRuntimeData, attach_schema_data};
+pub use runtime_data::{ForumGraphqlRuntimeData, ForumGraphqlRuntimeError, attach_schema_data};
 pub use storefront_read_state::*;
 pub use subscription_reconciliation_query::{
     GqlForumSubscriptionCursor, GqlForumSubscriptionDrift, GqlForumSubscriptionReconciliationReport,

@@ -5,6 +5,8 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
+use futures_util::FutureExt;
+use std::panic::AssertUnwindSafe;
 use rustok_installer::{
     InstallApplyOptions, InstallApplyOutput, InstallComposition, InstallDistributionBinding,
     InstallExecutor, InstallPlan, bind_instance_placement, evaluate_preflight_with_deployment,
@@ -165,8 +167,15 @@ async fn preflight(
     }))
 }
 
-#[derive(Clone, Debug)]
-struct ActiveInstallerJobHandle(#[allow(dead_code)] Uuid);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ActiveInstallerJobHandle(Uuid);
+
+impl ActiveInstallerJobHandle {
+    #[must_use]
+    pub fn id(&self) -> Uuid {
+        self.0
+    }
+}
 
 struct InstallerJobRuntimeGuard {
     ctx: ServerRuntimeContext,
@@ -187,7 +196,8 @@ async fn apply(
     require_setup_token(&headers)?;
     ensure_setup_not_completed(&ctx).await?;
 
-    if ctx.shared_contains::<ActiveInstallerJobHandle>() {
+    if let Some(active) = ctx.shared_get::<ActiveInstallerJobHandle>() {
+        tracing::warn!(active_job_id = %active.id(), "Installer job rejected: job already in progress");
         return Err(http_error(HttpError::new(
             StatusCode::CONFLICT,
             "installer_running",
@@ -255,9 +265,14 @@ async fn apply(
     let job_ctx = ctx.clone();
     tokio::spawn(async move {
         let _guard = InstallerJobRuntimeGuard { ctx: job_ctx };
-        let result = executor.apply(plan, apply_options).await;
-        match result {
-            Ok(output) => {
+        let execution = AssertUnwindSafe(async {
+            executor.apply(plan, apply_options).await
+        })
+        .catch_unwind()
+        .await;
+
+        match execution {
+            Ok(Ok(output)) => {
                 if let Err(error) = persistence
                     .finish_http_job_succeeded(job_id, output.session_id, output.tenant_id, &output)
                     .await
@@ -265,7 +280,7 @@ async fn apply(
                     tracing::error!(%error, %job_id, "Failed to finalize durable installer HTTP job");
                 }
             }
-            Err(error) => {
+            Ok(Err(error)) => {
                 let error_message = format!("installer apply failed: {error}");
                 tracing::error!(%error, %job_id, "Installer apply job failed");
                 if let Err(update_error) = persistence
@@ -276,6 +291,19 @@ async fn apply(
                         %update_error,
                         %job_id,
                         "Failed to persist installer HTTP job failure state"
+                    );
+                }
+            }
+            Err(_panic) => {
+                tracing::error!(%job_id, "Installer apply job panicked unexpectedly");
+                if let Err(update_error) = persistence
+                    .finish_http_job_failed(job_id, "installer apply panicked unexpectedly")
+                    .await
+                {
+                    tracing::error!(
+                        %update_error,
+                        %job_id,
+                        "Failed to persist installer HTTP job panic failure state"
                     );
                 }
             }

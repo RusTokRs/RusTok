@@ -21,6 +21,7 @@ impl Entity {
         db: &DatabaseConnection,
         token_hash: &str,
         app_id: Uuid,
+        tenant_id: Uuid,
     ) -> Result<Option<Model>, DbErr> {
         let now = chrono::Utc::now();
         let reserved = Entity::update_many()
@@ -31,6 +32,7 @@ impl Entity {
                 Condition::all()
                     .add(Column::TokenHash.eq(token_hash))
                     .add(Column::AppId.eq(app_id))
+                    .add(Column::TenantId.eq(tenant_id))
                     .add(Column::TokenKind.eq(TOKEN_KIND_REFRESH))
                     .add(Column::RevokedAt.is_null())
                     .add(Column::ExpiresAt.gt(now)),
@@ -45,6 +47,7 @@ impl Entity {
         let mut token = Entity::find()
             .filter(Column::TokenHash.eq(token_hash))
             .filter(Column::AppId.eq(app_id))
+            .filter(Column::TenantId.eq(tenant_id))
             .one(db)
             .await?;
         if let Some(token) = token.as_mut() {
@@ -71,11 +74,16 @@ impl Entity {
             .await
     }
 
-    pub async fn count_active_by_app(db: &DatabaseConnection, app_id: Uuid) -> Result<u64, DbErr> {
+    pub async fn count_active_by_app(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+        tenant_id: Uuid,
+    ) -> Result<u64, DbErr> {
         Entity::find()
             .filter(
                 Condition::all()
                     .add(Column::AppId.eq(app_id))
+                    .add(Column::TenantId.eq(tenant_id))
                     .add(Column::TokenKind.eq(TOKEN_KIND_REFRESH))
                     .add(Column::RevokedAt.is_null())
                     .add(Column::ExpiresAt.gt(chrono::Utc::now())),

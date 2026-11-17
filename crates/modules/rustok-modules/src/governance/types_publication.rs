@@ -159,6 +159,7 @@ pub fn alloy_publication_smoke_scenario_digest() -> String {
         expected_return: true,
         capability_grants: 0,
     };
+    // INVARIANT: PublicationSmokeScenario contains only statically serializable fields
     let bytes = serde_json::to_vec(&scenario).expect("publication smoke scenario must serialize");
     let mut hasher = Sha256::new();
     hasher.update(ALLOY_PUBLICATION_SMOKE_SCENARIO_DOMAIN);

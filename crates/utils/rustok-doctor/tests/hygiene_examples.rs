@@ -686,3 +686,293 @@ fn detects_real_fulfillment_and_pages_pointer_args() {
     assert_eq!(ptr_findings.len(), 1);
     assert_eq!(ptr_findings[0].line, 234);
 }
+
+#[test]
+fn identifies_bare_allow_unused_imports_and_mut() {
+    let source = r#"
+#[allow(unused_imports)]
+use std::time::Duration;
+
+#[allow(unused_mut)]
+fn test_mut() {
+    let mut x = 1;
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let allow_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-STALE-ALLOW-LINT")
+        .collect();
+
+    assert_eq!(allow_findings.len(), 2);
+    assert_eq!(allow_findings[0].line, 2);
+    assert_eq!(allow_findings[1].line, 5);
+}
+
+#[test]
+fn respects_invariant_comments_for_expect_calls() {
+    let source = r#"
+fn run() {
+    // INVARIANT: statically guaranteed valid constant
+    let a = parse("fixed").expect("valid");
+
+    // Without invariant comment, this must be flagged
+    let b = parse("dynamic").expect("might fail");
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let panic_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-ZERO-PANIC-PROD")
+        .collect();
+
+    assert_eq!(panic_findings.len(), 1);
+    assert_eq!(panic_findings[0].line, 7);
+}
+
+#[test]
+fn identifies_post_hoc_in_memory_tenant_checks() {
+    let source = r#"
+async fn validate_access(app: &App, tenant_id: Uuid) -> Result<()> {
+    if app.tenant_id != tenant_id {
+        return Err(Error::Forbidden);
+    }
+    Ok(())
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let tenant_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-TENANT-FALLBACK-LEAK")
+        .collect();
+
+    assert_eq!(tenant_findings.len(), 1);
+    assert_eq!(tenant_findings[0].line, 3);
+}
+
+#[test]
+fn identifies_direct_print_in_production_code() {
+    let source = r#"
+pub fn calculate() -> u32 {
+    println!("debugging calculation");
+    eprintln!("error calculation");
+    dbg!(42);
+    42
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let print_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-LOG-RAW-PRINT")
+        .collect();
+
+    assert_eq!(print_findings.len(), 3);
+    assert_eq!(print_findings[0].line, 3);
+    assert_eq!(print_findings[1].line, 4);
+    assert_eq!(print_findings[2].line, 5);
+}
+
+#[test]
+fn allows_direct_print_in_cli_and_tests() {
+    let source = r#"
+fn main() {
+    println!("CLI output");
+    eprintln!("CLI error");
+}
+"#;
+    let cli_findings = rustok_doctor::scan_source(Path::new("src/bin/tool.rs"), source);
+    assert!(cli_findings.iter().all(|f| f.pattern_id != "P-LOG-RAW-PRINT"));
+
+    let test_findings = rustok_doctor::scan_source(Path::new("tests/integration_test.rs"), source);
+    assert!(test_findings.iter().all(|f| f.pattern_id != "P-LOG-RAW-PRINT"));
+}
+
+#[test]
+fn identifies_bare_allow_in_tuple_struct_field() {
+    let source = r#"
+struct ActiveJobHandle(#[allow(dead_code)] Uuid);
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let allow_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-STALE-ALLOW-LINT")
+        .collect();
+
+    assert_eq!(allow_findings.len(), 1);
+    assert_eq!(allow_findings[0].line, 2);
+}
+
+#[test]
+fn identifies_unreachable_in_production_code() {
+    let source = r#"
+pub fn map_status(val: &str) -> &'static str {
+    match val {
+        "active" => "active",
+        _ => unreachable!(),
+    }
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let panic_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-ZERO-PANIC-PROD")
+        .collect();
+
+    assert_eq!(panic_findings.len(), 1);
+    assert_eq!(panic_findings[0].line, 5);
+}
+
+#[test]
+fn allows_unreachable_with_invariant_comment() {
+    let source = r#"
+pub fn map_status(val: &str) -> &'static str {
+    match val {
+        "active" => "active",
+        // INVARIANT: validated by caller schema
+        _ => unreachable!(),
+    }
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    assert!(findings.iter().all(|f| f.pattern_id != "P-ZERO-PANIC-PROD"));
+}
+
+#[test]
+fn identifies_bare_string_error_in_result() {
+    let source = r#"
+pub fn parse_input(raw: &str) -> Result<Parsed, String> {
+    Ok(Parsed)
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let error_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-TYPED-DOMAIN-ERROR")
+        .collect();
+
+    assert_eq!(error_findings.len(), 1);
+    assert_eq!(error_findings[0].line, 2);
+    assert!(error_findings[0].message.contains("String"));
+}
+
+#[test]
+fn identifies_bare_str_slice_error_in_result() {
+    let source = r#"
+pub fn check_status(raw: &str) -> Result<(), &'static str> {
+    Ok(())
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let error_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-TYPED-DOMAIN-ERROR")
+        .collect();
+
+    assert_eq!(error_findings.len(), 1);
+    assert_eq!(error_findings[0].line, 2);
+}
+
+#[test]
+fn identifies_anyhow_in_domain_service() {
+    let source = r#"
+pub fn run_operation() -> Result<(), DomainError> {
+    let _ = anyhow::bail!("failed");
+    Ok(())
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let error_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-TYPED-DOMAIN-ERROR")
+        .collect();
+
+    assert_eq!(error_findings.len(), 1);
+    assert_eq!(error_findings[0].line, 3);
+}
+
+#[test]
+fn allows_strongly_typed_domain_errors_in_result() {
+    let source = r#"
+pub fn parse_settings() -> Result<std::collections::BTreeMap<String, String>, DomainError> {
+    Ok(Default::default())
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    assert!(findings.iter().all(|f| f.pattern_id != "P-TYPED-DOMAIN-ERROR"));
+}
+
+#[test]
+fn identifies_check_then_unwrap_pattern() {
+    let source = r#"
+pub fn extract_value(opt: Option<String>) -> String {
+    if opt.is_some() {
+        opt.unwrap()
+    } else {
+        "default".to_string()
+    }
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let check_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-CHECK-THEN-UNWRAP")
+        .collect();
+
+    assert_eq!(check_findings.len(), 1);
+    assert_eq!(check_findings[0].line, 3);
+    assert!(check_findings[0].message.contains("opt"));
+}
+
+#[test]
+fn identifies_check_then_expect_pattern() {
+    let source = r#"
+pub fn extract_result(res: Result<String, DomainError>) -> String {
+    if res.is_ok() {
+        res.expect("validated")
+    } else {
+        "fallback".to_string()
+    }
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let check_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-CHECK-THEN-UNWRAP")
+        .collect();
+
+    assert_eq!(check_findings.len(), 1);
+    assert_eq!(check_findings[0].line, 3);
+}
+
+#[test]
+fn allows_idiomatic_pattern_matching() {
+    let source = r#"
+pub fn extract_value(opt: Option<String>) -> String {
+    if let Some(val) = opt {
+        val
+    } else {
+        "default".to_string()
+    }
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    assert!(findings.iter().all(|f| f.pattern_id != "P-CHECK-THEN-UNWRAP"));
+}
+
+#[test]
+fn identifies_sync_process_command_in_async_fn() {
+    let source = r#"
+pub async fn execute_task() -> Result<(), DomainError> {
+    let status = std::process::Command::new("ls").status()?;
+    Ok(())
+}
+"#;
+    let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
+    let blocking_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| f.pattern_id == "P-BLOCKING-IO-IN-ASYNC")
+        .collect();
+
+    assert_eq!(blocking_findings.len(), 1);
+    assert_eq!(blocking_findings[0].line, 3);
+}

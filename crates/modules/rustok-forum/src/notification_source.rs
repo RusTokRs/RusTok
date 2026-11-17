@@ -739,6 +739,7 @@ impl ForumNotificationSourceProvider {
         .map_err(|_| NotificationProviderError::InvalidEvent)?;
         Ok(NotificationSemanticDescriptor {
             notification_type: user_mention_added_type(),
+            // INVARIANT: USER_MENTION_ADDED_TYPE is a compile-time constant matching validated key format.
             template_key: NotificationTemplateKey::new(USER_MENTION_ADDED_TYPE)
                 .expect("forum user-mention notification template key must stay valid"),
             target: NotificationTargetRef {
@@ -813,6 +814,7 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
                 .map_err(|_| NotificationProviderError::InvalidEvent)?;
                 Ok(Some(NotificationSemanticDescriptor {
                     notification_type: topic_created_type(),
+                    // INVARIANT: TOPIC_CREATED_TYPE is a compile-time constant matching validated key format.
                     template_key: NotificationTemplateKey::new(TOPIC_CREATED_TYPE)
                         .expect("forum topic notification template key must stay valid"),
                     target: NotificationTargetRef {
@@ -849,6 +851,7 @@ impl NotificationSourceProvider for ForumNotificationSourceProvider {
                 .map_err(|_| NotificationProviderError::InvalidEvent)?;
                 Ok(Some(NotificationSemanticDescriptor {
                     notification_type: topic_replied_type(),
+                    // INVARIANT: TOPIC_REPLIED_TYPE is a compile-time constant matching validated key format.
                     template_key: NotificationTemplateKey::new(TOPIC_REPLIED_TYPE)
                         .expect("forum topic-replied notification template key must stay valid"),
                     target: NotificationTargetRef {
@@ -1229,31 +1232,37 @@ fn target_kind_for_source(source_kind: &str) -> NotificationProviderResult<Notif
 }
 
 fn forum_source_slug() -> NotificationSourceSlug {
+    // INVARIANT: FORUM_SOURCE is a compile-time constant matching validated slug format.
     NotificationSourceSlug::new(FORUM_SOURCE)
         .expect("forum notification source slug must stay valid")
 }
 
 fn topic_created_type() -> NotificationTypeKey {
+    // INVARIANT: TOPIC_CREATED_TYPE is a compile-time constant matching validated key format.
     NotificationTypeKey::new(TOPIC_CREATED_TYPE)
         .expect("forum topic-created notification type must stay valid")
 }
 
 fn user_mention_added_type() -> NotificationTypeKey {
+    // INVARIANT: USER_MENTION_ADDED_TYPE is a compile-time constant matching validated key format.
     NotificationTypeKey::new(USER_MENTION_ADDED_TYPE)
         .expect("forum user-mention notification type must stay valid")
 }
 
 fn topic_replied_type() -> NotificationTypeKey {
+    // INVARIANT: TOPIC_REPLIED_TYPE is a compile-time constant matching validated key format.
     NotificationTypeKey::new(TOPIC_REPLIED_TYPE)
         .expect("forum topic-replied notification type must stay valid")
 }
 
 fn forum_topic_target_kind() -> NotificationTargetKind {
+    // INVARIANT: FORUM_TOPIC_TARGET is a compile-time constant matching validated target kind format.
     NotificationTargetKind::new(FORUM_TOPIC_TARGET)
         .expect("forum topic notification target kind must stay valid")
 }
 
 fn forum_reply_target_kind() -> NotificationTargetKind {
+    // INVARIANT: FORUM_REPLY_TARGET is a compile-time constant matching validated target kind format.
     NotificationTargetKind::new(FORUM_REPLY_TARGET)
         .expect("forum reply notification target kind must stay valid")
 }

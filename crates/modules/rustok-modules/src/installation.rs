@@ -409,7 +409,12 @@ impl InstalledModuleArtifact {
                 .nodes
                 .iter()
                 .find(|node| node.slug == dependency.slug)
-                .expect("declared dependencies were checked while walking the graph");
+                .ok_or_else(|| {
+                    ModuleInstallationError::DependencyLock(format!(
+                        "missing lock node for declared dependency `{}`",
+                        dependency.slug
+                    ))
+                })?;
             let version = Version::parse(&node.version).map_err(|error| {
                 ModuleInstallationError::DependencyLock(format!(
                     "resolved dependency `{}` has invalid version: {error}",
@@ -7973,13 +7978,7 @@ fn valid_repository_segment(value: &str) -> bool {
     })
 }
 
-pub(crate) fn valid_digest(value: &str) -> bool {
-    value.len() == 71
-        && value.starts_with("sha256:")
-        && value[7..]
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
-}
+pub(crate) use crate::artifact::valid_digest;
 
 pub(crate) fn sha256_digest(bytes: &[u8]) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(bytes)))

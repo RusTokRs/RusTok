@@ -433,6 +433,7 @@ pub fn validate_static_module_topology_contract(
     let mut slugs = contract.modules.keys().cloned().collect::<Vec<_>>();
     slugs.sort();
     for slug in slugs {
+        // INVARIANT: slug originates directly from contract.modules.keys()
         let module = contract
             .modules
             .get(&slug)

@@ -20,6 +20,7 @@ import {
   transferRegistryOwner,
   validateRegistryPublishRequest,
   yankRegistryRelease,
+  unyankRegistryRelease,
   type GqlOpts,
   type MarketplaceModule,
   type RegistryMutationResult,
@@ -153,7 +154,7 @@ export function GovernanceForm({
       toast.error(t('governance.owner.required'));
       return;
     }
-    if (action === 'yank' && !activeRelease) {
+    if ((action === 'yank' || action === 'unyank') && !activeRelease) {
       toast.error(t('governance.release.unavailable'));
       return;
     }
@@ -241,6 +242,17 @@ export function GovernanceForm({
           break;
         case 'yank':
           res = await yankRegistryRelease(
+            module.slug,
+            activeRelease!,
+            cleanReason,
+            cleanCode,
+            dryRun,
+            apiOpts,
+            key
+          );
+          break;
+        case 'unyank':
+          res = await unyankRegistryRelease(
             module.slug,
             activeRelease!,
             cleanReason,
@@ -436,6 +448,17 @@ export function GovernanceForm({
           {confirmAction === signatureFor('yank')
             ? 'Confirm Yank?'
             : `Yank v${activeRelease}`}
+        </Button>
+        <Button
+          variant='outline'
+          size='sm'
+          disabled={isSubmitting || !actionFor('unyank')}
+          onClick={() => handleAction('unyank')}
+          className='text-xs'
+        >
+          {confirmAction === signatureFor('unyank')
+            ? 'Confirm Unyank?'
+            : `Unyank v${activeRelease}`}
         </Button>
       </div>
 

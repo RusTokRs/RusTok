@@ -256,6 +256,7 @@ pub fn nested_value_removed(
     }
 
     let parent_path = &path[..path.len() - 1];
+    // INVARIANT: path is guaranteed non-empty by guard check above
     let last_segment = path.last().expect("checked non-empty path");
     with_updated_json_root(raw, root_type, |root| {
         let Some(parent) = value_at_path_mut(root, parent_path) else {
@@ -292,6 +293,7 @@ pub fn nested_object_key_renamed(
         return Err("Property name must not be empty".to_string());
     }
     let parent_path = &path[..path.len() - 1];
+    // INVARIANT: path is guaranteed non-empty by guard check above
     let JsonPathSegment::Key(old_key) = path.last().expect("checked non-empty path") else {
         return Err("JSON path does not point to an object property".to_string());
     };
@@ -326,6 +328,7 @@ pub fn nested_array_item_moved(
         return Err("JSON path is out of bounds".to_string());
     }
     let parent_path = &path[..path.len() - 1];
+    // INVARIANT: path is guaranteed non-empty by guard check above
     let JsonPathSegment::Index(index) = path.last().expect("checked non-empty path") else {
         return Err("JSON path does not point to an array item".to_string());
     };

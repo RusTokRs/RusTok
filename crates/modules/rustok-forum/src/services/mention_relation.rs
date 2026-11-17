@@ -851,6 +851,7 @@ fn projection_fingerprint(
     let digest = digest.finalize();
     let mut encoded = String::with_capacity(digest.len() * 2);
     for byte in digest {
+        // INVARIANT: writing formatted hex bytes to an in-memory String cannot fail.
         std::fmt::Write::write_fmt(&mut encoded, format_args!("{byte:02x}"))
             .expect("writing a SHA-256 digest to a string cannot fail");
     }

@@ -12,20 +12,10 @@ use axum::{
 
 use crate::common::{extract_effective_client_ip, peer_ip_from_extensions};
 
-// The preserved implementation still contains the former public cleanup loop.
-// The wrapper below is the only runtime entrypoint; allow that compatibility
-// function to remain byte-for-byte in the private base module without creating
-// a workspace-level dead-code warning.
-#[allow(dead_code)]
 #[path = "rate_limit_base.rs"]
 mod base;
 
-pub use base::{
-    PathRateLimitMiddlewareState, PathRateLimitPolicy, RateLimitCheckError, RateLimitConfig,
-    RateLimitExceeded, RateLimitInfo, RateLimitMiddlewareState, RateLimitStats, RateLimiter,
-    SharedApiRateLimiter, SharedAuthRateLimiter, SharedOAuthRateLimiter, SharedSearchRateLimiter,
-    extract_client_id_pub, rate_limit_middleware,
-};
+pub use base::*;
 
 /// Runtime-owned handles for rate-limit maintenance loops.
 #[derive(Clone, Default)]

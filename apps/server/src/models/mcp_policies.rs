@@ -15,6 +15,18 @@ impl Entity {
             .one(db)
             .await
     }
+
+    pub async fn find_by_client_scoped(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        client_id: Uuid,
+    ) -> Result<Option<Model>, DbErr> {
+        Self::find()
+            .filter(Column::TenantId.eq(tenant_id))
+            .filter(Column::ClientId.eq(client_id))
+            .one(db)
+            .await
+    }
 }
 
 impl Model {

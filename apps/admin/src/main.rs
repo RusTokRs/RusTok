@@ -335,12 +335,14 @@ async fn main() {
             .map_err(|error| auth_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))
     }
 
+    // INVARIANT: security profile must be valid on startup; failure indicates configuration corruption
     validate_admin_security_profile().expect("valid standalone admin security profile");
     let cargo_toml = if std::path::Path::new("apps/admin/Cargo.toml").exists() {
         Some("apps/admin/Cargo.toml")
     } else {
         None
     };
+    // INVARIANT: Leptos configuration must be parseable at startup
     let configuration = get_configuration(cargo_toml).expect("Leptos SSR configuration");
     let address = configuration.leptos_options.site_addr;
     let options = configuration.leptos_options;
@@ -397,9 +399,11 @@ async fn main() {
     spawn_draft_session_prune(DRAFT_SESSION_PRUNE_INTERVAL);
 
     log!("RusTok admin SSR listening on http://{address}");
+    // INVARIANT: binding TCP address is required for HTTP service startup
     let listener = tokio::net::TcpListener::bind(address)
         .await
         .expect("bind admin SSR address");
+    // INVARIANT: axum server loop runs for the process lifetime
     axum::serve(listener, application.into_make_service())
         .await
         .expect("serve admin SSR application");

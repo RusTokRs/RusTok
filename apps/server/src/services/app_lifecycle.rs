@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 
 #[cfg(feature = "mod-seo")]
-use crate::services::app_runtime::module_runtime_extensions_from_ctx;
+use crate::services::server_runtime_context::module_runtime_extensions_from_ctx;
 #[cfg(feature = "mod-seo")]
 use crate::services::event_bus::transactional_event_bus_from_context;
 use crate::services::event_transport_factory::{
@@ -30,7 +30,7 @@ impl StopHandle {
         (Self { stop_tx: tx }, rx)
     }
 
-    /// Create a new `Receiver` subscribed to the shutdown signal.
+    /// Subscribes a new watch `Receiver` to the host shutdown signal.
     ///
     /// The returned receiver immediately sees the current value and will be
     /// notified when [`StopHandle::stop`] is called. Clone it once per background worker
@@ -960,6 +960,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
         }
     };
 
+    #[cfg(feature = "mod-product")]
     let product_index_refresh_drain = async {
         #[cfg(feature = "mod-product")]
         if let Some(worker) = runtime_ctx
@@ -972,7 +973,10 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
             .await;
         }
     };
+    #[cfg(not(feature = "mod-product"))]
+    let product_index_refresh_drain = std::future::ready(());
 
+    #[cfg(feature = "mod-social_graph")]
     let social_graph_index_drain = async {
         #[cfg(feature = "mod-social_graph")]
         if let Some(worker) = runtime_ctx
@@ -985,7 +989,10 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
             .await;
         }
     };
+    #[cfg(not(feature = "mod-social_graph"))]
+    let social_graph_index_drain = std::future::ready(());
 
+    #[cfg(feature = "mod-social_graph")]
     let social_graph_position_observer_drain = async {
         #[cfg(feature = "mod-social_graph")]
         if let Some(worker) = runtime_ctx
@@ -998,7 +1005,10 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
             .await;
         }
     };
+    #[cfg(not(feature = "mod-social_graph"))]
+    let social_graph_position_observer_drain = std::future::ready(());
 
+    #[cfg(feature = "mod-social_graph")]
     let social_graph_poison_observer_drain = async {
         #[cfg(feature = "mod-social_graph")]
         if let Some(worker) = runtime_ctx
@@ -1011,6 +1021,8 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
             .await;
         }
     };
+    #[cfg(not(feature = "mod-social_graph"))]
+    let social_graph_poison_observer_drain = std::future::ready(());
 
     #[cfg(feature = "mod-notifications")]
     let notification_outbox_drain = async {
@@ -1110,6 +1122,7 @@ impl ShutdownJoinHandle {
     }
 
     fn handle_mut(&mut self) -> &mut JoinHandle<()> {
+        // INVARIANT: handle_mut is invoked only while the task is armed before disarm/completion.
         self.0.as_mut().expect("shutdown task handle is present")
     }
 

@@ -24,8 +24,9 @@ use crate::models::{
 };
 use crate::services::auth_lifecycle::{AuthLifecycleError, AuthLifecycleService, AuthTokens};
 use crate::services::email::{
-    EMAIL_VERIFICATION_TOKEN_TTL_SECS, EmailVerificationEmail, PASSWORD_RESET_TOKEN_TTL_SECS,
-    PasswordResetEmail, email_service_from_ctx, password_reset_url, spawn_email_verification,
+    EMAIL_VERIFICATION_TOKEN_TTL_SECS, PASSWORD_RESET_TOKEN_TTL_SECS, email_service_from_ctx,
+    password_reset_url, spawn_email_verification, spawn_email_verification_send,
+    spawn_password_reset_email,
 };
 use crate::services::server_runtime_context::ServerAuthRuntime;
 pub use rustok_auth::{
@@ -642,17 +643,12 @@ async fn request_reset(
             .map(|record| record.email.clone())
             .unwrap_or_else(|| params.email.clone());
 
-        tokio::spawn(async move {
-            if let Err(error) = email_service
-                .send_password_reset(PasswordResetEmail {
-                    to: recipient,
-                    reset_url,
-                })
-                .await
-            {
-                tracing::warn!(error = %error, "Failed to send password reset email");
-            }
-        });
+        let _email_task = spawn_password_reset_email(
+            runtime_ctx,
+            email_service,
+            recipient,
+            reset_url,
+        );
     }
 
     Ok(json_response(ResetRequestResponse { status: "ok" }))
@@ -736,17 +732,12 @@ async fn request_verification(
         };
         let verification_token = verification_token_value;
 
-        tokio::spawn(async move {
-            if let Err(error) = email_service
-                .send_email_verification(EmailVerificationEmail {
-                    to: recipient,
-                    verification_token,
-                })
-                .await
-            {
-                tracing::warn!(error = %error, "Failed to send email verification email");
-            }
-        });
+        let _email_task = spawn_email_verification_send(
+            runtime_ctx,
+            email_service,
+            recipient,
+            verification_token,
+        );
     }
 
     Ok(json_response(VerificationRequestResponse { status: "ok" }))

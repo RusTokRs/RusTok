@@ -748,6 +748,7 @@ impl TopicService {
         Ok(tags)
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn load_topic_tags_for_topics(
         &self,
         tenant_id: Uuid,
@@ -1382,16 +1383,15 @@ async fn load_topic_custom_fields_schema(
     let definitions = rows
         .into_iter()
         .map(topic_field_definition_from_row)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(ForumError::Validation)?;
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(CustomFieldsSchema::new(definitions))
 }
 
 fn topic_field_definition_from_row(
     row: topic_field_definitions_storage::Model,
-) -> Result<FieldDefinition, String> {
-    field_definition_from_source(&row)
+) -> Result<FieldDefinition, ForumError> {
+    field_definition_from_source(&row).map_err(ForumError::Validation)
 }
 
 impl TopicService {

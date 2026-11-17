@@ -112,7 +112,7 @@ impl McpManagementAuthorityService {
         let delegated =
             delegated_permissions(db, tenant_id, client.actor_type(), client.delegated_user_id)
                 .await?;
-        let policy = mcp_policies::Entity::find_by_client(db, client.id)
+        let policy = mcp_policies::Entity::find_by_client_scoped(db, tenant_id, client.id)
             .await
             .map_err(|error| internal_error("load MCP policy", error))?;
 

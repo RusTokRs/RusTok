@@ -1765,7 +1765,7 @@ mod tests {
                 tenant_id: Some(tenant_id),
                 actor_id: first.actor_id,
                 trace_id: first.trace_id,
-                idempotency_key: first.idempotency_key,
+                idempotency_key: None,
             },
             capability: capability.clone(),
             operation: "acquire_handle".to_string(),

@@ -104,7 +104,7 @@ impl std::fmt::Debug for RotateSecretResult {
 pub struct OAuthAppService;
 
 impl OAuthAppService {
-    /// Create a new OAuth app with generated client_id and client_secret
+    /// Registers a manual OAuth client application with generated credentials and tenant association.
     pub async fn create_app(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -175,14 +175,11 @@ impl OAuthAppService {
     ) -> Result<oauth_apps::Model> {
         let granted_permissions = validate_granted_permissions(input.granted_permissions)?;
         let app = OAuthApps::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
             .one(db)
             .await
             .map_err(|_| Error::InternalServerError)?
             .ok_or(Error::NotFound)?;
-
-        if app.tenant_id != tenant_id {
-            return Err(Error::NotFound);
-        }
 
         if !app.can_edit() {
             return Err(Error::BadRequest(
@@ -234,6 +231,29 @@ impl OAuthAppService {
             updated.client_secret_hash = existing_secret_hash;
         }
         Ok(updated)
+    }
+
+    /// Find an active app by its public client_id scoped to a tenant
+    pub async fn find_by_client_id_scoped(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        client_id: Uuid,
+    ) -> Result<Option<oauth_apps::Model>> {
+        OAuthApps::find_active_by_client_id_scoped(db, tenant_id, client_id)
+            .await
+            .map_err(|_| Error::InternalServerError)
+    }
+
+    /// Security-only client lookup for protocol authentication/revocation scoped to a tenant.
+    /// Presentation translation failures must not decide credential validity.
+    pub async fn find_security_by_client_id_scoped(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        client_id: Uuid,
+    ) -> Result<Option<oauth_apps::Model>> {
+        OAuthApps::find_active_security_by_client_id_scoped(db, tenant_id, client_id)
+            .await
+            .map_err(|_| Error::InternalServerError)
     }
 
     /// Find an active app by its public client_id
@@ -358,6 +378,7 @@ impl OAuthAppService {
             .map_err(|_| Error::InternalServerError)?;
 
         let updated = OAuthApps::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
             .one(&tx)
             .await
             .map_err(|_| Error::InternalServerError)?
@@ -404,6 +425,29 @@ impl OAuthAppService {
                 Expr::value(Some(Utc::now())),
             )
             .filter(oauth_apps::Column::Id.eq(app_id))
+            .exec(db)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
+        if updated.rows_affected == 0 {
+            return Err(Error::NotFound);
+        }
+
+        Ok(())
+    }
+
+    /// Update last_used_at for an app with tenant isolation
+    pub async fn touch_last_used_scoped(
+        db: &DatabaseConnection,
+        tenant_id: Uuid,
+        app_id: Uuid,
+    ) -> Result<()> {
+        let updated = oauth_apps::Entity::update_many()
+            .col_expr(
+                oauth_apps::Column::LastUsedAt,
+                Expr::value(Some(Utc::now())),
+            )
+            .filter(oauth_apps::Column::Id.eq(app_id))
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
             .exec(db)
             .await
             .map_err(|_| Error::InternalServerError)?;
@@ -1207,6 +1251,17 @@ async fn update_first_party_app_from_manifest(
         );
         Error::InternalServerError
     })?;
+    oauth_apps::record_translation_change(db, app, Some(rustok_core::generate_id()))
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                tenant_id = %tenant_id,
+                slug = slug,
+                error = %error,
+                "Failed to record first-party OAuth app translation change during manifest sync"
+            );
+            Error::InternalServerError
+        })?;
     Ok(())
 }
 

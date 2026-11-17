@@ -401,16 +401,19 @@ fn forum_reaction_catalog_v1() -> ReactionProviderResult<ReactionCatalog> {
 }
 
 fn forum_reaction_source() -> ReactionSourceSlug {
+    // INVARIANT: FORUM_REACTION_SOURCE is a compile-time constant matching validated slug format.
     ReactionSourceSlug::new(FORUM_REACTION_SOURCE)
         .expect("Forum reaction source constant must remain valid")
 }
 
 fn forum_topic_reaction_kind() -> ReactionSubjectKind {
+    // INVARIANT: FORUM_TOPIC_REACTION_KIND is a compile-time constant matching validated kind format.
     ReactionSubjectKind::new(FORUM_TOPIC_REACTION_KIND)
         .expect("Forum topic reaction kind constant must remain valid")
 }
 
 fn forum_reply_reaction_kind() -> ReactionSubjectKind {
+    // INVARIANT: FORUM_REPLY_REACTION_KIND is a compile-time constant matching validated kind format.
     ReactionSubjectKind::new(FORUM_REPLY_REACTION_KIND)
         .expect("Forum reply reaction kind constant must remain valid")
 }

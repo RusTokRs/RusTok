@@ -276,6 +276,76 @@ pub const EMAIL_VERIFICATION_TOKEN_TTL_SECS: u64 = 24 * 60 * 60;
 /// Password-reset token lifetime shared by REST and GraphQL flows.
 pub const PASSWORD_RESET_TOKEN_TTL_SECS: u64 = 15 * 60;
 
+/// Dispatches a background email sending task with panic containment, error reporting,
+/// and graceful shutdown lifecycle awareness.
+pub fn spawn_auth_email_task<F, Fut>(
+    ctx: &ServerRuntimeContext,
+    task_name: &'static str,
+    future_factory: F,
+) -> tokio::task::JoinHandle<()>
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = std::result::Result<(), EmailError>> + Send + 'static,
+{
+    let stop_handle = crate::services::app_lifecycle::StopHandle::ensure(ctx);
+    if stop_handle.is_stopping() {
+        tracing::warn!(task = task_name, "Server runtime is stopping; skipping background email delivery");
+        return tokio::spawn(std::future::ready(()));
+    }
+
+    tokio::spawn(async move {
+        use futures_util::FutureExt;
+        use std::panic::AssertUnwindSafe;
+
+        let result = AssertUnwindSafe(future_factory()).catch_unwind().await;
+        match result {
+            Ok(Ok(())) => {
+                tracing::debug!(task = task_name, "Background email delivered successfully");
+            }
+            Ok(Err(error)) => {
+                tracing::warn!(task = task_name, error = %error, "Background email delivery failed");
+            }
+            Err(_) => {
+                tracing::error!(task = task_name, "Background email delivery panicked unexpectedly");
+            }
+        }
+    })
+}
+
+/// Spawns a monitored background task to deliver a password reset email.
+pub fn spawn_password_reset_email(
+    ctx: &ServerRuntimeContext,
+    email_service: Box<dyn BuiltInAuthEmailSender>,
+    recipient: String,
+    reset_url: String,
+) -> tokio::task::JoinHandle<()> {
+    spawn_auth_email_task(ctx, "send_password_reset", move || async move {
+        email_service
+            .send_password_reset(PasswordResetEmail {
+                to: recipient,
+                reset_url,
+            })
+            .await
+    })
+}
+
+/// Spawns a monitored background task to deliver an email verification email.
+pub fn spawn_email_verification_send(
+    ctx: &ServerRuntimeContext,
+    email_service: Box<dyn BuiltInAuthEmailSender>,
+    recipient: String,
+    verification_token: String,
+) -> tokio::task::JoinHandle<()> {
+    spawn_auth_email_task(ctx, "send_email_verification", move || async move {
+        email_service
+            .send_email_verification(EmailVerificationEmail {
+                to: recipient,
+                verification_token,
+            })
+            .await
+    })
+}
+
 /// Best-effort verification email used by registration flows when the
 /// platform requires verified addresses. Failures are logged, never
 /// surfaced: the account exists and the resend endpoint stays available.
@@ -308,17 +378,7 @@ pub fn spawn_email_verification(
         }
     };
     let recipient = email.to_string();
-    tokio::spawn(async move {
-        if let Err(error) = email_service
-            .send_email_verification(EmailVerificationEmail {
-                to: recipient,
-                verification_token: token,
-            })
-            .await
-        {
-            tracing::warn!(error = %error, "failed to send email verification email");
-        }
-    });
+    let _ = spawn_email_verification_send(ctx, email_service, recipient, token);
 }
 
 /// Build a localized built-in auth email sender from server runtime context.
@@ -491,5 +551,59 @@ mod tests {
         assert_eq!(after.skipped_total, before.skipped_total + 2);
         assert_eq!(after.success_total, before.success_total);
         assert_eq!(after.failure_total, before.failure_total);
+    }
+
+    #[tokio::test]
+    async fn spawn_auth_email_task_executes_and_logs() {
+        use sea_orm::DatabaseConnection;
+        use crate::common::settings::RustokSettings;
+
+        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let (called_tx, mut called_rx) = tokio::sync::mpsc::channel(1);
+
+        let handle = spawn_auth_email_task(&ctx, "test_task", move || async move {
+            called_tx.send(()).await.unwrap();
+            Ok(())
+        });
+
+        handle.await.unwrap();
+        assert!(called_rx.recv().await.is_some());
+    }
+
+    #[tokio::test]
+    async fn spawn_auth_email_task_skips_when_stopping() {
+        use sea_orm::DatabaseConnection;
+        use crate::common::settings::RustokSettings;
+        use crate::services::app_lifecycle::StopHandle;
+
+        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let stop_handle = StopHandle::ensure(&ctx);
+        stop_handle.stop().await;
+
+        let (called_tx, mut called_rx) = tokio::sync::mpsc::channel(1);
+        let handle = spawn_auth_email_task(&ctx, "test_stopping_task", move || async move {
+            called_tx.send(()).await.unwrap();
+            Ok(())
+        });
+
+        handle.await.unwrap();
+        assert!(called_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn spawn_auth_email_task_catches_panics_cleanly() {
+        use sea_orm::DatabaseConnection;
+        use crate::common::settings::RustokSettings;
+
+        let ctx = ServerRuntimeContext::new(DatabaseConnection::default(), RustokSettings::default());
+        let handle = spawn_auth_email_task(&ctx, "test_panicking_task", || async {
+            panic!("deliberate panic for test");
+            #[allow(unreachable_code)]
+            Ok(())
+        });
+
+        // The join handle should resolve Ok(()) because the panic is caught inside the task
+        let join_res = handle.await;
+        assert!(join_res.is_ok());
     }
 }

@@ -38,9 +38,32 @@ pub struct ForumGraphqlRuntimeData {
     taxonomy_port: Option<Arc<dyn ForumTaxonomyPort>>,
 }
 
+/// Error returned when initializing Forum GraphQL runtime data fails.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct ForumGraphqlRuntimeError(pub String);
+
+impl From<&str> for ForumGraphqlRuntimeError {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<String> for ForumGraphqlRuntimeError {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<ForumGraphqlRuntimeError> for String {
+    fn from(e: ForumGraphqlRuntimeError) -> Self {
+        e.0
+    }
+}
+
 pub fn attach_schema_data(
     inputs: &GraphqlRuntimeInputs,
-) -> Result<ForumGraphqlRuntimeData, String> {
+) -> Result<ForumGraphqlRuntimeData, ForumGraphqlRuntimeError> {
     let settings_providers = match (
         inputs.shared_get::<SharedStaticModuleSettingsReader>(),
         inputs.shared_get::<SharedStaticModuleSettingsTransactionReader>(),

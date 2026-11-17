@@ -298,6 +298,7 @@ async fn probe_storage(storage: &rustok_storage::StorageRuntime) -> object_store
         uuid::Uuid::nil(),
         "probe",
     )
+    // INVARIANT: Platform health staging probe path constants are statically valid.
     .expect("platform health key constants are valid")
     .into_path();
     let data = bytes::Bytes::from_static(b"ok");

@@ -133,7 +133,7 @@ impl DbBackedMcpRuntimeBridge {
             return Err(Error::Unauthorized("MCP client is inactive".into()));
         }
 
-        let policy = mcp_policies::Entity::find_by_client(&self.db, client.id)
+        let policy = mcp_policies::Entity::find_by_client_scoped(&self.db, client.tenant_id, client.id)
             .await
             .map_err(map_db_err)?;
         if let Some(policy) = policy.as_ref() {

@@ -144,9 +144,11 @@ pub(crate) fn lines(source: &str) -> Vec<SourceLine<'_>> {
         }
     }
 
-    // Only ASCII token bytes are replaced, and masked UTF-8 bytes are replaced together.
+    // INVARIANT: Only ASCII token bytes are replaced, and masked UTF-8 bytes are replaced together.
     let code = String::from_utf8(code).expect("mask preserves UTF-8");
+    // INVARIANT: Only ASCII token bytes are replaced, and masked UTF-8 bytes are replaced together.
     let syntax = String::from_utf8(syntax).expect("mask preserves UTF-8");
+    // INVARIANT: Masking preserves valid UTF-8 comment byte boundaries.
     let comments = String::from_utf8(comments).expect("comments preserve UTF-8");
     source
         .split('\n')

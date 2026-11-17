@@ -1203,7 +1203,7 @@ mod tests {
         let topic_id = Uuid::parse_str("ABCD1234-5678-4ABC-8DEF-0123456789AB").expect("uuid");
         assert_eq!(
             ForumTopicRouteService::short_identity(topic_id),
-            "abcd123456789abc"
+            "abcd123456784abc"
         );
     }
 
@@ -1212,8 +1212,8 @@ mod tests {
         let locale = normalize_route_locale(" EN_us ").expect("locale");
         let slug = normalize_route_slug(" A focused topic! ").expect("slug");
         assert_eq!(
-            forum_topic_route_path(&locale, "abcd123456789abc", &slug),
-            "/en-US/forum/t/abcd12345678/a-focused-topic"
+            forum_topic_route_path(&locale, "abcd123456784abc", &slug),
+            "/en-US/forum/t/abcd123456784abc/a-focused-topic"
         );
     }
 

@@ -75,6 +75,7 @@ pub use dto::{
     CategoryTreeQuery, CategoryTreeResponse, CreateCategoryInput, CreateReplyCommandInput,
     CreateReplyInput, CreateTopicCommandInput, CreateTopicInput, DEFAULT_FORUM_READ_LIMIT,
     ForumDomainEventQuery, ForumDomainEventResponse, ForumModuleSettings,
+    ForumSettingsValidationError,
     ForumProjectionOwnerRevisionImpact, ForumProjectionOwnerRevisionResponse,
     ForumProjectionOwnerTenantHeadResponse, ForumQuoteReferenceInput, ForumQuoteTargetKindInput,
     ForumRelationQuoteResponse, ForumRelationSnapshotQuery, ForumRelationSnapshotResponse,

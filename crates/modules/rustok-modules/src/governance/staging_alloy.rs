@@ -86,7 +86,7 @@ impl SeaOrmModuleGovernanceService {
                 return Err(ModuleGovernanceError::InvalidAlloyAuthoredStageCommand);
             }
             let parent_version = semver::Version::parse(&parent_release.version)
-                .expect("validated artifact release version must parse");
+                .map_err(|_| ModuleGovernanceError::InvalidAlloyAuthoredStageCommand)?;
             let child_version = semver::Version::parse(&version)
                 .map_err(|_| ModuleGovernanceError::InvalidAlloyAuthoredStageCommand)?;
             if child_version <= parent_version {

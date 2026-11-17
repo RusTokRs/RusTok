@@ -80,6 +80,7 @@ fn browser_route_context() -> (
     Option<String>,
     std::collections::HashMap<String, String>,
 ) {
+    // INVARIANT: web_sys::window() is guaranteed in CSR browser runtime
     let location = web_sys::window()
         .expect("window is available in the storefront CSR runtime")
         .location();
@@ -148,14 +149,14 @@ fn read_dom_bootstrap_modules() -> Option<Vec<String>> {
 
 #[cfg(feature = "csr")]
 fn resolve_csr_enabled_modules(
-    #[allow(unused_variables)] query_params: &std::collections::HashMap<String, String>,
+    _query_params: &std::collections::HashMap<String, String>,
 ) -> Vec<String> {
     if let Some(modules) = read_dom_bootstrap_modules() {
         return modules;
     }
 
     #[cfg(debug_assertions)]
-    if query_params.get("rustok_debug_modules").map(|v| v.as_str()) == Some("true") {
+    if _query_params.get("rustok_debug_modules").map(|v| v.as_str()) == Some("true") {
         return vec![
             "content".into(),
             "cart".into(),

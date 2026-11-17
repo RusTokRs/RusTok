@@ -42,6 +42,7 @@ pub struct ForumTopicSeoTargetProvider;
 #[async_trait]
 impl SeoTargetProvider for ForumCategorySeoTargetProvider {
     fn slug(&self) -> SeoTargetSlug {
+        // INVARIANT: builtin_slug::FORUM_CATEGORY is a valid compile-time slug constant.
         SeoTargetSlug::new(builtin_slug::FORUM_CATEGORY)
             .expect("builtin SEO target slug must stay valid")
     }
@@ -200,6 +201,7 @@ impl SeoTargetProvider for ForumCategorySeoTargetProvider {
 #[async_trait]
 impl SeoTargetProvider for ForumTopicSeoTargetProvider {
     fn slug(&self) -> SeoTargetSlug {
+        // INVARIANT: builtin_slug::FORUM_TOPIC is a valid compile-time slug constant.
         SeoTargetSlug::new(builtin_slug::FORUM_TOPIC)
             .expect("builtin SEO target slug must stay valid")
     }
@@ -559,6 +561,7 @@ fn map_category_response(category: CategoryResponse) -> SeoLoadedTargetRecord {
     populate_image_template_fields(&mut template_fields, open_graph_images.as_slice());
 
     SeoLoadedTargetRecord {
+        // INVARIANT: builtin_slug::FORUM_CATEGORY is a valid compile-time slug constant.
         target_kind: SeoTargetSlug::new(builtin_slug::FORUM_CATEGORY)
             .expect("builtin SEO target slug must stay valid"),
         target_id: category.id,
@@ -615,6 +618,7 @@ fn map_topic_response(topic: TopicResponse) -> AnyResult<SeoLoadedTargetRecord> 
     populate_image_template_fields(&mut template_fields, open_graph_images.as_slice());
 
     Ok(SeoLoadedTargetRecord {
+        // INVARIANT: builtin_slug::FORUM_TOPIC is a valid compile-time slug constant.
         target_kind: SeoTargetSlug::new(builtin_slug::FORUM_TOPIC)
             .expect("builtin SEO target slug must stay valid"),
         target_id: topic.id,
