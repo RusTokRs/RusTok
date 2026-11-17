@@ -783,8 +783,9 @@ fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_module_event_dispatcher, build_shared_runtime_extensions,
-        build_shared_runtime_extensions_with_host_providers,
+        ModuleEventDispatcherHandle, build_module_event_dispatcher,
+        build_shared_runtime_extensions, build_shared_runtime_extensions_with_host_providers,
+        spawn_module_event_dispatcher,
     };
     use crate::common::settings::RustokSettings;
     use rustok_auth::AuthConfig;
@@ -1097,8 +1098,8 @@ mod lifecycle_tests {
         let registry = ModuleRegistry::new();
         let extensions = build_shared_runtime_extensions(&registry, &settings)
             .expect("empty module registry can build extensions");
-        let ctx = ServerRuntimeContext::new(
-            DatabaseConnection::default(),
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
             settings,
         );
 
@@ -1106,7 +1107,8 @@ mod lifecycle_tests {
             .expect_err("worker host requires EventRuntime before starting any child");
         assert!(matches!(
             error,
-            Error::Message(ref message) if message.contains("EventRuntime must be initialized")
+            crate::error::Error::Message(ref message)
+                if message.contains("EventRuntime must be initialized")
         ));
         assert!(!ctx.shared_contains::<ModuleEventDispatcherHandle>());
         #[cfg(feature = "mod-payment")]
