@@ -1697,6 +1697,34 @@ mod tests {
         assert!(matches!(error, Error::BadRequest(_)));
     }
 
+    async fn insert_pending_authorization_code(
+        db: &DatabaseConnection,
+        app_id: Uuid,
+        user_id: Uuid,
+        tenant_id: Uuid,
+    ) -> Uuid {
+        let now = Utc::now();
+        let id = Uuid::new_v4();
+        oauth_authorization_codes::ActiveModel {
+            id: Set(id),
+            app_id: Set(app_id),
+            user_id: Set(user_id),
+            tenant_id: Set(tenant_id),
+            code_hash: Set(format!("pending-{id}")),
+            redirect_uri: Set("https://partner.example.com/oauth/callback".to_string()),
+            scopes: Set(serde_json::json!(["catalog:read"])),
+            code_challenge: Set("challenge".to_string()),
+            code_challenge_method: Set("S256".to_string()),
+            expires_at: Set((now + chrono::Duration::minutes(10)).into()),
+            used_at: Set(None),
+            created_at: Set(now.into()),
+        }
+        .insert(db)
+        .await
+        .expect("insert pending authorization code");
+        id
+    }
+
     async fn test_db_with_tenant() -> (DatabaseConnection, tenants::Model) {
         let db = setup_test_db_with_migrations::<Migrator>().await;
         ensure_oauth_schema(&db).await;
@@ -2883,6 +2911,37 @@ mod tests {
         .await
         .expect("insert oauth token");
 
+        OAuthAppService::grant_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect("grant user consent");
+        let consent_code_id =
+            insert_pending_authorization_code(&db, created.app.id, token_user.id, tenant.id).await;
+        OAuthAppService::revoke_user_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+        )
+        .await
+        .expect("revoke user consent");
+        let consent_code = oauth_authorization_codes::Entity::find_by_id(consent_code_id)
+            .one(&db)
+            .await
+            .expect("load consent-bound code")
+            .expect("consent-bound code exists");
+        assert!(
+            consent_code.used_at.is_some(),
+            "consent revocation must invalidate pending authorization codes"
+        );
+
+        let app_code_id =
+            insert_pending_authorization_code(&db, created.app.id, token_user.id, tenant.id).await;
         let revoked = OAuthAppService::revoke_app(&db, created.app.tenant_id, created.app.id)
             .await
             .expect("revoke app");
@@ -2896,6 +2955,16 @@ mod tests {
             .expect("load oauth tokens");
         assert_eq!(revoked_tokens.len(), 1);
         assert!(revoked_tokens[0].revoked_at.is_some());
+
+        let app_code = oauth_authorization_codes::Entity::find_by_id(app_code_id)
+            .one(&db)
+            .await
+            .expect("load app-bound code")
+            .expect("app-bound code exists");
+        assert!(
+            app_code.used_at.is_some(),
+            "app revocation must invalidate pending authorization codes"
+        );
     }
 
     #[tokio::test]
@@ -3094,6 +3163,17 @@ mod tests {
         .await
         .expect("insert orphan app");
 
+        let orphan_user = crate::models::users::ActiveModel::new(
+            tenant.id,
+            "orphan-oauth-code-user@example.com",
+            "unused-password-hash",
+        )
+        .insert(&db)
+        .await
+        .expect("insert orphan authorization-code user");
+        let orphan_code_id =
+            insert_pending_authorization_code(&db, orphan_app.id, orphan_user.id, tenant.id).await;
+
         let auto_created_for_another_manifest_entry = OAuthAppActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(tenant.id),
@@ -3237,6 +3317,15 @@ mod tests {
         assert!(
             token.revoked_at.is_some(),
             "removed managed app must revoke its tokens"
+        );
+        let orphan_code = oauth_authorization_codes::Entity::find_by_id(orphan_code_id)
+            .one(&db)
+            .await
+            .expect("read orphan authorization code")
+            .expect("orphan authorization code remains as used evidence");
+        assert!(
+            orphan_code.used_at.is_some(),
+            "removing a managed app must invalidate its pending authorization codes"
         );
 
         OAuthAppService::touch_last_used(&db, next_admin.id)
