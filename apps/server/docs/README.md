@@ -185,6 +185,11 @@ misleading `invalid_client` / HTTP 401 responses.
 All `/api/oauth/*` responses, including consent HTML, authorization redirects,
 userinfo, and failures, carry `Cache-Control: no-store` and `Pragma: no-cache`.
 
+Cookie-session login, registration and refresh use the remaining persisted
+refresh-session lifetime for cookie Max-Age. The absolute 90-day lineage cap
+is not extended when a session is rotated, and unrepresentable persisted
+timestamps fail closed rather than panicking.
+
 Cookie-session logout treats a missing, expired, or already-revoked refresh
 token idempotently, but returns a failure when revocation persistence or
 transactional event publication fails. The server must not claim logout
