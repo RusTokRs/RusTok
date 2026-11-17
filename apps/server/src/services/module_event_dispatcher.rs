@@ -77,6 +77,25 @@ pub fn spawn_module_event_dispatcher(
     extensions: Arc<ModuleRuntimeExtensions>,
 ) -> Result<()> {
     tracing::debug!("Spawning module event dispatcher");
+    // Preflight the required event runtime before starting any module-owned
+    // worker. Previously an absent EventRuntime returned an error only after
+    // payment/commerce/media recovery tasks had already been spawned.
+    let event_bus = if module_event_dispatcher_enabled(ctx.settings()) {
+        Some(
+            ctx.shared_get::<Arc<EventRuntime>>()
+                .ok_or_else(|| {
+                    Error::Message(
+                        "EventRuntime must be initialized before module event listeners"
+                            .to_owned(),
+                    )
+                })?
+                .listener_bus
+                .clone(),
+        )
+    } else {
+        None
+    };
+
     #[cfg(feature = "mod-product")]
     spawn_product_media_release_worker_if_enabled(ctx);
     let extensions = enrich_runtime_extensions_after_event_start(ctx, extensions);
@@ -88,29 +107,20 @@ pub fn spawn_module_event_dispatcher(
     #[cfg(feature = "mod-payment")]
     spawn_payment_provider_event_worker_if_enabled(ctx);
 
-    if !module_event_dispatcher_enabled(ctx.settings()) {
+    let Some(event_bus) = event_bus else {
         tracing::info!(
             host_mode = ?ctx.settings().runtime.host_mode,
             "Module event dispatcher disabled for the current runtime profile"
         );
         return Ok(());
-    }
+    };
     if ctx.shared_contains::<ModuleEventDispatcherHandle>() {
         tracing::debug!("Module event dispatcher already started");
         return Ok(());
     }
 
-    let bus = ctx
-        .shared_get::<Arc<EventRuntime>>()
-        .ok_or_else(|| {
-            Error::Message(
-                "EventRuntime must be initialized before module event listeners".to_owned(),
-            )
-        })?
-        .listener_bus
-        .clone();
     let db = ctx.db_clone();
-    let dispatcher = build_module_event_dispatcher(registry, bus, db, extensions.as_ref());
+    let dispatcher = build_module_event_dispatcher(registry, event_bus, db, extensions.as_ref());
 
     let handler_count = dispatcher.handler_count();
     ctx.shared_insert(ModuleEventDispatcherRequirement(handler_count != 0));
@@ -1078,6 +1088,43 @@ mod lifecycle_tests {
             settings.runtime.host_mode = mode;
             assert!(!module_event_dispatcher_enabled(&settings));
         }
+    }
+
+    #[test]
+    fn missing_event_runtime_fails_before_any_module_worker_is_spawned() {
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let registry = ModuleRegistry::new();
+        let extensions = build_shared_runtime_extensions(&registry, &settings)
+            .expect("empty module registry can build extensions");
+        let ctx = ServerRuntimeContext::new(
+            DatabaseConnection::default(),
+            settings,
+        );
+
+        let error = spawn_module_event_dispatcher(&ctx, &registry, extensions)
+            .expect_err("worker host requires EventRuntime before starting any child");
+        assert!(matches!(
+            error,
+            Error::Message(ref message) if message.contains("EventRuntime must be initialized")
+        ));
+        assert!(!ctx.shared_contains::<ModuleEventDispatcherHandle>());
+        #[cfg(feature = "mod-payment")]
+        assert!(!ctx.shared_contains::<
+            crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle,
+        >());
+        #[cfg(feature = "mod-product")]
+        assert!(!ctx.shared_contains::<
+            crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle,
+        >());
+        #[cfg(feature = "mod-commerce")]
+        assert!(!ctx.shared_contains::<
+            crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle,
+        >());
+        #[cfg(feature = "commerce-marketplace-financial")]
+        assert!(!ctx.shared_contains::<
+            crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
+        >());
     }
 
     #[tokio::test]
