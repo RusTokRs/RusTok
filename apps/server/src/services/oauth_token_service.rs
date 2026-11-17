@@ -1224,7 +1224,9 @@ mod tests {
         PreparedUserTokens, REFRESH_TOKEN_GRANT, commit_refresh_rotation, refresh_family_deadline,
         require_grant, resolve_client, scopes_for_refresh, validate_requested_scopes,
     };
-    use crate::models::{oauth_apps, oauth_authorization_codes as oauth_codes, oauth_tokens};
+    use crate::models::{
+        oauth_apps, oauth_authorization_codes as oauth_codes, oauth_tokens, tenants, users,
+    };
     use chrono::Utc;
     use rustok_auth::TokenRequest;
     use sea_orm::{
@@ -1385,6 +1387,24 @@ mod tests {
         db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_tokens::Entity)))
             .await
             .expect("oauth_tokens table");
+        db.execute_unprepared(
+            r#"CREATE TABLE oauth_authorization_codes (
+                id TEXT PRIMARY KEY NOT NULL,
+                app_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                tenant_id TEXT NOT NULL,
+                code_hash TEXT NOT NULL,
+                redirect_uri TEXT NOT NULL,
+                scopes TEXT NOT NULL,
+                code_challenge TEXT NOT NULL,
+                code_challenge_method TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                used_at TEXT NULL,
+                created_at TEXT NOT NULL
+            )"#,
+        )
+        .await
+        .expect("oauth_authorization_codes table");
 
         let tenant_id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
@@ -1412,6 +1432,25 @@ mod tests {
         .await
         .expect("insert delegated refresh token");
 
+        let code_id = Uuid::new_v4();
+        oauth_codes::ActiveModel {
+            id: Set(code_id),
+            app_id: Set(Uuid::new_v4()),
+            user_id: Set(user_id),
+            tenant_id: Set(tenant_id),
+            code_hash: Set("pending-authorization-code".to_string()),
+            redirect_uri: Set("https://client.example/callback".to_string()),
+            scopes: Set(serde_json::json!(["openid"])),
+            code_challenge: Set("challenge".to_string()),
+            code_challenge_method: Set("S256".to_string()),
+            expires_at: Set((now + chrono::Duration::minutes(10)).into()),
+            used_at: Set(None),
+            created_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .expect("insert pending authorization code");
+
         let revoked = super::revoke_user_delegated_tokens_in_tx(&db, tenant_id, user_id, now)
             .await
             .expect("revoke delegated tokens");
@@ -1423,6 +1462,13 @@ mod tests {
             .expect("query token")
             .expect("token exists");
         assert!(stored.revoked_at.is_some());
+
+        let stored_code = oauth_codes::Entity::find_by_id(code_id)
+            .one(&db)
+            .await
+            .expect("query authorization code")
+            .expect("authorization code exists");
+        assert!(stored_code.used_at.is_some());
 
         let second = super::revoke_user_delegated_tokens_in_tx(&db, tenant_id, user_id, now)
             .await
@@ -1582,6 +1628,17 @@ mod tests {
         let db = Database::connect("sqlite::memory:")
             .await
             .expect("SQLite database");
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        db.execute_raw(backend.build(&schema.create_table_from_entity(tenants::Entity)))
+            .await
+            .expect("tenants table");
+        db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_apps::Entity)))
+            .await
+            .expect("OAuth apps table");
+        db.execute_raw(backend.build(&schema.create_table_from_entity(users::Entity)))
+            .await
+            .expect("users table");
         db.execute_unprepared(
             r#"CREATE TABLE oauth_tokens (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -1605,16 +1662,39 @@ mod tests {
         .await
         .expect("OAuth token table");
 
+        let tenant_id = Uuid::new_v4();
+        let mut tenant = tenants::ActiveModel::new("Refresh test tenant", "refresh-test-tenant");
+        tenant.id = Set(tenant_id);
+        tenant.insert(&db).await.expect("insert tenant");
+        let app_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let mut client = app(
+            serde_json::json!(["profile"]),
+            serde_json::json!(["authorization_code", "refresh_token"]),
+        );
+        client.id = app_id;
+        client.tenant_id = tenant_id;
+        let active_app: crate::models::_entities::oauth_apps::ActiveModel = client.clone().into();
+        active_app.insert(&db).await.expect("insert OAuth app");
+        let mut subject = users::ActiveModel::new(
+            tenant_id,
+            "refresh-rotation@example.com",
+            "unused-password-hash",
+        );
+        subject.id = Set(user_id);
+        subject.insert(&db).await.expect("insert OAuth subject");
+
         let now = chrono::Utc::now();
+        let current_id = Uuid::new_v4();
         let current = oauth_tokens::ActiveModel {
-            id: Set(Uuid::new_v4()),
-            app_id: Set(Uuid::new_v4()),
-            user_id: Set(Some(Uuid::new_v4())),
-            tenant_id: Set(Uuid::new_v4()),
+            id: Set(current_id),
+            app_id: Set(app_id),
+            user_id: Set(Some(user_id)),
+            tenant_id: Set(tenant_id),
             token_hash: Set("current-hash".to_string()),
-            family_id: Set(None),
+            family_id: Set(Some(current_id)),
             authorization_code_id: Set(None),
-            grant_type: Set("refresh_token".to_string()),
+            grant_type: Set("authorization_code".to_string()),
             token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
             consent_granted_at: Set(None),
             scopes: Set(serde_json::json!(["profile"])),
@@ -1636,7 +1716,7 @@ mod tests {
                 user_id: Set(current.user_id),
                 tenant_id: Set(current.tenant_id),
                 token_hash: Set(format!("access-{hash}")),
-                family_id: Set(None),
+                family_id: Set(Some(current_id)),
                 authorization_code_id: Set(None),
                 grant_type: Set("authorization_code".to_string()),
                 token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
@@ -1655,9 +1735,9 @@ mod tests {
                 user_id: Set(current.user_id),
                 tenant_id: Set(current.tenant_id),
                 token_hash: Set(hash.to_string()),
-                family_id: Set(None),
+                family_id: Set(Some(current_id)),
                 authorization_code_id: Set(None),
-                grant_type: Set("refresh_token".to_string()),
+                grant_type: Set("authorization_code".to_string()),
                 token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
                 consent_granted_at: Set(None),
                 scopes: Set(serde_json::json!(["profile"])),
@@ -1670,10 +1750,10 @@ mod tests {
             expires_in: 900,
         };
 
-        commit_refresh_rotation(&db, &current, &replacement("replacement-1"))
+        commit_refresh_rotation(&db, &client, &current, &replacement("replacement-1"))
             .await
             .expect("first rotation");
-        let replay = commit_refresh_rotation(&db, &current, &replacement("replacement-2"))
+        let replay = commit_refresh_rotation(&db, &client, &current, &replacement("replacement-2"))
             .await
             .expect_err("refresh token replay must fail");
 
