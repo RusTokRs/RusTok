@@ -975,7 +975,8 @@ impl AuthLifecycleService {
             .filter(sessions::Column::TenantId.eq(tenant_id))
             .filter(sessions::Column::UserId.eq(user_id))
             .filter(sessions::Column::Id.eq(session_id))
-            .filter(sessions::Column::RevokedAt.is_null());
+            .filter(sessions::Column::RevokedAt.is_null())
+            .filter(sessions::Column::ExpiresAt.gt(Utc::now()));
 
         match txn.get_database_backend() {
             DatabaseBackend::Postgres | DatabaseBackend::MySql => query
@@ -992,8 +993,13 @@ impl AuthLifecycleService {
                 if let Some(existing) = existing.as_ref() {
                     let statement = Statement::from_sql_and_values(
                         DatabaseBackend::Sqlite,
-                        "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND user_id = ?2 AND id = ?3 AND revoked_at IS NULL",
-                        [tenant_id.into(), user_id.into(), existing.id.into()],
+                        "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND user_id = ?2 AND id = ?3 AND revoked_at IS NULL AND expires_at > ?4",
+                        [
+                            tenant_id.into(),
+                            user_id.into(),
+                            existing.id.into(),
+                            Utc::now().into(),
+                        ],
                     );
                     let result = txn
                         .execute_raw(statement)
@@ -2105,6 +2111,50 @@ mod tests {
             .await
             .expect("failed to inspect login sessions");
         assert_eq!(session_count, 0);
+    }
+
+    #[tokio::test]
+    async fn change_password_rejects_expired_current_session() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Tenant", "password-expired-session")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let old_hash = hash_password("OldPassword123!").expect("password hash");
+        let user = users::ActiveModel::new(tenant.id, "expired-session@example.com", &old_hash)
+            .insert(&db)
+            .await
+            .expect("user");
+        let session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            "expired-refresh-token-hash".to_string(),
+            Utc::now() - Duration::minutes(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("expired session");
+
+        let result = AuthLifecycleService::change_password_db(
+            &db,
+            tenant.id,
+            user.id,
+            session.id,
+            "OldPassword123!",
+            "NewPassword123!",
+            8,
+        )
+        .await;
+
+        assert!(matches!(result, Err(AuthLifecycleError::SessionExpired)));
+        let unchanged = users::Entity::find_by_id(user.id)
+            .one(&db)
+            .await
+            .expect("read user")
+            .expect("user");
+        assert_eq!(unchanged.password_hash, old_hash);
     }
 
     #[tokio::test]
