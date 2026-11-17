@@ -755,6 +755,7 @@ fn validate_fulfillment(
     }
 
     let fulfillment = &record.fulfillment;
+    // INVARIANT: In-memory replay validation ensuring persisted fulfillment exactly matches command expectation.
     if fulfillment.tenant_id != tenant_id
         || fulfillment.order_id != order_id
         || fulfillment.shipping_option_id != plan.shipping_option_id
