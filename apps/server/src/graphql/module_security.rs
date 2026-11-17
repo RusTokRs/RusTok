@@ -142,16 +142,16 @@ fn collect_fields(
             }
             Selection::FragmentSpread(fragment) => {
                 let fragment_name = fragment.node.fragment_name.node.as_str();
-                if visited_fragments.insert(fragment_name.to_owned())
-                    && let Some(definition) = document.fragments.get(fragment_name)
-                {
-                    collect_fields(
-                        operation_type,
-                        &definition.node.selection_set.node,
-                        document,
-                        fields,
-                        visited_fragments,
-                    );
+                if visited_fragments.insert(fragment_name.to_owned()) {
+                    if let Some(definition) = document.fragments.get(fragment_name) {
+                        collect_fields(
+                            operation_type,
+                            &definition.node.selection_set.node,
+                            document,
+                            fields,
+                            visited_fragments,
+                        );
+                    }
                 }
             }
             Selection::InlineFragment(fragment) => collect_fields(
