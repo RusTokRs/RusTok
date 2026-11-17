@@ -720,6 +720,11 @@ pub fn router() -> crate::routes::ServerRouter {
 
 #[cfg(test)]
 mod tests {
+    use super::{CurrentUser, Permission, map_channel_error};
+    use axum::{http::StatusCode, response::IntoResponse};
+    use rustok_channel::ChannelError;
+    use uuid::Uuid;
+
     #[test]
     fn channel_management_uses_effective_token_permissions_not_persisted_role() {
         use crate::models::users;
@@ -763,11 +768,6 @@ mod tests {
             &principal(vec![Permission::SETTINGS_MANAGE])
         ).is_err());
     }
-
-    use super::map_channel_error;
-    use axum::{http::StatusCode, response::IntoResponse};
-    use rustok_channel::ChannelError;
-    use uuid::Uuid;
 
     #[test]
     fn maps_channel_not_found_to_not_found() {
