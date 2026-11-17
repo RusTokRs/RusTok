@@ -165,9 +165,10 @@ fn classify_document(request: &mut Request) -> ServerResult<()> {
         return Ok(());
     }
 
+    let operation_name = request.operation_name.clone();
     let document = request.parsed_query()?;
     let mut fields = BTreeSet::new();
-    for (_, operation) in document.operations.iter() {
+    for operation in super::selected_operations(document, operation_name.as_deref()) {
         collect_fields(
             operation.node.ty,
             &operation.node.selection_set.node,
@@ -330,6 +331,33 @@ mod tests {
                 .any(|field| field.name == "buildProgress"
                     && field.authority == ModuleAuthority::Read)
         );
+    }
+
+    #[test]
+    fn ignores_module_fields_in_unselected_operations() {
+        let query = r#"
+            query PublicInfo { ping }
+            query ModuleState { moduleRegistry { moduleSlug } }
+        "#;
+
+        let mut public = Request::new(query).operation_name("PublicInfo");
+        classify_document(&mut public).expect("document should parse");
+        assert!(
+            public
+                .data
+                .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+                .is_none()
+        );
+
+        let mut admin = Request::new(query).operation_name("ModuleState");
+        classify_document(&mut admin).expect("document should parse");
+        let policy = admin
+            .data
+            .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+            .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
+            .expect("selected module policy should be attached");
+        assert_eq!(policy.0.len(), 1);
+        assert_eq!(policy.0[0].name, "moduleRegistry");
     }
 
     #[test]
