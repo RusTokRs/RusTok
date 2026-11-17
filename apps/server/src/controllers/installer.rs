@@ -561,6 +561,12 @@ fn extract_setup_token(headers: &HeaderMap) -> Result<Option<String>> {
     if auth_count > 1 {
         return Err(forbidden_error("duplicate authorization header"));
     }
+    // Installer authentication has exactly one credential authority per
+    // request. Choosing the custom token while silently ignoring a competing
+    // Authorization header creates an order-dependent identity boundary.
+    if custom_count > 0 && auth_count > 0 {
+        return Err(forbidden_error("conflicting installer setup credentials"));
+    }
 
     if let Some(custom) = headers.get("x-rustok-setup-token") {
         let token_str = custom
@@ -867,6 +873,31 @@ mod tests {
         );
         let auth_err = extract_setup_token(&auth_headers).unwrap_err();
         assert!(matches!(auth_err, Error::Http(ref e) if e.status == StatusCode::FORBIDDEN));
+    }
+
+    #[test]
+    fn extract_setup_token_rejects_conflicting_credential_sources() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-rustok-setup-token",
+            axum::http::HeaderValue::from_static("custom-token"),
+        );
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_static("Bearer other-token"),
+        );
+
+        let error = extract_setup_token(&headers)
+            .expect_err("two installer credential sources must fail closed");
+        assert!(matches!(error, Error::Http(ref err) if err.status == StatusCode::FORBIDDEN));
+
+        // A malformed Authorization header cannot be ignored in favor of
+        // an otherwise valid custom setup credential either.
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_static("Basic unrelated"),
+        );
+        assert!(extract_setup_token(&headers).is_err());
     }
 
     #[test]

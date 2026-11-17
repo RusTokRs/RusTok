@@ -76,8 +76,11 @@ keys. Missing or malformed trusted-side hops fall back to the actual peer;
 an untrusted peer cannot supply an authoritative forwarding header. If both
 header formats are present, `X-Forwarded-For` takes precedence. For
 forwarded host and scheme, the host consumes the most recently appended
-(rightmost) value instead of trusting a potentially spoofed first value;
-forwarded schemes other than `http` and `https` are ignored.
+(rightmost) value instead of trusting a potentially spoofed first value.
+When `X-Forwarded-Host` or `X-Forwarded-Proto` is present but malformed,
+it is not silently replaced by a conflicting RFC `Forwarded` value.
+RFC `Forwarded` remains a fallback only when the corresponding `X-Forwarded-*`
+header is absent; forwarded schemes other than `http` and `https` are ignored.
 
 **Ingress requirement:** the edge proxy must discard untrusted incoming
 forwarded headers or append the actual observed client IP. A proxy that

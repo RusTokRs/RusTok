@@ -888,7 +888,13 @@ async fn issue_authorization_code(
 }
 
 fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
-    let value = headers.get(AUTHORIZATION)?.to_str().ok()?;
+    // All auth entrypoints must reject ambiguous Authorization fields.
+    // Taking the first one can disagree with upstream authentication layers.
+    let mut values = headers.get_all(AUTHORIZATION).iter();
+    let value = values.next()?.to_str().ok()?;
+    if values.next().is_some() {
+        return None;
+    }
     let mut parts = value.split_ascii_whitespace();
 
     match (parts.next(), parts.next(), parts.next()) {
@@ -902,20 +908,33 @@ fn extract_bearer_token(headers: &HeaderMap) -> Option<String> {
 }
 
 fn extract_browser_access_token(headers: &HeaderMap) -> Option<String> {
-    extract_bearer_token(headers).or_else(|| {
-        headers
-            .get(COOKIE)
-            .and_then(|value| value.to_str().ok())
-            .and_then(parse_oauth_browser_cookie)
-    })
+    // An explicitly supplied (but malformed/duplicated) bearer credential
+    // must not silently fall back to a different cookie principal.
+    if headers.contains_key(AUTHORIZATION) {
+        return extract_bearer_token(headers);
+    }
+    parse_oauth_browser_cookie(headers)
 }
 
-fn parse_oauth_browser_cookie(cookie_header: &str) -> Option<String> {
-    cookie_header.split(';').find_map(|part| {
-        let (name, value) = part.trim().split_once('=')?;
-        (name == OAUTH_BROWSER_SESSION_COOKIE && !value.trim().is_empty())
-            .then(|| value.trim().to_string())
-    })
+fn parse_oauth_browser_cookie(headers: &HeaderMap) -> Option<String> {
+    let mut token = None;
+    // HTTP/2 may split Cookie across multiple fields. Inspect every field and
+    // reject repeated session-cookie names rather than choosing by order.
+    for header in headers.get_all(COOKIE).iter() {
+        for part in header.to_str().ok()?.split(';') {
+            let Some((name, value)) = part.trim().split_once('=') else {
+                continue;
+            };
+            if name == OAUTH_BROWSER_SESSION_COOKIE {
+                let value = value.trim();
+                if value.is_empty() || token.is_some() {
+                    return None;
+                }
+                token = Some(value.to_string());
+            }
+        }
+    }
+    token
 }
 
 fn build_oauth_browser_session_cookie(
@@ -1576,6 +1595,68 @@ mod tests {
             extract_browser_access_token(&headers).as_deref(),
             Some("header-token")
         );
+    }
+
+    #[test]
+    fn oauth_browser_credentials_reject_duplicate_authorization_fields() {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            AUTHORIZATION,
+            HeaderValue::from_static("Bearer first-token"),
+        );
+        headers.append(
+            AUTHORIZATION,
+            HeaderValue::from_static("Bearer second-token"),
+        );
+        headers.insert(
+            COOKIE,
+            HeaderValue::from_static("rustok_oauth_browser_session=cookie-token"),
+        );
+
+        assert!(extract_bearer_token(&headers).is_none());
+        assert!(
+            extract_browser_access_token(&headers).is_none(),
+            "invalid explicit authorization must not fall back to the cookie"
+        );
+
+        headers.remove(AUTHORIZATION);
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("Basic other-token"));
+        assert!(
+            extract_browser_access_token(&headers).is_none(),
+            "unsupported explicit authorization must not use a different principal"
+        );
+    }
+
+    #[test]
+    fn oauth_browser_cookie_rejects_ambiguous_duplicates_across_fields() {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            COOKIE,
+            HeaderValue::from_static("other=1; rustok_oauth_browser_session=first"),
+        );
+        headers.append(
+            COOKIE,
+            HeaderValue::from_static("rustok_oauth_browser_session=second"),
+        );
+        assert!(extract_browser_access_token(&headers).is_none());
+
+        headers.remove(COOKIE);
+        headers.append(COOKIE, HeaderValue::from_static("other=1"));
+        headers.append(
+            COOKIE,
+            HeaderValue::from_static("rustok_oauth_browser_session=only-token"),
+        );
+        assert_eq!(
+            extract_browser_access_token(&headers).as_deref(),
+            Some("only-token"),
+            "split Cookie fields with one session name are unambiguous"
+        );
+
+        headers.append(
+            COOKIE,
+            HeaderValue::from_static("rustok_oauth_browser_session="),
+        );
+        assert!(extract_browser_access_token(&headers).is_none());
     }
 
     #[test]

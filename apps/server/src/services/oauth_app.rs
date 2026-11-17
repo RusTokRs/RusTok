@@ -8,15 +8,15 @@ use crate::models::oauth_consents::{
     ActiveModel as OAuthConsentActiveModel, Entity as OAuthConsents,
 };
 use crate::models::oauth_tokens::{self, Entity as OAuthTokens};
-use crate::models::tenants;
+use crate::models::{tenants, users};
 use chrono::Utc;
 use reqwest::Url;
 use rustok_api::Permission;
 use rustok_api::context::scope_matches;
 use rustok_core::{Rbac, UserRole};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
-    TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend,
+    EntityTrait, QueryFilter, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use std::str::FromStr;
 use subtle::ConstantTimeEq;
@@ -25,7 +25,7 @@ use uuid::Uuid;
 /// Outcome classification for one consent-grant attempt: a unique-index
 /// race against a concurrent first grant is retryable, everything else
 /// is a plain internal failure.
-enum GrantConsentAttempt {
+pub(crate) enum GrantConsentAttempt {
     UniqueRace,
     Fatal(Error),
 }
@@ -98,6 +98,96 @@ impl std::fmt::Debug for RotateSecretResult {
             .field("app", &self.app)
             .field("client_secret", &"<redacted>")
             .finish()
+    }
+}
+
+/// Build an update model that writes only fields editable through the
+/// manual-app API. A stale full-row ActiveModel can otherwise restore
+/// lifecycle and runtime-owned values (for example, reactivate an app after
+/// a concurrent revoke or erase a newer last_used_at timestamp).
+fn manual_app_update_base(app: oauth_apps::Model) -> OAuthAppActiveModel {
+    let mut active: OAuthAppActiveModel = app.into();
+    active.slug = ActiveValue::NotSet;
+    active.app_type = ActiveValue::NotSet;
+    active.client_id = ActiveValue::NotSet;
+    active.client_secret_hash = ActiveValue::NotSet;
+    active.manifest_ref = ActiveValue::NotSet;
+    active.auto_created = ActiveValue::NotSet;
+    active.is_active = ActiveValue::NotSet;
+    active.revoked_at = ActiveValue::NotSet;
+    active.last_used_at = ActiveValue::NotSet;
+    active.metadata = ActiveValue::NotSet;
+    active.created_at = ActiveValue::NotSet;
+    active
+}
+
+/// Lock an OAuth app in the same order used by token issuance. Consent
+/// grants/revocations use this fence so they cannot race a token exchange that
+/// has already validated the app.
+pub(crate) async fn lock_oauth_app_for_mutation<C>(
+    db: &C,
+    app_id: Uuid,
+    tenant_id: Uuid,
+) -> Result<Option<oauth_apps::Model>, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    let query = || {
+        OAuthApps::find_by_id(app_id).filter(oauth_apps::Column::TenantId.eq(tenant_id))
+    };
+    match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await,
+        DbBackend::Sqlite => {
+            // Acquire the SQLite write fence before reading. A read-first
+            // deferred transaction can fail with SQLITE_BUSY_SNAPSHOT when
+            // another writer commits between the read and lock upgrade.
+            let locked = oauth_apps::Entity::update_many()
+                .col_expr(
+                    oauth_apps::Column::UpdatedAt,
+                    Expr::col(oauth_apps::Column::UpdatedAt),
+                )
+                .filter(oauth_apps::Column::Id.eq(app_id))
+                .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+                .exec(db)
+                .await?;
+            if locked.rows_affected != 1 {
+                return Ok(None);
+            }
+            query().one(db).await
+        }
+        _ => Err(sea_orm::DbErr::Custom(
+            "unsupported database backend for OAuth app mutation locking".to_string(),
+        )),
+    }
+}
+
+/// Lock a user subject in the same app-then-user order used by token issuance.
+pub(crate) async fn lock_oauth_user_for_mutation<C>(
+    db: &C,
+    user_id: Uuid,
+    tenant_id: Uuid,
+) -> Result<Option<users::Model>, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    let query = || users::Entity::find_by_id(user_id).filter(users::Column::TenantId.eq(tenant_id));
+    match db.get_database_backend() {
+        DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(db).await,
+        DbBackend::Sqlite => {
+            let locked = users::Entity::update_many()
+                .col_expr(users::Column::UpdatedAt, Expr::col(users::Column::UpdatedAt))
+                .filter(users::Column::Id.eq(user_id))
+                .filter(users::Column::TenantId.eq(tenant_id))
+                .exec(db)
+                .await?;
+            if locked.rows_affected != 1 {
+                return Ok(None);
+            }
+            query().one(db).await
+        }
+        _ => Err(sea_orm::DbErr::Custom(
+            "unsupported database backend for OAuth subject mutation locking".to_string(),
+        )),
     }
 }
 
@@ -225,13 +315,10 @@ impl OAuthAppService {
 
         // Go through the ActiveModel wrapper: name/description are
         // translation-owned (`#[sea_orm(ignore)]` here) and its update
-        // path syncs them into oauth_app_translations. The stored
-        // client secret is explicitly excluded via NotSet so this
-        // (possibly stale) read can never revert a concurrent secret
-        // rotation.
-        let existing_secret_hash = app.client_secret_hash.clone();
-        let mut active: OAuthAppActiveModel = app.into();
-        active.client_secret_hash = ActiveValue::NotSet;
+        // path syncs them into oauth_app_translations. The base model marks
+        // immutable, lifecycle and runtime-owned columns NotSet so this
+        // pre-read cannot undo a concurrent revoke, secret rotation or use.
+        let mut active = manual_app_update_base(app);
         active.name = Set(input.name);
         active.description = Set(input.description);
         active.icon_url = Set(input.icon_url);
@@ -249,12 +336,19 @@ impl OAuthAppService {
             .update(db)
             .await
             .map_err(|_| Error::InternalServerError)?;
-        // The update above deliberately leaves the stored secret
-        // untouched (NotSet); reflect the pre-existing hash in the
-        // returned model instead of reporting "no secret".
-        if updated.client_secret_hash.is_none() {
-            updated.client_secret_hash = existing_secret_hash;
-        }
+        // The ActiveModel update deliberately leaves these columns NotSet.
+        // Refresh their projection after commit so the response does not
+        // report a stale secret/lifecycle/use snapshot from the initial read.
+        let current = OAuthApps::find_by_id(app_id)
+            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+            .one(db)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or(Error::NotFound)?;
+        updated.client_secret_hash = current.client_secret_hash;
+        updated.is_active = current.is_active;
+        updated.revoked_at = current.revoked_at;
+        updated.last_used_at = current.last_used_at;
         Ok(updated)
     }
 
@@ -666,13 +760,22 @@ impl OAuthAppService {
             ));
         }
 
-        let app = OAuthApps::find_by_id(app_id)
-            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(db)
+        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        // Keep the same lock order as token issuance and consent revocation.
+        // This serializes concurrent grants and prevents consent from being
+        // created after either the app or subject has become inactive.
+        let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?
             .filter(|app| app.is_active())
             .ok_or(Error::NotFound)?;
+        lock_oauth_user_for_mutation(&tx, user_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .filter(|user| user.is_active())
+            .ok_or_else(|| {
+                Error::Unauthorized("OAuth consent subject is missing or inactive".to_string())
+            })?;
 
         let app_scopes = app.scopes_list();
         if scopes
@@ -685,42 +788,36 @@ impl OAuthAppService {
         }
 
         let scopes_json = serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?;
-
-        // Two concurrent first-time grants can both observe "no consent
-        // row" and race to insert; the partial unique index lets exactly
-        // one win. The loser retries and lands on the update path
-        // instead of surfacing a 500 for a legitimate double-submit.
-        const MAX_ATTEMPTS: usize = 3;
-        for attempt in 0..MAX_ATTEMPTS {
-            match Self::grant_consent_once(db, app_id, user_id, tenant_id, &scopes_json).await {
-                Ok(()) => return Ok(()),
-                Err(GrantConsentAttempt::UniqueRace) if attempt + 1 < MAX_ATTEMPTS => continue,
-                Err(GrantConsentAttempt::UniqueRace) => {
-                    return Err(Error::InternalServerError);
-                }
-                Err(GrantConsentAttempt::Fatal(error)) => return Err(error),
-            }
-        }
-
-        Err(Error::InternalServerError)
+        Self::grant_consent_in_transaction(&tx, app_id, user_id, tenant_id, &scopes_json)
+            .await
+            .map_err(|attempt| match attempt {
+                GrantConsentAttempt::UniqueRace => Error::Conflict(
+                    "OAuth consent changed concurrently; retry the operation".to_string(),
+                ),
+                GrantConsentAttempt::Fatal(error) => error,
+            })?;
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
+        Ok(())
     }
 
-    async fn grant_consent_once(
-        db: &DatabaseConnection,
+    /// Upsert consent on a caller-owned transaction. Strict admin paths first
+    /// lock the app and subject rows, then call this helper so a grant cannot
+    /// commit against a client/user that became inactive during validation.
+    pub(crate) async fn grant_consent_in_transaction<C>(
+        db: &C,
         app_id: Uuid,
         user_id: Uuid,
         tenant_id: Uuid,
         scopes_json: &serde_json::Value,
-    ) -> std::result::Result<(), GrantConsentAttempt> {
-        let tx = db
-            .begin()
-            .await
-            .map_err(|_| GrantConsentAttempt::Fatal(Error::InternalServerError))?;
+    ) -> std::result::Result<(), GrantConsentAttempt>
+    where
+        C: ConnectionTrait,
+    {
         let existing = OAuthConsents::find()
             .filter(crate::models::oauth_consents::Column::AppId.eq(app_id))
             .filter(crate::models::oauth_consents::Column::UserId.eq(user_id))
             .filter(crate::models::oauth_consents::Column::TenantId.eq(tenant_id))
-            .one(&tx)
+            .one(db)
             .await
             .map_err(|_| GrantConsentAttempt::Fatal(Error::InternalServerError))?;
 
@@ -731,7 +828,7 @@ impl OAuthAppService {
                 active.granted_at = Set(Utc::now().into());
                 active.revoked_at = Set(None);
                 active
-                    .update(&tx)
+                    .update(db)
                     .await
                     .map_err(GrantConsentAttempt::classify)?;
             }
@@ -745,13 +842,11 @@ impl OAuthAppService {
                     granted_at: Set(Utc::now().into()),
                     revoked_at: Set(None),
                 }
-                .insert(&tx)
+                .insert(db)
                 .await
                 .map_err(GrantConsentAttempt::classify)?;
             }
         }
-
-        tx.commit().await.map_err(GrantConsentAttempt::classify)?;
         Ok(())
     }
 
@@ -763,6 +858,17 @@ impl OAuthAppService {
         tenant_id: Uuid,
     ) -> Result<()> {
         let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        // Match token issuance's app-then-user lock order. Without these
+        // fences an exchange can read active consent, then commit a new token
+        // after this revocation has already committed.
+        lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or(Error::NotFound)?;
+        lock_oauth_user_for_mutation(&tx, user_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .ok_or(Error::NotFound)?;
         let consent = OAuthConsents::find_active_consent(&tx, app_id, user_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?;
@@ -2851,6 +2957,83 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn stale_manual_app_update_cannot_restore_revocation_or_last_used_state() {
+        let (db, tenant) = test_db_with_tenant().await;
+        let created = oauth_apps::scope_runtime_copy_locale(
+            "en".to_string(),
+            OAuthAppService::create_app(
+                &db,
+                tenant.id,
+                CreateOAuthAppInput {
+                    name: "Race-safe app".to_string(),
+                    slug: "race-safe-app".to_string(),
+                    description: Some("Initial".to_string()),
+                    app_type: "third_party".to_string(),
+                    icon_url: None,
+                    redirect_uris: vec!["https://partner.example.com/callback".to_string()],
+                    scopes: vec!["catalog:read".to_string()],
+                    grant_types: vec![
+                        "authorization_code".to_string(),
+                        "refresh_token".to_string(),
+                    ],
+                    granted_permissions: vec![],
+                },
+            ),
+        )
+        .await
+        .expect("create manual app");
+
+        let stale = OAuthAppsEntity::find_by_id(created.app.id)
+            .one(&db)
+            .await
+            .expect("read stale app")
+            .expect("app exists");
+        OAuthAppService::touch_last_used(&db, stale.id)
+            .await
+            .expect("record runtime use");
+        let used_at = OAuthAppsEntity::find_by_id(stale.id)
+            .one(&db)
+            .await
+            .expect("read last-used timestamp")
+            .and_then(|app| app.last_used_at)
+            .expect("runtime use timestamp");
+
+        OAuthAppService::revoke_app(&db, tenant.id, stale.id)
+            .await
+            .expect("revoke app");
+
+        let mut update = manual_app_update_base(stale);
+        update.name = Set("Updated after revoke".to_string());
+        update.description = Set(Some("Updated metadata".to_string()));
+        update.icon_url = Set(None);
+        update.redirect_uris = Set(serde_json::json!([
+            "https://partner.example.com/updated-callback"
+        ]));
+        update.scopes = Set(serde_json::json!(["catalog:*"]));
+        update.grant_types = Set(serde_json::json!(["authorization_code", "refresh_token"]));
+        update.granted_permissions = Set(serde_json::json!([]));
+        update.updated_at = Set(Utc::now().into());
+
+        oauth_apps::scope_runtime_copy_locale("en".to_string(), update.update(&db))
+            .await
+            .expect("apply stale editable-field update");
+
+        let stored = OAuthAppsEntity::find_by_id(created.app.id)
+            .one(&db)
+            .await
+            .expect("reload app")
+            .expect("app remains present");
+        assert!(!stored.is_active, "stale update must not reactivate a revoked app");
+        assert!(stored.revoked_at.is_some(), "revocation timestamp must survive");
+        assert_eq!(
+            stored.last_used_at,
+            Some(used_at),
+            "stale update must not erase a newer runtime-owned use timestamp"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn manual_app_crud_and_token_revocation_round_trip() {
         let (db, tenant) = test_db_with_tenant().await;
 
@@ -2919,6 +3102,10 @@ mod tests {
         .expect("update app");
 
         assert_eq!(updated.name, "Partner app v2");
+        assert!(
+            updated.can_rotate_secret(),
+            "an editable update must retain the current stored credential state"
+        );
         assert_eq!(
             updated.redirect_uris_list(),
             vec!["https://partner.example.com/oauth/callback".to_string()]
@@ -2985,7 +3172,7 @@ mod tests {
         .await
         .expect("insert oauth token");
 
-        OAuthAppService::grant_consent(
+        crate::services::oauth_consent_service::OAuthConsentService::grant_consent_strict(
             &db,
             created.app.id,
             token_user.id,
@@ -2993,7 +3180,7 @@ mod tests {
             vec!["catalog:read".to_string()],
         )
         .await
-        .expect("grant user consent");
+        .expect("grant user consent through the strict admin path");
         let consent_code_id =
             insert_pending_authorization_code(&db, created.app.id, token_user.id, tenant.id).await;
         OAuthAppService::revoke_user_consent(
@@ -3013,6 +3200,58 @@ mod tests {
             consent_code.used_at.is_some(),
             "consent revocation must invalidate pending authorization codes"
         );
+
+        // The lower-level service path must also serialize an update/regrant
+        // against the same app and subject fences.
+        OAuthAppService::grant_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect("regrant consent through the lower-level service");
+        OAuthAppService::revoke_user_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+        )
+        .await
+        .expect("revoke lower-level service grant");
+
+        let mut inactive_user: crate::models::users::ActiveModel = token_user.clone().into();
+        inactive_user.status = Set(rustok_core::UserStatus::Inactive);
+        inactive_user
+            .update(&db)
+            .await
+            .expect("deactivate consent subject");
+        let strict_grant_for_inactive_user =
+            crate::services::oauth_consent_service::OAuthConsentService::grant_consent_strict(
+                &db,
+                created.app.id,
+                token_user.id,
+                tenant.id,
+                vec!["catalog:read".to_string()],
+            )
+            .await
+            .expect_err("strict grant must reject an inactive user");
+        assert!(matches!(
+            strict_grant_for_inactive_user,
+            Error::Unauthorized(_)
+        ));
+
+        let grant_for_inactive_user = OAuthAppService::grant_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect_err("ordinary grant must reject an inactive user");
+        assert!(matches!(grant_for_inactive_user, Error::Unauthorized(_)));
 
         let app_code_id =
             insert_pending_authorization_code(&db, created.app.id, token_user.id, tenant.id).await;
@@ -3039,6 +3278,17 @@ mod tests {
             app_code.used_at.is_some(),
             "app revocation must invalidate pending authorization codes"
         );
+
+        let grant_after_revoke = OAuthAppService::grant_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect_err("revoked app must not receive new consent");
+        assert!(matches!(grant_after_revoke, Error::NotFound));
     }
 
     #[tokio::test]

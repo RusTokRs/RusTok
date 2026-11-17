@@ -283,6 +283,25 @@ impl ModuleArtifactMaintenanceInitializationLock {
     }
 }
 
+/// Serializes the complete server bootstrap against competing bootstraps and
+/// the shutdown drain. Several worker starters intentionally use a
+/// check-then-insert sequence; this host-level fence makes that sequence
+/// single-owner for one ServerRuntimeContext.
+#[derive(Clone, Default)]
+pub(crate) struct ServerBootstrapInitializationLock(
+    std::sync::Arc<tokio::sync::Mutex<()>>,
+);
+
+impl ServerBootstrapInitializationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+
+    pub(crate) async fn lock(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.0.lock().await
+    }
+}
+
 pub struct ModuleWorkSchedulerHandle {
     instance_id: u64,
     _handle: JoinHandle<()>,
@@ -370,6 +389,14 @@ pub(crate) fn additional_runtime_worker_snapshots(
     use crate::services::payment_provider_event_worker::PaymentProviderEventWorkerHandle;
     #[cfg(feature = "mod-product")]
     use crate::services::product_media_release_worker::ProductMediaReleaseWorkerHandle;
+    use crate::services::forum_search_inbox_worker::{
+        ForumSearchContractConsumerWorkerHandle, ForumSearchInboxWorkerHandle,
+    };
+    use crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle;
+    use crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle;
+    use crate::services::notification_candidate_worker::NotificationCandidateWorkerHandle;
+    use crate::services::notification_fanout_worker::NotificationFanoutWorkerHandle;
+    use crate::services::notification_outbox_intake_worker::NotificationOutboxIntakeWorkerHandle;
 
     let local = ctx.settings().runtime.runs_background_workers();
     let listeners_required = ctx
@@ -412,6 +439,62 @@ pub(crate) fn additional_runtime_worker_snapshots(
             required: local,
             finished: ctx.shared_map::<ModuleTransitionWatchdogHandle, _>(
                 ModuleTransitionWatchdogHandle::is_finished,
+            ),
+        },
+        // These durable broker consumers deliberately stop with their source
+        // offset uncommitted on poison/receive failures. Once started, their
+        // liveness is part of readiness so a dead consumer cannot leave the
+        // HTTP host green while its projection queue is stalled.
+        RuntimeWorkerSnapshot {
+            name: "product_index_refresh",
+            required: local
+                && ctx.shared_contains::<ProductIndexRefreshWorkerHandle>(),
+            finished: ctx.shared_map::<ProductIndexRefreshWorkerHandle, _>(|worker| {
+                !worker.is_ready()
+            }),
+        },
+        RuntimeWorkerSnapshot {
+            name: "social_graph_index",
+            required: local && ctx.shared_contains::<SocialGraphIndexWorkerHandle>(),
+            finished: ctx.shared_map::<SocialGraphIndexWorkerHandle, _>(
+                SocialGraphIndexWorkerHandle::is_finished,
+            ),
+        },
+        RuntimeWorkerSnapshot {
+            name: "forum_search_inbox",
+            required: local && ctx.shared_contains::<ForumSearchInboxWorkerHandle>(),
+            finished: ctx.shared_map::<ForumSearchInboxWorkerHandle, _>(
+                ForumSearchInboxWorkerHandle::is_finished,
+            ),
+        },
+        RuntimeWorkerSnapshot {
+            name: "forum_search_contract_consumer",
+            required: local
+                && ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>(),
+            finished: ctx.shared_map::<ForumSearchContractConsumerWorkerHandle, _>(
+                |worker| worker.is_finished(),
+            ),
+        },
+        RuntimeWorkerSnapshot {
+            name: "notification_outbox_intake",
+            required: local
+                && ctx.shared_contains::<NotificationOutboxIntakeWorkerHandle>(),
+            finished: ctx.shared_map::<NotificationOutboxIntakeWorkerHandle, _>(
+                NotificationOutboxIntakeWorkerHandle::is_finished,
+            ),
+        },
+        RuntimeWorkerSnapshot {
+            name: "notification_fanout",
+            required: local && ctx.shared_contains::<NotificationFanoutWorkerHandle>(),
+            finished: ctx.shared_map::<NotificationFanoutWorkerHandle, _>(
+                NotificationFanoutWorkerHandle::is_finished,
+            ),
+        },
+        RuntimeWorkerSnapshot {
+            name: "notification_candidate",
+            required: local && ctx.shared_contains::<NotificationCandidateWorkerHandle>(),
+            finished: ctx.shared_map::<NotificationCandidateWorkerHandle, _>(
+                NotificationCandidateWorkerHandle::is_finished,
             ),
         },
         RuntimeWorkerSnapshot {
@@ -609,14 +692,14 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     {
         match runtime_ctx.shared_get::<rustok_storage::StorageRuntime>() {
             Some(storage) => {
-                runtime_ctx.shared_insert(
-                    crate::services::module_artifact_maintenance::spawn_module_artifact_maintenance_handle(
-                        runtime_ctx.db_clone(),
-                        storage,
-                        60_000,
-                        stop_rx.clone(),
-                    ),
-                );
+                let worker = crate::services::module_artifact_maintenance::spawn_module_artifact_maintenance_handle(
+                    runtime_ctx.db_clone(),
+                    storage,
+                    60_000,
+                    stop_rx.clone(),
+                )
+                .map_err(Error::Message)?;
+                runtime_ctx.shared_insert(worker);
             }
             None => {
                 return Err(Error::Message(
@@ -637,6 +720,12 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     let stop = StopHandle::ensure(runtime_ctx);
     tracing::info!("Stopping background workers");
     stop.stop().await;
+
+    // Wait for any in-flight bootstrap to finish registering its workers
+    // before taking the shutdown snapshot. The stop signal above ensures a
+    // bootstrap that was already running will not start long-lived work.
+    let bootstrap_initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
+    let _bootstrap_guard = bootstrap_initialization.lock().await;
 
     let timeout_duration = Duration::from_secs(5);
 
@@ -1628,7 +1717,8 @@ async fn seo_worker_loop(
 #[cfg(test)]
 mod tests {
     use super::{
-        OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, connect_runtime_workers_with_runtime,
+        OutboxRelayWorkerHandle, OutboxRetentionWorkerHandle, ServerBootstrapInitializationLock,
+        connect_runtime_workers_with_runtime, shutdown_runtime_workers,
     };
     use crate::common::settings::RustokSettings;
     use crate::services::server_runtime_context::ServerRuntimeContext;
@@ -1641,6 +1731,35 @@ mod tests {
     use crate::services::event_transport_factory::{
         EventRuntime, OutboxRetentionRuntimeConfig, RelayRuntimeConfig,
     };
+
+    #[tokio::test]
+    async fn shutdown_waits_for_server_bootstrap_before_draining_workers() {
+        let ctx = ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+        let initialization = ServerBootstrapInitializationLock::ensure(&ctx);
+        let guard = initialization.lock().await;
+        let (finished_tx, mut finished_rx) = tokio::sync::oneshot::channel();
+        let shutdown_ctx = ctx.clone();
+        let shutdown = tokio::spawn(async move {
+            shutdown_runtime_workers(&shutdown_ctx).await;
+            let _ = finished_tx.send(());
+        });
+
+        tokio::task::yield_now().await;
+        assert!(
+            finished_rx.try_recv().is_err(),
+            "shutdown must not take its worker snapshot during bootstrap"
+        );
+
+        drop(guard);
+        tokio::time::timeout(Duration::from_secs(5), finished_rx)
+            .await
+            .expect("shutdown should continue after bootstrap releases its lock")
+            .expect("shutdown completion signal");
+        shutdown.await.expect("shutdown task joins");
+    }
 
     #[tokio::test]
     async fn background_worker_startup_fails_when_required_durable_storage_is_missing() {
@@ -1680,7 +1799,22 @@ mod tests {
             let ctx = ServerRuntimeContext::new(db.clone(), settings);
             let snapshots = additional_runtime_worker_snapshots(&ctx);
             for worker in &snapshots {
-                assert_eq!(worker.required, expected, "{}", worker.name);
+                let opt_in_consumer = matches!(
+                    worker.name,
+                    "product_index_refresh"
+                        | "social_graph_index"
+                        | "forum_search_inbox"
+                        | "forum_search_contract_consumer"
+                        | "notification_outbox_intake"
+                        | "notification_fanout"
+                        | "notification_candidate"
+                );
+                assert_eq!(
+                    worker.required,
+                    expected && !opt_in_consumer,
+                    "{}",
+                    worker.name
+                );
                 assert_eq!(worker.finished, None, "{}", worker.name);
             }
         }

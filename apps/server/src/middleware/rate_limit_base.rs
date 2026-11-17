@@ -87,6 +87,26 @@ struct RequestCounter {
     window_start: Instant,
 }
 
+/// Advance the fixed window using the time at which the serialized cache
+/// mutation executes, not the time at which a request began waiting for it.
+fn advance_request_counter(
+    previous: Option<RequestCounter>,
+    now: Instant,
+    window: Duration,
+) -> RequestCounter {
+    let mut counter = previous.unwrap_or(RequestCounter {
+        count: 0,
+        window_start: now,
+    });
+    // A window ends at its deadline, not one tick after it.
+    if now.duration_since(counter.window_start) >= window {
+        counter.count = 0;
+        counter.window_start = now;
+    }
+    counter.count = counter.count.saturating_add(1);
+    counter
+}
+
 const MEMORY_BACKEND_MAX_ENTRIES: u64 = 100_000;
 
 #[derive(Clone)]
@@ -220,27 +240,23 @@ impl RateLimiter {
         requests: &Cache<String, RequestCounter>,
         key: &str,
     ) -> Result<RateLimitInfo, RateLimitCheckError> {
-        let now = Instant::now();
         let max_requests = self.config.max_requests;
         let window = self.config.window;
 
-        // Atomically read-modify-write the counter so there is no TOCTOU race.
+        // Moka serializes updates per key. Sampling time inside the update
+        // ensures a delayed request cannot use an older window deadline.
         let counter = requests
             .entry(key.to_string())
             .and_upsert_with(|maybe| async move {
-                let mut c = maybe.map(|e| e.into_value()).unwrap_or(RequestCounter {
-                    count: 0,
-                    window_start: now,
-                });
-                if now.duration_since(c.window_start) > window {
-                    c.count = 0;
-                    c.window_start = now;
-                }
-                c.count = c.count.saturating_add(1);
-                c
+                advance_request_counter(
+                    maybe.map(|entry| entry.into_value()),
+                    Instant::now(),
+                    window,
+                )
             })
             .await
             .into_value();
+        let now = Instant::now();
 
         if counter.count > max_requests {
             let retry_after = rate_limit_retry_after(
@@ -823,6 +839,54 @@ pub async fn rate_limit_for_paths(
             record_rate_limit_backend_unavailable(policy.limiter.namespace());
             Err(rate_limit_backend_unavailable_response(&reason))
         }
+    }
+}
+
+#[cfg(test)]
+mod fixed_window_tests {
+    use super::*;
+
+    #[test]
+    fn fixed_window_starts_new_window_at_exact_deadline() {
+        let start = Instant::now();
+        let window = Duration::from_secs(60);
+        let previous = advance_request_counter(None, start, window);
+        assert_eq!(previous.count, 1);
+
+        let before_end = advance_request_counter(
+            Some(previous),
+            start + window - Duration::from_nanos(1),
+            window,
+        );
+        assert_eq!(before_end.count, 2);
+        assert_eq!(before_end.window_start, start);
+
+        let deadline = start + window;
+        let new_window = advance_request_counter(Some(before_end), deadline, window);
+        assert_eq!(new_window.count, 1);
+        assert_eq!(new_window.window_start, deadline);
+    }
+
+    #[test]
+    fn fixed_window_uses_actual_update_instant_for_elapsed_window() {
+        let start = Instant::now();
+        let window = Duration::from_secs(30);
+        let previous = RequestCounter {
+            count: 7,
+            window_start: start,
+        };
+        // The request may have begun waiting before its window expired.
+        // The serialized update must use the later actual update time.
+        let updated = advance_request_counter(
+            Some(previous),
+            start + window + Duration::from_secs(1),
+            window,
+        );
+        assert_eq!(updated.count, 1);
+        assert_eq!(
+            updated.window_start,
+            start + window + Duration::from_secs(1)
+        );
     }
 }
 

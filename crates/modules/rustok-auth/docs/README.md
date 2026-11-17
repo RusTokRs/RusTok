@@ -61,6 +61,14 @@ transaction that persists a replacement refresh token. The former controller-loc
 and `OAuthAppService` token issuance paths have been deleted, so router middleware
 ordering cannot re-enable a non-transactional replay path.
 
+Invite acceptance and administrative revocation serialize on the same
+`auth_invites` issuance row. PostgreSQL/MySQL use a locking read; SQLite acquires
+its write fence before rereading the row. A revocation committed first makes
+acceptance fail as invalid, an acceptance committed first cannot be retroactively
+revoked, and repeated revocation does not emit duplicate lifecycle events. The
+unique `auth_invite_consumptions.token_hash` constraint remains the independent
+single-use replay fence.
+
 The host additionally composition-gates the OAuth protocol surface and discovery metadata with
 `settings.rustok.features.oauth_enabled`; when the gate is closed the routes are not mounted and
 OpenAPI omits them. This gate does not replace the per-request active-app, consent, scope, and

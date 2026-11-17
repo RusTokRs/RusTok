@@ -70,6 +70,19 @@ OAuth translation snapshots use the `rustok-auth` lifecycle enum directly.
 Its serialized `active` and `archived` values match persisted owner lifecycle
 spelling; server translation queries use SeaQuery's expression trait.
 
+Invite acceptance and user-admin revocation share a transaction-scoped
+`auth_invites` row fence. The first committed transition wins; accepted invites
+cannot be retroactively revoked, and replayed revocations do not publish another
+`UserInviteRevoked` event.
+
+OAuth consent grants and revocations lock the app row and then the subject row,
+matching token issuance's lock order before reading or changing consent. This
+prevents an exchange from committing a token against consent that was revoked
+first, and prevents grants after an app or user becomes inactive. Manual OAuth
+app edits mark lifecycle, credential, identity, and runtime-owned columns
+`NotSet`; a stale edit cannot reactivate a revoked client or erase a newer
+`last_used_at` value.
+
 ## Mandatory platform baseline
 
 For `apps/server`, the mandatory baseline consists of two layers.
@@ -267,11 +280,43 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
 - Settings and system GraphQL resolvers receive `ServerRuntimeContext`, DB, and schema-owned
   `TransactionalEventBus` through GraphQL data. They do not extract or adapt a framework-global
   application context.
-- App runtime rate-limit bootstrap and shared limiter registration use `ServerRuntimeContext`;
+- Module event dispatcher startup requires `EventRuntime` before launching any
+  dependent Product Media release, Commerce paid-order label, marketplace financial,
+  or Payment provider recovery workers. A missing event runtime fails bootstrap
+  without leaving detached module-owned recovery tasks running.
+- Event runtime construction completes fallible transport, projector, and relay
+  configuration work before it adds tenant-generation or Redis-status listener
+  tasks. The RBAC invalidation listener may already be started by early server
+  initialization; it remains registered in the shared runtime and is drained if
+  later event-runtime validation fails.
+- The HTTP server bootstrap is serialized per `ServerRuntimeContext` and shares
+  its initialization fence with shutdown. Shutdown signals workers first, then
+  waits for bootstrap to finish registering handles before taking the drain
+  snapshot, so concurrent bootstrap cannot orphan newly spawned workers.
+- Once started, the opt-in Product Index, Social Graph Index, and Forum Search
+  contract consumers are required readiness workers. Their durable broker
+  offsets remain uncommitted on terminal delivery failure; the readiness probe
+  therefore turns unhealthy if a consumer exits instead of leaving the HTTP
+  host green while its projection queue is stalled.
+- Forum Search inbox reconciliation and the opt-in Notification outbox-intake,
+  fanout, and candidate workers are also required readiness workers once started.
+  A dead queue/reconciliation task cannot leave the HTTP host green while its
+  durable work remains unprocessed.
+- Outbox relay polling, claim leases, retry backoff, and outbox-retention
+  polling are each capped at one day. Relay batches are capped at 10,000 events,
+  in-flight delivery concurrency at 128, and in-memory event channel capacity
+  at 65,536. Invalid relay/retention resource or timing configuration fails
+  validation instead of delaying recovery for unbounded periods, wrapping retry
+  delays, or allowing unbounded allocation.
+- App runtime rate-limit bootstrap and shared limiter registration use `ServerRuntimeContext`.
+  In-memory fixed-window counters sample time inside the serialized per-key update;
+  a request delayed behind another cannot apply an obsolete window timestamp.
+  Exactly at a window deadline, its counter restarts rather than extending the
+  previous window by one tick.
 - `host::run` owns YAML configuration loading, database connection and bounded worker shutdown for the pure Axum executable, including ordinary startup and bind failures; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition. If the host lifecycle future is cancelled or unwinds, its drop guard schedules worker shutdown on the active Tokio runtime; normal completion awaits the bounded drain. Rate-limit cleanup tasks, the optional Comments TCP listener and schedule-audit handoff worker, DLQ duplicate-alert tasks, Product channel/index workers, Social Graph Index worker/observers, Tenant cache/locale-generation listeners, Cache Redis and field-definition cache tasks, SEO redirect reconciliation, Channel/RBAC invalidation listeners, the RBAC generation watchdog, the Event forwarder, and both Forum Search workers are owned and joined/aborted by that drain. The Outbox relay supervisor also owns and cancels its inner processing task. This cannot guarantee cleanup after process abort/runtime destruction, and lower-level bootstrap callers still own their shutdown lifecycle.
 - Database selection is explicit: `DATABASE_URL` overrides `database.uri`; otherwise the configured URI is used as-is. The host never switches a PostgreSQL URI to SQLite based on its hostname. Configure `sqlite://...` directly when SQLite is intended.
 - Default SuperAdmin provisioning runs only in `Full`, `Api`, and `AdminSsr` host modes that own administrative authentication surfaces. `StorefrontSsr`, `Worker`, and `RegistryOnly` replicas do not perform this privileged auth-state mutation.
-- Background-worker hosts require initialized durable storage before startup because module artifact maintenance is a required worker; missing storage fails bootstrap instead of leaving readiness green with required garbage collection disabled.
+- Background-worker hosts require initialized durable storage before startup because module artifact maintenance is a required worker; missing storage fails bootstrap instead of leaving readiness green with required garbage collection disabled. The optional admission-reverification leg may be omitted only by leaving `RUSTOK_MODULE_MAINTENANCE_VERIFICATION_ENDPOINT` unset. Once the endpoint is configured, invalid endpoint, mTLS, actor, or policy-revision settings abort worker bootstrap with a typed startup error instead of silently disabling admission reverification. A temporarily unreachable verifier remains a retryable per-pass runtime failure.
 - Tenant cache invalidation helpers return a typed `Result`; callers must handle generation rotation/publication failures rather than treating a logged warning as successful invalidation.
 - Auth-middleware early rejections use the shared JSON error envelope (with internal details redacted), and server-side request-budget expiry maps to HTTP `504` with the canonical JSON timeout error.
 - Build-time runtime-extension wiring reads the canonical `[crate].entry_type` manifest field and fails when an extension omits it; it does not infer Rust types by scanning source text.
@@ -377,6 +422,10 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
 - OAuth browser-session and consent flows use the same case-insensitive Bearer authentication scheme
   parsing as the HTTP authentication boundary; the browser-session helper requires exactly one Bearer
   token and does not silently accept Basic or multi-token authorization values.
+  Repeated `Authorization` fields are rejected. When an `Authorization` header is present but
+  malformed, consent does not fall back to a cookie from a different principal. OAuth browser
+  cookies are read across all Cookie fields and duplicate `rustok_oauth_browser_session` names
+  fail closed instead of using an order-dependent token.
 - Marketplace registry/governance REST handlers extract `ServerRuntimeContext`; catalog projection,
   artifact storage and remote executor policy are read through DB/settings/shared handles neutral runtime.
 - Per-registry marketplace freshness is projected through
@@ -608,7 +657,9 @@ preflight`, `install apply`, `install status`, and `seed apply`; apply uses
   requests support a setup-token guard via
   `RUSTOK_INSTALL_SETUP_TOKEN` and header `x-rustok-setup-token` or
   `Authorization: Bearer <token>`; production HTTP apply without a setup token
-  is rejected. `/api/install/*` intentionally bypasses the tenant resolution middleware,
+  is rejected. These are mutually exclusive ways to present the setup
+  credential: requests containing both headers are rejected rather than
+  selecting one source and ignoring the other. `/api/install/*` intentionally bypasses the tenant resolution middleware,
   because the first install runs before a tenant context is created. The CLI remains
   the canonical automation path.
 - The tenant middleware resolution contract is fixed by integration tests in

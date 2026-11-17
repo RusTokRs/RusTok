@@ -65,6 +65,7 @@ pub type OutboxRetentionRuntimeConfig =
 /// keeping every delivered row forever.
 const MAX_OUTBOX_RETENTION_DAYS: u64 = 3_650;
 const MAX_OUTBOX_RETENTION_BATCH_SIZE: u64 = 100_000;
+const MAX_OUTBOX_RETENTION_INTERVAL_SECONDS: u64 = 86_400;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct OutboxRelaySupervisorMetricsSnapshot {
@@ -98,21 +99,28 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
         Error::BadRequest("CacheService must be initialized before the event runtime".to_string())
     })?;
 
-    // Subscribe before any transport can publish a generation. This also restores shared
-    // generations before middleware and authorization paths construct or read their caches.
-    crate::services::cache_redis_status_monitor::start_cache_redis_status_monitor(
-        ctx,
-        cache.clone(),
-    )
-    .await;
-    start_tenant_cache_generation_listener(ctx, cache.clone()).await?;
-    start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;
-
+    // Build and validate the complete delivery runtime before starting any
+    // cache/listener workers. In particular, an unavailable configured Iggy
+    // deployment or an invalid artifact projector must not leave detached
+    // listeners running after bootstrap has failed.
+    let mut iggy_transport_handle: Option<Arc<IggyTransport>> = None;
     let runtime = match delivery_profile {
         EventDeliveryProfile::Outbox | EventDeliveryProfile::OutboxIggy => {
             // Keep the application-facing transport concrete so TransactionalEventBus can
             // downcast to OutboxTransport and write into the caller's database transaction.
             let outbox_transport = Arc::new(OutboxTransport::new(ctx.db_clone()));
+            // Validate local DB-backed components before connecting/starting the external
+            // Iggy transport. A bad retention policy or artifact projector must not leave
+            // a broker process or connector alive after bootstrap fails.
+            let outbox_retention =
+                resolve_outbox_retention(ctx, &settings.events.outbox_retention)?;
+            let artifact_projector = ModuleControlPlane::new(ctx.db_clone())
+                .artifact_event_projector(ArtifactEventDeliveryConfig::default())
+                .map_err(|error| {
+                    Error::BadRequest(format!(
+                        "Failed to initialize durable artifact event projection: {error}"
+                    ))
+                })?;
             let (relay_target, listener_bus, iggy_mode) = match delivery_profile {
                 EventDeliveryProfile::Outbox => {
                     let transport = MemoryTransport::with_capacity(channel_capacity);
@@ -137,21 +145,15 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                     );
                     // Durable inbound consumers must reuse the exact configured connector.
                     // Creating another bundled transport would start a second native broker
-                    // process on the same ports and split lifecycle ownership.
-                    ctx.shared_insert(Arc::clone(&iggy_transport));
+                    // process on the same ports and split lifecycle ownership. Register it only
+                    // after the rest of event-runtime construction succeeds.
+                    iggy_transport_handle = Some(Arc::clone(&iggy_transport));
                     let transport: Arc<dyn EventTransport> = iggy_transport;
                     let (transport, listener_bus) =
                         transport_with_local_delivery(transport, channel_capacity);
                     (transport, listener_bus, Some(iggy_config.mode))
                 }
             };
-            let artifact_projector = ModuleControlPlane::new(ctx.db_clone())
-                .artifact_event_projector(ArtifactEventDeliveryConfig::default())
-                .map_err(|error| {
-                    Error::BadRequest(format!(
-                        "Failed to initialize durable artifact event projection: {error}"
-                    ))
-                })?;
             let relay_target: Arc<dyn EventTransport> = Arc::new(
                 ArtifactEventProjectionTransport::new(artifact_projector, relay_target),
             );
@@ -178,9 +180,6 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                 }),
             };
 
-            let outbox_retention =
-                resolve_outbox_retention(ctx, &settings.events.outbox_retention)?;
-
             EventRuntime {
                 delivery_profile,
                 iggy_mode,
@@ -194,6 +193,30 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
         }
     };
 
+    // All fallible transport/projector/configuration work has completed. Start the
+    // generation listeners before returning the runtime, so no relay can publish into
+    // an unobserved cache-generation channel.
+    start_tenant_cache_generation_listener(ctx, cache.clone()).await?;
+    if let Err(error) = start_rbac_cache_invalidation_listener(ctx, cache.clone()).await {
+        let tasks =
+            crate::services::tenant_cache_generation::take_listener_tasks_for_shutdown(ctx).await;
+        for task in &tasks {
+            task.abort();
+        }
+        for task in tasks {
+            let _ = task.await;
+        }
+        return Err(error);
+    }
+    crate::services::cache_redis_status_monitor::start_cache_redis_status_monitor(
+        ctx,
+        cache.clone(),
+    )
+    .await;
+
+    if let Some(iggy_transport) = iggy_transport_handle {
+        ctx.shared_insert(iggy_transport);
+    }
     // Module listeners are started immediately after this function returns, while the historical
     // bootstrap stored EventRuntime only afterwards. Seed the shared runtime here so listener
     // startup always resolves the exact delivery bus paired with the configured transport.
@@ -223,10 +246,12 @@ fn resolve_outbox_retention(
             "events.outbox_retention.batch_size must be between 1 and {MAX_OUTBOX_RETENTION_BATCH_SIZE}"
         )));
     }
-    if settings.interval_seconds == 0 {
-        return Err(Error::BadRequest(
-            "events.outbox_retention.interval_seconds must be greater than zero".to_string(),
-        ));
+    if settings.interval_seconds == 0
+        || settings.interval_seconds > MAX_OUTBOX_RETENTION_INTERVAL_SECONDS
+    {
+        return Err(Error::BadRequest(format!(
+            "events.outbox_retention.interval_seconds must be between 1 and {MAX_OUTBOX_RETENTION_INTERVAL_SECONDS}"
+        )));
     }
 
     let retention = rustok_outbox::OutboxRetentionConfig {
@@ -444,6 +469,54 @@ mod tests {
     use super::*;
     use rustok_events::{DomainEvent, EventEnvelope};
     use uuid::Uuid;
+
+    #[tokio::test]
+    async fn failed_event_runtime_validation_does_not_leave_cache_workers_running() {
+        let db = rustok_test_utils::setup_test_db().await;
+        let mut settings = crate::common::settings::RustokSettings::default();
+        settings.events.delivery_profile = crate::common::settings::EventDeliveryProfile::Outbox;
+        settings.events.outbox_retention.enabled = true;
+        settings.events.outbox_retention.retention_days = 0;
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(db, settings);
+        crate::services::cache_runtime::ensure_cache_service(&ctx);
+
+        let error = match build_event_runtime(&ctx).await {
+            Err(error) => error,
+            Ok(_) => panic!("invalid retention settings must fail event runtime bootstrap"),
+        };
+        assert!(error.to_string().contains("retention_days"));
+        assert!(
+            !ctx.shared_contains::<crate::services::tenant_cache_generation::TenantCacheGenerationListenerHandle>(),
+            "tenant listener must not start before runtime validation succeeds"
+        );
+        assert!(
+            !ctx.shared_contains::<crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle>(),
+            "RBAC listener must not start before runtime validation succeeds"
+        );
+        assert!(
+            !ctx.shared_contains::<crate::services::cache_redis_status_monitor::CacheRedisStatusMonitorHandle>(),
+            "Redis status monitor must not start before runtime validation succeeds"
+        );
+    }
+
+    #[test]
+    fn outbox_retention_rejects_intervals_that_can_disable_pruning() {
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            crate::common::settings::RustokSettings::default(),
+        );
+        let settings = crate::common::settings::OutboxRetentionSettings {
+            enabled: true,
+            retention_days: 30,
+            batch_size: 100,
+            interval_seconds: MAX_OUTBOX_RETENTION_INTERVAL_SECONDS + 1,
+        };
+        let error = match resolve_outbox_retention(&ctx, &settings) {
+            Err(error) => error,
+            Ok(_) => panic!("retention polling must remain bounded"),
+        };
+        assert!(error.to_string().contains("interval_seconds must be between"));
+    }
 
     #[tokio::test]
     async fn fanout_transport_delivers_only_after_primary_accepts_event() {

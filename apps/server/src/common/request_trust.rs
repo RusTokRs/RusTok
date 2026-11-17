@@ -154,16 +154,20 @@ pub fn extract_effective_host(
     settings: &RequestTrustSettings,
 ) -> Option<String> {
     if forwarded_headers_trusted(peer_ip, settings) {
-        return last_forwarded_header_value(headers, "x-forwarded-host")
-            .or_else(|| last_forwarded_pair(headers, "host"))
-            .or_else(|| {
-                headers
-                    .get(HOST)
-                    .and_then(|value| value.to_str().ok())
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .map(ToOwned::to_owned)
-            });
+        // X-Forwarded-Host takes precedence when it is present. An invalid
+        // last hop must fail closed instead of switching to a potentially
+        // conflicting Forwarded or Host value from another authority.
+        if headers.contains_key("x-forwarded-host") {
+            return last_forwarded_header_value(headers, "x-forwarded-host");
+        }
+        return last_forwarded_pair(headers, "host").or_else(|| {
+            headers
+                .get(HOST)
+                .and_then(|value| value.to_str().ok())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+        });
     }
 
     warn_ignored_forwarded_headers(headers, peer_ip, "untrusted_or_ignored_forwarded_host");
@@ -217,8 +221,14 @@ pub fn extract_effective_proto(
     settings: &RequestTrustSettings,
 ) -> Option<String> {
     if forwarded_headers_trusted(peer_ip, settings) {
-        return last_forwarded_header_value(headers, "x-forwarded-proto")
-            .or_else(|| last_forwarded_pair(headers, "proto"))
+        // Do not reinterpret a malformed X-Forwarded-Proto using a different
+        // header family. Credential-cookie security must use one authority.
+        let value = if headers.contains_key("x-forwarded-proto") {
+            last_forwarded_header_value(headers, "x-forwarded-proto")
+        } else {
+            last_forwarded_pair(headers, "proto")
+        };
+        return value
             .map(|value| value.to_ascii_lowercase())
             .filter(|value| value == "http" || value == "https");
     }
@@ -336,6 +346,63 @@ mod tests {
                 &trusted_settings(),
             ),
             None,
+        );
+    }
+
+    #[test]
+    fn invalid_x_forwarded_host_cannot_switch_to_other_host_authority() {
+        let mut headers = HeaderMap::new();
+        headers.insert(HOST, HeaderValue::from_static("backend.internal"));
+        headers.insert(FORWARDED, HeaderValue::from_static("host=other.example.test"));
+        headers.insert(
+            "x-forwarded-host",
+            HeaderValue::from_static("valid.example.test, "),
+        );
+        let peer = Some(IpAddr::from([10, 1, 2, 3]));
+
+        assert_eq!(
+            extract_effective_host(&headers, peer, &trusted_settings()),
+            None,
+            "empty nearest X-Forwarded-Host must not select an unrelated host"
+        );
+        assert_eq!(
+            extract_effective_host(&headers, peer, &RequestTrustSettings::default()).as_deref(),
+            Some("backend.internal"),
+            "untrusted forwarding never overrides the direct Host header"
+        );
+
+        headers.remove("x-forwarded-host");
+        assert_eq!(
+            extract_effective_host(&headers, peer, &trusted_settings()).as_deref(),
+            Some("other.example.test"),
+            "Forwarded remains the supported fallback when X-Forwarded-Host is absent"
+        );
+    }
+
+    #[test]
+    fn invalid_x_forwarded_proto_cannot_switch_to_other_scheme_authority() {
+        let mut headers = HeaderMap::new();
+        headers.insert(FORWARDED, HeaderValue::from_static("proto=https"));
+        headers.insert("x-forwarded-proto", HeaderValue::from_static("http, "));
+        let peer = Some(IpAddr::from([10, 1, 2, 3]));
+
+        assert_eq!(
+            extract_effective_proto(&headers, peer, &trusted_settings()),
+            None,
+            "empty nearest X-Forwarded-Proto must not inherit another header's HTTPS"
+        );
+        headers.insert("x-forwarded-proto", HeaderValue::from_static("javascript"));
+        assert_eq!(
+            extract_effective_proto(&headers, peer, &trusted_settings()),
+            None,
+            "invalid explicit forwarding protocol must not select another header"
+        );
+
+        headers.remove("x-forwarded-proto");
+        assert_eq!(
+            extract_effective_proto(&headers, peer, &trusted_settings()).as_deref(),
+            Some("https"),
+            "RFC Forwarded stays supported when X-Forwarded-Proto is absent"
         );
     }
 
