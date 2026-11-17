@@ -24,6 +24,9 @@ the full-stack audit ledger. Work is isolated in
 - OAuth refresh `scope` can only retain or reduce the existing grant, never
   silently grant more than requested. Cookie-session refresh/logout reject
   duplicate same-name cookies rather than choosing an attacker-influenced order.
+  OAuth refresh-family absolute deadlines also use checked Chrono arithmetic
+  for both family admission and token issuance. Invalid persisted timestamps
+  produce a typed OAuth error instead of a request panic.
 - GraphQL host preflight now applies field, tenant, module, storefront, forum,
   dashboard and legacy-mutation policies to only the operation selected for
   execution. Module and legacy-mutation fragment walkers now terminate on
