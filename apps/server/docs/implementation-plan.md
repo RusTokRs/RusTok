@@ -21,6 +21,10 @@ the full-stack audit ledger. Work is isolated in
 - OAuth refresh `scope` can only retain or reduce the existing grant, never
   silently grant more than requested. Cookie-session refresh/logout reject
   duplicate same-name cookies rather than choosing an attacker-influenced order.
+- GraphQL host preflight now applies field, tenant, module, storefront, forum,
+  dashboard and legacy-mutation policies to only the operation selected for
+  execution. Module and legacy-mutation fragment walkers now terminate on
+  cyclic fragment graphs while preserving detection of reachable protected fields.
 - Blank `OTEL_SERVICE_NAME` no longer masks a usable `RUSTOK_SERVICE_NAME`.
 - Focused tests cover the added behavioral branches. Cargo, formatting,
   SQLite/PostgreSQL concurrency and real-HTTP tests are **not run** in this
