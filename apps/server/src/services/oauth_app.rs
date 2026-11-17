@@ -1538,10 +1538,22 @@ fn validate_redirect_uri(
             if app_type != "mobile" {
                 return Err(invalid("custom schemes are only allowed for mobile apps"));
             }
+            if !is_private_use_redirect_scheme(scheme) {
+                return Err(invalid(
+                    "mobile custom schemes must use reverse-domain private-use names",
+                ));
+            }
         }
     }
 
     Ok(())
+}
+
+fn is_private_use_redirect_scheme(scheme: &str) -> bool {
+    let mut labels = scheme.split('.');
+    labels.next().is_some_and(|label| !label.is_empty())
+        && scheme.contains('.')
+        && labels.all(|label| !label.is_empty())
 }
 
 fn is_loopback_host(host: &str) -> bool {
@@ -1849,6 +1861,27 @@ mod tests {
                 "native mobile clients may use loopback HTTP: {redirect_uri}"
             );
         }
+    }
+
+    #[test]
+    fn mobile_custom_redirect_schemes_must_use_reverse_domain_private_use_names() {
+        for redirect_uri in [
+            "ftp://example.com/callback",
+            "mailto:callback@example.com",
+            "tel:+15551234567",
+            "urn:example:oauth",
+            "myapp://callback",
+        ] {
+            assert!(
+                validate_redirect_uri("mobile", redirect_uri, true).is_err(),
+                "registered URI schemes must not be accepted as private-use schemes: {redirect_uri}"
+            );
+        }
+
+        assert!(
+            validate_redirect_uri("mobile", "com.example.app:/oauth/callback", true).is_ok(),
+            "reverse-domain private-use schemes are supported for native apps"
+        );
     }
 
     #[test]
