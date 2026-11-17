@@ -180,7 +180,18 @@ userinfo, and failures, carry `Cache-Control: no-store` and `Pragma: no-cache`.
 Cookie-session logout treats a missing, expired, or already-revoked refresh
 token idempotently, but returns a failure when revocation persistence or
 transactional event publication fails. The server must not claim logout
-success while a refresh token could remain valid.
+success while a refresh token could remain valid. Multiple cookies with the
+`rustok-session` name are rejected, including across repeated Cookie headers,
+rather than selecting an order-dependent token. First-party session validity,
+new issuance and refresh rotation enforce the original 90-day absolute expiry
+(including legacy rows without an explicit deadline). Failed dummy Argon2 hash
+initialization propagates as an internal auth error rather than substituting
+an empty hash.
+
+OAuth refresh requests may retain the original scopes by omitting `scope` or
+request a non-empty subset of the currently authorized scopes. The server
+rejects an empty explicit scope or a widening request with `invalid_scope`,
+and persists the narrowed grant on the rotated credential.
 
 ## Runtime surface
 
