@@ -1062,6 +1062,15 @@ mod tests {
         let user_id = Uuid::new_v4();
         let family_id = Uuid::new_v4();
         let now = Utc::now();
+        let raw_stale_token = "revoked-refresh-cookie";
+        let stale_hash = crate::auth::hash_refresh_token(raw_stale_token);
+        let mut client = app(
+            serde_json::json!(["openid"]),
+            serde_json::json!(["authorization_code", "refresh_token"]),
+        );
+        client.id = app_id;
+        client.tenant_id = tenant_id;
+
         let make_token = |id, hash: &str, revoked_at| oauth_tokens::ActiveModel {
             id: Set(id),
             app_id: Set(app_id),
@@ -1080,7 +1089,11 @@ mod tests {
             created_at: Set(now.into()),
             updated_at: Set(now.into()),
         };
-        make_token(family_id, "stale-hash", Some((now - chrono::Duration::minutes(2)).into()))
+        make_token(
+            family_id,
+            &stale_hash,
+            Some((now - chrono::Duration::minutes(2)).into()),
+        )
             .insert(&db)
             .await
             .expect("insert revoked root");
@@ -1097,9 +1110,14 @@ mod tests {
         .await
         .expect("create fault injection");
 
-        let error = super::detect_oauth_refresh_reuse(&db, app_id, tenant_id, "stale-hash")
-            .await
-            .expect_err("revocation persistence failure must propagate");
+        let error = super::validate_refresh_token(
+            &db,
+            &client,
+            tenant_id,
+            raw_stale_token,
+        )
+        .await
+        .expect_err("real token validation must surface revocation failure");
         assert_eq!(error.error, "server_error");
         assert!(
             oauth_tokens::Entity::find_by_id(live_id)
@@ -1114,9 +1132,15 @@ mod tests {
         db.execute_unprepared("DROP TRIGGER fail_refresh_reuse_revocation")
             .await
             .expect("remove fault injection");
-        super::detect_oauth_refresh_reuse(&db, app_id, tenant_id, "stale-hash")
-            .await
-            .expect("retry must revoke the active lineage");
+        let retry = super::validate_refresh_token(
+            &db,
+            &client,
+            tenant_id,
+            raw_stale_token,
+        )
+        .await
+        .expect_err("already-revoked stale token still cannot be used");
+        assert_eq!(retry.error, "invalid_grant");
         assert!(
             oauth_tokens::Entity::find_by_id(live_id)
                 .one(&db)
