@@ -121,6 +121,7 @@ async fn insert_legacy_snapshot<C: ConnectionTrait>(
             "INSERT INTO marketplace_seller_events (id, tenant_id, seller_id, actor_id, event_kind, locale, provenance, note, metadata, created_at) VALUES (?, ?, ?, NULL, ?, NULL, 'legacy_snapshot', ?, json(?), ?)",
             values,
         ),
+        // INVARIANT: SeaORM DbBackend is Postgres or Sqlite in RusToK migrations.
         _ => unreachable!(),
     };
     connection.execute_raw(statement).await?;
