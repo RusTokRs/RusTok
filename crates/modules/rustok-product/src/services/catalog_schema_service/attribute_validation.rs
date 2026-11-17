@@ -78,7 +78,7 @@ impl ProductAttributeValidationRules {
     }
 
     /// Value-level rules (existence is gated separately by `required`/`requiredLocales`).
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "helper predicate for schema rule classification")]
     pub(crate) fn declares_value_rules(&self) -> bool {
         self.min_length.is_some()
             || self.max_length.is_some()

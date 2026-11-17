@@ -124,7 +124,7 @@ impl ProductCatalogSchemaService {
             .await?;
         }
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductAttributeCreated { attribute_id },
@@ -197,7 +197,7 @@ impl ProductCatalogSchemaService {
             ))
             .await?;
         }
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductAttributeOptionCreated {

@@ -350,7 +350,7 @@ async fn publish_product_update(
     product_id: Uuid,
     response: &impl serde::Serialize,
 ) -> Result<(), PortError> {
-    txn.publish(
+    txn.publish_in_tx(
         tenant_id,
         actor_id,
         DomainEvent::ProductUpdated { product_id },

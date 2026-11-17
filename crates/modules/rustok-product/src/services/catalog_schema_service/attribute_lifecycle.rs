@@ -658,7 +658,7 @@ impl ProductCatalogSchemaService {
                     .await?
                     .pop()
                     .map(|row| row.state_token);
-                    txn.publish(
+                    txn.publish_in_tx(
                         tenant_id,
                         Some(actor_id),
                         DomainEvent::ProductAttributeOptionUpdated {
@@ -702,7 +702,7 @@ impl ProductCatalogSchemaService {
                     .await?
                     .pop()
                     .map(|row| row.state_token);
-                    txn.publish(
+                    txn.publish_in_tx(
                         tenant_id,
                         Some(actor_id),
                         DomainEvent::ProductAttributeUpdated {

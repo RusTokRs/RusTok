@@ -239,6 +239,7 @@ pub async fn load_post_for_demotion_in_tx(
         .ok_or(BlogError::PostNotFound(post_id))?;
 
     let translations = blog_post_translation::Entity::find()
+        // Tenant isolation: post was verified for tenant_id above
         .filter(blog_post_translation::Column::PostId.eq(post_id))
         .all(txn)
         .await

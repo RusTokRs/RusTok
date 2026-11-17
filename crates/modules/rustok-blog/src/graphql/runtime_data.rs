@@ -28,7 +28,30 @@ pub struct BlogGraphqlRuntimeData {
     taxonomy_port: Option<Arc<dyn BlogTaxonomyPort>>,
 }
 
-pub fn attach_schema_data(inputs: &GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String> {
+/// Error returned when initializing Blog GraphQL runtime data fails.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct BlogGraphqlRuntimeError(pub String);
+
+impl From<&str> for BlogGraphqlRuntimeError {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<String> for BlogGraphqlRuntimeError {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<BlogGraphqlRuntimeError> for String {
+    fn from(e: BlogGraphqlRuntimeError) -> Self {
+        e.0
+    }
+}
+
+pub fn attach_schema_data(inputs: &GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, BlogGraphqlRuntimeError> {
     Ok(BlogGraphqlRuntimeData {
         comments_thread_port: inputs.shared_get::<Arc<dyn CommentsThreadPort>>(),
         settings_reader: inputs.shared_get::<SharedStaticModuleSettingsReader>(),
@@ -109,7 +132,7 @@ mod tests {
 
     #[test]
     fn graphql_runtime_data_exposes_comments_port_selection() {
-        let factory: fn(&GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, String> =
+        let factory: fn(&GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, BlogGraphqlRuntimeError> =
             attach_schema_data;
         let selector: fn(&BlogGraphqlRuntimeData, DatabaseConnection) -> CommentService =
             BlogGraphqlRuntimeData::comment_service;

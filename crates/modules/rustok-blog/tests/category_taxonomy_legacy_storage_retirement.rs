@@ -20,9 +20,13 @@ fn legacy_category_storage_is_retired_in_canonical_schema() {
 
     assert!(REGISTRY.contains("mod m20261029_000001_create_blog_schema;"));
     assert!(REGISTRY.contains("Box::new(m20261029_000001_create_blog_schema::Migration)"));
-    assert!(REGISTRY.contains(
-        "MigrationDependencyDescriptor::new(\n        \"m20261029_000001_create_blog_schema\""
-    ));
+    assert!(
+        REGISTRY.contains(
+            "MigrationDependencyDescriptor::new(\n            \"m20261029_000001_create_blog_schema\""
+        ) || REGISTRY.contains(
+            "MigrationDependencyDescriptor::new(\n        \"m20261029_000001_create_blog_schema\""
+        )
+    );
 
     for forbidden in [
         "blog_category_translation",

@@ -250,6 +250,7 @@ impl PreviewTokenService {
             return Ok(None);
         }
         let mut lookup = blog_preview_token::Entity::find()
+            .filter(blog_preview_token::Column::TenantId.is_not_null())
             .filter(blog_preview_token::Column::Token.eq(preview_token_digest(token)));
         if let Some(tenant_id) = expected_tenant_id {
             lookup = lookup.filter(blog_preview_token::Column::TenantId.eq(tenant_id));
@@ -429,6 +430,7 @@ impl PreviewTokenService {
     pub async fn list_tenants_with_expired_tokens(&self) -> BlogResult<Vec<Uuid>> {
         let now = Utc::now();
         let tokens = blog_preview_token::Entity::find()
+            .filter(blog_preview_token::Column::TenantId.is_not_null())
             .filter(blog_preview_token::Column::ExpiresAt.lte(now))
             .all(&self.db)
             .await

@@ -1,4 +1,3 @@
-use anyhow::Context;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::{Router, http::StatusCode};
@@ -91,10 +90,14 @@ impl BlogHttpRuntime {
 }
 
 impl BlogHttpRuntime {
-    fn from_host(runtime: &HostRuntimeContext) -> anyhow::Result<Self> {
+    fn from_host(runtime: &HostRuntimeContext) -> Result<Self, crate::BlogError> {
         let event_bus = runtime
             .shared_get::<TransactionalEventBus>()
-            .context("blog HTTP routes require TransactionalEventBus in HostRuntimeContext")?;
+            .ok_or_else(|| {
+                crate::BlogError::Validation(
+                    "blog HTTP routes require TransactionalEventBus in HostRuntimeContext".to_string(),
+                )
+            })?;
         let category_delete_cleanup = runtime
             .shared_get::<Arc<dyn BlogCategoryDeleteCleanupPort>>()
             .unwrap_or_else(|| Arc::new(NoopBlogCategoryDeleteCleanupPort));
@@ -131,7 +134,7 @@ pub(super) async fn ensure_blog_module_enabled(
     }
 }
 
-pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
+pub fn axum_router(runtime: &HostRuntimeContext) -> Result<Router, crate::BlogError> {
     let state = BlogHttpRuntime::from_host(runtime)?;
     let router = Router::new()
         .route("/api/blog/widgets/catalog", get(widgets::catalog))

@@ -27,6 +27,7 @@ pub struct ProductSeoTargetProvider;
 #[async_trait]
 impl SeoTargetProvider for ProductSeoTargetProvider {
     fn slug(&self) -> SeoTargetSlug {
+        // INVARIANT: builtin_slug::PRODUCT is a valid compile-time SEO target slug.
         SeoTargetSlug::new(builtin_slug::PRODUCT).expect("builtin SEO target slug must stay valid")
     }
 
@@ -303,6 +304,7 @@ fn map_product_response(
     populate_image_template_fields(&mut template_fields, open_graph_images.as_slice());
 
     SeoLoadedTargetRecord {
+        // INVARIANT: builtin_slug::PRODUCT is a valid compile-time SEO target slug.
         target_kind: SeoTargetSlug::new(builtin_slug::PRODUCT)
             .expect("builtin SEO target slug must stay valid"),
         target_id: product.id,

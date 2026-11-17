@@ -334,7 +334,7 @@ impl CatalogService {
         let target_revision = product_translation_locale_revision(target_after);
         let target = ProductTranslationExactLocaleRecord::from(target_after.clone());
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             actor_user_id,
             DomainEvent::ProductUpdated { product_id },

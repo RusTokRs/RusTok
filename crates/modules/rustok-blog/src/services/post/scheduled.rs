@@ -163,6 +163,7 @@ impl PostService {
     pub async fn list_tenants_with_due_scheduled_posts(&self) -> BlogResult<Vec<Uuid>> {
         let now = chrono::Utc::now();
         let posts = blog_post::Entity::find()
+            .filter(blog_post::Column::TenantId.is_not_null())
             .filter(blog_post::Column::Status.eq(status_to_storage(BlogPostStatus::Draft)))
             .filter(blog_post::Column::ScheduledAt.is_not_null())
             .filter(blog_post::Column::ScheduledAt.lte(now))

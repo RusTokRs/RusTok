@@ -63,7 +63,7 @@ impl ProductCatalogSchemaService {
             .await?;
         }
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductAttributeSchemaCreated { schema_id },
@@ -144,7 +144,7 @@ impl ProductCatalogSchemaService {
         for translation in &input.translations {
             insert_schema_group_translation(&txn, group_id, translation).await?;
         }
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductAttributeSchemaBindingsChanged {
@@ -239,7 +239,7 @@ impl ProductCatalogSchemaService {
 
         Self::validate_axis_policy_change_in(&txn, tenant_id, previous_policies).await?;
 
-        txn.publish(
+        txn.publish_in_tx(
             tenant_id,
             Some(actor_id),
             DomainEvent::ProductAttributeSchemaBindingsChanged {

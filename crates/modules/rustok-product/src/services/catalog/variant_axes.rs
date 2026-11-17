@@ -605,7 +605,7 @@ impl CatalogService {
             product.revision = Set(revision);
             product.updated_at = Set(Utc::now().into());
             product.update(&txn).await?;
-            txn.publish(
+            txn.publish_in_tx(
                 tenant_id,
                 Some(actor_id),
                 DomainEvent::ProductUpdated { product_id },

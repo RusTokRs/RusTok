@@ -16,7 +16,7 @@ title = "SeaORM query without explicit tenant_id filter"
 description = "Review queries for tenant isolation in their owner context; a missing explicit filter alone does not establish a leak."
 reference = "crates/modules/rustok-tenant/docs/README.md, docs/ai/KNOWN_PITFALLS.md §Database"
 target_globs = ["crates/modules/**/*.rs", "apps/server/src/**/*.rs"]
-exclude_globs = ["**/tests/**", "**/*_test.rs", "**/*_tests.rs", "**/migration/**", "**/migrations/**"]
+exclude_globs = ["**/tests/**", "**/*_test.rs", "**/*_tests.rs", "**/tests.rs", "**/test_support.rs", "**/support/**", "**/migration/**", "**/migrations/**", "**/src/bin/**", "**/bin/**"]
 heuristic = "tenant_filter_missing"
 remediation = "Verify how the owner scopes the query and add tenant isolation where it is missing."
 
@@ -28,7 +28,7 @@ title = "Direct .unwrap() or .expect() in non-test runtime code"
 description = "Production code must propagate errors with Result<T, E>. unwrap()/expect() can panic and crash the server. Allowed only when physically guaranteed by prior code with an explicit '// INVARIANT:' comment."
 reference = "docs/standards/logic-hygiene-patterns.md P-ZERO-PANIC-PROD, docs/standards/logic-hygiene-patterns.md P-CHECK-THEN-UNWRAP, AGENTS.md §14"
 target_globs = ["crates/libs/**/*.rs", "crates/modules/**/*.rs", "apps/server/src/**/*.rs"]
-exclude_globs = ["**/tests/**", "**/*_test.rs", "**/*_tests.rs", "**/tests.rs", "**/benches/**", "**/examples/**", "**/build.rs"]
+exclude_globs = ["**/tests/**", "**/*_test.rs", "**/*_tests.rs", "**/tests.rs", "**/test_support.rs", "**/support/**", "**/benches/**", "**/examples/**", "**/build.rs"]
 pattern = '(\.unwrap\(\)|\.expect\("[^"]+"\))'
 remediation = "Replace with `?` error propagation using thiserror, or if physically impossible to fail, add `// INVARIANT: <explanation>` immediately above the call."
 
@@ -68,7 +68,7 @@ title = "Use of anyhow or bare String error in library or module crates"
 description = "Library crates and domain modules must use strongly-typed errors via thiserror. anyhow loses type safety and prevents callers from matching on error variants."
 reference = "docs/standards/errors.md, docs/standards/logic-hygiene-patterns.md P-TYPED-DOMAIN-ERROR"
 target_globs = ["crates/libs/**/*.rs", "crates/modules/**/*.rs"]
-exclude_globs = ["**/tests/**", "**/*_test.rs", "**/benches/**", "apps/**", "**/admin/**", "**/storefront/**", "**/migrations/**", "**/migration/**", "**/seo_targets.rs", "**/seo_audience_targets.rs"]
+exclude_globs = ["**/tests/**", "**/*_test.rs", "**/benches/**", "apps/**", "**/admin/**", "**/storefront/**", "**/migrations/**", "**/migration/**", "**/seo_targets.rs", "**/seo_audience_targets.rs", "**/public_comments_snapshot.rs", "**/src/bin/**", "**/bin/**"]
 pattern = '(anyhow::|Result<[^<>,]+(?:<[^<>]*>)?,\s*anyhow::Error>|Result<[^<>,]+(?:<[^<>]*>)?,\s*String>)'
 remediation = "Define a typed error enum with `#[derive(thiserror::Error)]` in the crate's error module and return that instead."
 

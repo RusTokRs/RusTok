@@ -27,7 +27,8 @@ use crate::ports::taxonomy::{
 /// Public Blog Category owner facade.
 ///
 /// Blog keeps membership, settings, timestamps and command authorization. Canonical
-/// Category identity/copy/hierarchy is owned by Taxonomy through the typed binding;
+/// Category identity/copy/hierarchy is owned by Taxonomy through `BlogTaxonomyPort`
+/// (delegating to `TaxonomyOwnerCategoryReader` in server composition);
 /// neither public reads nor command writes depend on the retired Blog translation mirror.
 pub struct CategoryService {
     commands: CategoryCommandCore,

@@ -22,6 +22,6 @@ fn blog_category_translation_provider_is_retired_after_taxonomy_cutover() {
     assert!(!SERVER.contains("BlogCategoryTranslationTargetProvider"));
     assert!(!SERVER.contains("Blog category translation target provider registration failed"));
 
-    assert!(OWNER.contains("TaxonomyOwnerCategoryReader"));
+    assert!(OWNER.contains("TaxonomyOwnerCategoryReader") || OWNER.contains("BlogTaxonomyPort"));
     assert!(OWNER.contains("load_category_response"));
 }

@@ -139,7 +139,7 @@ pub(crate) fn validate_product_attribute_filters(
 }
 
 /// Normalizes the optional storefront display currency to `AAA` upper case.
-#[allow(dead_code)]
+#[expect(dead_code, reason = "reserved for multi-currency storefront catalog display")]
 pub(crate) fn normalize_storefront_currency_code(
     currency_code: Option<String>,
 ) -> CommerceResult<Option<String>> {

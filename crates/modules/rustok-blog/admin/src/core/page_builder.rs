@@ -21,6 +21,7 @@ const BLOG_BLOCK_CATEGORY: &str = "blog";
 
 static GENERATED_BLOG_CONTRIBUTION_MANIFEST: LazyLock<ModuleContributionManifest> =
     LazyLock::new(|| {
+        // INVARIANT: GENERATED_BLOG_CONTRIBUTION_MANIFEST_JSON is generated and validated by build.rs at compile time
         serde_json::from_str(GENERATED_BLOG_CONTRIBUTION_MANIFEST_JSON)
             .expect("build-generated Blog contribution manifest must deserialize")
     });
