@@ -1011,8 +1011,8 @@ fn required<'a>(
 #[cfg(test)]
 mod tests {
     use super::{
-        PreparedUserTokens, REFRESH_TOKEN_GRANT, commit_refresh_rotation, require_grant,
-        refresh_family_deadline, resolve_client, scopes_for_refresh, validate_requested_scopes,
+        PreparedUserTokens, REFRESH_TOKEN_GRANT, commit_refresh_rotation, refresh_family_deadline,
+        require_grant, resolve_client, scopes_for_refresh, validate_requested_scopes,
     };
     use crate::models::{oauth_apps, oauth_authorization_codes as oauth_codes, oauth_tokens};
     use chrono::Utc;
@@ -1098,9 +1098,9 @@ mod tests {
             &stale_hash,
             Some((now - chrono::Duration::minutes(2)).into()),
         )
-            .insert(&db)
-            .await
-            .expect("insert revoked root");
+        .insert(&db)
+        .await
+        .expect("insert revoked root");
         let live_id = Uuid::new_v4();
         make_token(live_id, "live-hash", None)
             .insert(&db)
@@ -1124,14 +1124,9 @@ mod tests {
         .await
         .expect("create fault injection");
 
-        let error = super::validate_refresh_token(
-            &db,
-            &client,
-            tenant_id,
-            raw_stale_token,
-        )
-        .await
-        .expect_err("real token validation must surface revocation failure");
+        let error = super::validate_refresh_token(&db, &client, tenant_id, raw_stale_token)
+            .await
+            .expect_err("real token validation must surface revocation failure");
         assert_eq!(error.error, "server_error");
         assert!(
             oauth_tokens::Entity::find_by_id(live_id)
@@ -1146,14 +1141,9 @@ mod tests {
         db.execute_unprepared("DROP TRIGGER fail_refresh_reuse_revocation")
             .await
             .expect("remove fault injection");
-        let retry = super::validate_refresh_token(
-            &db,
-            &client,
-            tenant_id,
-            raw_stale_token,
-        )
-        .await
-        .expect_err("already-revoked stale token still cannot be used");
+        let retry = super::validate_refresh_token(&db, &client, tenant_id, raw_stale_token)
+            .await
+            .expect_err("already-revoked stale token still cannot be used");
         assert_eq!(retry.error, "invalid_grant");
         assert!(
             oauth_tokens::Entity::find_by_id(live_id)
