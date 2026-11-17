@@ -751,6 +751,14 @@ mod tests {
             tenant_id,
             &principal(vec![Permission::USERS_READ])
         ).is_err());
+        let mut delegated = principal(vec![Permission::USERS_READ]);
+        delegated.session_id = Uuid::nil();
+        delegated.client_id = Some(Uuid::new_v4());
+        delegated.principal_kind = AuthPrincipalKind::DelegatedUser;
+        delegated.grant_type = "authorization_code".to_string();
+        delegated.scopes = vec!["users:read".to_string()];
+        assert!(super::ensure_channel_manage_access(tenant_id, &delegated).is_err());
+
         assert!(super::ensure_channel_manage_access(
             tenant_id,
             &principal(Vec::new())
