@@ -9,6 +9,9 @@ use rustok_storage::StorageConfig;
 
 use crate::services::redis_runtime::resolve_redis_url;
 
+const MAX_OUTBOX_RELAY_BATCH_SIZE: u64 = 100_000;
+const MAX_OUTBOX_RELAY_CONCURRENCY: usize = 128;
+
 const DEFAULT_TENANT_ID: Uuid = Uuid::from_u128(1);
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -905,17 +908,25 @@ impl RustokSettings {
             )));
         }
 
-        if parsed.events.relay_batch_size == 0 {
+        if parsed.events.relay_batch_size == 0
+            || parsed.events.relay_batch_size > MAX_OUTBOX_RELAY_BATCH_SIZE
+        {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "rustok.events.relay_batch_size must be > 0",
+                format!(
+                    "rustok.events.relay_batch_size must be between 1 and {MAX_OUTBOX_RELAY_BATCH_SIZE}"
+                ),
             )));
         }
 
-        if parsed.events.relay_max_concurrency == 0 {
+        if parsed.events.relay_max_concurrency == 0
+            || parsed.events.relay_max_concurrency > MAX_OUTBOX_RELAY_CONCURRENCY
+        {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "rustok.events.relay_max_concurrency must be > 0",
+                format!(
+                    "rustok.events.relay_max_concurrency must be between 1 and {MAX_OUTBOX_RELAY_CONCURRENCY}"
+                ),
             )));
         }
 
@@ -1807,6 +1818,28 @@ mod tests {
         let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
         let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
         let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        let oversized_batch = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "relay_batch_size": u64::MAX
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(oversized_batch))
+            .expect_err("relay batch must remain bounded");
+        assert!(error.to_string().contains("relay_batch_size must be between"));
+
+        let oversized_concurrency = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "relay_max_concurrency": usize::MAX
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(oversized_concurrency))
+            .expect_err("relay concurrency must remain bounded");
+        assert!(error.to_string().contains("relay_max_concurrency must be between"));
 
         let oversized_backoff = serde_json::json!({
             "rustok": {
