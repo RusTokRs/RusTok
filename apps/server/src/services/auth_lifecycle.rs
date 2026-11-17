@@ -526,9 +526,9 @@ impl AuthLifecycleService {
                 // Run a full Argon2 verification against a dummy hash so
                 // an unknown email takes as long as a wrong password:
                 // without this, login latency enumerates accounts.
-                let _ =
-                    verify_password_async(password.to_string(), crate::auth::dummy_password_hash())
-                        .await;
+                verify_password_async(password.to_string(), crate::auth::dummy_password_hash())
+                    .await
+                    .map_err(AuthLifecycleError::from)?;
                 return Err(AuthLifecycleError::InvalidCredentials);
             }
         };
@@ -1502,6 +1502,24 @@ mod tests {
         assert_eq!(snapshot.change_password_sessions_revoked_total, 0);
         assert_eq!(snapshot.flow_inconsistency_total, 0);
         assert_eq!(snapshot.login_inactive_user_attempt_total, 0);
+    }
+
+    #[tokio::test]
+    async fn unknown_login_still_returns_invalid_credentials_after_dummy_verification() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let config = test_auth_config("unknown-account-secret", 3600, 86400);
+        let result = AuthLifecycleService::login_with_config(
+            &db,
+            &config,
+            uuid::Uuid::new_v4(),
+            "unknown@example.com",
+            "NotTheRightPassword123!",
+            None,
+            None,
+            false,
+        )
+        .await;
+        assert!(matches!(result, Err(AuthLifecycleError::InvalidCredentials)));
     }
 
     #[tokio::test]

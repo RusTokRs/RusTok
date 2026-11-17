@@ -1,7 +1,8 @@
 use chrono::Utc;
 use rustok_events::DomainEvent;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Set, TransactionTrait,
+    sea_query::Expr,
 };
 
 use crate::auth::{
@@ -58,17 +59,18 @@ impl AuthLifecycleService {
         let now = Utc::now();
         let tx = ctx.db().begin().await.map_err(AuthLifecycleError::from)?;
 
-        let updated = users::Entity::update_many()
-            .col_expr(users::Column::PasswordHash, Expr::value(new_hash))
-            .col_expr(users::Column::PasswordChangedAt, Expr::value(now))
-            .col_expr(users::Column::UpdatedAt, Expr::value(now))
-            .filter(users::Column::Id.eq(user.id))
-            .filter(users::Column::TenantId.eq(tenant_id))
-            .filter(users::Column::PasswordHash.eq(previous_hash))
-            .exec(&tx)
-            .await
-            .map_err(AuthLifecycleError::from)?;
-        if updated.rows_affected != 1 {
+        // The initial active-user check precedes password hashing and may race
+        // with deactivation. Keep status and credential state in the atomic CAS.
+        if !update_password_if_active(
+            &tx,
+            tenant_id,
+            user.id,
+            &previous_hash,
+            &new_hash,
+            now,
+        )
+        .await?
+        {
             tx.rollback().await.map_err(AuthLifecycleError::from)?;
             return Err(AuthLifecycleError::InvalidResetToken);
         }
@@ -115,6 +117,31 @@ impl AuthLifecycleService {
         Self::record_password_reset_sessions_revoked(revoked_sessions.rows_affected);
         Ok(())
     }
+}
+
+/// The account can be deactivated after its initial lookup. This predicate
+/// serializes deactivation and reset on the same row and prevents a reset from
+/// succeeding against a now-inactive user.
+async fn update_password_if_active<C: ConnectionTrait>(
+    db: &C,
+    tenant_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+    previous_hash: &str,
+    new_hash: &str,
+    now: chrono::DateTime<Utc>,
+) -> Result<bool, AuthLifecycleError> {
+    let updated = users::Entity::update_many()
+        .col_expr(users::Column::PasswordHash, Expr::value(new_hash.to_owned()))
+        .col_expr(users::Column::PasswordChangedAt, Expr::value(now))
+        .col_expr(users::Column::UpdatedAt, Expr::value(now))
+        .filter(users::Column::Id.eq(user_id))
+        .filter(users::Column::TenantId.eq(tenant_id))
+        .filter(users::Column::Status.eq(rustok_core::UserStatus::Active))
+        .filter(users::Column::PasswordHash.eq(previous_hash))
+        .exec(db)
+        .await
+        .map_err(AuthLifecycleError::from)?;
+    Ok(updated.rows_affected == 1)
 }
 
 #[cfg(test)]
@@ -173,6 +200,45 @@ mod tests {
         }
 
         (db, ctx, config, tenant, user)
+    }
+
+    #[tokio::test]
+    async fn reset_cas_rejects_deactivation_after_credential_read() {
+        let (db, _ctx, _config, tenant, user) = setup_user_with_sessions(
+            "reset-tenant-deactivated",
+            "deactivated@example.com",
+            &["deactivated-session"],
+        )
+        .await;
+
+        users::ActiveModel {
+            id: Set(user.id),
+            status: Set(rustok_core::UserStatus::Inactive),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .expect("deactivate user");
+
+        let updated = update_password_if_active(
+            &db,
+            tenant.id,
+            user.id,
+            &user.password_hash,
+            "unexpected-new-hash",
+            Utc::now(),
+        )
+        .await
+        .expect("compare-and-swap");
+        assert!(!updated);
+
+        let stored = users::Entity::find_by_id(user.id)
+            .one(&db)
+            .await
+            .expect("reload user")
+            .expect("user must exist");
+        assert_eq!(stored.password_hash, user.password_hash);
+        assert!(stored.password_changed_at.is_none());
     }
 
     #[tokio::test]
