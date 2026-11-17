@@ -6,7 +6,7 @@ use crate::auth::AuthConfig;
 use crate::common::settings::RustokSettings;
 use crate::error::Result;
 use crate::services::app_lifecycle::{
-    ServerBootstrapInitializationLock, connect_runtime_workers_with_runtime,
+    ServerBootstrapInitializationLock, StopHandle, connect_runtime_workers_with_runtime,
 };
 use crate::services::app_router::compose_application_router;
 use crate::services::app_runtime::bootstrap_app_runtime;
@@ -28,6 +28,11 @@ pub async fn initialize_server_context(
 ) -> Result<()> {
     let initialization = ServerBootstrapInitializationLock::ensure(runtime_ctx);
     let _initialization_guard = initialization.lock().await;
+    if StopHandle::ensure(runtime_ctx).is_stopping() {
+        return Err(crate::error::Error::Message(
+            "server shutdown started before runtime initialization".to_string(),
+        ));
+    }
     check_production_secrets(
         jwt_secret,
         database_uri,
@@ -194,6 +199,11 @@ pub async fn bootstrap_application_router(
 ) -> Result<AxumRouter> {
     let initialization = ServerBootstrapInitializationLock::ensure(&runtime_ctx);
     let _initialization_guard = initialization.lock().await;
+    if StopHandle::ensure(&runtime_ctx).is_stopping() {
+        return Err(crate::error::Error::Message(
+            "server shutdown started before application router bootstrap".to_string(),
+        ));
+    }
     tracing::info!("RusTok application bootstrap started");
     configure_product_catalog_deployment(&runtime_ctx).await?;
     configure_profile_media_public_image_deployment(&runtime_ctx).await?;
