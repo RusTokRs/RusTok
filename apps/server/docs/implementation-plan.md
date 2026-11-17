@@ -4,6 +4,37 @@
 
 Strengthen `apps/server` as the central backend runtime with formal API contracts, predictable operational diagnostics, and hardened security gates.
 
+## Bounded authentication and OAuth follow-up (2026-11-17)
+
+This ordinary server development pass is not an activation or completion of
+the full-stack audit ledger. Work is isolated in
+`fix/server-deep-review-2026-11-17` (PR #4742), based on
+`9b32aacabc3c032a009eb9c18609547242766a29`.
+
+- Unknown-email timing equalization now propagates both dummy Argon2
+  initialization failures and verification failures; no empty-hash fallback.
+- Password-reset credential CAS rejects accounts deactivated while the reset
+  password was being hashed. Password changes reject expired current sessions.
+- In-place first-party refresh/session lifecycle enforces the original 90-day
+  absolute deadline across fresh issuance, refresh, active session checks,
+  listing and password-change admission, including legacy rows.
+- OAuth refresh `scope` can only retain or reduce the existing grant, never
+  silently grant more than requested. Cookie-session refresh/logout reject
+  duplicate same-name cookies rather than choosing an attacker-influenced order.
+- Blank `OTEL_SERVICE_NAME` no longer masks a usable `RUSTOK_SERVICE_NAME`.
+- Focused tests cover the added behavioral branches. Cargo, formatting,
+  SQLite/PostgreSQL concurrency and real-HTTP tests are **not run** in this
+  GitHub-API-only editing environment; the maintainer must run focused checks
+  before merge. Broader server inspection is unfinished.
+
+Remaining auth contract gaps requiring owner-level design and verification:
+the in-place first-party refresh session stores only the immediately previous
+digest, so replay of older generations is denied but does not revoke the
+active lineage. OAuth token reuse detection currently has best-effort
+revocation on database errors without durable retry/incident reconciliation.
+These are not closed by this pass and must not be reported as remediated.
+
+
 ## Server Engineering Audit Continuation (2026-10-28)
 
 This is **bounded remediation**, not completion of the exhaustive FS-01
