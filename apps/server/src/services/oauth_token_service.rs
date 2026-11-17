@@ -169,15 +169,15 @@ impl OAuthTokenService {
                     OAuthTokenProtocolError::invalid_grant("Refresh token has no associated user")
                 })?;
                 let family = resolve_refresh_family(db, &current).await?;
-                if Utc::now()
-                    >= family.created_at
-                        + chrono::Duration::days(USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS)
-                {
+                if Utc::now() >= refresh_family_deadline(family.created_at)? {
                     return Err(OAuthTokenProtocolError::invalid_grant(
                         "Refresh token family exceeded its maximum lifetime",
                     ));
                 }
-                let scopes = current.scopes_list();
+                // OAuth refresh requests may narrow an existing grant, never widen it.
+                // An omitted scope retains the original grant; a supplied empty
+                // scope must not silently restore the full set of permissions.
+                let scopes = scopes_for_refresh(&current.scopes_list(), request.scope.as_deref())?;
                 let prepared = prepare_user_tokens(
                     db,
                     &app,
@@ -200,7 +200,8 @@ impl OAuthTokenService {
             }
         };
 
-        if let Err(error) = OAuthAppService::touch_last_used_scoped(db, app.tenant_id, app.id).await {
+        if let Err(error) = OAuthAppService::touch_last_used_scoped(db, app.tenant_id, app.id).await
+        {
             tracing::warn!(app_id = %app.id, tenant_id = %app.tenant_id, error = %error, "Failed to update OAuth app usage timestamp");
         }
 
@@ -236,10 +237,11 @@ async fn resolve_client(
     let client_id = required(request.client_id.as_deref(), "client_id is required")?;
     let client_id = Uuid::parse_str(client_id)
         .map_err(|_| OAuthTokenProtocolError::invalid_client("Invalid client_id format"))?;
-    let app = oauth_apps::Entity::find_active_security_by_client_id_scoped(db, tenant_id, client_id)
-        .await
-        .map_err(|_| OAuthTokenProtocolError::server_error("Failed to resolve OAuth client"))?
-        .ok_or_else(|| OAuthTokenProtocolError::invalid_client("Unknown or inactive client"))?;
+    let app =
+        oauth_apps::Entity::find_active_security_by_client_id_scoped(db, tenant_id, client_id)
+            .await
+            .map_err(|_| OAuthTokenProtocolError::server_error("Failed to resolve OAuth client"))?
+            .ok_or_else(|| OAuthTokenProtocolError::invalid_client("Unknown or inactive client"))?;
 
     Ok(app)
 }
@@ -309,6 +311,24 @@ fn validate_requested_scopes(
     }
     validate_scope_subset(&allowed, requested)?;
     Ok(requested.to_vec())
+}
+
+fn scopes_for_refresh(
+    current: &[String],
+    requested: Option<&str>,
+) -> Result<Vec<String>, OAuthTokenProtocolError> {
+    let Some(requested) = requested else {
+        return Ok(current.to_vec());
+    };
+
+    let narrowed = parse_requested_scopes(Some(requested));
+    if narrowed.is_empty() {
+        return Err(OAuthTokenProtocolError::invalid_scope(
+            "Refresh scope must not be empty",
+        ));
+    }
+    validate_scope_subset(current, &narrowed)?;
+    Ok(narrowed)
 }
 
 fn validate_scope_subset(
@@ -418,7 +438,7 @@ async fn validate_refresh_token(
             // token replayed after the grace window, that is theft
             // evidence: revoke the whole family before failing closed
             // (RFC 9700 refresh-token reuse guidance).
-            detect_oauth_refresh_reuse(db, app.id, tenant_id, &token_hash).await;
+            detect_oauth_refresh_reuse(db, app.id, tenant_id, &token_hash).await?;
             return Err(OAuthTokenProtocolError::invalid_grant(
                 "Refresh token is invalid, expired, or already used",
             ));
@@ -448,6 +468,20 @@ async fn validate_refresh_token(
 struct RefreshTokenFamily {
     family_id: Uuid,
     created_at: chrono::DateTime<Utc>,
+}
+
+fn refresh_family_deadline(
+    created_at: chrono::DateTime<Utc>,
+) -> Result<chrono::DateTime<Utc>, OAuthTokenProtocolError> {
+    created_at
+        .checked_add_signed(chrono::Duration::days(
+            USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS,
+        ))
+        .ok_or_else(|| {
+            OAuthTokenProtocolError::invalid_grant(
+                "Refresh token family has an invalid creation timestamp",
+            )
+        })
 }
 
 /// Resolve the lineage of the presented refresh token. Pre-migration
@@ -486,17 +520,15 @@ async fn resolve_refresh_family(
     })
 }
 
-/// OAuth refresh-token reuse detection: a presented hash that belongs
-/// to an already-rotated (revoked) token and is replayed after the
-/// grace window can only have been copied, so every live token in the
-/// family is revoked. Best-effort by design — the caller fails closed
-/// with invalid_grant regardless of the outcome here.
+/// Detect a replayed revoked OAuth refresh token and durably revoke the
+/// entire active family. A DB failure must propagate so callers can retry.
+/// Invalid/unknown tokens without a revoked record remain invalid_grant.
 async fn detect_oauth_refresh_reuse(
     db: &DatabaseConnection,
     app_id: Uuid,
     tenant_id: Uuid,
     token_hash: &str,
-) {
+) -> Result<(), OAuthTokenProtocolError> {
     let stale = OAuthTokens::find()
         .filter(oauth_tokens::Column::TokenHash.eq(token_hash))
         .filter(oauth_tokens::Column::AppId.eq(app_id))
@@ -505,18 +537,25 @@ async fn detect_oauth_refresh_reuse(
         .filter(oauth_tokens::Column::TokenKind.eq(oauth_tokens::TOKEN_KIND_REFRESH))
         .filter(oauth_tokens::Column::RevokedAt.is_not_null())
         .one(db)
-        .await;
-    let Ok(Some(stale)) = stale else {
-        return;
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, %app_id, %tenant_id, "Failed to check OAuth refresh token reuse");
+            OAuthTokenProtocolError::server_error("Failed to check refresh-token reuse")
+        })?;
+    let Some(stale) = stale else {
+        return Ok(());
     };
     let Some(revoked_at) = stale.revoked_at else {
-        return;
+        return Ok(());
     };
     if Utc::now().timestamp() - revoked_at.timestamp() < OAUTH_REFRESH_REUSE_GRACE_SECONDS {
-        return;
+        return Ok(());
     }
 
     let family_id = stale.family_id.unwrap_or(stale.id);
+    let user_id = stale.user_id.ok_or_else(|| {
+        OAuthTokenProtocolError::server_error("Replayed OAuth refresh token has no subject")
+    })?;
     tracing::warn!(
         app_id = %app_id,
         user_id = ?stale.user_id,
@@ -525,11 +564,12 @@ async fn detect_oauth_refresh_reuse(
     );
 
     let now = Utc::now();
-    if let Err(error) = OAuthTokens::update_many()
+    OAuthTokens::update_many()
         .col_expr(oauth_tokens::Column::RevokedAt, Expr::value(now))
         .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
         .filter(oauth_tokens::Column::AppId.eq(app_id))
         .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
+        .filter(oauth_tokens::Column::UserId.eq(user_id))
         .filter(oauth_tokens::Column::RevokedAt.is_null())
         .filter(
             Condition::any()
@@ -538,13 +578,15 @@ async fn detect_oauth_refresh_reuse(
         )
         .exec(db)
         .await
-    {
-        tracing::error!(
-            %error,
-            family_id = %family_id,
-            "failed to revoke OAuth refresh token family after reuse detection"
-        );
-    }
+        .map_err(|error| {
+            tracing::error!(
+                %error,
+                family_id = %family_id,
+                "failed to revoke OAuth refresh token family after reuse detection"
+            );
+            OAuthTokenProtocolError::server_error("Failed to revoke replayed refresh-token family")
+        })?;
+    Ok(())
 }
 
 /// Revoke the delegated token lineage issued from one authorization code.
@@ -788,10 +830,14 @@ async fn prepare_user_tokens(
         updated_at: Set(now.into()),
     };
 
+    let family_deadline = refresh_family_deadline(family_created_at)?;
+    let sliding_deadline = now
+        .checked_add_signed(chrono::Duration::days(USER_REFRESH_TOKEN_TTL_DAYS))
+        .ok_or_else(|| {
+            OAuthTokenProtocolError::server_error("Refresh token expiry is out of range")
+        })?;
     let refresh_model = refresh_hash.map(|refresh_hash| {
-        let expires_at = (now + chrono::Duration::days(USER_REFRESH_TOKEN_TTL_DAYS)).min(
-            family_created_at + chrono::Duration::days(USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS),
-        );
+        let expires_at = sliding_deadline.min(family_deadline);
         oauth_tokens::ActiveModel {
             id: Set(token_id),
             app_id: Set(app.id),
@@ -897,7 +943,7 @@ async fn commit_refresh_rotation(
             OAuthTokenProtocolError::server_error("Failed to roll back refresh-token rotation")
         })?;
         detect_oauth_refresh_reuse(db, current.app_id, current.tenant_id, &current.token_hash)
-            .await;
+            .await?;
         return Err(OAuthTokenProtocolError::invalid_grant(
             "Refresh token is invalid, expired, or already used",
         ));
@@ -965,8 +1011,8 @@ fn required<'a>(
 #[cfg(test)]
 mod tests {
     use super::{
-        PreparedUserTokens, REFRESH_TOKEN_GRANT, commit_refresh_rotation, require_grant,
-        resolve_client, validate_requested_scopes,
+        PreparedUserTokens, REFRESH_TOKEN_GRANT, commit_refresh_rotation, refresh_family_deadline,
+        require_grant, resolve_client, scopes_for_refresh, validate_requested_scopes,
     };
     use crate::models::{oauth_apps, oauth_authorization_codes as oauth_codes, oauth_tokens};
     use chrono::Utc;
@@ -1002,6 +1048,121 @@ mod tests {
             created_at: now,
             updated_at: now,
         }
+    }
+
+    #[tokio::test]
+    async fn refresh_reuse_revocation_failure_is_reported_and_can_be_retried() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
+        let backend = db.get_database_backend();
+        let schema = Schema::new(backend);
+        db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_tokens::Entity)))
+            .await
+            .expect("oauth_tokens table");
+
+        let app_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let family_id = Uuid::new_v4();
+        let now = Utc::now();
+        let raw_stale_token = "revoked-refresh-cookie";
+        let stale_hash = crate::auth::hash_refresh_token(raw_stale_token);
+        let mut client = app(
+            serde_json::json!(["openid"]),
+            serde_json::json!(["authorization_code", "refresh_token"]),
+        );
+        client.id = app_id;
+        client.tenant_id = tenant_id;
+
+        let make_token = |id, hash: &str, revoked_at| oauth_tokens::ActiveModel {
+            id: Set(id),
+            app_id: Set(app_id),
+            user_id: Set(Some(user_id)),
+            tenant_id: Set(tenant_id),
+            token_hash: Set(hash.to_string()),
+            family_id: Set(Some(family_id)),
+            authorization_code_id: Set(None),
+            grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
+            token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+            consent_granted_at: Set(None),
+            scopes: Set(serde_json::json!(["openid"])),
+            expires_at: Set((now + chrono::Duration::days(1)).into()),
+            revoked_at: Set(revoked_at),
+            last_used_at: Set(None),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        };
+        make_token(
+            family_id,
+            &stale_hash,
+            Some((now - chrono::Duration::minutes(2)).into()),
+        )
+        .insert(&db)
+        .await
+        .expect("insert revoked root");
+        let live_id = Uuid::new_v4();
+        make_token(live_id, "live-hash", None)
+            .insert(&db)
+            .await
+            .expect("insert live descendant");
+
+        // Even a corrupt shared family id cannot revoke another subject's
+        // credentials within the same app and tenant.
+        let unrelated_id = Uuid::new_v4();
+        let mut unrelated = make_token(unrelated_id, "other-subject-hash", None);
+        unrelated.user_id = Set(Some(Uuid::new_v4()));
+        unrelated
+            .insert(&db)
+            .await
+            .expect("insert unrelated subject");
+
+        db.execute_unprepared(
+            "CREATE TRIGGER fail_refresh_reuse_revocation BEFORE UPDATE ON oauth_tokens
+             BEGIN SELECT RAISE(FAIL, 'simulated persistence failure'); END;",
+        )
+        .await
+        .expect("create fault injection");
+
+        let error = super::validate_refresh_token(&db, &client, tenant_id, raw_stale_token)
+            .await
+            .expect_err("real token validation must surface revocation failure");
+        assert_eq!(error.error, "server_error");
+        assert!(
+            oauth_tokens::Entity::find_by_id(live_id)
+                .one(&db)
+                .await
+                .expect("lookup")
+                .expect("live token")
+                .revoked_at
+                .is_none()
+        );
+
+        db.execute_unprepared("DROP TRIGGER fail_refresh_reuse_revocation")
+            .await
+            .expect("remove fault injection");
+        let retry = super::validate_refresh_token(&db, &client, tenant_id, raw_stale_token)
+            .await
+            .expect_err("already-revoked stale token still cannot be used");
+        assert_eq!(retry.error, "invalid_grant");
+        assert!(
+            oauth_tokens::Entity::find_by_id(live_id)
+                .one(&db)
+                .await
+                .expect("lookup")
+                .expect("descendant")
+                .revoked_at
+                .is_some()
+        );
+        assert!(
+            oauth_tokens::Entity::find_by_id(unrelated_id)
+                .one(&db)
+                .await
+                .expect("lookup")
+                .expect("unrelated subject")
+                .revoked_at
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -1119,6 +1280,47 @@ mod tests {
             validate_requested_scopes(&app, &["catalog:read".to_string(), "admin:*".to_string()])
                 .is_err()
         );
+    }
+
+    #[test]
+    fn refresh_family_deadline_rejects_unrepresentable_timestamps() {
+        let now = Utc::now();
+        assert_eq!(
+            refresh_family_deadline(now).expect("normal family"),
+            now + chrono::Duration::days(90)
+        );
+        let invalid = refresh_family_deadline(chrono::DateTime::<Utc>::MAX_UTC)
+            .expect_err("corrupt future timestamp must not panic");
+        assert_eq!(invalid.error, "invalid_grant");
+    }
+
+    #[test]
+    fn refresh_scope_is_never_widened_and_supports_narrowing() {
+        let original = vec!["profile:read".to_string(), "email:read".to_string()];
+
+        assert_eq!(scopes_for_refresh(&original, None).unwrap(), original);
+        assert_eq!(
+            scopes_for_refresh(&original, Some("profile:read")).unwrap(),
+            vec!["profile:read".to_string()]
+        );
+        assert_eq!(
+            scopes_for_refresh(&original, Some("email:read profile:read")).unwrap(),
+            vec!["email:read".to_string(), "profile:read".to_string()]
+        );
+        assert_eq!(
+            scopes_for_refresh(&original, Some("profile:read admin:write"))
+                .unwrap_err()
+                .error,
+            "invalid_scope"
+        );
+        for empty in ["", "   \t"] {
+            assert_eq!(
+                scopes_for_refresh(&original, Some(empty))
+                    .unwrap_err()
+                    .error,
+                "invalid_scope"
+            );
+        }
     }
 
     #[test]

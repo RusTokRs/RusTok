@@ -116,10 +116,13 @@ fn selection_policy(
     policy
 }
 
-fn document_policy(document: &ExecutableDocument) -> ForumOperationPolicy {
+fn document_policy(
+    document: &ExecutableDocument,
+    operation_name: Option<&str>,
+) -> ForumOperationPolicy {
     let mut policy = ForumOperationPolicy::default();
-    let mut visited_fragments = BTreeSet::new();
-    for (_, operation) in document.operations.iter() {
+    for operation in super::selected_operations(document, operation_name) {
+        let mut visited_fragments = BTreeSet::new();
         policy.merge(selection_policy(
             &operation.node.selection_set.node,
             document,
@@ -151,7 +154,8 @@ impl Extension for ForumPrincipalPolicyExtension {
     ) -> ServerResult<Request> {
         let mut request = next.run(ctx, request).await?;
         if !request.query.trim().is_empty() {
-            let policy = document_policy(request.parsed_query()?);
+            let operation_name = request.operation_name.clone();
+            let policy = document_policy(request.parsed_query()?, operation_name.as_deref());
             if !policy.is_empty() {
                 request.data.insert(policy);
             }
@@ -215,8 +219,29 @@ mod tests {
     use super::document_policy;
 
     fn policy(query: &str) -> super::ForumOperationPolicy {
+        policy_for(query, None)
+    }
+
+    fn policy_for(query: &str, operation_name: Option<&str>) -> super::ForumOperationPolicy {
         let document = async_graphql::parser::parse_query(query).expect("query should parse");
-        document_policy(&document)
+        document_policy(&document, operation_name)
+    }
+
+    #[test]
+    fn ignores_forum_actions_in_unselected_operations() {
+        let query = r#"
+            query PublicInfo { ping }
+            mutation CreateTopic { createForumTopic(input: {}) { id } }
+        "#;
+
+        assert!(
+            policy_for(query, Some("PublicInfo")).is_empty(),
+            "unselected forum mutation must not impose service-principal restrictions"
+        );
+        assert!(
+            policy_for(query, Some("CreateTopic")).human_only,
+            "selected forum mutation must retain the human-principal restriction"
+        );
     }
 
     #[test]

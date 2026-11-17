@@ -129,6 +129,7 @@ fn collect_fields(
     selection_set: &SelectionSet,
     document: &ExecutableDocument,
     fields: &mut BTreeSet<ModuleGraphqlField>,
+    visited_fragments: &mut BTreeSet<String>,
 ) {
     for selection in &selection_set.items {
         match &selection.node {
@@ -140,14 +141,17 @@ fn collect_fields(
                 }
             }
             Selection::FragmentSpread(fragment) => {
-                if let Some(definition) = document.fragments.get(&fragment.node.fragment_name.node)
-                {
-                    collect_fields(
-                        operation_type,
-                        &definition.node.selection_set.node,
-                        document,
-                        fields,
-                    );
+                let fragment_name = fragment.node.fragment_name.node.as_str();
+                if visited_fragments.insert(fragment_name.to_owned()) {
+                    if let Some(definition) = document.fragments.get(fragment_name) {
+                        collect_fields(
+                            operation_type,
+                            &definition.node.selection_set.node,
+                            document,
+                            fields,
+                            visited_fragments,
+                        );
+                    }
                 }
             }
             Selection::InlineFragment(fragment) => collect_fields(
@@ -155,6 +159,7 @@ fn collect_fields(
                 &fragment.node.selection_set.node,
                 document,
                 fields,
+                visited_fragments,
             ),
         }
     }
@@ -165,14 +170,16 @@ fn classify_document(request: &mut Request) -> ServerResult<()> {
         return Ok(());
     }
 
+    let operation_name = request.operation_name.clone();
     let document = request.parsed_query()?;
     let mut fields = BTreeSet::new();
-    for (_, operation) in document.operations.iter() {
+    for operation in super::selected_operations(document, operation_name.as_deref()) {
         collect_fields(
             operation.node.ty,
             &operation.node.selection_set.node,
             document,
             &mut fields,
+            &mut BTreeSet::new(),
         );
     }
     if !fields.is_empty() {
@@ -330,6 +337,55 @@ mod tests {
                 .any(|field| field.name == "buildProgress"
                     && field.authority == ModuleAuthority::Read)
         );
+    }
+
+    #[test]
+    fn ignores_module_fields_in_unselected_operations() {
+        let query = r#"
+            query PublicInfo { ping }
+            query ModuleState { moduleRegistry { moduleSlug } }
+        "#;
+
+        let mut public = Request::new(query).operation_name("PublicInfo");
+        classify_document(&mut public).expect("document should parse");
+        assert!(
+            public
+                .data
+                .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+                .is_none()
+        );
+
+        let mut admin = Request::new(query).operation_name("ModuleState");
+        classify_document(&mut admin).expect("document should parse");
+        let policy = admin
+            .data
+            .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+            .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
+            .expect("selected module policy should be attached");
+        assert_eq!(policy.0.len(), 1);
+        assert_eq!(policy.0[0].name, "moduleRegistry");
+    }
+
+    #[test]
+    fn cyclic_fragments_are_bounded_and_module_fields_are_still_detected() {
+        let mut request = Request::new(
+            r#"
+                query ModuleState { ...A }
+                fragment A on Query { ...B }
+                fragment B on Query {
+                    ...A
+                    moduleRegistry { moduleSlug }
+                }
+            "#,
+        );
+
+        classify_document(&mut request).expect("cyclic document should parse");
+        let policy = request
+            .data
+            .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+            .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
+            .expect("module policy should be attached");
+        assert!(policy.0.iter().any(|field| field.name == "moduleRegistry"));
     }
 
     #[test]

@@ -28,10 +28,22 @@ the matching task-local scope before starting a normal root resolver; nested
 fields of an already admitted root are not rechecked. GraphQL role-grant
 replacements advance the durable generation transactionally; after commit the
 server role writer clears the local cache, invalidates the calling snapshot, and
-attempts all-users fan-out. These checks do not cover every immutable
-`AuthContext` consumer, other tasks or replicas, and do not establish a
-transaction-spanning revocation fence. See the
+attempts all-users fan-out. The compatibility role-membership invalidation path
+joins both role and user rows to the requested tenant before clearing user
+snapshots. These checks do not cover every immutable `AuthContext` consumer,
+other tasks or replicas, and do not establish a transaction-spanning revocation
+fence. See the
 [request-snapshot decision](../../../DECISIONS/2026-11-02-invalidated-rbac-request-scope.md).
+
+Tenant-bound channel REST handlers authorize against the authenticated
+`CurrentUser.permissions` snapshot, including the OAuth token ceiling, rather
+than looking up broader persisted user grants without a request scope. DLQ
+list/replay scope is derived from the canonical top-level outbox envelope tenant
+when present, with a nested-event fallback for legacy rows only. Replays repeat
+the tenant predicate in the atomic status transition; the preceding read does
+not grant permission to update a different tenant's event. The module-owned
+Outbox admin counters apply the same canonical-first rule, so a conflicting
+legacy nested tenant cannot reveal another tenant's counts.
 
 Artifact purge previews call `ModuleControlPlane` owner projections. Data purge
 accepts an exact installation, positive namespace revision, reason, and
@@ -177,10 +189,39 @@ misleading `invalid_client` / HTTP 401 responses.
 All `/api/oauth/*` responses, including consent HTML, authorization redirects,
 userinfo, and failures, carry `Cache-Control: no-store` and `Pragma: no-cache`.
 
+Cookie-session login, registration and refresh use the remaining persisted
+refresh-session lifetime for cookie Max-Age. The absolute 90-day lineage cap
+is not extended when a session is rotated, and unrepresentable persisted
+timestamps fail closed rather than panicking.
+
 Cookie-session logout treats a missing, expired, or already-revoked refresh
 token idempotently, but returns a failure when revocation persistence or
 transactional event publication fails. The server must not claim logout
-success while a refresh token could remain valid.
+success while a refresh token could remain valid. A cookie containing the
+immediately previous refresh token (for example, when a rotation response
+was lost) also revokes its still-live successor session under the same row
+lock. Older generations are not represented in the in-place session row and
+remain an open incident-detection gap. Multiple cookies with the
+`rustok-session` name are rejected, including across repeated Cookie headers,
+rather than selecting an order-dependent token. First-party session validity,
+new issuance and refresh rotation enforce the original 90-day absolute expiry
+(including legacy rows without an explicit deadline). Failed dummy Argon2 hash
+initialization propagates as an internal auth error rather than substituting
+an empty hash.
+
+OAuth refresh requests may retain the original scopes by omitting `scope` or
+request a non-empty subset of the currently authorized scopes. The server
+rejects an empty explicit scope or a widening request with `invalid_scope`,
+and persists the narrowed grant on the rotated credential. Reuse detection
+revokes the scoped OAuth token family; on a persistence error it returns
+`server_error` rather than swallowing the failed security effect. Automatic
+durable retry after the client stops retrying is not established.
+
+GraphQL request-preparation policies classify only the operation selected by
+`operationName` (or the sole operation when no name is required). The selected
+operation is an execution selector, not an authorization grant: field permissions
+remain enforced by server-owned policy. Fragment-spread classification is
+cycle-safe because host preflight runs before GraphQL's normal document validation.
 
 ## Runtime surface
 

@@ -56,10 +56,17 @@ fn parse_metrics_enabled(raw: Option<&str>) -> bool {
 
 fn resolve_service_name(otel_name: Option<String>, rustok_name: Option<String>) -> String {
     otel_name
-        .or(rustok_name)
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "rustok-server".to_string())
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .or_else(|| {
+            rustok_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+        })
+        .unwrap_or("rustok-server")
+        .to_string()
 }
 
 fn telemetry_config() -> TelemetryConfig {
@@ -162,6 +169,17 @@ mod tests {
         );
         assert_eq!(
             resolve_service_name(Some("   ".to_string()), None),
+            "rustok-server"
+        );
+        assert_eq!(
+            resolve_service_name(
+                Some("   ".to_string()),
+                Some("  valid-fallback  ".to_string())
+            ),
+            "valid-fallback"
+        );
+        assert_eq!(
+            resolve_service_name(Some("   ".to_string()), Some("   ".to_string())),
             "rustok-server"
         );
         assert_eq!(resolve_service_name(None, None), "rustok-server");

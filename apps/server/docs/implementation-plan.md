@@ -4,6 +4,65 @@
 
 Strengthen `apps/server` as the central backend runtime with formal API contracts, predictable operational diagnostics, and hardened security gates.
 
+## Bounded authentication and OAuth follow-up (2026-11-17)
+
+This ordinary server development pass is not an activation or completion of
+the full-stack audit ledger. Work is isolated in
+`fix/server-deep-review-2026-11-17` (PR #4742), based on
+`9b32aacabc3c032a009eb9c18609547242766a29`.
+
+- Unknown-email timing equalization now propagates both dummy Argon2
+  initialization failures and verification failures; no empty-hash fallback.
+- Password-reset credential CAS rejects accounts deactivated while the reset
+  password was being hashed. Password changes reject expired current sessions.
+- In-place first-party refresh/session lifecycle enforces the original 90-day
+  absolute deadline across fresh issuance, refresh, active session checks,
+  listing and password-change admission, including legacy rows.
+  Follow-up verification corrected unchecked chrono arithmetic near its
+  representable bounds and binds browser cookie Max-Age to the actual persisted
+  refresh expiry (including near-90-day rotations), not a full fresh TTL.
+- OAuth refresh `scope` can only retain or reduce the existing grant, never
+  silently grant more than requested. Cookie-session refresh/logout reject
+  duplicate same-name cookies rather than choosing an attacker-influenced order.
+  OAuth refresh-family absolute deadlines also use checked Chrono arithmetic
+  for both family admission and token issuance. Invalid persisted timestamps
+  produce a typed OAuth error instead of a request panic.
+- GraphQL host preflight now applies field, tenant, module, storefront, forum,
+  dashboard and legacy-mutation policies to only the operation selected for
+  execution. Module and legacy-mutation fragment walkers now terminate on
+  cyclic fragment graphs while preserving detection of reachable protected fields.
+- Channel REST authorization now reads the authenticated token's effective
+  permissions (including OAuth scope restrictions), not persisted grants that
+  could widen authority beyond the token. It also rejects tenant mismatches.
+- DLQ listing/replay treats a top-level event-envelope tenant as authoritative;
+  nested legacy tenant fallback applies only when the top-level key is absent.
+  Replay repeats the tenant predicate within its atomic status update.
+- The GraphQL selected-operation helper reads the parser's operation-name map
+  keys, not a nonexistent field on the operation AST.
+- Blank `OTEL_SERVICE_NAME` no longer masks a usable `RUSTOK_SERVICE_NAME`.
+- Focused tests cover the added behavioral branches. Cargo, formatting,
+  SQLite/PostgreSQL concurrency and real-HTTP tests are **not run** in this
+  GitHub-API-only editing environment; the maintainer must run focused checks
+  before merge. Broader server inspection is unfinished.
+
+Additional follow-up: OAuth refresh-token reuse detection now propagates
+database read/write failures as `server_error` (instead of reporting only
+`invalid_grant`) and a fault-injection test covers retry after recovery.
+Family-wide revocation is additionally scoped to the original OAuth subject,
+so even malformed cross-user family IDs cannot revoke another user's tokens
+inside one app/tenant.
+First-party logout also accepts the immediately preceding rotated cookie
+under the session row lock, revoking its live successor after a lost refresh
+response.
+
+Remaining auth contract gaps requiring owner-level design and verification:
+the in-place first-party refresh session stores only the immediately previous
+digest, so replay/logout of still older generations cannot identify or revoke
+the live lineage. OAuth still has no durable retry/incident reconciliation if
+the caller does not retry after a revocation outage. These are not closed by
+this pass and must not be reported as remediated.
+
+
 ## Server Engineering Audit Continuation (2026-10-28)
 
 This is **bounded remediation**, not completion of the exhaustive FS-01
