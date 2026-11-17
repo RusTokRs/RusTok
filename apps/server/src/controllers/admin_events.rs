@@ -201,7 +201,7 @@ pub async fn replay_dlq_event(
         ));
     }
 
-    requeue_failed_event(ctx.db(), id).await?;
+    requeue_failed_event(ctx.db(), tenant.id, id).await?;
 
     Ok(Json(DlqReplayResponse {
         id,
@@ -209,9 +209,13 @@ pub async fn replay_dlq_event(
     }))
 }
 
-async fn requeue_failed_event(db: &DatabaseConnection, id: Uuid) -> Result<()> {
+async fn requeue_failed_event(db: &DatabaseConnection, tenant_id: Uuid, id: Uuid) -> Result<()> {
+    // Re-check the canonical envelope tenant in the atomic state transition.
+    // A prior tenant-scoped read is not a substitute for a tenant predicate
+    // on the write itself.
     let result = entity::Entity::update_many()
         .filter(entity::Column::Id.eq(id))
+        .filter(sys_event_tenant_condition(db.get_database_backend(), tenant_id))
         .filter(entity::Column::Status.eq(SysEventStatus::Failed))
         .filter(entity::Column::ClaimedBy.is_null())
         .filter(entity::Column::ClaimedAt.is_null())
@@ -259,11 +263,16 @@ fn sys_event_tenant_condition(backend: DbBackend, tenant_id: Uuid) -> SimpleExpr
 }
 
 fn sys_event_tenant_sql(backend: DbBackend) -> &'static str {
+    // New envelopes always persist their canonical tenant at the top level.
+    // Older events without that key can use the nested legacy event tenant;
+    // when both exist, nested data must never grant access to another tenant.
     match backend {
         DbBackend::Sqlite => {
-            "(json_extract(payload, '$.tenant_id') = ?1 OR json_extract(payload, '$.event.tenant_id') = ?1)"
+            "(CASE WHEN json_type(payload, '$.tenant_id') IS NOT NULL THEN json_extract(payload, '$.tenant_id') = ?1 ELSE json_extract(payload, '$.event.tenant_id') = ?1 END)"
         }
-        _ => "(payload->>'tenant_id' = $1 OR payload->'event'->>'tenant_id' = $1)",
+        _ => {
+            "(CASE WHEN payload ? 'tenant_id' THEN payload->>'tenant_id' = $1 ELSE payload->'event'->>'tenant_id' = $1 END)"
+        }
     }
 }
 
@@ -324,7 +333,7 @@ mod tests {
         .await
         .expect("insert claimed event");
 
-        assert!(requeue_failed_event(&db, event_id).await.is_err());
+        assert!(requeue_failed_event(&db, tenant_id, event_id).await.is_err());
 
         let stored = entity::Entity::find_by_id(event_id)
             .one(&db)
@@ -394,6 +403,127 @@ mod tests {
         assert_eq!(limited.len(), 2);
     }
 
+    #[tokio::test]
+    async fn dlq_scope_prefers_canonical_tenant_and_replay_is_atomic() {
+        use super::sys_event_tenant_condition;
+        use sea_orm::{ColumnTrait, PaginatorTrait, QueryFilter};
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        SysEventsMigration
+            .up(&SchemaManager::new(&db))
+            .await
+            .expect("create sys_events");
+
+        let owning_tenant = Uuid::new_v4();
+        let foreign_tenant = Uuid::new_v4();
+        let event_id = Uuid::new_v4();
+        let now = Utc::now();
+
+        entity::ActiveModel {
+            id: Set(event_id),
+            event_type: Set("sample.failed".to_string()),
+            schema_version: Set(1),
+            payload: Set(serde_json::json!({
+                "tenant_id": owning_tenant,
+                "event": {"tenant_id": foreign_tenant}
+            })),
+            status: Set(SysEventStatus::Failed),
+            retry_count: Set(1),
+            next_attempt_at: Set(None),
+            last_error: Set(Some("failed".to_string())),
+            claimed_by: Set(None),
+            claimed_at: Set(None),
+            created_at: Set(now),
+            dispatched_at: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert conflicting envelope");
+
+        let count_for = |tenant_id| {
+            entity::Entity::find()
+                .filter(entity::Column::Status.eq(SysEventStatus::Failed))
+                .filter(sys_event_tenant_condition(DbBackend::Sqlite, tenant_id))
+        };
+        assert_eq!(count_for(owning_tenant).count(&db).await.unwrap(), 1);
+        assert_eq!(count_for(foreign_tenant).count(&db).await.unwrap(), 0);
+
+        // The foreign tenant cannot turn a failed event into a pending one
+        // even when the caller knows the event UUID.
+        assert!(requeue_failed_event(&db, foreign_tenant, event_id).await.is_err());
+        assert_eq!(
+            entity::Entity::find_by_id(event_id)
+                .one(&db)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            SysEventStatus::Failed
+        );
+
+        requeue_failed_event(&db, owning_tenant, event_id)
+            .await
+            .expect("canonical tenant can requeue its own failed event");
+        assert_eq!(
+            entity::Entity::find_by_id(event_id)
+                .one(&db)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            SysEventStatus::Pending
+        );
+    }
+
+    #[tokio::test]
+    async fn dlq_legacy_tenant_fallback_requires_missing_canonical_key() {
+        use super::sys_event_tenant_condition;
+        use sea_orm::{ColumnTrait, PaginatorTrait, QueryFilter};
+
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        SysEventsMigration
+            .up(&SchemaManager::new(&db))
+            .await
+            .expect("create sys_events");
+
+        let tenant_id = Uuid::new_v4();
+        let id = Uuid::new_v4();
+        entity::ActiveModel {
+            id: Set(id),
+            event_type: Set("legacy.failed".to_string()),
+            schema_version: Set(1),
+            payload: Set(serde_json::json!({
+                "event": {"tenant_id": tenant_id}
+            })),
+            status: Set(SysEventStatus::Failed),
+            retry_count: Set(1),
+            next_attempt_at: Set(None),
+            last_error: Set(None),
+            claimed_by: Set(None),
+            claimed_at: Set(None),
+            created_at: Set(Utc::now()),
+            dispatched_at: Set(None),
+        }
+        .insert(&db)
+        .await
+        .expect("insert legacy envelope");
+        assert_eq!(
+            entity::Entity::find()
+                .filter(sys_event_tenant_condition(DbBackend::Sqlite, tenant_id))
+                .count(&db)
+                .await
+                .unwrap(),
+            1
+        );
+        requeue_failed_event(&db, tenant_id, id)
+            .await
+            .expect("legacy tenant fallback should remain usable");
+    }
+
     #[test]
     fn dlq_query_deserializes_with_defaults() {
         let query: super::DlqQuery = serde_json::from_str("{}").expect("deserialize empty query");
@@ -428,7 +558,7 @@ mod tests {
             .expect("create sys_events");
 
         let non_existent_id = Uuid::new_v4();
-        let result = requeue_failed_event(&db, non_existent_id).await;
+        let result = requeue_failed_event(&db, Uuid::new_v4(), non_existent_id).await;
         assert!(result.is_err());
     }
 }
