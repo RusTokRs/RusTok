@@ -151,8 +151,9 @@ pub fn TabsList(
                 if let Some(next_node) = tabs.item(target_index as u32) {
                     if let Ok(next_el) = next_node.dyn_into::<web_sys::HtmlElement>() {
                         event.prevent_default();
-                        let _ = next_el.focus();
-                        let _ = next_el.click();
+                        if next_el.focus().is_ok() {
+                            next_el.click();
+                        }
                     }
                 }
             }
