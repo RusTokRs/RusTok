@@ -284,6 +284,18 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   dependent Product Media release, Commerce paid-order label, marketplace financial,
   or Payment provider recovery workers. A missing event runtime fails bootstrap
   without leaving detached module-owned recovery tasks running.
+- Event runtime construction completes fallible transport, projector, and relay
+  configuration work before starting tenant-generation, RBAC-invalidation, or
+  Redis-status listener tasks. Failed event-runtime validation must not leave
+  detached cache listeners behind.
+- The HTTP server bootstrap is serialized per `ServerRuntimeContext` and shares
+  its initialization fence with shutdown. Shutdown signals workers first, then
+  waits for bootstrap to finish registering handles before taking the drain
+  snapshot, so concurrent bootstrap cannot orphan newly spawned workers.
+- Outbox relay intervals must fit the monotonic clock; claim TTL must fit
+  `chrono::Duration`; and exponential backoff must fit its signed millisecond
+  representation. Invalid timing configuration fails settings validation rather
+  than silently shortening a claim lease or wrapping a retry delay.
 - App runtime rate-limit bootstrap and shared limiter registration use `ServerRuntimeContext`.
   In-memory fixed-window counters sample time inside the serialized per-key update;
   a request delayed behind another cannot apply an obsolete window timestamp.
