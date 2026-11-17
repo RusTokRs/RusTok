@@ -126,10 +126,13 @@ fn collect_sensitive_fields_from_selection_set(
     }
 }
 
-fn sensitive_graphql_fields(document: &ExecutableDocument) -> Vec<SensitiveGraphqlField> {
+fn sensitive_graphql_fields(
+    document: &ExecutableDocument,
+    operation_name: Option<&str>,
+) -> Vec<SensitiveGraphqlField> {
     let mut fields = BTreeSet::new();
 
-    for (_, operation) in document.operations.iter() {
+    for operation in super::selected_operations(document, operation_name) {
         let mut visited_fragments = BTreeSet::new();
         collect_sensitive_fields_from_selection_set(
             operation.node.ty,
@@ -148,8 +151,9 @@ fn classify_sensitive_graphql_document(request: &mut Request) -> ServerResult<()
         return Ok(());
     }
 
+    let operation_name = request.operation_name.clone();
     let document = request.parsed_query()?;
-    let sensitive_fields = sensitive_graphql_fields(document);
+    let sensitive_fields = sensitive_graphql_fields(document, operation_name.as_deref());
     if !sensitive_fields.is_empty() {
         request
             .data
@@ -479,7 +483,7 @@ mod tests {
     }
 
     #[test]
-    fn classifies_sensitive_fields_for_all_operations_in_document() {
+    fn classifies_only_the_selected_operation_in_a_multi_operation_document() {
         let mut request = Request::new(
             r#"
                 query PublicInfo {
@@ -495,17 +499,33 @@ mod tests {
 
         classify_sensitive_graphql_document(&mut request).expect("query should parse");
 
-        let policy = request
+        assert!(
+            request
+                .data
+                .get(&std::any::TypeId::of::<SensitiveGraphqlDocumentPolicy>())
+                .is_none(),
+            "an unselected sensitive operation must not affect the public operation"
+        );
+
+        let mut sensitive_request = Request::new(
+            r#"
+                query PublicInfo { ping }
+                query SensitiveUsers { users }
+            "#,
+        )
+        .operation_name("SensitiveUsers");
+        classify_sensitive_graphql_document(&mut sensitive_request)
+            .expect("query should parse");
+        let policy = sensitive_request
             .data
             .get(&std::any::TypeId::of::<SensitiveGraphqlDocumentPolicy>())
             .and_then(|value| value.downcast_ref::<SensitiveGraphqlDocumentPolicy>())
-            .expect("sensitive policy should be attached");
-
+            .expect("selected sensitive policy should be attached");
         assert_eq!(policy.0, vec![SensitiveGraphqlField::Users]);
     }
 
     #[test]
-    fn collects_sensitive_fields_from_document_without_operation_name_filter() {
+    fn collects_only_the_selected_sensitive_operation() {
         let document = async_graphql::parser::parse_query(
             r#"
                 mutation CreateAccount {
@@ -520,12 +540,14 @@ mod tests {
         .expect("query should parse");
 
         assert_eq!(
-            sensitive_graphql_fields(&document),
-            vec![
-                SensitiveGraphqlField::Users,
-                SensitiveGraphqlField::CreateUser,
-            ]
+            sensitive_graphql_fields(&document, Some("ListUsers")),
+            vec![SensitiveGraphqlField::Users]
         );
+        assert_eq!(
+            sensitive_graphql_fields(&document, Some("CreateAccount")),
+            vec![SensitiveGraphqlField::CreateUser]
+        );
+        assert!(sensitive_graphql_fields(&document, None).is_empty());
     }
 
     #[test]
@@ -672,7 +694,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_document_even_when_public_operation_is_selected() {
+    async fn allows_public_operation_when_unselected_operation_is_sensitive() {
         let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
             .extension(GraphqlSecurityPolicy)
             .finish();
@@ -694,7 +716,24 @@ mod tests {
             )
             .await;
 
-        assert_eq!(response.errors.len(), 1);
-        assert!(response.errors[0].message.contains("users:list"));
+        assert!(response.errors.is_empty());
+        assert_eq!(
+            response.data.into_json().expect("response should serialize"),
+            json!({"ping": "pong"})
+        );
+
+        let denied = schema
+            .execute(
+                Request::new(
+                    r#"
+                        query PublicInfo { ping }
+                        query SensitiveUsers { users }
+                    "#,
+                )
+                .operation_name("SensitiveUsers"),
+            )
+            .await;
+        assert_eq!(denied.errors.len(), 1);
+        assert!(denied.errors[0].message.contains("users:list"));
     }
 }
