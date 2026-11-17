@@ -5,7 +5,7 @@ use rustok_outbox::{OutboxTransport, TransactionalEventBus};
 
 use chrono::{Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     DatabaseTransaction, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
     TransactionTrait, sea_query::Expr,
 };
@@ -803,15 +803,10 @@ impl AuthLifecycleService {
         }
 
         let now = Utc::now();
-        let absolute_deadline = session
-            .absolute_expires_at
-            .map(|deadline| deadline.with_timezone(&Utc))
-            .unwrap_or_else(|| {
-                // Pre-migration rows carry no cap; derive it from the
-                // original login time and persist it on this rotation.
-                session.created_at.with_timezone(&Utc)
-                    + Duration::days(sessions::SESSION_ABSOLUTE_LIFETIME_DAYS)
-            });
+        // Reuse the same absolute cap enforced by authentication and
+        // session listing. A persisted deadline cannot extend the original
+        // 90-day lineage, including legacy rows without the new column.
+        let absolute_deadline = session.absolute_deadline();
         if now >= absolute_deadline {
             return Err(AuthLifecycleError::SessionExpired);
         }
@@ -1069,6 +1064,7 @@ impl AuthLifecycleService {
             current_session_id,
         )
         .await?
+        .filter(|session| session.is_active())
         .ok_or(AuthLifecycleError::SessionExpired)?;
 
         let now = Utc::now();
@@ -1214,11 +1210,19 @@ impl AuthLifecycleService {
         limit: u64,
     ) -> std::result::Result<Vec<sessions::Model>, AuthLifecycleError> {
         let limit = Self::clamp_session_list_limit(limit);
+        let now = Utc::now();
+        let original_cutoff = now - Duration::days(sessions::SESSION_ABSOLUTE_LIFETIME_DAYS);
         let rows = sessions::Entity::find()
             .filter(sessions::Column::TenantId.eq(tenant_id))
             .filter(sessions::Column::UserId.eq(user_id))
             .filter(sessions::Column::RevokedAt.is_null())
-            .filter(sessions::Column::ExpiresAt.gt(Utc::now()))
+            .filter(sessions::Column::ExpiresAt.gt(now))
+            .filter(sessions::Column::CreatedAt.gt(original_cutoff))
+            .filter(
+                Condition::any()
+                    .add(sessions::Column::AbsoluteExpiresAt.gt(now))
+                    .add(sessions::Column::AbsoluteExpiresAt.is_null()),
+            )
             .order_by_desc(sessions::Column::CreatedAt)
             .limit(limit)
             .all(db)
@@ -1336,8 +1340,10 @@ impl AuthLifecycleService {
             .map_err(|_| AuthLifecycleError::Internal(Error::InternalServerError))?;
         let ttl = Duration::try_seconds(ttl_seconds)
             .ok_or(AuthLifecycleError::Internal(Error::InternalServerError))?;
-        now.checked_add_signed(ttl)
-            .ok_or(AuthLifecycleError::Internal(Error::InternalServerError))
+        let expires_at = now
+            .checked_add_signed(ttl)
+            .ok_or(AuthLifecycleError::Internal(Error::InternalServerError))?;
+        Ok(expires_at.min(now + Duration::days(sessions::SESSION_ABSOLUTE_LIFETIME_DAYS)))
     }
 
     pub(crate) async fn resolve_effective_role<C>(
@@ -1596,6 +1602,11 @@ mod tests {
             AuthLifecycleService::session_expiration(now, 3_600)
                 .expect("normal session ttl should be representable")
                 > now
+        );
+        assert_eq!(
+            AuthLifecycleService::session_expiration(now, 365 * 24 * 60 * 60)
+                .expect("long but valid TTL must be bounded"),
+            now + Duration::days(sessions::SESSION_ABSOLUTE_LIFETIME_DAYS)
         );
     }
 
