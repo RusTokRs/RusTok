@@ -11,25 +11,21 @@ pub(crate) fn selected_operations<'a>(
     document: &'a ExecutableDocument,
     operation_name: Option<&str>,
 ) -> Vec<&'a Positioned<OperationDefinition>> {
-    let operations = document
-        .operations
-        .iter()
-        .map(|(_, operation)| operation)
-        .collect::<Vec<_>>();
+    let mut operations = document.operations.iter();
 
     match operation_name {
+        // OperationDefinition has no name field; the parser stores operation
+        // names as keys of DocumentOperations::Multiple.
         Some(selected) => operations
-            .into_iter()
-            .filter(|operation| {
-                operation
-                    .node
-                    .name
-                    .as_ref()
-                    .is_some_and(|name| name.node.as_str() == selected)
+            .filter_map(|(name, operation)| {
+                name.is_some_and(|name| name.as_str() == selected)
+                    .then_some(operation)
             })
             .collect(),
-        None if operations.len() == 1 => operations,
-        None => Vec::new(),
+        None => match (operations.next(), operations.next()) {
+            (Some((_, only)), None) => vec![only],
+            _ => Vec::new(),
+        },
     }
 }
 
@@ -80,6 +76,8 @@ mod operation_selection_tests {
 
     #[test]
     fn selects_only_the_named_operation() {
+        use async_graphql::parser::types::Selection;
+
         let document = async_graphql::parser::parse_query(
             "query Public { ping } query Admin { users }",
         )
@@ -87,25 +85,19 @@ mod operation_selection_tests {
 
         let public = selected_operations(&document, Some("Public"));
         assert_eq!(public.len(), 1);
-        assert_eq!(
-            public[0]
-                .node
-                .name
-                .as_ref()
-                .map(|name| name.node.as_str()),
-            Some("Public")
-        );
+        assert!(matches!(
+            &public[0].node.selection_set.node.items[0].node,
+            Selection::Field(field) if field.node.name.node.as_str() == "ping"
+        ));
 
         let admin = selected_operations(&document, Some("Admin"));
         assert_eq!(admin.len(), 1);
-        assert_eq!(
-            admin[0]
-                .node
-                .name
-                .as_ref()
-                .map(|name| name.node.as_str()),
-            Some("Admin")
-        );
+        assert!(matches!(
+            &admin[0].node.selection_set.node.items[0].node,
+            Selection::Field(field) if field.node.name.node.as_str() == "users"
+        ));
+
+        assert!(selected_operations(&document, Some("Unknown")).is_empty());
     }
 
     #[test]
