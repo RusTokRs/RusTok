@@ -466,6 +466,34 @@ mod tests {
     use uuid::Uuid;
 
     #[tokio::test]
+    async fn failed_event_runtime_validation_does_not_leave_cache_workers_running() {
+        let db = rustok_test_utils::setup_test_db().await;
+        let mut settings = crate::common::settings::RustokSettings::default();
+        settings.events.delivery_profile = crate::common::settings::EventDeliveryProfile::Outbox;
+        settings.events.outbox_retention.enabled = true;
+        settings.events.outbox_retention.retention_days = 0;
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(db, settings);
+        crate::services::cache_runtime::ensure_cache_service(&ctx);
+
+        let error = build_event_runtime(&ctx)
+            .await
+            .expect_err("invalid retention settings must fail event runtime bootstrap");
+        assert!(error.to_string().contains("retention_days"));
+        assert!(
+            !ctx.shared_contains::<crate::services::tenant_cache_generation::TenantCacheGenerationListenerHandle>(),
+            "tenant listener must not start before runtime validation succeeds"
+        );
+        assert!(
+            !ctx.shared_contains::<crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle>(),
+            "RBAC listener must not start before runtime validation succeeds"
+        );
+        assert!(
+            !ctx.shared_contains::<crate::services::cache_redis_status_monitor::CacheRedisStatusMonitorHandle>(),
+            "Redis status monitor must not start before runtime validation succeeds"
+        );
+    }
+
+    #[tokio::test]
     async fn fanout_transport_delivers_only_after_primary_accepts_event() {
         let primary = MemoryTransport::with_capacity(8);
         let mut primary_receiver = primary.subscribe();
