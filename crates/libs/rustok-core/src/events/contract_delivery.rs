@@ -74,7 +74,7 @@ impl ContractListenerSet {
     /// Delivers a root event through the same registered module handlers as the
     /// broadcast dispatcher, but waits for every matching handler before allowing
     /// the outbox relay to acknowledge the event.
-    async fn deliver_root(&self, envelope: &EventEnvelope) -> Result<()> {
+    async fn deliver_root(self: &Arc<Self>, envelope: &EventEnvelope) -> Result<()> {
         self.require_active()?;
         let handlers = self
             .handlers
@@ -101,13 +101,15 @@ impl ContractListenerSet {
                     .acquire_owned()
                     .await
                     .map_err(|_| {
-                    Error::External("root handler capacity is closed".to_owned())
-                })?;
+                        Error::External("root handler capacity is closed".to_owned())
+                    })?;
+                self.require_active()?;
                 handle_root_handler(handler, envelope.clone(), &self.config).await?;
             }
         } else {
             let mut tasks = JoinSet::new();
             for handler in handlers {
+                let listener_set = Arc::clone(self);
                 let handler_capacity = Arc::clone(&self.handler_capacity);
                 let config = self.config.clone();
                 let envelope = envelope.clone();
@@ -118,6 +120,7 @@ impl ContractListenerSet {
                         .map_err(|_| {
                             Error::External("root handler capacity is closed".to_owned())
                         })?;
+                    listener_set.require_active()?;
                     handle_root_handler(handler, envelope, &config).await
                 });
             }
@@ -150,7 +153,7 @@ impl ContractListenerSet {
         self.require_active()
     }
 
-    async fn deliver(&self, envelope: &ContractEventEnvelope) -> Result<()> {
+    async fn deliver(self: &Arc<Self>, envelope: &ContractEventEnvelope) -> Result<()> {
         self.require_active()?;
         let payload = envelope.payload().map_err(invalid_envelope)?;
         let handlers = self
@@ -172,6 +175,13 @@ impl ContractListenerSet {
                 Error::External("sealed module listener capacity is exhausted".to_owned())
             })?;
         for handler in handlers {
+            self.require_active()?;
+            let _handler_permit = Arc::clone(&self.handler_capacity)
+                .acquire_owned()
+                .await
+                .map_err(|_| {
+                    Error::External("sealed module handler capacity is closed".to_owned())
+                })?;
             self.require_active()?;
             let started = Instant::now();
             let result = handler.handle_contract(envelope).await;

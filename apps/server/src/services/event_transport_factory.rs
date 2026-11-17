@@ -484,7 +484,7 @@ impl EventTransport for LocalDeliveryFanoutTransport {
                 );
                 tracing::error!(
                     %event_id, %event_type, code = "events.contract_local_delivery_failed",
-                    "Sealed local delivery failed; retain the same outbox identity for retry"
+                    "Local contract delivery failed; retain the same outbox identity for retry"
                 );
                 return Err(error);
             }
