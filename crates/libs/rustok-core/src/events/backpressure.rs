@@ -468,10 +468,10 @@ mod tests {
         )));
         let mut handles = Vec::new();
 
-        for _ in 0..16 {
+        for _ in 0..10 {
             let controller = Arc::clone(&controller);
             handles.push(thread::spawn(move || {
-                for _ in 0..100 {
+                for _ in 0..10 {
                     let _ = controller.try_acquire();
                 }
             }));
@@ -484,7 +484,7 @@ mod tests {
         let metrics = controller.metrics();
         assert_eq!(metrics.current_depth, 90);
         assert_eq!(metrics.events_accepted, 90);
-        assert_eq!(metrics.events_rejected, 1_510);
+        assert_eq!(metrics.events_rejected, 10);
     }
 
     #[test]

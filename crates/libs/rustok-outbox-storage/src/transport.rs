@@ -88,11 +88,7 @@ impl OutboxTransport {
             .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;
 
         entity::Entity::insert(active_model)
-            .on_conflict(
-                OnConflict::column(entity::Column::Id)
-                    .do_nothing()
-                    .to_owned(),
-            )
+            .on_conflict(OnConflict::column(entity::Column::Id).do_nothing().to_owned())
             .exec_without_returning(txn)
             .await
             .map_err(|error| write_once_unavailable(envelope_id, event_type.as_str(), error))?;

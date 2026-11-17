@@ -12,8 +12,8 @@ use tokio::sync::{broadcast, watch};
 use tokio::task::JoinHandle;
 
 use crate::common::settings::RustokSettings;
-use crate::services::server_runtime_context::ServerRuntimeContext;
 use crate::services::app_lifecycle::StopHandle;
+use crate::services::server_runtime_context::ServerRuntimeContext;
 
 const EVENT_FORWARDER_RESTART_DELAY: Duration = Duration::from_secs(1);
 const EVENT_FORWARDER_INITIAL_RETRY_DELAY: Duration = Duration::from_millis(100);
@@ -505,12 +505,7 @@ mod tests {
     #[tokio::test]
     async fn event_forwarder_retries_and_drains_before_releasing_backpressure() {
         use async_trait::async_trait;
-        use rustok_core::events::{EventTransport, ReliabilityLevel};
         use rustok_events::{DomainEvent, EventEnvelope};
-        use std::sync::{
-            Arc, Mutex,
-            atomic::{AtomicUsize, Ordering},
-        };
         use uuid::Uuid;
 
         struct FlakyTransport {
