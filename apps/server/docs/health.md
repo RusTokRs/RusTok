@@ -21,8 +21,10 @@ works as a read-only catalog host, not as a full monolith.
 
 Important: `host_mode` does not replace deployment profile. `DeploymentProfile` continues to describe build/deploy
 surface (`monolith`, `server-with-admin`, `server-with-storefront`, `headless-api`), while
-`settings.rustok.runtime.host_mode` describes only the runtime-exposed API surface (`full` or
-`registry_only`).
+`settings.rustok.runtime.host_mode` describes the exact runtime-exposed surface:
+`full`, `api`, `worker`, `admin_ssr`, `storefront_ssr`, or `registry_only`.
+The `/health/runtime` snapshot reports this exact value; it does not infer a host mode
+from the build/deployment profile.
 
 A separate compile-time profile invariant: `embed-admin` and `embed-storefront`
 control not only routes but also linkage of the corresponding UI hosts. Similarly,

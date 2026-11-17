@@ -81,9 +81,10 @@ fn classify_document(request: &mut Request) -> ServerResult<()> {
         return Ok(());
     }
 
+    let operation_name = request.operation_name.clone();
     let document = request.parsed_query()?;
     let mut fields = BTreeSet::new();
-    for (_, operation) in document.operations.iter() {
+    for operation in super::selected_operations(document, operation_name.as_deref()) {
         collect_fields(
             operation.node.ty,
             &operation.node.selection_set.node,
@@ -183,6 +184,40 @@ mod tests {
             .and_then(|value| value.downcast_ref::<DashboardDocumentPolicy>())
             .expect("dashboard policy should be attached");
         assert_eq!(policy.0, vec![DashboardField::DashboardStats]);
+    }
+
+    #[test]
+    fn ignores_dashboard_fields_in_unselected_operations() {
+        let mut request = Request::new(
+            r#"
+                query PublicInfo { ping }
+                query Dashboard { dashboardStats { totalUsers } }
+            "#,
+        )
+        .operation_name("PublicInfo");
+
+        classify_document(&mut request).expect("document should parse");
+        assert!(
+            request
+                .data
+                .get(&std::any::TypeId::of::<DashboardDocumentPolicy>())
+                .is_none()
+        );
+
+        let mut dashboard = Request::new(
+            r#"
+                query PublicInfo { ping }
+                query Dashboard { dashboardStats { totalUsers } }
+            "#,
+        )
+        .operation_name("Dashboard");
+        classify_document(&mut dashboard).expect("document should parse");
+        assert!(
+            dashboard
+                .data
+                .get(&std::any::TypeId::of::<DashboardDocumentPolicy>())
+                .is_some()
+        );
     }
 
     #[test]

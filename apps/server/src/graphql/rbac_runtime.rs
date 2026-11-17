@@ -126,18 +126,12 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
             user_id: Uuid,
         }
 
-        let statement = match self.db.get_database_backend() {
-            sea_orm::DbBackend::Postgres => sea_orm::Statement::from_sql_and_values(
-                sea_orm::DbBackend::Postgres,
-                "SELECT user_id FROM user_roles WHERE role_id = $1",
-                [(*role_id).into()],
-            ),
-            _ => sea_orm::Statement::from_sql_and_values(
-                self.db.get_database_backend(),
-                "SELECT user_id FROM user_roles WHERE role_id = ?",
-                [(*role_id).into()],
-            ),
-        };
+        let backend = self.db.get_database_backend();
+        let statement = sea_orm::Statement::from_sql_and_values(
+            backend,
+            role_membership_invalidation_sql(backend),
+            [(*tenant_id).into(), (*role_id).into()],
+        );
 
         let memberships = UserRoleMembership::find_by_statement(statement)
             .all(&self.db)
@@ -151,6 +145,17 @@ impl RbacGraphqlRoleWriter for ServerRbacGraphqlRoleWriter {
             RbacService::invalidate_user_rbac_caches(tenant_id, &membership.user_id).await;
         }
         Ok(())
+    }
+}
+
+fn role_membership_invalidation_sql(backend: sea_orm::DbBackend) -> &'static str {
+    match backend {
+        sea_orm::DbBackend::Postgres => {
+            "SELECT ur.user_id FROM user_roles AS ur INNER JOIN roles AS r ON r.id = ur.role_id INNER JOIN users AS u ON u.id = ur.user_id AND u.tenant_id = r.tenant_id WHERE r.tenant_id = $1 AND r.id = $2"
+        }
+        _ => {
+            "SELECT ur.user_id FROM user_roles AS ur INNER JOIN roles AS r ON r.id = ur.role_id INNER JOIN users AS u ON u.id = ur.user_id AND u.tenant_id = r.tenant_id WHERE r.tenant_id = ? AND r.id = ?"
+        }
     }
 }
 
@@ -198,6 +203,94 @@ mod tests {
         RbacRequestScope, ensure_scope_not_invalidated, permissions_for, with_rbac_request_scope,
     };
     use rustok_api::Permission;
+
+    #[tokio::test]
+    async fn role_membership_invalidation_is_scoped_to_the_role_and_user_tenant() {
+        use sea_orm::{ConnectionTrait, FromQueryResult};
+
+        #[derive(Debug, FromQueryResult)]
+        struct UserRoleMembership {
+            user_id: Uuid,
+        }
+
+        let db = sea_orm::Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
+        db.execute_unprepared("CREATE TABLE roles (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL)")
+            .await
+            .expect("create roles table");
+        db.execute_unprepared("CREATE TABLE users (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL)")
+            .await
+            .expect("create users table");
+        db.execute_unprepared(
+            "CREATE TABLE user_roles (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, role_id TEXT NOT NULL)",
+        )
+        .await
+        .expect("create user_roles table");
+
+        let tenant_a = Uuid::new_v4();
+        let tenant_b = Uuid::new_v4();
+        let role_a = Uuid::new_v4();
+        let role_b = Uuid::new_v4();
+        let user_a = Uuid::new_v4();
+        let user_b = Uuid::new_v4();
+        for (role, tenant) in [(role_a, tenant_a), (role_b, tenant_b)] {
+            db.execute(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DbBackend::Sqlite,
+                "INSERT INTO roles (id, tenant_id) VALUES (?, ?)",
+                [role.to_string().into(), tenant.to_string().into()],
+            ))
+            .await
+            .expect("insert role");
+        }
+        for (user, tenant) in [(user_a, tenant_a), (user_b, tenant_b)] {
+            db.execute(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DbBackend::Sqlite,
+                "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
+                [user.to_string().into(), tenant.to_string().into()],
+            ))
+            .await
+            .expect("insert user");
+        }
+        for (user, role) in [(user_a, role_a), (user_b, role_a), (user_a, role_b)] {
+            db.execute(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DbBackend::Sqlite,
+                "INSERT INTO user_roles (id, user_id, role_id) VALUES (?, ?, ?)",
+                [
+                    Uuid::new_v4().to_string().into(),
+                    user.to_string().into(),
+                    role.to_string().into(),
+                ],
+            ))
+            .await
+            .expect("insert role membership");
+        }
+
+        let statement = sea_orm::Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            role_membership_invalidation_sql(sea_orm::DbBackend::Sqlite),
+            [tenant_a.to_string().into(), role_a.to_string().into()],
+        );
+        let members = UserRoleMembership::find_by_statement(statement)
+            .all(&db)
+            .await
+            .expect("load only tenant A role members");
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].user_id, user_a);
+
+        let foreign_scope = sea_orm::Statement::from_sql_and_values(
+            sea_orm::DbBackend::Sqlite,
+            role_membership_invalidation_sql(sea_orm::DbBackend::Sqlite),
+            [tenant_b.to_string().into(), role_a.to_string().into()],
+        );
+        assert!(
+            UserRoleMembership::find_by_statement(foreign_scope)
+                .all(&db)
+                .await
+                .expect("foreign tenant lookup")
+                .is_empty()
+        );
+    }
 
     #[tokio::test]
     #[serial_test::serial]

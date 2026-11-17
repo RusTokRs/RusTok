@@ -177,10 +177,10 @@ async fn query_max_retry_count(
 fn tenant_scoped_status_sql(backend: sea_orm::DbBackend) -> &'static str {
     match backend {
         sea_orm::DbBackend::Sqlite => {
-            "SELECT COUNT(*) AS value FROM sys_events WHERE status = ?1 AND (json_extract(payload, '$.tenant_id') = ?2 OR json_extract(payload, '$.event.tenant_id') = ?2)"
+            "SELECT COUNT(*) AS value FROM sys_events WHERE status = ?1 AND (CASE WHEN json_type(payload, '$.tenant_id') IS NOT NULL THEN json_extract(payload, '$.tenant_id') = ?2 ELSE json_extract(payload, '$.event.tenant_id') = ?2 END)"
         }
         _ => {
-            "SELECT COUNT(*) AS value FROM sys_events WHERE status = $1 AND (payload->>'tenant_id' = $2 OR payload->'event'->>'tenant_id' = $2)"
+            "SELECT COUNT(*) AS value FROM sys_events WHERE status = $1 AND (CASE WHEN payload->'tenant_id' IS NOT NULL THEN payload->>'tenant_id' = $2 ELSE payload->'event'->>'tenant_id' = $2 END)"
         }
     }
 }
@@ -189,29 +189,110 @@ fn tenant_scoped_status_sql(backend: sea_orm::DbBackend) -> &'static str {
 fn tenant_scoped_max_retry_sql(backend: sea_orm::DbBackend) -> &'static str {
     match backend {
         sea_orm::DbBackend::Sqlite => {
-            "SELECT COALESCE(MAX(retry_count), 0) AS value FROM sys_events WHERE json_extract(payload, '$.tenant_id') = ?1 OR json_extract(payload, '$.event.tenant_id') = ?1"
+            "SELECT COALESCE(MAX(retry_count), 0) AS value FROM sys_events WHERE CASE WHEN json_type(payload, '$.tenant_id') IS NOT NULL THEN json_extract(payload, '$.tenant_id') = ?1 ELSE json_extract(payload, '$.event.tenant_id') = ?1 END"
         }
         _ => {
-            "SELECT COALESCE(MAX(retry_count), 0) AS value FROM sys_events WHERE payload->>'tenant_id' = $1 OR payload->'event'->>'tenant_id' = $1"
+            "SELECT COALESCE(MAX(retry_count), 0) AS value FROM sys_events WHERE CASE WHEN payload->'tenant_id' IS NOT NULL THEN payload->>'tenant_id' = $1 ELSE payload->'event'->>'tenant_id' = $1 END"
         }
     }
 }
 
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
-    use sea_orm::DbBackend;
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 
-    use super::{tenant_scoped_max_retry_sql, tenant_scoped_status_sql};
+    use super::{
+        query_max_retry_count, query_status_count, tenant_scoped_max_retry_sql,
+        tenant_scoped_status_sql,
+    };
 
     #[test]
-    fn operational_queries_are_tenant_scoped_for_supported_backends() {
+    fn operational_queries_prefer_canonical_tenant_over_legacy_fallback() {
         for backend in [DbBackend::Postgres, DbBackend::Sqlite] {
             let status = tenant_scoped_status_sql(backend);
             let retries = tenant_scoped_max_retry_sql(backend);
-            assert!(status.contains("tenant_id"));
-            assert!(status.contains("event"));
-            assert!(retries.contains("tenant_id"));
-            assert!(retries.contains("event"));
+            assert!(status.contains("CASE WHEN"));
+            assert!(status.contains("ELSE"));
+            assert!(retries.contains("CASE WHEN"));
+            assert!(retries.contains("ELSE"));
+            match backend {
+                DbBackend::Sqlite => {
+                    assert!(status.contains("json_type(payload, '$.tenant_id') IS NOT NULL"));
+                    assert!(retries.contains("json_type(payload, '$.tenant_id') IS NOT NULL"));
+                }
+                _ => {
+                    assert!(status.contains("payload->'tenant_id' IS NOT NULL"));
+                    assert!(retries.contains("payload->'tenant_id' IS NOT NULL"));
+                }
+            }
         }
+    }
+
+    #[tokio::test]
+    async fn operational_counts_do_not_cross_canonical_tenant_boundary() {
+        let db = Database::connect("sqlite::memory:")
+            .await
+            .expect("SQLite database");
+        db.execute_unprepared(
+            "CREATE TABLE sys_events (id TEXT PRIMARY KEY, status TEXT NOT NULL, payload JSON NOT NULL, retry_count INTEGER NOT NULL)",
+        )
+        .await
+        .expect("create minimal outbox table");
+
+        let tenant_a = uuid::Uuid::new_v4();
+        let tenant_b = uuid::Uuid::new_v4();
+        let rows = [
+            (
+                serde_json::json!({
+                    "tenant_id": tenant_a,
+                    "event": {"tenant_id": tenant_b}
+                }),
+                9_i64,
+            ),
+            (
+                serde_json::json!({"event": {"tenant_id": tenant_b}}),
+                3_i64,
+            ),
+            (serde_json::json!({"tenant_id": tenant_b}), 5_i64),
+        ];
+
+        for (payload, retry_count) in rows {
+            db.execute(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO sys_events (id, status, payload, retry_count) VALUES (?1, 'pending', ?2, ?3)",
+                [
+                    uuid::Uuid::new_v4().to_string().into(),
+                    payload.to_string().into(),
+                    retry_count.into(),
+                ],
+            ))
+            .await
+            .expect("insert outbox event");
+        }
+
+        assert_eq!(
+            query_status_count(&db, DbBackend::Sqlite, tenant_a, "pending")
+                .await
+                .expect("tenant A count"),
+            1
+        );
+        assert_eq!(
+            query_status_count(&db, DbBackend::Sqlite, tenant_b, "pending")
+                .await
+                .expect("tenant B count"),
+            2
+        );
+        assert_eq!(
+            query_max_retry_count(&db, DbBackend::Sqlite, tenant_a)
+                .await
+                .expect("tenant A max retry"),
+            9
+        );
+        assert_eq!(
+            query_max_retry_count(&db, DbBackend::Sqlite, tenant_b)
+                .await
+                .expect("tenant B max retry"),
+            5
+        );
     }
 }

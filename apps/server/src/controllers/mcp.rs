@@ -169,7 +169,8 @@ async fn execute_remote_tool_call(
     };
     #[cfg(feature = "mod-alloy")]
     if decision.allowed
-        && is_remote_alloy_authoring_tool(&input.tool_name)
+        && (is_remote_alloy_authoring_tool(&input.tool_name)
+            || input.tool_name == TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE)
         && remote_alloy_authoring_identity(&binding).is_err()
     {
         decision = rustok_mcp::McpAuthorizationDecision::deny(
@@ -307,7 +308,9 @@ async fn execute_remote_tool_call(
 /// The durable audit row confirms the operation and its binding without becoming
 /// a persistence path for script source, tests, diagnostics, or retention reasons.
 fn remote_tool_audit_metadata(tool_name: &str, metadata: serde_json::Value) -> serde_json::Value {
-    if is_remote_alloy_authoring_tool(tool_name) {
+    if is_remote_alloy_authoring_tool(tool_name)
+        || tool_name == TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE
+    {
         serde_json::json!({
             "redacted": true,
             "reason": "source_bearing_alloy_authoring",
@@ -497,28 +500,14 @@ async fn execute_remote_alloy_published_release_import(
     binding: &McpRuntimeBinding,
     arguments: Option<serde_json::Value>,
 ) -> Result<serde_json::Value> {
-    let Some(tenant_id) = binding
-        .tenant_id
-        .as_deref()
-        .and_then(|value| Uuid::parse_str(value).ok())
-    else {
-        return envelope_value(McpToolResponse::<()>::error(
-            "tenant_binding_required",
-            "Published Alloy release import requires a tenant-bound MCP runtime",
-        ));
-    };
-    let Some(actor_id) = binding
-        .access_context
-        .identity
-        .as_ref()
-        .map(|identity| identity.actor_id.trim())
-        .filter(|actor_id| !actor_id.is_empty())
-        .map(str::to_owned)
-    else {
-        return envelope_value(McpToolResponse::<()>::error(
-            "identity_required",
-            "Published Alloy release import requires an authenticated MCP identity",
-        ));
+    let (tenant_id, actor_id) = match remote_alloy_authoring_identity(binding) {
+        Ok(identity) => identity,
+        Err(()) => {
+            return envelope_value(McpToolResponse::<()>::error(
+                "access_denied",
+                "Published Alloy release import requires a matching tenant-bound MCP identity",
+            ));
+        }
     };
     let Some(runtime) = ctx.shared_get::<alloy::SharedAlloyRuntime>() else {
         return envelope_value(McpToolResponse::<()>::error(
@@ -1218,10 +1207,20 @@ mod tests {
             "note": "must not persist",
         });
 
-        let redacted = remote_tool_audit_metadata(rustok_mcp::TOOL_ALLOY_CREATE_SCRIPT, metadata);
+        let redacted =
+            remote_tool_audit_metadata(rustok_mcp::TOOL_ALLOY_CREATE_SCRIPT, metadata.clone());
         assert_eq!(redacted["redacted"], true);
         assert_eq!(redacted["reason"], "source_bearing_alloy_authoring");
         assert!(!redacted.to_string().contains("credential"));
+
+        let import_metadata =
+            remote_tool_audit_metadata(TOOL_ALLOY_IMPORT_PUBLISHED_RELEASE, metadata);
+        assert_eq!(import_metadata["redacted"], true);
+        assert_eq!(
+            import_metadata["reason"],
+            "source_bearing_alloy_authoring"
+        );
+        assert!(!import_metadata.to_string().contains("credential"));
     }
 
     #[cfg(feature = "mod-alloy")]

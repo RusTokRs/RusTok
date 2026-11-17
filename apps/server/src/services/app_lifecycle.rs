@@ -261,6 +261,19 @@ impl ModuleWorkSchedulerInitializationLock {
     }
 }
 
+#[cfg(feature = "mod-workflow")]
+#[derive(Clone, Default)]
+pub(crate) struct WorkflowCronSchedulerInitializationLock(
+    pub(crate) std::sync::Arc<tokio::sync::Mutex<()>>,
+);
+
+#[cfg(feature = "mod-workflow")]
+impl WorkflowCronSchedulerInitializationLock {
+    pub(crate) fn ensure(ctx: &ServerRuntimeContext) -> Self {
+        ctx.shared_get_or_insert_with(Self::default)
+    }
+}
+
 #[derive(Clone, Default)]
 struct ModuleArtifactMaintenanceInitializationLock(std::sync::Arc<tokio::sync::Mutex<()>>);
 
@@ -704,9 +717,22 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
 
     #[cfg(feature = "mod-workflow")]
     let workflow_drain = async {
-        if let Some(worker) = runtime_ctx.shared_take::<WorkflowCronSchedulerHandle>() {
-            await_runtime_worker_shutdown("Workflow cron scheduler", Some(worker.into_task()))
-                .await;
+        let initialization = WorkflowCronSchedulerInitializationLock::ensure(runtime_ctx);
+        let deadline = tokio::time::Instant::now() + timeout_duration;
+        let worker = match tokio::time::timeout_at(deadline, initialization.0.lock()).await {
+            Ok(_guard) => runtime_ctx.shared_take::<WorkflowCronSchedulerHandle>(),
+            Err(_) => {
+                tracing::warn!("Workflow cron scheduler initialization did not stop within 5s");
+                return;
+            }
+        };
+        if let Some(worker) = worker {
+            await_runtime_worker_shutdown_until(
+                "Workflow cron scheduler",
+                worker.into_task(),
+                deadline,
+            )
+            .await;
         }
     };
     #[cfg(not(feature = "mod-workflow"))]

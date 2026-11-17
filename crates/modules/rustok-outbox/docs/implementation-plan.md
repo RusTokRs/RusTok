@@ -23,9 +23,12 @@ bootstrap remains the only package transport and no GraphQL fallback is added.
 
 Tenant-facing DLQ administration is fail-closed. REST list and native counters
 derive tenant scope from trusted request context, while replay requires
-`logs:manage` and looks up the event by both id and tenant. Tenant admins cannot
-select another tenant or inspect platform-global relay state through these
-surfaces.
+`logs:manage` and looks up the event by both id and tenant. Both REST DLQ
+selection/replay and native counters prefer the canonical top-level envelope
+tenant and consult the nested legacy tenant only when the canonical key is
+absent. A conflicting nested tenant never grants visibility. Tenant admins
+cannot select another tenant or inspect platform-global relay state through
+these surfaces.
 
 ## FFA/FBA status block
 

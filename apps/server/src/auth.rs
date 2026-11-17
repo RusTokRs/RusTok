@@ -250,13 +250,13 @@ pub fn hash_refresh_token(token: &str) -> String {
 /// process. Verifying a candidate password against it costs the same as
 /// verifying against a real stored hash, which keeps unknown-email logins
 /// indistinguishable by latency from wrong-password logins.
-pub fn dummy_password_hash() -> String {
-    static DUMMY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+pub fn dummy_password_hash() -> Result<String> {
+    static DUMMY: once_cell::sync::OnceCell<String> = once_cell::sync::OnceCell::new();
     DUMMY
-        .get_or_init(|| {
-            rustok_auth::hash_password("rustok-timing-equalization-dummy").unwrap_or_default()
+        .get_or_try_init(|| {
+            rustok_auth::hash_password("rustok-timing-equalization-dummy").map_err(auth_err)
         })
-        .clone()
+        .cloned()
 }
 
 // ─── Error conversion ────────────────────────────────────────────────
@@ -331,6 +331,17 @@ mod tests {
         let result = auth_config_from_host_settings(secret(), 900, Some(&settings));
 
         assert!(matches!(result, Err(crate::error::Error::Json(_))));
+    }
+
+    #[test]
+    fn dummy_login_hash_is_valid_and_reuses_one_initialized_value() {
+        let first = dummy_password_hash().expect("dummy hash");
+        let second = dummy_password_hash().expect("cached dummy hash");
+        assert_eq!(first, second);
+        assert!(
+            verify_password("rustok-timing-equalization-dummy", &first)
+                .expect("dummy hash should be verifiable")
+        );
     }
 
     #[test]

@@ -44,7 +44,7 @@ infrastructure for the platform event runtime.
 - Tenant-facing DLQ list and native dashboard reads always derive tenant scope from the trusted request context. They do not accept a client-selected tenant identifier.
 - DLQ inspection requires `logs:read`; replay/requeue is a state-changing operator action and requires `logs:manage`.
 - Replay looks up the event by both event id and trusted tenant scope. Missing and cross-tenant targets fail closed as not found.
-- Native pending, dispatched, failed and retry counters require tenant context and filter both current root-envelope and legacy nested-envelope tenant shapes in `sys_events.payload`.
+- Native pending, dispatched, failed and retry counters require tenant context. They prefer the canonical top-level `tenant_id`; the nested legacy event tenant is considered only when that key is absent, never combined with it using `OR`.
 - A platform-global operational view is not exposed through tenant admin transport. Platform on-call investigation uses owner metrics, health and controlled database/operator procedures.
 
 ## Incident response

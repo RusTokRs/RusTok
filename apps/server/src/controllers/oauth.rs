@@ -819,13 +819,40 @@ async fn validate_authorize_request(
     }
 
     let allowed_scopes = app.scopes_list();
-    let requested_scopes: Vec<String> = scope
-        .as_deref()
-        .map(|value| value.split_whitespace().map(String::from).collect())
-        .unwrap_or_else(|| allowed_scopes.clone());
+    let requested_scopes = validate_authorization_scopes(scope.as_deref(), &allowed_scopes)?;
+
+    Ok(ValidatedAuthorizeRequest {
+        app,
+        redirect_uri,
+        requested_scopes,
+        state,
+        code_challenge,
+    })
+}
+
+fn validate_authorization_scopes(
+    requested: Option<&str>,
+    allowed_scopes: &[String],
+) -> Result<Vec<String>, TokenErrorResponse> {
+    let requested_scopes = match requested {
+        None => allowed_scopes.to_vec(),
+        Some(value) => value.split_whitespace().map(str::to_string).collect(),
+    };
+
+    if requested_scopes.is_empty() {
+        let error_description = if requested.is_some() {
+            "scope must not be empty when provided"
+        } else {
+            "client has no registered scopes"
+        };
+        return Err(TokenErrorResponse {
+            error: "invalid_scope".to_string(),
+            error_description: error_description.to_string(),
+        });
+    }
 
     for requested_scope in &requested_scopes {
-        if !crate::context::scope_matches(&allowed_scopes, requested_scope) {
+        if !crate::context::scope_matches(allowed_scopes, requested_scope) {
             return Err(TokenErrorResponse {
                 error: "invalid_scope".to_string(),
                 error_description: format!(
@@ -835,13 +862,7 @@ async fn validate_authorize_request(
         }
     }
 
-    Ok(ValidatedAuthorizeRequest {
-        app,
-        redirect_uri,
-        requested_scopes,
-        state,
-        code_challenge,
-    })
+    Ok(requested_scopes)
 }
 
 async fn issue_authorization_code(
@@ -1387,6 +1408,34 @@ pub fn router() -> crate::routes::ServerRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn authorization_scope_defaults_only_when_scope_is_omitted() {
+        let allowed = vec!["profile".to_string(), "catalog:read".to_string()];
+
+        assert_eq!(
+            validate_authorization_scopes(None, &allowed).unwrap(),
+            allowed
+        );
+        assert_eq!(
+            validate_authorization_scopes(Some("profile"), &allowed).unwrap(),
+            vec!["profile".to_string()]
+        );
+        for empty in ["", "   \t"] {
+            assert_eq!(
+                validate_authorization_scopes(Some(empty), &allowed)
+                    .unwrap_err()
+                    .error,
+                "invalid_scope"
+            );
+        }
+        assert_eq!(
+            validate_authorization_scopes(Some("profile admin:*"), &allowed)
+                .unwrap_err()
+                .error,
+            "invalid_scope"
+        );
+    }
 
     #[test]
     fn s256_challenge_requires_exact_unpadded_base64url_shape() {

@@ -7,7 +7,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use rustok_modules::ModuleGovernanceErrorCategory;
-use subtle::ConstantTimeEq;
 
 use crate::services::marketplace_catalog::{
     REGISTRY_MUTATION_SCHEMA_VERSION, RegistryRunnerClaimPayload, RegistryRunnerClaimRequest,
@@ -62,13 +61,7 @@ pub async fn claim_atomic(
             "Remote executor shared token is not configured",
         );
     };
-    let supplied = request
-        .headers()
-        .get("x-rustok-runner-token")
-        .and_then(|value| value.to_str().ok())
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    if !supplied.is_some_and(|value| bool::from(value.as_bytes().ct_eq(expected.as_bytes()))) {
+    if !super::registry_artifact_access::runner_token_is_valid(&ctx, &request) {
         return response(
             StatusCode::UNAUTHORIZED,
             "unauthorized",

@@ -108,6 +108,14 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
 - Module-settings change notification uses a non-transactional event forwarder;
   notification delivery can be lost. Search lag and worker readiness do not
   cover all failure modes. See the server implementation plan for these gates.
+- First-party in-place refresh rotation retains only the immediately previous
+  token digest. Older revoked generations are rejected as unknown but cannot
+  trigger full-lineage theft revocation. The durable rotation-history and
+  incident-reconciliation contract remains open; see the implementation plan.
+- OAuth refresh-token reuse now propagates failed revocation persistence as
+  `server_error`, allowing the caller to retry after a storage outage instead of
+  falsely reporting only an invalid grant. Durable incident/retry evidence and
+  two-replica failure-injection verification remain pending.
 
 ## Acknowledged sealed delivery (source only)
 
