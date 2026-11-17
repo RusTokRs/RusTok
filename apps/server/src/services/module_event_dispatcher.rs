@@ -17,8 +17,9 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 #[path = "blog_public_comments_snapshot.rs"]
 mod blog_public_comments_snapshot;
 
-/// Whether this composition registered module event listeners. A missing
-/// snapshot is not equivalent to an intentionally empty listener set.
+/// Whether this worker host requires a live module event dispatcher. Even an
+/// empty module listener set must bind an explicit registry so the transport can
+/// distinguish "no local handler" from "listener registry not initialized".
 #[derive(Clone, Copy)]
 pub struct ModuleEventDispatcherRequirement(pub bool);
 
@@ -123,15 +124,26 @@ pub fn spawn_module_event_dispatcher(
     let dispatcher = build_module_event_dispatcher(registry, event_bus, db, extensions.as_ref());
 
     let handler_count = dispatcher.handler_count();
-    ctx.shared_insert(ModuleEventDispatcherRequirement(handler_count != 0));
     if handler_count == 0 {
-        tracing::info!("No module-owned event listeners registered in ModuleRegistry");
-        return Ok(());
+        tracing::info!(
+            "No module-owned event listeners registered; binding an explicit empty registry for transport routing"
+        );
     }
 
+    start_module_event_dispatcher(ctx, dispatcher, handler_count)
+}
+
+fn start_module_event_dispatcher(
+    ctx: &ServerRuntimeContext,
+    dispatcher: EventDispatcher,
+    handler_count: usize,
+) -> Result<()> {
+    // The listener registry is part of the transport contract even when it is
+    // intentionally empty: remote-only sealed events may proceed, while
+    // required local families still fail closed when no handler is registered.
+    ctx.shared_insert(ModuleEventDispatcherRequirement(true));
     let running = dispatcher.start_with_contract_delivery()?;
     ctx.shared_insert(ModuleEventDispatcherHandle { running });
-
     tracing::info!(handler_count, "Module event dispatcher initialized");
     Ok(())
 }
@@ -1126,6 +1138,53 @@ mod lifecycle_tests {
         assert!(!ctx.shared_contains::<
             crate::services::marketplace_financial_worker::MarketplaceFinancialWorkerHandle,
         >());
+    }
+
+    #[tokio::test]
+    async fn empty_listener_set_binds_an_explicit_registry_for_transport_routing() {
+        use rustok_events::{ContractEventEnvelope, ProductIndexRefreshEvent};
+        use uuid::Uuid;
+
+        let bus = EventBus::new();
+        let ctx = crate::services::server_runtime_context::ServerRuntimeContext::new(
+            sea_orm::DatabaseConnection::default(),
+            RustokSettings::default(),
+        );
+
+        start_module_event_dispatcher(&ctx, EventDispatcher::new(bus.clone()), 0)
+            .expect("empty listener registry should start");
+
+        assert_eq!(
+            ctx.shared_get::<ModuleEventDispatcherRequirement>()
+                .map(|requirement| requirement.0),
+            Some(true),
+            "the explicit empty registry is still required by the worker transport"
+        );
+        assert_eq!(
+            ctx.shared_map::<ModuleEventDispatcherHandle, _>(|handle| !handle.is_finished()),
+            Some(true)
+        );
+
+        let remote_only = ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            ProductIndexRefreshEvent::VariantRefreshRequested {
+                product_id: Uuid::new_v4(),
+                variant_id: Uuid::new_v4(),
+                source_version: 1,
+            },
+        )
+        .expect("remote-only contract envelope");
+        assert!(
+            !bus.has_contract_handler(&remote_only)
+                .expect("an empty registry is initialized, not unavailable")
+        );
+
+        let handle = ctx
+            .shared_take::<ModuleEventDispatcherHandle>()
+            .expect("dispatcher handle should be owned by the runtime context");
+        handle.request_stop();
+        handle.join().await.expect("empty dispatcher should drain");
     }
 
     #[tokio::test]

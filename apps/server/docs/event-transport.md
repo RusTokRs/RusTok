@@ -97,3 +97,10 @@ Modules publish their event handlers through
 `RusToKModule::register_event_listeners(...)`. The host collects and registers
 them into one shared dispatcher. Cron jobs and other long-running maintenance
 workers are separate runtime paths.
+
+Worker hosts keep the dispatcher and its listener registry active even when the
+composed module set has no handlers. An explicit empty registry lets remote-only
+sealed event families reach the configured broker while required local families
+still fail closed. It also gives the single-node outbox target a local receiver,
+so root events are not retried or dead-lettered solely because no module handler
+was registered.

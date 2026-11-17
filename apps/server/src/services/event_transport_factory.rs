@@ -900,6 +900,34 @@ mod contract_delivery_tests {
     }
 
     #[tokio::test]
+    async fn remote_only_family_uses_primary_with_an_explicitly_empty_listener_registry() {
+        let accepted = Arc::new(Mutex::new(vec![]));
+        let (target, bus) = transport_with_local_delivery(
+            Arc::new(Primary {
+                accepted: accepted.clone(),
+                fail: Arc::new(AtomicBool::new(false)),
+            }),
+            8,
+        );
+        let running = EventDispatcher::new(bus).start_with_contract_delivery().unwrap();
+        let envelope = ContractEventEnvelope::new(
+            Uuid::new_v4(),
+            None,
+            ProductIndexRefreshEvent::VariantRefreshRequested {
+                product_id: Uuid::new_v4(),
+                variant_id: Uuid::new_v4(),
+                source_version: 1,
+            },
+        )
+        .unwrap();
+
+        target.publish_contract(envelope.clone()).await.unwrap();
+
+        assert_eq!(*accepted.lock().unwrap(), vec![envelope]);
+        running.stop().await.expect("empty listener dispatcher stop");
+    }
+
+    #[tokio::test]
     async fn remote_only_family_uses_primary_without_being_reinterpreted_by_inventory_listener() {
         let accepted = Arc::new(Mutex::new(vec![]));
         let handled = Arc::new(Mutex::new(vec![]));

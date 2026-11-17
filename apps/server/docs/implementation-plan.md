@@ -970,3 +970,35 @@ Deferred work remains the service-token TTL policy, the cross-crate OAuth code-r
 event, deduplication of `RbacService::record_claim_role_mismatch()`, and database/Redis
 failure-path evidence. The historical source-guard/ADR failures recorded in earlier batches
 were resolved by the refreshed `main`; the current runs above pass.
+
+
+## P9 — Empty module listener registry routing (2026-11-18)
+
+A worker host must bind the module listener registry even when the composed
+module set registers zero handlers. Previously the host treated an empty set as
+a reason not to start the dispatcher. That left the configured transport unable
+to distinguish an intentionally empty registry from a dispatcher that had not
+initialized: remote-only sealed families were refused before reaching Iggy, and
+the single-node outbox target had no local receiver for root events.
+
+### Implemented
+
+- Worker hosts now start the dispatcher for both populated and empty listener
+  sets. The empty registry is explicit and remains part of readiness; it is not
+  represented as a missing worker.
+- Required local sealed families still fail closed when no matching handler
+  exists. Remote-only families can be sent to the configured primary when the
+  registry is explicitly empty.
+- Added regression coverage for empty-registry startup and remote-only delivery.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::module_event_dispatcher
+cargo test -p rustok-server --lib services::event_transport_factory
+```
+
