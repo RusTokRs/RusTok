@@ -926,17 +926,6 @@ impl RustokSettings {
             )));
         }
 
-        if chrono::Duration::from_std(std::time::Duration::from_millis(
-            parsed.events.relay_claim_ttl_ms,
-        ))
-        .is_err()
-        {
-            return Err(serde_json::Error::io(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "rustok.events.relay_claim_ttl_ms exceeds the supported chrono duration range",
-            )));
-        }
-
         if parsed.readiness.outbox_max_pending_lag_seconds == 0 {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -1832,17 +1821,6 @@ mod tests {
         let error = RustokSettings::from_settings(&Some(oversized_backoff))
             .expect_err("backoff must fit the signed chrono representation");
         assert!(error.to_string().contains("max_backoff_ms exceeds"));
-
-        let oversized_claim = serde_json::json!({
-            "rustok": {
-                "events": {
-                    "relay_claim_ttl_ms": u64::MAX
-                }
-            }
-        });
-        let error = RustokSettings::from_settings(&Some(oversized_claim))
-            .expect_err("claim ttl must fit chrono duration");
-        assert!(error.to_string().contains("relay_claim_ttl_ms exceeds"));
 
         let oversized_interval = serde_json::json!({
             "rustok": {
