@@ -403,7 +403,7 @@ async fn session_login(
 
     let cookie = build_session_cookie(
         &tokens.refresh_token,
-        config.refresh_expiration,
+        tokens.refresh_expires_in,
         session_cookie_is_secure(&headers, addr.ip(), runtime_ctx.settings()),
     );
     Ok(cookie_session_response(user, tokens, cookie))
@@ -452,7 +452,7 @@ async fn session_register(
 
     let cookie = build_session_cookie(
         &tokens.refresh_token,
-        config.refresh_expiration,
+        tokens.refresh_expires_in,
         session_cookie_is_secure(&headers, addr.ip(), runtime_ctx.settings()),
     );
     Ok(cookie_session_response(user, tokens, cookie))
@@ -488,7 +488,7 @@ async fn session_refresh(
 
     let cookie = build_session_cookie(
         &tokens.refresh_token,
-        config.refresh_expiration,
+        tokens.refresh_expires_in,
         session_cookie_is_secure(&headers, addr.ip(), runtime_ctx.settings()),
     );
     Ok(cookie_session_response(user, tokens, cookie))
@@ -1158,6 +1158,14 @@ mod tests {
             super::login_client_ip(&headers, trusted_peer, &settings),
             trusted_peer,
         );
+    }
+
+    #[test]
+    fn session_cookie_uses_exact_server_reported_refresh_lifetime() {
+        let cookie = super::build_session_cookie("token", 10 * 24 * 3600, true);
+        assert!(cookie.contains("Max-Age=864000"));
+        assert!(cookie.contains("; Secure"));
+        assert!(!cookie.contains("Max-Age=7776000"));
     }
 
     #[test]
