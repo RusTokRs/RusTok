@@ -864,6 +864,16 @@ impl RustokSettings {
             )));
         }
 
+        // OutboxRelay stores retry delays as chrono milliseconds. Its
+        // exponential backoff must never cast an out-of-range u64 to a
+        // negative i64 duration.
+        if relay_backoff.max_backoff_ms > i64::MAX as u64 {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.events.relay_retry_policy.max_backoff_ms exceeds the supported duration range",
+            )));
+        }
+
         if parsed.events.dlq.max_attempts <= 0 {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -885,6 +895,16 @@ impl RustokSettings {
             )));
         }
 
+        if std::time::Instant::now()
+            .checked_add(std::time::Duration::from_millis(parsed.events.relay_interval_ms))
+            .is_none()
+        {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.events.relay_interval_ms exceeds the supported monotonic-clock range",
+            )));
+        }
+
         if parsed.events.relay_batch_size == 0 {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -903,6 +923,17 @@ impl RustokSettings {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "rustok.events.relay_claim_ttl_ms must be > 0",
+            )));
+        }
+
+        if chrono::Duration::from_std(std::time::Duration::from_millis(
+            parsed.events.relay_claim_ttl_ms,
+        ))
+        .is_err()
+        {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "rustok.events.relay_claim_ttl_ms exceeds the supported chrono duration range",
             )));
         }
 
@@ -1779,6 +1810,50 @@ mod tests {
         });
         RustokSettings::from_settings(&Some(equal))
             .expect("equal positive backoff bounds must be accepted");
+    }
+
+    #[test]
+    fn rejects_event_relay_durations_outside_runtime_ranges() {
+        let _guard = env_lock().lock().expect("env lock poisoned");
+        let _transport_guard = EnvVarGuard::clear(EVENT_TRANSPORT_ENV);
+        let _redis_guard = EnvVarGuard::clear(RUSTOK_REDIS_URL_ENV);
+        let _redis_url_guard = EnvVarGuard::clear(REDIS_URL_ENV);
+
+        let oversized_backoff = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "relay_retry_policy": {
+                        "base_backoff_ms": 1,
+                        "max_backoff_ms": u64::MAX
+                    }
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(oversized_backoff))
+            .expect_err("backoff must fit the signed chrono representation");
+        assert!(error.to_string().contains("max_backoff_ms exceeds"));
+
+        let oversized_claim = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "relay_claim_ttl_ms": u64::MAX
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(oversized_claim))
+            .expect_err("claim ttl must fit chrono duration");
+        assert!(error.to_string().contains("relay_claim_ttl_ms exceeds"));
+
+        let oversized_interval = serde_json::json!({
+            "rustok": {
+                "events": {
+                    "relay_interval_ms": u64::MAX
+                }
+            }
+        });
+        let error = RustokSettings::from_settings(&Some(oversized_interval))
+            .expect_err("relay interval must fit monotonic clock");
+        assert!(error.to_string().contains("relay_interval_ms exceeds"));
     }
 
     #[test]
