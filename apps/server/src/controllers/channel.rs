@@ -747,10 +747,13 @@ mod tests {
             access_token_expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
         };
 
-        assert!(super::ensure_channel_manage_access(
-            tenant_id,
-            &principal(vec![Permission::USERS_READ])
-        ).is_err());
+        assert!(
+            super::ensure_channel_manage_access(
+                tenant_id,
+                &principal(vec![Permission::USERS_READ])
+            )
+            .is_err()
+        );
         let mut delegated = principal(vec![Permission::USERS_READ]);
         delegated.session_id = Uuid::nil();
         delegated.client_id = Some(Uuid::new_v4());
@@ -759,22 +762,28 @@ mod tests {
         delegated.scopes = vec!["users:read".to_string()];
         assert!(super::ensure_channel_manage_access(tenant_id, &delegated).is_err());
 
-        assert!(super::ensure_channel_manage_access(
-            tenant_id,
-            &principal(Vec::new())
-        ).is_err());
-        assert!(super::ensure_channel_manage_access(
-            tenant_id,
-            &principal(vec![Permission::SETTINGS_MANAGE])
-        ).is_ok());
-        assert!(super::ensure_channel_manage_access(
-            tenant_id,
-            &principal(vec![Permission::MODULES_MANAGE])
-        ).is_ok());
-        assert!(super::ensure_channel_manage_access(
-            other_tenant,
-            &principal(vec![Permission::SETTINGS_MANAGE])
-        ).is_err());
+        assert!(super::ensure_channel_manage_access(tenant_id, &principal(Vec::new())).is_err());
+        assert!(
+            super::ensure_channel_manage_access(
+                tenant_id,
+                &principal(vec![Permission::SETTINGS_MANAGE])
+            )
+            .is_ok()
+        );
+        assert!(
+            super::ensure_channel_manage_access(
+                tenant_id,
+                &principal(vec![Permission::MODULES_MANAGE])
+            )
+            .is_ok()
+        );
+        assert!(
+            super::ensure_channel_manage_access(
+                other_tenant,
+                &principal(vec![Permission::SETTINGS_MANAGE])
+            )
+            .is_err()
+        );
     }
 
     #[test]
