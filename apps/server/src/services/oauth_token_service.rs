@@ -169,10 +169,7 @@ impl OAuthTokenService {
                     OAuthTokenProtocolError::invalid_grant("Refresh token has no associated user")
                 })?;
                 let family = resolve_refresh_family(db, &current).await?;
-                if Utc::now()
-                    >= family.created_at
-                        + chrono::Duration::days(USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS)
-                {
+                if Utc::now() >= refresh_family_deadline(family.created_at)? {
                     return Err(OAuthTokenProtocolError::invalid_grant(
                         "Refresh token family exceeded its maximum lifetime",
                     ));
@@ -469,6 +466,20 @@ async fn validate_refresh_token(
 struct RefreshTokenFamily {
     family_id: Uuid,
     created_at: chrono::DateTime<Utc>,
+}
+
+fn refresh_family_deadline(
+    created_at: chrono::DateTime<Utc>,
+) -> Result<chrono::DateTime<Utc>, OAuthTokenProtocolError> {
+    created_at
+        .checked_add_signed(chrono::Duration::days(
+            USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS,
+        ))
+        .ok_or_else(|| {
+            OAuthTokenProtocolError::invalid_grant(
+                "Refresh token family has an invalid creation timestamp",
+            )
+        })
 }
 
 /// Resolve the lineage of the presented refresh token. Pre-migration
@@ -809,10 +820,14 @@ async fn prepare_user_tokens(
         updated_at: Set(now.into()),
     };
 
+    let family_deadline = refresh_family_deadline(family_created_at)?;
+    let sliding_deadline = now
+        .checked_add_signed(chrono::Duration::days(USER_REFRESH_TOKEN_TTL_DAYS))
+        .ok_or_else(|| {
+            OAuthTokenProtocolError::server_error("Refresh token expiry is out of range")
+        })?;
     let refresh_model = refresh_hash.map(|refresh_hash| {
-        let expires_at = (now + chrono::Duration::days(USER_REFRESH_TOKEN_TTL_DAYS)).min(
-            family_created_at + chrono::Duration::days(USER_REFRESH_FAMILY_ABSOLUTE_LIFETIME_DAYS),
-        );
+        let expires_at = sliding_deadline.min(family_deadline);
         oauth_tokens::ActiveModel {
             id: Set(token_id),
             app_id: Set(app.id),
@@ -987,7 +1002,7 @@ fn required<'a>(
 mod tests {
     use super::{
         PreparedUserTokens, REFRESH_TOKEN_GRANT, commit_refresh_rotation, require_grant,
-        resolve_client, scopes_for_refresh, validate_requested_scopes,
+        refresh_family_deadline, resolve_client, scopes_for_refresh, validate_requested_scopes,
     };
     use crate::models::{oauth_apps, oauth_authorization_codes as oauth_codes, oauth_tokens};
     use chrono::Utc;
@@ -1140,6 +1155,18 @@ mod tests {
             validate_requested_scopes(&app, &["catalog:read".to_string(), "admin:*".to_string()])
                 .is_err()
         );
+    }
+
+    #[test]
+    fn refresh_family_deadline_rejects_unrepresentable_timestamps() {
+        let now = Utc::now();
+        assert_eq!(
+            refresh_family_deadline(now).expect("normal family"),
+            now + chrono::Duration::days(90)
+        );
+        let invalid = refresh_family_deadline(chrono::DateTime::<Utc>::MAX_UTC)
+            .expect_err("corrupt future timestamp must not panic");
+        assert_eq!(invalid.error, "invalid_grant");
     }
 
     #[test]
