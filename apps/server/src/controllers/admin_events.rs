@@ -215,7 +215,10 @@ async fn requeue_failed_event(db: &DatabaseConnection, tenant_id: Uuid, id: Uuid
     // on the write itself.
     let result = entity::Entity::update_many()
         .filter(entity::Column::Id.eq(id))
-        .filter(sys_event_tenant_condition(db.get_database_backend(), tenant_id))
+        .filter(sys_event_tenant_condition(
+            db.get_database_backend(),
+            tenant_id,
+        ))
         .filter(entity::Column::Status.eq(SysEventStatus::Failed))
         .filter(entity::Column::ClaimedBy.is_null())
         .filter(entity::Column::ClaimedAt.is_null())
@@ -333,7 +336,11 @@ mod tests {
         .await
         .expect("insert claimed event");
 
-        assert!(requeue_failed_event(&db, tenant_id, event_id).await.is_err());
+        assert!(
+            requeue_failed_event(&db, tenant_id, event_id)
+                .await
+                .is_err()
+        );
 
         let stored = entity::Entity::find_by_id(event_id)
             .one(&db)
@@ -452,7 +459,11 @@ mod tests {
 
         // The foreign tenant cannot turn a failed event into a pending one
         // even when the caller knows the event UUID.
-        assert!(requeue_failed_event(&db, foreign_tenant, event_id).await.is_err());
+        assert!(
+            requeue_failed_event(&db, foreign_tenant, event_id)
+                .await
+                .is_err()
+        );
         assert_eq!(
             entity::Entity::find_by_id(event_id)
                 .one(&db)
