@@ -29,8 +29,8 @@ requireMarkers(controller, [
   '.filter(entity::Column::Id.eq(id))',
   'sys_event_tenant_condition(',
   'tenant.id',
-  "payload->>'tenant_id' = $1 OR payload->'event'->>'tenant_id' = $1",
-  "json_extract(payload, '$.tenant_id') = ?1 OR json_extract(payload, '$.event.tenant_id') = ?1",
+  "CASE WHEN payload->'tenant_id' IS NOT NULL THEN payload->>'tenant_id' = $1 ELSE payload->'event'->>'tenant_id' = $1 END",
+  "CASE WHEN json_type(payload, '$.tenant_id') IS NOT NULL THEN json_extract(payload, '$.tenant_id') = ?1 ELSE json_extract(payload, '$.event.tenant_id') = ?1 END",
   'dlq_replay_permission_is_manage_not_read',
   'tenant_condition_covers_current_and_legacy_envelope_shapes',
 ], controllerPath);
@@ -66,9 +66,9 @@ requireMarkers(native, [
   'query_max_retry_count(&db, backend, tenant.id)',
   'fn tenant_scoped_status_sql(',
   'fn tenant_scoped_max_retry_sql(',
-  "payload->>'tenant_id' = $2 OR payload->'event'->>'tenant_id' = $2",
-  "json_extract(payload, '$.tenant_id') = ?2 OR json_extract(payload, '$.event.tenant_id') = ?2",
-  'operational_queries_are_tenant_scoped_for_supported_backends',
+  "CASE WHEN payload->'tenant_id' IS NOT NULL THEN payload->>'tenant_id' = $2 ELSE payload->'event'->>'tenant_id' = $2 END",
+  "CASE WHEN json_type(payload, '$.tenant_id') IS NOT NULL THEN json_extract(payload, '$.tenant_id') = ?2 ELSE json_extract(payload, '$.event.tenant_id') = ?2 END",
+  'operational_queries_prefer_canonical_tenant_over_legacy_fallback',
 ], nativePath);
 
 if (native.includes('tenant.map(|tenant| tenant.slug)')) {
