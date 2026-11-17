@@ -1,5 +1,5 @@
-use async_graphql::parser::types::{ExecutableDocument, OperationDefinition};
 use async_graphql::Positioned;
+use async_graphql::parser::types::{ExecutableDocument, OperationDefinition};
 
 /// Return only the GraphQL operation selected by the request.
 ///
@@ -78,10 +78,9 @@ mod operation_selection_tests {
     fn selects_only_the_named_operation() {
         use async_graphql::parser::types::Selection;
 
-        let document = async_graphql::parser::parse_query(
-            "query Public { ping } query Admin { users }",
-        )
-        .expect("document should parse");
+        let document =
+            async_graphql::parser::parse_query("query Public { ping } query Admin { users }")
+                .expect("document should parse");
 
         let public = selected_operations(&document, Some("Public"));
         assert_eq!(public.len(), 1);
@@ -107,14 +106,13 @@ mod operation_selection_tests {
         assert_eq!(selected_operations(&single, None).len(), 1);
         assert_eq!(selected_operations(&single, Some("Public")).len(), 1);
 
-        let anonymous = async_graphql::parser::parse_query("{ ping }")
-            .expect("document should parse");
+        let anonymous =
+            async_graphql::parser::parse_query("{ ping }").expect("document should parse");
         assert_eq!(selected_operations(&anonymous, None).len(), 1);
 
-        let multiple = async_graphql::parser::parse_query(
-            "query Public { ping } query Admin { users }",
-        )
-        .expect("document should parse");
+        let multiple =
+            async_graphql::parser::parse_query("query Public { ping } query Admin { users }")
+                .expect("document should parse");
         assert!(selected_operations(&multiple, None).is_empty());
     }
 }
