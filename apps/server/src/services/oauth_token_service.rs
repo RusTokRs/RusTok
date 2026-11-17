@@ -553,6 +553,9 @@ async fn detect_oauth_refresh_reuse(
     }
 
     let family_id = stale.family_id.unwrap_or(stale.id);
+    let user_id = stale.user_id.ok_or_else(|| {
+        OAuthTokenProtocolError::server_error("Replayed OAuth refresh token has no subject")
+    })?;
     tracing::warn!(
         app_id = %app_id,
         user_id = ?stale.user_id,
@@ -566,6 +569,7 @@ async fn detect_oauth_refresh_reuse(
         .col_expr(oauth_tokens::Column::UpdatedAt, Expr::value(now))
         .filter(oauth_tokens::Column::AppId.eq(app_id))
         .filter(oauth_tokens::Column::TenantId.eq(tenant_id))
+        .filter(oauth_tokens::Column::UserId.eq(user_id))
         .filter(oauth_tokens::Column::RevokedAt.is_null())
         .filter(
             Condition::any()
@@ -1103,6 +1107,16 @@ mod tests {
             .await
             .expect("insert live descendant");
 
+        // Even a corrupt shared family id cannot revoke another subject's
+        // credentials within the same app and tenant.
+        let unrelated_id = Uuid::new_v4();
+        let mut unrelated = make_token(unrelated_id, "other-subject-hash", None);
+        unrelated.user_id = Set(Some(Uuid::new_v4()));
+        unrelated
+            .insert(&db)
+            .await
+            .expect("insert unrelated subject");
+
         db.execute_unprepared(
             "CREATE TRIGGER fail_refresh_reuse_revocation BEFORE UPDATE ON oauth_tokens
              BEGIN SELECT RAISE(FAIL, 'simulated persistence failure'); END;",
@@ -1149,6 +1163,15 @@ mod tests {
                 .expect("descendant")
                 .revoked_at
                 .is_some()
+        );
+        assert!(
+            oauth_tokens::Entity::find_by_id(unrelated_id)
+                .one(&db)
+                .await
+                .expect("lookup")
+                .expect("unrelated subject")
+                .revoked_at
+                .is_none()
         );
     }
 
