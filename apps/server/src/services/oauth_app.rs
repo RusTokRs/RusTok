@@ -767,13 +767,22 @@ impl OAuthAppService {
             ));
         }
 
-        let app = OAuthApps::find_by_id(app_id)
-            .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-            .one(db)
+        let tx = db.begin().await.map_err(|_| Error::InternalServerError)?;
+        // Keep the same lock order as token issuance and consent revocation.
+        // This serializes concurrent grants and prevents consent from being
+        // created after either the app or subject has become inactive.
+        let app = lock_oauth_app_for_mutation(&tx, app_id, tenant_id)
             .await
             .map_err(|_| Error::InternalServerError)?
             .filter(|app| app.is_active())
             .ok_or(Error::NotFound)?;
+        lock_oauth_user_for_mutation(&tx, user_id, tenant_id)
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .filter(|user| user.is_active())
+            .ok_or_else(|| {
+                Error::Unauthorized("OAuth consent subject is missing or inactive".to_string())
+            })?;
 
         let app_scopes = app.scopes_list();
         if scopes
@@ -786,39 +795,15 @@ impl OAuthAppService {
         }
 
         let scopes_json = serde_json::to_value(&scopes).map_err(|_| Error::InternalServerError)?;
-
-        // Two concurrent first-time grants can both observe "no consent
-        // row" and race to insert; the partial unique index lets exactly
-        // one win. The loser retries and lands on the update path
-        // instead of surfacing a 500 for a legitimate double-submit.
-        const MAX_ATTEMPTS: usize = 3;
-        for attempt in 0..MAX_ATTEMPTS {
-            match Self::grant_consent_once(db, app_id, user_id, tenant_id, &scopes_json).await {
-                Ok(()) => return Ok(()),
-                Err(GrantConsentAttempt::UniqueRace) if attempt + 1 < MAX_ATTEMPTS => continue,
-                Err(GrantConsentAttempt::UniqueRace) => {
-                    return Err(Error::InternalServerError);
-                }
-                Err(GrantConsentAttempt::Fatal(error)) => return Err(error),
-            }
-        }
-
-        Err(Error::InternalServerError)
-    }
-
-    async fn grant_consent_once(
-        db: &DatabaseConnection,
-        app_id: Uuid,
-        user_id: Uuid,
-        tenant_id: Uuid,
-        scopes_json: &serde_json::Value,
-    ) -> std::result::Result<(), GrantConsentAttempt> {
-        let tx = db
-            .begin()
+        Self::grant_consent_in_transaction(&tx, app_id, user_id, tenant_id, &scopes_json)
             .await
-            .map_err(|_| GrantConsentAttempt::Fatal(Error::InternalServerError))?;
-        Self::grant_consent_in_transaction(&tx, app_id, user_id, tenant_id, scopes_json).await?;
-        tx.commit().await.map_err(GrantConsentAttempt::classify)?;
+            .map_err(|attempt| match attempt {
+                GrantConsentAttempt::UniqueRace => Error::Conflict(
+                    "OAuth consent changed concurrently; retry the operation".to_string(),
+                ),
+                GrantConsentAttempt::Fatal(error) => error,
+            })?;
+        tx.commit().await.map_err(|_| Error::InternalServerError)?;
         Ok(())
     }
 
