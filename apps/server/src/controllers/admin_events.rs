@@ -271,7 +271,7 @@ fn sys_event_tenant_sql(backend: DbBackend) -> &'static str {
             "(CASE WHEN json_type(payload, '$.tenant_id') IS NOT NULL THEN json_extract(payload, '$.tenant_id') = ?1 ELSE json_extract(payload, '$.event.tenant_id') = ?1 END)"
         }
         _ => {
-            "(CASE WHEN payload ? 'tenant_id' THEN payload->>'tenant_id' = $1 ELSE payload->'event'->>'tenant_id' = $1 END)"
+            "(CASE WHEN payload->'tenant_id' IS NOT NULL THEN payload->>'tenant_id' = $1 ELSE payload->'event'->>'tenant_id' = $1 END)"
         }
     }
 }
