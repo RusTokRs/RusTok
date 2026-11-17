@@ -41,14 +41,19 @@ fn selection_contains_disable_user(
         })
 }
 
-fn document_contains_disable_user(document: &ExecutableDocument) -> bool {
-    document.operations.iter().any(|(_, operation)| {
-        selection_contains_disable_user(
-            operation.node.ty,
-            &operation.node.selection_set.node,
-            document,
-        )
-    })
+fn document_contains_disable_user(
+    document: &ExecutableDocument,
+    operation_name: Option<&str>,
+) -> bool {
+    super::selected_operations(document, operation_name)
+        .into_iter()
+        .any(|operation| {
+            selection_contains_disable_user(
+                operation.node.ty,
+                &operation.node.selection_set.node,
+                document,
+            )
+        })
 }
 
 #[derive(Default)]
@@ -72,8 +77,9 @@ impl Extension for LegacyDisableUserPolicyExtension {
     ) -> ServerResult<Request> {
         let mut request = next.run(ctx, request).await?;
         if !request.query.trim().is_empty() {
+            let operation_name = request.operation_name.clone();
             let document = request.parsed_query()?;
-            if document_contains_disable_user(document) {
+            if document_contains_disable_user(document, operation_name.as_deref()) {
                 request.data.insert(LegacyDisableUserRequested);
             }
         }
@@ -124,7 +130,23 @@ mod tests {
         )
         .expect("query should parse");
 
-        assert!(document_contains_disable_user(&document));
+        assert!(document_contains_disable_user(&document, None));
+    }
+
+    #[test]
+    fn ignores_legacy_disable_in_unselected_operation() {
+        let document = async_graphql::parser::parse_query(
+            r#"
+                query PublicInfo { ping }
+                mutation DisableAccount {
+                    disableUser(id: "00000000-0000-0000-0000-000000000001") { id }
+                }
+            "#,
+        )
+        .expect("document should parse");
+
+        assert!(!document_contains_disable_user(&document, Some("PublicInfo")));
+        assert!(document_contains_disable_user(&document, Some("DisableAccount")));
     }
 
     #[test]
@@ -143,6 +165,6 @@ mod tests {
         )
         .expect("query should parse");
 
-        assert!(!document_contains_disable_user(&document));
+        assert!(!document_contains_disable_user(&document, None));
     }
 }
