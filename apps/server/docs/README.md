@@ -267,7 +267,11 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
 - Settings and system GraphQL resolvers receive `ServerRuntimeContext`, DB, and schema-owned
   `TransactionalEventBus` through GraphQL data. They do not extract or adapt a framework-global
   application context.
-- App runtime rate-limit bootstrap and shared limiter registration use `ServerRuntimeContext`;
+- App runtime rate-limit bootstrap and shared limiter registration use `ServerRuntimeContext`.
+  In-memory fixed-window counters sample time inside the serialized per-key update;
+  a request delayed behind another cannot apply an obsolete window timestamp.
+  Exactly at a window deadline, its counter restarts rather than extending the
+  previous window by one tick.
 - `host::run` owns YAML configuration loading, database connection and bounded worker shutdown for the pure Axum executable, including ordinary startup and bind failures; `services::server_bootstrap` owns startup validation, default-superadmin initialization, runtime/worker setup and router composition. If the host lifecycle future is cancelled or unwinds, its drop guard schedules worker shutdown on the active Tokio runtime; normal completion awaits the bounded drain. Rate-limit cleanup tasks, the optional Comments TCP listener and schedule-audit handoff worker, DLQ duplicate-alert tasks, Product channel/index workers, Social Graph Index worker/observers, Tenant cache/locale-generation listeners, Cache Redis and field-definition cache tasks, SEO redirect reconciliation, Channel/RBAC invalidation listeners, the RBAC generation watchdog, the Event forwarder, and both Forum Search workers are owned and joined/aborted by that drain. The Outbox relay supervisor also owns and cancels its inner processing task. This cannot guarantee cleanup after process abort/runtime destruction, and lower-level bootstrap callers still own their shutdown lifecycle.
 - Database selection is explicit: `DATABASE_URL` overrides `database.uri`; otherwise the configured URI is used as-is. The host never switches a PostgreSQL URI to SQLite based on its hostname. Configure `sqlite://...` directly when SQLite is intended.
 - Default SuperAdmin provisioning runs only in `Full`, `Api`, and `AdminSsr` host modes that own administrative authentication surfaces. `StorefrontSsr`, `Worker`, and `RegistryOnly` replicas do not perform this privileged auth-state mutation.
@@ -612,7 +616,9 @@ preflight`, `install apply`, `install status`, and `seed apply`; apply uses
   requests support a setup-token guard via
   `RUSTOK_INSTALL_SETUP_TOKEN` and header `x-rustok-setup-token` or
   `Authorization: Bearer <token>`; production HTTP apply without a setup token
-  is rejected. `/api/install/*` intentionally bypasses the tenant resolution middleware,
+  is rejected. These are mutually exclusive ways to present the setup
+  credential: requests containing both headers are rejected rather than
+  selecting one source and ignoring the other. `/api/install/*` intentionally bypasses the tenant resolution middleware,
   because the first install runs before a tenant context is created. The CLI remains
   the canonical automation path.
 - The tenant middleware resolution contract is fixed by integration tests in
