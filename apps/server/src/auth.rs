@@ -338,8 +338,10 @@ mod tests {
         let first = dummy_password_hash().expect("dummy hash");
         let second = dummy_password_hash().expect("cached dummy hash");
         assert_eq!(first, second);
-        assert!(verify_password("rustok-timing-equalization-dummy", &first)
-            .expect("dummy hash should be verifiable"));
+        assert!(
+            verify_password("rustok-timing-equalization-dummy", &first)
+                .expect("dummy hash should be verifiable")
+        );
     }
 
     #[test]
