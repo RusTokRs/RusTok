@@ -9,7 +9,7 @@ use rustok_storage::StorageConfig;
 
 use crate::services::redis_runtime::resolve_redis_url;
 
-const MAX_OUTBOX_RELAY_BATCH_SIZE: u64 = 100_000;
+const MAX_OUTBOX_RELAY_BATCH_SIZE: u64 = 10_000;
 const MAX_OUTBOX_RELAY_CONCURRENCY: usize = 128;
 
 const DEFAULT_TENANT_ID: Uuid = Uuid::from_u128(1);
