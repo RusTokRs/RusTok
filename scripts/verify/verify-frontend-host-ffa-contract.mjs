@@ -146,18 +146,18 @@ const storefrontSeoPageContext = readRepo(
 const storefrontSeoPageContextAdapter = readRepo(
   "apps/storefront/src/shared/context/seo_page_context_native_server_adapter.rs",
 );
-const adminWorkflowMod = readRepo("apps/admin/src/features/workflow/mod.rs");
+const adminWorkflowMod = readRepo("crates/modules/rustok-workflow/admin/src/lib.rs");
 const adminWorkflowModel = readRepo(
-  "apps/admin/src/features/workflow/model.rs",
+  "crates/modules/rustok-workflow/admin/src/model.rs",
 );
 const adminWorkflowTransport = readRepo(
-  "apps/admin/src/features/workflow/transport/mod.rs",
+  "crates/modules/rustok-workflow/admin/src/transport/mod.rs",
 );
 const adminWorkflowGraphqlAdapter = readRepo(
-  "apps/admin/src/features/workflow/transport/graphql_adapter.rs",
+  "crates/modules/rustok-workflow/admin/src/transport/graphql_adapter.rs",
 );
 const adminWorkflowNativeAdapter = readRepo(
-  "apps/admin/src/features/workflow/transport/native_server_adapter.rs",
+  "crates/modules/rustok-workflow/admin/src/transport/native_server_adapter.rs",
 );
 const adminOauthAppsMod = readRepo("apps/admin/src/features/oauth_apps/mod.rs");
 const adminOauthAppsModel = readRepo(
@@ -600,18 +600,18 @@ assertMissing(
 );
 assertContains(
   adminWorkflowMod,
-  "pub mod model;",
-  "apps/admin/src/features/workflow/mod.rs: workflow host feature must wire model",
+  "mod model;",
+  "crates/modules/rustok-workflow/admin/src/lib.rs: workflow package must wire model",
 );
 assertContains(
   adminWorkflowMod,
-  "pub mod transport;",
-  "apps/admin/src/features/workflow/mod.rs: workflow host feature must wire transport facade",
+  "mod transport;",
+  "crates/modules/rustok-workflow/admin/src/lib.rs: workflow package must wire transport facade",
 );
 assertNotContains(
   adminWorkflowMod,
-  "pub mod api;",
-  "apps/admin/src/features/workflow/mod.rs: workflow host feature must not wire api facade",
+  "mod api;",
+  "crates/modules/rustok-workflow/admin/src/lib.rs: workflow package must not wire api facade",
 );
 
 for (const marker of ["leptos::", "leptos_", "#[component]", "#[server]"]) {

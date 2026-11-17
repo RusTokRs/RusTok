@@ -643,9 +643,12 @@ lost responses against PostgreSQL. Selecting gRPC does not replicate Product dat
   The [server integration fixture](../../rustok-index/docs/m5-product-refresh-postgres-iggy-redelivery-evidence.md)
   passed against PostgreSQL 16 and Iggy 0.9.0, covering failed acknowledgement,
   redelivery, owner catch-up and a single applied inbox record per source mutation.
-  A single run from a standalone Product command through the relay and the
-  HTTP host with gRPC replay remains open, along with large replay pages, remote
-  absence and storefront admission.
+  The [standalone Product through the HTTP host fixture](../../rustok-index/docs/m5-product-refresh-postgres-iggy-redelivery-evidence.md#standalone-product-through-the-http-host)
+  passed on 2026-11-17 with three PostgreSQL databases and Iggy 0.9.0. An authenticated
+  Product command changed a localized title, its refresh went through the standalone relay,
+  and the Axum consumer read the projection over gRPC, stored the canonical mutation in Index,
+  and acknowledged the broker. The host database had no local row for the product.
+  Large replay pages, remote absence and storefront admission remain open.
   Verify tenant and permissions checks, deadlines and trace propagation. Include
   Flex schema gRPC in the trace check: it currently forwards correlation and
   deadline but does not carry `traceparent`. Verify that the same gRPC client

@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 2 (Fresh pass from scratch)
-- **Active Phase:** CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty
-- **Completed Phases:** None (0/17 completed — 0%)
+- **Active Phase:** CC-02: Fluid Frontend Architecture (FFA) & UI Adapter Purity
+- **Completed Phases:** CC-01 (1/17 completed — 5.8%)
 - **Active Branch:** `main`
 
 ---
@@ -55,7 +55,7 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 
 ## Phase Backlog — Cross-Cutting Capability Sequence (17 Phases Total)
 
-- [ ] **[CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty](#cc-01-fluid-backend-architecture-fba--module-sovereignty)** (0/6 completed)
+- [x] **[CC-01: Fluid Backend Architecture (FBA) & Module Sovereignty](#cc-01-fluid-backend-architecture-fba--module-sovereignty)** (6/6 completed)
 - [ ] **[CC-02: Fluid Frontend Architecture (FFA) & UI Adapter Purity](#cc-02-fluid-frontend-architecture-ffa--ui-adapter-purity)** (0/5 completed)
 - [ ] **[CC-03: RBAC, Auth & Security Enforcement](#cc-03-rbac-auth--security-enforcement)** (0/8 completed)
 - [ ] **[CC-04: Caching, Invalidation & Tenant Cache Isolation](#cc-04-caching-invalidation--tenant-cache-isolation)** (0/4 completed)
@@ -80,14 +80,28 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **Canonical Documents:** [docs/backend/module-backend-architecture.md](../backend/module-backend-architecture.md), [docs/backend/module-backend-implementation.md](../backend/module-backend-implementation.md), [docs/glossary.md](../glossary.md#fba-fluid-backend-architecture), [scripts/architecture_rules.toml](../../scripts/architecture_rules.toml).
 - **Primary Owner Crates:** `crates/libs/rustok-fba`, `crates/libs/rustok-api`, `crates/libs/rustok-runtime`, `crates/utils/rustok-cli-core`.
 - **CodeGraph Target:** `FbaProviderDescriptor FbaConsumerDependency PortContext PortError rustok_fba HostRuntimeContext`
+- **Audit Outcome:** COMPLETED (6/6 sub-items verified & remediated)
 
 #### Sub-Audit Checklist
-- [ ] **CC-01.01 — Module Physical Shape & Hexagonal Separation**
-- [ ] **CC-01.02 — Inter-Module Dependency Sovereignty**
-- [ ] **CC-01.03 — Port & Seam Purity**
-- [ ] **CC-01.04 — FBA Registry & Capability Profiles**
-- [ ] **CC-01.05 — Host Minimalism (`apps/server`)**
-- [ ] **CC-01.06 — CLI Package Decoupling**
+- [x] **CC-01.01 — Module Physical Shape & Hexagonal Separation**
+  - Verified hexagonal structure: `src/domain` pure policies, `src/entities` private persistence models, `src/services` application logic, `src/graphql` and `src/controllers` thin adapters.
+  - Remediated `rustok-blog` canonical reference layout: relocated `normalization.rs` from root `src/` to `src/domain/normalization.rs`; modularized `src/services/post/tests.rs` (72KB) into modular slice files in `src/services/post/tests/mod.rs` (< 22KB each); verified with `node scripts/verify/verify-module-source-layout.mjs`.
+- [x] **CC-01.02 — Inter-Module Dependency Sovereignty**
+  - Verified dependency edges across all 80+ workspace crates using CodeGraph and Cargo graph analysis.
+  - Confirmed module sovereignty rules from `scripts/architecture_rules.toml`: domain crates do not import foreign internal persistence entities directly; inter-module dependencies strictly respect published interfaces.
+- [x] **CC-01.03 — Port & Seam Purity**
+  - Traced port signatures and implementations across `crates/modules/*/src/ports` and `<owner>-ports`.
+  - Discovered and eliminated raw SQL queries leaking foreign `taxonomy_*` queries from `NoopBlogTaxonomyPort`; ensured `NoopBlogTaxonomyPort` provides clean in-memory fallback without database coupling per ADR `2026-11-11-blog-taxonomy-sovereignty-and-port-decoupling.md`.
+  - Relocated co-located transaction participant implementation to `src/services/taxonomy.rs`, keeping `src/ports/` persistence-neutral and re-exporting the contract.
+- [x] **CC-01.04 — FBA Registry & Capability Profiles**
+  - Verified `rustok-fba` descriptors (`CapabilityId`, `FbaProviderDescriptor`, `FbaConsumerDependency`, `BackendTopology`, `TransportProfile`) and validation logic.
+  - Verified published RPC contracts in `-ports` packages (`flex-ports`, `rustok-product-ports`, `rustok-channel-ports`, `rustok-media-ports`).
+- [x] **CC-01.05 — Host Minimalism (`apps/server`)**
+  - Traced `apps/server` composition boundaries: Axum routing, middleware, runtime composition, and module mounting.
+  - Verified that route handlers remain thin composition glue delegating to module-owned services and ports.
+- [x] **CC-01.06 — CLI Package Decoupling**
+  - Verified asynchronous CLI provider/outcome contracts in `crates/utils/rustok-cli-core`.
+  - Confirmed domain module cores do not depend on `clap`, stdout, process exit semantics, or runtime CLI harnesses; operations adapters remain segregated in `cli/` packages.
 
 ---
 
