@@ -840,9 +840,14 @@ fn validate_authorization_scopes(
     };
 
     if requested_scopes.is_empty() {
+        let error_description = if requested.is_some() {
+            "scope must not be empty when provided"
+        } else {
+            "client has no registered scopes"
+        };
         return Err(TokenErrorResponse {
             error: "invalid_scope".to_string(),
-            error_description: "scope must not be empty when provided".to_string(),
+            error_description: error_description.to_string(),
         });
     }
 

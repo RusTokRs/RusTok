@@ -291,13 +291,8 @@ async fn authenticate_client(
     }
 }
 
-fn parse_requested_scopes(value: Option<&str>) -> Vec<String> {
-    value
-        .unwrap_or_default()
-        .split_whitespace()
-        .filter(|scope| !scope.is_empty())
-        .map(str::to_string)
-        .collect()
+fn parse_requested_scopes(value: &str) -> Vec<String> {
+    value.split_whitespace().map(str::to_string).collect()
 }
 
 fn validate_requested_scopes(
@@ -309,7 +304,7 @@ fn validate_requested_scopes(
         return Ok(allowed);
     };
 
-    let requested = parse_requested_scopes(Some(requested));
+    let requested = parse_requested_scopes(requested);
     if requested.is_empty() {
         return Err(OAuthTokenProtocolError::invalid_scope(
             "Requested scope must not be empty",
@@ -1282,7 +1277,10 @@ mod tests {
             serde_json::json!(["client_credentials"]),
         );
 
-        assert_eq!(validate_requested_scopes(&app, None).unwrap(), app.scopes_list());
+        assert_eq!(
+            validate_requested_scopes(&app, None).unwrap(),
+            app.scopes_list()
+        );
         assert_eq!(
             validate_requested_scopes(&app, Some("catalog:read")).unwrap(),
             vec!["catalog:read".to_string()]
