@@ -1676,7 +1676,7 @@ mod tests {
         );
         let initialization = ServerBootstrapInitializationLock::ensure(&ctx);
         let guard = initialization.lock().await;
-        let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
+        let (finished_tx, mut finished_rx) = tokio::sync::oneshot::channel();
         let shutdown_ctx = ctx.clone();
         let shutdown = tokio::spawn(async move {
             shutdown_runtime_workers(&shutdown_ctx).await;
