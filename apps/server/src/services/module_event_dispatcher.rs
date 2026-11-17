@@ -783,9 +783,8 @@ fn spawn_product_media_release_worker_if_enabled(ctx: &ServerRuntimeContext) {
 #[cfg(test)]
 mod tests {
     use super::{
-        ModuleEventDispatcherHandle, build_module_event_dispatcher,
-        build_shared_runtime_extensions, build_shared_runtime_extensions_with_host_providers,
-        spawn_module_event_dispatcher,
+        build_module_event_dispatcher, build_shared_runtime_extensions,
+        build_shared_runtime_extensions_with_host_providers,
     };
     use crate::common::settings::RustokSettings;
     use rustok_auth::AuthConfig;
