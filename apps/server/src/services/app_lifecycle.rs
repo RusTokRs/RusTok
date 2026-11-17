@@ -383,6 +383,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
         ModuleEventDispatcherHandle, ModuleEventDispatcherRequirement,
     };
     use crate::services::module_transition_watchdog::ModuleTransitionWatchdogHandle;
+    use crate::services::event_bus::EventForwarderHandle;
     #[cfg(feature = "mod-commerce")]
     use crate::services::paid_order_label_worker::PaidOrderCreateLabelWorkerHandle;
     #[cfg(feature = "mod-payment")]
@@ -430,6 +431,11 @@ pub(crate) fn additional_runtime_worker_snapshots(
                     .auth_retention_enabled,
             finished: ctx
                 .shared_map::<AuthRetentionWorkerHandle, _>(AuthRetentionWorkerHandle::is_finished),
+        },
+        RuntimeWorkerSnapshot {
+            name: "event_forwarder",
+            required: local && ctx.shared_contains::<EventForwarderHandle>(),
+            finished: ctx.shared_map::<EventForwarderHandle, _>(|worker| !worker.is_running()),
         },
         RuntimeWorkerSnapshot {
             name: "module_event_dispatcher",
@@ -2286,9 +2292,12 @@ mod tests {
         use crate::services::event_bus::EventForwarderHandle;
         use crate::services::rbac_cache_invalidation::RbacCacheInvalidationListenerHandle;
         use crate::services::rbac_invalidation_generation::RbacInvalidationGenerationWatchdogHandle;
+        use crate::common::settings::RuntimeHostMode;
 
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
-        let ctx = ServerRuntimeContext::new(db, RustokSettings::default());
+        let mut settings = RustokSettings::default();
+        settings.runtime.host_mode = RuntimeHostMode::Worker;
+        let ctx = ServerRuntimeContext::new(db, settings);
         let (channel, mut tasks) = ChannelCacheInvalidationListenerHandle::for_shutdown_test();
         let (rbac, other) = RbacCacheInvalidationListenerHandle::for_shutdown_test();
         tasks.extend(other);
@@ -2303,6 +2312,12 @@ mod tests {
         ctx.shared_insert(rbac.clone());
         ctx.shared_insert(watchdog.clone());
         ctx.shared_insert(forwarder.clone());
+        let forwarder_snapshot = super::additional_runtime_worker_snapshots(&ctx)
+            .into_iter()
+            .find(|snapshot| snapshot.name == "event_forwarder")
+            .expect("started event forwarder must be visible to readiness");
+        assert!(forwarder_snapshot.required);
+        assert_eq!(forwarder_snapshot.finished, Some(false));
         assert!(tasks.iter().all(|task| !task.is_finished()));
 
         super::shutdown_runtime_workers(&ctx).await;

@@ -146,3 +146,8 @@ cannot silently overflow before the controller rejects new publications.
 During graceful shutdown the shared stop signal asks the forwarder to drain
 already accepted messages. The server allows up to 30 seconds for this drain
 before aborting the task.
+
+
+The event forwarder is included in worker readiness once it has been started.
+A terminated supervisor therefore cannot leave the host reporting ready while
+the in-memory-to-outbox bridge is absent.

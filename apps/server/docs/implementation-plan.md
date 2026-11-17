@@ -1168,3 +1168,29 @@ cargo test -p rustok-server --lib services::app_lifecycle
 cargo test -p rustok-outbox --test sqlite_transport_regression_test
 ```
 
+
+
+## P15 — Event forwarder readiness visibility (2026-11-18)
+
+The event forwarder was supervised and drained during shutdown, but it was not
+included in the runtime worker readiness snapshot. If its supervisor exited,
+the HTTP host could remain green even though the in-memory-to-outbox bridge was
+no longer running.
+
+### Implemented
+
+- A started event forwarder is now a required worker in local runtime readiness.
+- Readiness reports it as finished if its supervisor task has terminated.
+- Added a lifecycle regression assertion for the forwarder's required/live
+  snapshot state.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::app_lifecycle::tests::shutdown_aborts_invalidation_and_event_supervisors_even_with_live_clones
+```
+
