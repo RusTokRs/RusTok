@@ -609,14 +609,14 @@ pub async fn connect_runtime_workers_with_runtime(runtime_ctx: ServerRuntimeCont
     {
         match runtime_ctx.shared_get::<rustok_storage::StorageRuntime>() {
             Some(storage) => {
-                runtime_ctx.shared_insert(
-                    crate::services::module_artifact_maintenance::spawn_module_artifact_maintenance_handle(
-                        runtime_ctx.db_clone(),
-                        storage,
-                        60_000,
-                        stop_rx.clone(),
-                    ),
-                );
+                let worker = crate::services::module_artifact_maintenance::spawn_module_artifact_maintenance_handle(
+                    runtime_ctx.db_clone(),
+                    storage,
+                    60_000,
+                    stop_rx.clone(),
+                )
+                .map_err(Error::Message)?;
+                runtime_ctx.shared_insert(worker);
             }
             None => {
                 return Err(Error::Message(
