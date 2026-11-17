@@ -245,6 +245,7 @@ pub(crate) async fn update_product_variant(
     result
 }
 
+#[allow(dead_code)]
 pub(crate) async fn delete_product_variant(
     token: Option<String>,
     tenant_slug: Option<String>,

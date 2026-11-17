@@ -17,6 +17,7 @@ pub(crate) enum ProductAdminSchemaOperation {
     SetCategorySchemaMode,
     BindSchemaAttribute,
     BindCategoryAttribute,
+    #[allow(dead_code)]
     SaveAttributeValues,
     ClearDetachedAttributeValues,
 }

@@ -168,6 +168,7 @@ impl GraphqlFallbackMutationContext {
         )
     }
 
+    #[allow(dead_code)]
     pub(super) fn for_save_product_attribute_values(
         token: Option<&str>,
         tenant_slug: Option<&str>,

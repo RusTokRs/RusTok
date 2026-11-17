@@ -26,8 +26,8 @@ mod variant_create_native;
 pub(crate) mod write_journal;
 
 pub(crate) use retry::{
-    add_product_image, delete_product_image, delete_product_variant, reorder_product_images,
-    update_product_image, update_product_variant,
+    add_product_image, delete_product_image, reorder_product_images, update_product_image,
+    update_product_variant,
 };
 
 use crate::model::{
@@ -601,6 +601,7 @@ pub(crate) async fn bind_category_attribute(
     .await
 }
 
+#[allow(dead_code)]
 pub(crate) async fn save_product_attribute_values(
     token: Option<String>,
     tenant_slug: Option<String>,

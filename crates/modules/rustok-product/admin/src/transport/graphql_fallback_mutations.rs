@@ -198,6 +198,7 @@ pub(crate) async fn bind_category_attribute(
         .map_err(|fallback_mutation_error| context.map_error(fallback_mutation_error))
 }
 
+#[allow(dead_code)]
 pub(crate) async fn save_product_attribute_values(
     token: Option<String>,
     tenant_slug: Option<String>,
