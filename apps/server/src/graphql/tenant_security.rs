@@ -39,9 +39,10 @@ fn classify_tenant_arguments(request: &mut Request) -> ServerResult<()> {
 
     // Clone variables before borrowing the parsed document from Request.
     let variables = request.variables.clone();
+    let operation_name = request.operation_name.clone();
     let mut policy = {
         let document = request.parsed_query()?;
-        tenant_argument_policy(document, &variables)
+        tenant_argument_policy(document, &variables, operation_name.as_deref())
     };
 
     policy.requested_tenant_ids.sort_unstable();
@@ -56,10 +57,11 @@ fn classify_tenant_arguments(request: &mut Request) -> ServerResult<()> {
 fn tenant_argument_policy(
     document: &ExecutableDocument,
     variables: &Variables,
+    operation_name: Option<&str>,
 ) -> GraphqlTenantArgumentPolicy {
     let mut policy = GraphqlTenantArgumentPolicy::default();
 
-    for (_, operation) in document.operations.iter() {
+    for operation in super::selected_operations(document, operation_name) {
         let defaults = operation_variable_defaults(&operation.node);
         let mut visited_fragments = HashSet::new();
         collect_selection_set_tenant_arguments(
@@ -559,6 +561,40 @@ mod tests {
             .await;
 
         assert!(response.errors.is_empty());
+    }
+
+    #[tokio::test]
+    async fn tenant_guard_checks_only_the_selected_graphql_operation() {
+        let tenant_id = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let query = format!(
+            r#"
+                query PublicInfo {{ echoText(text: "ok") }}
+                query CrossTenant {{ echoTenant(tenantId: "{other}") }}
+            "#
+        );
+
+        let public = schema()
+            .execute(
+                Request::new(&query)
+                    .operation_name("PublicInfo")
+                    .data(tenant(tenant_id)),
+            )
+            .await;
+        assert!(public.errors.is_empty());
+        assert_eq!(
+            public.data.into_json().expect("public result should serialize")["echoText"],
+            "ok"
+        );
+
+        let cross_tenant = schema()
+            .execute(
+                Request::new(&query)
+                    .operation_name("CrossTenant")
+                    .data(tenant(tenant_id)),
+            )
+            .await;
+        assert_eq!(cross_tenant.errors.len(), 1);
     }
 
     #[tokio::test]
