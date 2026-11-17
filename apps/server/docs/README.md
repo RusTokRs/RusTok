@@ -293,11 +293,15 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   its initialization fence with shutdown. Shutdown signals workers first, then
   waits for bootstrap to finish registering handles before taking the drain
   snapshot, so concurrent bootstrap cannot orphan newly spawned workers.
-- Once started, the opt-in Product Index, Social Graph Index, Forum Search
-  inbox, and Forum Search contract consumers are required readiness workers.
-  Their durable broker offsets remain uncommitted on terminal delivery failure;
-  the readiness probe therefore turns unhealthy if a consumer exits instead of
-  leaving the HTTP host green while its projection queue is stalled.
+- Once started, the opt-in Product Index, Social Graph Index, and Forum Search
+  contract consumers are required readiness workers. Their durable broker
+  offsets remain uncommitted on terminal delivery failure; the readiness probe
+  therefore turns unhealthy if a consumer exits instead of leaving the HTTP
+  host green while its projection queue is stalled.
+- Forum Search inbox reconciliation and the opt-in Notification outbox-intake,
+  fanout, and candidate workers are also required readiness workers once started.
+  A dead queue/reconciliation task cannot leave the HTTP host green while its
+  durable work remains unprocessed.
 - Outbox relay polling, claim leases, retry backoff, and outbox-retention
   polling are each capped at one day. Relay batches are capped at 10,000 events,
   in-flight delivery concurrency at 128, and in-memory event channel capacity
