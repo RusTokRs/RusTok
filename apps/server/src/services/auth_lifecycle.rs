@@ -1342,10 +1342,12 @@ impl AuthLifecycleService {
             .map_err(|_| AuthLifecycleError::Internal(Error::InternalServerError))?;
         let ttl = Duration::try_seconds(ttl_seconds)
             .ok_or(AuthLifecycleError::Internal(Error::InternalServerError))?;
-        let expires_at = now
-            .checked_add_signed(ttl)
-            .ok_or(AuthLifecycleError::Internal(Error::InternalServerError))?;
-        Ok(expires_at.min(now + Duration::days(sessions::SESSION_ABSOLUTE_LIFETIME_DAYS)))
+        // Bound first, then do one checked addition. The previous path added
+        // the 90-day cap with , which can panic for a representable time
+        // close to chrono's upper boundary even if the requested TTL was small.
+        let bounded_ttl = ttl.min(Duration::days(sessions::SESSION_ABSOLUTE_LIFETIME_DAYS));
+        now.checked_add_signed(bounded_ttl)
+            .ok_or(AuthLifecycleError::Internal(Error::InternalServerError))
     }
 
     pub(crate) async fn resolve_effective_role<C>(
@@ -1609,6 +1611,15 @@ mod tests {
             AuthLifecycleService::session_expiration(now, 365 * 24 * 60 * 60)
                 .expect("long but valid TTL must be bounded"),
             now + Duration::days(sessions::SESSION_ABSOLUTE_LIFETIME_DAYS)
+        );
+        // Boundary values must return a typed error rather than panic.
+        let extreme = chrono::DateTime::<Utc>::MAX_UTC;
+        assert!(AuthLifecycleService::session_expiration(extreme, 1).is_err());
+        let almost_extreme = extreme - Duration::days(1);
+        assert_eq!(
+            AuthLifecycleService::session_expiration(almost_extreme, 60)
+                .expect("small TTL near chrono limit is still valid"),
+            almost_extreme + Duration::seconds(60)
         );
     }
 
