@@ -177,7 +177,10 @@ impl OAuthTokenService {
                         "Refresh token family exceeded its maximum lifetime",
                     ));
                 }
-                let scopes = current.scopes_list();
+                // OAuth refresh requests may narrow an existing grant, never widen it.
+                // An omitted scope retains the original grant; a supplied empty
+                // scope must not silently restore the full set of permissions.
+                let scopes = scopes_for_refresh(&current.scopes_list(), request.scope.as_deref())?;
                 let prepared = prepare_user_tokens(
                     db,
                     &app,
@@ -309,6 +312,24 @@ fn validate_requested_scopes(
     }
     validate_scope_subset(&allowed, requested)?;
     Ok(requested.to_vec())
+}
+
+fn scopes_for_refresh(
+    current: &[String],
+    requested: Option<&str>,
+) -> Result<Vec<String>, OAuthTokenProtocolError> {
+    let Some(requested) = requested else {
+        return Ok(current.to_vec());
+    };
+
+    let narrowed = parse_requested_scopes(Some(requested));
+    if narrowed.is_empty() {
+        return Err(OAuthTokenProtocolError::invalid_scope(
+            "Refresh scope must not be empty",
+        ));
+    }
+    validate_scope_subset(current, &narrowed)?;
+    Ok(narrowed)
 }
 
 fn validate_scope_subset(
@@ -966,7 +987,7 @@ fn required<'a>(
 mod tests {
     use super::{
         PreparedUserTokens, REFRESH_TOKEN_GRANT, commit_refresh_rotation, require_grant,
-        resolve_client, validate_requested_scopes,
+        resolve_client, scopes_for_refresh, validate_requested_scopes,
     };
     use crate::models::{oauth_apps, oauth_authorization_codes as oauth_codes, oauth_tokens};
     use chrono::Utc;
@@ -1119,6 +1140,33 @@ mod tests {
             validate_requested_scopes(&app, &["catalog:read".to_string(), "admin:*".to_string()])
                 .is_err()
         );
+    }
+
+    #[test]
+    fn refresh_scope_is_never_widened_and_supports_narrowing() {
+        let original = vec!["profile:read".to_string(), "email:read".to_string()];
+
+        assert_eq!(scopes_for_refresh(&original, None).unwrap(), original);
+        assert_eq!(
+            scopes_for_refresh(&original, Some("profile:read")).unwrap(),
+            vec!["profile:read".to_string()]
+        );
+        assert_eq!(
+            scopes_for_refresh(&original, Some("email:read profile:read")).unwrap(),
+            vec!["email:read".to_string(), "profile:read".to_string()]
+        );
+        assert_eq!(
+            scopes_for_refresh(&original, Some("profile:read admin:write"))
+                .unwrap_err()
+                .error,
+            "invalid_scope"
+        );
+        for empty in ["", "   \t"] {
+            assert_eq!(
+                scopes_for_refresh(&original, Some(empty)).unwrap_err().error,
+                "invalid_scope"
+            );
+        }
     }
 
     #[test]
