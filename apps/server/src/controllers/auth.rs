@@ -307,17 +307,29 @@ fn build_session_cookie(refresh_token: &str, max_age_secs: u64, secure: bool) ->
     cookie
 }
 
-fn parse_session_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
-    headers
-        .get(axum::http::header::COOKIE)?
-        .to_str()
-        .ok()?
-        .split(';')
-        .find_map(|part| {
-            let (name, value) = part.trim().split_once('=')?;
-            (name == SESSION_COOKIE_NAME && !value.trim().is_empty())
-                .then(|| value.trim().to_string())
-        })
+fn parse_session_cookie(headers: &axum::http::HeaderMap) -> Result<Option<String>> {
+    let mut token: Option<String> = None;
+    for header in headers.get_all(axum::http::header::COOKIE) {
+        let value = header
+            .to_str()
+            .map_err(|_| Error::BadRequest("Invalid session Cookie header".into()))?;
+        for part in value.split(';') {
+            let Some((name, value)) = part.trim().split_once('=') else {
+                continue;
+            };
+            if name != SESSION_COOKIE_NAME {
+                continue;
+            }
+            // Multiple cookies with the same name can originate from
+            // different paths. Picking the first is order-dependent and
+            // would let logout report success without revoking the real token.
+            if token.is_some() {
+                return Err(Error::BadRequest("Ambiguous session cookie".into()));
+            }
+            token = Some(value.trim().to_string());
+        }
+    }
+    Ok(token.filter(|value| !value.is_empty()))
 }
 
 fn require_session_request_header(headers: &axum::http::HeaderMap) -> Result<()> {
@@ -456,7 +468,7 @@ async fn session_refresh(
 ) -> Result<Response> {
     tracing::debug!("auth::session_refresh entry");
     require_session_request_header(&headers)?;
-    let refresh_token = parse_session_cookie(&headers)
+    let refresh_token = parse_session_cookie(&headers)?
         .ok_or_else(|| Error::Unauthorized("Invalid refresh token".into()))?;
 
     let runtime_ctx = ctx.runtime_ctx();
@@ -508,7 +520,7 @@ async fn session_logout(
     // An absent or already-revoked cookie is an idempotent logout.
     // A persistence or event-publication failure is not: the refresh token
     // might still be live, so never report a successful server-side logout.
-    if let Some(refresh_token) = parse_session_cookie(&headers) {
+    if let Some(refresh_token) = parse_session_cookie(&headers)? {
         let revocation = AuthLifecycleService::logout_by_refresh_token_runtime(
             ctx.runtime_ctx(),
             tenant.id,
@@ -1146,6 +1158,53 @@ mod tests {
             super::login_client_ip(&headers, trusted_peer, &settings),
             trusted_peer,
         );
+    }
+
+    #[test]
+    fn session_cookie_parser_rejects_duplicate_names_instead_of_guessing() {
+        use axum::http::{HeaderMap, HeaderValue, header};
+
+        let mut headers = HeaderMap::new();
+        headers.append(
+            header::COOKIE,
+            HeaderValue::from_static("other=1; rustok-session=token-one"),
+        );
+        assert_eq!(
+            super::parse_session_cookie(&headers).unwrap(),
+            Some("token-one".to_string())
+        );
+
+        headers.append(
+            header::COOKIE,
+            HeaderValue::from_static("rustok-session=token-two"),
+        );
+        assert!(matches!(
+            super::parse_session_cookie(&headers),
+            Err(super::Error::BadRequest(_))
+        ));
+
+        let mut repeated = HeaderMap::new();
+        repeated.insert(
+            header::COOKIE,
+            HeaderValue::from_static("rustok-session=one; rustok-session=two"),
+        );
+        assert!(matches!(
+            super::parse_session_cookie(&repeated),
+            Err(super::Error::BadRequest(_))
+        ));
+    }
+
+    #[test]
+    fn session_cookie_parser_preserves_absent_cookie_logout() {
+        use axum::http::{HeaderMap, HeaderValue, header};
+        let mut headers = HeaderMap::new();
+        assert_eq!(super::parse_session_cookie(&headers).unwrap(), None);
+
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_static("session=other; rustok-session="),
+        );
+        assert_eq!(super::parse_session_cookie(&headers).unwrap(), None);
     }
 
     #[test]
