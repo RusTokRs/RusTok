@@ -21,6 +21,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
 };
+use tracing::instrument;
 
 use super::rbac_service::RbacService;
 
@@ -208,6 +209,7 @@ impl AuthLifecycleService {
     /// Publish a user audit event inside the caller's transaction so
     /// the event is durably recorded exactly when the state change it
     /// describes commits (transactional outbox).
+    #[instrument(skip(db, tx))]
     pub(crate) async fn publish_user_event_in_tx(
         db: DatabaseConnection,
         tx: &DatabaseTransaction,
@@ -232,6 +234,7 @@ impl AuthLifecycleService {
         AUTH_LOGIN_INACTIVE_USER_ATTEMPT_TOTAL.store(0, Ordering::Relaxed);
     }
 
+    #[instrument(skip(ctx, password))]
     pub async fn create_user_runtime(
         ctx: &ServerRuntimeContext,
         tenant_id: uuid::Uuid,
@@ -255,6 +258,7 @@ impl AuthLifecycleService {
         .await
     }
 
+    #[instrument(skip(db, password))]
     pub(crate) async fn create_user_db(
         db: &DatabaseConnection,
         tenant_id: uuid::Uuid,
@@ -309,6 +313,7 @@ impl AuthLifecycleService {
         })
     }
 
+    #[instrument(skip(db))]
     pub(crate) async fn create_user_in_tx<C>(
         db: &C,
         tenant_id: uuid::Uuid,
@@ -385,6 +390,7 @@ impl AuthLifecycleService {
         Ok(())
     }
 
+    #[instrument(skip(ctx))]
     pub async fn update_profile_runtime(
         ctx: &ServerRuntimeContext,
         tenant_id: uuid::Uuid,
@@ -526,9 +532,10 @@ impl AuthLifecycleService {
                 // Run a full Argon2 verification against a dummy hash so
                 // an unknown email takes as long as a wrong password:
                 // without this, login latency enumerates accounts.
-                let _ =
+                if let Ok(_dummy_valid) =
                     verify_password_async(password.to_string(), crate::auth::dummy_password_hash())
-                        .await;
+                        .await
+                {}
                 return Err(AuthLifecycleError::InvalidCredentials);
             }
         };

@@ -318,11 +318,6 @@ impl OrderService {
                 "tenant_id must be a valid non-nil UUID".to_string(),
             ));
         }
-        if actor_id.is_nil() {
-            return Err(OrderError::Validation(
-                "actor_id must be a valid non-nil UUID".to_string(),
-            ));
-        }
         if matches!(channel_id, Some(id) if id.is_nil()) {
             return Err(OrderError::Validation(
                 "channel_id must be a valid non-nil UUID when provided".to_string(),

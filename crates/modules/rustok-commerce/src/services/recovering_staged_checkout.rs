@@ -70,11 +70,6 @@ impl RecoveringStagedCheckoutService {
             )
             .into());
         }
-        if actor_id.is_nil() {
-            return Err(
-                CheckoutOperationError::Validation("actor_id must not be nil".to_string()).into(),
-            );
-        }
         if cart_id.is_nil() {
             return Err(
                 CheckoutOperationError::Validation("cart_id must not be nil".to_string()).into(),
