@@ -58,6 +58,7 @@ impl MenuService {
         &self.db
     }
 
+    #[tracing::instrument(skip(self, security, input), fields(tenant_id = %tenant_id, effective_locale = %effective_locale))]
     pub async fn create(
         &self,
         tenant_id: Uuid,
