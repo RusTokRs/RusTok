@@ -98,16 +98,11 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
         Error::BadRequest("CacheService must be initialized before the event runtime".to_string())
     })?;
 
-    // Subscribe before any transport can publish a generation. This also restores shared
-    // generations before middleware and authorization paths construct or read their caches.
-    crate::services::cache_redis_status_monitor::start_cache_redis_status_monitor(
-        ctx,
-        cache.clone(),
-    )
-    .await;
-    start_tenant_cache_generation_listener(ctx, cache.clone()).await?;
-    start_rbac_cache_invalidation_listener(ctx, cache.clone()).await?;
-
+    // Build and validate the complete delivery runtime before starting any
+    // cache/listener workers. In particular, an unavailable configured Iggy
+    // deployment or an invalid artifact projector must not leave detached
+    // listeners running after bootstrap has failed.
+    let mut iggy_transport_handle: Option<Arc<IggyTransport>> = None;
     let runtime = match delivery_profile {
         EventDeliveryProfile::Outbox | EventDeliveryProfile::OutboxIggy => {
             // Keep the application-facing transport concrete so TransactionalEventBus can
@@ -137,8 +132,9 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
                     );
                     // Durable inbound consumers must reuse the exact configured connector.
                     // Creating another bundled transport would start a second native broker
-                    // process on the same ports and split lifecycle ownership.
-                    ctx.shared_insert(Arc::clone(&iggy_transport));
+                    // process on the same ports and split lifecycle ownership. Register it only
+                    // after the rest of event-runtime construction succeeds.
+                    iggy_transport_handle = Some(Arc::clone(&iggy_transport));
                     let transport: Arc<dyn EventTransport> = iggy_transport;
                     let (transport, listener_bus) =
                         transport_with_local_delivery(transport, channel_capacity);
@@ -194,6 +190,30 @@ pub async fn build_event_runtime(ctx: &ServerRuntimeContext) -> Result<EventRunt
         }
     };
 
+    // All fallible transport/projector/configuration work has completed. Start the
+    // generation listeners before returning the runtime, so no relay can publish into
+    // an unobserved cache-generation channel.
+    start_tenant_cache_generation_listener(ctx, cache.clone()).await?;
+    if let Err(error) = start_rbac_cache_invalidation_listener(ctx, cache.clone()).await {
+        let tasks =
+            crate::services::tenant_cache_generation::take_listener_tasks_for_shutdown(ctx).await;
+        for task in &tasks {
+            task.abort();
+        }
+        for task in tasks {
+            let _ = task.await;
+        }
+        return Err(error);
+    }
+    crate::services::cache_redis_status_monitor::start_cache_redis_status_monitor(
+        ctx,
+        cache.clone(),
+    )
+    .await;
+
+    if let Some(iggy_transport) = iggy_transport_handle {
+        ctx.shared_insert(iggy_transport);
+    }
     // Module listeners are started immediately after this function returns, while the historical
     // bootstrap stored EventRuntime only afterwards. Seed the shared runtime here so listener
     // startup always resolves the exact delivery bus paired with the configured transport.
