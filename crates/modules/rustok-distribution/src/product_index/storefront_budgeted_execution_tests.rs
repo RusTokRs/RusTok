@@ -12,8 +12,8 @@ use rustok_index::{
     FieldName, FieldPath, IndexProjectedValue, IndexQueryItem, IndexQueryPage, IndexValue,
 };
 use rustok_product::{
-    ProductStorefrontTagHydration, ProductStorefrontTagHydrationItem, StorefrontProductList,
-    StorefrontProductListItem, StorefrontProductListQuery, entities::product::ProductStatus,
+    ProductStatus, ProductStorefrontTagHydration, ProductStorefrontTagHydrationItem,
+    StorefrontProductList, StorefrontProductListItem, StorefrontProductListQuery,
 };
 use uuid::Uuid;
 

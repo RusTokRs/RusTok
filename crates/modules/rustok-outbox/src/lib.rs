@@ -29,18 +29,11 @@
 //!   dispatched events based on tenant or platform retention windows.
 //! - **Module Entry Point**: [`OutboxModule`] exposes canonical module metadata and migrations.
 
-pub mod entity;
-pub mod idempotency;
-pub mod migration;
 pub mod module;
 pub mod ports;
 pub mod relay;
 pub mod retention;
-pub mod transactional;
-pub mod transport;
 
-pub use entity::{Entity as SysEvents, Model as SysEvent};
-pub use migration::SysEventsMigration;
 pub use module::OutboxModule;
 pub use ports::{
     OutboxRelayPort, OutboxRelayRunOnceProjection, OutboxRelayRunOnceRequest,
@@ -50,8 +43,11 @@ pub use relay::{OutboxRelay, RelayConfig, RelayMetricsSnapshot};
 pub use retention::{
     DEFAULT_OUTBOX_RETENTION_BATCH_SIZE, OutboxPruneReport, OutboxRetention, OutboxRetentionConfig,
 };
-pub use transactional::TransactionalEventBus;
-pub use transport::{ContractEventWriteOnceError, OutboxTransport};
+pub use rustok_outbox_storage::{
+    ContractEventWriteOnceError, OutboxRootEventWriter, OutboxTransport, SysEvent, SysEvents,
+    SysEventsMigration, TransactionalEventBus, entity, idempotency, migration, transactional,
+    transport,
+};
 
 #[cfg(test)]
 mod contract_tests;

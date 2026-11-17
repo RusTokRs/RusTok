@@ -2,7 +2,9 @@ use crate::dto::{ProductResponse, ProductTranslationInput, ProductTranslationRes
 use crate::entities;
 use crate::error::{CommerceError, CommerceResult};
 use rustok_api::{PLATFORM_FALLBACK_LOCALE, locale_tags_match};
-use rustok_core::field_schema::{CustomFieldsSchema, FieldDefinition};
+use rustok_core::field_schema::{
+    CustomFieldsSchema, FieldDefinition, attached_values as field_values,
+};
 
 use super::attached_localized_storage;
 use crate::services::flex_schema_projection::ProductFlexSchemaSource;
@@ -325,12 +327,12 @@ where
     Ok(CustomFieldsSchema::new(definitions))
 }
 
-flex::impl_field_definition_source!(product_field_definitions_storage::Model);
+rustok_api::impl_field_definition_source!(product_field_definitions_storage::Model);
 
 pub fn product_field_definition_from_row(
     row: product_field_definitions_storage::Model,
 ) -> Result<FieldDefinition, String> {
-    flex::field_definition_from_source(&row)
+    rustok_core::field_schema::field_definition_from_source(&row)
 }
 
 pub fn split_product_metadata_payload(
@@ -340,21 +342,21 @@ pub fn split_product_metadata_payload(
     serde_json::Map<String, Value>,
     serde_json::Map<String, Value>,
 ) {
-    flex::split_donor_metadata(schema, metadata)
+    field_values::split_donor_metadata(schema, metadata)
 }
 
 pub fn merge_product_metadata_patch(
     existing: serde_json::Map<String, Value>,
     patch: serde_json::Map<String, Value>,
 ) -> serde_json::Map<String, Value> {
-    flex::merge_reserved_donor_patch(existing, patch)
+    field_values::merge_reserved_donor_patch(existing, patch)
 }
 
 pub fn merge_reserved_product_metadata(
     reserved: serde_json::Map<String, Value>,
     custom_fields: Option<Value>,
 ) -> Value {
-    flex::merge_reserved_donor_metadata(reserved, custom_fields)
+    field_values::merge_reserved_donor_metadata(reserved, custom_fields)
 }
 
 pub fn pick_product_translation<'a>(
@@ -416,7 +418,7 @@ pub async fn prepare_product_custom_fields_for_create<C>(
     tenant_id: Uuid,
     locale: &str,
     payload: Value,
-) -> CommerceResult<flex::PreparedAttachedValuesWrite>
+) -> CommerceResult<field_values::PreparedAttachedValuesWrite>
 where
     C: ConnectionTrait,
 {
@@ -437,10 +439,14 @@ pub(super) async fn prepare_product_custom_fields_and_schema_for_create(
     tenant_id: Uuid,
     locale: &str,
     payload: Value,
-) -> CommerceResult<(flex::PreparedAttachedValuesWrite, CustomFieldsSchema)> {
+) -> CommerceResult<(
+    field_values::PreparedAttachedValuesWrite,
+    CustomFieldsSchema,
+)> {
     reject_reserved_tag_metadata(&payload)?;
     let schema = source.load(conn, tenant_id).await?;
-    let prepared = flex::prepare_donor_attached_values_create(schema.clone(), &payload, locale)?;
+    let prepared =
+        field_values::prepare_donor_attached_values_create(schema.clone(), &payload, locale)?;
     Ok((prepared, schema))
 }
 
@@ -451,7 +457,7 @@ pub async fn prepare_product_custom_fields_for_update<C>(
     locale: &str,
     existing_metadata: &Value,
     payload: Value,
-) -> CommerceResult<flex::PreparedAttachedValuesWrite>
+) -> CommerceResult<field_values::PreparedAttachedValuesWrite>
 where
     C: ConnectionTrait,
 {
@@ -476,12 +482,15 @@ pub(super) async fn prepare_product_custom_fields_and_schema_for_update(
     locale: &str,
     existing_metadata: &Value,
     payload: Value,
-) -> CommerceResult<(flex::PreparedAttachedValuesWrite, CustomFieldsSchema)> {
+) -> CommerceResult<(
+    field_values::PreparedAttachedValuesWrite,
+    CustomFieldsSchema,
+)> {
     reject_reserved_tag_metadata(&payload)?;
     let schema = source.load(conn, tenant_id).await?;
     let existing_localized =
         attached_localized_storage::load_exact(conn, tenant_id, product_id, locale).await?;
-    let prepared = flex::prepare_donor_attached_values_update_from_values(
+    let prepared = field_values::prepare_donor_attached_values_update_from_values(
         schema.clone(),
         locale,
         existing_metadata,
@@ -508,7 +517,7 @@ where
     } else {
         attached_localized_storage::load_by_locale(conn, tenant_id, product_id).await?
     };
-    flex::resolve_attached_payload_from_values(
+    field_values::resolve_attached_payload_from_values(
         schema,
         metadata,
         &localized,

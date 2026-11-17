@@ -12,9 +12,13 @@ This contract adds Product-owned durable convergence state while preserving modu
 
 - Product owns visibility-change requests, lease/checkpoint state, and retries;
 - Channel owns only its tenant-scoped opaque identity generation;
-- `rustok-distribution` owns the cross-owner worker that compares those facts and invokes the existing
-  bounded resolver;
-- Product still does not read Channel tables and has no `rustok-channel` or `rustok-index` dependency.
+- Product owns the common resolver and execution of a claimed item;
+- Distribution provides the embedded snapshot and registers it with the general worker scheduler;
+- [standalone Product](../README.md#standalone-channel-convergence) reads Channel over its identity
+  port, then claims the same durable Product work for each configured tenant.
+
+The store enforces the persisted retry time in both profiles. Standalone
+discovery can poll Channel before the next claim becomes eligible.
 
 ## Visibility request ledger
 
@@ -28,6 +32,12 @@ INSERT or a canonical `channel_visibility` change appends:
 
 The trigger intentionally ignores unrelated Product metadata changes. The durable cursor advances one
 retained sequence at a time, so direct SQL cannot skip an earlier request.
+
+Migration `m20261117_000044_order_product_channel_convergence_commits` serializes
+sequence allocation before inserting requests for the same tenant. It schedules
+one full sweep for each tenant whose cursor had advanced before the migration.
+An in-progress sweep resumes first. The repair uses the current Channel
+generation and preserves the visibility cursor.
 
 The worker reconciles the Product's **current** owner state. A queued older revision is therefore safe:
 if a newer visibility request arrived meanwhile, the first reconciliation may already satisfy it, and
@@ -134,6 +144,19 @@ Still required:
 
 ## Maintainer verification
 
+The standalone PostgreSQL fixture passed with separate Product and Channel
+processes and databases. It checked startup during a Channel outage, resuming
+a partially completed sweep, a Channel generation change, reuse of the exact
+visibility queue, and recovery of a historical cursor gap.
+
+Set `RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to a disposable PostgreSQL connection
+with database creation privileges and `RUSTOK_PRODUCT_CHANNEL_TEST_CHANNEL_BINARY`
+to the compiled `rustok-channel-service` path.
+
+```sh
+cargo test -p rustok-product --features service --test channel_convergence_service_postgres -- --ignored
+```
+
 Suggested commands, intentionally not run by the implementation agent:
 
 ```bash
@@ -147,4 +170,4 @@ git diff --check
 ```
 
 No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, or CI
-were executed by the implementation agent.
+were executed for the original source-only checkpoint.

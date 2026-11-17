@@ -58,14 +58,15 @@ const service = requireMarkers(servicePath, [
   'pub struct ProductSalesChannelIndexRelationRecord',
   'pub enum ProductSalesChannelIndexRelationWriteOutcome',
   'pub struct ProductSalesChannelIndexRelationStore',
-  'pub async fn replace(',
+  'pub async fn commit_observation(',
   'pub async fn list_changes(',
   'pub async fn scan_current(',
   'pub async fn load_current(',
   'ProductSalesChannelIndexRelationWriteOutcome::Unchanged',
   'ProductSalesChannelIndexRelationError::ProductNotFound',
-  'require_live_product(transaction, tenant_id, product_id).await?',
-  'FOR KEY SHARE',
+  'verify_current_product(',
+  'FOR NO KEY UPDATE',
+  'append_witness(',
   'checked_add(1)',
   'INSERT INTO product_sales_channel_index_relation_snapshots',
   'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
@@ -78,18 +79,16 @@ for (const forbidden of [
   'IndexMutation',
   'FROM channels',
   'JOIN channels',
-  'visibility_key',
-  'channel_identity_generation',
   'tokio::spawn',
   'loop {',
 ]) {
   if (service.includes(forbidden)) {
-    fail(`${servicePath} must remain membership-only: ${forbidden}`);
+    fail(`${servicePath} must remain Product-owned: ${forbidden}`);
   }
 }
 
 const cargo = read('crates/modules/rustok-product/Cargo.toml');
-for (const forbidden of ['rustok-channel', 'rustok-index']) {
+for (const forbidden of ['rustok-channel.workspace', 'rustok-channel =', 'rustok-index']) {
   if (cargo.includes(forbidden)) {
     fail(`rustok-product must not gain a ${forbidden} dependency for relation ownership`);
   }
@@ -104,20 +103,20 @@ requireMarkers('crates/modules/rustok-product/src/services/mod.rs', [
   'mod index_channel_relation;',
   'mod index_channel_relation_freshness;',
   'ProductSalesChannelIndexRelationStore',
-  'ProductSalesChannelIndexRelationFreshnessStore',
+  'ProductSalesChannelIndexRelationObservation',
 ]);
 requireMarkers('crates/modules/rustok-product/src/lib.rs', [
   'ProductSalesChannelIndexRelationRecord',
   'ProductSalesChannelIndexRelationStore',
-  'ProductSalesChannelIndexRelationFreshnessStore',
+  'ProductSalesChannelIndexRelationObservation',
   'MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS',
 ]);
 
 const ledgerDoc = requireMarkers('crates/modules/rustok-product/docs/index-sales-channel-relation-ledger.md', [
   'Status: `canonical_graph_and_freshness_source_complete_runtime_evidence_pending`',
   '`product_sales_channel_index_relation_snapshots`',
-  '`ProductSalesChannelIndexRelationStore::replace`',
-  '`FOR KEY SHARE`',
+  '`ProductSalesChannelIndexRelationStore::commit_observation`',
+  '`FOR NO KEY UPDATE`',
   'Freshness is separate',
   '`product_sales_channel_index_relation_freshness_snapshots`',
   '`product_index_graph_projection_snapshots.projection_epoch`',

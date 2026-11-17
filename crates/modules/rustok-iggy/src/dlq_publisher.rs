@@ -101,11 +101,15 @@ impl IggyDlqPublisher {
         }
 
         let partition = partition_for_message_id(message_id, self.partitions);
+        let broker_partition =
+            rustok_iggy_connector::broker_partition_id(partition).ok_or_else(|| {
+                DlqPublisherError::Configuration("invalid DLQ partition number".to_owned())
+            })?;
         let producer = self
             .client
             .producer(&self.stream, "dlq")
             .map_err(publish_error)?
-            .partitioning(Partitioning::partition_id(partition))
+            .partitioning(Partitioning::partition_id(broker_partition))
             .create_stream_if_not_exists()
             .create_topic_if_not_exists(self.partitions, Default::default(), Default::default())
             .build();

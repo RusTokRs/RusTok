@@ -60,7 +60,7 @@ requireAll(cargo, [
   'required-features = ["service"]',
   'rustok-product-ports/grpc-server',
   "rustok-api.workspace = true",
-  "rustok-outbox.workspace = true",
+  "rustok-outbox-storage.workspace = true",
   "rustok-product-ports.workspace = true",
   "rustok-telemetry = { workspace = true, optional = true }",
   "sea-orm.workspace = true",
@@ -74,6 +74,8 @@ forbidAll(cargo, [
   "rustok-commerce.workspace",
   "rustok-product-transport",
 ], "Product catalog service dependency boundary");
+const productionManifest = cargo.split(/^\[dev-dependencies\]/m)[0];
+forbidAll(productionManifest, ["rustok-outbox.workspace", "rustok-outbox ="], "Product service runtime dependencies");
 
 requireAll(source, [
   "CatalogService::new(database, event_bus)",

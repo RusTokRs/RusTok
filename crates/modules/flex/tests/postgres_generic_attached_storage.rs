@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use flex::{
     AttachedEntityRef, CreateFieldDefinitionCommand, FieldDefinitionService, FlexModule,
@@ -10,8 +10,9 @@ use rustok_core::{
     MigrationSource,
     field_schema::{CustomFieldsSchema, FieldDefinition, FieldType},
 };
+use rustok_outbox::OutboxRootEventWriter;
 use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Statement};
-use sea_orm_migration::prelude::SchemaManager;
+use sea_orm_migration::{MigrationTrait, prelude::SchemaManager};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -120,6 +121,10 @@ async fn postgres_generic_category_donor_roundtrips_and_advances_definition_gene
     .await
     .expect("prerequisite Flex storage should exist");
     let manager = SchemaManager::new(&db);
+    rustok_outbox::SysEventsMigration
+        .up(&manager)
+        .await
+        .expect("outbox migration should apply on PostgreSQL");
     for migration in FlexModule.migrations() {
         migration
             .up(&manager)
@@ -129,7 +134,10 @@ async fn postgres_generic_category_donor_roundtrips_and_advances_definition_gene
 
     let tenant_id = Uuid::new_v4();
     let entity_id = Uuid::new_v4();
-    let service = GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE);
+    let service = GenericAttachedFieldDefinitionService::new(
+        TAXONOMY_CATEGORY_ENTITY_TYPE,
+        Arc::new(OutboxRootEventWriter),
+    );
     let generation_before = generation(&db).await;
     service
         .create(&db, tenant_id, Some(Uuid::new_v4()), create_command())

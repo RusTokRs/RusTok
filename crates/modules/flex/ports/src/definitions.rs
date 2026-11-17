@@ -21,6 +21,8 @@ pub struct FieldDefinitionView {
     pub updated_at: String,
 }
 
+rustok_api::impl_field_definition_source!(FieldDefinitionView);
+
 /// Source shape for converting persisted field-definition rows into Flex views.
 pub trait FieldDefinitionViewSource {
     fn id(&self) -> Uuid;

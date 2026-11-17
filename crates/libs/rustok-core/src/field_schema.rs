@@ -62,6 +62,11 @@ use rustok_api::normalize_locale_tag;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+pub mod attached_values;
+mod definitions;
+
+pub use definitions::{FieldDefinitionSource, field_definition_from_source};
+
 // ---------------------------------------------------------------------------
 // Guardrail regexes (compiled once)
 // ---------------------------------------------------------------------------

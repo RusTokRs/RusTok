@@ -66,6 +66,8 @@ pub mod m20261104_000039_create_product_brands;
 mod m20261109_000040_fix_index_graph_update_trigger;
 pub mod m20261116_000041_move_product_attached_localized_values;
 pub mod m20261116_000042_add_product_flex_schema_projection;
+mod m20261116_000043_order_product_index_refresh_ledger_commits;
+mod m20261117_000044_order_product_channel_convergence_commits;
 
 use rustok_core::MigrationDependencyDescriptor;
 use sea_orm_migration::MigrationTrait;
@@ -140,11 +142,21 @@ pub fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         Box::new(m20261109_000040_fix_index_graph_update_trigger::Migration),
         Box::new(m20261116_000041_move_product_attached_localized_values::Migration),
         Box::new(m20261116_000042_add_product_flex_schema_projection::Migration),
+        Box::new(m20261116_000043_order_product_index_refresh_ledger_commits::Migration),
+        Box::new(m20261117_000044_order_product_channel_convergence_commits::Migration),
     ]
 }
 
 pub fn migration_dependencies() -> Vec<MigrationDependencyDescriptor> {
     vec![
+        MigrationDependencyDescriptor::new(
+            "m20261117_000044_order_product_channel_convergence_commits",
+            vec!["m20260807_000012_add_product_sales_channel_relation_convergence"],
+        ),
+        MigrationDependencyDescriptor::new(
+            "m20261116_000043_order_product_index_refresh_ledger_commits",
+            vec!["m20260806_000007_add_product_index_refresh_relay_cursors"],
+        ),
         MigrationDependencyDescriptor::new(
             "m20260329_000001_create_product_tags",
             vec!["m20260329_000001_create_taxonomy_tables"],

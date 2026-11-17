@@ -154,6 +154,8 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+rustok-product-ports = { workspace = true, features = ["grpc-client"] }
+rustok-test-utils.workspace = true
 sea-orm-migration.workspace = true
 
 [package.metadata.cargo-udeps.ignore]

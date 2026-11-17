@@ -85,7 +85,7 @@ use crate::error::{CommerceError, CommerceResult};
 use crate::ports::pricing::{CatalogBasePriceSnapshot, InitialPrice, ProductPricingPort};
 use rustok_api::PLATFORM_FALLBACK_LOCALE;
 use rustok_events::DomainEvent;
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox_storage::TransactionalEventBus;
 
 use crate::ProductCatalogSchemaService;
 

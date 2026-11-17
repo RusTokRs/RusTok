@@ -14,6 +14,7 @@ use flex::{
 use rustok_api::{AuthContext, Permission, PortActor, PortContext, TenantContext, TenantLocale};
 use rustok_core::{ModuleRegistry, SecurityContext, UserRole, field_schema::FieldType};
 use rustok_migrations::Migrator;
+use rustok_outbox::OutboxRootEventWriter;
 use rustok_server::{
     auth::AuthConfig,
     common::settings::RustokSettings,
@@ -345,6 +346,7 @@ fn graphql_schema(db: DatabaseConnection) -> FlexPolicySchema {
     let mut field_registry = FieldDefRegistry::new();
     field_registry.register(Arc::new(GenericAttachedFieldDefinitionService::new(
         TAXONOMY_CATEGORY_ENTITY_TYPE,
+        Arc::new(OutboxRootEventWriter),
     )));
     let runtime = FlexGraphqlRuntime::new(
         Arc::new(FlexStandaloneSeaOrmService::new(db.clone())),
@@ -630,24 +632,27 @@ async fn create_category(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult
 }
 
 async fn create_localized_definition(db: &DatabaseConnection, tenant_id: Uuid) -> TestResult<()> {
-    GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE)
-        .create(
-            db,
-            tenant_id,
-            Some(Uuid::new_v4()),
-            CreateFieldDefinitionCommand {
-                field_key: FIELD_KEY.to_string(),
-                field_type: FieldType::Text,
-                label: HashMap::from([("en".to_string(), "Tagline".to_string())]),
-                description: None,
-                is_localized: true,
-                is_required: true,
-                default_value: None,
-                validation: None,
-                position: None,
-            },
-        )
-        .await?;
+    GenericAttachedFieldDefinitionService::new(
+        TAXONOMY_CATEGORY_ENTITY_TYPE,
+        Arc::new(OutboxRootEventWriter),
+    )
+    .create(
+        db,
+        tenant_id,
+        Some(Uuid::new_v4()),
+        CreateFieldDefinitionCommand {
+            field_key: FIELD_KEY.to_string(),
+            field_type: FieldType::Text,
+            label: HashMap::from([("en".to_string(), "Tagline".to_string())]),
+            description: None,
+            is_localized: true,
+            is_required: true,
+            default_value: None,
+            validation: None,
+            position: None,
+        },
+    )
+    .await?;
     Ok(())
 }
 

@@ -96,4 +96,22 @@ test.describe('UI Workbench Visual & Functional Parity (Next.js ↔ Leptos)', ()
     await expect(page.getByText('Save Action Toolbar')).toBeVisible();
     await expect(page.getByText('RusToK Core')).toBeVisible();
   });
+
+  test('RichText Editor Sandbox mounts isolated frame and profile controls', async ({ page }) => {
+    const response = await page.goto('/dashboard/design-system', { waitUntil: 'domcontentloaded' });
+    if (response && response.status() >= 400) {
+      test.skip(true, 'Workbench page not available');
+    }
+
+    const richTextSection = page.locator('section', { hasText: 'RichText Editor Sandbox' });
+    if (!(await richTextSection.isVisible())) {
+      test.skip(true, 'RichText Sandbox section not rendered');
+    }
+
+    await expect(richTextSection).toBeVisible();
+    await expect(richTextSection.getByRole('button', { name: 'article' })).toBeVisible();
+    await expect(richTextSection.getByRole('button', { name: 'discussion' })).toBeVisible();
+    await expect(richTextSection.getByRole('button', { name: 'comment' })).toBeVisible();
+    await expect(richTextSection.locator('iframe')).toBeVisible();
+  });
 });

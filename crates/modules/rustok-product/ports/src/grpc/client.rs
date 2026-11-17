@@ -24,6 +24,11 @@ use crate::{
         UpdateVariantInput, VariantAxesPreviewResponse, VariantAxisConfigResponse, VariantResponse,
     },
 };
+use crate::{
+    ProductLocaleReplayEntry, ProductLocaleReplayKey, ProductLocaleReplayPage,
+    ProductLocaleReplayPort, ProductLocaleReplayScan, ProductVariantReplayEntry,
+    ProductVariantReplayPage, ProductVariantReplayPort, ProductVariantReplayScan,
+};
 use async_trait::async_trait;
 use rustok_api::{PortContext, PortError, PortErrorKind};
 use serde::{Serialize, de::DeserializeOwned};
@@ -47,6 +52,8 @@ pub struct GrpcProductCatalogReadProvider {
     client: ProductCatalogReadServiceClient<Channel>,
     authentication: Option<ProductCatalogGrpcBearerToken>,
     attached_values_authentication: Option<ProductCatalogGrpcBearerToken>,
+    locale_replay_authentication: Option<ProductCatalogGrpcBearerToken>,
+    variant_replay_authentication: Option<ProductCatalogGrpcBearerToken>,
 }
 
 impl GrpcProductCatalogReadProvider {
@@ -55,6 +62,8 @@ impl GrpcProductCatalogReadProvider {
             client: ProductCatalogReadServiceClient::new(channel),
             authentication: None,
             attached_values_authentication: None,
+            variant_replay_authentication: None,
+            locale_replay_authentication: None,
         }
     }
 
@@ -85,6 +94,22 @@ impl GrpcProductCatalogReadProvider {
         self
     }
 
+    pub fn with_variant_replay_authentication(
+        mut self,
+        authentication: ProductCatalogGrpcBearerToken,
+    ) -> Self {
+        self.variant_replay_authentication = Some(authentication);
+        self
+    }
+
+    pub fn with_locale_replay_authentication(
+        mut self,
+        authentication: ProductCatalogGrpcBearerToken,
+    ) -> Self {
+        self.locale_replay_authentication = Some(authentication);
+        self
+    }
+
     /// Validates and installs the deployment bearer credential used for every RPC.
     pub fn with_bearer_token(
         self,
@@ -103,6 +128,88 @@ impl GrpcProductCatalogReadProvider {
             input_json: encode(input)?,
         };
         grpc_request(payload, context, self.authentication.as_ref())
+    }
+}
+
+#[async_trait]
+impl ProductVariantReplayPort for GrpcProductCatalogReadProvider {
+    async fn scan_variant_replay(
+        &self,
+        context: PortContext,
+        input: ProductVariantReplayScan,
+    ) -> Result<ProductVariantReplayPage, PortError> {
+        let response = self
+            .client
+            .clone()
+            .scan_variant_replay(replay_request(
+                &context,
+                &input,
+                self.variant_replay_authentication.as_ref(),
+            )?)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn load_variant_replay(
+        &self,
+        context: PortContext,
+        variant_ids: Vec<Uuid>,
+    ) -> Result<Vec<ProductVariantReplayEntry>, PortError> {
+        let response = self
+            .client
+            .clone()
+            .load_variant_replay(replay_request(
+                &context,
+                &variant_ids,
+                self.variant_replay_authentication.as_ref(),
+            )?)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+}
+
+#[async_trait]
+impl ProductLocaleReplayPort for GrpcProductCatalogReadProvider {
+    async fn scan_locale_replay(
+        &self,
+        context: PortContext,
+        input: ProductLocaleReplayScan,
+    ) -> Result<ProductLocaleReplayPage, PortError> {
+        let response = self
+            .client
+            .clone()
+            .scan_locale_replay(replay_request(
+                &context,
+                &input,
+                self.locale_replay_authentication.as_ref(),
+            )?)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
+    }
+
+    async fn load_locale_replay(
+        &self,
+        context: PortContext,
+        keys: Vec<ProductLocaleReplayKey>,
+    ) -> Result<Vec<ProductLocaleReplayEntry>, PortError> {
+        let response = self
+            .client
+            .clone()
+            .load_locale_replay(replay_request(
+                &context,
+                &keys,
+                self.locale_replay_authentication.as_ref(),
+            )?)
+            .await
+            .map_err(status_to_port_error)?
+            .into_inner();
+        decode(&response.output_json)
     }
 }
 
@@ -711,6 +818,25 @@ impl ProductCatalogCommandPort for GrpcProductCatalogCommandProvider {
             .map_err(status_to_port_error)?;
         Ok(())
     }
+}
+
+fn replay_request(
+    context: &PortContext,
+    input: &impl Serialize,
+    credential: Option<&ProductCatalogGrpcBearerToken>,
+) -> Result<Request<JsonRequest>, PortError> {
+    context.require_read_semantics()?;
+    let credential = credential.ok_or_else(|| {
+        PortError::forbidden(
+            "product.replay_credential_missing",
+            "Product replay requires its dedicated credential",
+        )
+    })?;
+    let input = JsonRequest {
+        context_json: encode(context)?,
+        input_json: encode(input)?,
+    };
+    grpc_request(input, context, Some(credential))
 }
 
 fn grpc_request<T>(

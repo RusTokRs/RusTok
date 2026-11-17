@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
+    num::NonZeroU64,
     sync::Arc,
 };
 
@@ -259,6 +260,7 @@ impl IndexSourcePage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexSourceLoadBatch {
     mutations: Vec<IndexMutation>,
+    owner_revisions: Option<Vec<NonZeroU64>>,
 }
 
 impl IndexSourceLoadBatch {
@@ -266,9 +268,36 @@ impl IndexSourceLoadBatch {
         request: &IndexSourceLoadRequest,
         mutations: Vec<IndexMutation>,
     ) -> Result<Self, IndexSourceError> {
-        let batch = Self { mutations };
+        let batch = Self {
+            mutations,
+            owner_revisions: None,
+        };
         validate_load_batch(request, &batch)?;
         Ok(batch)
+    }
+
+    /// Bind each mutation to the owner revision checked by its refresh events.
+    /// Use this when the materialized projection has its own mutation clock.
+    pub fn with_owner_revisions(
+        request: &IndexSourceLoadRequest,
+        entries: Vec<(IndexMutation, NonZeroU64)>,
+    ) -> Result<Self, IndexSourceError> {
+        let (mutations, owner_revisions) = entries.into_iter().unzip();
+        let batch = Self {
+            mutations,
+            owner_revisions: Some(owner_revisions),
+        };
+        validate_load_batch(request, &batch)?;
+        Ok(batch)
+    }
+
+    pub(super) fn refresh_revision_at(&self, position: usize) -> Option<u64> {
+        self.mutations.get(position).map(|mutation| {
+            self.owner_revisions.as_ref().map_or_else(
+                || mutation.source_version(),
+                |revisions| revisions[position].get(),
+            )
+        })
     }
 
     pub fn mutations(&self) -> &[IndexMutation] {

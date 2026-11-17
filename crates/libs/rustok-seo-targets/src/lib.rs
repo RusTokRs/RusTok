@@ -21,7 +21,7 @@ use async_trait::async_trait;
 #[cfg(feature = "server")]
 use rustok_core::ModuleRuntimeExtensions;
 #[cfg(feature = "server")]
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox_storage::TransactionalEventBus;
 #[cfg(feature = "server")]
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};

@@ -15,7 +15,8 @@ does not define or re-export `Port*` types.
   deployment authority.
 - Define runtime identity, RBAC, security-context, ID, and error primitives; permission DTOs are consumed from `rustok-api`.
 - Define the shared retention-policy vocabulary and deadline validation used by evidence-owning domains.
-- Provide flex/custom-fields schema contracts and content-format helpers used by multiple domains.
+- Provide custom-fields schema decoding, validation, and attached-value locale
+  resolution using field definitions and values supplied by the caller.
 - Re-export canonical foundational runtime contracts from dedicated modules.
 - Expose event foundation contracts, including EventBus stats, in-memory transport reliability, and backpressure observability controls, dispatcher retry semantics, and dispatch latency hooks.
 - Stay free from host-specific transport, ORM, and UI concerns.

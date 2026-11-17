@@ -2,7 +2,7 @@
 fn marketplace_listing_external_events_use_a_sealed_typed_contract() {
     let contract = include_str!("../../../crates/libs/rustok-events/src/contract.rs");
     let listing = include_str!("../../../crates/libs/rustok-events/src/marketplace_listing.rs");
-    let outbox = include_str!("../../../crates/modules/rustok-outbox/src/transactional.rs");
+    let outbox = include_str!("../../../crates/libs/rustok-outbox-storage/src/transactional.rs");
     let owner_service =
         include_str!("../../../crates/modules/rustok-marketplace-listing/src/service.rs");
     let owner_receipts =

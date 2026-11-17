@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    num::NonZeroU64,
     sync::{Arc, Mutex},
 };
 
@@ -23,6 +24,7 @@ const SOURCE_NAME: &str = "product-postgres-primary";
 #[derive(Clone)]
 struct ExactSource {
     mutation: Option<IndexMutation>,
+    owner_revision: Option<NonZeroU64>,
     calls: Arc<Mutex<usize>>,
 }
 
@@ -40,12 +42,18 @@ impl IndexSource for ExactSource {
         request: IndexSourceLoadRequest,
     ) -> Result<IndexSourceLoadBatch, IndexSourceFailure> {
         *self.calls.lock().expect("source call lock") += 1;
-        IndexSourceLoadBatch::new(&request, self.mutation.clone().into_iter().collect()).map_err(
-            |_| {
-                IndexSourceFailure::permanent("source_refresh_fixture_invalid")
-                    .expect("static failure code: invariant validated at startup")
-            },
-        )
+        let mutations = self.mutation.clone().into_iter();
+        let batch = match self.owner_revision {
+            Some(revision) => IndexSourceLoadBatch::with_owner_revisions(
+                &request,
+                mutations.map(|mutation| (mutation, revision)).collect(),
+            ),
+            None => IndexSourceLoadBatch::new(&request, mutations.collect()),
+        };
+        batch.map_err(|_| {
+            IndexSourceFailure::permanent("source_refresh_fixture_invalid")
+                .expect("static failure code: invariant validated at startup")
+        })
     }
 }
 
@@ -140,6 +148,14 @@ fn registries(
     mutation: Option<IndexMutation>,
     source_calls: Arc<Mutex<usize>>,
 ) -> (SharedIndexSourceRegistry, SharedIndexMutationEventRegistry) {
+    registries_with_revision(mutation, source_calls, None)
+}
+
+fn registries_with_revision(
+    mutation: Option<IndexMutation>,
+    source_calls: Arc<Mutex<usize>>,
+    owner_revision: Option<NonZeroU64>,
+) -> (SharedIndexSourceRegistry, SharedIndexMutationEventRegistry) {
     let mut schemas = IndexSchemaSourceCatalog::new();
     schemas.register("product", schema()).expect("schema owner");
 
@@ -151,6 +167,7 @@ fn registries(
             [schema_ref()],
             ExactSource {
                 mutation,
+                owner_revision,
                 calls: source_calls,
             },
         )
@@ -210,6 +227,44 @@ async fn canonical_source_mutation_identity_is_preserved_before_acknowledgement(
         *observed_event_id.lock().expect("observed event lock"),
         Some(mutation(9).event_id())
     );
+}
+
+#[tokio::test]
+async fn owner_revision_fences_refresh_independently_of_the_projection_clock() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let worker = IndexSourceRefreshEventWorker::new(
+        RecordingSink {
+            calls: calls.clone(),
+            observed_event_id: Arc::new(Mutex::new(None)),
+        },
+        RecordingAcknowledger {
+            calls: calls.clone(),
+        },
+    );
+    let source_calls = Arc::new(Mutex::new(0));
+    let (sources, events) =
+        registries_with_revision(Some(mutation(90)), source_calls.clone(), NonZeroU64::new(6));
+    let behind = worker
+        .process(&SchemaRegistry::default(), &sources, &events, delivery(7))
+        .await;
+    assert!(matches!(
+        behind,
+        Err(IndexSourceRefreshEventProcessError::SourceVersionBehind {
+            minimum: 7,
+            actual: 6,
+            ..
+        })
+    ));
+    assert!(calls.lock().expect("call lock").is_empty());
+
+    let (sources, events) =
+        registries_with_revision(Some(mutation(1)), source_calls, NonZeroU64::new(7));
+    let applied = worker
+        .process(&SchemaRegistry::default(), &sources, &events, delivery(7))
+        .await
+        .expect("the owner has reached the requested revision");
+    assert_eq!(applied.source_version(), 1);
+    assert_eq!(*calls.lock().expect("call lock"), vec!["apply", "ack"]);
 }
 
 #[tokio::test]

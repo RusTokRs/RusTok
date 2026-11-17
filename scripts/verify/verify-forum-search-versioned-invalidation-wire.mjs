@@ -20,7 +20,7 @@ const paths = {
   eventLib: "crates/libs/rustok-events/src/lib.rs",
   eventPayload: "crates/libs/rustok-events/src/contract.rs",
   eventDigests: "crates/libs/rustok-events/contracts/event-contract-digests.json",
-  outbox: "crates/modules/rustok-outbox/src/transactional.rs",
+  outbox: "crates/libs/rustok-outbox-storage/src/transactional.rs",
   forumPublisher: "crates/modules/rustok-forum/src/services/projection_invalidation.rs",
   searchInbox: "crates/modules/rustok-search/src/forum_inbox.rs",
   forumPlan: "crates/modules/rustok-forum/docs/implementation-plan.md",

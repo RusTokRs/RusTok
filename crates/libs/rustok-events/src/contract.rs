@@ -375,6 +375,38 @@ impl ContractEventEnvelope {
         Ok(())
     }
 
+    /// Lift a legacy root envelope into the typed reader without changing wire identity.
+    pub fn from_root_envelope(root: EventEnvelope) -> Result<Self, EventContractEnvelopeError> {
+        let EventEnvelope {
+            id,
+            event_type,
+            schema_version,
+            correlation_id,
+            causation_id,
+            tenant_id,
+            trace_id,
+            timestamp,
+            actor_id,
+            event,
+            retry_count,
+        } = root;
+        let envelope = Self {
+            id,
+            event_type,
+            schema_version,
+            correlation_id,
+            causation_id,
+            tenant_id,
+            trace_id,
+            timestamp,
+            actor_id,
+            event: ContractEventPayload::Root(event),
+            retry_count,
+        };
+        envelope.validate_registered_schema()?;
+        Ok(envelope)
+    }
+
     pub fn into_root_envelope(self) -> Result<EventEnvelope, EventContractEnvelopeError> {
         self.validate_registered_schema()?;
         let Self {

@@ -29,6 +29,10 @@ use rustok_index::{
     materialize_index_mutation_event_registry, materialize_index_source_registry,
     materialize_postgres_index_sources,
 };
+use rustok_product::{
+    ProductSalesChannelIndexRelationStore,
+    services::{bind_channel_observation, channel_identity_selector, load_product_visibility},
+};
 use rustok_server::services::product_index_refresh_worker::product_index_refresh_delivery_from_envelope;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement,
@@ -91,6 +95,7 @@ impl TestDatabase {
                 step.up(&manager).await?;
             }
             seed_owner_rows(&migration).await?;
+            reconcile_product_channels(&migration).await?;
             Ok::<(), Box<dyn Error + Send + Sync>>(())
         }
         .await;
@@ -198,6 +203,9 @@ async fn run_ack_failure_redelivery(
         let runtime = build_runtime(&database).await?;
         let product_source = load_current_source_mutation(&runtime.sources, product_key()?).await?;
         let product_version = product_source.source_version();
+        let (_, product_revision) =
+            load_product_visibility(&database.source, TENANT_ID, PRODUCT_ID).await?;
+        assert!(product_version < product_revision);
         let variant_source = load_current_source_mutation(&runtime.sources, variant_key()?).await?;
         let variant_version = variant_source.source_version();
 
@@ -215,7 +223,7 @@ async fn run_ack_failure_redelivery(
         let locale_event_id = Uuid::new_v4();
         let variant_event_id = Uuid::new_v4();
         first_transport
-            .publish_contract(locale_envelope(locale_event_id, product_version)?)
+            .publish_contract(locale_envelope(locale_event_id, product_revision)?)
             .await?;
         first_transport
             .publish_contract(variant_envelope(variant_event_id, variant_version)?)
@@ -255,8 +263,14 @@ async fn run_ack_failure_redelivery(
             product_version,
         )
         .await?;
-        assert_applied_inbox_once(&database.mutation, PRODUCT_SOURCE, locale_event_id).await?;
+        assert_applied_inbox_once(
+            &database.mutation,
+            PRODUCT_SOURCE,
+            product_source.event_id(),
+        )
+        .await?;
 
+        drop(worker);
         drop(first_group);
         first_transport.shutdown().await?;
         drop(first_transport);
@@ -304,7 +318,12 @@ async fn run_ack_failure_redelivery(
             ))
             .into());
         }
-        assert_applied_inbox_once(&database.mutation, PRODUCT_SOURCE, locale_event_id).await?;
+        assert_applied_inbox_once(
+            &database.mutation,
+            PRODUCT_SOURCE,
+            product_source.event_id(),
+        )
+        .await?;
 
         let variant = receive_event(&restarted_group).await?;
         ensure_delivery_identity(&variant, variant_event_id)?;
@@ -339,8 +358,12 @@ async fn run_ack_failure_redelivery(
             variant_version,
         )
         .await?;
-        assert_applied_inbox_once(&database.mutation, PRODUCT_VARIANT_SOURCE, variant_event_id)
-            .await?;
+        assert_applied_inbox_once(
+            &database.mutation,
+            PRODUCT_VARIANT_SOURCE,
+            variant_source.event_id(),
+        )
+        .await?;
 
         restarted_transport.shutdown().await?;
         Ok::<(), Box<dyn Error + Send + Sync>>(())
@@ -359,7 +382,8 @@ async fn run_behind_source_redelivery(
     let result = async {
         let runtime = build_runtime(&database).await?;
         let source = load_current_source_mutation(&runtime.sources, product_key()?).await?;
-        let actual_version = source.source_version();
+        let (_, actual_version) =
+            load_product_visibility(&database.source, TENANT_ID, PRODUCT_ID).await?;
         let required_version = actual_version.checked_add(1).ok_or_else(|| {
             invalid_data("Product source version cannot advance for behind-source proof")
         })?;
@@ -404,19 +428,22 @@ async fn run_behind_source_redelivery(
             ))
             .into());
         }
-        assert_inbox_absent(&database.mutation, PRODUCT_SOURCE, event_id).await?;
+        assert_inbox_absent(&database.mutation, PRODUCT_SOURCE, source.event_id()).await?;
 
+        drop(worker);
         drop(first_group);
         first_transport.shutdown().await?;
         drop(first_transport);
 
         let restarted_transport = IggyTransport::new(config).await?;
-        let restarted_group = restarted_transport
-            .open_persistent_contract_consumer_group(
-                PRODUCT_INDEX_REFRESH_CONSUMER_GROUP,
-                PRODUCT_INDEX_REFRESH_TOPIC,
-            )
-            .await?;
+        let restarted_group = Arc::new(
+            restarted_transport
+                .open_persistent_contract_consumer_group(
+                    PRODUCT_INDEX_REFRESH_CONSUMER_GROUP,
+                    PRODUCT_INDEX_REFRESH_TOPIC,
+                )
+                .await?,
+        );
         let redelivered = receive_event(&restarted_group).await?;
         ensure_delivery_identity(&redelivered, event_id)?;
         if required_offset(&redelivered)? != first_offset {
@@ -429,6 +456,40 @@ async fn run_behind_source_redelivery(
             return Err(invalid_data("behind-source restart changed broker payload bytes").into());
         }
 
+        database
+            .migration
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "UPDATE product_translations SET title = $3 WHERE tenant_id = $1 AND id = $2",
+                [
+                    TENANT_ID.into(),
+                    PRODUCT_TRANSLATION_ID.into(),
+                    "Product caught up".into(),
+                ],
+            ))
+            .await?;
+        let current = load_current_source_mutation(&runtime.sources, product_key()?).await?;
+        assert!(current.source_version() < required_version);
+        let worker = IndexSourceRefreshEventWorker::new(
+            runtime.mutations.clone(),
+            BrokerAcknowledger::new(Arc::clone(&restarted_group), false),
+        );
+        let applied = worker
+            .process(
+                runtime.schemas.registry(),
+                &runtime.sources,
+                &runtime.events,
+                delivery_from_consumed(&redelivered, &runtime.events)?,
+            )
+            .await?;
+        assert_eq!(
+            applied.mutation_outcome(),
+            IndexReplayMutationOutcome::Applied
+        );
+        assert_eq!(applied.source_version(), current.source_version());
+        assert_applied_inbox_once(&database.mutation, PRODUCT_SOURCE, current.event_id()).await?;
+
+        drop(worker);
         drop(restarted_group);
         restarted_transport.shutdown().await?;
         Ok::<(), Box<dyn Error + Send + Sync>>(())
@@ -731,11 +792,29 @@ INSERT INTO products (id, tenant_id, metadata) VALUES
 INSERT INTO product_translations (id, product_id, tenant_id, locale, title, handle) VALUES
     ('{PRODUCT_TRANSLATION_ID}', '{PRODUCT_ID}', '{TENANT_ID}', 'en', 'Refresh Product', 'refresh-product');
 
+-- Advance the owner revision before the first Channel relation is materialized.
+UPDATE product_translations SET title = 'Revised Refresh Product' WHERE id = '{PRODUCT_TRANSLATION_ID}';
+
 INSERT INTO product_variants (id, product_id, tenant_id, sku) VALUES
     ('{VARIANT_ID}', '{PRODUCT_ID}', '{TENANT_ID}', 'refresh-variant');
 "#
     ))
     .await?;
+    Ok(())
+}
+
+async fn reconcile_product_channels(db: &DatabaseConnection) -> TestResult<()> {
+    let (visibility, revision) = load_product_visibility(db, TENANT_ID, PRODUCT_ID).await?;
+    let channel_snapshot = rustok_channel::PostgresChannelIndexIdentity::read_in(
+        db,
+        TENANT_ID,
+        channel_identity_selector(&visibility),
+    )
+    .await;
+    let observation = bind_channel_observation(TENANT_ID, revision, visibility, channel_snapshot)?;
+    ProductSalesChannelIndexRelationStore::new(db.clone())
+        .commit_observation(TENANT_ID, PRODUCT_ID, &observation)
+        .await?;
     Ok(())
 }
 

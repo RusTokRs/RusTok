@@ -35,7 +35,7 @@ if (constructorPosition < 0 || identityPosition <= constructorPosition || caused
   fail(`${eventsPath} must delegate exact identity and causation to registered envelope construction`);
 }
 
-const outboxPath = 'crates/modules/rustok-outbox/src/transactional.rs';
+const outboxPath = 'crates/libs/rustok-outbox-storage/src/transactional.rs';
 const outbox = requireMarkers(outboxPath, [
   'pub async fn publish_contract_once_direct_in_tx_with_envelope_id_and_causation<C, E>(',
   'ContractEventEnvelope::new_with_envelope_id_and_causation(',
@@ -57,7 +57,7 @@ if (publishPosition < 0 || buildPosition <= publishPosition || writePosition <= 
   fail(`${outboxPath} must construct the exact caused envelope before canonical write-once admission`);
 }
 
-const transportPath = 'crates/modules/rustok-outbox/src/transport.rs';
+const transportPath = 'crates/libs/rustok-outbox-storage/src/transport.rs';
 const transport = requireMarkers(transportPath, [
   'stored.causation_id() != expected.causation_id()',
   'OnConflict::column(entity::Column::Id)',
@@ -92,7 +92,7 @@ requireMarkers('crates/modules/rustok-outbox/docs/contract-write-once-causation.
 
 for (const relative of [
   'crates/libs/rustok-events/src/contract.rs',
-  'crates/modules/rustok-outbox/src/transactional.rs',
+  'crates/libs/rustok-outbox-storage/src/transactional.rs',
 ]) {
   const source = read(relative);
   for (const forbidden of [

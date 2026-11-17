@@ -3,6 +3,9 @@
 mod definitions;
 mod policy;
 
+#[cfg(any(feature = "grpc-client", feature = "grpc-server"))]
+pub mod grpc;
+
 use std::collections::{BTreeMap, HashSet};
 
 use async_trait::async_trait;
@@ -17,6 +20,7 @@ pub use policy::{
 };
 
 pub const MAX_FLEX_ATTACHED_FIELDS: usize = 50;
+pub const PRODUCT_ENTITY_TYPE: &str = "product";
 
 /// The active definitions for one tenant and donor type at the time of the read.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

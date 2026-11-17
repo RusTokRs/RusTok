@@ -31,6 +31,8 @@ mod image_translation_progress_target;
 mod image_translation_target;
 pub mod index_channel_visibility;
 pub mod index_projection;
+mod locale_replay_port;
+pub use locale_replay_port::PostgresProductLocaleReplay;
 mod media_reference;
 pub mod migrations;
 pub mod ports;
@@ -43,6 +45,8 @@ mod storefront_http_read_port;
 mod storefront_tag_read_port;
 mod translation_target;
 mod variant_identity_read_port;
+mod variant_replay_port;
+pub use variant_replay_port::PostgresProductVariantReplay;
 mod variant_translation_progress_target;
 mod variant_translation_target;
 
@@ -110,10 +114,7 @@ pub use services::{
     ProductSalesChannelIndexRelationConvergenceError,
     ProductSalesChannelIndexRelationConvergenceStore,
     ProductSalesChannelIndexRelationConvergenceWork, ProductSalesChannelIndexRelationError,
-    ProductSalesChannelIndexRelationFreshnessError,
-    ProductSalesChannelIndexRelationFreshnessRecord,
-    ProductSalesChannelIndexRelationFreshnessStore,
-    ProductSalesChannelIndexRelationFreshnessWriteOutcome, ProductSalesChannelIndexRelationRecord,
+    ProductSalesChannelIndexRelationObservation, ProductSalesChannelIndexRelationRecord,
     ProductSalesChannelIndexRelationStore, ProductSalesChannelIndexRelationWriteOutcome,
     ProductTranslationExactLocaleApply, ProductTranslationExactLocaleApplyReceipt,
     ProductTranslationExactLocaleError, ProductTranslationExactLocaleRecord,

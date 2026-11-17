@@ -78,7 +78,7 @@ const bundlesLibPath = "crates/modules/rustok-product-bundles/src/lib.rs";
 const bundlesManifestPath = "crates/modules/rustok-product-bundles/Cargo.toml";
 const bundlesAdapterPath =
   "crates/modules/rustok-product-bundles/admin/src/transport/native_server_adapter.rs";
-const outboxIdempotencyPath = "crates/modules/rustok-outbox/src/idempotency.rs";
+const outboxIdempotencyPath = "crates/libs/rustok-outbox-storage/src/idempotency.rs";
 const graphqlPath = "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs";
 const graphqlTypesPath = "crates/modules/rustok-commerce/src/graphql/types.rs";
 const productCatalogGraphqlPath = "crates/modules/rustok-commerce/src/graphql/product_catalog.rs";

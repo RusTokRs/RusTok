@@ -27,34 +27,37 @@ requireMarkers(visibilityPath, [
 ]);
 
 const resolverPath =
-  'crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs';
+  'crates/modules/rustok-product/src/services/index_channel_relation_resolver.rs';
 requireMarkers('crates/modules/rustok-channel/src/index_projection.rs', [
   'channel_index_identity_generations',
-  'SELECT id FROM channels WHERE tenant_id = $1 ORDER BY id ASC LIMIT $2',
+]);
+requireMarkers('crates/modules/rustok-channel/src/index_identity.rs', [
+  'SELECT id FROM channels WHERE tenant_id = $1 ORDER BY id LIMIT $2',
+  'lower(btrim(slug)) = ANY($2::text[])',
+  'channel_ids',
+  'has_unversioned_identity',
 ]);
 const resolver = requireMarkers(resolverPath, [
   'MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE: usize = 64',
   'MAX_PRODUCT_SALES_CHANNEL_STABILIZATION_ATTEMPTS: usize = 3',
-  'pub(crate) struct ProductSalesChannelRelationResolver',
-  'pub(crate) async fn reconcile_product(',
-  'pub(crate) async fn reconcile_tenant_page(',
-  'IsolationLevel::RepeatableRead',
-  'AccessMode::ReadOnly',
+  'pub struct ProductSalesChannelRelationResolver',
+  'pub async fn reconcile_product(',
+  'pub async fn reconcile_tenant_page(',
   'ProductSalesChannelIndexRelationStore::new',
-  'ProductSalesChannelIndexRelationFreshnessStore::new',
-  '.replace(tenant_id, product_id',
-  'load_channel_identity_generation(&transaction, tenant_id).await?',
-  'lower(btrim(slug)) IN',
+  '.commit_observation(tenant_id, product_id, &observed)',
+  'channel_identity_generation: snapshot.generation',
   'ProductChannelVisibility::Unrestricted',
-  'verified.channel_ids == outcome.record().channel_ids()',
-  'verified.product_source_version',
-  'verified.visibility_key.clone()',
-  'verified.channel_identity_generation',
-  'ProductSalesChannelIndexRelationFreshnessError::WatermarkRegressed',
+  'self.observer.observe(tenant_id, product_id).await? == observed',
+  'ProductSalesChannelIndexRelationError::ObservationStale',
   'ProductSalesChannelRelationResolverError::TooManyResolvedChannels',
   'ProductSalesChannelRelationResolverError::ConcurrentChange',
   'ProductSalesChannelRelationResolverError::ProductNotFound',
-  'assert!(!sql.contains("is_active"))',
+]);
+requireMarkers('crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
+  'IsolationLevel::RepeatableRead',
+  'AccessMode::ReadOnly',
+  'PostgresChannelIndexIdentity::read_in(',
+  'bind_channel_observation(',
 ]);
 for (const forbidden of [
   'IndexMutation',
@@ -97,7 +100,7 @@ const resolverDoc = requireMarkers('crates/modules/rustok-index/docs/m7-product-
   '64 Products per',
   'three stabilization attempts',
   '`channels.is_active` is not relation identity state',
-  'ProductSalesChannelIndexRelationFreshnessStore::record',
+  'ProductSalesChannelIndexRelationStore::commit_observation',
   'Automatic convergence composition',
   'Product-to-SalesChannel automatic convergence',
   'Automatic convergence now re-establishes stale/missing relation freshness',

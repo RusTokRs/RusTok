@@ -9,7 +9,7 @@ const files = {
   evidence: "crates/modules/rustok-outbox/contracts/evidence/blog-comments-audit-relay-postgres-source.json",
   test: "crates/modules/rustok-outbox/tests/blog_comments_audit_relay_postgres.rs",
   relay: "crates/modules/rustok-outbox/src/relay.rs",
-  transactional: "crates/modules/rustok-outbox/src/transactional.rs",
+  transactional: "crates/libs/rustok-outbox-storage/src/transactional.rs",
   event: "crates/libs/rustok-events/src/blog_comments_schedule_audit.rs",
   writer: "apps/server/src/services/comments_provider_runtime_keyring_schedule_audit_canonical_writer.rs",
   outboxPlan: "crates/modules/rustok-outbox/docs/implementation-plan.md",

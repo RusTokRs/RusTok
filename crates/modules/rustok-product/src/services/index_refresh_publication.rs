@@ -1,5 +1,5 @@
 use rustok_events::{DomainEvent, EventContract, EventEnvelope};
-use rustok_outbox::{ContractEventWriteOnceError, SysEvents, TransactionalEventBus};
+use rustok_outbox_storage::{ContractEventWriteOnceError, SysEvents, TransactionalEventBus};
 use sea_orm::{DatabaseTransaction, EntityTrait};
 use thiserror::Error;
 use uuid::Uuid;

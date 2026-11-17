@@ -21,9 +21,9 @@ const reviewedPublish = read(
   "crates/modules/rustok-pages/src/services/page/reviewed_publish.rs",
 );
 const rollback = read("crates/modules/rustok-pages/src/services/page/rollback.rs");
-const transactionalBus = read("crates/modules/rustok-outbox/src/transactional.rs");
-const outboxTransport = read("crates/modules/rustok-outbox/src/transport.rs");
-const outboxEntity = read("crates/modules/rustok-outbox/src/entity.rs");
+const transactionalBus = read("crates/libs/rustok-outbox-storage/src/transactional.rs");
+const outboxTransport = read("crates/libs/rustok-outbox-storage/src/transport.rs");
+const outboxEntity = read("crates/libs/rustok-outbox-storage/src/entity.rs");
 const cacheOwner = read("crates/modules/rustok-pages/src/cache_invalidation.rs");
 const failures = [];
 

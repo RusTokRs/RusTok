@@ -202,6 +202,10 @@ impl IggyConsumerPositionObserver {
 
         let mut positions = Vec::with_capacity(topic.partitions.len());
         for partition in topic.partitions {
+            let number = rustok_iggy_connector::connector_partition_number(partition.id)
+                .ok_or_else(|| {
+                    ConsumerPositionError::Snapshot("invalid Iggy broker partition ID".to_owned())
+                })?;
             let offset = self
                 .client
                 .get_consumer_offset(
@@ -217,7 +221,7 @@ impl IggyConsumerPositionObserver {
                 .map(|position| position.current_offset.max(partition.current_offset))
                 .unwrap_or(partition.current_offset);
             positions.push(ConsumerPartitionPosition {
-                partition: partition.id,
+                partition: number,
                 acknowledged_offset: offset.map(|position| position.stored_offset),
                 high_watermark,
                 messages_count: partition.messages_count,

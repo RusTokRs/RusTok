@@ -19,10 +19,12 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::channel_relation_resolver::{
-    MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE, ProductSalesChannelRelationResolver,
-    ProductSalesChannelRelationResolverError,
+use rustok_product::services::{
+    MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE, ProductSalesChannelConvergenceWorkError,
+    ProductSalesChannelRelationResolver, ProductSalesChannelRelationResolverError,
 };
+
+use super::channel_relation_resolver::embedded_relation_resolver;
 
 pub(crate) const PRODUCT_SALES_CHANNEL_RELATION_CONVERGENCE_WORKER: &str =
     "product_sales_channel_relation_convergence";
@@ -92,7 +94,7 @@ struct ProductSalesChannelRelationConvergenceAdapter {
 impl ProductSalesChannelRelationConvergenceAdapter {
     fn new(db: DatabaseConnection) -> Self {
         Self {
-            resolver: ProductSalesChannelRelationResolver::new(db.clone()),
+            resolver: embedded_relation_resolver(db.clone()),
             store: ProductSalesChannelIndexRelationConvergenceStore::new(db.clone()),
             db,
         }
@@ -127,20 +129,6 @@ impl ProductSalesChannelRelationConvergenceAdapter {
         let generation = u64::try_from(generation)
             .map_err(|_| ModuleWorkError::Source(CLAIM_FAILED_CODE.to_owned()))?;
         Ok(Some((tenant_id, generation)))
-    }
-
-    async fn reconcile_sweep_page(
-        &self,
-        tenant_id: Uuid,
-        after_product_id: Option<Uuid>,
-    ) -> Result<Option<Uuid>, ProductSalesChannelRelationResolverError> {
-        self.resolver
-            .reconcile_tenant_page(
-                tenant_id,
-                after_product_id,
-                MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE,
-            )
-            .await
     }
 
     fn work_item(
@@ -201,17 +189,6 @@ impl ProductSalesChannelRelationConvergenceAdapter {
             Err(_) => Err(ModuleWorkError::Source(CLAIM_FAILED_CODE.to_owned())),
         }
     }
-
-    async fn complete_visibility(
-        &self,
-        claim: &ProductSalesChannelIndexRelationConvergenceClaim,
-    ) -> Result<ModuleWorkOutcome, ModuleWorkError> {
-        self.store
-            .complete_visibility(claim)
-            .await
-            .map_err(|_| ModuleWorkError::Handler(EXECUTION_FAILED_CODE.to_owned()))?;
-        Ok(ModuleWorkOutcome::Completed)
-    }
 }
 
 #[async_trait]
@@ -254,41 +231,22 @@ impl ModuleWorkHandler for ProductSalesChannelRelationConvergenceAdapter {
 
     async fn execute(&self, item: ModuleWorkItem) -> Result<ModuleWorkOutcome, ModuleWorkError> {
         let claim = Self::decode_item(&item)?;
-        match claim.work().clone() {
-            ProductSalesChannelIndexRelationConvergenceWork::VisibilityRequest {
-                product_id,
-                ..
-            } => match self
-                .resolver
-                .reconcile_product(claim.tenant_id(), product_id)
-                .await
-            {
-                Ok(_) | Err(ProductSalesChannelRelationResolverError::ProductNotFound) => {
-                    self.complete_visibility(&claim).await
-                }
-                Err(error) if error.is_owner_rejection() => {
-                    // Owner rejection must not head-of-line block valid Products later in the same tenant.
-                    tracing::warn!(tenant_id = %claim.tenant_id(), %product_id, %error, "Product visibility rejected during relation refresh");
-                    self.complete_visibility(&claim).await
-                }
-                Err(error) => Ok(classify_resolver_error(error)),
-            },
-            ProductSalesChannelIndexRelationConvergenceWork::ChannelSweep {
-                after_product_id,
-                ..
-            } => match self
-                .reconcile_sweep_page(claim.tenant_id(), after_product_id)
-                .await
-            {
-                Ok(next_product_id) => {
-                    self.store
-                        .complete_sweep_page(&claim, next_product_id)
-                        .await
-                        .map_err(|_| ModuleWorkError::Handler(EXECUTION_FAILED_CODE.to_owned()))?;
-                    Ok(ModuleWorkOutcome::Completed)
-                }
-                Err(error) => Ok(classify_resolver_error(error)),
-            },
+        match self
+            .resolver
+            .execute_claim(
+                &self.store,
+                &claim,
+                MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE,
+            )
+            .await
+        {
+            Ok(()) => Ok(ModuleWorkOutcome::Completed),
+            Err(ProductSalesChannelConvergenceWorkError::Observation(error)) => {
+                Ok(classify_resolver_error(error))
+            }
+            Err(ProductSalesChannelConvergenceWorkError::Store(_)) => {
+                Err(ModuleWorkError::Handler(EXECUTION_FAILED_CODE.to_owned()))
+            }
         }
     }
 }
@@ -388,8 +346,7 @@ fn classify_resolver_error(error: ProductSalesChannelRelationResolverError) -> M
         ProductSalesChannelRelationResolverError::ProductNotFound
         | ProductSalesChannelRelationResolverError::ConcurrentChange
         | ProductSalesChannelRelationResolverError::Unavailable
-        | ProductSalesChannelRelationResolverError::RelationOwner(_)
-        | ProductSalesChannelRelationResolverError::FreshnessOwner(_) => {
+        | ProductSalesChannelRelationResolverError::RelationOwner(_) => {
             ModuleWorkOutcome::Retryable {
                 message: RETRY_MARKER.to_owned(),
             }
@@ -432,10 +389,19 @@ mod tests {
 
     #[test]
     fn owner_rejection_isolated_from_retryable_storage_failures() {
-        assert!(
-            ProductSalesChannelRelationResolverError::InvalidProductVisibility.is_owner_rejection()
-        );
-        assert!(!ProductSalesChannelRelationResolverError::ConcurrentChange.is_owner_rejection());
-        assert!(!ProductSalesChannelRelationResolverError::Unavailable.is_owner_rejection());
+        use ProductSalesChannelRelationResolverError::{
+            ConcurrentChange, InvalidProductVisibility, Unavailable,
+        };
+
+        assert!(matches!(
+            classify_resolver_error(InvalidProductVisibility),
+            ModuleWorkOutcome::Rejected { .. }
+        ));
+        for error in [ConcurrentChange, Unavailable] {
+            assert!(matches!(
+                classify_resolver_error(error),
+                ModuleWorkOutcome::Retryable { .. }
+            ));
+        }
     }
 }

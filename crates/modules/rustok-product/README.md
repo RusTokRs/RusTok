@@ -20,7 +20,12 @@ Product follows the [canonical FBA layout](../../../docs/backend/module-backend-
 - The modular monolith remains the default deployment mode.
 
 The remote capability remains bounded to its supported operations.
-The strict Product FBA layout check still rejects the direct Flex runtime dependency.
+Product consumes Flex definitions through `flex-ports` and validates attached values
+with the shared `rustok-core::field_schema` routines. Product persists owner events
+and command receipts through `rustok-outbox-storage` in its own transaction.
+Independent deployments need event delivery from that same database. The catalog
+binary can publish pending Product Index refresh requests into that database's outbox.
+The Outbox relay delivers committed events to the configured transport.
 The current separate-process profile uses the platform-migrated schema. A Product-only
 database still requires separating the historical Tenant and Taxonomy migration
 boundaries and providing the remaining owner capabilities.
@@ -40,6 +45,7 @@ providers use the same service endpoint and separate credentials. See the
 | Storefront SKU projection for Cart | A separate gRPC operation delegates lifecycle, channel and locale handling to Product. |
 | Filtered storefront list, facets and storefront detail by Product ID or handle | RPCs exist on the catalog read port. Some mounted REST, GraphQL and native paths still use local owner services. |
 | SKU identity lookup and enumeration | Both Product identity-port operations use the same remote Product owner. |
+| Index replay and serving | Product and ProductVariant replay support gRPC to the owner. Channel convergence can run with separate databases. Absence watermarks and query admission still require the shared PostgreSQL profile. |
 | Flex attached values | Locale-aware reads and receipted update/delete use dedicated credentials on the selected read and command providers. |
 | Flex schema reads | The host injects the embedded Flex schema-read port for Product and variant catalog projections. The standalone service can instead use a local, versioned projection of Flex definitions for catalog reads, commands and attached values. |
 | Schema, HTTP and tag read handles | Consumers requiring these capabilities still receive typed unavailable in the default external runtime. |
@@ -100,9 +106,76 @@ source)` with the Product database and a Flex versioned read provider. The
 provider can use a separate database. Repeated snapshots are idempotent, older
 snapshots are ignored, and conflicting snapshots with the same revision are
 rejected. The selected profile returns unavailable for unseeded tenants.
-Snapshot transport and bootstrap/refresh scheduling between separate processes
-still need deployment wiring. Restore the revision counters together with their
-source definitions and reseed the consumer if the source version history changes.
+
+For automatic refresh from the [Flex service](../flex/README.md#product-schema-service),
+set `RUSTOK_PRODUCT_FLEX_SCHEMA_GRPC_ENDPOINT` to Flex's HTTPS origin,
+`RUSTOK_FLEX_PRODUCT_SCHEMA_GRPC_BEARER_TOKEN` to its schema credential, and
+`RUSTOK_PRODUCT_FLEX_SCHEMA_TENANTS` to the comma-separated UUIDs Product should
+refresh. Flex must authorize every tenant in that list. The first refresh starts
+with the Product listener. `RUSTOK_PRODUCT_FLEX_SCHEMA_REFRESH_SECONDS` defaults to
+30 seconds (valid range 1–3600). During an outage, previously seeded tenants
+continue to use their last imported definitions. Unseeded tenants receive
+`Unavailable` until their first import. For a loopback HTTP endpoint set
+`RUSTOK_PRODUCT_FLEX_SCHEMA_ALLOW_INSECURE_LOOPBACK=true` explicitly.
+For HTTPS signed by a private CA, set `RUSTOK_PRODUCT_FLEX_SCHEMA_CA_CERT_PATH`
+to its PEM certificate.
+
+Restore the revision counters together with their source definitions and reseed
+the consumer if the source version history changes.
+
+To publish Index refresh requests, apply
+`m20261116_000043_order_product_index_refresh_ledger_commits` and set
+`RUSTOK_PRODUCT_INDEX_REFRESH_TENANTS` to 1 to 128 distinct tenant UUIDs separated
+by commas. The service polls both the locale and variant ledgers for those tenants.
+`RUSTOK_PRODUCT_INDEX_REFRESH_POLL_MS` accepts 100 to 60000 milliseconds and defaults
+to 1000. The worker resumes its saved cursors after restart. Point the
+[standalone Outbox relay](../rustok-outbox/README.md#standalone-relay) at the same
+database and the Iggy stream used by Index. Retain the original Product events
+while the publisher has pending refresh rows that reference them.
+
+### Standalone Channel convergence
+
+Set the following on the Product process to resolve Channel identities from
+the separate [Channel service](../rustok-channel/README.md#standalone-index-identity-service).
+Apply `m20261117_000044_order_product_channel_convergence_commits` before enabling
+the worker.
+
+| Environment variable | Purpose |
+|---|---|
+| `RUSTOK_PRODUCT_CHANNEL_INDEX_GRPC_ENDPOINT` | Channel identity service endpoint. Enables the Product convergence worker. |
+| `RUSTOK_PRODUCT_CHANNEL_INDEX_TENANTS` | Comma-separated list of 1–128 distinct tenant UUIDs authorized by Channel. |
+| `RUSTOK_CHANNEL_INDEX_IDENTITY_GRPC_BEARER_TOKEN` | The dedicated token configured on Channel. |
+| `RUSTOK_PRODUCT_CHANNEL_INDEX_POLL_MS` | Poll interval from 100 to 60,000 milliseconds. Defaults to 1,000. |
+| `RUSTOK_PRODUCT_CHANNEL_INDEX_CA_CERT_PATH` | PEM CA certificate for a privately issued Channel server certificate. |
+| `RUSTOK_PRODUCT_CHANNEL_INDEX_ALLOW_INSECURE_LOOPBACK` | Set to `true` for local plaintext tests. |
+
+The worker uses the Product database's visibility queue, sweep cursor and
+lease. It polls Channel over gRPC and processes up to eight Product IDs per
+sweep page. If Channel is unavailable, the catalog can start and the worker
+retries when Channel returns. A process interrupted during work can resume
+after its lease expires. See the [convergence contract](docs/index-sales-channel-relation-convergence.md).
+
+### Index replay and attached values
+
+ProductVariant source refresh uses the Product replay port for exact variant
+reads and paginated rebuilds. Set
+`RUSTOK_PRODUCT_VARIANT_REPLAY_GRPC_BEARER_TOKEN` on the Product service and on
+the Index host that selects the gRPC catalog read profile. Use a credential
+distinct from all other Product credentials. A gRPC read profile without the
+replay credential cannot load variants for Index. The embedded Index source
+uses the in-process implementation of the same port.
+
+Localized Product replay uses `RUSTOK_PRODUCT_LOCALE_REPLAY_GRPC_BEARER_TOKEN`
+on Product and on the Index host selecting remote catalog reads. Use a
+credential distinct from the variant and catalog credentials. The standalone
+Product process must also configure the Channel identity endpoint. A live row
+is admitted only after Product verifies the witness against the current Channel
+generation. The replay port accepts an exact locale or a paginated scan.
+
+Remote absence watermarks and serving admission still depend on the
+shared-database snapshot described in the
+[owner read contract](../../../DECISIONS/2026-11-08-distribution-index-owner-read-contracts.md).
+The mixed Product refresh stream through Iggy remains an end-to-end gate.
 
 Set `RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN` on the Product service
 and on the host selecting the gRPC read provider to enable `ReadAttachedValues`.
@@ -326,7 +399,8 @@ module dependency. See
 - `ProductRuntimeSelected`
 - `CatalogService`
 - `ProductCatalogReadPort`
-- `ProductSalesChannelIndexRelationStore`
+- `ProductSalesChannelIndexRelationStore::commit_observation` commits resolved
+  Channel membership, graph projection, and freshness evidence together.
 - `services::catalog_schema::resolve_effective_product_form`
 - `ProductCatalogSchemaService`
 - `admin::ProductAdmin`

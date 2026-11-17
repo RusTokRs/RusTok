@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use rustok_core::ModuleRuntimeExtensions;
@@ -10,11 +10,20 @@ use rustok_index::{
     SchemaVersion, derive_index_source_event_id, register_index_schema_source,
     register_index_source, register_postgres_index_source_factory,
 };
-use rustok_product::index_projection::{PRODUCT_VARIANT_ROW_SELECT, PRODUCT_VARIANT_ROWS_CTE};
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, QueryResult, Statement, Value};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
+
+use rustok_api::{PortActor, PortContext, PortError};
+use rustok_product::{
+    PRODUCT_VARIANT_REPLAY_READ_CLAIM, PostgresProductVariantReplay, ProductVariantReplayEntry,
+    ProductVariantReplayPort, ProductVariantReplayScan, ProductVariantReplayState,
+};
+
+#[cfg(test)]
+#[path = "product_index/variant_replay_postgres_tests.rs"]
+mod variant_replay_postgres_tests;
 
 pub(crate) const PRODUCT_VARIANT_INDEX_SOURCE: &str = "product-variant-postgres-primary";
 const PRODUCT_VARIANT_EVENT_DOMAIN: &str = "rustok-product.product-variant-replay";
@@ -52,7 +61,7 @@ pub(crate) fn register(extensions: &mut ModuleRuntimeExtensions) -> rustok_core:
         extensions,
         "product",
         PRODUCT_VARIANT_INDEX_SOURCE,
-        ProductVariantPostgresIndexSourceFactory,
+        ProductVariantIndexSourceFactory,
     )
     .map_err(|error| {
         rustok_core::Error::Validation(format!(
@@ -147,139 +156,111 @@ fn scalar_field(
 }
 
 #[derive(Clone, Copy, Debug)]
-struct ProductVariantPostgresIndexSourceFactory;
+struct ProductVariantIndexSourceFactory;
 
-impl PostgresIndexSourceFactory for ProductVariantPostgresIndexSourceFactory {
+impl PostgresIndexSourceFactory for ProductVariantIndexSourceFactory {
     fn register_source(
         &self,
         extensions: &mut ModuleRuntimeExtensions,
         db: DatabaseConnection,
     ) -> Result<(), String> {
+        let port = extensions
+            .get::<Arc<dyn ProductVariantReplayPort>>()
+            .cloned()
+            .unwrap_or_else(|| Arc::new(PostgresProductVariantReplay::new(db)));
         register_index_source(
             extensions,
             "product",
             PRODUCT_VARIANT_INDEX_SOURCE,
             [product_variant_schema_ref().map_err(|error| error.to_string())?],
-            ProductVariantPostgresIndexSource { db },
+            ProductVariantIndexSource { port },
         )
         .map_err(|error| error.to_string())
     }
 }
 
-#[derive(Clone, Debug)]
-struct ProductVariantPostgresIndexSource {
-    db: DatabaseConnection,
+struct ProductVariantIndexSource {
+    port: Arc<dyn ProductVariantReplayPort>,
 }
 
-impl ProductVariantPostgresIndexSource {
-    fn validate_request(&self, schema: &SchemaRef) -> Result<(), IndexSourceFailure> {
-        require_postgres(&self.db)?;
+impl ProductVariantIndexSource {
+    fn validate_request(schema: &SchemaRef) -> Result<(), IndexSourceFailure> {
         match product_variant_schema_ref() {
             Ok(expected) if expected == *schema => Ok(()),
             _ => Err(permanent("product_variant_index_schema_mismatch")),
         }
     }
+}
 
-    async fn scan_rows(
-        &self,
-        request: &IndexSourceScanRequest,
-        cursor: Option<&ProductVariantCursor>,
-    ) -> Result<Vec<QueryResult>, IndexSourceFailure> {
-        let fetch_limit = match i64::try_from(request.limit().saturating_add(1)) {
-            Ok(limit) => limit,
-            Err(_) => return Err(permanent("scan_limit_overflow")),
-        };
-        let (sql, values): (String, Vec<Value>) = match cursor {
-            Some(cursor) => (
-                format!(
-                    "WITH {PRODUCT_VARIANT_ROWS_CTE}\n{PRODUCT_VARIANT_ROW_SELECT}\nWHERE row.variant_id > $2\nORDER BY row.variant_id ASC\nLIMIT $3"
-                ),
-                vec![
-                    request.tenant_id().into(),
-                    cursor.variant_id.into(),
-                    fetch_limit.into(),
-                ],
-            ),
-            None => (
-                format!(
-                    "WITH {PRODUCT_VARIANT_ROWS_CTE}\n{PRODUCT_VARIANT_ROW_SELECT}\nORDER BY row.variant_id ASC\nLIMIT $2"
-                ),
-                vec![request.tenant_id().into(), fetch_limit.into()],
-            ),
-        };
-        self.db
-            .query_all_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                sql,
-                values,
-            ))
-            .await
-            .map_err(|_| retryable("product_variant_index_storage_unavailable"))
-    }
+fn replay_context(tenant_id: Uuid) -> PortContext {
+    PortContext::new(
+        tenant_id.to_string(),
+        PortActor::service("product-index"),
+        "und",
+        Uuid::new_v4().to_string(),
+    )
+    .with_claim(PRODUCT_VARIANT_REPLAY_READ_CLAIM)
+    .with_deadline(Duration::from_secs(10))
+}
 
-    async fn load_rows(
-        &self,
-        request: &IndexSourceLoadRequest,
-    ) -> Result<Vec<QueryResult>, IndexSourceFailure> {
-        let mut values = Vec::<Value>::with_capacity(1 + request.keys().len());
-        values.push(request.tenant_id().into());
-        let mut rows = Vec::with_capacity(request.keys().len());
-        for (offset, key) in request.keys().iter().enumerate() {
-            if key.locale.is_some() {
-                return Err(permanent("product_variant_index_locale_forbidden"));
-            }
-            let parameter = offset + 2;
-            rows.push(format!("(${parameter}::uuid)"));
-            values.push(key.entity_id.into());
-        }
-        let sql = format!(
-            "WITH requested(variant_id) AS (VALUES {}),\n{PRODUCT_VARIANT_ROWS_CTE}\n{PRODUCT_VARIANT_ROW_SELECT}\nJOIN requested requested_key ON requested_key.variant_id = row.variant_id\nORDER BY row.variant_id ASC",
-            rows.join(", ")
-        );
-        self.db
-            .query_all_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                sql,
-                values,
-            ))
-            .await
-            .map_err(|_| retryable("product_variant_index_storage_unavailable"))
+fn map_port_error(error: PortError) -> IndexSourceFailure {
+    if error.retryable {
+        retryable("product_variant_index_storage_unavailable")
+    } else {
+        permanent("product_variant_index_replay_failed")
     }
 }
 
 #[async_trait]
-impl IndexSource for ProductVariantPostgresIndexSource {
+impl IndexSource for ProductVariantIndexSource {
     async fn scan(
         &self,
         request: IndexSourceScanRequest,
     ) -> Result<IndexSourcePage, IndexSourceFailure> {
-        self.validate_request(request.schema())?;
-        let cursor = request
+        Self::validate_request(request.schema())?;
+        if request.locale().is_some() {
+            return Err(permanent("product_variant_index_locale_forbidden"));
+        }
+        let after_variant_id = request
             .cursor()
             .map(ProductVariantCursor::decode)
             .transpose()
-            .map_err(|_| permanent("product_variant_index_cursor_invalid"))?;
-        let rows = self.scan_rows(&request, cursor.as_ref()).await?;
-        let has_more = rows.len() > request.limit();
-        let mut mutations = Vec::with_capacity(rows.len().min(request.limit()));
-        let mut next_cursor = None;
-        for row in rows.into_iter().take(request.limit()) {
-            let decoded = ProductVariantRow::decode(row, request.tenant_id())
-                .map_err(|_| permanent("product_variant_index_record_invalid"))?;
-            if has_more {
-                next_cursor = Some(
-                    decoded
-                        .cursor()
-                        .encode()
-                        .map_err(|_| permanent("product_variant_index_cursor_invalid"))?,
-                );
+            .map_err(|_| permanent("product_variant_index_cursor_invalid"))?
+            .map(|cursor| cursor.variant_id);
+        let page = self
+            .port
+            .scan_variant_replay(
+                replay_context(request.tenant_id()),
+                ProductVariantReplayScan {
+                    after_variant_id,
+                    limit: request.limit(),
+                },
+            )
+            .await
+            .map_err(map_port_error)?;
+        let mut previous = after_variant_id;
+        for entry in &page.entries {
+            if previous.is_some_and(|id| id >= entry.variant_id) {
+                return Err(permanent("product_variant_index_page_invalid"));
             }
-            mutations.push(
-                decoded
-                    .into_mutation()
-                    .map_err(|_| permanent("product_variant_index_record_invalid"))?,
-            );
+            previous = Some(entry.variant_id);
         }
+        if let Some(next) = page.next_after_variant_id
+            && (previous != Some(next) || page.entries.len() != request.limit())
+        {
+            return Err(permanent("product_variant_index_page_invalid"));
+        }
+        let next_cursor = page
+            .next_after_variant_id
+            .map(|variant_id| ProductVariantCursor { variant_id }.encode())
+            .transpose()
+            .map_err(|_| permanent("product_variant_index_cursor_invalid"))?;
+        let mutations = page
+            .entries
+            .into_iter()
+            .map(|entry| into_mutation(entry, request.tenant_id()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| permanent("product_variant_index_record_invalid"))?;
         IndexSourcePage::new(&request, mutations, next_cursor)
             .map_err(|_| permanent("product_variant_index_page_invalid"))
     }
@@ -288,17 +269,23 @@ impl IndexSource for ProductVariantPostgresIndexSource {
         &self,
         request: IndexSourceLoadRequest,
     ) -> Result<IndexSourceLoadBatch, IndexSourceFailure> {
-        self.validate_request(request.schema())?;
-        let mutations = self
-            .load_rows(&request)
-            .await?
+        Self::validate_request(request.schema())?;
+        if request.keys().iter().any(|key| key.locale.is_some()) {
+            return Err(permanent("product_variant_index_locale_forbidden"));
+        }
+        let entries = self
+            .port
+            .load_variant_replay(
+                replay_context(request.tenant_id()),
+                request.keys().iter().map(|key| key.entity_id).collect(),
+            )
+            .await
+            .map_err(map_port_error)?;
+        let mutations = entries
             .into_iter()
-            .map(|row| {
-                ProductVariantRow::decode(row, request.tenant_id())
-                    .and_then(ProductVariantRow::into_mutation)
-                    .map_err(|_| permanent("product_variant_index_record_invalid"))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+            .map(|entry| into_mutation(entry, request.tenant_id()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| permanent("product_variant_index_record_invalid"))?;
         IndexSourceLoadBatch::new(&request, mutations)
             .map_err(|_| permanent("product_variant_index_batch_invalid"))
     }
@@ -327,219 +314,92 @@ impl ProductVariantCursor {
     }
 }
 
-#[derive(Debug)]
-struct ProductVariantRow {
-    tenant_id: Uuid,
-    variant_id: Uuid,
-    source_version: u64,
-    state: ProductVariantRowState,
-}
-
-#[derive(Debug)]
-enum ProductVariantRowState {
-    Live(ProductVariantLiveFields),
-    Deleted,
-}
-
-#[derive(Debug)]
-struct ProductVariantLiveFields {
-    product_id: Uuid,
-    sku: Option<String>,
-    barcode: Option<String>,
-    shipping_profile_slug: Option<String>,
-    ean: Option<String>,
-    upc: Option<String>,
-    inventory_policy: String,
-    inventory_management: String,
-    inventory_quantity: i64,
-    weight_unit: Option<String>,
-    combination_identity: Option<String>,
-    position: i64,
-}
-
-impl ProductVariantRow {
-    fn decode(
-        row: QueryResult,
-        expected_tenant: Uuid,
-    ) -> Result<Self, ProductVariantIndexBridgeError> {
-        let is_deleted = row
-            .try_get::<bool>("", "is_deleted")
-            .map_err(|_| ProductVariantIndexBridgeError::InvalidRow)?;
-        let identity_count = row
-            .try_get::<i64>("", "identity_count")
-            .map_err(|_| ProductVariantIndexBridgeError::InvalidRow)?;
-        let tenant_id = row
-            .try_get::<Uuid>("", "tenant_id")
-            .map_err(|_| ProductVariantIndexBridgeError::InvalidRow)?;
-        let variant_id = row
-            .try_get::<Uuid>("", "variant_id")
-            .map_err(|_| ProductVariantIndexBridgeError::InvalidRow)?;
-        let revision = row
-            .try_get::<i64>("", "index_revision")
-            .map_err(|_| ProductVariantIndexBridgeError::InvalidRow)?;
-        if identity_count != 1
-            || tenant_id != expected_tenant
-            || tenant_id.is_nil()
-            || variant_id.is_nil()
-            || revision <= 0
-        {
-            return Err(ProductVariantIndexBridgeError::InvalidRow);
-        }
-        let source_version =
-            u64::try_from(revision).map_err(|_| ProductVariantIndexBridgeError::InvalidRow)?;
-
-        if is_deleted {
-            return Ok(Self {
-                tenant_id,
-                variant_id,
-                source_version,
-                state: ProductVariantRowState::Deleted,
-            });
-        }
-
-        let product_id = row
-            .try_get::<Uuid>("", "product_id")
-            .map_err(|_| ProductVariantIndexBridgeError::InvalidRow)?;
-        if product_id.is_nil() {
-            return Err(ProductVariantIndexBridgeError::InvalidRow);
-        }
-        Ok(Self {
-            tenant_id,
-            variant_id,
-            source_version,
-            state: ProductVariantRowState::Live(ProductVariantLiveFields {
-                product_id,
-                sku: optional_string(&row, "sku")?,
-                barcode: optional_string(&row, "barcode")?,
-                shipping_profile_slug: optional_string(&row, "shipping_profile_slug")?,
-                ean: optional_string(&row, "ean")?,
-                upc: optional_string(&row, "upc")?,
-                inventory_policy: required_string(&row, "inventory_policy")?,
-                inventory_management: required_string(&row, "inventory_management")?,
-                inventory_quantity: i64::from(
-                    row.try_get::<i32>("", "inventory_quantity")
-                        .map_err(|_| ProductVariantIndexBridgeError::InvalidRow)?,
-                ),
-                weight_unit: optional_string(&row, "weight_unit")?,
-                combination_identity: optional_string(&row, "combination_identity")?,
-                position: i64::from(
-                    row.try_get::<i32>("", "position")
-                        .map_err(|_| ProductVariantIndexBridgeError::InvalidRow)?,
-                ),
-            }),
-        })
+fn into_mutation(
+    entry: ProductVariantReplayEntry,
+    expected_tenant: Uuid,
+) -> Result<IndexMutation, ProductVariantIndexBridgeError> {
+    if entry.tenant_id != expected_tenant || entry.variant_id.is_nil() || entry.source_version == 0
+    {
+        return Err(ProductVariantIndexBridgeError::InvalidRow);
     }
+    let event_id = derive_index_source_event_id(
+        PRODUCT_VARIANT_EVENT_DOMAIN,
+        entry.tenant_id,
+        entry.variant_id,
+        None,
+        entry.source_version,
+    )
+    .map_err(|_| ProductVariantIndexBridgeError::InvalidRow)?;
+    let key = EntityKey {
+        tenant_id: entry.tenant_id,
+        schema: product_variant_schema_ref()?,
+        entity_id: entry.variant_id,
+        locale: None,
+    };
 
-    fn cursor(&self) -> ProductVariantCursor {
-        ProductVariantCursor {
-            variant_id: self.variant_id,
-        }
-    }
-
-    fn into_mutation(self) -> Result<IndexMutation, ProductVariantIndexBridgeError> {
-        let event_id = derive_index_source_event_id(
-            PRODUCT_VARIANT_EVENT_DOMAIN,
-            self.tenant_id,
-            self.variant_id,
-            None,
-            self.source_version,
-        )
-        .map_err(|_| ProductVariantIndexBridgeError::InvalidRow)?;
-        let key = EntityKey {
-            tenant_id: self.tenant_id,
-            schema: product_variant_schema_ref()?,
-            entity_id: self.variant_id,
-            locale: None,
-        };
-
-        let ProductVariantRowState::Live(mut live) = self.state else {
-            return Ok(IndexMutation::Delete {
-                event_id,
-                key,
-                source_version: self.source_version,
-            });
-        };
-
-        let fields = BTreeMap::from([
-            (field_name("id")?, IndexValue::Uuid(self.variant_id)),
-            (field_name("product_id")?, IndexValue::Uuid(live.product_id)),
-            (field_name("sku")?, optional_string_value(live.sku.take())),
-            (
-                field_name("barcode")?,
-                optional_string_value(live.barcode.take()),
-            ),
-            (
-                field_name("shipping_profile_slug")?,
-                optional_string_value(live.shipping_profile_slug.take()),
-            ),
-            (field_name("ean")?, optional_string_value(live.ean.take())),
-            (field_name("upc")?, optional_string_value(live.upc.take())),
-            (
-                field_name("inventory_policy")?,
-                IndexValue::String(live.inventory_policy),
-            ),
-            (
-                field_name("inventory_management")?,
-                IndexValue::String(live.inventory_management),
-            ),
-            (
-                field_name("inventory_quantity")?,
-                IndexValue::Integer(live.inventory_quantity),
-            ),
-            (
-                field_name("weight_unit")?,
-                optional_string_value(live.weight_unit.take()),
-            ),
-            (
-                field_name("combination_identity")?,
-                optional_string_value(live.combination_identity.take()),
-            ),
-            (field_name("position")?, IndexValue::Integer(live.position)),
-        ]);
-        Ok(IndexMutation::Upsert {
+    let ProductVariantReplayState::Live(live) = entry.state else {
+        return Ok(IndexMutation::Delete {
             event_id,
-            record: IndexRecord {
-                key,
-                source_version: self.source_version,
-                fields,
-                links: Vec::new(),
-            },
-        })
-    }
-}
+            key,
+            source_version: entry.source_version,
+        });
+    };
 
-fn require_postgres(db: &DatabaseConnection) -> Result<(), IndexSourceFailure> {
-    if db.get_database_backend() == DbBackend::Postgres {
-        Ok(())
-    } else {
-        Err(permanent("product_variant_index_backend_unsupported"))
+    if live.product_id.is_nil()
+        || live.inventory_policy.is_empty()
+        || live.inventory_management.is_empty()
+    {
+        return Err(ProductVariantIndexBridgeError::InvalidRow);
     }
+    let fields = BTreeMap::from([
+        (field_name("id")?, IndexValue::Uuid(entry.variant_id)),
+        (field_name("product_id")?, IndexValue::Uuid(live.product_id)),
+        (field_name("sku")?, optional_string_value(live.sku)),
+        (field_name("barcode")?, optional_string_value(live.barcode)),
+        (
+            field_name("shipping_profile_slug")?,
+            optional_string_value(live.shipping_profile_slug),
+        ),
+        (field_name("ean")?, optional_string_value(live.ean)),
+        (field_name("upc")?, optional_string_value(live.upc)),
+        (
+            field_name("inventory_policy")?,
+            IndexValue::String(live.inventory_policy),
+        ),
+        (
+            field_name("inventory_management")?,
+            IndexValue::String(live.inventory_management),
+        ),
+        (
+            field_name("inventory_quantity")?,
+            IndexValue::Integer(i64::from(live.inventory_quantity)),
+        ),
+        (
+            field_name("weight_unit")?,
+            optional_string_value(live.weight_unit),
+        ),
+        (
+            field_name("combination_identity")?,
+            optional_string_value(live.combination_identity),
+        ),
+        (
+            field_name("position")?,
+            IndexValue::Integer(i64::from(live.position)),
+        ),
+    ]);
+    Ok(IndexMutation::Upsert {
+        event_id,
+        record: IndexRecord {
+            key,
+            source_version: entry.source_version,
+            fields,
+            links: Vec::new(),
+        },
+    })
 }
 
 fn field_name(name: &str) -> Result<FieldName, ProductVariantIndexBridgeError> {
     FieldName::new(name).map_err(ProductVariantIndexBridgeError::InvalidContract)
-}
-
-fn required_string(
-    row: &QueryResult,
-    column: &str,
-) -> Result<String, ProductVariantIndexBridgeError> {
-    let value = row
-        .try_get::<String>("", column)
-        .map_err(|_| ProductVariantIndexBridgeError::InvalidRow)?;
-    if value.is_empty() {
-        Err(ProductVariantIndexBridgeError::InvalidRow)
-    } else {
-        Ok(value)
-    }
-}
-
-fn optional_string(
-    row: &QueryResult,
-    column: &str,
-) -> Result<Option<String>, ProductVariantIndexBridgeError> {
-    row.try_get::<Option<String>>("", column)
-        .map_err(|_| ProductVariantIndexBridgeError::InvalidRow)
 }
 
 fn optional_string_value(value: Option<String>) -> IndexValue {
@@ -611,17 +471,17 @@ mod tests {
 
     #[test]
     fn retained_product_variant_row_emits_canonical_delete_mutation() {
-        let variant = ProductVariantRow {
+        let variant = ProductVariantReplayEntry {
             tenant_id: Uuid::from_u128(1),
             variant_id: Uuid::from_u128(3),
             source_version: 10,
-            state: ProductVariantRowState::Deleted,
+            state: ProductVariantReplayState::Deleted,
         };
         let IndexMutation::Delete {
             key,
             source_version,
             ..
-        } = variant.into_mutation().unwrap()
+        } = into_mutation(variant, Uuid::from_u128(1)).unwrap()
         else {
             panic!("retained ProductVariant row must emit a delete");
         };

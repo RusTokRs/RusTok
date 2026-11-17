@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use rustok_api::{PortActorKind, PortContext, PortError, normalize_locale_tag};
 use rustok_core::field_schema::CustomFieldsSchema;
+use rustok_core::field_schema::attached_values as field_values;
 use rustok_events::DomainEvent;
 use rustok_product_ports::attached_values::validate_attached_values_patch;
 use rustok_product_ports::{ProductAttachedValuesReadPort, ProductAttachedValuesWritePort};
@@ -179,12 +180,12 @@ impl CatalogService {
             }
         }
 
-        let (reserved, current_values) = flex::split_donor_metadata(&schema, &row.metadata);
+        let (reserved, current_values) = field_values::split_donor_metadata(&schema, &row.metadata);
         let existing_localized =
             attached_localized_storage::load_exact(&*txn, tenant_id, product_id, locale)
                 .await
                 .map_err(attached_values_input_error)?;
-        let prepared = flex::prepare_attached_values_update_from_values(
+        let prepared = field_values::prepare_attached_values_update_from_values(
             schema.clone(),
             locale,
             &Value::Object(current_values),
@@ -192,7 +193,7 @@ impl CatalogService {
             values,
         )
         .map_err(|error| attached_values_input_error(error.into()))?;
-        let metadata = flex::merge_reserved_donor_metadata(reserved, prepared.metadata);
+        let metadata = field_values::merge_reserved_donor_metadata(reserved, prepared.metadata);
         save_product_metadata(&*txn, row, metadata.clone())
             .await
             .map_err(attached_values_error)?;
@@ -228,7 +229,7 @@ impl CatalogService {
         let schema = load_attached_fields_schema(&*txn, self.flex_schema_source, tenant_id)
             .await
             .map_err(attached_values_error)?;
-        let (reserved, _) = flex::split_donor_metadata(&schema, &row.metadata);
+        let (reserved, _) = field_values::split_donor_metadata(&schema, &row.metadata);
         save_product_metadata(&*txn, row, Value::Object(reserved))
             .await
             .map_err(attached_values_error)?;
@@ -310,7 +311,7 @@ async fn resolve_values(
     preferred_locale: &str,
     fallback_locale: &str,
 ) -> CommerceResult<Option<Value>> {
-    let (_, values) = flex::split_donor_metadata(&schema, metadata);
+    let (_, values) = field_values::split_donor_metadata(&schema, metadata);
     let resolved = resolve_product_attached_payload(
         db,
         tenant_id,
@@ -324,7 +325,7 @@ async fn resolve_values(
     let Some(Value::Object(resolved)) = resolved else {
         return Ok(None);
     };
-    let (_, values) = flex::split_donor_metadata(&schema, &Value::Object(resolved));
+    let (_, values) = field_values::split_donor_metadata(&schema, &Value::Object(resolved));
     Ok((!values.is_empty()).then_some(Value::Object(values)))
 }
 

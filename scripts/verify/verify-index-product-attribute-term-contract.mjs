@@ -99,11 +99,12 @@ requireMarkers('crates/modules/rustok-product/src/services/write_transaction.rs'
   'UPDATE products SET index_revision = index_revision',
 ]);
 
+requireMarkers('crates/modules/rustok-product/src/locale_replay_port.rs', ['decode_string_json_list(&row, "attribute_terms")?']);
+
 requireMarkers('crates/modules/rustok-distribution/src/product_index/product.rs', [
   'many_field("attribute_terms", IndexValueType::String, false, true)?',
   'PRODUCT_ATTRIBUTE_TERMS_CTE',
   "COALESCE(attributes.attribute_terms, '[]'::jsonb) AS attribute_terms",
-  'decode_string_json_list(&row, "attribute_terms")?',
   'field_name("attribute_terms")?',
   'derive_index_schema_source_event_id(',
 ]);

@@ -7,6 +7,16 @@ license.workspace = true
 repository.workspace = true
 readme = "README.md"
 description = "Flex attached-mode contracts and orchestration primitives for RusToK"
+autobins = false
+
+[[bin]]
+name = "rustok-flex-service"
+path = "src/bin/service.rs"
+required-features = ["service"]
+
+[features]
+default = []
+service = ["flex-ports/grpc-server", "dep:anyhow", "dep:tokio", "dep:tonic", "dep:url"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -18,7 +28,6 @@ async-graphql.workspace = true
 rustok-api = { workspace = true, features = ["server"] }
 rustok-core.workspace = true
 rustok-events.workspace = true
-rustok-outbox.workspace = true
 rustok-translation-targets.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
@@ -32,6 +41,11 @@ hex.workspace = true
 regex = "1"
 sha2.workspace = true
 tracing.workspace = true
+anyhow = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tonic = { workspace = true, optional = true, features = ["tls-ring"] }
+url = { version = "2.5", optional = true }
 
 [dev-dependencies]
+rustok-outbox.workspace = true
 tokio.workspace = true

@@ -92,20 +92,19 @@ const freshnessStorePath =
   'crates/modules/rustok-product/src/services/index_channel_relation_freshness.rs';
 const freshnessStore = requireMarkers(freshnessStorePath, [
   'MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES: usize = 131_072',
-  'RELATION_LOCK_DOMAIN: &str = "product-sales-channel-index-relation"',
-  'FRESHNESS_LOCK_DOMAIN: &str = "product-sales-channel-index-relation-freshness"',
-  'pub struct ProductSalesChannelIndexRelationFreshnessRecord',
-  'pub struct ProductSalesChannelIndexRelationFreshnessStore',
-  'pub async fn record(',
-  'require_live_product(transaction, tenant_id, product_id).await?',
-  'FOR KEY SHARE',
-  'RELATION_LOCK_DOMAIN,',
-  'FRESHNESS_LOCK_DOMAIN,',
-  'require_current_relation_epoch(transaction, tenant_id, product_id, relation_epoch).await?',
-  'ProductSalesChannelIndexRelationFreshnessError::RelationNotCurrent',
-  'ProductSalesChannelIndexRelationFreshnessError::WatermarkRegressed',
+  'pub(super) struct ProductSalesChannelIndexRelationWitness',
+  'pub(super) async fn append_witness(',
+  'pub(super) async fn load_latest_witness(',
   'INSERT INTO product_sales_channel_index_relation_freshness_snapshots',
-  'ORDER BY sequence_no DESC',
+  'ORDER BY witness.sequence_no DESC',
+]);
+requireMarkers('crates/modules/rustok-product/src/services/index_channel_relation.rs', [
+  'pub async fn commit_observation(',
+  'FOR NO KEY UPDATE',
+  'witness.channel_identity_generation > generation',
+  'witness.channel_ids != channel_ids',
+  'ProductSalesChannelIndexRelationError::ObservationStale',
+  'ProductSalesChannelIndexRelationError::ObservationConflict',
 ]);
 forbidMarkers(freshnessStorePath, freshnessStore, [
   'rustok_channel',
@@ -117,7 +116,7 @@ forbidMarkers(freshnessStorePath, freshnessStore, [
   'loop {',
 ]);
 const productCargo = read('crates/modules/rustok-product/Cargo.toml');
-forbidMarkers('crates/modules/rustok-product/Cargo.toml', productCargo, ['rustok-channel', 'rustok-index']);
+forbidMarkers('crates/modules/rustok-product/Cargo.toml', productCargo, ['rustok-channel.workspace', 'rustok-channel =', 'rustok-index']);
 
 const visibilityPath = 'crates/modules/rustok-product/src/index_channel_visibility.rs';
 const visibility = requireMarkers(visibilityPath, [
@@ -132,18 +131,14 @@ const visibility = requireMarkers(visibilityPath, [
 ]);
 forbidMarkers(visibilityPath, visibility, ['IndexMutation', 'FROM channels', 'JOIN channels']);
 
-const resolverPath = 'crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs';
+const resolverPath = 'crates/modules/rustok-product/src/services/index_channel_relation_resolver.rs';
 requireMarkers('crates/modules/rustok-channel/src/index_projection.rs', [
   'channel_index_identity_generations',
 ]);
 const resolver = requireMarkers(resolverPath, [
-  'ProductSalesChannelIndexRelationFreshnessStore::new',
-  'load_channel_identity_generation(&transaction, tenant_id).await?',
-  'verified.channel_ids == outcome.record().channel_ids()',
-  '.record(',
-  'verified.product_source_version',
-  'verified.visibility_key.clone()',
-  'verified.channel_identity_generation',
+  'channel_identity_generation: snapshot.generation',
+  '.commit_observation(tenant_id, product_id, &observed)',
+  'self.observer.observe(tenant_id, product_id).await? == observed',
   'MAX_PRODUCT_SALES_CHANNEL_STABILIZATION_ATTEMPTS: usize = 3',
 ]);
 forbidMarkers(resolverPath, resolver, [
@@ -155,19 +150,17 @@ forbidMarkers(resolverPath, resolver, [
   'OutboxRelay',
 ]);
 
-const productSourcePath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
+const productSourcePath = 'crates/modules/rustok-product/src/locale_replay_port.rs';
 requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
   'freshness.visibility_key AS freshness_visibility_key',
   'freshness.channel_identity_generation AS freshness_channel_identity_generation',
 ]);
 requireMarkers(productSourcePath, [
-  'product_sales_channel_index_relation_freshness_snapshots',
-  'channel_index_identity_generations',
   'decode_product_visibility(&metadata)',
   'freshness_visibility_key != current_visibility_key',
   'freshness_channel_identity_generation != current_channel_identity_generation',
   'freshness_product_source_version > observed_product_source_version',
-  'does not require a live freshness witness',
+  'ChannelIndexIdentitySelector::GenerationOnly',
 ]);
 
 const absencePath = 'crates/modules/rustok-distribution/src/product_index/absence.rs';
@@ -199,7 +192,7 @@ requireMarkers('crates/modules/rustok-product/docs/index-sales-channel-relation-
 ]);
 requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-resolver.md', [
   'Status: `automatic_convergence_and_query_fence_source_complete_runtime_evidence_pending`',
-  'ProductSalesChannelIndexRelationFreshnessStore::record',
+  'ProductSalesChannelIndexRelationStore::commit_observation',
   'Automatic convergence composition',
   'Automatic convergence now re-establishes stale/missing relation freshness',
   'materialized/query freshness fence separately closes',

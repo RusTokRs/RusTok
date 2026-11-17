@@ -5,14 +5,12 @@ import { commerceDomainModules, CommerceDomainFbaRuntimeSmokeError, verifyCommer
 
 const repoRoot = process.cwd();
 const files = commerceDomainModules.flatMap((module) => {
-  const portsFiles = module === 'product'
-    ? [
-        `crates/modules/rustok-${module}/src/ports/mod.rs`,
-        `crates/modules/rustok-${module}/src/ports/types.rs`,
-        `crates/modules/rustok-${module}/src/ports/diagnostics.rs`,
-        `crates/modules/rustok-${module}/src/ports/catalog_read.rs`,
-      ]
-    : [`crates/modules/rustok-${module}/src/ports.rs`];
+  const portBase = `crates/modules/rustok-${module}/src/ports`;
+  const portsFiles = fs.existsSync(path.join(repoRoot, `${portBase}.rs`))
+    ? [`${portBase}.rs`]
+    : fs.readdirSync(path.join(repoRoot, portBase), { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.rs'))
+        .map((entry) => `${portBase}/${entry.name}`);
   return [
     `crates/modules/rustok-${module}/contracts/${module}-fba-registry.json`,
     `crates/modules/rustok-${module}/contracts/evidence/${module}-runtime-contract-smoke.json`,

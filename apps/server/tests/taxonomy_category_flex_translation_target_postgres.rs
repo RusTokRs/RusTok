@@ -11,6 +11,7 @@ use flex::{
 use rustok_api::{PortActor, PortContext, PortErrorKind, TenantLocale};
 use rustok_core::{ModuleRegistry, SecurityContext, UserRole, field_schema::FieldType};
 use rustok_migrations::Migrator;
+use rustok_outbox::OutboxRootEventWriter;
 use rustok_server::{
     auth::AuthConfig,
     common::settings::RustokSettings,
@@ -329,18 +330,21 @@ async fn run_contract(database_url: &str) -> TestResult<()> {
         .into());
     }
 
-    GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE)
-        .update(
-            &seed_connection,
-            tenant_id,
-            Some(Uuid::new_v4()),
-            field_definition_id,
-            UpdateFieldDefinitionCommand {
-                is_required: Some(false),
-                ..Default::default()
-            },
-        )
-        .await?;
+    GenericAttachedFieldDefinitionService::new(
+        TAXONOMY_CATEGORY_ENTITY_TYPE,
+        Arc::new(OutboxRootEventWriter),
+    )
+    .update(
+        &seed_connection,
+        tenant_id,
+        Some(Uuid::new_v4()),
+        field_definition_id,
+        UpdateFieldDefinitionCommand {
+            is_required: Some(false),
+            ..Default::default()
+        },
+    )
+    .await?;
 
     let schema_changes = recovery_provider
         .read_changes(
@@ -568,24 +572,27 @@ async fn create_localized_definition(
     database: &DatabaseConnection,
     tenant_id: Uuid,
 ) -> TestResult<Uuid> {
-    let (definition, _) = GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE)
-        .create(
-            database,
-            tenant_id,
-            Some(Uuid::new_v4()),
-            CreateFieldDefinitionCommand {
-                field_key: "tagline".to_string(),
-                field_type: FieldType::Text,
-                label: HashMap::from([("en".to_string(), "Tagline".to_string())]),
-                description: None,
-                is_localized: true,
-                is_required: true,
-                default_value: None,
-                validation: None,
-                position: None,
-            },
-        )
-        .await?;
+    let (definition, _) = GenericAttachedFieldDefinitionService::new(
+        TAXONOMY_CATEGORY_ENTITY_TYPE,
+        Arc::new(OutboxRootEventWriter),
+    )
+    .create(
+        database,
+        tenant_id,
+        Some(Uuid::new_v4()),
+        CreateFieldDefinitionCommand {
+            field_key: "tagline".to_string(),
+            field_type: FieldType::Text,
+            label: HashMap::from([("en".to_string(), "Tagline".to_string())]),
+            description: None,
+            is_localized: true,
+            is_required: true,
+            default_value: None,
+            validation: None,
+            position: None,
+        },
+    )
+    .await?;
     Ok(definition.id)
 }
 

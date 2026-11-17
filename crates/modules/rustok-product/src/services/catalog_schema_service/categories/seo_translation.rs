@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use rustok_api::{Action, PortContext, PortError, Resource, TenantLocale};
 use rustok_core::{PermissionScope, SecurityContext};
 use rustok_events::DomainEvent;
-use rustok_outbox::idempotency::Admission;
+use rustok_outbox_storage::idempotency::Admission;
 use rustok_translation_targets::{
     FieldKey, ListTranslationResourcesRequest, OpaqueCursor, OpaqueRevision, OwnerSlug,
     ReadTranslationResourceRequest, ResourceId, ResourceKind, TranslationApplicationReceipt,

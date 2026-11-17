@@ -61,6 +61,7 @@ forbidMarkers(admissionPath, admission, [
 ]);
 
 const productPath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
+requireMarkers('crates/modules/rustok-channel/src/index_projection.rs', ['channel_index_identity_generations']);
 const product = requireMarkers(productPath, [
   'many_field("sales_channel_ids", IndexValueType::Uuid, true, true)?',
   'name: link_name("sales_channels")?',
@@ -68,7 +69,6 @@ const product = requireMarkers(productPath, [
   'projection.channel_ids AS sales_channel_ids',
   'product_index_graph_projection_snapshots',
   'product_sales_channel_index_relation_freshness_snapshots',
-  'channel_index_identity_generations',
   'SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY)',
   'derive_index_schema_source_event_id(',
   'assert_eq!(schema.fields.len(), 15);',

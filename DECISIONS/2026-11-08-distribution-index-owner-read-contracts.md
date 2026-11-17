@@ -20,6 +20,23 @@ Product and Channel own their embedded PostgreSQL read contracts for replay,
 freshness, absence, and relation resolution. Each owner defines the projection,
 columns, and predicates that may be consumed by an adapter.
 
+ProductVariant replay is scoped to Product and uses its typed replay port for
+both in-process and gRPC reads. Product executes the same projection in both
+modes. Distribution maps the returned records and tombstones into Index
+mutations while preserving their revisions, cursor encoding, and source identity.
+Localized Product replay also uses the owner port. In the embedded deployment
+it reads the Channel generation in the same SQL statement. In the standalone
+deployment it loads Product rows first, then checks the Channel generation over
+the identity port before releasing live rows. A deleted row retains its graph
+identity and can replay without a live Channel witness.
+
+Channel exposes a tenant-scoped identity snapshot. A single Channel statement
+returns the current generation and the matching UUIDs in canonical order. The
+embedded resolver uses that statement inside its existing Product/Channel
+snapshot. An independent caller can request the same snapshot through Channel's
+read port. A generation read and a later list read cannot be paired as evidence
+of membership.
+
 ## Sources of truth and ownership
 
 Product and Channel own their tables and the semantics of the published SQL.
@@ -28,20 +45,45 @@ its schema, storage, query execution, and replay and refresh machinery.
 
 ## Invariants
 
-Only the owner queries its private tables. Distribution composes the owner
-projections without acquiring a Rust dependency from either owner to the other
-or to Index. Runtime values remain bound.
+Only the owner defines queries against its private tables. Distribution composes
+published SQL for embedded reads that require a shared snapshot and calls the
+ProductVariant replay port for variant replay. Neither owner acquires a Rust
+dependency on the other or on Index. Runtime values remain bound.
 
 ## Non-goals
 
-This decision covers the embedded PostgreSQL Index adapter. A remote Index
-provider needs a separate consistency contract.
+Remote localized Product replay, absence, Channel convergence, and serving
+admission need a consistency contract for independent Product and Channel
+databases. ProductVariant replay does not grant remote storefront serving.
 
 ## Data, transaction, and concurrency boundary
 
 The native PostgreSQL adapter composes trusted owner SQL in the same statement
 or existing repeatable-read transaction. The materialized freshness predicate
 runs before Index filters, orders, paginates, or counts.
+
+The ProductVariant replay port reads owner rows and tombstones in a single
+Product statement. Index compares the event's minimum source revision and
+persists to its own database before acknowledging the broker delivery.
+
+Channel's identity snapshot proves which UUIDs matched at its reported generation.
+Product checks the exact visibility and index revision under the Product row lock.
+It commits the membership, the graph projection advance, and the freshness
+witness in one Product transaction. An older Channel generation cannot replace a
+witness. If the observation has the latest witness's visibility and generation,
+its membership must match. A repeat observation is idempotent. Remote replay must still compare
+the witness with current Channel authority. Publishing a witness does not freeze either owner. Serving needs
+a separate admission fence that applies before filtering, ordering, pagination,
+and counting. A delayed event or cached generation cannot establish current admission.
+For standalone convergence, Product reads its visibility and revision, then
+calls the configured Channel identity port. It commits through the same
+revision-checked writer as the embedded resolver and re-observes both owners
+before completing work. Both profiles use Product's leased cursors and the
+same work execution. The standalone process discovers work only for its
+configured tenants.
+The generation belongs to one Channel history. A restore that rewinds that
+history requires rebuilding dependent witnesses and Index projections before
+they can serve queries.
 
 ## Context dimensions
 

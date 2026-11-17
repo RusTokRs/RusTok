@@ -165,7 +165,12 @@ async fn assert_no_stored_offset(
     topic_id: &Identifier,
 ) -> TestResult<()> {
     let stored = client
-        .get_consumer_offset(consumer, stream_id, topic_id, Some(PARTITION))
+        .get_consumer_offset(
+            consumer,
+            stream_id,
+            topic_id,
+            rustok_iggy_connector::broker_partition_id(PARTITION),
+        )
         .await?;
     if stored.is_some() {
         return Err(invalid_data(

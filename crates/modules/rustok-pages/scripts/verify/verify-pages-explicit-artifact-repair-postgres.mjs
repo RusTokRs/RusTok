@@ -14,7 +14,7 @@ const files = {
   activationOwner: "crates/modules/rustok-pages/src/services/page/artifact_binding_replacement.rs",
   rebuildMigration: "crates/modules/rustok-pages/src/migrations/m20260806_000014_add_explicit_artifact_rebuild.rs",
   activationMigration: "crates/modules/rustok-pages/src/migrations/m20260807_000015_create_page_artifact_binding_replacements.rs",
-  transactionalBus: "crates/modules/rustok-outbox/src/transactional.rs",
+  transactionalBus: "crates/libs/rustok-outbox-storage/src/transactional.rs",
 };
 const absolute = (relative) => path.join(repoRoot, relative);
 const read = (relative) => fs.readFileSync(absolute(relative), "utf8");

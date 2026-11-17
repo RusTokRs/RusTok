@@ -27,6 +27,7 @@ mod migrations;
 pub mod module;
 pub mod orchestration;
 pub mod parsing;
+mod product_schema_read;
 pub mod registry;
 pub mod rest;
 pub mod schema_translation;
@@ -48,6 +49,8 @@ pub use flex_ports::{
     FlexVersionedAttachedSchema, FlexVersionedAttachedSchemaReadPort,
 };
 pub use module::FlexModule;
+pub use product_schema_read::FlexProductSchemaReadService;
+pub use rustok_api::impl_field_definition_source;
 
 pub use attached::{
     AttachedEntityRef, AttachedPayloadResolutionInput, PreparedAttachedValuesWrite,
@@ -61,7 +64,7 @@ pub use attached::{
 };
 pub use attached_definitions::{
     GENERIC_ATTACHED_FIELD_DEFINITIONS_TABLE, GenericAttachedFieldDefinitionService,
-    MAX_GENERIC_ATTACHED_FIELDS_PER_TENANT,
+    MAX_GENERIC_ATTACHED_FIELDS_PER_TENANT, load_generic_attached_schema,
 };
 pub use attached_field_policy::{
     FLEX_ATTACHED_FIELD_POLICIES_TABLE, FlexAttachedFieldPolicy, FlexAttachedFieldPolicyError,

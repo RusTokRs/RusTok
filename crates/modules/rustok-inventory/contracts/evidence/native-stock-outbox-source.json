@@ -68,7 +68,7 @@
         ]
       },
       {
-        "file": "crates/modules/rustok-outbox/src/transport.rs",
+        "file": "crates/libs/rustok-outbox-storage/src/transport.rs",
         "names": [
           "unconditional_publication_rejects_zero_or_multiple_inserted_rows",
           "unconditional_publication_accepts_exactly_one_inserted_row"

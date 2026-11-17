@@ -137,6 +137,36 @@ test('verifyEcommerceFbaRegistries accepts locked contract-test metadata', () =>
   });
 });
 
+const createPublishedPortsFixture = ({ publishTrait = true, enforcePolicy = true } = {}) => {
+  const root = createFixtureRoot({
+    mutateRegistry(registry) {
+      registry.in_process_provider_impl.source = 'crates/modules/rustok-pricing/src/catalog.rs';
+    },
+  });
+  const owner = new URL('crates/modules/rustok-pricing/', root);
+  mkdirSync(new URL('ports/src/', owner), { recursive: true });
+  writeFileSync(new URL('ports/Cargo.toml', owner), '[package]\nname = "rustok-pricing-ports"\n');
+  writeFileSync(new URL('ports/src/lib.rs', owner), 'pub mod ports;\npub use ports::*;\n');
+  writeFileSync(new URL('ports/src/ports.rs', owner), 'use rustok_api::{PortContext, PortError};\n' +
+    (publishTrait ? 'pub trait PricingReadPort {\n  fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError>;\n}\n' : ''));
+  writeFileSync(new URL('src/lib.rs', owner), 'mod catalog;\n');
+  writeFileSync(new URL('src/catalog.rs', owner), 'impl PricingReadPort for crate::PricingService {\n' +
+    '  fn resolve_product_price(&self, context: PortContext) -> Result<(), PortError> { ' +
+    (enforcePolicy ? 'context.require_policy(PortCallPolicy::read())?; ' : '') + 'Ok(()) }\n}\n');
+  return root;
+};
+
+test('verifyEcommerceFbaRegistries reads a published contract and its owner implementation separately', () => {
+  assert.doesNotThrow(() => verifyEcommerceFbaRegistries({ root: createPublishedPortsFixture(), modules: [moduleSlug] }));
+  // The legacy fixture still carries both markers; neither may substitute for the canonical sources.
+  assert.throws(() => verifyEcommerceFbaRegistries({
+    root: createPublishedPortsFixture({ publishTrait: false }), modules: [moduleSlug],
+  }), { message: /ports\/src lacks trait PricingReadPort/ });
+  assert.throws(() => verifyEcommerceFbaRegistries({
+    root: createPublishedPortsFixture({ enforcePolicy: false }), modules: [moduleSlug],
+  }), { message: /must enforce PortCallPolicy::read\(\)/ });
+});
+
 test('verifyEcommerceFbaRegistries rejects fallback-smoke drift', () => {
   const root = createFixtureRoot({
     mutateRegistry(registry) {

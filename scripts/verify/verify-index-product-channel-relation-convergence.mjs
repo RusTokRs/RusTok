@@ -116,7 +116,7 @@ forbidMarkers(storePath, store, [
   'OutboxRelay',
 ]);
 const productCargo = read('crates/modules/rustok-product/Cargo.toml');
-forbidMarkers('crates/modules/rustok-product/Cargo.toml', productCargo, ['rustok-channel', 'rustok-index']);
+forbidMarkers('crates/modules/rustok-product/Cargo.toml', productCargo, ['rustok-channel.workspace', 'rustok-channel =', 'rustok-index']);
 
 requireMarkers('crates/modules/rustok-product/src/services/mod.rs', [
   'mod index_channel_relation_convergence;',
@@ -153,13 +153,7 @@ const worker = requireMarkers(workerPath, [
   'LIMIT 1',
   '.claim(tenant_id, current_generation, LEASE_DURATION)',
   'ProductSalesChannelIndexRelationConvergenceClaim::restore',
-  'async fn reconcile_sweep_page(',
-  'reconcile_product(',
-  'error.is_owner_rejection()',
-  'head-of-line block valid Products later in the same tenant',
-  'ProductSalesChannelRelationResolverError::ProductNotFound',
-  '.complete_visibility(&claim)',
-  '.complete_sweep_page(&claim, next_product_id)',
+  '.execute_claim(',
   '.retry(&claim, delay, marker)',
   'RETRY_DELAY: Duration = Duration::from_secs(5)',
   'REJECTED_RETRY_DELAY: Duration = Duration::from_secs(60)',
@@ -170,10 +164,29 @@ const worker = requireMarkers(workerPath, [
 requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
   'SELECT id FROM products WHERE tenant_id = $1',
 ]);
-requireMarkers('crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
+requireMarkers('crates/modules/rustok-product/src/services/index_channel_relation_resolver.rs', [
   'reconcile_product(tenant_id, product_id)',
   'error.is_owner_rejection()',
   'MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE',
+  'ProductSalesChannelRelationResolverError::ProductNotFound',
+  '.complete_visibility(claim)',
+  '.complete_sweep_page(claim, next)',
+]);
+requireMarkers('crates/modules/rustok-product/src/bin/channel_convergence.rs', [
+  'ChannelIndexIdentitySelector::GenerationOnly',
+  '.execute_claim(store, &claim, PAGE_SIZE)',
+  'store.retry(&claim, RETRY_DELAY, marker)',
+  'trg_product_channel_convergence_sequence',
+]);
+requireMarkers('crates/modules/rustok-product/src/migrations/m20261117_000044_order_product_channel_convergence_commits.rs', [
+  'pg_advisory_xact_lock(',
+  'ALTER COLUMN sequence_no DROP DEFAULT',
+  'BEFORE INSERT ON product_sales_channel_index_relation_convergence_requests',
+  'SET sweep_required = TRUE',
+  'WHERE visibility_cursor > 0',
+]);
+requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
+  'OR state.sweep_required',
 ]);
 forbidMarkers(workerPath, worker, [
   'tokio::spawn',
@@ -213,7 +226,7 @@ requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-conver
 ]);
 requireMarkers('crates/modules/rustok-index/docs/m7-product-sales-channel-resolver.md', [
   'Status: `automatic_convergence_and_query_fence_source_complete_runtime_evidence_pending`',
-  'ProductSalesChannelIndexRelationFreshnessStore::record',
+  'ProductSalesChannelIndexRelationStore::commit_observation',
   'Automatic convergence composition',
   'Automatic convergence now re-establishes stale/missing relation freshness',
   'materialized/query freshness fence separately closes',

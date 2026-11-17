@@ -39,17 +39,38 @@ storage or a Flex runtime dependency. The host registers an embedded Flex provid
 for the catalog's Product and variant projections. It reads active Product definitions
 through the existing registry. Flex GraphQL resolves explicit and default governance
 policies through the policy port.
+Donor owners can decode definitions and validate and localize their own values
+using `rustok-core::field_schema` with a schema supplied by the Flex port. Flex uses
+the same routines for its attached storage path.
 
 For the legacy `product` definition store, a migration installs a per-tenant
 revision that advances in the transaction editing `product_field_definitions`,
 including reorder and deactivation. The embedded versioned read port returns a
-full snapshot and asks the consumer to retry if a concurrent edit crosses the
-read. The initial revision is zero, including for tenants with existing
-definitions. Product can import the snapshot into its own database. Cross-process
-delivery of definition snapshots and remote policy access remain pending.
+full snapshot with the revision and definitions read in the same transaction.
+The initial revision is zero, including for tenants with existing definitions.
+The standalone Flex service exposes this read over gRPC. Product can refresh
+its own database over that port. Remote policy access remains pending.
+For generic attached definitions, the embedded host supplies a
+`TransactionalEventWriter`. The Flex mutation passes its active transaction to this
+writer, so the field change and its event commit together. The host uses the
+validated Outbox writer. Schema reads can run without that dependency.
 Other donors continue to use shared attached storage and host
 wiring pending migration that preserves Translation and change history. The
 `capability_only` classification is current module metadata.
+
+### Product schema service
+
+Run `cargo run -p flex --bin rustok-flex-service --features service`. Set
+`RUSTOK_FLEX_DATABASE_URL` to the migrated PostgreSQL database used by the
+Product field editor. It must contain `product_field_definitions` and the
+revision tracking installed by `m20261116_000042_add_product_flex_schema_projection`.
+The server defaults to `127.0.0.1:7444` and accepts `RUSTOK_FLEX_SERVICE_BIND`.
+Set `RUSTOK_FLEX_PRODUCT_SCHEMA_GRPC_BEARER_TOKEN` and
+`RUSTOK_FLEX_PRODUCT_SCHEMA_TENANTS` (one to 128 distinct UUIDs, comma-separated).
+This credential grants access to Product definitions for those tenants only.
+Set `RUSTOK_FLEX_SERVICE_TLS_CERT_PATH` and `RUSTOK_FLEX_SERVICE_TLS_KEY_PATH`
+or explicitly enable local HTTP with `RUSTOK_FLEX_SERVICE_ALLOW_INSECURE_LOOPBACK=true`
+on a loopback bind. Authoring still goes through the existing platform Flex editor.
 
 ## Donor policy
 

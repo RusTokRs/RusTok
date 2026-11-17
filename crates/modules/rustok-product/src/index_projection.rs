@@ -7,7 +7,7 @@
 use sea_orm::{DbBackend, Statement};
 use uuid::Uuid;
 
-pub const PRODUCT_VARIANT_ROWS_CTE: &str = r#"
+pub(crate) const PRODUCT_VARIANT_ROWS_CTE: &str = r#"
 product_variant_index_union AS (
     SELECT
         FALSE AS is_deleted,
@@ -61,7 +61,7 @@ product_variant_index_rows AS (
 )
 "#;
 
-pub const PRODUCT_VARIANT_ROW_SELECT: &str = r#"
+pub(crate) const PRODUCT_VARIANT_ROW_SELECT: &str = r#"
 SELECT
     row.is_deleted,
     row.identity_count,
@@ -243,14 +243,7 @@ product_tag_ids AS (
     GROUP BY product_tag.product_id
 ),
 channel_identity_generation AS (
-    SELECT COALESCE(
-        (
-            SELECT generation
-            FROM __channel_identity_source__ AS channel_generation_source
-            WHERE tenant_id = $1
-        ),
-        0
-    )::bigint AS generation
+    SELECT __channel_identity_generation__ AS generation
 ),
 product_graph_projection AS (
     SELECT DISTINCT ON (projection.tenant_id, projection.product_id)
@@ -425,6 +418,7 @@ WHERE state.available_at <= CURRENT_TIMESTAMP
   AND (state.lease_token IS NULL OR state.lease_expires_at <= CURRENT_TIMESTAMP)
   AND (
       state.sweep_generation IS NOT NULL
+      OR state.sweep_required
       OR state.channel_identity_generation IS NULL
       OR state.channel_identity_generation < COALESCE(channel_generation.generation, 0)
       OR EXISTS (

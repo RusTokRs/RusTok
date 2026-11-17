@@ -13,15 +13,20 @@ name = "rustok-product-catalog-service"
 path = "src/bin/service.rs"
 required-features = ["service"]
 
+[[test]]
+name = "channel_convergence_service_postgres"
+required-features = ["service"]
+
 [features]
 default = []
-service = ["dep:rustok-telemetry", "dep:tokio-stream", "dep:tonic", "rustok-product-ports/grpc-server"]
+service = ["dep:rustok-telemetry", "dep:tokio-stream", "dep:tonic", "rustok-product-ports/grpc-server", "flex-ports/grpc-client", "rustok-channel-ports/grpc-client"]
 
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
+rustok-channel-ports.workspace = true
 rustok-product-ports.workspace = true
 rustok-telemetry = { workspace = true, optional = true }
 tonic = { workspace = true, optional = true, features = ["tls-ring"] }
@@ -31,10 +36,9 @@ chrono.workspace = true
 rustok-core.workspace = true
 rustok-api.workspace = true
 rustok-events.workspace = true
-rustok-outbox.workspace = true
+rustok-outbox-storage.workspace = true
 rustok-seo-targets = { workspace = true, features = ["server"] }
 rustok-translation-targets.workspace = true
-flex.workspace = true
 flex-ports.workspace = true
 rust_decimal.workspace = true
 serde.workspace = true
@@ -55,6 +59,9 @@ hex.workspace = true
 regex = "1.12"
 
 [dev-dependencies]
+flex.workspace = true
+flex-ports = { workspace = true, features = ["grpc-client", "grpc-server"] }
+rustok-outbox.workspace = true
 rustok-test-utils.workspace = true
 rustok-taxonomy.workspace = true
 tokio-stream = { version = "0.1", features = ["net"] }

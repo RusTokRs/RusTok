@@ -10,14 +10,16 @@ use rustok_index::{
     materialize_postgres_index_query_runtime, materialize_postgres_index_sources,
 };
 use rustok_outbox::{OutboxTransport, TransactionalEventBus};
-use rustok_product::{ProductCatalogReadRuntime, StorefrontProductListQuery};
+use rustok_product::{
+    ProductCatalogReadRuntime, StorefrontProductListQuery, StorefrontProductListQueryExt,
+};
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::{MigrationTrait, MigratorTrait, SchemaManager};
 use uuid::Uuid;
 
 use super::{
     PRODUCT_SCHEMA_ROUTING_KEY, ProductStorefrontIndexShadowExecutor,
-    channel_relation_resolver::ProductSalesChannelRelationResolver,
+    channel_relation_resolver::embedded_relation_resolver,
 };
 
 const DATABASE_ENV: &str = "RUSTOK_PRODUCT_STOREFRONT_EAV_EQUIVALENCE_DATABASE_URL";
@@ -84,7 +86,7 @@ impl TestDatabase {
             migration_step.up(&manager).await?;
         }
         seed_products_and_attributes(&migration).await?;
-        let resolver = ProductSalesChannelRelationResolver::new(migration.clone());
+        let resolver = embedded_relation_resolver(migration.clone());
         for product_id in [PRODUCT_A, PRODUCT_B] {
             resolver.reconcile_product(TENANT_ID, product_id).await?;
         }
@@ -414,6 +416,7 @@ async fn seed_products_and_attributes(db: &DatabaseConnection) -> TestResult<()>
         r#"
 INSERT INTO tenants (id) VALUES ('{TENANT_ID}');
 INSERT INTO channels (id, tenant_id, slug) VALUES ('{CHANNEL_ID}', '{TENANT_ID}', 'online');
+INSERT INTO channel_index_identity_generations (tenant_id, generation) VALUES ('{TENANT_ID}', 1);
 
 INSERT INTO products (id, tenant_id) VALUES
     ('{PRODUCT_A}', '{TENANT_ID}'),

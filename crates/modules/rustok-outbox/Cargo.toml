@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description.workspace = true
+autobins = false
+
+[[bin]]
+name = "rustok-outbox-service"
+path = "src/bin/service.rs"
+required-features = ["service"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -11,26 +17,29 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
 default = []
+service = ["dep:anyhow", "dep:rustok-iggy", "dep:url"]
 # Enables the in-memory EventTransport fallback exclusively for test utility
 # crates. Production builds must use OutboxTransport for transactional writes.
-test-transport-fallback = []
+test-transport-fallback = ["rustok-outbox-storage/test-transport-fallback"]
 
 [dependencies]
+anyhow = { workspace = true, optional = true }
 async-trait.workspace = true
 chrono.workspace = true
-hex.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 uuid.workspace = true
 tracing.workspace = true
 tokio.workspace = true
+url = { workspace = true, optional = true }
 
 rustok-api.workspace = true
 rustok-core.workspace = true
 rustok-events.workspace = true
+rustok-iggy = { workspace = true, optional = true }
+rustok-outbox-storage.workspace = true
 rustok-telemetry.workspace = true
 
 [dev-dependencies]

@@ -16,7 +16,8 @@ const MAX_EVENT_DOMAIN_BYTES: usize = 128;
 /// The event carries no copied owner payload. The registered source remains authoritative for the
 /// current upsert or tombstone mutation. `minimum_source_version` fences replica lag or an owner
 /// publication bug: acknowledgement is withheld until the source exposes at least the revision
-/// committed by the owner event.
+/// committed by the owner event. A composite source supplies that revision from the same read as
+/// the mutation, which keeps its projection version and immutable mutation identity.
 #[derive(Clone)]
 pub struct IndexSourceRefreshEventDelivery<T> {
     event_domain: String,
@@ -213,35 +214,35 @@ where
 
     let request = IndexSourceLoadRequest::new(vec![key.clone()])
         .map_err(IndexSourceRefreshEventProcessError::Source)?;
-    let mut mutations = source_registry
+    let batch = source_registry
         .load(request)
         .await
-        .map_err(IndexSourceRefreshEventProcessError::Source)?
-        .into_mutations();
-    let mutation = match mutations.len() {
-        0 => {
+        .map_err(IndexSourceRefreshEventProcessError::Source)?;
+    let mutation = match batch.mutations() {
+        [] => {
             return Err(IndexSourceRefreshEventProcessError::MissingSourceMutation {
                 event_domain,
                 key,
             });
         }
-        // INVARIANT: this matched vector has exactly one element and is not modified before pop.
-        1 => mutations.pop().expect("single source mutation"),
-        actual => {
+        [mutation] => mutation,
+        mutations => {
             return Err(
                 IndexSourceRefreshEventProcessError::AmbiguousSourceMutation {
                     event_domain,
-                    actual,
+                    actual: mutations.len(),
                 },
             );
         }
     };
-    let source_version = mutation.source_version();
-    if source_version < minimum_source_version {
+    let refresh_revision = batch
+        .refresh_revision_at(0)
+        .expect("the batch contains exactly one mutation");
+    if refresh_revision < minimum_source_version {
         return Err(IndexSourceRefreshEventProcessError::SourceVersionBehind {
             event_domain,
             minimum: minimum_source_version,
-            actual: source_version,
+            actual: refresh_revision,
         });
     }
 
@@ -252,14 +253,14 @@ where
         return Err(IndexSourceRefreshEventProcessError::NilSourceEventId);
     }
     let mutation_outcome = mutation_sink
-        .apply_replay_mutation(schema_registry, &expected_source_name, &mutation)
+        .apply_replay_mutation(schema_registry, &expected_source_name, mutation)
         .await
         .map_err(IndexSourceRefreshEventProcessError::Mutation)?;
 
     Ok(IndexSourceRefreshEventProcessOutcome {
         event_id,
         source_name: expected_source_name,
-        source_version,
+        source_version: mutation.source_version(),
         mutation_outcome,
     })
 }

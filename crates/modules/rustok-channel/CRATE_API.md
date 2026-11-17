@@ -14,6 +14,11 @@
   - `ChannelReadPort` (`read_channel`, `list_channels_for_tenant`)
   - `in_process_channel_read_port` constructing direct in-process provider adapters.
   - `ChannelReadSelector` (`Id`, `Slug`, `HostTargetValue`, `Default`).
+  - `ChannelIndexIdentityReadPort` reads generation and UUID membership from
+    one tenant snapshot. The typed contract and gRPC adapters live under
+    [ports](ports/README.md).
+  - `PostgresChannelIndexIdentity::read_in` uses the same query with the
+    embedded resolver's existing PostgreSQL transaction.
 - **Cache Invalidation & Generation**:
   - `read_resolution_invalidation_generation` and `CHANNEL_RESOLUTION_INVALIDATION_SCOPE`.
 

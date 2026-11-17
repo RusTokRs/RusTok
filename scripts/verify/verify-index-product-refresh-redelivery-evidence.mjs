@@ -68,6 +68,7 @@ for (const marker of [
   'IndexReplayMutationOutcome::Duplicate',
   'IndexSourceRefreshEventProcessError::Acknowledge(_)',
   'IndexSourceRefreshEventProcessError::SourceVersionBehind { .. }',
+  'product_version < product_revision',
   'attempted.connector_metadata.ack_token = Some(format!("{exact}-injected-failure"));',
   'assert_applied_inbox_once(',
   'assert_inbox_absent(',
@@ -138,6 +139,7 @@ if (persistPosition === -1 || acknowledgePosition <= persistPosition
 for (const marker of [
   'MissingSourceMutation',
   'SourceVersionBehind',
+  'if refresh_revision < minimum_source_version',
   '.apply_replay_mutation(',
   '.acknowledge(',
 ]) {

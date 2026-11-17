@@ -287,7 +287,9 @@ impl ProductSalesChannelIndexRelationConvergenceStore {
                     channel_identity_generation,
                     sweep_generation,
                     sweep_after_product_id,
+                    sweep_required,
                     attempt_count,
+                    available_at <= CURRENT_TIMESTAMP AS available,
                     lease_token IS NOT NULL
                         AND lease_expires_at > CURRENT_TIMESTAMP AS lease_active
                 FROM product_sales_channel_index_relation_convergence_state
@@ -300,7 +302,7 @@ impl ProductSalesChannelIndexRelationConvergenceStore {
             .map_err(|_| ProductSalesChannelIndexRelationConvergenceError::Unavailable)?
             .ok_or(ProductSalesChannelIndexRelationConvergenceError::InvalidStoredState)?;
         let state = decode_state(row)?;
-        if state.lease_active {
+        if state.lease_active || !state.available {
             return Ok(ProductSalesChannelIndexRelationConvergenceClaimOutcome::Busy);
         }
         if state
@@ -331,7 +333,8 @@ impl ProductSalesChannelIndexRelationConvergenceStore {
                 product_id: request.product_id,
                 product_source_version: request.product_source_version,
             }
-        } else if state.channel_identity_generation.is_none()
+        } else if state.sweep_required
+            || state.channel_identity_generation.is_none()
             || state.channel_identity_generation < Some(observed_channel_identity_generation)
         {
             ProductSalesChannelIndexRelationConvergenceWork::ChannelSweep {
@@ -361,6 +364,7 @@ impl ProductSalesChannelIndexRelationConvergenceStore {
                 r#"
                 UPDATE product_sales_channel_index_relation_convergence_state
                 SET sweep_generation = COALESCE(sweep_generation, $2),
+                    sweep_required = CASE WHEN $2::bigint IS NOT NULL THEN FALSE ELSE sweep_required END,
                     sweep_after_product_id = CASE
                         WHEN sweep_generation IS NULL THEN NULL
                         ELSE sweep_after_product_id
@@ -403,8 +407,10 @@ struct ConvergenceState {
     channel_identity_generation: Option<i64>,
     sweep_generation: Option<i64>,
     sweep_after_product_id: Option<Uuid>,
+    sweep_required: bool,
     attempt_count: i64,
     lease_active: bool,
+    available: bool,
 }
 
 #[derive(Debug)]
@@ -449,8 +455,14 @@ fn decode_state(
         channel_identity_generation,
         sweep_generation,
         sweep_after_product_id,
+        sweep_required: row
+            .try_get("", "sweep_required")
+            .map_err(|_| ProductSalesChannelIndexRelationConvergenceError::InvalidStoredState)?,
         attempt_count,
         lease_active,
+        available: row
+            .try_get("", "available")
+            .map_err(|_| ProductSalesChannelIndexRelationConvergenceError::InvalidStoredState)?,
     })
 }
 

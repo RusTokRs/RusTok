@@ -5,15 +5,31 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Experimental core channel-management module for RusTok"
+autobins = false
 repository.workspace = true
 readme = "README.md"
+
+[[bin]]
+name = "rustok-channel-service"
+path = "src/bin/service.rs"
+required-features = ["service"]
+
+[[test]]
+name = "index_identity_postgres"
+required-features = ["service"]
 
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[features]
+default = []
+service = ["dep:anyhow", "dep:tonic", "dep:url", "rustok-channel-ports/grpc-server"]
+
 [dependencies]
+anyhow = { workspace = true, optional = true }
 rustok-api.workspace = true
+rustok-channel-ports.workspace = true
 rustok-core = { workspace = true }
 async-trait.workspace = true
 chrono.workspace = true
@@ -22,9 +38,13 @@ sea-orm-migration.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
+tonic = { workspace = true, optional = true, features = ["tls-ring"] }
 tracing.workspace = true
+url = { workspace = true, optional = true }
 uuid.workspace = true
 
 [dev-dependencies]
+rustok-channel-ports = { workspace = true, features = ["grpc-client"] }
 rustok-test-utils.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }

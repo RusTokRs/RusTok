@@ -1,4 +1,3 @@
-use rustok_core::MigrationSource;
 use rustok_product::dto::{
     CreateProductInput, CreateVariantInput, ProductBrandInput, ProductTranslationInput,
     UpdateProductInput,
@@ -406,9 +405,7 @@ async fn setup_database() -> TestResult<DatabaseConnection> {
     .await?;
 
     let manager = SchemaManager::new(&db);
-    for migration in rustok_outbox::OutboxModule.migrations() {
-        migration.up(&manager).await?;
-    }
+    rustok_outbox_storage::SysEventsMigration.up(&manager).await?;
     rustok_core::field_schema::create_field_definitions_table(&manager, "product", "products")
         .await?;
     // Exercise up migration

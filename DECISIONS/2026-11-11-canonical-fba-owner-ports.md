@@ -45,6 +45,11 @@ Composition roots can link implementations for the monolith. Owner runtimes cons
 contracts, while the standalone process assembles its owner and configured outgoing
 adapters without linking the monolith, module control plane or other owner runtimes.
 
+The platform's local Outbox storage library provides canonical event and
+owner-operation receipt persistence in the owner's database transaction.
+Outbox owns the schema, relay, retries and retention. The process hosting an
+owner configures delivery from the database where that owner writes its events.
+
 The owner of a schema, policy or extension rule owns its definition and lifecycle.
 An aggregate owner owns its attached values, writes and migrations. Commit those
 values with the aggregate when the operation requires atomicity. For example, Flex

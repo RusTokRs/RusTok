@@ -11,6 +11,10 @@ a monotonic revision per tenant and donor. Revision zero is the initial state,
 including when there are already definitions. An empty snapshot is valid. Every
 copy of the same revision carries the same definitions in the same order.
 
-The ports require a tenant and a deadline in `PortContext`. The Flex embedded
-provider reads registered stores in the application host. See the
-[Flex owner](../README.md#fba-ownership-target) for current composition and storage scope.
+The ports require a tenant and a deadline in `PortContext`. The embedded provider
+reads registered stores in the application host. The standalone gRPC adapter
+implements the versioned read for Product definitions over the same Flex source.
+Enable `grpc-client` or `grpc-server` for the adapter. The server authorizes the
+Product schema credential against a tenant allowlist and protects the RPC with
+TLS or explicit loopback HTTP in local development. See the
+[Flex service setup](../README.md#product-schema-service).

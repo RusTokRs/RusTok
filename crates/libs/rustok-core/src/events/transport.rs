@@ -1,9 +1,21 @@
 use async_trait::async_trait;
+use sea_orm::DatabaseTransaction;
 use std::any::Any;
 use uuid::Uuid;
 
 use crate::{Error, Result};
 use rustok_events::{ContractEventEnvelope, EventEnvelope};
+
+/// Appends an event using the caller's transaction. The writer leaves commit and
+/// rollback to the caller and returns an error when it cannot persist the event.
+#[async_trait]
+pub trait TransactionalEventWriter: Send + Sync {
+    async fn write_event(
+        &self,
+        transaction: &DatabaseTransaction,
+        envelope: EventEnvelope,
+    ) -> Result<()>;
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReliabilityLevel {

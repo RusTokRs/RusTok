@@ -1,0 +1,28 @@
+[package]
+name = "rustok-channel-ports"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+description = "Channel owner ports and optional gRPC adapters for RusToK"
+
+[features]
+default = []
+grpc-client = ["dep:prost", "dep:tonic", "dep:tonic-prost", "dep:protoc-bin-vendored", "dep:tonic-prost-build"]
+grpc-server = ["dep:prost", "dep:tonic", "dep:tonic-prost", "dep:protoc-bin-vendored", "dep:tonic-prost-build", "dep:sha2", "dep:subtle"]
+
+[dependencies]
+async-trait.workspace = true
+rustok-api.workspace = true
+uuid.workspace = true
+prost = { workspace = true, optional = true }
+tonic = { workspace = true, optional = true, features = ["tls-ring", "tls-webpki-roots"] }
+tonic-prost = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+subtle = { version = "2", optional = true }
+
+[build-dependencies]
+protoc-bin-vendored = { workspace = true, optional = true }
+tonic-prost-build = { workspace = true, optional = true }

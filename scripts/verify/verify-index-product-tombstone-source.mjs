@@ -30,10 +30,13 @@ requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
 ]);
 const product = requireMarkers(productPath, [
   'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay"',
-  'identity_count != 1',
-  'ProductRowState::Deleted',
+  'ProductLocaleReplayState::Live',
   'IndexMutation::Delete {',
-  'source_version: self.source_version',
+  'source_version: row.source_version',
+]);
+requireMarkers('crates/modules/rustok-product/src/locale_replay_port.rs', [
+  'identity_count != 1',
+  'ProductLocaleReplayState::Deleted',
   '(row.product_id, row.locale) > ($2, $3)',
   'ORDER BY row.product_id ASC, row.locale ASC',
   'WITH requested(product_id, locale) AS (VALUES {})',
@@ -53,13 +56,16 @@ requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
 ]);
 const variant = requireMarkers(variantPath, [
   'PRODUCT_VARIANT_EVENT_DOMAIN: &str = "rustok-product.product-variant-replay"',
-  'identity_count != 1',
-  'ProductVariantRowState::Deleted',
+  'ProductVariantReplayState::Live',
   'IndexMutation::Delete {',
-  'source_version: self.source_version',
+  'source_version: entry.source_version',
+]);
+requireMarkers('crates/modules/rustok-product/src/variant_replay_port.rs', [
+  'column::<i64>(row, "identity_count")? != 1',
+  'ProductVariantReplayState::Deleted',
   'row.variant_id > $2',
   'ORDER BY row.variant_id ASC',
-  'WITH requested(variant_id) AS (VALUES {})',
+  'row.variant_id = ANY($2::uuid[])',
 ]);
 forbidMarkers(variantPath, variant, [
   'PRODUCT_VARIANT_EVENT_DOMAIN_V1',

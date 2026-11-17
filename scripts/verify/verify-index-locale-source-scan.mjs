@@ -51,10 +51,11 @@ for (const forbidden of [
   }
 }
 
-const productPath = 'crates/modules/rustok-distribution/src/product_index/product.rs';
+const productPath = 'crates/modules/rustok-product/src/locale_replay_port.rs';
+requireMarkers('crates/modules/rustok-distribution/src/product_index/product.rs', ['locale_mode: LocaleMode::Required', '.scan_locale_replay(', 'IndexSourcePage::new(&request, mutations, next_cursor)']);
 const product = requireMarkers(productPath, [
-  'locale_mode: LocaleMode::Required',
-  'match (request.locale(), cursor)',
+  'request.locale.as_deref(),',
+  'request.after.as_ref(),',
   '(Some(locale), Some(cursor)) =>',
   'WHERE row.locale = $2 AND row.product_id > $3',
   'ORDER BY row.product_id ASC\\nLIMIT $4'.replace('\\\\n', '\\n'),
@@ -66,11 +67,9 @@ const product = requireMarkers(productPath, [
   'ORDER BY row.product_id ASC, row.locale ASC\\nLIMIT $4'.replace('\\\\n', '\\n'),
   '(None, None) =>',
   'ORDER BY row.product_id ASC, row.locale ASC\\nLIMIT $2'.replace('\\\\n', '\\n'),
-  'locale.as_str().to_owned().into()',
-  'if let (Some(locale), Some(cursor)) = (request.locale(), cursor.as_ref())',
-  'cursor.locale != locale.as_str()',
-  'return Err(permanent("product_index_cursor_invalid"));',
-  'IndexSourcePage::new(&request, mutations, next_cursor)',
+  'locale.to_owned().into()',
+  '*locale != after.locale',
+  'return Err(invalid_request());',
 ]);
 
 const localeCursor = product.indexOf('(Some(locale), Some(cursor)) =>');

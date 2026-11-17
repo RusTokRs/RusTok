@@ -4,6 +4,9 @@
 
 ## Known Limitations / Pending Implementation
 
+- The standalone Channel service serves identity snapshots to the
+  [standalone Product convergence worker](../rustok-product/README.md#standalone-channel-convergence).
+  Channel catalog reads, commands and host resolution use the embedded profile.
 - The Product downstream saved-selector read completes/validates Channel ID/slug through
   `ChannelReadPort::read_selected_channel` without page/default fallback. Its new regression
   sources and selected syntax checks are not Rust, database, cancellation or mounted/remote
@@ -30,6 +33,9 @@
   `index_projection` PostgreSQL read contracts for replay, live revision
   admission, and tenant-scoped identity resolution. Channel has no Rust
   dependency on Index. Distribution maps the owner projections into Index mutations.
+- Expose `ChannelIndexIdentityReadPort` for the Channel generation and selected
+  UUIDs in one PostgreSQL observation. The embedded Product resolver uses the
+  same query inside its shared transaction.
 - The selected `rustok-distribution` bridge publishes the non-localized `rustok-channel::sales_channel@1` schema and one bounded source. Replay enumeration uses stable `channel_id` ordering and returns live upserts or retained hard-delete mutations from the same source identity; `index_revision` is used only as generic mutation `source_version`. The canonical Product graph separately consumes the tenant identity generation as a freshness watermark for Product-to-SalesChannel resolution.
 - Ship the module-owned Leptos admin UI package for channel management.
 - Expose `ChannelReadPort` / `channel.read_projection.v1` as the FBA provider boundary for channel/default/host-target read projections, with deadline-aware read semantics and no-compile executable fallback smoke evidence until executable runtime smoke is available.
@@ -99,6 +105,30 @@ It does not yet provide:
 - `ChannelService`
 - `read_resolution_invalidation_generation`
 - `controllers::routes`
+
+## Standalone Index identity service
+
+Run `cargo run -p rustok-channel --features service --bin rustok-channel-service`.
+Apply the Channel migrations to PostgreSQL before starting the service.
+
+| Environment variable | Purpose |
+|---|---|
+| `RUSTOK_CHANNEL_DATABASE_URL` | Connection to the authoritative Channel PostgreSQL primary. |
+| `RUSTOK_CHANNEL_SERVICE_BIND` | Listen address. Defaults to `127.0.0.1:7445`. |
+| `RUSTOK_CHANNEL_SERVICE_TLS_CERT_PATH` and `RUSTOK_CHANNEL_SERVICE_TLS_KEY_PATH` | Server TLS identity. |
+| `RUSTOK_CHANNEL_SERVICE_ALLOW_INSECURE_LOOPBACK` | Set to `true` for local plaintext tests. |
+| `RUSTOK_CHANNEL_INDEX_IDENTITY_GRPC_BEARER_TOKEN` | Service credential for identity reads. |
+| `RUSTOK_CHANNEL_INDEX_IDENTITY_TENANTS` | Comma-separated list of 1–128 distinct tenant UUIDs authorized by the credential. |
+
+An empty tenant history returns generation zero and an empty identity set.
+Live Channel identities without a generation are an invariant error. Tenant
+identities remain at their last positive generation after deletion of the last
+Channel. Restore the generation table together with the Channel data.
+
+The [ports crate](ports/README.md) can build the gRPC client independently of
+the Channel runtime. The PostgreSQL fixture requires a disposable
+`RUSTOK_MIGRATION_SMOKE_ADMIN_URL` and runs with
+`cargo test -p rustok-channel --features service --test index_identity_postgres -- --ignored`.
 
 ## Next Steps
 

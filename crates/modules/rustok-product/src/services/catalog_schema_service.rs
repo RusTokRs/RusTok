@@ -13,7 +13,7 @@ use crate::dto::VariantAxisPolicy;
 use crate::error::{CommerceError, CommerceResult};
 use rustok_core::generate_id;
 use rustok_events::DomainEvent;
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox_storage::TransactionalEventBus;
 
 mod attribute_lifecycle;
 pub(crate) mod attribute_validation;

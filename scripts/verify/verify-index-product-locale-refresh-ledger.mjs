@@ -115,17 +115,17 @@ if (cargo.includes('rustok-index')) {
 }
 
 requireMarkers('crates/modules/rustok-product/docs/index-locale-refresh-ledger.md', [
-  'Status: `owner_source_complete_wire_and_consumer_pending`',
-  '`refresh_id`, reserved as the future typed event and Index inbox identity',
+  'Product publishes the ledger through its transactional outbox',
+  '`refresh_id`, used as the typed refresh event identity',
   '`root_event_id`, the exact durable Product owner envelope',
   '`products.index_revision` remains the single Product owner input watermark',
   '`ProductAttributeValuesChanged` event first advances the Product Index clock',
   'final positive `products.index_revision`',
   '`product_index_tombstones.source_version`',
   '`ProductIndexLocaleRefreshSource::list` exposes at most 256 rows',
-  'does not add or change a `rustok-events` wire family',
+  'Index checks the event against the locale revision',
   'does not fabricate relation-convergence work',
-  'No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI',
+  'deduplicates them by the canonical source mutation ID',
 ]);
 
 console.log('[verify-index-product-locale-refresh-ledger] Product locale owner ledger contract verified');

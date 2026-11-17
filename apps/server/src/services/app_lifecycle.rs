@@ -961,6 +961,7 @@ pub async fn shutdown_runtime_workers(runtime_ctx: &ServerRuntimeContext) {
     };
 
     let product_index_refresh_drain = async {
+        #[cfg(feature = "mod-product")]
         if let Some(worker) = runtime_ctx
             .shared_take::<crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle>()
         {

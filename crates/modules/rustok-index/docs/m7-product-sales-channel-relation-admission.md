@@ -48,9 +48,10 @@ tables.
 ## Cross-owner resolution
 
 The distribution resolver reads Product visibility, Product revision, Channel identity generation,
-and current Channel UUID membership in a read-only repeatable-read snapshot. It writes membership
-through the Product relation owner, re-observes current owner state, requires the second UUID set to
-equal retained membership, and records the second observation as the freshness witness.
+and current Channel UUID membership in a read-only repeatable-read snapshot.
+Product validates its revision and visibility, then commits membership and
+freshness evidence together. The resolver re-observes current owner state
+before it marks the work converged.
 
 Resolver bounds remain 1024 visibility slugs, 1024 resolved Channel UUIDs, 64 Products per tenant page,
 and three stabilization attempts. `channels.is_active` is not relation identity membership.

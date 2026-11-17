@@ -1,12 +1,28 @@
 use crate::transport::{ContractEventWriteOnceError, OutboxTransport};
 use rustok_core::Result;
-use rustok_core::events::EventTransport;
+use rustok_core::events::{EventTransport, TransactionalEventWriter};
 use rustok_events::{
     ContractEventEnvelope, DomainEvent, EventContract, EventEnvelope, ValidateEvent,
 };
-use sea_orm::ConnectionTrait;
+use sea_orm::{ConnectionTrait, DatabaseTransaction};
 use std::sync::Arc;
 use uuid::Uuid;
+
+/// Writes validated root events through a caller-provided owner transaction.
+pub struct OutboxRootEventWriter;
+
+#[async_trait::async_trait]
+impl TransactionalEventWriter for OutboxRootEventWriter {
+    async fn write_event(
+        &self,
+        transaction: &DatabaseTransaction,
+        envelope: EventEnvelope,
+    ) -> Result<()> {
+        TransactionalEventBus::publish_root_envelope_in_tx(transaction, envelope)
+            .await
+            .map(|_| ())
+    }
+}
 
 #[derive(Clone)]
 pub struct TransactionalEventBus {

@@ -65,19 +65,23 @@ services:
     restart: "no"
 
   iggy:
-    image: apache/iggy:0.7.0
+    image: apache/iggy:0.9.0
     container_name: rustok_iggy
+    security_opt:
+      - seccomp:unconfined
     environment:
       - IGGY_ROOT_USERNAME=iggy
       - IGGY_ROOT_PASSWORD=iggy
       - IGGY_TCP_ENABLED=true
       - IGGY_TCP_ADDRESS=0.0.0.0:8090
+      - IGGY_NODE_ADVERTISED_ADDRESS=${IGGY_NODE_ADVERTISED_ADDRESS:-127.0.0.1}
+      - IGGY_SHARDING_CPU_ALLOCATION=all
       - IGGY_HTTP_ENABLED=false
       - IGGY_QUIC_ENABLED=false
     ports:
       - "8090:8090"
     volumes:
-      - iggy_data:/iggy/local_data
+      - iggy_v09_data:/app/local_data
     healthcheck:
       test: ["CMD-SHELL", "iggy --tcp-server-address localhost:8090 --username iggy --password iggy ping || exit 1"]
       interval: 10s
@@ -86,4 +90,4 @@ services:
 
 volumes:
   postgres_data:
-  iggy_data:
+  iggy_v09_data:

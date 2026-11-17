@@ -30,12 +30,16 @@ This is composition-root work; domain rules and transport mechanics remain with 
 owners. Current selectors are deliberately bounded:
 
 - `RUSTOK_PRODUCT_CATALOG_PROVIDER=grpc` selects the remote catalog projection and SKU
-  identity ports on the same connection. Product commands remain embedded.
+  identity ports on the same connection. Set `RUSTOK_PRODUCT_VARIANT_REPLAY_GRPC_BEARER_TOKEN`
+  on both processes to serve ProductVariant replay to Index. The catalog read
+  selector leaves command placement to the command selector.
+  Use a separate `RUSTOK_PRODUCT_LOCALE_REPLAY_GRPC_BEARER_TOKEN` to enable
+  localized Product replay on the same connection.
 - `RUSTOK_PROFILE_MEDIA_PROVIDER=grpc` selects Profiles public-image descriptors.
   It does not move all Media operations or image-byte delivery.
 
-Invalid selected-remote configuration or connection aborts startup. Current Product
-commands remain separately embedded; this is mixed composition, not read-failure failover.
+Invalid selected-remote configuration or connection aborts startup. Index query
+admission and absence watermarks still require the shared database profile.
 See the [configuration reference](../../docs/operations/configuration-reference.md#51-fba-provider-selectors)
 and [FBA contract](../../docs/backend/module-backend-architecture.md#fba-contracts).
 

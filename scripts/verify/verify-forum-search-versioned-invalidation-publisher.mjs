@@ -16,7 +16,7 @@ const paths = {
   eventPayload: "crates/libs/rustok-events/src/contract.rs",
   eventApi: "crates/libs/rustok-events/CRATE_API.md",
   digests: "crates/libs/rustok-events/contracts/event-contract-digests.json",
-  outbox: "crates/modules/rustok-outbox/src/transactional.rs",
+  outbox: "crates/libs/rustok-outbox-storage/src/transactional.rs",
   publisher: "crates/modules/rustok-forum/src/services/projection_invalidation.rs",
   contract: "crates/modules/rustok-forum/contracts/forum-search-versioned-invalidation-publisher.json",
   note: "crates/modules/rustok-forum/docs/forum-23b2g2b3b2-versioned-invalidation-publisher.md",

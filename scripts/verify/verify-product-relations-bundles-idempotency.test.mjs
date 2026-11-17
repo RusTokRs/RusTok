@@ -41,7 +41,7 @@ const verifierInputs = [
   "crates/modules/rustok-product-bundles/src/lib.rs",
   "crates/modules/rustok-product-bundles/Cargo.toml",
   "crates/modules/rustok-product-bundles/admin/src/transport/native_server_adapter.rs",
-  "crates/modules/rustok-outbox/src/idempotency.rs",
+  "crates/libs/rustok-outbox-storage/src/idempotency.rs",
   "crates/modules/rustok-commerce/src/graphql/mutations/catalog.rs",
   "crates/modules/rustok-commerce/src/graphql/types.rs",
   "crates/modules/rustok-commerce/src/graphql/product_catalog.rs",
@@ -415,7 +415,7 @@ test("a bundle receipt completion error must await rollback before returning", (
 });
 
 test("failure finalization cannot ignore a lost receipt lease", () => {
-  const relative = "crates/modules/rustok-outbox/src/idempotency.rs";
+  const relative = "crates/libs/rustok-outbox-storage/src/idempotency.rs";
   const fixtureRoot = writeFixture({
     [relative]: replaceRequired(
       relative,
@@ -432,7 +432,7 @@ test("failure finalization cannot ignore a lost receipt lease", () => {
 });
 
 test("completion finalization must make a lost receipt lease retryable", () => {
-  const relative = "crates/modules/rustok-outbox/src/idempotency.rs";
+  const relative = "crates/libs/rustok-outbox-storage/src/idempotency.rs";
   const fixtureRoot = writeFixture({
     [relative]: replaceRequired(
       relative,
@@ -449,7 +449,7 @@ test("completion finalization must make a lost receipt lease retryable", () => {
 });
 
 test("caller-key scoping must distinguish a present subject from caller bytes", () => {
-  const relative = "crates/modules/rustok-outbox/src/idempotency.rs";
+  const relative = "crates/libs/rustok-outbox-storage/src/idempotency.rs";
   const fixtureRoot = writeFixture({
     [relative]: replaceRequired(relative, "            digest.update([1]);\n", ""),
   });
@@ -462,7 +462,7 @@ test("caller-key scoping must distinguish a present subject from caller bytes", 
 });
 
 test("caller-key scoping must length-frame untrusted caller bytes", () => {
-  const relative = "crates/modules/rustok-outbox/src/idempotency.rs";
+  const relative = "crates/libs/rustok-outbox-storage/src/idempotency.rs";
   const fixtureRoot = writeFixture({
     [relative]: replaceRequired(
       relative,

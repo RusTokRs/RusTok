@@ -1,5 +1,5 @@
 use rustok_core::MigrationSource;
-use rustok_outbox::OutboxModule;
+use rustok_outbox_storage::SysEventsMigration;
 use rustok_product::services::{
     CatalogCategoryKind, CategoryTranslationInput, CreateCatalogCategoryInput,
     ProductCatalogSchemaService,
@@ -9,7 +9,7 @@ use rustok_test_utils::mock_transactional_event_bus;
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseConnection, FromQueryResult, Statement,
 };
-use sea_orm_migration::SchemaManager;
+use sea_orm_migration::{MigrationTrait, SchemaManager};
 use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -49,9 +49,7 @@ async fn setup_database() -> TestResult<DatabaseConnection> {
     .await?;
 
     let manager = SchemaManager::new(&db);
-    for migration in OutboxModule.migrations() {
-        migration.up(&manager).await?;
-    }
+    SysEventsMigration.up(&manager).await?;
     for migration in TaxonomyModule.migrations() {
         migration.up(&manager).await?;
     }

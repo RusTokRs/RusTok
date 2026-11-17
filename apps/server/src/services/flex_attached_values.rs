@@ -10,9 +10,9 @@ use uuid::Uuid;
 use flex::PRODUCT_ENTITY_TYPE;
 #[allow(unused_imports)]
 use flex::{
-    AttachedEntityRef, FlexMappedErrorKind, GenericAttachedFieldDefinitionService,
-    ORDER_ENTITY_TYPE, TAXONOMY_CATEGORY_ENTITY_TYPE, TOPIC_ENTITY_TYPE, USER_ENTITY_TYPE,
-    delete_attached_localized_values, delete_generic_attached_values, load_exact_locale_values,
+    AttachedEntityRef, FlexMappedErrorKind, ORDER_ENTITY_TYPE, TAXONOMY_CATEGORY_ENTITY_TYPE,
+    TOPIC_ENTITY_TYPE, USER_ENTITY_TYPE, delete_attached_localized_values,
+    delete_generic_attached_values, load_exact_locale_values, load_generic_attached_schema,
     load_generic_attached_shared_values, load_localized_values_by_locale,
     lock_attached_translation_schema_in_tx, map_flex_error, merge_donor_flex_metadata,
     persist_localized_values, persist_prepared_generic_attached_values,
@@ -1010,9 +1010,7 @@ async fn load_schema(
         TOPIC_ENTITY_TYPE => TopicFieldService::get_schema(db, tenant_id).await,
         #[cfg(feature = "mod-taxonomy")]
         TAXONOMY_CATEGORY_ENTITY_TYPE => {
-            GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE)
-                .get_schema(db, tenant_id)
-                .await
+            load_generic_attached_schema(db, tenant_id, entity_type).await
         }
         other => Err(FlexError::UnknownEntityType(other.to_string())),
     }

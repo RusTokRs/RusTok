@@ -6,6 +6,11 @@
 
 ## Responsibilities
 
+`rustok-outbox-storage` implements the shared SQL tables, transactional append
+and operation receipts. This module re-exports those APIs and owns relay,
+retries, retention and operator access. An independently deployed owner can
+use the storage library with its own database and compose delivery separately.
+
 - Persist outbound events through the shared outbox transport.
 - Relay pending events with claim, dispatch, retry, and DLQ semantics.
 - Prune delivered events after a configured retention window, in bounded batches.
@@ -29,6 +34,20 @@
 - `OutboxRetention`
 - `migration`
 - `idempotency`
+
+## Standalone relay
+
+Run `cargo run -p rustok-outbox --bin rustok-outbox-service --features service`.
+Set `RUSTOK_OUTBOX_DATABASE_URL` to the migrated PostgreSQL database where the
+owner writes `sys_events`. Set `RUSTOK_OUTBOX_IGGY_CONFIG_PATH` to a mounted JSON
+file with `mode` set to `external`, an explicit `external` object, and the
+broker topology shared by producers and consumers. See the
+[Iggy configuration reference](../../../docs/references/iggy/README.md).
+
+The relay checks storage and the broker before claiming events. It uses the same
+claim, retry, and dead-letter rules as the embedded relay. Shutdown lets the
+current batch finish. Interrupted claims become eligible again after the claim
+lease expires. Delivery is at least once and retains the durable envelope ID.
 
 ## Interactions
 

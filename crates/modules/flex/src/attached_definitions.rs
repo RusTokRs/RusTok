@@ -4,7 +4,7 @@
 //! New donors can use this Flex-owned store instead of introducing another
 //! `<module>_field_definitions` service stack.
 
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -15,7 +15,10 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use rustok_core::field_schema::{CustomFieldsSchema, FlexError};
+use rustok_core::{
+    events::TransactionalEventWriter,
+    field_schema::{CustomFieldsSchema, FlexError},
+};
 use rustok_events::EventEnvelope;
 
 use crate::is_valid_flex_entity_type;
@@ -133,18 +136,22 @@ impl FieldDefinitionViewSource for Model {
 }
 
 /// Reusable registry adapter for a namespaced attached donor.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone)]
 pub struct GenericAttachedFieldDefinitionService {
     entity_type: &'static str,
+    events: Arc<dyn TransactionalEventWriter>,
 }
 
 impl GenericAttachedFieldDefinitionService {
-    pub fn new(entity_type: &'static str) -> Self {
+    pub fn new(entity_type: &'static str, events: Arc<dyn TransactionalEventWriter>) -> Self {
         assert!(
             is_valid_flex_entity_type(entity_type),
             "static Flex entity type must satisfy the namespaced entity-type contract"
         );
-        Self { entity_type }
+        Self {
+            entity_type,
+            events,
+        }
     }
 
     pub fn entity_type_name(&self) -> &'static str {
@@ -156,24 +163,23 @@ impl GenericAttachedFieldDefinitionService {
         db: &DatabaseConnection,
         tenant_id: Uuid,
     ) -> Result<CustomFieldsSchema, FlexError> {
-        let rows = Entity::find()
-            .filter(Column::TenantId.eq(tenant_id))
-            .filter(Column::EntityType.eq(self.entity_type))
-            .filter(Column::IsActive.eq(true))
-            .order_by_asc(Column::Position)
-            .all(db)
+        load_generic_attached_schema(db, tenant_id, self.entity_type).await
+    }
+
+    async fn persist_event(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        event: EventEnvelope,
+    ) -> Result<(), FlexError> {
+        self.events
+            .write_event(transaction, event)
             .await
-            .map_err(database_error)?;
-        let definitions = rows
-            .iter()
-            .map(field_definition_from_source)
-            .collect::<Result<Vec<_>, _>>()
             .map_err(|error| {
+                tracing::error!(%error, "Failed to persist attached field-definition event");
                 FlexError::Database(format!(
-                    "invalid persisted attached field definition: {error}"
+                    "failed to persist attached field-definition event: {error}"
                 ))
-            })?;
-        Ok(CustomFieldsSchema::new(definitions))
+            })
     }
 
     async fn find_scoped<C: ConnectionTrait>(
@@ -374,7 +380,7 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
             field_key,
             field_type,
         );
-        persist_attached_event(&txn, event.clone()).await?;
+        self.persist_event(&txn, event.clone()).await?;
         txn.commit().await.map_err(database_error)?;
         Ok((FieldDefinitionView::from_source(&row), event))
     }
@@ -422,7 +428,7 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
         let row = active.update(&txn).await.map_err(database_error)?;
         let event =
             field_definition_updated_event(tenant_id, actor_id, self.entity_type, field_key);
-        persist_attached_event(&txn, event.clone()).await?;
+        self.persist_event(&txn, event.clone()).await?;
         txn.commit().await.map_err(database_error)?;
         Ok((FieldDefinitionView::from_source(&row), event))
     }
@@ -446,25 +452,39 @@ impl FieldDefinitionService for GenericAttachedFieldDefinitionService {
         active.update(&txn).await.map_err(database_error)?;
         let event =
             field_definition_deleted_event(tenant_id, actor_id, self.entity_type, field_key);
-        persist_attached_event(&txn, event.clone()).await?;
+        self.persist_event(&txn, event.clone()).await?;
         txn.commit().await.map_err(database_error)?;
         Ok(event)
     }
 }
 
-async fn persist_attached_event(
-    transaction: &sea_orm::DatabaseTransaction,
-    event: EventEnvelope,
-) -> Result<(), FlexError> {
-    rustok_outbox::TransactionalEventBus::publish_root_envelope_in_tx(transaction, event)
+/// Resolve the active definitions for a donor without constructing a writer.
+pub async fn load_generic_attached_schema(
+    db: &DatabaseConnection,
+    tenant_id: Uuid,
+    entity_type: &str,
+) -> Result<CustomFieldsSchema, FlexError> {
+    if !is_valid_flex_entity_type(entity_type) {
+        return Err(FlexError::UnknownEntityType(entity_type.to_owned()));
+    }
+    let rows = Entity::find()
+        .filter(Column::TenantId.eq(tenant_id))
+        .filter(Column::EntityType.eq(entity_type))
+        .filter(Column::IsActive.eq(true))
+        .order_by_asc(Column::Position)
+        .all(db)
         .await
-        .map(|_| ())
+        .map_err(database_error)?;
+    let definitions = rows
+        .iter()
+        .map(field_definition_from_source)
+        .collect::<Result<Vec<_>, _>>()
         .map_err(|error| {
-            tracing::error!(%error, "Failed to persist attached field-definition event");
             FlexError::Database(format!(
-                "failed to persist attached field-definition event: {error}"
+                "invalid persisted attached field definition: {error}"
             ))
-        })
+        })?;
+    Ok(CustomFieldsSchema::new(definitions))
 }
 
 fn database_error(error: sea_orm::DbErr) -> FlexError {

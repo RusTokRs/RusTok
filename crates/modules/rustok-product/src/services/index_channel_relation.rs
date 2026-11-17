@@ -1,10 +1,16 @@
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, DatabaseTransaction, DbBackend,
-    QueryResult, Statement, TransactionTrait, Value as SqlValue,
+    IsolationLevel, QueryResult, Statement, TransactionTrait, Value as SqlValue,
 };
 use serde_json::Value as JsonValue;
 use thiserror::Error;
 use uuid::Uuid;
+
+use crate::index_channel_visibility::{ProductChannelVisibility, decode_product_visibility};
+
+use super::index_channel_relation_freshness::{
+    MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES, append_witness, load_latest_witness,
+};
 
 pub const MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS: usize = 1024;
 pub const MAX_PRODUCT_SALES_CHANNEL_RELATION_PAGE: usize = 256;
@@ -66,6 +72,12 @@ pub enum ProductSalesChannelIndexRelationError {
     InvalidProduct,
     #[error("Product-SalesChannel relation Product does not exist")]
     ProductNotFound,
+    #[error("Product visibility and revision changed after the Channel observation")]
+    ObservationStale,
+    #[error("Product-SalesChannel observation is invalid")]
+    InvalidObservation,
+    #[error("Product-SalesChannel membership disagrees with an existing witness")]
+    ObservationConflict,
     #[error("Product-SalesChannel relation Channel identity is invalid")]
     InvalidChannel,
     #[error("Product-SalesChannel relation Channel identities must be unique")]
@@ -86,12 +98,15 @@ pub enum ProductSalesChannelIndexRelationError {
     Unavailable,
 }
 
-/// Product-owned append-only authority for the resolved Product -> SalesChannel membership.
-///
-/// This store owns only the durable relation epoch and resolved Channel UUID set. It does not read
-/// Channel tables, resolve Product metadata slugs, construct Index mutations, publish events, or
-/// start a worker. A future cross-owner resolver can submit an already resolved membership and use
-/// the returned monotonic epoch as the source version for locale-specific relation snapshots.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProductSalesChannelIndexRelationObservation {
+    pub product_source_version: u64,
+    pub visibility: ProductChannelVisibility,
+    pub channel_identity_generation: u64,
+    pub channel_ids: Vec<Uuid>,
+}
+
+/// Product-owned authority for resolved membership and its freshness witness.
 #[derive(Clone)]
 pub struct ProductSalesChannelIndexRelationStore {
     db: DatabaseConnection,
@@ -102,25 +117,81 @@ impl ProductSalesChannelIndexRelationStore {
         Self { db }
     }
 
-    pub async fn replace(
+    /// Checks the observed Product state and commits membership and witness atomically.
+    pub async fn commit_observation(
         &self,
         tenant_id: Uuid,
         product_id: Uuid,
-        channel_ids: impl IntoIterator<Item = Uuid>,
+        observation: &ProductSalesChannelIndexRelationObservation,
     ) -> Result<ProductSalesChannelIndexRelationWriteOutcome, ProductSalesChannelIndexRelationError>
     {
         validate_scope(tenant_id, product_id)?;
         ensure_postgres(&self.db)?;
-        let channel_ids = canonical_channel_ids(channel_ids)?;
+        let channel_ids = canonical_channel_ids(observation.channel_ids.iter().copied())?;
+        let product_version = i64::try_from(observation.product_source_version)
+            .ok()
+            .filter(|version| *version > 0)
+            .ok_or(ProductSalesChannelIndexRelationError::InvalidObservation)?;
+        let generation = i64::try_from(observation.channel_identity_generation)
+            .map_err(|_| ProductSalesChannelIndexRelationError::InvalidObservation)?;
+        if generation == 0 && !channel_ids.is_empty() {
+            return Err(ProductSalesChannelIndexRelationError::InvalidObservation);
+        }
 
         let transaction = self
             .db
-            .begin()
+            .begin_with_config(Some(IsolationLevel::ReadCommitted), None)
             .await
             .map_err(|_| ProductSalesChannelIndexRelationError::Unavailable)?;
-        let result = self
-            .replace_in_transaction(&transaction, tenant_id, product_id, channel_ids)
-            .await;
+        let result = async {
+            let visibility_key = verify_current_product(
+                &transaction,
+                tenant_id,
+                product_id,
+                product_version,
+                &observation.visibility,
+            )
+            .await?;
+            lock_relation(&transaction, tenant_id, product_id).await?;
+            let previous = load_latest(&transaction, tenant_id, product_id).await?;
+            let witness = load_latest_witness(&transaction, tenant_id, product_id).await?;
+            if let Some(witness) = &witness {
+                if witness.product_source_version > product_version
+                    || witness.channel_identity_generation > generation
+                {
+                    return Err(ProductSalesChannelIndexRelationError::ObservationStale);
+                }
+                if witness.channel_identity_generation == generation
+                    && witness.visibility_key == visibility_key
+                    && witness.channel_ids != channel_ids
+                {
+                    return Err(ProductSalesChannelIndexRelationError::ObservationConflict);
+                }
+            }
+            let outcome =
+                replace_membership(&transaction, tenant_id, product_id, channel_ids, previous)
+                    .await?;
+            let relation_epoch = outcome.record().relation_epoch();
+            if !witness.is_some_and(|witness| {
+                witness.relation_epoch == relation_epoch
+                    && witness.product_source_version == product_version
+                    && witness.visibility_key == visibility_key
+                    && witness.channel_identity_generation == generation
+            }) {
+                append_witness(
+                    &transaction,
+                    tenant_id,
+                    product_id,
+                    relation_epoch,
+                    product_version,
+                    visibility_key,
+                    generation,
+                )
+                .await?;
+            }
+            Ok(outcome)
+        }
+        .await;
 
         match result {
             Ok(outcome) => {
@@ -273,41 +344,38 @@ impl ProductSalesChannelIndexRelationStore {
             .map(|row| decode_record(row, tenant_id))
             .collect()
     }
+}
 
-    async fn replace_in_transaction(
-        &self,
-        transaction: &DatabaseTransaction,
-        tenant_id: Uuid,
-        product_id: Uuid,
-        channel_ids: Vec<Uuid>,
-    ) -> Result<ProductSalesChannelIndexRelationWriteOutcome, ProductSalesChannelIndexRelationError>
+async fn replace_membership(
+    transaction: &DatabaseTransaction,
+    tenant_id: Uuid,
+    product_id: Uuid,
+    channel_ids: Vec<Uuid>,
+    previous: Option<ProductSalesChannelIndexRelationRecord>,
+) -> Result<ProductSalesChannelIndexRelationWriteOutcome, ProductSalesChannelIndexRelationError> {
+    if let Some(previous) = previous
+        .as_ref()
+        .filter(|previous| previous.channel_ids == channel_ids)
     {
-        require_live_product(transaction, tenant_id, product_id).await?;
-        lock_relation(transaction, tenant_id, product_id).await?;
-        let previous = load_latest(transaction, tenant_id, product_id).await?;
-        if let Some(previous) = previous
-            .as_ref()
-            .filter(|previous| previous.channel_ids == channel_ids)
-        {
-            return Ok(ProductSalesChannelIndexRelationWriteOutcome::Unchanged(
-                previous.clone(),
-            ));
-        }
+        return Ok(ProductSalesChannelIndexRelationWriteOutcome::Unchanged(
+            previous.clone(),
+        ));
+    }
 
-        let relation_epoch = match previous.as_ref() {
-            Some(previous) => previous
-                .relation_epoch
-                .checked_add(1)
-                .filter(|value| *value <= i64::MAX as u64)
-                .ok_or(ProductSalesChannelIndexRelationError::EpochExhausted)?,
-            None => 1,
-        };
-        let relation_epoch_i64 = i64::try_from(relation_epoch)
-            .map_err(|_| ProductSalesChannelIndexRelationError::EpochExhausted)?;
-        let row = transaction
-            .query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Postgres,
-                r#"
+    let relation_epoch = match previous.as_ref() {
+        Some(previous) => previous
+            .relation_epoch
+            .checked_add(1)
+            .filter(|value| *value <= i64::MAX as u64)
+            .ok_or(ProductSalesChannelIndexRelationError::EpochExhausted)?,
+        None => 1,
+    };
+    let relation_epoch_i64 = i64::try_from(relation_epoch)
+        .map_err(|_| ProductSalesChannelIndexRelationError::EpochExhausted)?;
+    let row = transaction
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            r#"
                 INSERT INTO product_sales_channel_index_relation_snapshots (
                     tenant_id,
                     product_id,
@@ -316,49 +384,66 @@ impl ProductSalesChannelIndexRelationStore {
                 ) VALUES ($1, $2, $3, $4)
                 RETURNING sequence_no, tenant_id, product_id, relation_epoch, channel_ids
                 "#,
-                vec![
-                    tenant_id.into(),
-                    product_id.into(),
-                    relation_epoch_i64.into(),
-                    SqlValue::Json(Some(Box::new(channel_ids_json(&channel_ids)))),
-                ],
-            ))
-            .await
-            .map_err(|_| ProductSalesChannelIndexRelationError::Unavailable)?
-            .ok_or(ProductSalesChannelIndexRelationError::InvalidStoredState)?;
-        let record = decode_record(row, tenant_id)?;
+            vec![
+                tenant_id.into(),
+                product_id.into(),
+                relation_epoch_i64.into(),
+                SqlValue::Json(Some(Box::new(channel_ids_json(&channel_ids)))),
+            ],
+        ))
+        .await
+        .map_err(|_| ProductSalesChannelIndexRelationError::Unavailable)?
+        .ok_or(ProductSalesChannelIndexRelationError::InvalidStoredState)?;
+    let record = decode_record(row, tenant_id)?;
 
-        Ok(if previous.is_some() {
-            ProductSalesChannelIndexRelationWriteOutcome::Advanced(record)
-        } else {
-            ProductSalesChannelIndexRelationWriteOutcome::Initial(record)
-        })
-    }
+    Ok(if previous.is_some() {
+        ProductSalesChannelIndexRelationWriteOutcome::Advanced(record)
+    } else {
+        ProductSalesChannelIndexRelationWriteOutcome::Initial(record)
+    })
 }
 
-async fn require_live_product(
+async fn verify_current_product(
     transaction: &DatabaseTransaction,
     tenant_id: Uuid,
     product_id: Uuid,
-) -> Result<(), ProductSalesChannelIndexRelationError> {
+    observed_version: i64,
+    observed_visibility: &ProductChannelVisibility,
+) -> Result<String, ProductSalesChannelIndexRelationError> {
     let row = transaction
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
             r#"
-            SELECT 1 AS present
+            SELECT index_revision, metadata
             FROM products
             WHERE tenant_id = $1
               AND id = $2
-            FOR KEY SHARE
+            FOR NO KEY UPDATE
             "#,
             vec![tenant_id.into(), product_id.into()],
         ))
         .await
-        .map_err(|_| ProductSalesChannelIndexRelationError::Unavailable)?;
-    if row.is_none() {
-        return Err(ProductSalesChannelIndexRelationError::ProductNotFound);
+        .map_err(|_| ProductSalesChannelIndexRelationError::Unavailable)?
+        .ok_or(ProductSalesChannelIndexRelationError::ProductNotFound)?;
+    let version: i64 = row
+        .try_get("", "index_revision")
+        .map_err(|_| ProductSalesChannelIndexRelationError::InvalidStoredState)?;
+    if version != observed_version {
+        return Err(ProductSalesChannelIndexRelationError::ObservationStale);
     }
-    Ok(())
+    let metadata = row
+        .try_get("", "metadata")
+        .map_err(|_| ProductSalesChannelIndexRelationError::InvalidStoredState)?;
+    let visibility = decode_product_visibility(&metadata)
+        .map_err(|_| ProductSalesChannelIndexRelationError::ObservationStale)?;
+    if &visibility != observed_visibility {
+        return Err(ProductSalesChannelIndexRelationError::ObservationStale);
+    }
+    let key = visibility.freshness_key();
+    if key.len() > MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES {
+        return Err(ProductSalesChannelIndexRelationError::InvalidObservation);
+    }
+    Ok(key)
 }
 
 async fn lock_relation(
@@ -441,7 +526,7 @@ fn decode_record(
     })
 }
 
-fn decode_channel_ids(
+pub(super) fn decode_channel_ids(
     value: JsonValue,
 ) -> Result<Vec<Uuid>, ProductSalesChannelIndexRelationError> {
     let values = value

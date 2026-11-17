@@ -36,7 +36,7 @@ function forbidText(name, source, text) {
   }
 }
 
-requireText("workspace SDK pin", files.rootCargo, 'iggy = "0.10.0"');
+requireText("workspace SDK pin", files.rootCargo, 'iggy = "0.11.0"');
 for (const marker of [
   'iggy = { workspace = true, optional = true }',
   'iggy = ["dep:iggy", "rustok-iggy-connector/iggy"]',
@@ -60,11 +60,12 @@ for (const marker of [
   '.get_topic(&self.stream_id, &self.topic_id)',
   '.get_consumer_offset(',
   'Some(partition.id)',
+  'connector_partition_number(partition.id)',
   'position.current_offset.max(partition.current_offset)',
   'acknowledged_offset: offset.map(|position| position.stored_offset)',
   'self.high_watermark.checked_sub(offset)',
   'if self.messages_count == 0',
-  'self.partitions.iter().all(|position| position.lag().is_some())',
+  '.all(|position| position.lag().is_some())',
   'total.checked_add(position.lag()?)',
   'captured_at_unix_seconds',
 ]) {

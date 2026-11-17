@@ -37,6 +37,7 @@ pub mod artifact_ui;
 pub mod context;
 pub mod digest;
 pub mod event_delivery;
+pub mod field_schema;
 #[cfg(feature = "server")]
 pub mod graphql;
 pub mod locale;

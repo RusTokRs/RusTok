@@ -14,6 +14,7 @@ use super::catalog::helpers::load_product_custom_fields_schema;
 use crate::CommerceResult;
 
 /// Product's durable copy of the latest authoritative Flex schema for each tenant.
+#[derive(Clone)]
 pub struct ProductFlexSchemaProjection {
     db: DatabaseConnection,
 }
@@ -43,7 +44,7 @@ impl ProductFlexSchemaProjection {
                 PortError::validation("product.tenant_id_invalid", "Product tenant is invalid")
             })?;
         let snapshot = source
-            .read_versioned_attached_schema(context, flex::PRODUCT_ENTITY_TYPE)
+            .read_versioned_attached_schema(context, flex_ports::PRODUCT_ENTITY_TYPE)
             .await?;
         self.apply(tenant_id, snapshot).await
     }
@@ -57,7 +58,7 @@ impl ProductFlexSchemaProjection {
     ) -> Result<ProductFlexSchemaApplyOutcome, PortError> {
         use ProductFlexSchemaApplyOutcome::{Advanced, Replay, Stale};
 
-        snapshot.verify_scope(tenant_id, flex::PRODUCT_ENTITY_TYPE)?;
+        snapshot.verify_scope(tenant_id, flex_ports::PRODUCT_ENTITY_TYPE)?;
         decode_definitions(&snapshot.schema)?;
         let payload = serde_json::to_value(&snapshot.schema).map_err(|_| invalid_projection())?;
         let txn = self
@@ -119,7 +120,7 @@ impl ProductFlexSchemaSource {
                     .map_err(|_| projected_schema_error(invalid_projection()))?;
                 let snapshot = FlexVersionedAttachedSchema { revision, schema };
                 snapshot
-                    .verify_scope(tenant_id, flex::PRODUCT_ENTITY_TYPE)
+                    .verify_scope(tenant_id, flex_ports::PRODUCT_ENTITY_TYPE)
                     .map_err(projected_schema_error)?;
                 decode_definitions(&snapshot.schema)
                     .map_err(|error| projected_schema_error(error).into())
@@ -159,7 +160,7 @@ fn decode_definitions(schema: &FlexAttachedSchema) -> Result<CustomFieldsSchema,
     let definitions = schema
         .definitions
         .iter()
-        .map(flex::field_definition_from_source)
+        .map(rustok_core::field_schema::field_definition_from_source)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|_| invalid_projection())?;
     Ok(CustomFieldsSchema::new(definitions))

@@ -1,5 +1,19 @@
 # Implementation plan for `rustok-channel`
 
+## Channel identity snapshots for Product (2026-11-17)
+
+The [Channel identity port](../ports/README.md) has an embedded reader and a
+[standalone gRPC service](../README.md#standalone-index-identity-service).
+The PostgreSQL fixture passed with the standalone process. It verified tenant
+and credential checks, reader parity, generation and UUID consistency across
+an uncommitted and then committed rename, a retained generation after deletion,
+and the membership limit. Distribution compiles with the embedded resolver
+using the Channel-owned snapshot query.
+
+Product's standalone worker consumes Channel's gRPC port and commits the
+witness with a revision check in its own database. Localized Index replay and
+serving admission still need wiring across database boundaries.
+
 ## Selected commerce channel reads (2026-10-30; source work)
 
 `ChannelReadPort::read_selected_channel` is implemented as a shared composition of the

@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use rustok_api::{PortActor, PortErrorKind};
-use rustok_outbox::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
+use rustok_outbox_storage::{OutboxTransport, SysEvents, SysEventsMigration, TransactionalEventBus};
 use sea_orm::{Database, PaginatorTrait, Schema};
 use sea_orm_migration::{MigrationTrait, SchemaManager};
 use serde_json::json;
@@ -40,7 +40,7 @@ async fn attached_values_preserve_owner_metadata_and_commit_with_revision_and_ou
         .await
         .unwrap();
     SysEventsMigration.up(&manager).await.unwrap();
-    rustok_outbox::migration::create_owner_operation_receipts_table(&manager)
+    rustok_outbox_storage::migration::create_owner_operation_receipts_table(&manager)
         .await
         .unwrap();
 

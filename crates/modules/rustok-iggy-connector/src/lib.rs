@@ -871,7 +871,11 @@ impl IggyConnector for ExternalConnector {
             let producer = client
                 .producer(&request.stream, &request.topic)
                 .map_err(|e: IggyError| ConnectorError::Publish(e.to_string()))?
-                .partitioning(Partitioning::partition_id(partition))
+                .partitioning(Partitioning::partition_id(
+                    broker_partition_id(partition).ok_or_else(|| {
+                        ConnectorError::Publish("invalid connector partition number".to_owned())
+                    })?,
+                ))
                 .create_stream_if_not_exists()
                 .create_topic_if_not_exists(partitions, Default::default(), Default::default())
                 .build();
@@ -960,6 +964,7 @@ impl IggyConnector for ExternalConnector {
             let mut consumer = client
                 .consumer_group(group_name, stream, topic)
                 .map_err(|error: IggyError| ConnectorError::Subscribe(error.to_string()))?
+                .auto_commit(iggy::prelude::AutoCommit::Disabled)
                 .build();
             consumer
                 .init()
@@ -1090,7 +1095,9 @@ impl ConsumerCursor for ExternalConsumerGroupCursor {
         // message header offset instead, because that is the exact delivery
         // acknowledged by this cursor.
         let offset = received.message.header.offset;
-        let partition = received.partition_id;
+        let partition = connector_partition_number(received.partition_id).ok_or_else(|| {
+            ConnectorError::Receive("invalid Iggy broker partition ID".to_owned())
+        })?;
         self.pending = Some((partition, offset));
         let ack_token = ConnectorAckToken::iggy_sdk(
             &self.stream,
@@ -1138,8 +1145,11 @@ impl ConsumerCursor for ExternalConsumerGroupCursor {
             ));
         }
 
+        let broker_partition = broker_partition_id(partition).ok_or_else(|| {
+            ConnectorError::Receive("invalid connector partition number".to_owned())
+        })?;
         self.consumer
-            .store_offset(offset, Some(partition))
+            .store_offset(offset, Some(broker_partition))
             .await
             .map_err(|error: IggyError| ConnectorError::Receive(error.to_string()))?;
         self.pending = None;
@@ -1539,6 +1549,16 @@ fn validate_connection_string_component(
     }
 
     Ok(())
+}
+
+/// Iggy SDK 0.11 addresses partitions from zero. RusToK receipts and tokens use
+/// one-based partition numbers to keep their existing durable identity.
+pub fn broker_partition_id(connector_number: u32) -> Option<u32> {
+    connector_number.checked_sub(1)
+}
+
+pub fn connector_partition_number(broker_id: u32) -> Option<u32> {
+    broker_id.checked_add(1)
 }
 
 /// Calculate partition number based on key

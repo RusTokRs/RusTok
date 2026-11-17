@@ -16,6 +16,11 @@ For one exact Product it observes in PostgreSQL `REPEATABLE READ`, `READ ONLY`:
 - current tenant Channel identity generation;
 - the complete resolved Channel UUID membership.
 
+The embedded resolver reads both Channel values through the
+[Channel-owned snapshot query](../../rustok-channel/ports/README.md).
+The standalone Product worker reads through the Channel gRPC port and uses
+the same Product executor. Remote Index replay and admission are still pending.
+
 Visibility policy remains:
 
 - missing visibility or an empty allowlist is unrestricted;
@@ -29,18 +34,13 @@ tenant page, and three stabilization attempts.
 
 ## Membership and freshness
 
-Resolution has two Product-owned durable outputs with different semantics:
+`ProductSalesChannelIndexRelationStore::commit_observation` commits membership
+and its witness in the same transaction. Product checks revision and visibility
+under its row lock. Only membership changes advance `relation_epoch`.
 
-1. `ProductSalesChannelIndexRelationStore::replace` owns the complete UUID membership and advances
-   `relation_epoch` only when that membership changes.
-2. `ProductSalesChannelIndexRelationFreshnessStore::record` owns an append-only witness that the exact
-   retained relation epoch was checked against current Product visibility and current tenant Channel
-   identity generation.
-
-After the relation write, the resolver opens a fresh repeatable-read observation. It accepts only when
-the newly observed UUID set equals the membership retained by the relation owner, then records that
-second observation as the freshness witness. If numeric freshness watermarks race backwards relative to
-an already retained witness, the resolver retries within the same three-attempt bound.
+After commit the resolver takes another repeatable-read observation, then
+reports convergence if the observation is unchanged. Stale observations retry
+within the same three-attempt bound.
 
 A freshness-only owner change does not fabricate a new relation epoch. For example, a Channel slug
 change can advance Channel identity generation while leaving an unrestricted Product's UUID membership

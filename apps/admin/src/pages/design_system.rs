@@ -9,14 +9,22 @@
  */
 
 use leptos::prelude::*;
+use rustok_api::RichTextDocument;
 use rustok_ui_leptos::{
     Alert, AlertVariant, Badge, BadgeVariant, Button, ButtonVariant, Card, CardContent,
-    CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Input, Separator, Size, Switch,
-    Textarea,
+    CardDescription, CardFooter, CardHeader, CardTitle, Checkbox, Input, Orientation,
+    RichTextEditorFrame, Separator, Size, Switch, Textarea, localized_richtext_frame_copy,
 };
 
 #[component]
 pub fn DesignSystemPage() -> impl IntoView {
+    // RichText Sandbox signals
+    let (rt_profile, set_rt_profile) = signal("article".to_string());
+    let (rt_locale, set_rt_locale) = signal("en".to_string());
+    let (rt_disabled, set_rt_disabled) = signal(false);
+    let (rt_doc, set_rt_doc) = signal(RichTextDocument::empty());
+    let rt_copy = localized_richtext_frame_copy(|_, default| default.to_string());
+
     // Interactive playground signals
     let (variant, set_variant) = signal(ButtonVariant::Default);
     let (size, set_size) = signal(Size::Md);
@@ -636,6 +644,99 @@ pub fn DesignSystemPage() -> impl IntoView {
                         </CardFooter>
                     </Card>
                 </div>
+            </section>
+
+            // RichText Editor Sandbox
+            <section class="space-y-4">
+                <div class="flex items-center gap-2">
+                    <h2 class="text-xl font-semibold tracking-tight text-foreground">
+                        "RichText Editor Sandbox"
+                    </h2>
+                    <Badge variant=BadgeVariant::Outline class="ml-2 font-mono text-xs">
+                        "Isolated Frame"
+                    </Badge>
+                </div>
+                <Card>
+                    <CardHeader>
+                        <div class="flex flex-wrap items-center justify-between gap-4">
+                            <div>
+                                <CardTitle class="text-base">"Interactive Editor"</CardTitle>
+                                <CardDescription>
+                                    "Sandboxed iframe editor communicating via MessageChannel with heartbeat and autosave."
+                                </CardDescription>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-3">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-xs font-medium text-muted-foreground">"Profile:"</span>
+                                    {["article", "discussion", "comment"].into_iter().map(|p| {
+                                        let p_str = p.to_string();
+                                        let is_active = move || rt_profile.get() == p_str;
+                                        view! {
+                                            <Button
+                                                variant=move || if is_active() { ButtonVariant::Default } else { ButtonVariant::Outline }
+                                                size=Size::Sm
+                                                on:click=move |_| set_rt_profile.set(p.to_string())
+                                                class="capitalize h-7 px-2.5 text-xs"
+                                            >
+                                                {p}
+                                            </Button>
+                                        }
+                                    }).collect_view()}
+                                </div>
+                                <Separator orientation=Orientation::Vertical class="h-4" />
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-xs font-medium text-muted-foreground">"Locale:"</span>
+                                    {["en", "ru"].into_iter().map(|loc| {
+                                        let loc_str = loc.to_string();
+                                        let is_active = move || rt_locale.get() == loc_str;
+                                        view! {
+                                            <Button
+                                                variant=move || if is_active() { ButtonVariant::Default } else { ButtonVariant::Outline }
+                                                size=Size::Sm
+                                                on:click=move |_| set_rt_locale.set(loc.to_string())
+                                                class="uppercase h-7 px-2.5 text-xs"
+                                            >
+                                                {loc}
+                                            </Button>
+                                        }
+                                    }).collect_view()}
+                                </div>
+                                <Separator orientation=Orientation::Vertical class="h-4" />
+                                <label class="flex items-center gap-1.5 text-xs font-medium cursor-pointer text-foreground">
+                                    <Switch
+                                        checked=rt_disabled
+                                        on_checked_change=move |val| set_rt_disabled.set(val)
+                                    />
+                                    <span>"Disabled"</span>
+                                </label>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent class="space-y-4">
+                        <div class="rounded-md border border-border p-4 bg-background">
+                            {move || {
+                                let p = rt_profile.get();
+                                view! {
+                                    <RichTextEditorFrame
+                                        document=rt_doc
+                                        set_document=set_rt_doc
+                                        content_locale=rt_locale.into()
+                                        label=format!("RichText Document ({p})")
+                                        profile=p
+                                        copy=rt_copy.clone()
+                                        disabled=rt_disabled.into()
+                                    />
+                                }
+                            }}
+                        </div>
+                        <div class="rounded-md bg-muted/50 p-3">
+                            <div class="text-xs font-medium text-muted-foreground mb-1">"Document JSON State:"</div>
+                            <pre class="text-[10px] font-mono overflow-auto max-h-36 p-2 bg-background rounded border border-border text-foreground">
+                                {move || serde_json::to_string_pretty(&rt_doc.get()).unwrap_or_default()}
+                            </pre>
+                        </div>
+                    </CardContent>
+                </Card>
             </section>
         </div>
     }

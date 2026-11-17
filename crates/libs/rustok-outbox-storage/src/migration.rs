@@ -130,7 +130,7 @@ pub async fn drop_sys_events_claim_index(manager: &SchemaManager<'_>) -> Result<
 
 /// Creates the index the delivered-event retention prune is read through.
 ///
-/// [`crate::retention::OutboxRetention::prune_once`] selects
+/// The Outbox relay's retention worker selects
 /// `status = 'dispatched'` rows whose `dispatched_at` is older than the window,
 /// in `ORDER BY dispatched_at LIMIT batch_size`, and then deletes that exact
 /// generation. The index therefore leads with the status it filters on and

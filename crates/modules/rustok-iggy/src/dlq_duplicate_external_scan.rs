@@ -212,6 +212,8 @@ impl<'a> IggyDlqDuplicateScanner<'a> {
         let mut observations = Vec::with_capacity(request.max_messages as usize);
 
         for &partition_id in &request.partitions {
+            let broker_partition = rustok_iggy_connector::broker_partition_id(partition_id)
+                .ok_or(IggyDlqDuplicateScanError::InvalidBrokerResponse)?;
             if remaining == 0 {
                 break;
             }
@@ -224,7 +226,7 @@ impl<'a> IggyDlqDuplicateScanner<'a> {
                     .poll_messages(
                         &self.stream_id,
                         &self.topic_id,
-                        Some(partition_id),
+                        Some(broker_partition),
                         &self.consumer,
                         &PollingStrategy::offset(next_offset),
                         requested_count,
@@ -233,7 +235,7 @@ impl<'a> IggyDlqDuplicateScanner<'a> {
                     .await
                     .map_err(|_| IggyDlqDuplicateScanError::PollFailed)?;
 
-                if polled.partition_id != partition_id
+                if polled.partition_id != broker_partition
                     || polled.count as usize != polled.messages.len()
                     || polled.count > requested_count
                 {

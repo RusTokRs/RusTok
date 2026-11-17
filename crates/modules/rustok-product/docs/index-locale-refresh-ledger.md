@@ -1,6 +1,7 @@
 # Product Index locale refresh ledger
 
-Status: `owner_source_complete_wire_and_consumer_pending`.
+Product publishes the ledger through its transactional outbox. The Index refresh consumer
+loads the current replay record through the Product owner port before applying a mutation.
 
 ## Purpose
 
@@ -21,7 +22,7 @@ This is an owner boundary, not an Index table. `rustok-product` still has no dep
 `product_index_locale_refresh_ledger` stores:
 
 - monotonic `sequence_no` for bounded tenant-local paging;
-- unique `refresh_id`, reserved as the future typed event and Index inbox identity;
+- unique `refresh_id`, used as the typed refresh event identity;
 - `root_event_id`, the exact durable Product owner envelope that caused the row;
 - exact `tenant_id`, `product_id`, and `locale` identity;
 - positive `source_version` read from Product-owned live or tombstone storage;
@@ -80,44 +81,30 @@ For a removed locale or hard-deleted Product, the row records the exact positive
 `product_index_tombstones.source_version`. Live identities suppress an older retained tombstone for the
 same locale.
 
-A later Product command may emit an older retained tombstone again. This is deliberate and safe: the
-future generic Index consumer uses a distinct delivery identity while source-version monotonicity
-classifies the older state as stale.
+A later Product command may emit an older retained tombstone again. The Product replay response
+contains the retained locale revision and the graph projection epoch from the same snapshot.
+Index checks the event against the locale revision. It uses the graph epoch to order materialized
+mutations and deduplicates them by the canonical source mutation ID. This also lets the first graph
+snapshot, whose epoch starts at one, satisfy events from Product revisions committed before
+Channel relation materialization.
 
 ## Bounded owner API
 
 `ProductIndexLocaleRefreshSource::list` exposes at most 256 rows for one exact tenant after one
-non-negative sequence cursor. It returns only identities, versions, causation, and sequence data. It
-does not return Product payload, execute an Index write, acknowledge a broker delivery, or mark ledger
-rows mutable/consumed.
+non-negative sequence cursor. It returns identities, versions, causation, and sequence data.
+The relay tracks progress separately from the append-only ledger. The
+[Product replay port](../ports/README.md#localized-product-replay) supplies the current payload.
 
 PostgreSQL is the authoritative production backend. Non-PostgreSQL Product test profiles keep their
 existing root-event behavior but do not claim an Index refresh ledger.
 
-## Deliberate limits
-
-This slice does not add or change a `rustok-events` wire family or committed digest. It does not:
-
-- publish typed Product locale refresh events;
-- add a parallel Product schema or compatibility route;
-- start a broker relay or consumer;
-- acknowledge deliveries or implement retry/DLQ policy;
-- make Product EAV fields part of the current Index schema yet;
-- expose public HTTP, GraphQL, or admin transport;
-- alter the separate concrete-repair evidence gate.
-
-The purpose is narrower: make Product EAV state eligible for one future canonical Product Index payload
-by ensuring the existing Product source clock and owner refresh ledger advance atomically when EAV values
-change.
-
-## Maintainer verification
+## Verification
 
 ```bash
 node scripts/verify/verify-index-product-eav-owner-clock.mjs
 node scripts/verify/verify-index-product-locale-refresh-ledger.mjs
-cargo check -p rustok-product --all-targets
-git diff --check
+node scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs
 ```
 
-No tests, Node verifiers, Cargo checks, formatting, migrations, PostgreSQL scenarios, workflows, CI, or
-`git diff --check` were executed by the implementation agent.
+The [Index redelivery fixture](../../rustok-index/docs/m5-product-refresh-postgres-iggy-redelivery-evidence.md)
+covers the owner revision fence and persistence before commit of the broker offset.

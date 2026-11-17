@@ -21,7 +21,7 @@ pub use handler::{
 };
 pub use memory::MemoryTransport;
 pub use schema::{EVENT_SCHEMAS, EventSchema, FieldSchema, event_schema};
-pub use transport::{EventTransport, ReliabilityLevel};
+pub use transport::{EventTransport, ReliabilityLevel, TransactionalEventWriter};
 pub use types::{DomainEvent, EventEnvelope};
 // The public handler trait uses these canonical sealed types; expose the same types, not wrappers.
 pub use rustok_events::{ContractEventEnvelope, ContractEventPayload};

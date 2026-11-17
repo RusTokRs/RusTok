@@ -28,6 +28,12 @@ import {
 import { Alert, AlertTitle, AlertDescription } from '@/shared/ui/shadcn/alert';
 import { Skeleton } from '@/shared/ui/shadcn/skeleton';
 import { Separator } from '@/shared/ui/shadcn/separator';
+import { RichTextEditor } from '@/shared/ui/rich-text-editor';
+import {
+  emptyRichTextDocument,
+  type RichTextDocument,
+  type RichTextProfileId
+} from '@rustok/richtext';
 import {
   Check,
   Copy,
@@ -37,7 +43,8 @@ import {
   Search,
   Trash2,
   RefreshCw,
-  Save
+  Save,
+  FileText
 } from 'lucide-react';
 
 type VariantType =
@@ -58,6 +65,14 @@ export default function DesignSystemPage() {
   const [selectedTag, setSelectedTag] = React.useState<string>('all');
   const [isSaving, setIsSaving] = React.useState(false);
   const [saveSuccess, setSaveSuccess] = React.useState(false);
+
+  // RichText Sandbox state
+  const [rtProfile, setRtProfile] = React.useState<RichTextProfileId>('article');
+  const [rtLocale, setRtLocale] = React.useState('en');
+  const [rtDisabled, setRtDisabled] = React.useState(false);
+  const [rtDoc, setRtDoc] = React.useState<RichTextDocument>(() =>
+    emptyRichTextDocument()
+  );
 
   // Copy helper
   const handleCopy = (code: string, label: string) => {
@@ -557,6 +572,88 @@ export default function DesignSystemPage() {
             </CardFooter>
           </Card>
         </div>
+      </section>
+
+      {/* RichText Editor Sandbox */}
+      <section className='space-y-4'>
+        <div className='flex items-center gap-2'>
+          <FileText className='text-primary h-5 w-5' />
+          <h2 className='text-xl font-semibold tracking-tight'>
+            RichText Editor Sandbox
+          </h2>
+          <Badge variant='outline' className='ml-2 font-mono text-xs'>
+            Isolated Frame
+          </Badge>
+        </div>
+        <Card>
+          <CardHeader>
+            <div className='flex flex-wrap items-center justify-between gap-4'>
+              <div>
+                <CardTitle className='text-base'>Interactive Editor</CardTitle>
+                <CardDescription>
+                  Sandboxed iframe editor communicating via MessageChannel with heartbeat and autosave.
+                </CardDescription>
+              </div>
+              <div className='flex flex-wrap items-center gap-3'>
+                <div className='flex items-center gap-1.5'>
+                  <span className='text-muted-foreground text-xs font-medium'>Profile:</span>
+                  {(['article', 'discussion', 'comment'] as RichTextProfileId[]).map((p) => (
+                    <Button
+                      key={p}
+                      variant={rtProfile === p ? 'default' : 'outline'}
+                      size='sm'
+                      onClick={() => setRtProfile(p)}
+                      className='capitalize h-7 px-2.5 text-xs'
+                    >
+                      {p}
+                    </Button>
+                  ))}
+                </div>
+                <Separator orientation='vertical' className='h-4' />
+                <div className='flex items-center gap-1.5'>
+                  <span className='text-muted-foreground text-xs font-medium'>Locale:</span>
+                  {['en', 'ru'].map((loc) => (
+                    <Button
+                      key={loc}
+                      variant={rtLocale === loc ? 'default' : 'outline'}
+                      size='sm'
+                      onClick={() => setRtLocale(loc)}
+                      className='uppercase h-7 px-2.5 text-xs'
+                    >
+                      {loc}
+                    </Button>
+                  ))}
+                </div>
+                <Separator orientation='vertical' className='h-4' />
+                <label className='flex items-center gap-1.5 text-xs font-medium cursor-pointer'>
+                  <Switch
+                    checked={rtDisabled}
+                    onCheckedChange={setRtDisabled}
+                  />
+                  <span>Disabled</span>
+                </label>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className='space-y-4'>
+            <div className='rounded-md border p-4 bg-background'>
+              <RichTextEditor
+                label={`RichText Document (${rtProfile})`}
+                value={rtDoc}
+                profile={rtProfile}
+                contentLocale={rtLocale}
+                disabled={rtDisabled}
+                onChange={setRtDoc}
+              />
+            </div>
+            <div className='rounded-md bg-muted/50 p-3'>
+              <div className='text-xs font-medium text-muted-foreground mb-1'>Document JSON State:</div>
+              <pre className='text-[10px] font-mono overflow-auto max-h-36 p-2 bg-background rounded border text-foreground'>
+                {JSON.stringify(rtDoc, null, 2)}
+              </pre>
+            </div>
+          </CardContent>
+        </Card>
       </section>
     </div>
   );

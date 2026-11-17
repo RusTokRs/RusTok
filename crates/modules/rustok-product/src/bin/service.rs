@@ -16,9 +16,10 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 use rustok_api::PortActor;
-use rustok_outbox::{OutboxTransport, SysEvents, TransactionalEventBus, idempotency};
+use rustok_outbox_storage::{OutboxTransport, SysEvents, TransactionalEventBus, idempotency};
 use rustok_product::{
-    CatalogService,
+    CatalogService, PRODUCT_LOCALE_REPLAY_READ_CLAIM, PRODUCT_VARIANT_REPLAY_READ_CLAIM,
+    PostgresProductLocaleReplay, PostgresProductVariantReplay,
     entities::{Product, ProductVariant},
 };
 use rustok_product_ports::grpc::{
@@ -33,6 +34,10 @@ use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::{Identity, Server, ServerTlsConfig};
 use url::Url;
 use uuid::Uuid;
+
+mod channel_convergence;
+mod flex_schema_refresh;
+mod index_refresh;
 
 const DEFAULT_BIND: &str = "127.0.0.1:7443";
 const DEFAULT_DATABASE_CONNECT_TIMEOUT_MS: u64 = 5_000;
@@ -55,6 +60,8 @@ const ATTACHED_VALUES_READ_TOKEN_ENV: &str =
     "RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN";
 const ATTACHED_VALUES_WRITE_TOKEN_ENV: &str =
     "RUSTOK_PRODUCT_ATTACHED_VALUES_WRITE_GRPC_BEARER_TOKEN";
+const LOCALE_REPLAY_TOKEN_ENV: &str = "RUSTOK_PRODUCT_LOCALE_REPLAY_GRPC_BEARER_TOKEN";
+const VARIANT_REPLAY_TOKEN_ENV: &str = "RUSTOK_PRODUCT_VARIANT_REPLAY_GRPC_BEARER_TOKEN";
 const TRUSTED_SERVICE_ACTOR_ENV: &str = "RUSTOK_PRODUCT_CATALOG_TRUSTED_SERVICE_ACTOR";
 const COMMAND_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN";
 const COMMAND_ACTOR_ID_ENV: &str = "RUSTOK_PRODUCT_CATALOG_COMMAND_ACTOR_ID";
@@ -111,6 +118,8 @@ struct ServiceConfig {
     trusted_service_actor: String,
     attached_values_read_authentication: Option<ProductCatalogGrpcBearerAuthenticator>,
     attached_values_write_authentication: Option<ProductCatalogGrpcBearerAuthenticator>,
+    locale_replay_authentication: Option<ProductCatalogGrpcBearerAuthenticator>,
+    variant_replay_authentication: Option<ProductCatalogGrpcBearerAuthenticator>,
     command_authentication: Option<ProductCatalogGrpcBearerAuthenticator>,
     use_flex_schema_projection: bool,
     transport: ServiceTransport,
@@ -153,6 +162,30 @@ impl ServiceConfig {
         let command_token = env::var(COMMAND_BEARER_TOKEN_ENV).ok();
         let command_actor = optional_env(COMMAND_ACTOR_ID_ENV);
         let attached_read_token = env::var(ATTACHED_VALUES_READ_TOKEN_ENV).ok();
+        let attached_write_token = env::var(ATTACHED_VALUES_WRITE_TOKEN_ENV).ok();
+        let variant_token = env::var(VARIANT_REPLAY_TOKEN_ENV).ok();
+        let locale_token = env::var(LOCALE_REPLAY_TOKEN_ENV).ok();
+        let other_tokens = [
+            Some(bearer_token.expose()),
+            command_token.as_deref(),
+            attached_read_token.as_deref(),
+            attached_write_token.as_deref(),
+            variant_token.as_deref(),
+        ];
+        let variant_replay_authentication = replay_authentication(
+            variant_token.as_deref(),
+            VARIANT_REPLAY_TOKEN_ENV,
+            &other_tokens[..4],
+            PRODUCT_VARIANT_REPLAY_READ_CLAIM,
+            ProductCatalogGrpcOperation::VARIANT_REPLAY,
+        )?;
+        let locale_replay_authentication = replay_authentication(
+            locale_token.as_deref(),
+            LOCALE_REPLAY_TOKEN_ENV,
+            &other_tokens,
+            PRODUCT_LOCALE_REPLAY_READ_CLAIM,
+            ProductCatalogGrpcOperation::LOCALE_REPLAY,
+        )?;
         let attached_values_read_authentication = attached_values_read_authentication(
             attached_read_token.as_deref(),
             bearer_token.expose(),
@@ -165,7 +198,7 @@ impl ServiceConfig {
             &bearer_token,
         )?;
         let attached_values_write_authentication = attached_values_write_authentication(
-            env::var(ATTACHED_VALUES_WRITE_TOKEN_ENV).ok().as_deref(),
+            attached_write_token.as_deref(),
             bearer_token.expose(),
             attached_read_token.as_deref(),
             command_token.as_deref().zip(command_actor.as_deref()),
@@ -187,6 +220,8 @@ impl ServiceConfig {
             trusted_service_actor,
             attached_values_read_authentication,
             attached_values_write_authentication,
+            variant_replay_authentication,
+            locale_replay_authentication,
             command_authentication,
             use_flex_schema_projection: optional_bool(FLEX_SCHEMA_PROJECTION_ENV, false)?,
             transport,
@@ -209,6 +244,11 @@ async fn main() -> Result<()> {
 
 async fn run() -> Result<()> {
     let config = ServiceConfig::from_environment()?;
+    let flex_refresh = flex_schema_refresh::FlexSchemaRefresh::from_environment(
+        config.use_flex_schema_projection,
+    )?;
+    let index_refresh = index_refresh::IndexRefresh::from_environment()?;
+    let channel_convergence = channel_convergence::ChannelConvergence::from_environment()?;
     tracing::info!(
         bind = %config.bind,
         database_target = %config.database_target,
@@ -219,6 +259,12 @@ async fn run() -> Result<()> {
 
     let database = connect_database(&config).await?;
     verify_required_schema(&database).await?;
+    if let Some(refresh) = &index_refresh {
+        refresh.verify_schema(&database).await?;
+    }
+    if let Some(worker) = &channel_convergence {
+        worker.verify_schema(&database).await?;
+    }
     if config.use_flex_schema_projection {
         database
             .execute_unprepared(
@@ -241,6 +287,9 @@ async fn run() -> Result<()> {
 
     let outbox = Arc::new(OutboxTransport::new(database.clone()));
     let event_bus = TransactionalEventBus::new(outbox);
+    let refresh_db = database.clone();
+    let index_db = database.clone();
+    let channel_db = database.clone();
     let provider = CatalogService::new(database, event_bus);
     let provider = Arc::new(if config.use_flex_schema_projection {
         provider.with_projected_flex_schema()
@@ -257,6 +306,28 @@ async fn run() -> Result<()> {
     .map_err(|error| anyhow!("Product catalog service authentication is invalid: {error}"))?;
     if let Some(authentication) = config.attached_values_read_authentication {
         service = service.with_attached_values_read_port(provider);
+        interceptor = interceptor.with_additional_authenticator(authentication);
+    }
+    if let Some(authentication) = config.variant_replay_authentication {
+        let replay = PostgresProductVariantReplay::new(index_db.clone());
+        replay
+            .verify_readable_schema()
+            .await
+            .map_err(|_| schema_preflight_error("Product variant replay projection"))?;
+        service = service.with_variant_replay_port(Arc::new(replay));
+        interceptor = interceptor.with_additional_authenticator(authentication);
+    }
+    if let Some(authentication) = config.locale_replay_authentication {
+        let channel = channel_convergence.as_ref().ok_or_else(|| {
+            anyhow!("{LOCALE_REPLAY_TOKEN_ENV} requires the Product Channel identity provider")
+        })?;
+        let replay =
+            PostgresProductLocaleReplay::separate(index_db.clone(), channel.identity_port());
+        replay
+            .verify_readable_schema()
+            .await
+            .map_err(|_| schema_preflight_error("Product locale replay projection"))?;
+        service = service.with_locale_replay_port(Arc::new(replay));
         interceptor = interceptor.with_additional_authenticator(authentication);
     }
     let service = ProductCatalogReadServiceServer::with_interceptor(service, interceptor);
@@ -294,12 +365,32 @@ async fn run() -> Result<()> {
         commands_enabled = command_service.is_some(),
         "Product catalog gRPC service listening"
     );
-    server
+    let serving = server
         .add_service(service)
         .add_optional_service(command_service)
-        .serve_with_incoming_shutdown(TcpListenerStream::new(listener), shutdown_signal())
-        .await
-        .context("Product catalog gRPC service failed")
+        .serve_with_incoming_shutdown(TcpListenerStream::new(listener), shutdown_signal());
+    let result = tokio::select! {
+        result = serving => result,
+        never = async {
+            match flex_refresh {
+                Some(refresh) => refresh.run(refresh_db).await,
+                None => std::future::pending().await,
+            }
+        } => match never {},
+        never = async {
+            match index_refresh {
+                Some(refresh) => refresh.run(index_db).await,
+                None => std::future::pending().await,
+            }
+        } => match never {},
+        never = async {
+            match channel_convergence {
+                Some(worker) => worker.run(channel_db).await,
+                None => std::future::pending().await,
+            }
+        } => match never {},
+    };
+    result.context("Product catalog gRPC service failed")
 }
 
 async fn connect_database(config: &ServiceConfig) -> Result<DatabaseConnection> {
@@ -392,6 +483,29 @@ fn validate_service_actor(value: String) -> Result<String> {
         bail!("{TRUSTED_SERVICE_ACTOR_ENV} must be 1..=128 visible non-whitespace ASCII bytes");
     }
     Ok(value)
+}
+
+fn replay_authentication(
+    token: Option<&str>,
+    setting: &str,
+    other_tokens: &[Option<&str>],
+    claim: &str,
+    operations: [ProductCatalogGrpcOperation; 2],
+) -> Result<Option<ProductCatalogGrpcBearerAuthenticator>> {
+    token
+        .map(|token| {
+            if other_tokens.contains(&Some(token)) {
+                bail!("{setting} must differ from the other Product credentials");
+            }
+            Ok(ProductCatalogGrpcBearerAuthenticator::new(
+                token,
+                PortActor::service("product-index"),
+            )
+            .map_err(|error| anyhow!("{setting} is invalid: {error}"))?
+            .with_claim(claim)
+            .with_allowed_operations(operations))
+        })
+        .transpose()
 }
 
 fn attached_values_read_authentication(

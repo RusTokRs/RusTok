@@ -24,11 +24,11 @@ const ownerHelpers = requireMarkers('crates/modules/rustok-product/src/services/
   "COALESCE(metadata #> '{channel_visibility,allowed_channel_slugs}', '[]'::jsonb) = '[]'::jsonb",
 ]);
 
-requireMarkers('crates/modules/rustok-channel/src/index_projection.rs', [
-  'SELECT id FROM channels WHERE tenant_id = $1 ORDER BY id ASC LIMIT $2',
+requireMarkers('crates/modules/rustok-channel/src/index_identity.rs', [
+  'SELECT id FROM channels WHERE tenant_id = $1 ORDER BY id LIMIT $2',
 ]);
-const resolver = requireMarkers('crates/modules/rustok-distribution/src/product_index/channel_relation_resolver.rs', [
-  'ProductChannelVisibility::Unrestricted => None',
+const resolver = requireMarkers('crates/modules/rustok-product/src/services/index_channel_relation_resolver.rs', [
+  'ProductChannelVisibility::Unrestricted => ChannelIndexIdentitySelector::All',
   'ProductChannelVisibility::Restricted(slugs)',
 ]);
 

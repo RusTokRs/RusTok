@@ -18,9 +18,10 @@ Each row retains exact tenant/Product identity, the verified `relation_epoch`, o
 `index_revision`, an opaque canonical Product visibility key, observed tenant Channel identity
 generation, and a positive tenant-local append sequence.
 
-The Product owner validates only opaque/numeric evidence and the referenced relation epoch. It does not
-read Channel storage and has no dependency on `rustok-channel` or `rustok-index`. The ledger is
-append-only, numeric owner watermarks cannot regress, and an exact duplicate tuple is idempotent.
+Product locks its own row and validates the observed Product revision and
+canonical visibility. It compares the Channel generation with the last witness.
+The ledger is append-only, numeric owner watermarks cannot regress, and an
+exact duplicate tuple is idempotent. Product does not read Channel storage.
 
 ## Channel identity watermark
 
@@ -32,19 +33,33 @@ state do not advance it.
 A tenant with no historical Channel identity row is generation `0`. After the first identity mutation,
 the positive generation remains retained even if all Channels are later removed.
 
+The [Channel identity port](../../rustok-channel/ports/README.md) returns the
+generation and selected UUIDs from one PostgreSQL statement. The embedded
+resolver runs the same statement inside its shared transaction. An independent
+Channel process exposes this read over gRPC. The standalone Product worker
+selects that provider and submits the observation to the same Product writer.
+Remote Index replay must check the witness against current Channel authority.
+
 ## Resolver admission
 
 For one exact Product the distribution resolver:
 
 1. observes Product metadata, Product `index_revision`, tenant Channel identity generation, and resolved
    UUID membership in `REPEATABLE READ`, `READ ONLY`;
-2. writes membership through `ProductSalesChannelIndexRelationStore::replace`;
-3. performs a fresh second observation;
-4. requires the second UUID set to equal retained relation membership;
-5. records that observation as the Product-owned freshness witness.
+2. calls `ProductSalesChannelIndexRelationStore::commit_observation`, which
+   validates the Product revision and visibility under a row lock and commits
+   membership, projection, and witness atomically;
+3. compares a fresh observation with the one just committed and retries when
+   either owner changed.
 
 If owner state changes before a later source read, the canonical Product source sees the new current
 facts and rejects the stale witness.
+
+The PostgreSQL fixture `index_channel_observation_postgres` verifies that an
+observation waits for a concurrent Product edit, then fails the revision check.
+It also forces the witness insert to fail and checks that membership and graph
+projection changes roll back. It covers duplicate observations, regression in
+Channel generation, and conflicting membership at the same generation.
 
 ## Canonical replay gate
 

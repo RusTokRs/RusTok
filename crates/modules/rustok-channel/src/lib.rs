@@ -10,6 +10,7 @@
 pub mod dto;
 pub mod entities;
 pub mod error;
+mod index_identity;
 pub mod index_projection;
 pub mod invalidation_generation;
 pub mod migrations;
@@ -37,6 +38,7 @@ pub use dto::{
     update_resolution_rule_input,
 };
 pub use error::{ChannelError, ChannelResult};
+pub use index_identity::PostgresChannelIndexIdentity;
 pub use invalidation_generation::{
     CHANNEL_RESOLUTION_INVALIDATION_SCOPE, read_resolution_invalidation_generation,
 };
@@ -53,6 +55,10 @@ pub use ports::{
 pub use resolution::{
     ChannelResolutionOrigin, ChannelResolver, RequestFacts, ResolutionDecision, ResolutionOutcome,
     ResolutionStage, ResolutionTraceStep, TargetSurface,
+};
+pub use rustok_channel_ports::{
+    CHANNEL_INDEX_IDENTITY_READ_CLAIM, ChannelIndexIdentityReadPort, ChannelIndexIdentitySelector,
+    ChannelIndexIdentitySnapshot,
 };
 pub use services::ChannelService;
 pub use target_type::ChannelTargetType;

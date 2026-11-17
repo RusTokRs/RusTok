@@ -70,7 +70,7 @@ requireMarkers('crates/modules/rustok-product/docs/index-locale-refresh-ledger.m
   '`products.index_revision` remains the single Product owner input watermark',
   'do **not** fan the EAV command out to unchanged ProductVariant refresh rows',
   'does not fabricate relation-convergence work',
-  'make Product EAV fields part of the current Index schema yet',
+  'Index checks the event against the locale revision',
 ]);
 
 console.log('[verify-index-product-eav-owner-clock] Product EAV changes advance the canonical Product clock and Product-only refresh boundary');

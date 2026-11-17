@@ -16,11 +16,11 @@ or business side effects.
 
 ## Decision
 
-`rustok-outbox::idempotency` owns the generic durable receipt primitive and
-the `owner_operation_receipts` schema. The canonical production migrator
-applies the Outbox-owned schema through an append-only migration; the
-standalone Outbox migration provides the same schema for isolated owner and
-test runtimes.
+Outbox owns the generic durable receipt primitive and the
+`owner_operation_receipts` schema. `rustok-outbox-storage` provides the local
+SQL implementation and migration helpers. The canonical production migrator
+applies the same schema through the existing append-only migration. Outbox
+re-exports the storage API for the shared runtime and existing callers.
 
 Receipts are uniquely namespaced by `(tenant_id, owner_slug,
 idempotency_key)`. Admission binds that identity to one operation and a
@@ -43,8 +43,9 @@ revision/CAS checks, owner change evidence, and atomic business writes.
 
 - Owners share one tested implementation for immutable request binding,
   replay, stale-lease recovery, and fencing without sharing domain logic.
-- A new owner that uses the primitive must declare the Outbox dependency and
-  ensure the Outbox migration is applied before accepting writes.
+- An owner that uses the primitive depends on `rustok-outbox-storage` and
+  applies the shared migration on the same database before accepting writes.
+  The dependency carries no Outbox module lifecycle or relay.
 - The shared ledger is not evidence that a downstream consumer performed its
   own side effect. Owner-level transactional and recovery tests remain
   required.

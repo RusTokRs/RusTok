@@ -5715,6 +5715,7 @@ dependencies = [
 name = "flex"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-graphql",
  "async-trait",
  "chrono",
@@ -5732,7 +5733,9 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "tokio",
+ "tonic",
  "tracing",
+ "url",
  "utoipa",
  "uuid",
 ]
@@ -5742,9 +5745,18 @@ name = "flex-ports"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "prost",
+ "protoc-bin-vendored",
  "rustok-api",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
+ "subtle",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "url",
  "uuid",
 ]
 
@@ -14708,9 +14720,11 @@ dependencies = [
 name = "rustok-channel"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "chrono",
  "rustok-api",
+ "rustok-channel-ports",
  "rustok-core",
  "rustok-test-utils",
  "sea-orm",
@@ -14719,7 +14733,9 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "tonic",
  "tracing",
+ "url",
  "uuid",
 ]
 
@@ -14744,6 +14760,22 @@ dependencies = [
  "tracing",
  "uuid",
  "web-sys",
+]
+
+[[package]]
+name = "rustok-channel-ports"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "prost",
+ "protoc-bin-vendored",
+ "rustok-api",
+ "sha2 0.11.1",
+ "subtle",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "uuid",
 ]
 
 [[package]]
@@ -15262,6 +15294,7 @@ dependencies = [
  "rustok-pricing",
  "rustok-product",
  "rustok-product-bundles",
+ "rustok-product-ports",
  "rustok-product-relations",
  "rustok-profiles",
  "rustok-rbac",
@@ -15275,6 +15308,7 @@ dependencies = [
  "rustok-tasks",
  "rustok-taxonomy",
  "rustok-tenant",
+ "rustok-test-utils",
  "rustok-translation",
  "rustok-workflow",
  "sea-orm",
@@ -16832,20 +16866,22 @@ dependencies = [
 name = "rustok-outbox"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "chrono",
- "hex",
  "rustok-api",
  "rustok-core",
  "rustok-events",
+ "rustok-iggy",
+ "rustok-outbox-storage",
  "rustok-telemetry",
  "sea-orm",
  "sea-orm-migration",
  "serde",
  "serde_json",
- "sha2 0.11.1",
  "tokio",
  "tracing",
+ "url",
  "uuid",
 ]
 
@@ -16864,6 +16900,26 @@ dependencies = [
  "sea-orm",
  "serde",
  "serde_json",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "rustok-outbox-storage"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "hex",
+ "rustok-api",
+ "rustok-core",
+ "rustok-events",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tokio",
  "tracing",
  "uuid",
 ]
@@ -17241,9 +17297,11 @@ dependencies = [
  "regex",
  "rust_decimal",
  "rustok-api",
+ "rustok-channel-ports",
  "rustok-core",
  "rustok-events",
  "rustok-outbox",
+ "rustok-outbox-storage",
  "rustok-product-ports",
  "rustok-seo-targets",
  "rustok-taxonomy",
@@ -18028,7 +18086,7 @@ dependencies = [
  "async-trait",
  "rustok-api",
  "rustok-core",
- "rustok-outbox",
+ "rustok-outbox-storage",
  "schemars 1.2.3",
  "sea-orm",
  "serde",

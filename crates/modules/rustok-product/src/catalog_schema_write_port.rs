@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use rustok_api::{PortCallPolicy, PortContext, PortError, PortErrorKind};
-use rustok_outbox::idempotency;
+use rustok_outbox_storage::idempotency;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};

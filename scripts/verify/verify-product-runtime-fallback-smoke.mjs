@@ -1,25 +1,13 @@
 #!/usr/bin/env node
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const root = process.env.PRODUCT_FBA_ROOT
   ? pathToFileURL(`${resolve(process.env.PRODUCT_FBA_ROOT)}/`)
   : new URL('../../', import.meta.url);
-const read = (path) => {
-  const fileUrl = new URL(path, root);
-  if (existsSync(fileUrl)) return readFileSync(fileUrl, 'utf8');
-  const dirRelative = path.endsWith('.rs') ? path.slice(0, -3) : path;
-  const dirUrl = new URL(dirRelative, root);
-  if (existsSync(dirUrl)) {
-    return readdirSync(dirUrl)
-      .filter((file) => file.endsWith('.rs'))
-      .map((file) => readFileSync(new URL(`${dirRelative}/${file}`, root), 'utf8'))
-      .join('\n');
-  }
-  return readFileSync(fileUrl, 'utf8');
-};
+const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const json = (path) => JSON.parse(read(path));
 const fail = (message) => {
   console.error(`[verify-product-runtime-fallback-smoke] ${message}`);
@@ -52,9 +40,11 @@ function functionBody(source, name) {
 function assertOrdered(body, markers, operation) {
   let previous = -1;
   for (const marker of markers) {
-    const index = body.indexOf(marker);
-    if (index < 0) fail(`${operation} source marker missing: ${marker}`);
-    if (index <= previous) fail(`${operation} source marker order drift: ${marker}`);
+    const index = body.indexOf(marker, previous + 1);
+    if (index < 0) {
+      if (!body.includes(marker)) fail(`${operation} source marker missing: ${marker}`);
+      fail(`${operation} source marker order drift: ${marker}`);
+    }
     previous = index;
   }
 }
@@ -67,7 +57,11 @@ const contractSmoke = json('crates/modules/rustok-product/contracts/evidence/pro
 const packageJson = json('package.json');
 const workspaceModules = read('modules.toml');
 const moduleManifest = read('crates/modules/rustok-product/rustok-module.toml');
-const ports = read('crates/modules/rustok-product/src/ports.rs');
+const publishedPorts = read('crates/modules/rustok-product/ports/src/ports.rs');
+const publishedTypes = read('crates/modules/rustok-product/ports/src/types.rs');
+const catalogRead = read('crates/modules/rustok-product/src/ports/catalog_read.rs');
+const diagnostics = read('crates/modules/rustok-product/src/ports/diagnostics.rs');
+const catalogReadTypes = read('crates/modules/rustok-product/src/ports/types.rs');
 const readme = read('crates/modules/rustok-product/README.md');
 const docsReadme = read('crates/modules/rustok-product/docs/README.md');
 const plan = read('crates/modules/rustok-product/docs/implementation-plan.md');
@@ -142,18 +136,18 @@ for (const profile of registry.contract_tests.fallback_smoke.profiles) {
   }
 }
 
-for (const marker of [
-  'trait ProductCatalogReadPort',
-  'impl ProductCatalogReadPort for crate::CatalogService',
-  'const MAX_PUBLISHED_PRODUCTS_PER_PAGE: u64 = 48',
-  'validate_published_products_request',
-  'parse_port_tenant_id',
-  'product_error_to_port_error',
-  'PortError::validation',
-  'PortError::unavailable',
-  'PortErrorKind::NotFound',
+for (const [source, marker] of [
+  [publishedPorts, 'trait ProductCatalogReadPort'],
+  [publishedTypes, 'const MAX_PUBLISHED_PRODUCTS_PER_PAGE: u64 = 48'],
+  [catalogRead, 'impl ProductCatalogReadPort for crate::CatalogService'],
+  [catalogReadTypes, 'fn validate_published_products_request'],
+  [diagnostics, 'fn parse_port_tenant_id'],
+  [diagnostics, 'fn product_error_to_port_error'],
+  [diagnostics, 'PortError::validation'],
+  [diagnostics, 'PortError::unavailable'],
+  [diagnostics, 'PortError::not_found'],
 ]) {
-  if (!ports.includes(marker)) fail(`runtime smoke source missing ${marker}`);
+  if (!source.includes(marker)) fail(`runtime smoke source missing ${marker}`);
 }
 
 for (const marker of [
@@ -163,10 +157,10 @@ for (const marker of [
   'fn published_products_request_enforces_bounded_pagination()',
   'fn commerce_errors_map_to_typed_product_port_errors()',
 ]) {
-  if (!ports.includes(marker)) fail(`runtime test harness source missing ${marker}`);
+  if (!catalogRead.includes(marker)) fail(`runtime test harness source missing ${marker}`);
 }
 
-const readBody = functionBody(ports, 'read_product_projection');
+const readBody = functionBody(catalogRead, 'read_product_projection');
 if (!readBody) fail('read_product_projection implementation body missing');
 assertOrdered(
   readBody,
@@ -174,14 +168,15 @@ assertOrdered(
     '.require_policy(PortCallPolicy::read())',
     'parse_port_tenant_id(&context, owner_operation)?',
     'request.locale.as_deref().unwrap_or(context.locale.as_str())',
-    'self.get_product_with_locale_fallback(',
+    'self.get_product_for_catalog_read(',
     'request.fallback_locale.as_deref()',
+    '&context,',
     'product_error_to_port_error(&context, owner_operation, error)',
   ],
   'read_product_projection',
 );
 
-const listBody = functionBody(ports, 'list_published_products');
+const listBody = functionBody(catalogRead, 'list_published_products');
 if (!listBody) fail('list_published_products implementation body missing');
 assertOrdered(
   listBody,

@@ -7,13 +7,12 @@ use sea_orm::{
 use std::any::Any;
 use uuid::Uuid;
 
-use rustok_core::events::{EventTransport, ReliabilityLevel};
+use rustok_core::events::{EventTransport, ReliabilityLevel, TransactionalEventWriter};
 use rustok_core::{Error, Result};
 use rustok_events::{ContractEventEnvelope, EventContractEnvelopeError, EventEnvelope};
 
 use crate::entity;
 use crate::entity::SysEventStatus;
-use crate::ports::TransactionalEventWriter;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ContractEventWriteOnceError {

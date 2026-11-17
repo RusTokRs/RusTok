@@ -24,7 +24,7 @@ export const sourceFiles = {
   adoption: "crates/modules/rustok-inventory/src/reservation_adoption.rs",
   native:
     "crates/modules/rustok-inventory/admin/src/transport/native_server_adapter.rs",
-  transactional: "crates/modules/rustok-outbox/src/transactional.rs",
+  transactional: "crates/libs/rustok-outbox-storage/src/transactional.rs",
   core: "crates/libs/rustok-core/src/events/contract_delivery.rs",
   bus: "crates/libs/rustok-core/src/events/bus.rs",
   handler: "crates/libs/rustok-core/src/events/handler.rs",

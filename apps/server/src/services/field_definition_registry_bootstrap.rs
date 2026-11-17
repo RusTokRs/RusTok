@@ -36,6 +36,8 @@ use flex::{
 };
 #[cfg(feature = "mod-taxonomy")]
 use flex::{GenericAttachedFieldDefinitionService, TAXONOMY_CATEGORY_ENTITY_TYPE};
+#[cfg(feature = "mod-taxonomy")]
+use rustok_outbox::OutboxRootEventWriter;
 
 struct UserFieldDefinitionService;
 struct OrderFieldDefinitionService;
@@ -201,6 +203,7 @@ pub fn build_field_def_registry() -> FieldDefRegistry {
     #[cfg(feature = "mod-taxonomy")]
     registry.register(Arc::new(GenericAttachedFieldDefinitionService::new(
         TAXONOMY_CATEGORY_ENTITY_TYPE,
+        Arc::new(OutboxRootEventWriter),
     )));
     registry
 }

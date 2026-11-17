@@ -15,6 +15,10 @@ service ProductCatalogReadService {
   rpc LoadStorefrontCatalogFacets(JsonRequest) returns (JsonResponse);
   rpc ReadStorefrontProductProjection(JsonRequest) returns (JsonResponse);
   rpc ReadAttachedValues(JsonRequest) returns (JsonResponse);
+  rpc ScanVariantReplay(JsonRequest) returns (JsonResponse);
+  rpc LoadVariantReplay(JsonRequest) returns (JsonResponse);
+  rpc ScanLocaleReplay(JsonRequest) returns (JsonResponse);
+  rpc LoadLocaleReplay(JsonRequest) returns (JsonResponse);
 }
 
 service ProductCatalogCommandService {

@@ -446,6 +446,18 @@ pub mod module_event_dispatcher {
             .map_err(|error| {
                 Error::Message(format!("Index query runtime composition failed: {error}"))
             })?;
+        #[cfg(feature = "mod-product")]
+        if let Some(port) =
+            runtime_ctx.shared_get::<Arc<dyn rustok_product_ports::ProductVariantReplayPort>>()
+        {
+            extensions.insert(port);
+        }
+        #[cfg(feature = "mod-product")]
+        if let Some(port) =
+            runtime_ctx.shared_get::<Arc<dyn rustok_product_ports::ProductLocaleReplayPort>>()
+        {
+            extensions.insert(port);
+        }
         super::index_replay_runtime_composition::materialize_index_replay_runtime(
             &mut extensions,
             db.clone(),

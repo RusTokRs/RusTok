@@ -14,7 +14,7 @@ const paths = {
     "crates/modules/rustok-forum/src/migrations/m20260731_000007_add_forum_projection_revision_ledger.rs",
   migrationRegistry: "crates/modules/rustok-forum/src/migrations/mod.rs",
   owner: "crates/modules/rustok-forum/src/services/projection_invalidation.rs",
-  outbox: "crates/modules/rustok-outbox/src/transactional.rs",
+  outbox: "crates/libs/rustok-outbox-storage/src/transactional.rs",
   outboxApi: "crates/modules/rustok-outbox/CRATE_API.md",
   legacyContract: "crates/modules/rustok-forum/contracts/forum-projection-invalidation.json",
   searchIngestion: "crates/modules/rustok-search/src/ingestion.rs",

@@ -216,10 +216,11 @@ for (const marker of [
   "pub async fn summarize_window(",
   "observations.extend(self.collect_observations(&request).await?);",
   ".poll_messages(",
-  "Some(partition_id)",
+  "broker_partition_id(partition_id)",
+  "Some(broker_partition)",
   "&PollingStrategy::offset(next_offset)",
   "requested_count,\n                        false,",
-  "polled.partition_id != partition_id",
+  "polled.partition_id != broker_partition",
   "polled.count as usize != polled.messages.len()",
   "polled.count > requested_count",
   "offset < next_offset",
@@ -276,7 +277,8 @@ for (const marker of [
   "let first = scanner.summarize(&request).await?;",
   "let second = scanner.summarize(&request).await?;",
   "assert_eq!(second, first);",
-  ".get_consumer_offset(consumer, stream_id, topic_id, Some(PARTITION_ID))",
+  ".get_consumer_offset(",
+  "broker_partition_id(PARTITION_ID)",
   "if stored.is_some()",
 ]) {
   requireText("external DLQ duplicate scan runtime harness", runtimeTest, marker);

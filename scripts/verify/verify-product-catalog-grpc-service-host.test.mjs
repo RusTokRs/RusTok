@@ -28,7 +28,7 @@ name = "rustok-product-catalog-service"
 path = "src/bin/service.rs"
 required-features = ["service"]
 rustok-api.workspace = true
-rustok-outbox.workspace = true
+rustok-outbox-storage.workspace = true
 rustok-product-ports.workspace = true
 service = ["rustok-product-ports/grpc-server"]
 rustok-telemetry = { workspace = true, optional = true }

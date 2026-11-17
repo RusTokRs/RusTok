@@ -16,7 +16,7 @@ const evidence = JSON.parse(
 );
 const harness = read("crates/modules/rustok-pages/tests/outbox_relay_restart_postgres.rs");
 const relay = read("crates/modules/rustok-outbox/src/relay.rs");
-const transactionalBus = read("crates/modules/rustok-outbox/src/transactional.rs");
+const transactionalBus = read("crates/libs/rustok-outbox-storage/src/transactional.rs");
 const cacheOwner = read("crates/modules/rustok-pages/src/cache_invalidation.rs");
 const failures = [];
 

@@ -21,7 +21,7 @@ use crate::{
 };
 use rustok_api::{PortError, PortErrorKind};
 use rustok_events::DomainEvent;
-use rustok_outbox::{TransactionalEventBus, idempotency};
+use rustok_outbox_storage::{TransactionalEventBus, idempotency};
 use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, ExecResult,
     QueryResult, Statement, TransactionTrait,
@@ -741,7 +741,7 @@ mod tests {
     };
     use crate::CommerceError;
     use rustok_api::{PortError, PortErrorKind};
-    use rustok_outbox::{SysEventsMigration, idempotency};
+    use rustok_outbox_storage::{SysEventsMigration, idempotency};
     use rustok_test_utils::mock_transactional_event_bus;
     use sea_orm::{
         ConnectOptions, ConnectionTrait, Database, DatabaseBackend, Statement, TransactionTrait,

@@ -28,6 +28,11 @@
 - Exposes only persistent consumer cursors for receive/acknowledgement; the
   former in-memory group manager and per-partition re-subscribe path are not
   safe for durable remote consumers and are intentionally absent.
+- The Iggy SDK cursor uses explicit acknowledgement. Polling and shutdown do
+  not commit an offset the owner has not acknowledged.
+- Persistent contract readers accept the canonical legacy root format and the
+  sealed typed format on shared topics. A legacy root is lifted to the typed
+  reader with the same envelope identity and broker acknowledgement metadata.
 
 ## Docs
 

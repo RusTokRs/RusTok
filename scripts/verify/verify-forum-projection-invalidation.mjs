@@ -25,8 +25,8 @@ function rejectMarker(source, marker, label) {
   if (source.includes(marker)) failures.push(`${label}: forbidden ${marker}`);
 }
 
-const outboxBusPath = "crates/modules/rustok-outbox/src/transactional.rs";
-const outboxTransportPath = "crates/modules/rustok-outbox/src/transport.rs";
+const outboxBusPath = "crates/libs/rustok-outbox-storage/src/transactional.rs";
+const outboxTransportPath = "crates/libs/rustok-outbox-storage/src/transport.rs";
 const helperPath = "crates/modules/rustok-forum/src/services/projection_invalidation.rs";
 const servicesModPath = "crates/modules/rustok-forum/src/services/mod.rs";
 const categoryProjectionPath = "crates/modules/rustok-forum/src/services/category_projection_owner.rs";

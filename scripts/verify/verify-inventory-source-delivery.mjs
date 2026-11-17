@@ -32,8 +32,8 @@ export const files = {
   adoption: `${inventory}/src/reservation_adoption.rs`,
   productCommands:
     "crates/modules/rustok-product/src/services/catalog/commands.rs",
-  transactional: "crates/modules/rustok-outbox/src/transactional.rs",
-  outboxTransport: "crates/modules/rustok-outbox/src/transport.rs",
+  transactional: "crates/libs/rustok-outbox-storage/src/transactional.rs",
+  outboxTransport: "crates/libs/rustok-outbox-storage/src/transport.rs",
   relay: "crates/modules/rustok-outbox/src/relay.rs",
   relayRegression:
     "crates/modules/rustok-outbox/tests/inventory_source_delivery.rs",

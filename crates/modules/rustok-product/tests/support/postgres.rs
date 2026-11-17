@@ -34,11 +34,8 @@ where
         db.execute_unprepared("CREATE TABLE tenants (id UUID PRIMARY KEY)")
             .await?;
         let manager = SchemaManager::new(&db);
-        for migration in rustok_outbox::OutboxModule
-            .migrations()
-            .into_iter()
-            .chain(rustok_taxonomy::TaxonomyModule.migrations())
-        {
+        rustok_outbox_storage::SysEventsMigration.up(&manager).await?;
+        for migration in rustok_taxonomy::TaxonomyModule.migrations() {
             migration.up(&manager).await?;
         }
         flex::cache_generation::create_field_definition_cache_generation_table(&manager).await?;

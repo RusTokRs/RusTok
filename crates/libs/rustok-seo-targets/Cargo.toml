@@ -18,7 +18,7 @@ server = [
   "dep:async-trait",
   "dep:rustok-api",
   "dep:rustok-core",
-  "dep:rustok-outbox",
+  "dep:rustok-outbox-storage",
   "dep:sea-orm",
 ]
 
@@ -35,4 +35,4 @@ uuid.workspace = true
 
 rustok-api = { workspace = true, optional = true }
 rustok-core = { workspace = true, optional = true }
-rustok-outbox = { workspace = true, optional = true }
+rustok-outbox-storage = { workspace = true, optional = true }

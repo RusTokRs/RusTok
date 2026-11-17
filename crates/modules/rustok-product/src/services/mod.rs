@@ -6,6 +6,7 @@ pub mod flex_schema_projection;
 mod index_channel_relation;
 mod index_channel_relation_convergence;
 mod index_channel_relation_freshness;
+mod index_channel_relation_resolver;
 mod index_refresh;
 mod index_refresh_event;
 mod index_refresh_publication;
@@ -44,8 +45,8 @@ pub use catalog_schema_service::*;
 pub use index_channel_relation::{
     MAX_PRODUCT_SALES_CHANNEL_RELATION_CHANNELS, MAX_PRODUCT_SALES_CHANNEL_RELATION_PAGE,
     MAX_PRODUCT_SALES_CHANNEL_RELATION_TARGETS, ProductSalesChannelIndexRelationError,
-    ProductSalesChannelIndexRelationRecord, ProductSalesChannelIndexRelationStore,
-    ProductSalesChannelIndexRelationWriteOutcome,
+    ProductSalesChannelIndexRelationObservation, ProductSalesChannelIndexRelationRecord,
+    ProductSalesChannelIndexRelationStore, ProductSalesChannelIndexRelationWriteOutcome,
 };
 pub use index_channel_relation_convergence::{
     MAX_PRODUCT_SALES_CHANNEL_CONVERGENCE_ERROR_BYTES,
@@ -55,11 +56,12 @@ pub use index_channel_relation_convergence::{
     ProductSalesChannelIndexRelationConvergenceStore,
     ProductSalesChannelIndexRelationConvergenceWork,
 };
-pub use index_channel_relation_freshness::{
-    MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES, ProductSalesChannelIndexRelationFreshnessError,
-    ProductSalesChannelIndexRelationFreshnessRecord,
-    ProductSalesChannelIndexRelationFreshnessStore,
-    ProductSalesChannelIndexRelationFreshnessWriteOutcome,
+pub use index_channel_relation_freshness::MAX_PRODUCT_SALES_CHANNEL_VISIBILITY_KEY_BYTES;
+pub use index_channel_relation_resolver::{
+    MAX_PRODUCT_SALES_CHANNEL_RELATION_RESOLVE_PAGE, ProductSalesChannelConvergenceWorkError,
+    ProductSalesChannelObservationSource, ProductSalesChannelRelationResolver,
+    ProductSalesChannelRelationResolverError, bind_channel_observation, channel_identity_selector,
+    load_product_visibility,
 };
 pub use index_refresh::{
     MAX_PRODUCT_INDEX_LOCALE_REFRESH_PAGE, MAX_PRODUCT_INDEX_VARIANT_REFRESH_PAGE,

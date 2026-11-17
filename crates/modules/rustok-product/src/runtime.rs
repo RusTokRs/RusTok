@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use rustok_api::PortError;
-use rustok_outbox::TransactionalEventBus;
+use rustok_outbox_storage::TransactionalEventBus;
 use rustok_product_ports::{ProductAttachedValuesReadPort, ProductAttachedValuesWritePort};
 use sea_orm::DatabaseConnection;
 

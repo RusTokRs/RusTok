@@ -67,7 +67,7 @@ moves them into `rustok-product-ports` with a runtime-independent build.
 - **Inventory**: Transaction-aware initial inventory item provisioning during variant creation.
 - **Flex**: Custom fields and dynamic attribute schemas attached to product aggregates.
 - **Brand**: Cross-boundary collaboration with `rustok-brand`. Product owns the relational `product_brands` table mapping products to primary manufacturers and collaborative partner brands.
-- **Outbox & Events**: Publishes catalog lifecycle domain events through `rustok_outbox::TransactionalEventBus`.
+- **Outbox & Events**. Appends catalog lifecycle events through `rustok_outbox_storage::TransactionalEventBus` in the owner transaction.
 - **SEO & Translation Targets**: Implements targets for search engine optimization and multi-locale translation engines.
 
 ## Minimum Contract Set

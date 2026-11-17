@@ -290,7 +290,7 @@ mod tests {
         let authoritative = StorefrontProductList {
             items: vec![rustok_product::StorefrontProductListItem {
                 id: entity_id,
-                status: rustok_product::entities::product::ProductStatus::Active,
+                status: rustok_product::ProductStatus::Active,
                 title: "Untitled product".to_owned(),
                 handle: String::new(),
                 seller_id: None,

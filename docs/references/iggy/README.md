@@ -9,21 +9,23 @@ status: verified
 
 # Iggy Reference Package (RusToK)
 
-Last updated: **2026-07-23**.
+Last updated: **2026-11-16**.
 
 > This package captures the working Iggy integration layer in RusToK (`rustok-iggy`, `rustok-iggy-connector`, `rustok-outbox`) and protects against incorrect migrations from Kafka/NATS.
 
-Iggy is selected only by the global `outbox_iggy` event-delivery profile. The
+In the modular host, Iggy is selected by the global `outbox_iggy` event-delivery profile. The
 single-node `outbox` profile does not start, require, or fall back to
 Iggy. Operators select the profile in the global admin control plane; Iggy
 endpoints and credentials remain deployment configuration.
+For a separate owner database, the [standalone relay](../../../crates/modules/rustok-outbox/README.md#standalone-relay)
+connects directly to the same external Iggy deployment as its consumers.
 
 ## Versions
 
 | Component | Version |
 |-----------|--------|
-| Rust SDK (`iggy` crate) | `0.10.0` |
-| Iggy Server (Docker) | `apache/iggy:0.7.0` |
+| Rust SDK (`iggy` crate) | `0.11.0` |
+| Iggy Server (Docker) | `apache/iggy:0.9.0` |
 
 ## 1) Minimal working example: bring up transport
 
@@ -56,9 +58,9 @@ txn.commit().await?;
 
 This is the canonical RusToK path for write-flow with events.
 
-## 3) Current high-level API (iggy SDK 0.10.0)
+## 3) Current high-level API (iggy SDK 0.11.0)
 
-SDK 0.10.0 uses the high-level Producer/Consumer API based on the builder pattern.
+SDK 0.11.0 uses the high-level Producer/Consumer API based on the builder pattern.
 Low-level methods (`send_messages`, `get_stream`, `create_topic`) are available, but for
 production code the high-level approach is preferred.
 
@@ -183,7 +185,9 @@ The Iggy server is added to `docker-compose.yml` as the `iggy` service:
 
 ```yaml
 iggy:
-  image: apache/iggy:0.7.0
+  image: apache/iggy:0.9.0
+  security_opt:
+    - seccomp:unconfined
   ports:
     - "8090:8090"
   environment:
@@ -191,9 +195,41 @@ iggy:
     - IGGY_ROOT_PASSWORD=iggy
     - IGGY_TCP_ENABLED=true
     - IGGY_TCP_ADDRESS=0.0.0.0:8090
+    - IGGY_NODE_ADVERTISED_ADDRESS=127.0.0.1
+    - IGGY_SHARDING_CPU_ALLOCATION=all
 ```
 
-## 8) Synchronization with code (procedure)
+Compose uses a fresh `iggy_v09_data` volume. Preserve the previous volume if it
+contains broker history. Apache Iggy documents the incompatible data format in
+the [0.9 upgrade guide](https://iggy.apache.org/docs/server/upgrading/).
+
+The connector translates between zero-based Iggy SDK IDs and the one-based
+partition numbers recorded in RusToK receipts, offsets and operator tooling.
+
+## 8) Standalone relay configuration
+
+Mount the Iggy JSON config where the relay process can read it. Use the same
+stream and partition configuration as the receiver. Supply the broker account
+credentials through the mounted file.
+
+```json
+{
+  "mode": "external",
+  "serialization": "json",
+  "external": {
+    "addresses": ["127.0.0.1:8090"],
+    "protocol": "tcp",
+    "username": "relay-account",
+    "password": "<broker password>"
+  },
+  "topology": {
+    "stream_name": "rustok",
+    "domain_partitions": 8
+  }
+}
+```
+
+## 9) Synchronization with code (procedure)
 
 - When changes are made to `crates/modules/rustok-iggy/**`, `crates/modules/rustok-iggy-connector/**`, `crates/modules/rustok-outbox/**`:
   1) update examples and signatures in this reference;

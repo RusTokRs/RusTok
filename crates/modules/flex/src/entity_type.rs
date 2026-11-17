@@ -1,7 +1,7 @@
 use rustok_core::field_schema::is_valid_field_key;
 
 pub const MAX_FLEX_ENTITY_TYPE_BYTES: usize = 64;
-pub const PRODUCT_ENTITY_TYPE: &str = "product";
+pub use flex_ports::PRODUCT_ENTITY_TYPE;
 pub const USER_ENTITY_TYPE: &str = "user";
 pub const ORDER_ENTITY_TYPE: &str = "order";
 pub const TOPIC_ENTITY_TYPE: &str = "topic";

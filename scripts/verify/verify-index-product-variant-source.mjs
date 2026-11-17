@@ -39,6 +39,12 @@ requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
   'FROM product_variants v',
   'FROM product_variant_index_tombstones tombstone',
 ]);
+requireMarkers('crates/modules/rustok-product/src/variant_replay_port.rs', [
+  'impl ProductVariantReplayPort for PostgresProductVariantReplay',
+  'row.variant_id > $2',
+  'ORDER BY row.variant_id ASC',
+  'row.variant_id = ANY($2::uuid[])',
+]);
 const source = requireMarkers(sourcePath, [
   'PRODUCT_VARIANT_INDEX_SOURCE: &str = "product-variant-postgres-primary"',
   'PRODUCT_VARIANT_EVENT_DOMAIN: &str = "rustok-product.product-variant-replay"',
@@ -48,11 +54,10 @@ const source = requireMarkers(sourcePath, [
   'scalar_field("product_id", IndexValueType::Uuid, false, true, true)?',
   'scalar_field("sku", IndexValueType::String, true, true, true)?',
   '[product_variant_schema_ref().map_err(|error| error.to_string())?]',
-  'ProductVariantPostgresIndexSource { db }',
-  'impl IndexSource for ProductVariantPostgresIndexSource',
-  'row.variant_id > $2',
-  'ORDER BY row.variant_id ASC',
-  'WITH requested(variant_id) AS (VALUES {})',
+  'ProductVariantIndexSource { port }',
+  'impl IndexSource for ProductVariantIndexSource',
+  '.scan_variant_replay(',
+  '.load_variant_replay(',
   'product_variant_index_locale_forbidden',
   'schema: product_variant_schema_ref()?',
   'locale: None',
@@ -71,6 +76,7 @@ forbidMarkers(sourcePath, source, [
   'product_variant_schema_ref(1)',
   'product_variant_schema_ref(2)',
   'product_variant_translations',
+  'query_all_raw',
   'ORDER BY v.index_revision',
   'index_entities',
   'index_links',

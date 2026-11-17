@@ -25,6 +25,8 @@ distribution build.
   owners. Distribution owns the adapter registration and maps published rows
   into Index records. The owner SQL is composed in the same PostgreSQL
   statement or existing repeatable-read transaction.
+- Bind ProductVariant replay through the Product owner port. The Index schema
+  and mutation mapping are shared by the embedded and gRPC deployments.
 
 ## Interactions
 
@@ -43,6 +45,22 @@ distribution build.
 
 - See [CRATE_API.md](CRATE_API.md) for full contract specification.
 
+## ProductVariant replay verification
+
+Build `rustok-product-catalog-service` with Cargo's `service` feature. Set
+`RUSTOK_PRODUCT_VARIANT_REPLAY_TEST_BINARY` to the binary path and
+`RUSTOK_MIGRATION_SMOKE_ADMIN_URL` to a disposable PostgreSQL connection whose
+role can create databases.
+
+```sh
+cargo test -p rustok-distribution --features mod-product --lib standalone_product_variant_replay_materializes_in_a_separate_index_database -- --ignored
+```
+
+The fixture starts the standalone Product process and creates two databases.
+It checks replay pagination, tenant scoping, credential grants, mutation identity
+parity with the embedded port, the minimum revision fence, and the persisted Index
+record through creation, update, and deletion.
+
 ## Selected Inventory Index bridge
 
 When the actual Inventory module is selected, Distribution contributes its native
@@ -53,7 +71,12 @@ Distribution queries Inventory tables. See the [actual contract/configuration](d
 
 ## Known Limitations / Pending Implementation
 
-This is uncompiled/unrun source integration. Current page failures park terminally; automatic
+Both Product replay sources select the owner port for an independent Product
+database. Absence and query admission still require the embedded snapshot.
+The mixed Product refresh stream and storefront queries still need separate
+end-to-end verification. See the [owner read contract ADR](../../../DECISIONS/2026-11-08-distribution-index-owner-read-contracts.md).
+
+The Inventory bridge remains uncompiled and unrun. Current page failures park terminally. Automatic
 failed-job backoff/original-job operator recovery is unwired. Real service credentials/current
 policy, backend/concurrency/broker/restart/deployment and full cross-client recovery remain open
 in the existing [Inventory](../rustok-inventory/docs/implementation-plan.md) and

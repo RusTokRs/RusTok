@@ -1,6 +1,6 @@
 #![cfg(all(feature = "mod-taxonomy", feature = "mod-flex"))]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use flex::graphql::{AttachedValuesCommandError, AttachedValuesGraphqlPort};
 use flex::{
@@ -13,6 +13,7 @@ use rustok_core::{
     MigrationSource, SecurityContext, UserRole,
     field_schema::{FieldType, FlexError},
 };
+use rustok_outbox::OutboxRootEventWriter;
 use rustok_server::services::flex_attached_values::{
     FlexAttachedValuesGraphqlAdapter, FlexTaxonomyCategoryDeleteCleanup,
 };
@@ -21,7 +22,7 @@ use rustok_taxonomy::{
     taxonomy_term_identity_exists,
 };
 use sea_orm::{ConnectionTrait, Database};
-use sea_orm_migration::prelude::SchemaManager;
+use sea_orm_migration::{MigrationTrait, prelude::SchemaManager};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -78,6 +79,10 @@ async fn category_flex_transport_roundtrips_real_owner_and_hard_delete_cleans_va
         .await
         .expect("PostgreSQL Category Flex fixture should connect");
     let manager = SchemaManager::new(&db);
+    rustok_outbox::SysEventsMigration
+        .up(&manager)
+        .await
+        .expect("outbox migration should apply on PostgreSQL");
 
     if !manager
         .has_table("flex_attached_field_definitions")
@@ -132,7 +137,10 @@ async fn category_flex_transport_roundtrips_real_owner_and_hard_delete_cleans_va
     .await;
     let tag_id = create_term(&taxonomy, tenant_id, TaxonomyTermKind::Tag, "Flex Tag").await;
 
-    let definitions = GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE);
+    let definitions = GenericAttachedFieldDefinitionService::new(
+        TAXONOMY_CATEGORY_ENTITY_TYPE,
+        Arc::new(OutboxRootEventWriter),
+    );
     definitions
         .create(
             &db,

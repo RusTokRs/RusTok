@@ -29,12 +29,18 @@ use super::payloads::{
 use super::proto::product_catalog_command_service_server::ProductCatalogCommandService;
 use super::proto::product_catalog_read_service_server::ProductCatalogReadService;
 use super::proto::{JsonRequest, JsonResponse};
+use crate::{
+    ProductLocaleReplayKey, ProductLocaleReplayPort, ProductLocaleReplayScan,
+    ProductVariantReplayPort, ProductVariantReplayScan,
+};
 
 /// Provider-side adapter. The wrapped Product owner port retains catalog policy and persistence.
 pub struct ProductCatalogGrpcService<P> {
     provider: Arc<P>,
     variant_identity_read_port: Option<Arc<dyn ProductVariantIdentityReadPort>>,
     attached_values_read_port: Option<Arc<dyn ProductAttachedValuesReadPort>>,
+    locale_replay_port: Option<Arc<dyn ProductLocaleReplayPort>>,
+    variant_replay_port: Option<Arc<dyn ProductVariantReplayPort>>,
 }
 
 /// Authority established by a server-side authentication/authorization interceptor.
@@ -63,6 +69,10 @@ pub enum ProductCatalogGrpcOperation {
     LoadStorefrontCatalogFacets,
     ReadStorefrontProductProjection,
     ReadAttachedValues,
+    ScanVariantReplay,
+    LoadVariantReplay,
+    ScanLocaleReplay,
+    LoadLocaleReplay,
     CreateProduct,
     UpdateProduct,
     PublishProduct,
@@ -83,6 +93,10 @@ pub enum ProductCatalogGrpcOperation {
 }
 
 impl ProductCatalogGrpcOperation {
+    pub const LOCALE_REPLAY: [Self; 2] = [Self::ScanLocaleReplay, Self::LoadLocaleReplay];
+
+    pub const VARIANT_REPLAY: [Self; 2] = [Self::ScanVariantReplay, Self::LoadVariantReplay];
+
     pub const READ: [Self; 9] = [
         Self::ReadProductProjection,
         Self::ReadVariantProductProjection,
@@ -302,6 +316,8 @@ impl<P> ProductCatalogGrpcService<P> {
             provider,
             variant_identity_read_port: None,
             attached_values_read_port: None,
+            variant_replay_port: None,
+            locale_replay_port: None,
         }
     }
 
@@ -326,6 +342,28 @@ impl<P> ProductCatalogGrpcService<P> {
         self.attached_values_read_port = Some(provider);
         self
     }
+
+    pub fn with_variant_replay_port(mut self, provider: Arc<dyn ProductVariantReplayPort>) -> Self {
+        self.variant_replay_port = Some(provider);
+        self
+    }
+
+    fn variant_replay_port(&self) -> Result<&dyn ProductVariantReplayPort, Status> {
+        self.variant_replay_port
+            .as_deref()
+            .ok_or_else(|| Status::unimplemented("Product variant replay is not configured"))
+    }
+
+    pub fn with_locale_replay_port(mut self, provider: Arc<dyn ProductLocaleReplayPort>) -> Self {
+        self.locale_replay_port = Some(provider);
+        self
+    }
+
+    fn locale_replay_port(&self) -> Result<&dyn ProductLocaleReplayPort, Status> {
+        self.locale_replay_port
+            .as_deref()
+            .ok_or_else(|| Status::unimplemented("Product locale replay is not configured"))
+    }
 }
 
 #[tonic::async_trait]
@@ -333,6 +371,78 @@ impl<P> ProductCatalogReadService for ProductCatalogGrpcService<P>
 where
     P: ProductCatalogReadPort + 'static,
 {
+    async fn scan_variant_replay(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::ScanVariantReplay,
+        )?;
+        let input: ProductVariantReplayScan = decode_input(&request.into_inner().input_json)?;
+        let page = self
+            .variant_replay_port()?
+            .scan_variant_replay(context, input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&page)
+    }
+
+    async fn load_variant_replay(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::LoadVariantReplay,
+        )?;
+        let ids: Vec<uuid::Uuid> = decode_input(&request.into_inner().input_json)?;
+        let entries = self
+            .variant_replay_port()?
+            .load_variant_replay(context, ids)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&entries)
+    }
+
+    async fn scan_locale_replay(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::ScanLocaleReplay,
+        )?;
+        let input: ProductLocaleReplayScan = decode_input(&request.into_inner().input_json)?;
+        let page = self
+            .locale_replay_port()?
+            .scan_locale_replay(context, input)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&page)
+    }
+
+    async fn load_locale_replay(
+        &self,
+        request: Request<JsonRequest>,
+    ) -> Result<Response<JsonResponse>, Status> {
+        let context = trusted_context(
+            &request,
+            decode_context(&request.get_ref().context_json)?,
+            ProductCatalogGrpcOperation::LoadLocaleReplay,
+        )?;
+        let keys: Vec<ProductLocaleReplayKey> = decode_input(&request.into_inner().input_json)?;
+        let entries = self
+            .locale_replay_port()?
+            .load_locale_replay(context, keys)
+            .await
+            .map_err(port_error_to_status)?;
+        json_response(&entries)
+    }
+
     async fn read_attached_values(
         &self,
         request: Request<JsonRequest>,

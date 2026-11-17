@@ -97,7 +97,7 @@ Transactional publish and relay failure modes are covered by targeted regression
   - `relay_reclaims_stale_claims` covers reclaiming stuck claims;
   - `relay_bounds_parallel_dispatch` covers bounded concurrency;
   - `relay_processes_baseline_batch_with_bounded_latency` establishes a baseline for batch latency.
-- `cargo test -p rustok-outbox --lib idempotency::tests::completed_receipts_replay_and_keys_remain_owner_scoped`:
+- `cargo test -p rustok-outbox-storage --lib idempotency::tests::completed_receipts_replay_and_keys_remain_owner_scoped`:
   - proves terminal replay and tenant/owner receipt namespace isolation.
 
 These tests cover transactional rollback/commit, relay retry/reclaim/DLQ, and

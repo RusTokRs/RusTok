@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package rustok.flex.v1;
+
+service AttachedSchemaService {
+  rpc ReadVersionedAttachedSchema(ReadVersionedAttachedSchemaRequest) returns (AttachedSchemaSnapshot);
+}
+
+message ReadVersionedAttachedSchemaRequest {
+  string tenant_id = 1;
+  string entity_type = 2;
+  uint64 deadline_ms = 3;
+  string correlation_id = 4;
+}
+
+message AttachedSchemaSnapshot {
+  string tenant_id = 1;
+  string entity_type = 2;
+  int64 revision = 3;
+  repeated FieldDefinition definitions = 4;
+}
+
+message FieldDefinition {
+  string id = 1;
+  string field_key = 2;
+  string field_type = 3;
+  bytes label_json = 4;
+  optional bytes description_json = 5;
+  bool is_localized = 6;
+  bool is_required = 7;
+  optional bytes default_value_json = 8;
+  optional bytes validation_json = 9;
+  int32 position = 10;
+  bool is_active = 11;
+  string created_at = 12;
+  string updated_at = 13;
+}

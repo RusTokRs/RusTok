@@ -5,6 +5,8 @@ Canonical FBA contract crate for `rustok-product`.
 Publishes:
 - `ProductCatalogReadPort`: Storefront, administrative, and checkout catalog projection reads.
 - `ProductVariantIdentityReadPort`: Tenant-scoped variant identity lookup and enumeration.
+- `ProductVariantReplayPort`: Versioned live variants and deletion identities for Index.
+- `ProductLocaleReplayPort`: Versioned localized Product cards and deletion identities for Index.
 - `ProductCatalogCommandPort`: Mutating lifecycle and catalog commands.
 - `ProductAttachedValuesReadPort`: Locale-aware Product attached fields in the
   embedded and authenticated gRPC profiles.
@@ -62,4 +64,32 @@ retries need an explicit key for deduplication in embedded mode as well.
   requests carry no human attribution in that event.
 - Note: TLS and authentication solve separate problems; TLS protects data in transit while bearer tokens authenticate callers.
 
+
+## ProductVariant replay
+
+`ProductVariantReplayPort` loads exact variant IDs and scans by increasing
+variant ID. The owner returns a source revision with each live projection or
+retained deletion identity. An omitted exact-load row represents absence of
+owner evidence. Consumers carry the tenant in `PortContext` and submit a
+bounded deadline. Scan pages accept up to 1,000 entries and exact loads accept
+up to 256 IDs.
+
+The optional gRPC methods `ScanVariantReplay` and `LoadVariantReplay` require a
+dedicated service credential. The Product service assigns the authenticated
+actor and replay grant. The embedded adapter applies the same owner policy.
+
+## Localized Product replay
+
+`ScanLocaleReplay` and `LoadLocaleReplay` use a dedicated locale replay token.
+Each entry carries the graph projection epoch as `source_version` and the exact live or
+retained locale revision as `product_source_version`. Index uses the locale revision to
+fence refresh events and persists mutations at the graph epoch. Deploy the Product host that
+supplies both fields before upgrading a remote consumer to this contract.
+Product checks the exact locale, graph epoch and Channel witness. Cursor order
+and mutation identity are shared between embedded and remote deployment.
+The standalone service uses its Channel identity provider to confirm the live
+witness before handing rows to Index.
+
+The gRPC transport uses unary responses and its normal message-size limit.
+Large localized replay pages still need transport verification.
 

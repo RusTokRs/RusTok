@@ -40,7 +40,7 @@ for (const adapter of [
     fail(`${relative} queries owner storage directly. Use Product or Channel index_projection.`);
   }
 }
-forbidMarkers('crates/modules/rustok-product/Cargo.toml', productCargo, ['rustok-index', 'rustok-channel']);
+forbidMarkers('crates/modules/rustok-product/Cargo.toml', productCargo, ['rustok-index', 'rustok-channel.workspace', 'rustok-channel =']);
 
 const modulePath = 'crates/modules/rustok-distribution/src/product_index/mod.rs';
 const moduleSource = requireMarkers(modulePath, [
@@ -75,6 +75,17 @@ requireMarkers('crates/modules/rustok-product/src/index_projection.rs', [
   'FROM product_index_tombstones tombstone',
   'jsonb_agg(v.id ORDER BY v.id)',
 ]);
+requireMarkers('crates/modules/rustok-channel/src/index_projection.rs', ['channel_index_identity_generations']);
+requireMarkers('crates/modules/rustok-product/src/locale_replay_port.rs', [
+  'decode_product_visibility(&metadata)',
+  'freshness_visibility_key != current_visibility_key',
+  'freshness_channel_identity_generation < current_channel_identity_generation',
+  'freshness_product_source_version > observed_product_source_version',
+  'projected_product_source_version != observed_product_source_version',
+  'Tombstones keep their retained graph identity',
+  '(row.product_id, row.locale) > ($2, $3)',
+  'WITH requested(product_id, locale) AS (VALUES {})',
+]);
 const source = requireMarkers(sourcePath, [
   'PRODUCT_INDEX_SOURCE: &str = "product-postgres-primary"',
   'PRODUCT_EVENT_DOMAIN: &str = "rustok-product.product-replay"',
@@ -96,7 +107,6 @@ const source = requireMarkers(sourcePath, [
   'product_index_graph_projection_snapshots',
   'product_sales_channel_index_relation_snapshots',
   'product_sales_channel_index_relation_freshness_snapshots',
-  'channel_index_identity_generations',
   'projection.projection_epoch AS source_version',
   'product_tags product_tag',
   "COALESCE(tags.tag_ids, '[]'::jsonb) AS tag_ids",
@@ -105,14 +115,8 @@ const source = requireMarkers(sourcePath, [
   'p.created_at',
   'p.published_at',
   'projection.channel_ids AS sales_channel_ids',
-  'decode_product_visibility(&metadata)',
-  'freshness_visibility_key != current_visibility_key',
-  'freshness_channel_identity_generation < current_channel_identity_generation',
-  'freshness_product_source_version > observed_product_source_version',
-  'projected_product_source_version != observed_product_source_version',
-  'does not require live Storefront fields or a live freshness witness',
-  '(row.product_id, row.locale) > ($2, $3)',
-  'WITH requested(product_id, locale) AS (VALUES {})',
+  '.scan_locale_replay(',
+  '.load_locale_replay(',
   'IndexMutation::Delete {',
   'IndexMutation::Upsert {',
   'canonical_product_schema_contains_only_current_storefront_graph_contract',
@@ -129,6 +133,7 @@ forbidMarkers(sourcePath, source, [
   'product-replay-v2',
   'derive_index_source_event_id(',
   'SchemaVersion::new(3)',
+  'query_all_raw',
   'FROM channels',
   'JOIN channels',
   'index_entities',

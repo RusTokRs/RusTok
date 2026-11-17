@@ -8,121 +8,12 @@ use sea_orm::DatabaseConnection;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-use rustok_core::field_schema::{
-    FieldDefinition, FieldType, FlexError, ValidationRule, is_valid_field_key,
-};
+use rustok_core::field_schema::{FieldType, FlexError, ValidationRule, is_valid_field_key};
 use rustok_events::{DomainEvent, EventEnvelope};
 
 pub use flex_ports::{FieldDefinitionView, FieldDefinitionViewSource};
 
-/// Source shape for converting persisted rows into portable core field definitions.
-pub trait FieldDefinitionSource {
-    fn field_key(&self) -> &str;
-    fn field_type(&self) -> &str;
-    fn label(&self) -> &JsonValue;
-    fn description(&self) -> Option<&JsonValue>;
-    fn is_localized(&self) -> bool;
-    fn is_required(&self) -> bool;
-    fn default_value(&self) -> Option<&JsonValue>;
-    fn validation(&self) -> Option<&JsonValue>;
-    fn position(&self) -> i32;
-    fn is_active(&self) -> bool;
-}
-
-pub fn field_definition_from_source<T: FieldDefinitionSource>(
-    source: &T,
-) -> Result<FieldDefinition, String> {
-    let field_type: FieldType = serde_json::from_value(JsonValue::String(
-        source.field_type().to_string(),
-    ))
-    .map_err(|error| {
-        format!(
-            "unknown persisted field type `{}`: {error}",
-            source.field_type()
-        )
-    })?;
-
-    let label: HashMap<String, String> = serde_json::from_value(source.label().clone())
-        .map_err(|error| format!("persisted field label is invalid: {error}"))?;
-
-    let description: Option<HashMap<String, String>> = source
-        .description()
-        .map(|value| {
-            serde_json::from_value(value.clone())
-                .map_err(|error| format!("persisted field description is invalid: {error}"))
-        })
-        .transpose()?;
-
-    let validation: Option<ValidationRule> = source
-        .validation()
-        .map(|value| {
-            serde_json::from_value(value.clone())
-                .map_err(|error| format!("persisted field validation is invalid: {error}"))
-        })
-        .transpose()?;
-
-    Ok(FieldDefinition {
-        field_key: source.field_key().to_string(),
-        field_type,
-        label,
-        description,
-        is_localized: source.is_localized(),
-        is_required: source.is_required(),
-        default_value: source.default_value().cloned(),
-        validation,
-        position: source.position(),
-        is_active: source.is_active(),
-    })
-}
-
-#[macro_export]
-macro_rules! impl_field_definition_source {
-    ($model:ty) => {
-        impl $crate::FieldDefinitionSource for $model {
-            fn field_key(&self) -> &str {
-                &self.field_key
-            }
-
-            fn field_type(&self) -> &str {
-                &self.field_type
-            }
-
-            fn label(&self) -> &serde_json::Value {
-                &self.label
-            }
-
-            fn description(&self) -> Option<&serde_json::Value> {
-                self.description.as_ref()
-            }
-
-            fn is_localized(&self) -> bool {
-                self.is_localized
-            }
-
-            fn is_required(&self) -> bool {
-                self.is_required
-            }
-
-            fn default_value(&self) -> Option<&serde_json::Value> {
-                self.default_value.as_ref()
-            }
-
-            fn validation(&self) -> Option<&serde_json::Value> {
-                self.validation.as_ref()
-            }
-
-            fn position(&self) -> i32 {
-                self.position
-            }
-
-            fn is_active(&self) -> bool {
-                self.is_active
-            }
-        }
-    };
-}
-
-crate::impl_field_definition_source!(FieldDefinitionView);
+pub use rustok_core::field_schema::{FieldDefinitionSource, field_definition_from_source};
 
 /// Transport-agnostic input for creating a field definition.
 #[derive(Debug, Clone)]

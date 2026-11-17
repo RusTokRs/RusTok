@@ -14,10 +14,11 @@ bounded to 1024 non-nil sorted unique UUIDs. Empty membership is valid.
 Equal membership is idempotent and does not advance `relation_epoch`. That remains true even when
 freshness evidence changes.
 
-`ProductSalesChannelIndexRelationStore::replace` requires the exact live Product under `FOR KEY SHARE`,
-serializes the relation identity with an advisory transaction lock, and appends only when membership
-changes. Product hard delete follows the same lock order and retains final empty membership when
-needed.
+`ProductSalesChannelIndexRelationStore::commit_observation` checks the exact live
+Product revision and visibility under `FOR NO KEY UPDATE`, then takes the
+relation advisory transaction lock. A membership change and the witness commit
+with the graph projection in the same transaction. Product hard delete retains
+final empty membership when needed.
 
 The Product owner also exposes bounded relation change/current/targeted reads.
 
@@ -40,9 +41,9 @@ Detailed freshness contract:
 Product visibility to current Channel UUID resolution. Product owns visibility
 decoding and its read projections. Channel owns the identity and generation
 reads. The resolver uses the owner statements in one repeatable-read
-transaction. It writes membership through `ProductSalesChannelIndexRelationStore`, then
-after a fresh repeatable-read observation writes the freshness witness through
-`ProductSalesChannelIndexRelationFreshnessStore`.
+transaction and submits the complete observation through the Product relation
+store. After commit the resolver verifies the current owner state before
+reporting convergence.
 
 Unrestricted visibility resolves against the whole current tenant Channel identity set. Restricted
 visibility matches canonical `lower(btrim(slug))`; `is_active` does not alter identity membership.

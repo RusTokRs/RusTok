@@ -16,7 +16,7 @@ use rustok_core::{
     MigrationSource,
     field_schema::{FieldType, FlexError},
 };
-use rustok_outbox::OutboxModule;
+use rustok_outbox::{OutboxModule, OutboxRootEventWriter};
 use sea_orm::{ConnectionTrait, Database, EntityTrait, PaginatorTrait};
 use sea_orm_migration::prelude::SchemaManager;
 use uuid::Uuid;
@@ -61,6 +61,7 @@ async fn published_flex_read_ports_preserve_schema_scope_and_policy_provenance()
     let tenant = Uuid::new_v4();
     let store = Arc::new(GenericAttachedFieldDefinitionService::new(
         TAXONOMY_CATEGORY_ENTITY_TYPE,
+        Arc::new(OutboxRootEventWriter),
     ));
     let mut active = create_command("tagline", true);
     active.default_value = Some(serde_json::json!("Default copy"));
@@ -152,7 +153,10 @@ async fn generic_definition_service_is_tenant_scoped_and_reuses_flex_guards() {
     let db = setup().await;
     let tenant_a = Uuid::new_v4();
     let tenant_b = Uuid::new_v4();
-    let service = GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE);
+    let service = GenericAttachedFieldDefinitionService::new(
+        TAXONOMY_CATEGORY_ENTITY_TYPE,
+        Arc::new(OutboxRootEventWriter),
+    );
 
     let (created_a, event_a) = service
         .create(
@@ -224,7 +228,10 @@ async fn generic_definition_mutations_persist_the_returned_envelope_identity() {
     let db = setup().await;
     let tenant = Uuid::new_v4();
     let actor = Some(Uuid::new_v4());
-    let service = GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE);
+    let service = GenericAttachedFieldDefinitionService::new(
+        TAXONOMY_CATEGORY_ENTITY_TYPE,
+        Arc::new(OutboxRootEventWriter),
+    );
     let (created, created_event) = service
         .create(&db, tenant, actor, create_command("tagline", true))
         .await
@@ -268,7 +275,10 @@ async fn generic_definition_mutations_persist_the_returned_envelope_identity() {
 async fn generic_definition_mutations_roll_back_when_outbox_is_unavailable() {
     let db = setup().await;
     let tenant = Uuid::new_v4();
-    let service = GenericAttachedFieldDefinitionService::new(TAXONOMY_CATEGORY_ENTITY_TYPE);
+    let service = GenericAttachedFieldDefinitionService::new(
+        TAXONOMY_CATEGORY_ENTITY_TYPE,
+        Arc::new(OutboxRootEventWriter),
+    );
     let (created, _) = service
         .create(&db, tenant, None, create_command("tagline", true))
         .await

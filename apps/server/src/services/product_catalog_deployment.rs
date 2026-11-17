@@ -16,6 +16,8 @@ const ATTACHED_VALUES_READ_TOKEN_ENV: &str =
     "RUSTOK_PRODUCT_ATTACHED_VALUES_READ_GRPC_BEARER_TOKEN";
 const ATTACHED_VALUES_WRITE_TOKEN_ENV: &str =
     "RUSTOK_PRODUCT_ATTACHED_VALUES_WRITE_GRPC_BEARER_TOKEN";
+const LOCALE_REPLAY_TOKEN_ENV: &str = "RUSTOK_PRODUCT_LOCALE_REPLAY_GRPC_BEARER_TOKEN";
+const VARIANT_REPLAY_TOKEN_ENV: &str = "RUSTOK_PRODUCT_VARIANT_REPLAY_GRPC_BEARER_TOKEN";
 const COMMAND_GRPC_BEARER_TOKEN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_COMMAND_GRPC_BEARER_TOKEN";
 const TLS_DOMAIN_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_TLS_DOMAIN";
 const CONNECT_TIMEOUT_MS_ENV: &str = "RUSTOK_PRODUCT_CATALOG_GRPC_CONNECT_TIMEOUT_MS";
@@ -34,6 +36,8 @@ struct ProductDeploymentConfig {
     command: ProductCatalogDeployment,
     attached_values_read_token: Option<ProductCatalogBearerSecret>,
     attached_values_write_token: Option<ProductCatalogBearerSecret>,
+    variant_replay_token: Option<ProductCatalogBearerSecret>,
+    locale_replay_token: Option<ProductCatalogBearerSecret>,
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -113,7 +117,27 @@ pub async fn configure_product_catalog_deployment(ctx: &ServerRuntimeContext) ->
                     )))?;
                 provider = provider.with_attached_values_authentication(authentication);
             }
+            if let Some(token) = config.variant_replay_token {
+                let authentication = ProductCatalogGrpcBearerToken::new(token.expose())
+                    .map_err(|error| Error::Message(format!(
+                        "remote Product variant replay authentication configuration failed: {error}"
+                    )))?;
+                provider = provider.with_variant_replay_authentication(authentication);
+            }
+            if let Some(token) = config.locale_replay_token {
+                let authentication = ProductCatalogGrpcBearerToken::new(token.expose())
+                    .map_err(|error| Error::Message(format!(
+                        "remote Product locale replay authentication configuration failed: {error}"
+                    )))?;
+                provider = provider.with_locale_replay_authentication(authentication);
+            }
             let provider = Arc::new(provider);
+            ctx.shared_insert(
+                provider.clone() as Arc<dyn rustok_product_ports::ProductVariantReplayPort>
+            );
+            ctx.shared_insert(
+                provider.clone() as Arc<dyn rustok_product_ports::ProductLocaleReplayPort>
+            );
             let mut runtime = ProductCatalogReadRuntime::external(provider.clone())
                 .with_variant_identity_read_port(provider.clone());
             if attached_values_enabled {
@@ -193,6 +217,8 @@ fn deployment_from_environment() -> std::result::Result<ProductDeploymentConfig,
                 .as_deref(),
             attached_values_write_token: optional_secret_env(ATTACHED_VALUES_WRITE_TOKEN_ENV)
                 .as_deref(),
+            variant_replay_token: std::env::var(VARIANT_REPLAY_TOKEN_ENV).ok().as_deref(),
+            locale_replay_token: std::env::var(LOCALE_REPLAY_TOKEN_ENV).ok().as_deref(),
             command_bearer_token: optional_secret_env(COMMAND_GRPC_BEARER_TOKEN_ENV).as_deref(),
             tls_domain: optional_env(TLS_DOMAIN_ENV).as_deref(),
             connect_timeout_ms: optional_env(CONNECT_TIMEOUT_MS_ENV).as_deref(),
@@ -207,6 +233,8 @@ struct ProductGrpcEnvironment<'a> {
     bearer_token: Option<&'a str>,
     attached_values_read_token: Option<&'a str>,
     attached_values_write_token: Option<&'a str>,
+    variant_replay_token: Option<&'a str>,
+    locale_replay_token: Option<&'a str>,
     command_bearer_token: Option<&'a str>,
     tls_domain: Option<&'a str>,
     connect_timeout_ms: Option<&'a str>,
@@ -222,6 +250,8 @@ fn parse_product_deployment_config(
         bearer_token,
         attached_values_read_token,
         attached_values_write_token,
+        variant_replay_token,
+        locale_replay_token,
         command_bearer_token,
         tls_domain,
         connect_timeout_ms,
@@ -237,6 +267,47 @@ fn parse_product_deployment_config(
     let command_bearer_token = command_bearer_token.filter(|value| !value.is_empty());
     let attached_values_read_token = attached_values_read_token.filter(|value| !value.is_empty());
     let attached_values_write_token = attached_values_write_token.filter(|value| !value.is_empty());
+    if let Some(token) = variant_replay_token {
+        if !read_remote {
+            return Err(format!(
+                "{VARIANT_REPLAY_TOKEN_ENV} requires a grpc read provider"
+            ));
+        }
+        if token.is_empty()
+            || [
+                bearer_token,
+                command_bearer_token,
+                attached_values_read_token,
+                attached_values_write_token,
+            ]
+            .contains(&Some(token))
+        {
+            return Err(format!(
+                "{VARIANT_REPLAY_TOKEN_ENV} must be nonempty and differ from the other Product credentials"
+            ));
+        }
+    }
+    if let Some(token) = locale_replay_token {
+        if !read_remote {
+            return Err(format!(
+                "{LOCALE_REPLAY_TOKEN_ENV} requires a grpc read provider"
+            ));
+        }
+        if token.is_empty()
+            || [
+                bearer_token,
+                command_bearer_token,
+                attached_values_read_token,
+                attached_values_write_token,
+                variant_replay_token,
+            ]
+            .contains(&Some(token))
+        {
+            return Err(format!(
+                "{LOCALE_REPLAY_TOKEN_ENV} must be nonempty and differ from the other Product credentials"
+            ));
+        }
+    }
     let tls_domain = normalize_optional(tls_domain);
     let timeout = parse_timeout(connect_timeout_ms)?;
     let allow_insecure_loopback_is_configured = allow_insecure_loopback
@@ -294,6 +365,8 @@ fn parse_product_deployment_config(
             command: ProductCatalogDeployment::Embedded,
             attached_values_read_token: None,
             attached_values_write_token: None,
+            variant_replay_token: None,
+            locale_replay_token: None,
         });
     }
     let endpoint = endpoint.ok_or_else(|| {
@@ -333,6 +406,8 @@ fn parse_product_deployment_config(
         attached_values_read_token: attached_values_read_token.map(ProductCatalogBearerSecret::new),
         attached_values_write_token: attached_values_write_token
             .map(ProductCatalogBearerSecret::new),
+        variant_replay_token: variant_replay_token.map(ProductCatalogBearerSecret::new),
+        locale_replay_token: locale_replay_token.map(ProductCatalogBearerSecret::new),
     })
 }
 
@@ -542,6 +617,8 @@ mod tests {
                 command_bearer_token: Some("command-secret"),
                 attached_values_read_token: None,
                 attached_values_write_token: None,
+                variant_replay_token: None,
+                locale_replay_token: None,
                 tls_domain: Some("product-catalog.internal"),
                 connect_timeout_ms: Some("3000"),
                 allow_insecure_loopback: Some("false"),

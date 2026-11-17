@@ -276,7 +276,7 @@ fn root_field(name: &str) -> Result<FieldPath, ProductStorefrontIndexShadowError
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustok_product::ProductResolvedAttributeFilter;
+    use rustok_product::{ProductResolvedAttributeFilter, StorefrontProductListQueryExt};
 
     fn owner_query(direction: StorefrontProductSortDirection) -> StorefrontProductListQuery {
         StorefrontProductListQuery::try_from_transport_with_attribute_filters(

@@ -36,10 +36,10 @@ export class EcommerceFbaRegistryVerificationError extends Error {
 const defaultRoot = new URL('../../', import.meta.url);
 
 const createReader = (root) => (path) => readFileSync(new URL(path, root), 'utf8');
-const createPortReader = (root) => (module) => {
-  const filePath = `crates/modules/rustok-${module}/src/ports.rs`;
+const readPortModule = (root, sourceDir) => {
+  const filePath = `${sourceDir}/ports.rs`;
   if (existsSync(new URL(filePath, root))) return readFileSync(new URL(filePath, root), 'utf8');
-  const dirPath = `crates/modules/rustok-${module}/src/ports`;
+  const dirPath = `${sourceDir}/ports`;
   if (existsSync(new URL(dirPath, root))) {
     const dirUrl = new URL(dirPath, root);
     return readdirSync(dirUrl)
@@ -47,8 +47,16 @@ const createPortReader = (root) => (module) => {
       .map((file) => readFileSync(new URL(`${dirPath}/${file}`, root), 'utf8'))
       .join('\n');
   }
-  fail(`${module} ports source not found`);
-  return '';
+  return null;
+};
+
+const readOwnerImplementation = (read, module, path) => {
+  const prefix = `crates/modules/rustok-${module}/src/`;
+  if (typeof path !== 'string' || !path.startsWith(prefix) ||
+      !/^(?:[\w-]+\/)*[\w-]+\.rs$/.test(path.slice(prefix.length))) {
+    fail(`${module} implementation source must stay owner-local`);
+  }
+  return read(path);
 };
 
 const fail = (message) => {
@@ -198,7 +206,6 @@ export function verifyEcommerceFbaRegistries({
   modules = ecommerceFbaModules,
 } = {}) {
   const read = createReader(root);
-  const readPort = createPortReader(root);
   const central = read('docs/modules/registry.md');
   const providerRegistries = new Map();
 
@@ -208,8 +215,12 @@ export function verifyEcommerceFbaRegistries({
     const plan = read(`crates/modules/rustok-${module}/docs/implementation-plan.md`);
     const manifest = read(`crates/modules/rustok-${module}/rustok-module.toml`);
     const cargo = read(`crates/modules/rustok-${module}/Cargo.toml`);
-    const portSource = readPort(module);
-    const libSource = read(`crates/modules/rustok-${module}/src/lib.rs`);
+    const ownerDir = `crates/modules/rustok-${module}`;
+    const publishedPorts = existsSync(new URL(`${ownerDir}/ports/Cargo.toml`, root));
+    const portDir = `${ownerDir}/${publishedPorts ? 'ports/' : ''}src`;
+    const portSource = readPortModule(root, portDir);
+    if (!portSource) fail(`${module} ports source not found in ${portDir}`);
+    const libSource = read(`${ownerDir}/src/lib.rs`);
 
     if (registry.schema_version !== 1) fail(`${registryPath} schema_version must be 1`);
     if (registry.module !== module) fail(`${registryPath} has module=${registry.module}`);
@@ -237,7 +248,7 @@ export function verifyEcommerceFbaRegistries({
       if (port.error !== 'rustok_api::ports::PortError') fail(`${module}.${port.name} must use PortError`);
       if (!Array.isArray(port.operations) || port.operations.length === 0) fail(`${module}.${port.name} has no operations`);
       if (port.deadline_required !== true) fail(`${module}.${port.name} must declare deadline_required=true`);
-      if (!portSource.includes(`trait ${port.name}`)) fail(`${module} src/ports.rs lacks trait ${port.name}`);
+      if (!portSource.includes(`trait ${port.name}`)) fail(`${module} ${portDir} lacks trait ${port.name}`);
       for (const operation of port.operations) {
         if (!portSource.includes(`${operation}(`)) fail(`${module}.${port.name} lacks operation ${operation}`);
         const testCase = registry.contract_tests.cases.find((entry) => entry.operation === operation);
@@ -286,10 +297,18 @@ export function verifyEcommerceFbaRegistries({
     if (!manifest.includes('context = "rustok_api::ports::PortContext"')) fail(`${module} manifest context drift`);
     if (!manifest.includes('error = "rustok_api::ports::PortError"')) fail(`${module} manifest error drift`);
     if (!cargo.includes('rustok-api.workspace = true')) fail(`${module} Cargo.toml lacks rustok-api dependency`);
-    const ownerSurface = requirePortSurface(libSource, registry, { label: `${module} lib.rs` });
+    const contractLibSource = publishedPorts ? read(`${portDir}/lib.rs`) : libSource;
+    const ownerSurface = requirePortSurface(contractLibSource, registry, { label: `${portDir}/lib.rs` });
     if (!ownerSurface.ok) fail(ownerSurface.message);
-    if (!portSource.includes('PortContext') || !portSource.includes('PortError')) fail(`${module} src/ports.rs must import neutral port primitives`);
-    assertOrderCheckoutCompletionNotPrematurelyImplemented({ registry, portSource });
+    if (!portSource.includes('PortContext') || !portSource.includes('PortError')) fail(`${portDir} must use neutral port primitives`);
+    const ownerImpl = registry.in_process_provider_impl;
+    let defaultImplSource = portSource;
+    if (publishedPorts) {
+      defaultImplSource = ownerImpl
+        ? readOwnerImplementation(read, module, ownerImpl.source)
+        : (readPortModule(root, `${ownerDir}/src`) ?? '');
+    }
+    assertOrderCheckoutCompletionNotPrematurelyImplemented({ registry, portSource: defaultImplSource });
 
     if (registry.provider_spi) {
       if (!registry.in_process_provider_impl?.service) {
@@ -308,14 +327,13 @@ export function verifyEcommerceFbaRegistries({
       });
     }
 
-    if (registry.in_process_provider_impl) {
-      const implDeclaration = `impl ${registry.ports[0].name} for crate::${registry.in_process_provider_impl.service}`;
-      if (!portSource.includes(implDeclaration)) fail(`${module} lacks in-process provider impl ${implDeclaration}`);
+    if (ownerImpl) {
+      const implDeclaration = `impl ${registry.ports[0].name} for crate::${ownerImpl.service}`;
+      if (!defaultImplSource.includes(implDeclaration)) fail(`${module} lacks in-process provider impl ${implDeclaration}`);
       for (const port of registry.ports) {
-        let implementationSource = portSource;
+        let implementationSource = defaultImplSource;
         if (port.implementation_source) {
-          if (!port.implementation_source.startsWith(`crates/modules/rustok-${module}/src/`)) fail(`${module}.${port.name} implementation source must stay owner-local`);
-          implementationSource = read(port.implementation_source);
+          implementationSource = readOwnerImplementation(read, module, port.implementation_source);
           if (!port.implementation_service || !implementationSource.includes(`impl ${port.name} for ${port.implementation_service}`)) fail(`${module}.${port.name} declared implementation is missing`);
         }
         for (const operation of port.operations) {

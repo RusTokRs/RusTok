@@ -536,10 +536,12 @@ Product's packaging now implements the [canonical FBA layout](../../../../docs/b
 - Published contracts, DTOs, protobuf definitions, and tonic gRPC adapters live in `rustok-product-ports` (`ports/`).
 - The domain implementation, entities, migrations, and standalone service binary live in `rustok-product` (`src/bin/service.rs` behind feature `service`).
 - Former separate crates `rustok-product-transport` and `rustok-product-catalog-service` are retired and consolidated into `rustok-product`.
-- The strict FBA layout check still fails on the Product runtime's direct Flex
-  dependency. Reconcile schema/policy access, Taxonomy-dependent
-  migrations and remaining provider bypasses before claiming independently
-  provisioned Product storage.
+- Product consumes the Flex contract from `flex-ports` and uses shared
+  `rustok-core::field_schema` routines to decode schema and validate its own
+  attached values. Product appends events and persists owner-operation receipts
+  through `rustok-outbox-storage`. Strict FBA lint passes. Resolve the historical
+  cross-owner migrations and remaining provider bypasses before claiming
+  independently provisioned Product storage.
 
 Flex GraphQL reads and writes Product attached fields through the selected
 embedded or authenticated gRPC ports. The read credential grants
@@ -575,12 +577,27 @@ The embedded Flex versioned read provider uses a per-tenant revision installed
 on the legacy definition store. `ProductFlexSchemaProjection::refresh` accepts
 that provider over the portable read contract and writes only to Product's own
 database. Product accepts newer versions atomically, recognizes exact replays and
-rejects equal revisions with conflicting content. Cross-process snapshot transport,
-initial seeding and refresh scheduling still need deployment wiring. Product still imports
-Flex validation helpers and a published migration calls the Flex cache trigger helper.
-Product's existing migrations reference Tenant and Taxonomy tables.
+rejects equal revisions with conflicting content. The standalone Flex service
+publishes that read over authenticated gRPC. The standalone Product profile can
+seed and periodically refresh explicitly configured tenants through the client.
+The refresh runs outside catalog request transactions. The historical Product
+migration preserves the shared Flex cache generation trigger without importing
+the Flex runtime. Product's existing migrations reference Tenant and Taxonomy tables.
 Replace cross-owner deletion and synchronization behavior before provisioning a
 Product-only schema, and keep the existing installation upgrade path verifiable.
+- The `flex_schema_projection` fixture passed on SQLite and disposable PostgreSQL
+  with separate source and target databases. It checks the historical Product cache
+  trigger on commit and rollback. SQLite also checks that deletes stop bumping the
+  cache after trigger removal. The PostgreSQL fixture starts the standalone Product
+  binary, verifies Flex schema refresh over gRPC, and writes attached values through
+  the embedded and remote Product ports. Replaying the remote command after restart
+  returns the saved result with one Product revision and one root event per command.
+  Starting the Product binary with Index refresh publishing enabled drains the
+  existing ledger backlog without a manual publish call. A concurrent PostgreSQL
+  test verifies that one tenant cannot allocate a later sequence before its earlier
+  insert commits and that a different tenant can write concurrently. The Outbox
+  relay dispatches each typed Index request to a recording transport with the
+  original Product event as its cause.
 - Historical Taxonomy foreign keys and Flex cache-generation migration dependencies remain part of the platform upgrade path.
 - Historical evidence files retain their original recorded paths and commands.
 
@@ -591,6 +608,58 @@ Product, Pricing and Inventory transaction participants co-deployed or replace t
 shared transaction with an explicit cross-owner workflow. Wire the outgoing providers
 and outbox relay, then verify persisted writes, duplicate requests, provider restart and
 lost responses against PostgreSQL. Selecting gRPC does not replicate Product data.
+
+### Acceptance gates for the FBA service reference
+
+- Strict FBA lint passes with the shared local storage library. Provision a clean
+  Product database with the supported migrations and verify the upgrade from the
+  existing shared database separately.
+- Run the same scoped Product scenario from a real consumer in both embedded and
+  gRPC profiles. The PostgreSQL fixture covers schema refresh, attached-value writes,
+  restart replay, automatic publishing to the Product database and dispatch to a
+  recording transport. A separate Outbox fixture exercises committed Product event
+  envelopes from PostgreSQL through the standalone relay and a real Iggy broker.
+  The ProductVariant [Distribution fixture](../../rustok-distribution/README.md#productvariant-replay-verification)
+  passed on 2026-11-17 with a standalone Product process and two PostgreSQL databases.
+  It persists variant creation, update, and deletion through the selected Index
+  refresh handler with gRPC source reads. The fixture invokes the handler directly.
+  The [Channel identity port](../../rustok-channel/ports/README.md) now supplies
+  the generation and resolved IDs in one snapshot over gRPC. Product atomically
+  commits membership, graph projection and a witness for the exact Product
+  revision. The [standalone convergence worker](../README.md#standalone-channel-convergence)
+  discovers work for configured tenants over gRPC and shares the embedded
+  profile's executor and durable cursors. Localized replay also uses the Product
+  port in both profiles. The standalone reader checks Channel after loading
+  the Product graph snapshot. The separate-process PostgreSQL fixture passed
+  with localized pagination, a denied catalog credential, a retryable stale
+  witness, a live read after convergence, and a retained deletion while Channel
+  was down. The localized replay response now supplies both the exact Product
+  revision and the graph projection epoch from a single snapshot. Index checks
+  refresh events against the Product revision and orders persisted mutations by
+  the graph epoch. The separate Product and Channel processes verified both
+  counters over gRPC, including Channel-only changes and retained deletion.
+  The Index worker tests verified rejection of a behind owner revision with
+  a newer graph epoch and successful persistence with the inverse ordering.
+  The [server integration fixture](../../rustok-index/docs/m5-product-refresh-postgres-iggy-redelivery-evidence.md)
+  passed against PostgreSQL 16 and Iggy 0.9.0, covering failed acknowledgement,
+  redelivery, owner catch-up and a single applied inbox record per source mutation.
+  A single run from a standalone Product command through the relay and the
+  HTTP host with gRPC replay remains open, along with large replay pages, remote
+  absence and storefront admission.
+  Verify tenant and permissions checks, deadlines and trace propagation. Include
+  Flex schema gRPC in the trace check: it currently forwards correlation and
+  deadline but does not carry `traceparent`. Verify that the same gRPC client
+  can address the Product adapter mounted in the modular host or the standalone
+  owner process.
+- Define allowed Flex projection age and the behavior of reads and writes when
+  the schema is missing, stale, or the upstream is unavailable. A valid cached
+  revision currently has no age limit. Test recovery after Flex becomes available
+  and replay of an admitted Product write after a lost response without a second
+  revision or event.
+- Keep operations requiring a shared cross-owner transaction in the documented
+  co-deployed profile until their replacement has passed recovery and consistency
+  tests. Record what each verified profile supports before using Product as the
+  runnable reference in scaffolding.
 
 ### Current revision and evidence limits
 

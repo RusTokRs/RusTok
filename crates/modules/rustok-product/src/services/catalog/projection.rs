@@ -22,7 +22,7 @@ async fn catalog_flex_schema(
     context: &PortContext,
     tenant_id: Uuid,
 ) -> CommerceResult<CustomFieldsSchema> {
-    let donor = flex::PRODUCT_ENTITY_TYPE;
+    let donor = flex_ports::PRODUCT_ENTITY_TYPE;
     let snapshot = port
         .read_attached_schema(context.clone(), donor)
         .await
@@ -33,7 +33,7 @@ async fn catalog_flex_schema(
     let definitions = snapshot
         .definitions
         .iter()
-        .map(flex::field_definition_from_source)
+        .map(rustok_core::field_schema::field_definition_from_source)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|_| CoreError::Internal("Flex attached schema is invalid".into()))?;
     Ok(CustomFieldsSchema::new(definitions))

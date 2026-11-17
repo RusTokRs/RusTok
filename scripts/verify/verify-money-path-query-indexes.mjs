@@ -60,7 +60,7 @@ requireText(
   "relay claim must respect the retry schedule",
 );
 
-const outboxMigration = readRepo("crates/modules/rustok-outbox/src/migration.rs");
+const outboxMigration = readRepo("crates/libs/rustok-outbox-storage/src/migration.rs");
 requireText(
   outboxMigration,
   'name("idx_sys_events_pending_created_at")',

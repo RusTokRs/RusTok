@@ -18,7 +18,10 @@ The source verifier is:
 scripts/verify/verify-index-product-refresh-redelivery-evidence.mjs
 ```
 
-A successful source review or compile is not runtime evidence. The runtime claim remains pending until the executable test is run against operator-approved PostgreSQL and external Iggy services without a skip.
+A successful source review or compile is not runtime evidence. The protected runtime claim remains pending until the maintainer runs the executable test against the approved PostgreSQL and external Iggy services without a skip.
+
+On 2026-11-17, both scenarios passed twice locally against isolated PostgreSQL 16
+and Iggy 0.9.0. The harness invokes the shared refresh handler directly.
 
 ## Required services
 
@@ -54,7 +57,10 @@ PostgreSQL cleanup drops only the unique schema. The harness does not call an un
 
 ## Scenario 1: PostgreSQL commit before failed broker acknowledgement
 
-The harness loads current Product and ProductVariant mutations through the materialized production source registry, then publishes two canonical typed contracts through `IggyTransport::publish_contract`: locale refresh first and variant refresh second.
+The harness advances the Product revision before the first Channel relation snapshot.
+It loads Product and ProductVariant mutations through the production source registry and
+publishes a locale refresh carrying the Product revision, followed by a variant refresh.
+The first Product graph epoch is lower than the Product revision.
 
 For the locale delivery it uses `ConsumedContractEvent` itself as the opaque acknowledgement token, exactly like the server worker. The evidence acknowledger changes only a clone of the returned broker acknowledgement token on its first call. `PersistentContractConsumerGroup::acknowledge` rejects the mismatched token before offset commit.
 
@@ -62,7 +68,7 @@ The expected order is therefore:
 
 1. receive canonical Product locale refresh from the exact production consumer group;
 2. load the exact authoritative Product source key;
-3. apply the rebound event UUID through `PostgresMutationStore`;
+3. check the owner revision and apply the canonical source mutation UUID and graph epoch through `PostgresMutationStore`;
 4. observe one `index_entities` row at the current source version and one `index_inbox` row in `applied` state;
 5. attempt the deliberately mismatched acknowledgement and receive an acknowledgement failure;
 6. drop the first consumer and transport without a committed source offset;
@@ -80,6 +86,8 @@ This proves the intended cross-adapter recovery boundary without a second ingest
 A separate isolated scenario publishes a canonical locale refresh whose `source_version` is exactly one greater than the current authoritative Product source revision.
 
 The generic source-refresh worker must return `SourceVersionBehind` before mutation persistence or broker acknowledgement. The harness requires no matching `index_inbox` row, then restarts the Iggy transport and production consumer group and requires the same broker offset and exact raw payload bytes again.
+When the Product revision catches up, the same delivery applies the current graph epoch
+and commits the broker offset.
 
 This is the real-adapter evidence for the fail-closed source-version fence. Missing-source behavior remains separately covered by the generic source-refresh contract tests; this combined harness chooses the behind-source branch because it also proves the owner revision fence against a present authoritative source.
 

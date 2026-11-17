@@ -14,8 +14,8 @@ const read = (relativePath) =>
 
 const eventContractPath = 'crates/libs/rustok-events/src/contract.rs';
 const eventApiPath = 'crates/libs/rustok-events/CRATE_API.md';
-const outboxTransportPath = 'crates/modules/rustok-outbox/src/transport.rs';
-const outboxTransactionalPath = 'crates/modules/rustok-outbox/src/transactional.rs';
+const outboxTransportPath = 'crates/libs/rustok-outbox-storage/src/transport.rs';
+const outboxTransactionalPath = 'crates/libs/rustok-outbox-storage/src/transactional.rs';
 const outboxLibPath = 'crates/modules/rustok-outbox/src/lib.rs';
 const outboxApiPath = 'crates/modules/rustok-outbox/CRATE_API.md';
 const outboxTestPath = 'crates/modules/rustok-outbox/tests/contract_write_once.rs';

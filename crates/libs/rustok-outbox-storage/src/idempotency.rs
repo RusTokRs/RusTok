@@ -648,7 +648,7 @@ mod tests {
             &database,
             Lease {
                 operation_id: lease.operation_id,
-                token: Uuid::nil(),
+                token: Uuid::new_v4(),
             },
             &serde_json::json!({"ok": true}),
         )
