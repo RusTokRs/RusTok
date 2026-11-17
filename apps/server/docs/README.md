@@ -28,9 +28,11 @@ the matching task-local scope before starting a normal root resolver; nested
 fields of an already admitted root are not rechecked. GraphQL role-grant
 replacements advance the durable generation transactionally; after commit the
 server role writer clears the local cache, invalidates the calling snapshot, and
-attempts all-users fan-out. These checks do not cover every immutable
-`AuthContext` consumer, other tasks or replicas, and do not establish a
-transaction-spanning revocation fence. See the
+attempts all-users fan-out. The compatibility role-membership invalidation path
+joins both role and user rows to the requested tenant before clearing user
+snapshots. These checks do not cover every immutable `AuthContext` consumer,
+other tasks or replicas, and do not establish a transaction-spanning revocation
+fence. See the
 [request-snapshot decision](../../../DECISIONS/2026-11-02-invalidated-rbac-request-scope.md).
 
 Tenant-bound channel REST handlers authorize against the authenticated
