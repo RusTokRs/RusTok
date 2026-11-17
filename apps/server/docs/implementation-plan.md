@@ -48,6 +48,9 @@ the full-stack audit ledger. Work is isolated in
 Additional follow-up: OAuth refresh-token reuse detection now propagates
 database read/write failures as `server_error` (instead of reporting only
 `invalid_grant`) and a fault-injection test covers retry after recovery.
+Family-wide revocation is additionally scoped to the original OAuth subject,
+so even malformed cross-user family IDs cannot revoke another user's tokens
+inside one app/tenant.
 First-party logout also accepts the immediately preceding rotated cookie
 under the session row lock, revoking its live successor after a lost refresh
 response.
