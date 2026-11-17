@@ -754,16 +754,14 @@ impl AuthLifecycleService {
                     .await
                     .map_err(AuthLifecycleError::from)?;
                 if let Some(existing) = existing.as_ref() {
-                    let predicate = if previous_hash {
-                        "previous_token_hash"
+                    let sql = if previous_hash {
+                        "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2 AND previous_token_hash = ?3 AND revoked_at IS NULL"
                     } else {
-                        "token_hash"
+                        "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2 AND token_hash = ?3 AND revoked_at IS NULL"
                     };
                     let statement = Statement::from_sql_and_values(
                         DatabaseBackend::Sqlite,
-                        format!(
-                            "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2 AND {predicate} = ?3 AND revoked_at IS NULL"
-                        ),
+                        sql,
                         [
                             tenant_id.into(),
                             existing.id.into(),
