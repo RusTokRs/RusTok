@@ -1774,7 +1774,19 @@ mod tests {
             let ctx = ServerRuntimeContext::new(db.clone(), settings);
             let snapshots = additional_runtime_worker_snapshots(&ctx);
             for worker in &snapshots {
-                assert_eq!(worker.required, expected, "{}", worker.name);
+                let opt_in_consumer = matches!(
+                    worker.name,
+                    "product_index_refresh"
+                        | "social_graph_index"
+                        | "forum_search_inbox"
+                        | "forum_search_contract_consumer"
+                );
+                assert_eq!(
+                    worker.required,
+                    expected && !opt_in_consumer,
+                    "{}",
+                    worker.name
+                );
                 assert_eq!(worker.finished, None, "{}", worker.name);
             }
         }
