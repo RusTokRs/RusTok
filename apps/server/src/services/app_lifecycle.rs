@@ -394,6 +394,9 @@ pub(crate) fn additional_runtime_worker_snapshots(
     };
     use crate::services::product_index_refresh_worker::ProductIndexRefreshWorkerHandle;
     use crate::services::social_graph_index_worker::SocialGraphIndexWorkerHandle;
+    use crate::services::notification_candidate_worker::NotificationCandidateWorkerHandle;
+    use crate::services::notification_fanout_worker::NotificationFanoutWorkerHandle;
+    use crate::services::notification_outbox_intake_worker::NotificationOutboxIntakeWorkerHandle;
 
     let local = ctx.settings().runtime.runs_background_workers();
     let listeners_required = ctx
@@ -470,6 +473,28 @@ pub(crate) fn additional_runtime_worker_snapshots(
                 && ctx.shared_contains::<ForumSearchContractConsumerWorkerHandle>(),
             finished: ctx.shared_map::<ForumSearchContractConsumerWorkerHandle, _>(
                 |worker| worker.is_finished(),
+            ),
+        },
+        RuntimeWorkerSnapshot {
+            name: "notification_outbox_intake",
+            required: local
+                && ctx.shared_contains::<NotificationOutboxIntakeWorkerHandle>(),
+            finished: ctx.shared_map::<NotificationOutboxIntakeWorkerHandle, _>(
+                NotificationOutboxIntakeWorkerHandle::is_finished,
+            ),
+        },
+        RuntimeWorkerSnapshot {
+            name: "notification_fanout",
+            required: local && ctx.shared_contains::<NotificationFanoutWorkerHandle>(),
+            finished: ctx.shared_map::<NotificationFanoutWorkerHandle, _>(
+                NotificationFanoutWorkerHandle::is_finished,
+            ),
+        },
+        RuntimeWorkerSnapshot {
+            name: "notification_candidate",
+            required: local && ctx.shared_contains::<NotificationCandidateWorkerHandle>(),
+            finished: ctx.shared_map::<NotificationCandidateWorkerHandle, _>(
+                NotificationCandidateWorkerHandle::is_finished,
             ),
         },
         RuntimeWorkerSnapshot {
@@ -1780,6 +1805,9 @@ mod tests {
                         | "social_graph_index"
                         | "forum_search_inbox"
                         | "forum_search_contract_consumer"
+                        | "notification_outbox_intake"
+                        | "notification_fanout"
+                        | "notification_candidate"
                 );
                 assert_eq!(
                     worker.required,
