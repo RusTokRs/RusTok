@@ -193,7 +193,7 @@ request a non-empty subset of the currently authorized scopes. The server
 rejects an empty explicit scope or a widening request with `invalid_scope`,
 and persists the narrowed grant on the rotated credential.
 
-GraphQL HTTP request-preparation policies classify only the operation selected by
+GraphQL request-preparation policies classify only the operation selected by
 `operationName` (or the sole operation when no name is required). The selected
 operation is an execution selector, not an authorization grant: field permissions
 remain enforced by server-owned policy. Fragment-spread classification is
