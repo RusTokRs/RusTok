@@ -9,7 +9,7 @@ use rustok_core::tenant_validation::TenantIdentifierValidator;
 use uuid::Uuid;
 
 use crate::common::{
-    extract_effective_host, forwarded_headers_trusted, peer_ip_from_extensions,
+    extract_effective_host, peer_ip_from_extensions,
     settings::{RustokSettings, TenantFallbackMode, TenantResolutionMode, TenantRuntimeProfile},
 };
 
