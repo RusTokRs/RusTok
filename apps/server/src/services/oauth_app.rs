@@ -3201,6 +3201,26 @@ mod tests {
             "consent revocation must invalidate pending authorization codes"
         );
 
+        // The lower-level service path must also serialize an update/regrant
+        // against the same app and subject fences.
+        OAuthAppService::grant_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+            vec!["catalog:read".to_string()],
+        )
+        .await
+        .expect("regrant consent through the lower-level service");
+        OAuthAppService::revoke_user_consent(
+            &db,
+            created.app.id,
+            token_user.id,
+            tenant.id,
+        )
+        .await
+        .expect("revoke lower-level service grant");
+
         let mut inactive_user: crate::models::users::ActiveModel = token_user.clone().into();
         inactive_user.status = Set(rustok_core::UserStatus::Inactive);
         inactive_user
