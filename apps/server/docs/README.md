@@ -285,9 +285,10 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   or Payment provider recovery workers. A missing event runtime fails bootstrap
   without leaving detached module-owned recovery tasks running.
 - Event runtime construction completes fallible transport, projector, and relay
-  configuration work before starting tenant-generation, RBAC-invalidation, or
-  Redis-status listener tasks. Failed event-runtime validation must not leave
-  detached cache listeners behind.
+  configuration work before it adds tenant-generation or Redis-status listener
+  tasks. The RBAC invalidation listener may already be started by early server
+  initialization; it remains registered in the shared runtime and is drained if
+  later event-runtime validation fails.
 - The HTTP server bootstrap is serialized per `ServerRuntimeContext` and shares
   its initialization fence with shutdown. Shutdown signals workers first, then
   waits for bootstrap to finish registering handles before taking the drain
