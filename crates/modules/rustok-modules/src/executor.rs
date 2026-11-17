@@ -296,7 +296,7 @@ pub async fn execute_module_toggle(
             ModuleLifecycleExecutionError::PolicyTransition(reason) => {
                 format!("transition-fence: {reason}")
             }
-            _ => unreachable!("transition check emits only persistence or policy errors"),
+            other => format!("transition-error: {other}"),
         };
         let error = match ModuleOperationJournal::mark_failed(db, operation.id, &message).await {
             Ok(()) => error,
