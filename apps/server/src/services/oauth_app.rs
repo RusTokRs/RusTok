@@ -120,9 +120,10 @@ impl OAuthAppService {
         )?;
         validate_app_display_fields(&input.name, Some(&input.slug), input.icon_url.as_deref())?;
         // `(tenant_id, slug)` is a unique index. Probing first turns a colliding
-        // slug into a 409 the caller can act on, instead of a 500 raised from a
-        // constraint violation deep inside the insert transaction.
-        ensure_slug_available(db, tenant_id, &input.slug).await?;
+        // slug into a 409 the caller can act on; the insert-error path below
+        // repeats the check to preserve that result when concurrent creates race.
+        let slug = input.slug.clone();
+        ensure_slug_available(db, tenant_id, &slug).await?;
 
         let client_id = Uuid::new_v4();
         let client_secret_plain = generate_client_secret()?;
@@ -157,8 +158,32 @@ impl OAuthAppService {
             updated_at: Set(Utc::now().into()),
         }
         .insert(db)
-        .await
-        .map_err(|error| Error::Message(format!("failed to insert oauth app: {error}")))?;
+        .await;
+
+        let app = match app {
+            Ok(app) => app,
+            Err(insert_error) => {
+                match ensure_slug_available(db, tenant_id, &slug).await {
+                    Err(error @ Error::Conflict(_)) => return Err(error),
+                    Err(error) => {
+                        tracing::error!(
+                            %error,
+                            tenant_id = %tenant_id,
+                            slug = %slug,
+                            "Failed to recheck OAuth app slug after insert failure"
+                        );
+                    }
+                    Ok(()) => {}
+                }
+                tracing::error!(
+                    %insert_error,
+                    tenant_id = %tenant_id,
+                    slug = %slug,
+                    "Failed to insert OAuth app"
+                );
+                return Err(Error::InternalServerError);
+            }
+        };
 
         Ok(CreateOAuthAppResult {
             app,
