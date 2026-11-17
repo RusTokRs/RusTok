@@ -18,6 +18,9 @@ the full-stack audit ledger. Work is isolated in
 - In-place first-party refresh/session lifecycle enforces the original 90-day
   absolute deadline across fresh issuance, refresh, active session checks,
   listing and password-change admission, including legacy rows.
+  Follow-up verification corrected unchecked chrono arithmetic near its
+  representable bounds and binds browser cookie Max-Age to the actual persisted
+  refresh expiry (including near-90-day rotations), not a full fresh TTL.
 - OAuth refresh `scope` can only retain or reduce the existing grant, never
   silently grant more than requested. Cookie-session refresh/logout reject
   duplicate same-name cookies rather than choosing an attacker-influenced order.
