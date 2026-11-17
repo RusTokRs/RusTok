@@ -655,12 +655,8 @@ async fn request_reset(
             .map(|record| record.email.clone())
             .unwrap_or_else(|| params.email.clone());
 
-        let _email_task = spawn_password_reset_email(
-            runtime_ctx,
-            email_service,
-            recipient,
-            reset_url,
-        );
+        let _email_task =
+            spawn_password_reset_email(runtime_ctx, email_service, recipient, reset_url);
     }
 
     Ok(json_response(ResetRequestResponse { status: "ok" }))
