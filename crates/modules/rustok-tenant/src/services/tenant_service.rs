@@ -556,7 +556,11 @@ impl TenantService {
             .locales
             .iter()
             .find(|locale| locale.is_default)
-            .expect("validated locale policy has exactly one default")
+            .ok_or_else(|| {
+                TenantError::LocalePolicyInvariant(
+                    "validated locale policy has exactly one default".to_string(),
+                )
+            })?
             .locale
             .clone();
         let previous_enabled = existing
@@ -851,7 +855,11 @@ fn locale_policy_projection(
         let stored_default = entries
             .iter()
             .find(|entry| entry.is_default)
-            .expect("validated locale policy has a default");
+            .ok_or_else(|| {
+                TenantError::LocalePolicyInvariant(
+                    "validated locale policy has a default".to_string(),
+                )
+            })?;
         if stored_default.locale != default_locale {
             return Err(TenantError::LocalePolicyInvariant(format!(
                 "tenant default locale {} does not match policy default {}",
