@@ -284,7 +284,10 @@ pub async fn fetch_categories(
             ));
         }
     }
-    unreachable!("Blog categories page count is bounded by owner taxonomy")
+    // INVARIANT: Blog categories page count is bounded by owner taxonomy
+    Err(GraphqlHttpError::Graphql(
+        "Blog categories exceeded maximum supported pagination depth".into(),
+    ))
 }
 
 pub async fn fetch_posts(
@@ -652,7 +655,10 @@ pub async fn fetch_category_details(
             ));
         }
     }
-    unreachable!("Blog categories are bounded by the Taxonomy owner")
+    // INVARIANT: Blog categories are bounded by the Taxonomy owner
+    Err(GraphqlHttpError::Graphql(
+        "Blog categories exceeded maximum supported pagination depth".into(),
+    ))
 }
 
 pub async fn create_category(
