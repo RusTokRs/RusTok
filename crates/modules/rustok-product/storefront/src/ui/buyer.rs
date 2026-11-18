@@ -139,8 +139,8 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
             let still_current = cycle.try_get_untracked() == Some(selection_cycle)
                 && cart.quote_context_ready_untracked();
             // The host callback may synchronously dispose this Product owner.
-            let _ = link_error.try_set(saved.is_none() || !still_current);
-            let _ = saved_href.try_set(
+            let _disposed = link_error.try_set(saved.is_none() || !still_current);
+            let _disposed = saved_href.try_set(
                 saved
                     .filter(|_| still_current)
                     .map(|actual| (selection_cycle, href, actual)),
@@ -218,7 +218,7 @@ pub(super) fn ProductBuyerInteraction(snapshot: ProductBuyerSnapshot) -> impl In
                 .add_variant(request.variant_id, context, request.locale)
                 .await
             {
-                let _ = added_cycle.try_set(Some(submitted_cycle));
+                let _disposed = added_cycle.try_set(Some(submitted_cycle));
             }
         });
     };

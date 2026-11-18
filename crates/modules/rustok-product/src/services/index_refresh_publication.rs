@@ -56,6 +56,7 @@ pub enum ProductIndexRefreshPublicationError {
 pub struct ProductIndexRefreshCanonicalWriter;
 
 impl ProductIndexRefreshCanonicalWriter {
+    #[tracing::instrument(skip(transaction, event))]
     pub async fn publish_locale_once_in_transaction<E>(
         transaction: &DatabaseTransaction,
         record: &ProductIndexLocaleRefreshRecord,
@@ -84,6 +85,7 @@ impl ProductIndexRefreshCanonicalWriter {
         .await
     }
 
+    #[tracing::instrument(skip(transaction, event))]
     pub async fn publish_variant_once_in_transaction<E>(
         transaction: &DatabaseTransaction,
         record: &ProductIndexVariantRefreshRecord,
