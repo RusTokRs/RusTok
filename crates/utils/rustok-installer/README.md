@@ -25,7 +25,9 @@ bootstrap logic.
 - Resolve local `env`, file, mounted-file and dotenv secret references through
   one reusable installer contract; external secret managers remain explicit
   adapter work.
-- Provide deterministic checksums for idempotent step skipping.
+- Provide deterministic checksums and receipt-comparison primitives for
+  callers that implement safe idempotent step skipping; the executor does not
+  yet resume automatically from persisted receipts.
 - Provide preflight policy checks that are independent from any specific UI.
 - With the default `seed-runtime` feature, define a consumer-owned seed
   workflow over narrow tenant, identity, role and module ports, without server
