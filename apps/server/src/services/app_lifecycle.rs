@@ -561,6 +561,7 @@ pub(crate) fn additional_runtime_worker_snapshots(
             finished: ctx
                 .shared_map::<SeoBulkWorkerHandle, _>(SeoBulkWorkerHandle::is_finished),
         },
+        #[cfg(feature = "mod-workflow")]
         RuntimeWorkerSnapshot {
             name: "workflow_cron",
             required: local
@@ -1308,7 +1309,6 @@ fn await_runtime_worker_shutdown_tasks(
     await_runtime_worker_shutdown_tasks_with_timeout(worker, tasks, Duration::from_secs(5))
 }
 
-#[cfg(test)]
 fn await_runtime_worker_shutdown_with_timeout(
     worker: &'static str,
     task: Option<JoinHandle<()>>,
