@@ -398,6 +398,13 @@ async fn acquire_lock_in_transaction(
         .exec(txn)
         .await?;
     if claim.rows_affected != 1 {
+        if install_session::Entity::find_by_id(session.id)
+            .one(txn)
+            .await?
+            .is_none()
+        {
+            return Ok(None);
+        }
         return Err(sea_orm::DbErr::Custom(format!(
             "installer session {} already has an execution attempt or is finalized",
             session.id
