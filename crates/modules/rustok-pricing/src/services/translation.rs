@@ -429,9 +429,13 @@ fn build_snapshot(
     let target_revision = target.as_ref().map(locale_revision);
     let mut exact_locales = Vec::with_capacity(translations.len());
     for translation in &translations {
-        if let Ok(locale) = TenantLocale::new(&translation.locale) {
-            exact_locales.push(locale.into_inner());
-        }
+        let locale = TenantLocale::new(&translation.locale).map_err(|error| {
+            PriceListTranslationExactLocaleError::Validation(format!(
+                "stored price list translation locale '{}' is invalid: {error}",
+                translation.locale
+            ))
+        })?;
+        exact_locales.push(locale.into_inner());
     }
 
     Ok(PriceListTranslationExactLocaleSnapshot {

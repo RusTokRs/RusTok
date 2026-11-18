@@ -119,10 +119,17 @@ impl RbacInvalidationGenerationState {
 pub(crate) fn ensure_rbac_invalidation_generation_state(
     ctx: &ServerRuntimeContext,
 ) -> RbacInvalidationGenerationState {
-    let candidate = RbacInvalidationGenerationState::default();
-    ctx.shared_insert_if_absent(candidate.clone());
-    ctx.shared_get::<RbacInvalidationGenerationState>()
-        .unwrap_or(candidate)
+    if let Some(existing) = ctx.shared_get::<RbacInvalidationGenerationState>() {
+        existing
+    } else {
+        let candidate = RbacInvalidationGenerationState::default();
+        if ctx.shared_insert_if_absent(candidate.clone()) {
+            candidate
+        } else {
+            ctx.shared_get::<RbacInvalidationGenerationState>()
+                .unwrap_or(candidate)
+        }
+    }
 }
 
 pub(crate) async fn reserve_rbac_invalidation_generation(db: &DatabaseTransaction) -> Result<u64> {
