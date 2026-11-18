@@ -106,8 +106,9 @@ the `Secure` flag is enabled only when trusted proxy context reports HTTPS.
 - Installer HTTP jobs can remain `running` after a process crash or failure to
   persist the terminal result; recovery requires fencing and reconciliation of
   actual effects, not automatic expiry.
-- OAuth manifest synchronization is not one atomic, serialized tenant-wide
-  reconciliation; built-in auth email delivery remains best effort.
+- OAuth manifest synchronization is atomic and serialized per tenant. The
+  all-tenants bootstrap pass commits one tenant at a time, not as a single
+  cross-tenant transaction. Built-in auth email delivery remains best effort.
 - Static module-settings changes use the canonical transactional outbox. The
   legacy in-process EventBus-to-Outbox bridge is still not crash-durable before
   its first outbox insert: a process crash or forced abort in that window can
