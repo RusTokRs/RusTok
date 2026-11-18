@@ -741,33 +741,29 @@ where
             .await
             .map_err(|_| OAuthTokenProtocolError::server_error("Failed to lock OAuth client"))?,
         DbBackend::Sqlite => {
-            let app = query().one(db).await.map_err(|_| {
-                OAuthTokenProtocolError::server_error("Failed to read OAuth client")
-            })?;
-            if let Some(app) = app.as_ref() {
-                let locked = oauth_apps::Entity::update_many()
-                    .col_expr(
-                        oauth_apps::Column::UpdatedAt,
-                        Expr::col(oauth_apps::Column::UpdatedAt),
-                    )
-                    .filter(oauth_apps::Column::Id.eq(app.id))
-                    .filter(oauth_apps::Column::TenantId.eq(tenant_id))
-                    .exec(db)
-                    .await
-                    .map_err(|_| {
-                        OAuthTokenProtocolError::server_error("Failed to lock OAuth client")
-                    })?;
-                if locked.rows_affected != 1 {
-                    return Err(OAuthTokenProtocolError::invalid_client(
-                        "OAuth client changed during token issuance",
-                    ));
-                }
-                query().one(db).await.map_err(|_| {
-                    OAuthTokenProtocolError::server_error("Failed to reload OAuth client")
-                })?
-            } else {
-                None
+            // Reserve SQLite's writer by the known tenant/client key before
+            // reading. A deferred read-to-write upgrade can race a concurrent
+            // client revocation or manifest reconciliation.
+            let locked = oauth_apps::Entity::update_many()
+                .col_expr(
+                    oauth_apps::Column::UpdatedAt,
+                    Expr::col(oauth_apps::Column::UpdatedAt),
+                )
+                .filter(oauth_apps::Column::Id.eq(app_id))
+                .filter(oauth_apps::Column::TenantId.eq(tenant_id))
+                .exec(db)
+                .await
+                .map_err(|_| {
+                    OAuthTokenProtocolError::server_error("Failed to lock OAuth client")
+                })?;
+            if locked.rows_affected != 1 {
+                return Err(OAuthTokenProtocolError::invalid_client(
+                    "OAuth client is unavailable",
+                ));
             }
+            query().one(db).await.map_err(|_| {
+                OAuthTokenProtocolError::server_error("Failed to reload OAuth client")
+            })?
         }
         _ => {
             return Err(OAuthTokenProtocolError::server_error(
@@ -802,33 +798,29 @@ where
             })?
         }
         DbBackend::Sqlite => {
-            let user = query().one(db).await.map_err(|_| {
-                OAuthTokenProtocolError::server_error("Failed to read OAuth subject")
-            })?;
-            if let Some(user) = user.as_ref() {
-                let locked = users::Entity::update_many()
-                    .col_expr(
-                        users::Column::UpdatedAt,
-                        Expr::col(users::Column::UpdatedAt),
-                    )
-                    .filter(users::Column::Id.eq(user.id))
-                    .filter(users::Column::TenantId.eq(tenant_id))
-                    .exec(db)
-                    .await
-                    .map_err(|_| {
-                        OAuthTokenProtocolError::server_error("Failed to lock OAuth subject")
-                    })?;
-                if locked.rows_affected != 1 {
-                    return Err(OAuthTokenProtocolError::invalid_grant(
-                        "OAuth subject changed during token issuance",
-                    ));
-                }
-                query().one(db).await.map_err(|_| {
-                    OAuthTokenProtocolError::server_error("Failed to reload OAuth subject")
-                })?
-            } else {
-                None
+            // The subject id is known. Acquire the SQLite write fence before
+            // reading current status/password epoch so issuance cannot act on
+            // a stale pre-lock snapshot.
+            let locked = users::Entity::update_many()
+                .col_expr(
+                    users::Column::UpdatedAt,
+                    Expr::col(users::Column::UpdatedAt),
+                )
+                .filter(users::Column::Id.eq(user_id))
+                .filter(users::Column::TenantId.eq(tenant_id))
+                .exec(db)
+                .await
+                .map_err(|_| {
+                    OAuthTokenProtocolError::server_error("Failed to lock OAuth subject")
+                })?;
+            if locked.rows_affected != 1 {
+                return Err(OAuthTokenProtocolError::invalid_grant(
+                    "OAuth subject is unavailable",
+                ));
             }
+            query().one(db).await.map_err(|_| {
+                OAuthTokenProtocolError::server_error("Failed to reload OAuth subject")
+            })?
         }
         _ => {
             return Err(OAuthTokenProtocolError::server_error(
