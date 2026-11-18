@@ -1434,3 +1434,41 @@ cargo test -p rustok-server --lib services::oauth_app::tests::manifest_sync_reac
 cargo test -p rustok-server --lib services::oauth_app::tests::sync_app_connections_creates_manifest_managed_apps_and_deactivates_orphans
 cargo test -p rustok-server --lib services::oauth_app::tests::orphan_deactivation_database_failure_is_not_silently_ignored
 ```
+
+## P23 — Unique installer lease-owner identities (2026-11-18)
+
+The HTTP adapter used the shared literal owner `http`, while the CLI used the
+shared literal `rustok-cli install apply`. Those labels were not unique to an
+execution attempt and could let a stale executor pass an owner-equality check
+if a target session were reclaimed or retried.
+
+### Implemented
+
+- Added one shared lock-owner builder in `rustok-installer`. It sanitizes a
+  short diagnostic label and appends the optional stable session/job ID plus a
+  fresh attempt UUID; the result is bounded below the `VARCHAR(128)` session
+  column limit.
+- The HTTP adapter now uses its durable job/session ID and a fresh attempt ID.
+- The CLI adapter and `InstallApplyOptions::default()` also generate a fresh
+  attempt-specific owner rather than a static label.
+- Added contract coverage for unique owners across attempts, label
+  sanitization, storage length, and unique defaults; added HTTP-adapter coverage.
+
+### Remaining boundary
+
+This is a unique owner token, not a monotonic attempt-generation protocol.
+The HTTP executor still runs in-process, is not resumable after process loss,
+and does not reconcile ambiguous external effects. Stale `running` jobs must
+not be reset based only on lease expiry. The durable recovery ADR remains
+in progress.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo test -p rustok-installer --lib --features host-runtime install_lock_owner_is_unique_per_attempt_and_bounded
+cargo test -p rustok-server --lib controllers::installer::tests::installer_lock_owner_is_unique_per_attempt_and_bounded
+cargo check -p rustok-installer-cli
+```
