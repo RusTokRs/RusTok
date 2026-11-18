@@ -1444,7 +1444,7 @@ fn preview_result_action(
                 let document_id = document_id.clone();
                 let url = url.clone();
                 spawn_local(async move {
-                    let _ = transport::track_search_click(
+                    if let Err(err) = transport::track_search_click(
                         token_value,
                         tenant_value,
                         query_log_id,
@@ -1452,8 +1452,13 @@ fn preview_result_action(
                         Some((index + 1) as i32),
                         Some(url.clone()),
                     )
-                    .await;
-                    let _ = window.location().set_href(&url);
+                    .await
+                    {
+                        tracing::warn!(error = ?err, "Failed to track search click");
+                    }
+                    if let Err(err) = window.location().set_href(&url) {
+                        tracing::warn!(error = ?err, url = %url, "Failed to set window href");
+                    }
                 });
             }
         >
