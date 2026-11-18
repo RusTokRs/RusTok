@@ -1448,9 +1448,10 @@ cargo test -p rustok-server --lib services::oauth_app::tests::orphan_deactivatio
 
 The HTTP adapter used the shared literal owner `http`, while the CLI used the
 shared literal `rustok-cli install apply`. Those labels were not unique to an
-execution attempt. The persistence layer records the owner at acquisition but
-does not yet compare it on every state/receipt write, so unique values alone
-are diagnostic/preparatory rather than a complete stale-worker fence.
+execution attempt. When this item was opened, persistence recorded the owner
+at acquisition but did not compare it on every state/receipt write, so unique
+values alone were diagnostic/preparatory rather than a complete stale-worker
+fence.
 
 ### Implemented
 
@@ -1463,16 +1464,24 @@ are diagnostic/preparatory rather than a complete stale-worker fence.
   attempt-specific owner rather than a static label.
 - Added contract coverage for unique owners across attempts, label
   sanitization, storage length, and unique defaults; added HTTP-adapter coverage.
+- Added the durable `attempt_generation` counter to install sessions and step
+  receipts. Claims increment it atomically with owner assignment.
+- Changed every state, tenant, and receipt mutation to carry the session fence.
+  PostgreSQL/MySQL lock the session row with `FOR UPDATE`; SQLite takes its
+  write fence before reading. Mutations verify the exact owner and generation
+  before writing, and receipts retain the generation.
+- Added regression coverage for stale owners, stale generations, generation
+  advancement after explicit reconciliation, and rejection of late state and
+  receipt writes from the previous attempt.
 
 ### Remaining boundary
 
-This is a unique owner token, not a monotonic attempt-generation protocol,
-and persistence writes do not yet verify owner equality. The fail-closed
-session-admission gate added in P25 prevents automatic overlap after lease
-expiry, but the HTTP executor still runs in-process, is not resumable after
-process loss, and does not reconcile ambiguous external effects. Stale
-`running` jobs must not be reset based only on lease expiry. The durable
-recovery ADR remains in progress.
+The monotonic attempt-generation protocol and per-mutation owner fencing are
+implemented. The HTTP executor still runs in-process, is not resumable after
+process loss, and does not reconcile ambiguous external effects; lease renewal
+and an operator recovery workflow also remain open. Stale `running` jobs must
+not be reset based only on lease expiry. The durable recovery ADR remains in
+progress.
 
 ### Verification status
 
@@ -1518,9 +1527,8 @@ cargo test -p rustok-installer-persistence --lib
 
 Lock arbitration previously treated `lock_expires_at` as proof that a worker
 had stopped. A new apply could therefore start while a stale executor was
-still running. The current persistence adapter does not yet compare owner
-identity on every state/receipt mutation, so automatic lease-based takeover
-was unsafe.
+still running. Automatic lease-based takeover remains unsafe until the
+previous attempt is reconciled and a new monotonic generation is issued.
 
 ### Implemented
 
@@ -1537,14 +1545,17 @@ was unsafe.
   require explicit reconciliation before another apply can start.
 - Regression coverage verifies same-session re-claim rejection, expired-lease
   blocking, and release after finalization.
+- Session claims now advance a durable generation with compare-and-set.
+- State, tenant, and receipt writes verify the exact owner+generation under a
+  transaction-scoped session row lock. Old workers cannot append receipts or
+  change session state/tenant after a later attempt is claimed.
 
 ### Remaining boundary
 
-State, tenant, and receipt mutations do not yet compare the persisted owner on
-every write. There is no monotonic attempt generation, periodic lease renewal,
-resumable executor, or automatic external-effect reconciliation. The fail-closed
-gate prevents automatic overlap but intentionally leaves stale sessions blocked
-until an operator reconciles them. The durable recovery ADR remains in progress.
+There is no periodic lease renewal, resumable executor, automatic external-effect
+reconciliation, or operator recovery workflow. The fail-closed gate prevents
+automatic overlap but intentionally leaves stale sessions blocked until an
+operator reconciles them. The durable recovery ADR remains in progress.
 
 ### Verification status
 

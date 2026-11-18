@@ -24,10 +24,10 @@
   - `finish_http_job_succeeded(...) -> Result<install_http_job::Model, DbErr>` (compare-and-set on `status = running`)
   - `finish_http_job_failed(...) -> Result<install_http_job::Model, DbErr>` (compare-and-set with bounded error message)
   - `create_session(plan: &InstallPlan, tenant_id: Option<Uuid>, created_by: Option<Uuid>) -> Result<install_session::Model, DbErr>`
-  - `record_receipt(receipt: &InstallReceipt) -> Result<install_step_receipt::Model, DbErr>`
+  - `record_receipt(session: &InstallSessionRecord, receipt: &InstallReceipt) -> Result<install_step_receipt::Model, DbErr>`
   - `acquire_lock(session: install_session::Model, owner: &str, ttl: Duration) -> Result<install_session::Model, DbErr>`
-  - `set_state(session_id: Uuid, state: InstallState) -> Result<install_session::Model, DbErr>`
-  - `set_tenant_id(session_id: Uuid, tenant_id: Uuid) -> Result<install_session::Model, DbErr>`
+  - `set_state(session: &InstallSessionRecord, state: InstallState) -> Result<install_session::Model, DbErr>`
+  - `set_tenant_id(session: &InstallSessionRecord, tenant_id: Uuid) -> Result<install_session::Model, DbErr>`
   - `get_session(session_id: Uuid) -> Result<Option<install_session::Model>, DbErr>`
   - `latest_session() -> Result<Option<install_session::Model>, DbErr>`
   - `has_completed_session() -> Result<bool, DbErr>`
@@ -41,8 +41,10 @@
   - `provision_admin(plan: &InstallPlan, tenant_id: Uuid, password: &str) -> Result<InstallAdminOutcome, InstallExecutionError>`
 
 ### Entities & Decoupled DTOs
-- `entities::install_session::Model`: Database entity representing an installer session (`id`, `status`, `profile`, `plan_snapshot`, `lock_owner`, `lock_expires_at`, `completed_at`).
-- `entities::install_step_receipt::Model`: Step-level receipt entity tracking inputs, checksums, and diagnostics.
+- `entities::install_session::Model`: Database entity representing an installer session (`id`, `status`, `attempt_generation`, `profile`, `plan_snapshot`, `lock_owner`, `lock_expires_at`, `completed_at`).
+- `entities::install_step_receipt::Model`: Step-level receipt entity tracking the `attempt_generation`, inputs, checksums, and diagnostics.
+- `InstallSessionRecord`: Neutral session snapshot carrying status, owner, and attempt generation to every mutation port.
+- `InstallStepReceiptItem`: Includes the generation under which the receipt was recorded.
 - `entities::install_http_job::Model`: Asynchronous HTTP install job tracking submit, start, completion, and sanitized errors.
 - `InstallStepReceiptItem`: Decoupled serializable DTO for installer receipts.
 
@@ -52,7 +54,7 @@
 
 - **Bounded & Sanitized Error Disclosures:** `bounded_http_job_error_message` prevents connection strings, raw passwords, and internal infrastructure exceptions from being stored in public job records.
 - **Job Output Size Capping:** HTTP installer job outputs exceeding 256 KB (`MAX_HTTP_INSTALL_JOB_OUTPUT_BYTES`) omit bulky payloads to protect the persistence store.
-- **Lock Owner Validation:** Empty or whitespace-only lock owners are rejected with an explicit validation error.
+- **Lock Owner Validation:** Empty or whitespace-only lock owners are rejected with an explicit validation error; values exceeding the 128-byte storage bound are rejected before claim.
 - **Lease TTL Validation:** Lock TTL must be 1–86,400 seconds; zero, negative, and over-limit durations are rejected. Timestamp addition is checked and returns an error instead of panicking on overflow.
 - **Postgres Database Provisioning Validation:** URL scheme verification (`postgres` / `postgresql`), non-empty database names, non-empty usernames, and strict SQL identifier quoting (`quote_ident`, `quote_literal`).
 - **Production Environment Seed Guard:** Rejects `SeedProfile::Dev` when `plan.environment.is_production()`.
@@ -71,8 +73,8 @@
 - **Compare-and-Set Job Terminal State:** `finish_http_job_succeeded` and `finish_http_job_failed` filter on `status = running`, guaranteeing that once a terminal status is written, concurrent transitions fail.
 - **Serializable Lock Acquisition:** PostgreSQL and MySQL begin lock acquisition in a `Serializable` transaction. SQLite uses the conditional session-claim update as its write fence.
 - **Fail-Closed Global Admission:** A session is claimed only from `draft` with `lock_owner IS NULL`, and cannot be claimed twice. Any other unreconciled session with a recorded owner blocks a new apply even after its lease expires. `recovery_required` blocks admission even if its owner has been cleared; completed, safely failed, and freshly cleaned sessions release the gate.
-- **No Lease-Expiry Takeover:** Expiry is not proof that the old process stopped. Stale sessions require explicit reconciliation before another apply can start.
-- **Owner Enforcement Boundary:** Adapters generate unique per-attempt owner values, but `record_receipt`, `set_state`, and `set_tenant_id` do not yet compare owner equality on every write. The fail-closed gate prevents automatic overlap; full stale-worker fencing and resumable recovery remain open.
+- **No Lease-Expiry Takeover:** Expiry is not proof that the old process stopped. Stale sessions require explicit reconciliation before another apply can start. Resumable execution and external-effect reconciliation remain open.
+- **Attempt Fencing:** A successful claim atomically increments `attempt_generation` while recording the owner. Every state, tenant, and receipt mutation locks the target session row in a transaction and verifies both values before writing. PostgreSQL/MySQL use an exclusive row lock; SQLite obtains its write fence before reading. Stale owners and stale generations are rejected. Receipt rows persist the generation that authorized the write.
 - **Atomic Administrator Provisioning:** Admin identity creation (`ensure_user_on`) and SuperAdmin role assignment (`assign_role_permissions_on`) occur inside a single database transaction. Any failure triggers rollback, ensuring zero orphaned identities without roles.
 - **Terminal Session Permanence:** Completed installer sessions permanently record `completed_at`, and `has_completed_session()` remains `true` even in the presence of subsequent failed recovery attempts.
 
@@ -80,14 +82,19 @@
 
 ## 5. Audit History & Verification Evidence
 
-- **Installer lease hardening (2026-11-18):**
+- **Installer lease and attempt-fencing hardening (2026-11-18):**
   - Added one-time draft-session claims and a fail-closed global admission gate that
     retains unfinished and `recovery_required` sessions after lease expiry.
   - Extended serializable acquisition to MySQL and retained PostgreSQL; SQLite
     obtains a write fence through the conditional claim update.
+  - Added a durable monotonic attempt generation to session and receipt rows;
+    claims increment it atomically with owner assignment.
+  - State, tenant, and receipt mutations now lock the session row and compare
+    the current owner+generation before writing. Receipts retain the generation.
   - Bounded TTLs to 1–86,400 seconds and guarded timestamp addition against overflow.
   - Added regression coverage for same-session re-claim, expired-lease blocking,
-    recovery-required blocking, final-state release, and TTL bounds.
+    stale owner/generation rejection, generation advancement, stale receipt
+    rejection, recovery-required blocking, final-state release, and TTL bounds.
   - Verification was not run in this task at the user's request; see the server
     implementation plan for exact commands.
 
