@@ -1,7 +1,8 @@
 use chrono::Utc;
 use rustok_installer::{
     InstallApplyOutput, InstallPlan, InstallReceipt, InstallSessionRecord, InstallState,
-    is_valid_install_lock_ttl_secs, redact_install_plan, MAX_INSTALL_LOCK_TTL_SECS,
+    InstallStep, ReceiptOutcome, is_valid_install_lock_ttl_secs, redact_install_plan,
+    MAX_INSTALL_LOCK_TTL_SECS,
 };
 use sea_orm::{
     AccessMode, ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection,
@@ -206,15 +207,15 @@ impl InstallerPersistenceService {
                 session.id
             ))
         })?;
+        let is_recovery_rollback = current_state == InstallState::RecoveryRequired
+            && receipt.step == InstallStep::Rollback;
         if matches!(
             current_state,
-            InstallState::Completed
-                | InstallState::Failed
-                | InstallState::FreshInstallCleaned
-                | InstallState::RecoveryRequired
-        ) {
+            InstallState::Completed | InstallState::Failed | InstallState::FreshInstallCleaned
+        ) || (current_state == InstallState::RecoveryRequired && !is_recovery_rollback)
+        {
             return Err(sea_orm::DbErr::Custom(format!(
-                "installer session {} cannot accept receipts in state {current_state:?}",
+                "installer session {} cannot accept this receipt in state {current_state:?}",
                 session.id
             )));
         }
@@ -318,6 +319,29 @@ impl InstallerPersistenceService {
             return Err(sea_orm::DbErr::Custom(format!(
                 "invalid installer state transition from {current_state:?} to {state:?}"
             )));
+        }
+
+        if matches!(state, InstallState::Failed | InstallState::FreshInstallCleaned) {
+            let rollback_receipt = install_step_receipt::Entity::find()
+                .filter(install_step_receipt::Column::SessionId.eq(session.id))
+                .filter(
+                    install_step_receipt::Column::AttemptGeneration
+                        .eq(session.attempt_generation),
+                )
+                .filter(
+                    install_step_receipt::Column::Step.eq(serde_name(InstallStep::Rollback)),
+                )
+                .filter(
+                    install_step_receipt::Column::Outcome.eq(serde_name(ReceiptOutcome::Success)),
+                )
+                .one(&txn)
+                .await?;
+            if rollback_receipt.is_none() {
+                return Err(sea_orm::DbErr::Custom(
+                    "terminal installer state requires a successful rollback receipt for the current attempt"
+                        .to_string(),
+                ));
+            }
         }
 
         let mut active = install_session::ActiveModel {
