@@ -1312,11 +1312,31 @@ fn map_target(
         capabilities: value
             .capabilities
             .into_iter()
-            .filter_map(|capability| {
-                serde_json::to_value(capability)
-                    .ok()?
-                    .as_str()
-                    .map(str::to_owned)
+            .map(|capability| match capability {
+                rustok_translation_targets::TranslationTargetCapability::ListResources => {
+                    "list_resources".to_string()
+                }
+                rustok_translation_targets::TranslationTargetCapability::ReadExactResource => {
+                    "read_exact_resource".to_string()
+                }
+                rustok_translation_targets::TranslationTargetCapability::AggregateProgress => {
+                    "aggregate_progress".to_string()
+                }
+                rustok_translation_targets::TranslationTargetCapability::ValidatePatch => {
+                    "validate_patch".to_string()
+                }
+                rustok_translation_targets::TranslationTargetCapability::ApplyPatch => {
+                    "apply_patch".to_string()
+                }
+                rustok_translation_targets::TranslationTargetCapability::ChangeCursor => {
+                    "change_cursor".to_string()
+                }
+                rustok_translation_targets::TranslationTargetCapability::Export => {
+                    "export".to_string()
+                }
+                rustok_translation_targets::TranslationTargetCapability::Import => {
+                    "import".to_string()
+                }
             })
             .collect(),
         read_permission_floor: value.read_permission_floor.into_iter().collect(),
