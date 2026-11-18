@@ -695,9 +695,15 @@ async fn process_decode_failure(
                         break false;
                     }
                     Err(error) if attempt < config.max_attempts => {
-                        let _ = poison_receipts
+                        if let Err(release_err) = poison_receipts
                             .release_claim(&identity, poison_publisher_id)
-                            .await;
+                            .await
+                        {
+                            tracing::warn!(
+                                error = %release_err,
+                                "Failed to release poison claim before retry"
+                            );
+                        }
                         let delay = retry_delay(config, attempt);
                         runtime_consumer_metrics::record_failure(
                             METRICS_CONSUMER,
@@ -719,9 +725,15 @@ async fn process_decode_failure(
                         attempt += 1;
                     }
                     Err(error) => {
-                        let _ = poison_receipts
+                        if let Err(release_err) = poison_receipts
                             .release_claim(&identity, poison_publisher_id)
-                            .await;
+                            .await
+                        {
+                            tracing::warn!(
+                                error = %release_err,
+                                "Failed to release poison claim on final attempt"
+                            );
+                        }
                         runtime_consumer_metrics::record_failure(
                             METRICS_CONSUMER,
                             STAGE_DLQ_PUBLISH,
