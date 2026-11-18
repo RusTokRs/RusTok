@@ -357,6 +357,141 @@ async fn reclaimed_session_advances_generation_and_fences_the_previous_attempt()
 }
 
 #[tokio::test]
+async fn fresh_install_cleaned_requires_successful_rollback_receipt() {
+    let db = setup_contract_test_db().await;
+    let service = InstallerPersistenceService::new(db);
+    let session = service
+        .create_session(&sample_plan(), None, None)
+        .await
+        .expect("session created");
+    let locked = service
+        .acquire_lock(
+            session,
+            "cleanup-worker",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect("acquire lock");
+
+    let missing_receipt = service
+        .set_state(
+            &session_record(&locked),
+            InstallState::FreshInstallCleaned,
+        )
+        .await
+        .expect_err("cleanup state cannot release admission without rollback evidence");
+    assert!(missing_receipt.to_string().contains("successful rollback receipt"));
+
+    let rollback = InstallReceipt {
+        session_id: locked.id.to_string(),
+        step: InstallStep::Rollback,
+        outcome: ReceiptOutcome::Success,
+        input_checksum: "sha256:cleanup-complete".to_string(),
+        diagnostics: serde_json::json!({ "cleanup": "completed" }),
+        installer_version: "0.1.0".to_string(),
+        created_at: Utc::now(),
+    };
+    service
+        .record_receipt(&session_record(&locked), &rollback)
+        .await
+        .expect("persist successful rollback evidence");
+
+    let cleaned = service
+        .set_state(
+            &session_record(&locked),
+            InstallState::FreshInstallCleaned,
+        )
+        .await
+        .expect("successful cleanup receipt allows release");
+    assert_eq!(cleaned.status, "fresh_install_cleaned");
+}
+
+#[tokio::test]
+async fn failed_state_requires_recovery_and_successful_rollback_receipt() {
+    let db = setup_contract_test_db().await;
+    let service = InstallerPersistenceService::new(db);
+    let session = service
+        .create_session(&sample_plan(), None, None)
+        .await
+        .expect("session created");
+    let locked = service
+        .acquire_lock(
+            session,
+            "recovery-worker",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect("acquire lock");
+    let recovery = service
+        .set_state(
+            &session_record(&locked),
+            InstallState::RecoveryRequired,
+        )
+        .await
+        .expect("mark recovery required");
+
+    let non_rollback = InstallReceipt {
+        session_id: recovery.id.to_string(),
+        step: InstallStep::Preflight,
+        outcome: ReceiptOutcome::Success,
+        input_checksum: "sha256:not-rollback".to_string(),
+        diagnostics: serde_json::json!({}),
+        installer_version: "0.1.0".to_string(),
+        created_at: Utc::now(),
+    };
+    assert!(
+        service
+            .record_receipt(&session_record(&recovery), &non_rollback)
+            .await
+            .expect_err("recovery state only accepts rollback evidence")
+            .to_string()
+            .contains("cannot accept this receipt")
+    );
+
+    let rollback_failed = InstallReceipt {
+        session_id: recovery.id.to_string(),
+        step: InstallStep::Rollback,
+        outcome: ReceiptOutcome::Failed,
+        input_checksum: "sha256:rollback-failed".to_string(),
+        diagnostics: serde_json::json!({ "cleanup": "failed" }),
+        installer_version: "0.1.0".to_string(),
+        created_at: Utc::now(),
+    };
+    service
+        .record_receipt(&session_record(&recovery), &rollback_failed)
+        .await
+        .expect("failed rollback attempt is retained as evidence");
+    assert!(
+        service
+            .set_state(&session_record(&recovery), InstallState::Failed)
+            .await
+            .expect_err("failed rollback cannot release admission")
+            .to_string()
+            .contains("successful rollback receipt")
+    );
+
+    let rollback_succeeded = InstallReceipt {
+        session_id: recovery.id.to_string(),
+        step: InstallStep::Rollback,
+        outcome: ReceiptOutcome::Success,
+        input_checksum: "sha256:rollback-succeeded".to_string(),
+        diagnostics: serde_json::json!({ "cleanup": "completed" }),
+        installer_version: "0.1.0".to_string(),
+        created_at: Utc::now(),
+    };
+    service
+        .record_receipt(&session_record(&recovery), &rollback_succeeded)
+        .await
+        .expect("successful rollback evidence is retained");
+
+    let failed = service
+        .set_state(&session_record(&recovery), InstallState::Failed)
+        .await
+        .expect("successful rollback permits terminal failure");
+    assert_eq!(failed.status, "failed");
+}
+
+#[tokio::test]
 async fn completed_session_releases_admission_gate() {
     let db = setup_contract_test_db().await;
     let service = InstallerPersistenceService::new(db);
