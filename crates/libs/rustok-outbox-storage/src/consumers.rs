@@ -141,7 +141,6 @@ fn validate_consumer_key(consumer_key: &str) -> Result<()> {
 mod tests {
     use super::OutboxConsumer;
     use crate::OutboxTransport;
-    use chrono::Utc;
     use rustok_core::events::EventTransport;
     use rustok_events::{DomainEvent, EventEnvelope};
     use sea_orm::{ConnectionTrait, Database, TransactionTrait};
@@ -172,7 +171,6 @@ mod tests {
         }
         let count = db.query_one(sea_orm::Statement::from_string(db.get_database_backend(), "SELECT COUNT(*) AS count FROM sys_event_consumer_receipts".to_string())).await.expect("query").expect("row").try_get::<i64>("", "count").expect("count");
         assert_eq!(count, 1);
-        let _ = Utc::now();
     }
 
     #[tokio::test]
