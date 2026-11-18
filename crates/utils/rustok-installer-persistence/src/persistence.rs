@@ -1,6 +1,7 @@
 use chrono::Utc;
 use rustok_installer::{
-    InstallApplyOutput, InstallPlan, InstallReceipt, InstallState, redact_install_plan,
+    InstallApplyOutput, InstallPlan, InstallReceipt, InstallState, is_valid_install_lock_ttl_secs,
+    redact_install_plan, MAX_INSTALL_LOCK_TTL_SECS,
 };
 use sea_orm::{
     AccessMode, ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection,
@@ -213,7 +214,13 @@ impl InstallerPersistenceService {
                 "installer lock owner must not be empty".to_string(),
             ));
         }
-        let ttl = ttl.max(chrono::Duration::seconds(1));
+        let ttl_secs = ttl.num_seconds();
+        if !is_valid_install_lock_ttl_secs(ttl_secs) {
+            return Err(sea_orm::DbErr::Custom(format!(
+                "installer lock TTL must be between 1 and {MAX_INSTALL_LOCK_TTL_SECS} seconds"
+            )));
+        }
+        let ttl = chrono::Duration::seconds(ttl_secs);
         let session_id = session.id;
 
         let txn = match self.db.get_database_backend() {
