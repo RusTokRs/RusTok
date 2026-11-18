@@ -50,6 +50,23 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "host-runtime")]
+    #[test]
+    fn installer_lock_ttl_is_bounded() {
+        use crate::{
+            DEFAULT_INSTALL_LOCK_TTL_SECS, MAX_INSTALL_LOCK_TTL_SECS,
+            is_valid_install_lock_ttl_secs,
+        };
+
+        assert_eq!(DEFAULT_INSTALL_LOCK_TTL_SECS, 900);
+        assert!(is_valid_install_lock_ttl_secs(1));
+        assert!(is_valid_install_lock_ttl_secs(DEFAULT_INSTALL_LOCK_TTL_SECS));
+        assert!(is_valid_install_lock_ttl_secs(MAX_INSTALL_LOCK_TTL_SECS));
+        assert!(!is_valid_install_lock_ttl_secs(0));
+        assert!(!is_valid_install_lock_ttl_secs(-1));
+        assert!(!is_valid_install_lock_ttl_secs(MAX_INSTALL_LOCK_TTL_SECS + 1));
+    }
+
     #[test]
     fn install_state_happy_path_lifecycle() {
         let mut state = InstallState::Draft;
