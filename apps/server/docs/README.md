@@ -233,7 +233,8 @@ reading the user/session row; PostgreSQL/MySQL use row-level FOR UPDATE.
 Login, profile changes, password changes, refresh rotation, reuse revocation,
 and both logout paths therefore do not rely on SQLite's unsupported row-lock
 syntax or a deferred read-to-write upgrade. OAuth token issuance also reserves
-the SQLite writer by known client/subject IDs before reloading current state.
+the SQLite writer by known client/subject IDs before reloading current state;
+admin user mutations use the same write-first fence by tenant/user ID.
 Failed dummy Argon2 hash
 initialization propagates as an internal auth error rather than substituting
 an empty hash.
