@@ -337,7 +337,7 @@ where
             &database.runtime,
             session,
             &options.lock_owner,
-            options.lock_ttl_secs.max(1),
+            options.lock_ttl_secs,
         )
         .await?;
     let bootstrap_import = match ports
