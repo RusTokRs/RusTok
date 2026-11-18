@@ -14699,7 +14699,6 @@ dependencies = [
  "leptos",
  "leptos-ui-routing",
  "leptos_axum",
- "rust_decimal",
  "rustok-api",
  "rustok-auth-ui",
  "rustok-cart",

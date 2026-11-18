@@ -189,6 +189,7 @@ pub(super) async fn apply_context_input<C: ConnectionTrait>(
 }
 
 impl CartService {
+    #[tracing::instrument(skip(self, request))]
     pub async fn update_context(
         &self,
         tenant_id: uuid::Uuid,

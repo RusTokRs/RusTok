@@ -6,6 +6,16 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::{Validate, ValidateEmail, ValidationError};
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unknown cart fulfillment requirement `{0}`")]
+pub struct ParseFulfillmentRequirementError(pub String);
+
+impl From<ParseFulfillmentRequirementError> for String {
+    fn from(err: ParseFulfillmentRequirementError) -> Self {
+        err.to_string()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CartLineFulfillmentRequirement {
@@ -14,11 +24,11 @@ pub enum CartLineFulfillmentRequirement {
 }
 
 impl CartLineFulfillmentRequirement {
-    pub fn parse(value: &str) -> Result<Self, String> {
+    pub fn parse(value: &str) -> Result<Self, ParseFulfillmentRequirementError> {
         match value.trim().to_ascii_lowercase().as_str() {
             "digital" => Ok(Self::Digital),
             "physical" => Ok(Self::Physical),
-            _ => Err(format!("unknown cart fulfillment requirement `{value}`")),
+            _ => Err(ParseFulfillmentRequirementError(value.to_string())),
         }
     }
 
