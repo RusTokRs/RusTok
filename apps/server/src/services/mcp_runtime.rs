@@ -359,15 +359,15 @@ fn filter_active_module_permissions(
         return granted_permissions.to_vec();
     };
 
-    let permissions = granted_permissions
-        .iter()
-        .filter_map(|value| {
-            value.parse::<Permission>().map_err(|error| {
+    let mut permissions = Vec::with_capacity(granted_permissions.len());
+    for value in granted_permissions {
+        match value.parse::<Permission>() {
+            Ok(permission) => permissions.push(permission),
+            Err(error) => {
                 tracing::warn!(value = %value, error = %error, "Ignoring unparseable granted permission");
-                error
-            }).ok()
-        })
-        .collect::<Vec<_>>();
+            }
+        }
+    }
     let mut active = availability.active_permissions(&permissions);
     active.sort_by_cached_key(ToString::to_string);
     active.dedup();
