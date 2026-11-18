@@ -415,7 +415,14 @@ async fn acquire_lock_in_transaction(
     // sessions as a fail-closed global fence until their effects are reconciled.
     if let Some(existing) = install_session::Entity::find()
         .filter(install_session::Column::Id.ne(session.id))
-        .filter(install_session::Column::LockOwner.is_not_null())
+        .filter(
+            sea_orm::Condition::any()
+                .add(install_session::Column::LockOwner.is_not_null())
+                .add(
+                    install_session::Column::Status
+                        .eq(install_state_value(InstallState::RecoveryRequired)),
+                ),
+        )
         .filter(install_session::Column::Status.is_not_in(admission_released_state_values()))
         .order_by_desc(install_session::Column::LockExpiresAt)
         .one(txn)
