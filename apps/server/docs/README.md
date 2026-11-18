@@ -249,7 +249,10 @@ The `refresh_token` grant is valid only when the app also declares
 credentials. Reuse detection revokes the scoped OAuth token family; on a
 persistence error it returns `server_error` rather than swallowing the failed
 security effect. Automatic durable retry after the client stops retrying is
-not established.
+not established. The 30-second reuse grace suppresses family revocation
+for a likely concurrent duplicate, but the request still receives `invalid_grant`;
+the replacement token is not replayed, so a lost successful response cannot
+be recovered from the old refresh token.
 
 GraphQL request-preparation policies classify only the operation selected by
 `operationName` (or the sole operation when no name is required). The selected
