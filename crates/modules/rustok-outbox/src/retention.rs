@@ -60,7 +60,8 @@ pub struct OutboxPruneReport {
 ///
 /// The outbox is both the delivery queue and the durable record of what was
 /// delivered, so retention only ever deletes rows that reached the transport
-/// (`dispatched` with a non-null `dispatched_at` older than the window).
+/// (`dispatched` with a non-null `dispatched_at` older than the window) and
+/// whose registered durable consumers have all acknowledged the event.
 /// Undelivered (`pending`) and dead-lettered (`failed`) rows are never touched:
 /// the first still owe a delivery, the second are the DLQ an operator works
 /// through. A delivered row that lost its `dispatched_at` is left alone as well,
@@ -91,9 +92,10 @@ impl OutboxRetention {
     /// Deletes up to `batch_size` delivered rows older than the retention
     /// window and reports how much was pruned.
     ///
-    /// The candidate ids are selected first and deleted by id with the same
-    /// status/age predicates, so a row that changed status between the two
-    /// statements (a DLQ replay, for instance) is not deleted.
+    /// Candidate ids are selected first and deleted by id with the same
+    /// status, age, and consumer-acknowledgement predicates. The delete rechecks
+    /// the consumer predicate so a newly registered obligation or changed
+    /// delivery state cannot be bypassed by a stale candidate scan.
     pub async fn prune_once(&self) -> Result<OutboxPruneReport> {
         self.config.validate()?;
         let cutoff = Utc::now() - self.config.retention;

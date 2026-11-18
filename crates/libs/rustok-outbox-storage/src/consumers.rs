@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use chrono::Utc;
-use sea_orm::{ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, TransactionTrait, sea_query::OnConflict};
+use sea_orm::{ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait, QueryFilter, QuerySelect, TransactionTrait, sea_query::OnConflict};
 use uuid::Uuid;
 
 use rustok_core::{Error, Result};
