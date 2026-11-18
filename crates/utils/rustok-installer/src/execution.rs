@@ -18,7 +18,8 @@ pub struct InstallApplyOptions {
     pub session_id: Option<Uuid>,
     /// Host-issued, unique owner identity for this execution attempt.
     pub lock_owner: String,
-    /// Lease duration in seconds; accepted range is 1 through 86,400.
+    /// Lease duration in seconds; accepted range is 1 through 86,400. Expiry alone
+    /// does not release an unfinished session from global installer admission.
     pub lock_ttl_secs: i64,
     pub pg_admin_url: Option<String>,
     /// Host-selected Ed25519 authority for a signed fresh-target distribution
