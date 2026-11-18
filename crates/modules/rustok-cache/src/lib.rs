@@ -48,11 +48,14 @@ mod contract_tests;
 pub use module::CacheModule;
 pub use settings::{
     CacheSettings, DEFAULT_CACHE_MODE, DEFAULT_REDIS_DB, DEFAULT_REDIS_HOST, DEFAULT_REDIS_MODE,
-    DEFAULT_REDIS_PORT, REDACTED_SECRET, REDIS_URL_ENV_NAMES, preserve_url_password,
+    DEFAULT_REDIS_PORT, REDACTED_SECRET, REDIS_URL_ENV_NAMES, RedisUrlError, preserve_url_password,
     redis_url_has_password, redis_url_without_credentials, redis_url_without_password,
     resolve_redis_url, same_redis_target,
 };
-pub use settings_admin::{CacheSettingsAdminPort, CacheSettingsSnapshot, SharedCacheSettingsAdmin};
+pub use settings_admin::{
+    CacheSettingsAdminError, CacheSettingsAdminPort, CacheSettingsSnapshot,
+    SharedCacheSettingsAdmin,
+};
 
 pub use backend_generation::{
     CacheBackendGenerationError, CacheBackendGenerationSnapshot,
@@ -122,13 +125,13 @@ pub use refresh::{
 };
 pub use rustok_core::CacheCompareAndSetOutcome;
 pub use service::{
-    CacheBackendOptions, CacheHealthReport, CacheInvalidationError, CacheInvalidationMessage,
-    CacheInvalidationMessageError, CacheInvalidationOutcome, CacheInvalidationService,
-    CacheInvalidationStats, CacheLoadResult, CacheLoadSource, CacheService,
-    DEFAULT_MAX_IN_FLIGHT_CACHE_LOADS, DEFAULT_MAX_SHARED_CACHE_BACKENDS,
-    LocalCacheInvalidationSubscription, MAX_CACHE_INVALIDATION_CHANNEL_BYTES,
-    MAX_CACHE_INVALIDATION_KEY_BYTES, MAX_CACHE_LOAD_KEY_BYTES, MIN_CACHE_BACKEND_TTL,
-    format_cache_service_prometheus_metrics,
+    CacheBackendOperationError, CacheBackendOptions, CacheHealthReport, CacheInvalidationError,
+    CacheInvalidationMessage, CacheInvalidationMessageError, CacheInvalidationOutcome,
+    CacheInvalidationService, CacheInvalidationStats, CacheInvalidationTransportError,
+    CacheLoadResult, CacheLoadSource, CacheService, DEFAULT_MAX_IN_FLIGHT_CACHE_LOADS,
+    DEFAULT_MAX_SHARED_CACHE_BACKENDS, LocalCacheInvalidationSubscription,
+    MAX_CACHE_INVALIDATION_CHANNEL_BYTES, MAX_CACHE_INVALIDATION_KEY_BYTES,
+    MAX_CACHE_LOAD_KEY_BYTES, MIN_CACHE_BACKEND_TTL, format_cache_service_prometheus_metrics,
 };
 pub use tenant_generation_observability::{
     TenantGenerationListenerMetrics, format_tenant_generation_listener_prometheus_metrics,

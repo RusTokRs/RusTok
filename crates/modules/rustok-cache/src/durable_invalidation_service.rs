@@ -8,6 +8,15 @@ impl CacheInvalidationService {
     ///
     /// Durable persistence remains the caller's responsibility and must happen in the mutation's
     /// transaction. This method is the fan-out step used by an outbox relay after commit.
+    #[tracing::instrument(
+        skip(self, record),
+        fields(
+            channel = %record.channel(),
+            key = %record.key(),
+            generation = record.generation(),
+            tenant_id = ?record.tenant_id()
+        )
+    )]
     pub async fn publish_durable(
         &self,
         record: &DurableCacheInvalidationRecord,
