@@ -189,8 +189,14 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         .expect("set tenant id");
     assert_eq!(updated_tenant.tenant_id, Some(tenant_id));
 
-    // 9. RecoveryRequired is terminal for the executor but must continue
-    // blocking global admission until an operator reconciles the session.
+    // 9. RecoveryRequired must block admission even if an operator has
+    // cleared the expired owner while preparing manual reconciliation.
+    let mut ownerless_recovery_session: install_session::ActiveModel = locked.clone().into();
+    ownerless_recovery_session.lock_owner = Set(None);
+    ownerless_recovery_session
+        .update(&db)
+        .await
+        .expect("clear expired owner before reconciliation");
     let recovery_required = service
         .set_state(session.id, InstallState::RecoveryRequired)
         .await
