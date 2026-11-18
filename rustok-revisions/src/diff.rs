@@ -9,9 +9,9 @@ pub fn compute_diff(from: &Revision, to: &Revision) -> Result<RevisionDiff, Revi
     let from_content = &from.content;
     let to_content = &to.content;
 
-    let mut added = json!({});
-    let mut removed = json!({});
-    let mut changed = json!({});
+    let mut added = serde_json::Map::new();
+    let mut removed = serde_json::Map::new();
+    let mut changed = serde_json::Map::new();
 
     // Find added and changed fields
     if let (Some(from_obj), Some(to_obj)) = (from_content.as_object(), to_content.as_object()) {
@@ -21,7 +21,7 @@ pub fn compute_diff(from: &Revision, to: &Revision) -> Result<RevisionDiff, Revi
                 Some(from_value) => {
                     // Field exists in both, check if changed
                     if from_value != to_value {
-                        changed.as_object_mut().unwrap().insert(
+                        changed.insert(
                             key.clone(),
                             json!({
                                 "from": from_value,
@@ -32,10 +32,7 @@ pub fn compute_diff(from: &Revision, to: &Revision) -> Result<RevisionDiff, Revi
                 }
                 None => {
                     // Field was added
-                    added
-                        .as_object_mut()
-                        .unwrap()
-                        .insert(key.clone(), to_value.clone());
+                    added.insert(key.clone(), to_value.clone());
                 }
             }
         }
@@ -43,10 +40,7 @@ pub fn compute_diff(from: &Revision, to: &Revision) -> Result<RevisionDiff, Revi
         // Find removed fields
         for (key, from_value) in from_obj {
             if !to_obj.contains_key(key) {
-                removed
-                    .as_object_mut()
-                    .unwrap()
-                    .insert(key.clone(), from_value.clone());
+                removed.insert(key.clone(), from_value.clone());
             }
         }
     }
@@ -54,9 +48,9 @@ pub fn compute_diff(from: &Revision, to: &Revision) -> Result<RevisionDiff, Revi
     Ok(RevisionDiff {
         from_revision_id: from.id,
         to_revision_id: to.id,
-        added,
-        removed,
-        changed,
+        added: Value::Object(added),
+        removed: Value::Object(removed),
+        changed: Value::Object(changed),
     })
 }
 
