@@ -1514,13 +1514,15 @@ was unsafe.
 
 - A session row can be claimed only once (`lock_owner IS NULL` and a non-final
   status); a second attempt cannot overwrite its existing owner.
-- Any other non-final session with a recorded owner blocks a new apply even
-  when its lease timestamp has expired. Expiry alone is no longer treated as
-  proof that the previous process stopped.
+- Any other unreconciled session with a recorded owner blocks a new apply
+  even when its lease timestamp has expired. Expiry alone is no longer treated
+  as proof that the previous process stopped. `recovery_required` also blocks
+  admission until manual reconciliation, despite being terminal for execution.
 - PostgreSQL and MySQL lock acquisition now uses a serializable transaction;
   SQLite obtains its write fence through the conditional session-claim update.
-- A finalized session releases the global admission gate. An unfinished stale
-  session requires explicit reconciliation before another apply can start.
+- `completed`, safely `failed`, and `fresh_install_cleaned` sessions release
+  the global admission gate. `recovery_required` and stale unfinished sessions
+  require explicit reconciliation before another apply can start.
 - Regression coverage verifies same-session re-claim rejection, expired-lease
   blocking, and release after finalization.
 
