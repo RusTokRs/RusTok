@@ -227,13 +227,17 @@ jobs now persist their stable session ID before the worker starts, and the
 executor creates that exact session. This is deliberately fail-closed but not
 a complete recovery system: installer resumability, a versioned remote sandbox
 transport contract, effect-owner receipts, and an operator reconciliation
-workflow remain open. HTTP and CLI adapters now issue a unique host-generated
-lock-owner value per execution attempt (diagnostic label plus stable
-session/job identity and a fresh attempt UUID). This prevents static owner
-collisions but is not the monotonic attempt-generation/reconciliation protocol
-required for complete recovery. Lease TTL input is bounded to 1–86,400 seconds,
-and persistence rejects timestamp overflow rather than panicking. The persistence
+workflow remain open. HTTP and CLI adapters issue a unique host-generated lock-owner value per
+execution attempt (diagnostic label plus stable session/job identity and a
+fresh attempt UUID). The target persistence owner now increments a monotonic
+`attempt_generation` in the same compare-and-set that claims the session.
+State, tenant, and receipt mutations acquire the session row lock and verify
+both the persisted owner and generation before writing; receipt rows retain
+their generation. Lease TTL input is bounded to 1–86,400 seconds, and
+persistence rejects timestamp overflow rather than panicking. The persistence
 adapter also fails closed: an unreconciled session with a recorded owner blocks
 new applies even after lease expiry, and `recovery_required` remains blocking
-until manual reconciliation. State and receipt writes do not yet compare the
-owner on every mutation, so full stale-worker fencing remains open.
+until manual reconciliation. This closes the stale-worker mutation-fencing
+gap, but does not make the executor resumable or reconcile external effects.
+The durable worker, step/effect receipts, lease renewal, and operator recovery
+workflow remain open.
