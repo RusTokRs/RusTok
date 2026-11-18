@@ -1645,3 +1645,39 @@ cargo test -p rustok-server --lib services::auth_lifecycle::tests::refresh_reuse
 cargo test -p rustok-server --lib services::auth_lifecycle::tests::logout_by_session_id_revokes_under_lock_and_is_idempotent
 cargo test -p rustok-server --lib services::oauth_token_service::tests::refresh_rotation_consumes_a_token_exactly_once
 ```
+
+## P28 — Revalidate OAuth consent inside token-issuance transactions (2026-11-18)
+
+Authorization-code and refresh flows validated consent before starting their
+issuance transaction. They later acquired the app and subject locks, but did
+not re-read consent under those locks. A concurrent consent re-grant or scope
+narrowing could therefore commit between preflight validation and token
+persistence; the exchange could return credentials carrying a stale consent
+epoch or scopes that the user had just narrowed.
+
+### Implemented
+
+- Prepared user-token bundles now retain the consent grant timestamp observed
+  during preparation.
+- Authorization-code exchange revalidates active consent, requested scopes,
+  and the prepared grant epoch after acquiring the app and subject locks.
+- Refresh rotation revalidates active consent and scope coverage against the
+  presented refresh token's stored consent epoch under the same locks.
+- A stale epoch returns invalid_grant and a scope no longer covered by the
+  current consent returns invalid_scope before the authorization code or
+  refresh token is consumed and before replacement credentials are persisted.
+- Added a SQLite regression test that changes the consent epoch after token
+  preparation and verifies refresh commit rejects without consuming the old
+  refresh token or inserting replacement credentials; it also verifies
+  narrowed consent rejects wider token scopes.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::oauth_token_service::tests::locked_consent_revalidation_rejects_stale_grant_epoch_and_scopes
+cargo test -p rustok-server --lib services::oauth_token_service::tests::refresh_rotation_consumes_a_token_exactly_once
+```
