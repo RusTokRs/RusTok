@@ -102,22 +102,38 @@ pub fn product_agent_task_slug(agent_slug: &str) -> Option<&'static str> {
         .map(|agent| agent.task_slug)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ProductAgentStageInputError {
+    #[error("unknown product agent `{0}`")]
+    UnknownAgent(String),
+    #[error("{0} requires a non-empty product_id")]
+    MissingProductId(String),
+    #[error("{0} requires a valid product_id UUID")]
+    InvalidProductId(String),
+}
+
+impl From<ProductAgentStageInputError> for String {
+    fn from(error: ProductAgentStageInputError) -> Self {
+        error.to_string()
+    }
+}
+
 /// Performs the owner-level admission check before the generic scheduler
 /// creates a canonical task run. Full payload validation remains in the
 /// product direct handler, where tenant and locale context are available.
 pub fn validate_product_agent_stage_input(
     agent_slug: &str,
     payload: &serde_json::Value,
-) -> Result<&'static str, String> {
+) -> Result<&'static str, ProductAgentStageInputError> {
     let task_slug = product_agent_task_slug(agent_slug)
-        .ok_or_else(|| format!("unknown product agent `{agent_slug}`"))?;
+        .ok_or_else(|| ProductAgentStageInputError::UnknownAgent(agent_slug.to_string()))?;
     let product_id = payload
         .get("product_id")
         .and_then(serde_json::Value::as_str)
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| format!("{agent_slug} requires a non-empty product_id"))?;
+        .ok_or_else(|| ProductAgentStageInputError::MissingProductId(agent_slug.to_string()))?;
     uuid::Uuid::parse_str(product_id)
-        .map_err(|_| format!("{agent_slug} requires a valid product_id UUID"))?;
+        .map_err(|_| ProductAgentStageInputError::InvalidProductId(agent_slug.to_string()))?;
     Ok(task_slug)
 }
 
@@ -192,22 +208,46 @@ pub struct GeneratedFlexAttribute {
     pub value: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ProductAttributesPayloadError {
+    #[error("product_attributes flex_attributes must contain non-empty key/value")]
+    EmptyFlexAttribute,
+}
+
+impl From<ProductAttributesPayloadError> for String {
+    fn from(error: ProductAttributesPayloadError) -> Self {
+        error.to_string()
+    }
+}
+
 pub fn validate_product_attributes_payload(
     payload: &GeneratedProductAttributes,
-) -> Result<(), String> {
+) -> Result<(), ProductAttributesPayloadError> {
     if payload
         .flex_attributes
         .iter()
         .any(|attr| attr.key.trim().is_empty() || attr.value.trim().is_empty())
     {
-        return Err(
-            "product_attributes flex_attributes must contain non-empty key/value".to_string(),
-        );
+        return Err(ProductAttributesPayloadError::EmptyFlexAttribute);
     }
     Ok(())
 }
 
-pub fn validate_product_copy_payload(payload: &GeneratedProductCopy) -> Result<(), String> {
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ProductCopyPayloadError {
+    #[error("product_copy must contain at least one non-empty localized field")]
+    EmptyCopy,
+}
+
+impl From<ProductCopyPayloadError> for String {
+    fn from(error: ProductCopyPayloadError) -> Self {
+        error.to_string()
+    }
+}
+
+pub fn validate_product_copy_payload(
+    payload: &GeneratedProductCopy,
+) -> Result<(), ProductCopyPayloadError> {
     let has_text = [
         payload.title.as_deref(),
         payload.handle.as_deref(),
@@ -220,7 +260,7 @@ pub fn validate_product_copy_payload(payload: &GeneratedProductCopy) -> Result<(
     .any(|value| !value.trim().is_empty());
 
     if !has_text {
-        return Err("product_copy must contain at least one non-empty localized field".to_string());
+        return Err(ProductCopyPayloadError::EmptyCopy);
     }
     Ok(())
 }

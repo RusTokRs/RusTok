@@ -185,7 +185,7 @@ impl AgentCatalog {
             }
             AgentStageValidator::Product => {
                 rustok_ai_product::validate_product_agent_stage_input(agent_slug, payload)
-                    .map_err(AiError::Validation)?
+                    .map_err(|err| AiError::Validation(err.to_string()))?
             }
         };
         Ok(AgentStageExecution {
