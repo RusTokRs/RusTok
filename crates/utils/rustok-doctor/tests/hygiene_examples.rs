@@ -533,8 +533,7 @@ fn secured_read_max(buf: [u8; 4]) -> Result<(), ()> {
 
 #[test]
 fn detects_real_channel_admin_client_per_request() {
-    let channel_file =
-        include_str!("../../../modules/rustok-channel/admin/src/transport/rest_adapter.rs");
+    let channel_file = include_str!("fixtures/channel_admin_rest_adapter.rs");
     let findings = rustok_doctor::scan_source(
         Path::new("crates/modules/rustok-channel/admin/src/transport/rest_adapter.rs"),
         channel_file,
@@ -662,7 +661,7 @@ fn expected_stub() {
 
 #[test]
 fn detects_real_fulfillment_and_pages_pointer_args() {
-    let fulfillment_source = include_str!("../../../modules/rustok-fulfillment/admin/src/core.rs");
+    let fulfillment_source = include_str!("fixtures/fulfillment_admin_core.rs");
     let findings = rustok_doctor::scan_source(
         Path::new("crates/modules/rustok-fulfillment/admin/src/core.rs"),
         fulfillment_source,
@@ -781,10 +780,18 @@ fn main() {
 }
 "#;
     let cli_findings = rustok_doctor::scan_source(Path::new("src/bin/tool.rs"), source);
-    assert!(cli_findings.iter().all(|f| f.pattern_id != "P-LOG-RAW-PRINT"));
+    assert!(
+        cli_findings
+            .iter()
+            .all(|f| f.pattern_id != "P-LOG-RAW-PRINT")
+    );
 
     let test_findings = rustok_doctor::scan_source(Path::new("tests/integration_test.rs"), source);
-    assert!(test_findings.iter().all(|f| f.pattern_id != "P-LOG-RAW-PRINT"));
+    assert!(
+        test_findings
+            .iter()
+            .all(|f| f.pattern_id != "P-LOG-RAW-PRINT")
+    );
 }
 
 #[test]
@@ -898,7 +905,11 @@ pub fn parse_settings() -> Result<std::collections::BTreeMap<String, String>, Do
 }
 "#;
     let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
-    assert!(findings.iter().all(|f| f.pattern_id != "P-TYPED-DOMAIN-ERROR"));
+    assert!(
+        findings
+            .iter()
+            .all(|f| f.pattern_id != "P-TYPED-DOMAIN-ERROR")
+    );
 }
 
 #[test]
@@ -956,7 +967,11 @@ pub fn extract_value(opt: Option<String>) -> String {
 }
 "#;
     let findings = rustok_doctor::scan_source(Path::new("src/service.rs"), source);
-    assert!(findings.iter().all(|f| f.pattern_id != "P-CHECK-THEN-UNWRAP"));
+    assert!(
+        findings
+            .iter()
+            .all(|f| f.pattern_id != "P-CHECK-THEN-UNWRAP")
+    );
 }
 
 #[test]

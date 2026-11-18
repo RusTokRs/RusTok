@@ -355,11 +355,11 @@ pub(super) fn ProductVariantCreateSection(
                             <Button on_click=Box::new(move || { if editable.get_untracked() { draft.update(|draft| { if index < draft.prices.len() { draft.prices.remove(index); } }); } })>{text("product-variantCreate-removePrice")}</Button>
                         </div>
                     }} />
-                    {move || view! { <Button disabled=(draft.get().prices.len() >= variant_create::MAX_PRICE_ROWS) on_click=Box::new(move || { if editable.get_untracked() { draft.update(|draft| { if draft.prices.len() < variant_create::MAX_PRICE_ROWS { draft.prices.push(crate::model::VariantPriceDraft { currency_code: "USD".into(), ..Default::default() }); } }); } })>{text("product-variantCreate-addPrice")}</Button> }}
+                    {move || view! { <Button disabled={draft.get().prices.len() >= variant_create::MAX_PRICE_ROWS} on_click=Box::new(move || { if editable.get_untracked() { draft.update(|draft| { if draft.prices.len() < variant_create::MAX_PRICE_ROWS { draft.prices.push(crate::model::VariantPriceDraft { currency_code: "USD".into(), ..Default::default() }); } }); } })>{text("product-variantCreate-addPrice")}</Button> }}
                     <p class="text-xs">{text("product-combinations-noPrice")}</p>
                     <label class="block"><span>{text("product-variantCreate-quantity")}</span><Input r#type="number" value=quantity set_value=set_quantity /></label>
                     <CreateInventoryPolicy draft=draft editable=editable locale=locale.get_value() />
-                    <Button r#type="submit" disabled=(!editable.get())>{text("product-variantCreate-save")}</Button>
+                    <Button r#type="submit" disabled=!editable.get()>{text("product-variantCreate-save")}</Button>
                 </fieldset>
                 </form>
             </Show>

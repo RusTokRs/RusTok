@@ -57,7 +57,9 @@ pub(crate) async fn configure_tenant_scope<C: ConnectionTrait>(
 /// instead of masking that primary error. This helper is the single
 /// owner of that policy; call sites must not open-code the suppression.
 pub(crate) async fn delete_uploaded_object_best_effort(storage: &StorageRuntime, path: &Path) {
-    let _ = storage.objects.delete(path).await;
+    if let Err(error) = storage.objects.delete(path).await {
+        tracing::warn!(error = %error, path = %path.as_ref(), "best-effort uploaded object cleanup failed");
+    }
 }
 
 /// Rolls back a failed data operation while preserving its typed primary

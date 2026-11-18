@@ -1489,7 +1489,11 @@ fn merge_metadata(current: Value, patch: Value) -> Result<Value, PortError> {
             }
             Ok(Value::Object(current))
         }
-        _ => unreachable!("provider metadata was validated as object"),
+        // INVARIANT: validate_provider_operation_metadata guarantees current and patch are JSON objects.
+        _ => Err(PortError::validation(
+            "fulfillment.invalid_metadata",
+            "metadata must be a JSON object",
+        )),
     }
 }
 

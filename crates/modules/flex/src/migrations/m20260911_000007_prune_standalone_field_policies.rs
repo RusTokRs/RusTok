@@ -39,7 +39,7 @@ $$;
 
 DROP TRIGGER IF EXISTS trg_flex_prune_standalone_field_policies ON flex_schemas;
 CREATE TRIGGER trg_flex_prune_standalone_field_policies
-AFTER UPDATE OF fields_config ON flex_schemas
+AFTER UPDATE ON flex_schemas
 FOR EACH ROW
 WHEN (OLD.fields_config IS DISTINCT FROM NEW.fields_config)
 EXECUTE FUNCTION rustok_flex_prune_standalone_field_policies();

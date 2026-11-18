@@ -174,6 +174,7 @@ impl TaxonomyService {
     ///
     /// Authorization belongs to the owning domain module. This primitive only validates the
     /// requested module scope and persists the canonical Taxonomy term plus its first locale.
+    #[tracing::instrument(skip(self, txn, input), fields(tenant_id = %tenant_id, module_slug = %module_slug))]
     pub async fn create_module_term_in_tx(
         &self,
         txn: &DatabaseTransaction,
@@ -344,7 +345,7 @@ impl TaxonomyService {
                     term_id: Set(term_id),
                     tenant_id: Set(tenant_id),
                     locale: Set(locale.clone()),
-                    name: Set(input.name.unwrap()),
+                    name: Set(name.to_string()),
                     slug: Set(slug),
                     description: Set(input.description),
                     revision: Set(1),
@@ -1207,6 +1208,7 @@ impl TaxonomyService {
         })
     }
 
+    #[tracing::instrument(skip(self, txn), fields(tenant_id = %tenant_id))]
     pub(crate) async fn publish_global_tag_search_reindex_in_tx(
         &self,
         txn: &DatabaseTransaction,

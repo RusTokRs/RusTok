@@ -454,9 +454,9 @@ impl ProductCatalogSchemaService {
         }
 
         for patch in patches {
-            let definition = definitions
-                .get(&patch.attribute_id)
-                .ok_or_else(|| CommerceError::Validation("validated attribute definition must exist".into()))?;
+            let definition = definitions.get(&patch.attribute_id).ok_or_else(|| {
+                CommerceError::Validation("validated attribute definition must exist".into())
+            })?;
             write_product_value_patch(
                 txn,
                 tenant_id,

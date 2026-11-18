@@ -621,7 +621,7 @@ mod tests {
                 .expect("reporting query should parse");
 
         assert_eq!(
-            sensitive_graphql_fields(&document),
+            sensitive_graphql_fields(&document, None),
             vec![
                 SensitiveGraphqlField::DashboardStats,
                 SensitiveGraphqlField::RecentActivity,

@@ -444,6 +444,7 @@ pub(crate) fn validate_pricing_product_projection(
         .iter()
         .map(|variant| variant.id)
         .collect::<BTreeSet<_>>();
+    // INVARIANT: In-memory verification ensuring the port-provided product projection belongs to the active tenant.
     if product.tenant_id != tenant_id
         || product.id.is_nil()
         || expected_product_id.is_some_and(|id| id != product.id)

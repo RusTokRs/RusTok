@@ -19,7 +19,7 @@ use rustok_outbox::OutboxConsumer;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::services::app_lifecycle::StopHandle;
+use crate::services::stop_handle::StopHandle;
 use crate::services::server_runtime_context::ServerRuntimeContext;
 
 pub const NOTIFICATION_OUTBOX_INTAKE_ENABLED_ENV: &str =

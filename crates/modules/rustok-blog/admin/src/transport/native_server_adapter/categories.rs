@@ -1,4 +1,4 @@
-use leptos::prelude::*;
+use leptos::prelude::{ServerFnError, server};
 
 #[cfg(feature = "ssr")]
 use super::*;
@@ -76,7 +76,9 @@ async fn blog_admin_category_details_native(
                 return Err(ServerFnError::new("Incomplete Blog categories projection"));
             }
         }
-        unreachable!("Blog categories are bounded by the Taxonomy owner")
+        Err(ServerFnError::new(
+            "Blog categories pagination exceeded bounded range",
+        ))
     }
     #[cfg(not(feature = "ssr"))]
     {

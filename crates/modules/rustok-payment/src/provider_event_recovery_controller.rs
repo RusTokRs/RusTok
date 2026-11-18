@@ -82,7 +82,7 @@ impl From<PaymentProviderEventRecoveryReport> for PaymentProviderEventRecoveryRe
     }
 }
 
-pub fn axum_router(runtime: &HostRuntimeContext) -> anyhow::Result<Router> {
+pub fn axum_router(runtime: &HostRuntimeContext) -> crate::error::PaymentResult<Router> {
     Ok(Router::new()
         .route(
             "/api/payment/provider-events/recovery/run",

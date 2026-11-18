@@ -77,6 +77,7 @@ impl PriceListOwnerService {
         Self { db }
     }
 
+    #[tracing::instrument(skip(self, input), fields(tenant_id = %tenant_id, list_type = %input.list_type))]
     pub async fn create_price_list(
         &self,
         tenant_id: Uuid,
@@ -125,6 +126,7 @@ impl PriceListOwnerService {
         Ok(snapshot(model, persisted))
     }
 
+    #[tracing::instrument(skip(self, input), fields(tenant_id = %tenant_id, price_list_id = %price_list_id))]
     pub async fn update_price_list(
         &self,
         tenant_id: Uuid,
@@ -215,6 +217,7 @@ impl PriceListOwnerService {
         Ok(snapshot(model, persisted))
     }
 
+    #[tracing::instrument(skip(self), fields(tenant_id = %tenant_id, price_list_id = %price_list_id))]
     pub async fn delete_price_list(
         &self,
         tenant_id: Uuid,

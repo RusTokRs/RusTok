@@ -76,6 +76,7 @@ pub(super) fn validate_collection(
     tenant_id: Uuid,
     identity: &CheckoutPaymentIdentity,
 ) -> Result<(), PortError> {
+    // INVARIANT: In-memory verification ensuring the payment collection response belongs to the active tenant.
     if collection.tenant_id != tenant_id
         || collection.cart_id != Some(identity.cart_id)
         || collection.order_id != Some(identity.order_id)

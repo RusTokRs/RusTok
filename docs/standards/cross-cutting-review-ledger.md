@@ -33,8 +33,8 @@ When triggered, the agent:
 
 - **Status:** ACTIVE
 - **Active Cycle:** Cross-Cutting Cycle 2 (Fresh pass from scratch)
-- **Active Phase:** CC-06: API Surfaces, Transports & Error Hygiene
-- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05 (5/17 completed — 29.4%)
+- **Active Phase:** CC-07: Multi-Tenancy & Effective Context Isolation
+- **Completed Phases:** CC-01, CC-02, CC-03, CC-04, CC-05, CC-06 (6/17 completed — 35.3%)
 - **Active Branch:** `main`
 
 ---
@@ -235,12 +235,33 @@ For each cross-cutting phase, execute the strict closed-loop protocol:
 - **Primary Owner Crates:** `apps/server/src/controllers/*`, `apps/server/src/routes.rs`, `rustok-api`, `rustok-web`, `rustok-mcp`.
 - **CodeGraph Target:** `build_application_router HttpError ErrorBody MergedObject McpRouter Dataloader`
 
+- **Audit Outcome:** COMPLETED (5/5 sub-items verified & remediated)
+
 #### Sub-Audit Checklist
-- [ ] **CC-06.01 — Error Envelope Consistency**
-- [ ] **CC-06.02 — DTO vs SeaORM Entity Boundary**
-- [ ] **CC-06.03 — GraphQL Dataloader & N+1 Elimination**
-- [ ] **CC-06.04 — List Pagination & Limit Clamping**
-- [ ] **CC-06.05 — MCP Tool Schema Validation**
+- [x] **CC-06.01 — Error Envelope Consistency**
+  - Audited `apps/server/src/error.rs`, `crates/libs/rustok-web/src/lib.rs`, and `crates/libs/rustok-api/src/graphql/errors.rs`.
+  - Verified that Axum `Error::into_response` maps all domain and transport errors to canonical RFC 7807 compatible `ErrorBody` envelopes (`code`, `message`, `retryable`), ensuring database errors (`sea_orm::DbErr`) and internal crashes are strictly sanitized as `"internal_error"` without leaking connection strings, table names, SQL queries, or backtraces.
+  - Verified `port_error_to_http_error` in `rustok-web`: infrastructure errors (`Unavailable`, `Timeout`, `InvariantViolation`) receive standardized non-leaking messages while domain errors preserve typed codes and retry advice.
+  - Verified GraphQL error handling: resolvers use `rustok_api::graphql::errors::GraphQLError` (`UNAUTHENTICATED`, `PERMISSION_DENIED`, `INTERNAL_ERROR`, `BAD_USER_INPUT`, `NOT_FOUND`, `CONFLICT`) and redact backend diagnostics in DataLoader failures (`tenant_name_loader_error`).
+- [x] **CC-06.02 — DTO vs SeaORM Entity Boundary**
+  - Audited controllers in `apps/server/src/controllers/*` and GraphQL resolvers in `crates/modules/*/src/graphql/`.
+  - Confirmed zero leakage of raw SeaORM `Model` or `ActiveModel` across API boundaries.
+  - Controllers return typed response DTOs (`*Response`), and GraphQL resolvers return strongly typed GraphQL objects (`Gql*`, domain output types), keeping the persistence schema decoupled from public API contracts.
+- [x] **CC-06.03 — GraphQL Dataloader & N+1 Elimination**
+  - Audited DataLoader implementations: `TenantNameLoader` in `apps/server/src/graphql/loaders.rs`, `ProfileSummaryLoader` in `crates/modules/rustok-profiles/src/loader.rs`, and `ProfileSummaryAudiencePolicy` in `apps/server/src/graphql/profile_summary_policy.rs`.
+  - Verified request-scope caching: `DataLoader` is created per-request in `prepare_request` extension, bound to the authenticated `ProfileAccessAudience`.
+  - Verified strict tenant and locale isolation: `ProfileSummaryLoaderKey` batches queries grouped strictly by `(tenant_id, requested_locale, tenant_default_locale)`, preventing cross-tenant or cross-locale data leakage during batch resolution.
+  - Confirmed N+1 query elimination in `rustok-forum` resolvers (`member_card_query.rs`, `mutation.rs`, `query_runtime.rs`) and profile queries.
+- [x] **CC-06.04 — List Pagination & Limit Clamping**
+  - Audited pagination across server endpoints (`admin_events.rs`, `mcp.rs`, `flex.rs`, `channel.rs`, `oauth.rs`).
+  - Verified bounds enforcement: list endpoints enforce bounded limits using `.clamp(1, max)` or helper `clamp_limit(limit, default, max)` (e.g. DLQ events clamped `1..=200` with default 100; MCP audit events clamped `1..=200` with default 100; MCP scaffold drafts clamped `1..=100` with default 50).
+  - Verified database-level pagination in module queries (e.g. `blog_tag_usage.paginate(&txn, per_page)` using `Ord::max(filter.page, 1)` and saturating arithmetic).
+- [x] **CC-06.05 — MCP Tool Schema Validation**
+  - Audited MCP tool routing and execution in `crates/modules/rustok-mcp/src/server.rs`, `crates/modules/rustok-mcp/src/tools.rs`, and `apps/server/src/controllers/mcp.rs`.
+  - Verified JSON Schema derivation via `schemars::schema_for!` for all tools in `list_tools`.
+  - Verified payload validation: tool inputs are strictly validated against strongly typed request structs (`ModuleLookupRequest`, `ModuleQueryRequest`, `ScaffoldModuleRequest`, `ReviewModuleScaffoldRequest`, `ApplyModuleScaffoldRequest`, `AlloyPublishedReleaseImportRequest`) before execution, returning typed `invalid_params` / `invalid_arguments` error envelopes on malformed inputs.
+  - Reconciled stale file paths in `verify-pricing-admin-graphql-error-safety.mjs` and `verify-commerce-graphql-query-error-boundary.mjs` reflecting module refactoring.
+  - Added comprehensive verification in `scripts/verify/verify-api-transport-error-hygiene.mjs` (PASSED). Verified scoped compilation with `cargo check -p rustok-api -p rustok-web -p rustok-mcp` (PASSED, 0 errors, 0 warnings).
 
 ---
 

@@ -34,6 +34,7 @@ impl MarketplaceCommissionService {
         self.inner.database()
     }
 
+    #[tracing::instrument(skip(self, idempotency_key, input), fields(tenant_id = %tenant_id, actor_id = %actor_id))]
     pub async fn create_rule_version_with_receipt(
         &self,
         tenant_id: Uuid,

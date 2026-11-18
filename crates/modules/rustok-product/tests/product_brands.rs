@@ -405,7 +405,9 @@ async fn setup_database() -> TestResult<DatabaseConnection> {
     .await?;
 
     let manager = SchemaManager::new(&db);
-    rustok_outbox_storage::SysEventsMigration.up(&manager).await?;
+    rustok_outbox_storage::SysEventsMigration
+        .up(&manager)
+        .await?;
     rustok_core::field_schema::create_field_definitions_table(&manager, "product", "products")
         .await?;
     // Exercise up migration

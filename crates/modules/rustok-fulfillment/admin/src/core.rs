@@ -230,11 +230,11 @@ pub fn summarize_shipping_option(locale: Option<&str>, option: &ShippingOption) 
             "fulfillment.summary.shippingOption.profiles",
             "profiles"
         ),
-        format_allowed_profiles(locale, option.allowed_shipping_profile_slugs.as_ref())
+        format_allowed_profiles(locale, option.allowed_shipping_profile_slugs.as_deref())
     )
 }
 
-pub fn format_allowed_profiles(locale: Option<&str>, profiles: Option<&Vec<String>>) -> String {
+pub fn format_allowed_profiles(locale: Option<&str>, profiles: Option<&[String]>) -> String {
     match profiles {
         Some(values) if !values.is_empty() => values.join(", "),
         _ => t(locale, "fulfillment.common.all", "all"),

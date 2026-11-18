@@ -195,6 +195,7 @@ pub struct OAuthAppService;
 
 impl OAuthAppService {
     /// Registers a manual OAuth client application with generated credentials and tenant association.
+    #[tracing::instrument(skip(db, input), fields(tenant_id = %tenant_id, name = %input.name, slug = %input.slug))]
     pub async fn create_app(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -282,6 +283,7 @@ impl OAuthAppService {
     }
 
     /// Update a manual OAuth app.
+    #[tracing::instrument(skip(db, input), fields(tenant_id = %tenant_id, app_id = %app_id))]
     pub async fn update_app(
         db: &DatabaseConnection,
         tenant_id: Uuid,
@@ -2177,14 +2179,8 @@ mod tests {
         let refresh_only = vec!["refresh_token".to_string()];
 
         assert!(
-            validate_manual_app_configuration(
-                "third_party",
-                &[],
-                &scopes,
-                &refresh_only,
-                &[],
-            )
-            .is_err()
+            validate_manual_app_configuration("third_party", &[], &scopes, &refresh_only, &[],)
+                .is_err()
         );
         assert!(
             validate_managed_app_configuration(
@@ -2198,8 +2194,10 @@ mod tests {
             .is_err()
         );
 
-        let authorization_and_refresh =
-            vec!["authorization_code".to_string(), "refresh_token".to_string()];
+        let authorization_and_refresh = vec![
+            "authorization_code".to_string(),
+            "refresh_token".to_string(),
+        ];
         assert!(
             validate_manual_app_configuration(
                 "third_party",
@@ -3172,7 +3170,7 @@ mod tests {
         .await
         .expect("insert oauth token");
 
-        crate::services::oauth_consent_service::OAuthConsentService::grant_consent_strict(
+        OAuthAppService::grant_consent_strict(
             &db,
             created.app.id,
             token_user.id,
@@ -3183,14 +3181,9 @@ mod tests {
         .expect("grant user consent through the strict admin path");
         let consent_code_id =
             insert_pending_authorization_code(&db, created.app.id, token_user.id, tenant.id).await;
-        OAuthAppService::revoke_user_consent(
-            &db,
-            created.app.id,
-            token_user.id,
-            tenant.id,
-        )
-        .await
-        .expect("revoke user consent");
+        OAuthAppService::revoke_user_consent(&db, created.app.id, token_user.id, tenant.id)
+            .await
+            .expect("revoke user consent");
         let consent_code = oauth_authorization_codes::Entity::find_by_id(consent_code_id)
             .one(&db)
             .await
@@ -3228,7 +3221,7 @@ mod tests {
             .await
             .expect("deactivate consent subject");
         let strict_grant_for_inactive_user =
-            crate::services::oauth_consent_service::OAuthConsentService::grant_consent_strict(
+            OAuthAppService::grant_consent_strict(
                 &db,
                 created.app.id,
                 token_user.id,

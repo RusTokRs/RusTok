@@ -70,7 +70,10 @@ struct StorefrontAttributeValueOptionRow {
     value_id: Uuid,
     option_id: Uuid,
     option_code: String,
-    #[expect(dead_code, reason = "query result projection captures database column position")]
+    #[expect(
+        dead_code,
+        reason = "query result projection captures database column position"
+    )]
     option_position: i32,
 }
 

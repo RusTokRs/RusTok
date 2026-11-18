@@ -69,6 +69,9 @@ pub enum MediaError {
     #[error("Presigned upload is unavailable for the configured storage backend")]
     PresignedUploadUnavailable,
 
+    #[error("Media HTTP routes require StorageRuntime in HostRuntimeContext")]
+    MissingStorageRuntime,
+
     #[error("Image processing error: {0}")]
     ImageProcessing(#[from] crate::image::ImageProcessingError),
 
@@ -115,7 +118,8 @@ impl From<MediaError> for rustok_core::Error {
             | MediaError::PresignedUploadUnavailable
             | MediaError::ImageProcessing(_)
             | MediaError::Storage(_)
-            | MediaError::StorageKey(_) => Self::Internal(err.to_string()),
+            | MediaError::StorageKey(_)
+            | MediaError::MissingStorageRuntime => Self::Internal(err.to_string()),
         }
     }
 }

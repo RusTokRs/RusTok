@@ -235,7 +235,7 @@ mod tests {
         let user_a = Uuid::new_v4();
         let user_b = Uuid::new_v4();
         for (role, tenant) in [(role_a, tenant_a), (role_b, tenant_b)] {
-            db.execute(sea_orm::Statement::from_sql_and_values(
+            db.execute_raw(sea_orm::Statement::from_sql_and_values(
                 sea_orm::DbBackend::Sqlite,
                 "INSERT INTO roles (id, tenant_id) VALUES (?, ?)",
                 [role.to_string().into(), tenant.to_string().into()],
@@ -244,7 +244,7 @@ mod tests {
             .expect("insert role");
         }
         for (user, tenant) in [(user_a, tenant_a), (user_b, tenant_b)] {
-            db.execute(sea_orm::Statement::from_sql_and_values(
+            db.execute_raw(sea_orm::Statement::from_sql_and_values(
                 sea_orm::DbBackend::Sqlite,
                 "INSERT INTO users (id, tenant_id) VALUES (?, ?)",
                 [user.to_string().into(), tenant.to_string().into()],
@@ -253,7 +253,7 @@ mod tests {
             .expect("insert user");
         }
         for (user, role) in [(user_a, role_a), (user_b, role_a), (user_a, role_b)] {
-            db.execute(sea_orm::Statement::from_sql_and_values(
+            db.execute_raw(sea_orm::Statement::from_sql_and_values(
                 sea_orm::DbBackend::Sqlite,
                 "INSERT INTO user_roles (id, user_id, role_id) VALUES (?, ?, ?)",
                 [

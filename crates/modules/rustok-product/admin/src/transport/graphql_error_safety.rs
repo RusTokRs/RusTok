@@ -60,7 +60,10 @@ impl GraphqlReadContext {
         context
     }
 
-    #[expect(dead_code, reason = "reserved for future admin product pricing context")]
+    #[expect(
+        dead_code,
+        reason = "reserved for future admin product pricing context"
+    )]
     pub(crate) fn for_product_pricing(
         token: Option<&str>,
         tenant_slug: Option<&str>,

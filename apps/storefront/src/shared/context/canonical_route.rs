@@ -125,8 +125,8 @@ pub fn build_redirect_location(
     }
 
     // INVARIANT: serializing key-value pairs of valid strings to urlencoded is infallible
-    let lang_suffix = serde_urlencoded::to_string([("lang", normalized_lang.as_str())])
-        .unwrap_or_default();
+    let lang_suffix =
+        serde_urlencoded::to_string([("lang", normalized_lang.as_str())]).unwrap_or_default();
 
     if resolved.canonical_url.contains('?') {
         format!("{}&{}", resolved.canonical_url, lang_suffix)

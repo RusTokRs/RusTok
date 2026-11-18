@@ -17,7 +17,7 @@ use uuid::Uuid;
 use rustok_events::DomainEvent;
 
 use crate::backend::SupportedBackend;
-use crate::installation::valid_digest;
+use crate::trust::valid_digest;
 use crate::{ArtifactReleaseRef, OciArtifactReference};
 
 use crate::{
@@ -1362,7 +1362,7 @@ fn build_request_hash(request: &ModuleBuildRequest) -> Result<String, ModuleBuil
 fn build_result_hash(result: &ModuleBuildResult) -> Result<String, ModuleBuildProtocolError> {
     let serialized = serde_json::to_vec(result)
         .map_err(|error| ModuleBuildProtocolError::Persistence(error.to_string()))?;
-    Ok(crate::installation::sha256_digest(&serialized))
+    Ok(crate::trust::sha256_digest(&serialized))
 }
 
 fn build_outcome_name(outcome: &ModuleBuildOutcome) -> &'static str {

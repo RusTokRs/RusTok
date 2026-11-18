@@ -280,7 +280,6 @@ mod tests {
                     ) { executionId }
                     moduleCompositionSnapshot { revision }
                 }
-                subscription BuildState { buildProgress { buildId } }
             "#,
         );
 
@@ -330,8 +329,18 @@ mod tests {
                 .any(|field| field.name == "moduleCompositionSnapshot"
                     && field.authority == ModuleAuthority::Read)
         );
+
+        let mut sub_request = Request::new(
+            r#"subscription BuildState { buildProgress { buildId } }"#,
+        );
+        classify_document(&mut sub_request).expect("subscription document should parse");
+        let sub_policy = sub_request
+            .data
+            .get(&std::any::TypeId::of::<ModuleGraphqlDocumentPolicy>())
+            .and_then(|value| value.downcast_ref::<ModuleGraphqlDocumentPolicy>())
+            .expect("subscription module policy should be attached");
         assert!(
-            policy
+            sub_policy
                 .0
                 .iter()
                 .any(|field| field.name == "buildProgress"

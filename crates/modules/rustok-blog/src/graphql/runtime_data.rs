@@ -51,7 +51,9 @@ impl From<BlogGraphqlRuntimeError> for String {
     }
 }
 
-pub fn attach_schema_data(inputs: &GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, BlogGraphqlRuntimeError> {
+pub fn attach_schema_data(
+    inputs: &GraphqlRuntimeInputs,
+) -> Result<BlogGraphqlRuntimeData, BlogGraphqlRuntimeError> {
     Ok(BlogGraphqlRuntimeData {
         comments_thread_port: inputs.shared_get::<Arc<dyn CommentsThreadPort>>(),
         settings_reader: inputs.shared_get::<SharedStaticModuleSettingsReader>(),
@@ -132,8 +134,9 @@ mod tests {
 
     #[test]
     fn graphql_runtime_data_exposes_comments_port_selection() {
-        let factory: fn(&GraphqlRuntimeInputs) -> Result<BlogGraphqlRuntimeData, BlogGraphqlRuntimeError> =
-            attach_schema_data;
+        let factory: fn(
+            &GraphqlRuntimeInputs,
+        ) -> Result<BlogGraphqlRuntimeData, BlogGraphqlRuntimeError> = attach_schema_data;
         let selector: fn(&BlogGraphqlRuntimeData, DatabaseConnection) -> CommentService =
             BlogGraphqlRuntimeData::comment_service;
         let snapshot_selector: fn(

@@ -238,6 +238,7 @@ impl SeaOrmModuleGovernanceService {
                 "passed" => "validation_stage_passed",
                 "failed" => "validation_stage_failed",
                 "blocked" => "validation_stage_blocked",
+                // INVARIANT: Validation stage status is pre-validated to running, passed, failed, or blocked in earlier validation branch.
                 _ => unreachable!("validated non-requeue status"),
             };
             (stage_id, attempt_number, queue_reason, event_type)
