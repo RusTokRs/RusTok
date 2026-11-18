@@ -42,7 +42,8 @@
 
 ### State Machine & Receipts
 - `InstallState`: `Draft`, `PreflightPassed`, `ConfigPrepared`, `DatabaseReady`, `SchemaApplied`, `SeedApplied`, `AdminProvisioned`, `Deploying`, `Verified`, `Completed`, `Failed`, `FreshInstallCleaned`, `RecoveryRequired`.
-  - Methods: `can_transition_to(self, to: InstallState) -> bool`, `transition_to(self, to: InstallState) -> Result<InstallState, StateTransitionError>`.
+  - Methods: `as_str() -> &'static str`, `from_str(&str) -> Option<InstallState>`, `can_transition_to(self, to: InstallState) -> bool`, `transition_to(self, to: InstallState) -> Result<InstallState, StateTransitionError>`.
+- `InstallSessionRecord`: Neutral durable session projection with `id`, `tenant_id`, persisted `status`, `lock_owner`, `lock_expires_at`, and monotonic `attempt_generation`.
 - `InstallStep`: `Preflight`, `Config`, `Database`, `Migrate`, `Seed`, `Admin`, `Deploy`, `Verify`, `Finalize`, `Rollback`.
 - `ReceiptOutcome`: `Success`, `Skipped`, `Failed`.
 - `InstallReceipt`: Durable execution proof per step.
@@ -77,7 +78,7 @@
   - `InstallDatabasePort`: Prepares target DB connection and runtime handle.
   - `InstallSchemaPort<R>`: Applies bootstrap owner schema, then canonical remaining schema.
   - `InstallBootstrapPort<R>`: Imports base distribution receipt.
-  - `InstallPersistencePort<R>`: Manages durable sessions, locks, receipts, and state transitions.
+  - `InstallPersistencePort<R>`: Manages durable sessions, locks, receipts, and state transitions. Every mutation method receives the current `InstallSessionRecord` rather than a bare session ID so the persistence owner can require the exact `lock_owner` and `attempt_generation` under the target row lock.
   - `InstallSeedPort<R>`: Applies initial seed profile.
   - `InstallAdminPort<R>`: Provisions the super-admin user.
   - `InstallVerificationPort<R>`: Verifies tenant, admin, and active modules.
@@ -113,8 +114,9 @@
 ## 4. Usage Patterns & Invariants
 
 1. **State Machine Durability & Non-Rollback Integrity:**
-   - Early stage failures (prior to schema application) allow clean-up via `FreshInstallCleaned`.
-   - Once database schemas or persistent mutations occur (`SchemaApplied`, `SeedApplied`, `AdminProvisioned`, `Deploying`, `Verified`), failures must transition to `RecoveryRequired` rather than pretending rollback succeeded.
+   - `FreshInstallCleaned` is only valid after an explicit cleanup effect has completed; progressing a session to a state that merely releases admission is not proof of cleanup.
+   - Once the durable session has been claimed, every executor failure—including bootstrap import, remaining-schema, receipt, tenant-assignment, and state-transition failures—must attempt to persist `RecoveryRequired` rather than pretending rollback succeeded.
+   - `RecoveryRequired` is reachable from every durable execution stage and remains admission-blocking until an explicit reconciliation workflow is implemented.
 2. **Secret Redaction Invariant:**
    - Plaintext credentials must never appear in persisted session records, step receipts, diagnostics JSON, or logs.
    - Production installations strictly reject plaintext secrets during preflight evaluation.
@@ -127,9 +129,14 @@
    - A session is claimed once. Lease expiry alone does not release an unfinished session;
      the persistence adapter keeps unreconciled sessions, including `RecoveryRequired`,
      blocking until explicit reconciliation.
-   - Per-attempt owner strings are unique identifiers, but the persistence adapter does not
-     yet compare owner equality on every state/receipt mutation; full stale-worker fencing
-     and resumable recovery remain open.
+   - A successful claim atomically increments the durable `attempt_generation` while
+     storing the unique owner. Every state, tenant, and receipt mutation carries both
+     values and verifies them under a transaction-scoped row lock.
+   - Receipts persist the generation that authorized them. A stale owner or older
+     generation cannot append evidence or mutate the session after a later claim.
+   - Lease expiry alone does not release an unfinished session; the persistence adapter
+     keeps unreconciled sessions, including `RecoveryRequired`, blocking until explicit
+     reconciliation. Resumable execution and external-effect reconciliation remain open.
 
 ---
 
