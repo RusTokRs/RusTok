@@ -19,7 +19,9 @@ the schema created by `rustok-migrations`.
   generation. PostgreSQL/MySQL acquire a row lock before checking the fence;
   SQLite reserves its writer before reading. Receipt rows retain their
   generation for audit and stale-attempt diagnosis.
-- Persist and read redacted, idempotent step receipts.
+- Persist and read redacted, append-only step receipts. Idempotent signed
+  distribution-receipt import is a separate operation; automatic replay or
+  resume from installer step receipts is not implemented yet.
 - Prepare PostgreSQL/SQLite targets and apply the composed platform migrator.
 - Compose tenant, identity, RBAC, and module lifecycle writers for typed seed
   profiles and administrator provisioning without duplicating them in HTTP or
