@@ -227,7 +227,12 @@ cookies with the
 `rustok-session` name are rejected, including across repeated Cookie headers,
 rather than selecting an order-dependent token. First-party session validity,
 new issuance and refresh rotation enforce the original 90-day absolute expiry
-(including legacy rows without an explicit deadline). Failed dummy Argon2 hash
+(including legacy rows without an explicit deadline). Auth lifecycle mutation
+lookups reserve SQLite's write lock with a predicate-matched no-op update before
+reading the user/session row; PostgreSQL/MySQL use row-level FOR UPDATE.
+Login, profile changes, password changes, refresh rotation, reuse revocation,
+and both logout paths therefore do not rely on SQLite's unsupported row-lock
+syntax or a deferred read-to-write upgrade. Failed dummy Argon2 hash
 initialization propagates as an internal auth error rather than substituting
 an empty hash.
 
