@@ -4,9 +4,10 @@ use rustok_installer::{
     InstallProfile, InstallReceipt, InstallState, InstallStep, InstallTopology,
     InstallTopologyMode, ModuleSelection, ReceiptOutcome, SecretMode, SecretValue, TenantBootstrap,
 };
-use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, Database, DatabaseConnection, Set};
 use uuid::Uuid;
 
+use crate::entities::install_session;
 use crate::{InstallStepReceiptItem, InstallerPersistenceService};
 
 async fn setup_contract_test_db() -> DatabaseConnection {
@@ -94,7 +95,7 @@ fn sample_plan() -> InstallPlan {
 #[tokio::test]
 async fn session_persistence_lifecycle_and_state_transitions() {
     let db = setup_contract_test_db().await;
-    let service = InstallerPersistenceService::new(db);
+    let service = InstallerPersistenceService::new(db.clone());
     let plan = sample_plan();
 
     // 1. Create session
@@ -127,7 +128,18 @@ async fn session_persistence_lifecycle_and_state_transitions() {
     assert_eq!(locked.lock_owner.as_deref(), Some("worker-node-1"));
     assert!(locked.lock_expires_at.is_some());
 
-    // 4. Competing lock attempt from another session while active lock is unexpired must fail
+    // 4. A second attempt cannot overwrite the owner on the same session.
+    let same_session_err = service
+        .acquire_lock(
+            locked.clone(),
+            "worker-node-retry",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect_err("a session can only be claimed once");
+    assert!(same_session_err.to_string().contains("already has an execution attempt"));
+
+    // 5. Another session is blocked while the first execution is unfinished.
     let session2 = service
         .create_session(&plan, None, None)
         .await
@@ -140,9 +152,28 @@ async fn session_persistence_lifecycle_and_state_transitions() {
         )
         .await
         .expect_err("competing lock must be rejected");
-    assert!(err.to_string().contains("already held"));
+    assert!(err.to_string().contains("unfinished execution"));
 
-    // 5. State transitions
+    // 6. Lease expiry alone must not allow a second installer to overlap a
+    // possibly still-running first worker.
+    let mut expired_session: install_session::ActiveModel = locked.clone().into();
+    expired_session.lock_expires_at =
+        Set(Some(Utc::now() - chrono::Duration::seconds(1)));
+    expired_session
+        .update(&db)
+        .await
+        .expect("expire the first session lease");
+    let expired_lock_err = service
+        .acquire_lock(
+            session2.clone(),
+            "worker-node-2",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect_err("expired lease must still block an unfinished session");
+    assert!(expired_lock_err.to_string().contains("unfinished execution"));
+
+    // 7. State transitions
     let updated = service
         .set_state(session.id, InstallState::PreflightPassed)
         .await
@@ -166,6 +197,16 @@ async fn session_persistence_lifecycle_and_state_transitions() {
     assert_eq!(completed.status, "completed");
     assert!(completed.completed_at.is_some());
     assert!(service.has_completed_session().await.expect("query"));
+
+    let second_lock = service
+        .acquire_lock(
+            session2,
+            "worker-node-2",
+            chrono::Duration::minutes(5),
+        )
+        .await
+        .expect("a finalized session no longer blocks a new apply");
+    assert_eq!(second_lock.lock_owner.as_deref(), Some("worker-node-2"));
 }
 
 #[tokio::test]
