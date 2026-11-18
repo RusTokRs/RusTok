@@ -46,18 +46,18 @@ pub fn host_interaction_capability_registry() -> InteractionCapabilityRegistry {
     let mut registry = InteractionCapabilityRegistry::default();
     // `input_kind` is `Any` on purpose: `flyForm.input` is an opaque provider descriptor, and the
     // forms intake payload is the flat object of submitted fields, not that descriptor.
-    registry
-        .register(InteractionCapabilityDefinition {
-            provider: FORMS_PROVIDER_ID.to_string(),
-            operation: FORMS_SUBMIT_OPERATION.to_string(),
-            kind: InteractionCapabilityKind::Form,
-            runtime: InteractionRuntimeTarget::Server,
-            input_kind: ContextValueKind::Any,
-            description:
-                "Native HTML form intake served by the rustok-forms module (`POST /api/forms/{form_id}/submit/form`)."
-                    .to_string(),
-        })
-        .expect("host interaction provider ids are valid and unique");
+    if let Err(err) = registry.register(InteractionCapabilityDefinition {
+        provider: FORMS_PROVIDER_ID.to_string(),
+        operation: FORMS_SUBMIT_OPERATION.to_string(),
+        kind: InteractionCapabilityKind::Form,
+        runtime: InteractionRuntimeTarget::Server,
+        input_kind: ContextValueKind::Any,
+        description:
+            "Native HTML form intake served by the rustok-forms module (`POST /api/forms/{form_id}/submit/form`)."
+                .to_string(),
+    }) {
+        tracing::error!(error = ?err, "Failed to register host interaction capability definition");
+    }
     registry
 }
 

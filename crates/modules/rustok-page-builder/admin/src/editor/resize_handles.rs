@@ -200,7 +200,9 @@ fn install_resize_listeners(
                 }));
             }
             if let Some(element) = up_element.get_value() {
-                let _ = fly_leptos::release_pointer_capture(&element, event.pointer_id());
+                if let Err(err) = fly_leptos::release_pointer_capture(&element, event.pointer_id()) {
+                    tracing::trace!(error = ?err, "Failed to release pointer capture");
+                }
             }
             up_element.set_value(None);
             up_session.set_value(None);

@@ -29,10 +29,9 @@ impl AdminCanvasController {
         let document = GrapesJsCodec::decode_value(project_data)?;
         let mut registries = RegistrySet::with_builtins();
         for definition in crate::asset_provider::builtin_asset_provider_definitions() {
-            registries
-                .asset_providers
-                .register(definition)
-                .expect("builtin asset provider ids are valid and unique");
+            if let Err(error) = registries.asset_providers.register(definition) {
+                tracing::warn!(?error, "Failed to register builtin asset provider definition");
+            }
         }
         let editor = FlyEditor::new(document, registries);
         let mut ui = FlyUiStateMachine::new(Presentation::Full);
@@ -200,7 +199,9 @@ impl AdminCanvasController {
             Err(fly::FlyError::RevisionConflict { expected, actual }) => {
                 // A hash mismatch at acknowledge time means another session saved
                 // first: surface the lost update as a conflict, not a generic failure.
-                let _ = self.mark_save_conflict(expected.clone(), actual.clone());
+                if let Err(err) = self.mark_save_conflict(expected.clone(), actual.clone()) {
+                    tracing::warn!(error = ?err, "Failed to dispatch SaveConflict UI intent");
+                }
                 return Err(AdminCanvasError::Fly(fly::FlyError::RevisionConflict {
                     expected,
                     actual,
@@ -467,9 +468,12 @@ impl AdminCanvasController {
                 .map(|_| component_id.to_string())
         });
         if selection.is_none() && self.editor.selection().is_some() {
-            let _ = self
+            if let Err(err) = self
                 .editor
-                .apply(EditorCommand::Select { component_id: None });
+                .apply(EditorCommand::Select { component_id: None })
+            {
+                tracing::warn!(error = ?err, "Failed to deselect out-of-scope component");
+            }
         }
         self.ui.state.selection.component_id = selection;
         self.ui.state.set_diagnostics(report.diagnostics);

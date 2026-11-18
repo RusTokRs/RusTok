@@ -451,9 +451,13 @@ impl AdminEditorRuntime {
     }
 
     fn mark_save_failed(&self) {
-        let _ = self
+        if self
             .controller
-            .try_update(|controller| controller.mark_save_failed());
+            .try_update(|controller| controller.mark_save_failed())
+            .is_none()
+        {
+            tracing::trace!("Controller signal disposed before mark_save_failed");
+        }
     }
 
     pub fn to_session_state(&self) -> crate::core::EditorSessionState {

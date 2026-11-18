@@ -438,6 +438,7 @@ where
         self.service.properties(context, input).await
     }
 
+    #[tracing::instrument(skip(self, context, auth))]
     pub async fn publish(
         &self,
         context: &PortContext,
@@ -449,6 +450,7 @@ where
         self.service.publish(context, input).await
     }
 
+    #[tracing::instrument(skip(self, context, auth))]
     pub async fn handle(
         &self,
         context: &PortContext,
