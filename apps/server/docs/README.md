@@ -414,8 +414,9 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   app upserts, translations, orphan deactivation, token revocation, consent revocation, and pending-code
   invalidation in one
   transaction per tenant. Existing app rows are also locked through the same mutation fence used by token
-  issuance and consent before their security-sensitive configuration changes. The all-tenants bootstrap
-  sweep is sequential and does not provide one global cross-tenant transaction.
+  issuance and consent before their security-sensitive configuration changes. Reactivation also revokes
+  any dependent credentials left live by older versions. The all-tenants bootstrap sweep is sequential and
+  does not provide one global cross-tenant transaction.
 - OAuth grant admission uses the exact persisted `grant_types` set. Manifest-managed first-party admin/storefront
   applications declare `authorization_code`, `refresh_token`, and `client_credentials` explicitly; the auth
   model does not expand `refresh_token` implicitly for auto-created applications. Third-party web redirect
