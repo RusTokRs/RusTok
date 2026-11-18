@@ -1204,7 +1204,23 @@ where
             Error::InternalServerError
         })?;
 
-    if let Some(app) = existing {
+    if let Some(existing_app) = existing {
+        let app = lock_oauth_app_for_mutation(db, existing_app.id, tenant_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    %error,
+                    tenant_id = %tenant_id,
+                    slug = slug,
+                    "Failed to lock embedded OAuth app during manifest sync"
+                );
+                Error::InternalServerError
+            })?
+            .ok_or_else(|| {
+                Error::Conflict(format!(
+                    "embedded OAuth app `{slug}` disappeared during manifest sync"
+                ))
+            })?;
         ensure_manifest_app_ownership(&app, slug, "embedded")?;
         // Reactivate with a column-scoped write so a stale read cannot overwrite
         // unrelated runtime-owned fields such as last_used_at.
@@ -1328,7 +1344,23 @@ where
             Error::InternalServerError
         })?;
 
-    if let Some(app) = existing {
+    if let Some(existing_app) = existing {
+        let app = lock_oauth_app_for_mutation(db, existing_app.id, tenant_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(
+                    %error,
+                    tenant_id = %tenant_id,
+                    slug = slug,
+                    "Failed to lock first-party OAuth app during manifest sync"
+                );
+                Error::InternalServerError
+            })?
+            .ok_or_else(|| {
+                Error::Conflict(format!(
+                    "first-party OAuth app `{slug}` disappeared during manifest sync"
+                ))
+            })?;
         update_first_party_app_from_manifest(
             db,
             &app,
