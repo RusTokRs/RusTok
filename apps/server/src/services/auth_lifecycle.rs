@@ -805,9 +805,12 @@ impl AuthLifecycleService {
                 if result.rows_affected() != 1 {
                     return Ok(None);
                 }
-                query.one(txn).await.map_err(AuthLifecycleError::from)
+                query
+                    .one(txn)
+                    .await
+                    .map_err(AuthLifecycleError::from)?
             }
-            _ => Err(AuthLifecycleError::Internal(Error::InternalServerError)),
+            _ => return Err(AuthLifecycleError::Internal(Error::InternalServerError)),
         };
 
         Ok(session)
