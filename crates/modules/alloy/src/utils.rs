@@ -3,10 +3,21 @@ use std::str::FromStr;
 use cron::Schedule;
 use rhai::Dynamic;
 
-pub fn validate_cron_expression(expression: &str) -> Result<(), String> {
+/// Error indicating an invalid cron expression.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("Invalid cron expression: {0}")]
+pub struct CronExpressionError(pub String);
+
+impl From<CronExpressionError> for String {
+    fn from(error: CronExpressionError) -> Self {
+        error.0
+    }
+}
+
+pub fn validate_cron_expression(expression: &str) -> Result<(), CronExpressionError> {
     Schedule::from_str(expression)
         .map(|_| ())
-        .map_err(|err| err.to_string())
+        .map_err(|err| CronExpressionError(err.to_string()))
 }
 
 pub fn json_to_dynamic(v: serde_json::Value) -> Dynamic {
