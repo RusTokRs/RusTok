@@ -1510,8 +1510,8 @@ mod tests {
     use rustok_migrations::SqliteTestMigrator as Migrator;
     use rustok_test_utils::db::setup_test_db_with_migrations;
     use sea_orm::{
-        ActiveModelTrait, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, Set,
-        ConnectionTrait, TransactionTrait,
+        ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, PaginatorTrait, QueryFilter,
+        Set, TransactionTrait,
     };
     use serial_test::serial;
     use std::sync::atomic::Ordering;
