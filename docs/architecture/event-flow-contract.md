@@ -290,6 +290,21 @@ actual relay/Iggy/restart/lag/Search concurrency and generic Index's Inventory-o
 revision remain open; Product step 8 is incomplete. See the [source packet](../../crates/modules/rustok-inventory/contracts/evidence/reservation-events-source.json)
 and [delivery decision](../../DECISIONS/2026-07-17-sealed-typed-event-families.md#acknowledged-local-contract-listeners-2026-11-01).
 
+## Durable consumer retention acknowledgements (2026-11-18)
+
+Outbox retention is consumer-aware. Each durable consumer registers the event
+types it requires; a dispatched `sys_events` row remains retained until every
+registered consumer for that type acknowledges the canonical event ID. The
+generic Outbox owner stores registrations and acknowledgements and never reads
+consumer-owned receipt tables.
+
+Notifications registers before retention starts and commits its Outbox
+acknowledgement in the same transaction as its accepted intake receipt or
+permanent rejection. Retryable intake failures leave the event unacknowledged.
+This protects an existing row through a prolonged consumer outage; it cannot
+reconstruct historical rows already pruned before the consumer was registered.
+See the [consumer-retention decision](../../DECISIONS/2026-11-18-outbox-consumer-retention-acknowledgements.md).
+
 ## Inventory source canonical continuation (2026-11-02; source only)
 
 Changed facts use retained change UUIDs and positive Inventory versions on the actual caller

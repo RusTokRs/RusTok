@@ -26,6 +26,9 @@ infrastructure for the platform event runtime.
 - bounded retention of delivered events (`OutboxRetention`), configured at the
   server boundary (`events.outbox_retention.*`) and supervised as the
   `outbox_retention` runtime worker;
+- generic durable-consumer registrations and per-event acknowledgements; retention
+  holds a dispatched event until every registered consumer for its event type has
+  acknowledged the original event ID, without querying consumer-owned receipt tables;
 - module-owned Leptos admin package `rustok-outbox-admin` with FFA split `core/transport/ui` for read-only relay visibility.
 
 ## Relay, retry and DLQ policy
@@ -38,6 +41,20 @@ infrastructure for the platform event runtime.
 - Runtime `apps/server` selects `max_attempts` from `rustok.events.dlq.max_attempts` if DLQ is enabled, otherwise from `rustok.events.relay_retry_policy.max_attempts`.
 - A transient error leaves the event in `pending`, increments `retry_count`, writes `last_error`, clears the claim and sets `next_attempt_at`.
 - A terminal error moves the event to `failed`/DLQ, saves `last_error`, clears the claim and is reflected in metrics/admin DLQ surface.
+
+## Durable consumer retention contract
+
+Consumers register their required event types through `OutboxConsumer` before
+the retention worker starts. A dispatched event is retained while any registered
+consumer lacks an acknowledgement for that event ID. Multiple consumers are
+independent obligations; all must acknowledge before age-based pruning applies.
+
+Consumers write acknowledgements only after their own terminal receipt commits.
+When both records share a database, the neutral owner port writes the Outbox
+acknowledgement in the same transaction. Retryable failures do not acknowledge.
+Registration persists across worker shutdown and feature-flag disablement so an
+outage cannot silently release retained events. A consumer must be drained before
+its registration is explicitly retired.
 
 ## Tenant and authorization boundary
 

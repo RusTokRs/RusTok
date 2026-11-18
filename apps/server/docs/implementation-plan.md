@@ -1062,30 +1062,21 @@ cargo test -p rustok-server --lib services::app_lifecycle::lifecycle_tests::comm
 
 
 
-## P12 — Notification intake versus outbox retention (deferred cross-owner gate)
+## P12 — Notification intake versus Outbox retention (resolved by P18)
 
-The optional notification intake worker reads supported events directly from
-`sys_events` until an accepted intake receipt or permanent rejection exists.
-The generic outbox retention worker independently deletes dispatched
-`sys_events` rows older than its retention window (30 days by default) and
-does not consult notification intake receipts.
+The original failure boundary was real: Notifications persisted accepted
+receipts and permanent rejections in owner tables while Outbox pruned dispatched
+`sys_events` rows solely by age. A stalled intake worker could therefore lose
+its source envelope before recording a terminal outcome.
 
-If notification intake is enabled but unavailable or backlogged beyond the
-retention window, an already-dispatched event can be pruned before intake sees
-it. This is a bounded replay guarantee, not an unlimited downstream-consumer
-guarantee.
+P18 resolves the cross-owner boundary with Outbox-owned durable consumer
+registrations and per-event acknowledgements. The Outbox owner does not query
+notification-owned tables, and Notifications does not mutate relay state.
+See the accepted [consumer-retention decision](../../DECISIONS/2026-11-18-outbox-consumer-retention-acknowledgements.md).
 
-### Boundary
-
-- This is not fixed by adding notification-table queries to `apps/server` or
-  `rustok-outbox`; the receipt table is notification-owned.
-- A correct fix needs a cross-owner retention contract, such as a registered
-  consumer watermark or retention hold that the outbox owner can honor.
-- Until that contract exists, notification intake must remain healthy and its
-  retention window must exceed the maximum expected intake outage.
-
-This remains an explicit limitation for the next continuation; no stronger
-replay guarantee is claimed.
+The guarantee applies to rows that still exist when the consumer registration
+is committed. Already-pruned historical events cannot be reconstructed; old
+terminal notification receipts are backfilled before retention starts.
 
 
 
@@ -1242,3 +1233,55 @@ cargo test -p rustok-server --lib services::event_bus
 cargo test -p rustok-server --lib services::app_lifecycle
 ```
 
+
+## P18 — Retain Outbox events until required consumers acknowledge (2026-11-18)
+
+The Notifications intake worker previously wrote terminal outcomes into
+notification-owned tables, while Outbox retention deleted dispatched source
+events by age alone. A prolonged intake outage could therefore remove an event
+before its notification receipt or permanent rejection existed.
+
+### Implemented
+
+- Added Outbox-owned `sys_event_consumers` registrations and
+  `sys_event_consumer_receipts` acknowledgements. Retention now deletes a
+  dispatched event only after every registered consumer for its event type has
+  acknowledged the canonical event ID.
+- Added an append-only platform migration and shared standalone schema helper.
+  Receipt rows cascade with the canonical Outbox event.
+- Notifications registers its supported event types before the server starts
+  runtime workers and retention. A neutral receipt port commits the Outbox
+  acknowledgement in the same transaction as the accepted intake receipt or
+  permanent rejection; retryable failures create neither terminal receipt nor
+  acknowledgement.
+- Added bounded startup backfill for existing terminal Notifications receipts
+  before retention starts. Already-pruned IDs are harmless because the owner
+  terminal receipt is already durable.
+- Added regression coverage for multi-consumer retention holds, idempotent
+  acknowledgements, and atomic notification receipt/Outbox acknowledgement.
+- Registration is durable and additive. Disabling intake does not silently
+  release its retention obligation; unacknowledged events remain stored until
+  intake recovers or an operator explicitly retires the consumer after drain.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-outbox-storage --lib
+cargo test -p rustok-outbox-storage --lib consumers
+cargo check -p rustok-outbox --lib
+cargo test -p rustok-outbox --lib retention
+cargo check -p rustok-notifications --all-targets
+cargo test -p rustok-notifications --test outbox_intake_sqlite
+cargo check -p rustok-server --lib --features mod-notifications
+cargo test -p rustok-server --lib services::notification_outbox_intake_worker
+cargo test -p rustok-migrations
+node scripts/verify/verify-notifications-outbox-intake.mjs
+node scripts/verify/verify-outbox-retention-and-event-metrics.mjs
+node scripts/verify/verify-migration-backfill-contracts.mjs
+```
+
+PostgreSQL migration and concurrent retention/acknowledgement behavior remain
+maintainer/CI gates.

@@ -302,6 +302,11 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   fanout, and candidate workers are also required readiness workers once started.
   A dead queue/reconciliation task cannot leave the HTTP host green while its
   durable work remains unprocessed.
+- Notification intake registers its supported event types in the Outbox-owned
+  consumer ledger before runtime retention starts. Accepted receipts and
+  permanent rejections acknowledge the original event in the same transaction;
+  unacknowledged events remain retained through intake outages. Registration is
+  durable, so disabling the worker does not release an existing retention hold.
 - Outbox relay polling, claim leases, retry backoff, and outbox-retention
   polling are each capped at one day. Relay batches are capped at 10,000 events,
   in-flight delivery concurrency at 128, and in-memory event channel capacity
