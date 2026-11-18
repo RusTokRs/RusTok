@@ -4,8 +4,7 @@ use crate::NotificationSourceEventRef;
 use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::{
     ActiveValue::Set, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    QueryFilter, QueryOrder, QuerySelect,
-    QuerySelect, QueryTrait, TransactionTrait, sea_query::OnConflict,
+    QueryFilter, QueryOrder, QuerySelect, QueryTrait, TransactionTrait, sea_query::OnConflict,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -518,7 +517,12 @@ impl NotificationOutboxIntakeWorker {
             .await?
         {
             ensure_rejection_matches_outbox(&existing, row)?;
-            self.acknowledge_outbox_event_in_transaction(&txn, row.id, row.event_type.as_str()).await?;
+            self.acknowledge_outbox_event_in_transaction(
+                &txn,
+                row.id,
+                row.event_type.as_str(),
+            )
+            .await?;
             txn.commit().await?;
             return Ok(NotificationOutboxIntakeOutcome::Rejected(rejection_result(
                 existing, true,
