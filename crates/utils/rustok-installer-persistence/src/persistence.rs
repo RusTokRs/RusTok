@@ -394,7 +394,7 @@ async fn acquire_lock_in_transaction(
         )
         .filter(install_session::Column::Id.eq(session.id))
         .filter(install_session::Column::LockOwner.is_null())
-        .filter(install_session::Column::Status.is_not_in(final_state_values()))
+        .filter(install_session::Column::Status.eq(install_state_value(InstallState::Draft)))
         .exec(txn)
         .await?;
     if claim.rows_affected != 1 {
@@ -416,7 +416,7 @@ async fn acquire_lock_in_transaction(
     if let Some(existing) = install_session::Entity::find()
         .filter(install_session::Column::Id.ne(session.id))
         .filter(install_session::Column::LockOwner.is_not_null())
-        .filter(install_session::Column::Status.is_not_in(final_state_values()))
+        .filter(install_session::Column::Status.is_not_in(admission_released_state_values()))
         .order_by_desc(install_session::Column::LockExpiresAt)
         .one(txn)
         .await?
@@ -455,12 +455,13 @@ fn install_state_value(state: InstallState) -> &'static str {
     }
 }
 
-fn final_state_values() -> Vec<&'static str> {
+fn admission_released_state_values() -> Vec<&'static str> {
+    // RecoveryRequired is terminal for the executor, but not safe for global
+    // admission: an operator must reconcile its ambiguous external effects.
     vec![
         install_state_value(InstallState::Completed),
         install_state_value(InstallState::Failed),
         install_state_value(InstallState::FreshInstallCleaned),
-        install_state_value(InstallState::RecoveryRequired),
     ]
 }
 
