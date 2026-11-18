@@ -80,6 +80,15 @@ impl OutboxConsumer {
             txn.commit().await?;
             return Ok(());
         };
+        let registered = subscription::Entity::find()
+            .filter(subscription::Column::ConsumerKey.eq(consumer_key))
+            .filter(subscription::Column::EventType.eq(event.event_type.as_str()))
+            .one(&txn)
+            .await?;
+        if registered.is_none() {
+            txn.commit().await?;
+            return Ok(());
+        }
         Self::acknowledge_in_transaction(&txn, consumer_key, outbox_event_id, event.event_type.as_str()).await?;
         txn.commit().await?;
         Ok(())

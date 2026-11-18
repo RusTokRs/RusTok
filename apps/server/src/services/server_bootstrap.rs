@@ -242,7 +242,8 @@ pub async fn bootstrap_application_router(
     #[cfg(feature = "mod-notifications")]
     crate::services::notification_outbox_intake_worker::start_notification_outbox_intake_if_enabled(
         &runtime_ctx,
-    )?;
+    )
+    .await?;
 
     #[cfg(feature = "mod-notifications")]
     crate::services::notification_fanout_worker::start_notification_fanout_worker_if_ready(

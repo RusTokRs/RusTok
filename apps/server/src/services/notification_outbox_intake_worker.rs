@@ -11,9 +11,10 @@ use rustok_notifications::api::{
 use rustok_notifications::{
     DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE, NotificationError,
     NotificationOutboxEnvelopeDecoder, NotificationOutboxEnvelopeRecord,
-    NotificationOutboxIntakeOutcome, NotificationOutboxIntakeWorker, NotificationResult,
+    NotificationOutboxIntakeOutcome, NotificationOutboxIntakeReceiptPort, NotificationOutboxIntakeWorker, NotificationResult,
 };
 use tokio::task::JoinHandle;
+use rustok_outbox::OutboxConsumer;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
@@ -23,6 +24,7 @@ use crate::services::server_runtime_context::ServerRuntimeContext;
 pub const NOTIFICATION_OUTBOX_INTAKE_ENABLED_ENV: &str =
     "RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED";
 const OUTBOX_INTAKE_POLL_INTERVAL: Duration = Duration::from_millis(500);
+const NOTIFICATION_OUTBOX_CONSUMER_KEY: &str = "notifications.outbox-intake";
 const FORUM_SOURCE: &str = "forum";
 const FORUM_TOPIC_CREATED: &str = "forum.topic.created";
 const FORUM_TOPIC_REPLIED: &str = "forum.topic.replied";
@@ -135,6 +137,29 @@ impl NotificationOutboxEnvelopeDecoder for ServerNotificationOutboxEnvelopeDecod
     }
 }
 
+#[derive(Debug, Default)]
+struct ServerNotificationOutboxIntakeReceiptPort;
+
+#[async_trait::async_trait]
+impl NotificationOutboxIntakeReceiptPort for ServerNotificationOutboxIntakeReceiptPort {
+    async fn acknowledge_in_transaction(
+        &self,
+        transaction: &sea_orm::DatabaseTransaction,
+        consumer_key: &str,
+        outbox_event_id: Uuid,
+        event_type: &str,
+    ) -> NotificationResult<()> {
+        OutboxConsumer::acknowledge_in_transaction(
+            transaction,
+            consumer_key,
+            outbox_event_id,
+            event_type,
+        )
+        .await
+        .map_err(NotificationError::Database)
+    }
+}
+
 pub struct NotificationOutboxIntakeWorkerHandle {
     instance_id: u64,
     _handle: JoinHandle<()>,
@@ -159,7 +184,7 @@ impl NotificationOutboxIntakeWorkerHandle {
     }
 }
 
-pub fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeContext) -> Result<()> {
+pub async fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeContext) -> Result<()> {
     if !ctx.settings().runtime.runs_background_workers()
         || ctx.shared_contains::<NotificationOutboxIntakeWorkerHandle>()
     {
@@ -173,15 +198,52 @@ pub fn start_notification_outbox_intake_if_enabled(ctx: &ServerRuntimeContext) -
         return Ok(());
     }
 
-    let stop_rx = StopHandle::ensure(ctx).subscribe();
+    let decoder = Arc::new(ServerNotificationOutboxEnvelopeDecoder);
+    let accepted_event_types = decoder.accepted_event_types();
+    let outbox_consumer = OutboxConsumer::new(ctx.db_clone());
+    outbox_consumer
+        .register_required_event_types(NOTIFICATION_OUTBOX_CONSUMER_KEY, &accepted_event_types)
+        .await
+        .map_err(|error| Error::Message(format!("notification outbox consumer registration failed: {error}")))?;
 
-    let instance_id = NOTIFICATION_OUTBOX_INTAKE_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
     let worker = NotificationOutboxIntakeWorker::new(
         ctx.db_clone(),
-        Arc::new(ServerNotificationOutboxEnvelopeDecoder),
+        decoder,
         DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE,
     )
-    .map_err(|error| Error::Message(format!("notification outbox intake is invalid: {error}")))?;
+    .map_err(|error| Error::Message(format!("notification outbox intake is invalid: {error}")))?
+    .with_receipt_port(
+        NOTIFICATION_OUTBOX_CONSUMER_KEY,
+        Arc::new(ServerNotificationOutboxIntakeReceiptPort),
+    )
+    .map_err(|error| Error::Message(format!("notification outbox receipt port is invalid: {error}")))?;
+
+    // Reconcile terminal receipts created before the generic Outbox consumer
+    // ledger existed. Registration/backfill run before runtime workers (and
+    // therefore retention) are started by server_bootstrap.
+    let mut cursor = None;
+    loop {
+        let ids = worker
+            .terminal_outbox_event_ids_after(cursor, DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE)
+            .await
+            .map_err(|error| Error::Message(format!("notification outbox receipt backfill failed: {error}")))?;
+        if ids.is_empty() {
+            break;
+        }
+        for outbox_event_id in &ids {
+            outbox_consumer
+                .acknowledge_existing(NOTIFICATION_OUTBOX_CONSUMER_KEY, *outbox_event_id)
+                .await
+                .map_err(|error| Error::Message(format!("notification outbox receipt backfill failed for {outbox_event_id}: {error}")))?;
+        }
+        cursor = ids.last().copied();
+        if ids.len() < DEFAULT_NOTIFICATION_OUTBOX_INTAKE_BATCH_SIZE {
+            break;
+        }
+    }
+
+    let stop_rx = StopHandle::ensure(ctx).subscribe();
+    let instance_id = NOTIFICATION_OUTBOX_INTAKE_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
 
     tracing::info!(
         instance_id,
