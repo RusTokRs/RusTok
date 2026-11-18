@@ -179,7 +179,7 @@ requireOrder(
     "start_notification_outbox_intake_if_enabled",
     "start_notification_fanout_worker_if_ready",
     "start_notification_candidate_worker_if_ready",
-    "connect_runtime_workers_with_runtime",
+    "connect_runtime_workers_with_runtime(runtime_ctx.clone())",
   ],
   "notification worker bootstrap order is invalid",
 );
