@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use chrono::Utc;
+use tracing::instrument;
 use rustok_product::entities::product;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
@@ -259,6 +260,7 @@ impl ProductRelationService {
 ///
 /// Both the plain owner port method and the receipt-bound owner command use this exact body, so an
 /// idempotent retry can never diverge from the non-idempotent write path.
+#[instrument(skip(txn, input), fields(tenant_id = %tenant_id, product_id = %input.product_id, related_product_id = %input.related_product_id))]
 pub(crate) async fn create_relation_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -340,6 +342,7 @@ pub(crate) async fn create_relation_in_tx(
 ///
 /// The caller owns transaction completion and may therefore pair this mutation with a durable
 /// idempotency receipt without exposing a post-commit response race.
+#[instrument(skip(txn, input), fields(tenant_id = %tenant_id, relation_id = %relation_id))]
 pub(crate) async fn update_relation_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
@@ -404,6 +407,7 @@ pub(crate) async fn update_relation_in_tx(
 }
 
 /// Deletes one relation and closes its ordered group inside the caller transaction.
+#[instrument(skip(txn), fields(tenant_id = %tenant_id, relation_id = %relation_id))]
 pub(crate) async fn delete_relation_in_tx(
     txn: &DatabaseTransaction,
     tenant_id: Uuid,
