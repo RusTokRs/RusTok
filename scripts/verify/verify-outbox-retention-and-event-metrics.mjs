@@ -40,6 +40,9 @@ const retention = readRepo("crates/modules/rustok-outbox/src/retention.rs");
 requireText(retention, "pub struct OutboxRetentionConfig", "retention configuration type");
 requireText(retention, "pub struct OutboxRetention {", "owner retention pruner");
 requireText(retention, "pub async fn prune_once(", "owner retention prune entry point");
+requireText(retention, "sys_event_consumers", "retention must honor registered consumer event types");
+requireText(retention, "sys_event_consumer_receipts", "retention must honor durable consumer acknowledgements");
+requireText(retention, "Expr::cust(", "retention must recheck the consumer predicate in SQL");
 requireText(
   retention,
   "pub async fn prune_once(&self) -> Result<OutboxPruneReport>",
@@ -67,8 +70,14 @@ requireText(
   "retention prune must report whether it filled its batch",
 );
 
+const consumerStorage = readRepo("crates/libs/rustok-outbox-storage/src/consumers.rs");
+requireText(consumerStorage, "register_required_event_types", "consumer event-type registration API");
+requireText(consumerStorage, "acknowledge_in_transaction", "transaction-bound consumer acknowledgement API");
+requireText(consumerStorage, "on_conflict", "consumer acknowledgement must be idempotent");
+
 const outboxLib = readRepo("crates/modules/rustok-outbox/src/lib.rs");
 requireText(outboxLib, "pub mod retention;", "outbox retention module export");
+requireText(outboxLib, "OutboxConsumer", "generic durable consumer API must be exported");
 for (const ownerExport of [
   "DEFAULT_OUTBOX_RETENTION_BATCH_SIZE",
   "OutboxPruneReport",
@@ -151,6 +160,9 @@ requireText(
   "rustok_outbox::OutboxRetention::new(ctx.db_clone()).with_config(retention)",
   "resolved retention must be built by the owner",
 );
+
+const retentionMigration = readRepo("crates/utils/rustok-migrations/src/m20261118_000001_add_sys_event_consumer_retention.rs");
+requireText(retentionMigration, "create_sys_event_consumer_tables", "consumer retention schema migration");
 
 const worker = readRepo("apps/server/src/services/outbox_retention_worker.rs");
 requireText(

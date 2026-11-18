@@ -49,8 +49,8 @@ const library = read("crates/modules/rustok-notifications/src/lib.rs");
 const manifest = read("crates/modules/rustok-notifications/Cargo.toml");
 const test = read(contract.tests?.[0] ?? "");
 
-if (contract.slice !== "NOTIFY-03D" || contract.schema_version !== 3) {
-  failures.push("outbox intake contract must identify hardened NOTIFY-03D schema 3");
+if (contract.slice !== "NOTIFY-03D" || contract.schema_version !== 4) {
+  failures.push("outbox intake contract must identify hardened NOTIFY-03D schema 4");
 }
 for (const [field, expected] of [
   ["mutates_general_relay_state", false],
@@ -70,6 +70,17 @@ for (const [field, expected] of [
 }
 if (contract.runtime?.default_enabled !== false) {
   failures.push("outbox intake must remain disabled by default");
+}
+for (const [field, expected] of [
+  ["registers_before_retention_worker", true],
+  ["terminal_receipt_and_outbox_ack_same_transaction", true],
+  ["startup_backfills_existing_terminal_receipts", true],
+  ["retryable_failure_acknowledged", false],
+  ["outbox_reads_notification_owned_tables", false],
+]) {
+  if (contract.retention?.[field] !== expected) {
+    failures.push(`unexpected retention contract value for ${field}`);
+  }
 }
 if (contract.selection?.default_batch_size !== 32 || contract.selection?.maximum_batch_size !== 64) {
   failures.push("outbox intake batch bounds must remain 32/64");
@@ -115,6 +126,10 @@ for (const marker of [
   ".decode(&envelope)",
   "ensure_receipt_identity(&existing, outbox_event_id, &source_event)",
   "error.is_retryable()",
+  "NotificationOutboxIntakeReceiptPort",
+  "acknowledge_outbox_event_in_transaction",
+  "terminal_outbox_event_ids_after",
+  "acknowledge_existing_outbox_event",
 ]) {
   requireText(owner, marker, `Notifications outbox intake owner is missing ${marker}`);
 }
@@ -150,6 +165,10 @@ for (const marker of [
   "RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED",
   "runs_background_workers()",
   "StopHandle",
+  "OutboxConsumer::register_required_event_types",
+  "with_receipt_port",
+  "terminal_outbox_event_ids_after",
+  "acknowledge_existing",
 ]) {
   requireText(server, marker, `server outbox intake worker is missing ${marker}`);
 }
@@ -160,6 +179,7 @@ requireOrder(
     "start_notification_outbox_intake_if_enabled",
     "start_notification_fanout_worker_if_ready",
     "start_notification_candidate_worker_if_ready",
+    "connect_runtime_workers_with_runtime",
   ],
   "notification worker bootstrap order is invalid",
 );
@@ -174,6 +194,8 @@ for (const marker of [
 reject(manifest, /rustok-events|rustok-outbox|rustok-api\.workspace/, "owner manifest must remain neutral and lock-compatible");
 
 for (const marker of [
+  "terminal_intake_receipt_and_outbox_ack_commit_atomically",
+  "test_outbox_consumer_receipts",
   "accepted_and_permanent_invalid_envelopes_leave_no_head_of_line_blocker",
   "assert_eq!(first.accepted, 31)",
   "assert_eq!(first.rejected, 1)",
