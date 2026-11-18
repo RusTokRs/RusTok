@@ -31,11 +31,11 @@ impl MigrationTrait for Migration {
             ))
             .await?;
         if !rows.is_empty() {
-            let profiles = rows
-                .iter()
-                .filter_map(|row| String::try_get(row, "", "slug").ok())
-                .collect::<Vec<_>>()
-                .join(", ");
+            let mut profiles = Vec::with_capacity(rows.len());
+            for row in &rows {
+                profiles.push(String::try_get(row, "", "slug")?);
+            }
+            let profiles = profiles.join(", ");
             return Err(DbErr::Migration(format!(
                 "AI provider target migration blocked by custom tenant endpoints in profiles: {profiles}. Create deployment-owned targets and clear legacy settings before retrying"
             )));

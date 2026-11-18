@@ -109,7 +109,9 @@ pub fn TranslationAdmin() -> impl IntoView {
                                                 core::tab_query_intent(target),
                                             );
                                             if let Some(button) = focus_refs[target.index()].get() {
-                                                let _ = button.focus();
+                                                if let Err(focus_err) = button.focus() {
+                                                    leptos::logging::warn!("failed to focus tab button: {:?}", focus_err);
+                                                }
                                             }
                                         }
                                     }

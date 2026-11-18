@@ -93,8 +93,11 @@ impl PostgresCommentsTcpDelegationSchedulePersistenceStore {
             .spawn(move || {
                 let runtime = match Builder::new_current_thread().enable_all().build() {
                     Ok(runtime) => runtime,
-                    Err(_) => {
-                        let _ = startup_sender.send(PostgresWorkerStartup::Failed);
+                    Err(error) => {
+                        tracing::error!(%error, "Failed to initialize Postgres store worker Tokio runtime");
+                        if startup_sender.send(PostgresWorkerStartup::Failed).is_err() {
+                            tracing::warn!("Failed to notify startup receiver of Postgres store worker runtime failure");
+                        }
                         return;
                     }
                 };
@@ -183,7 +186,9 @@ fn run_postgres_store_worker(
         match command {
             PostgresStoreCommand::VerifyCurrent { expected, response } => {
                 let result = runtime.block_on(verify_current_on_postgres(&database, &expected));
-                let _ = response.send(result);
+                if response.send(result).is_err() {
+                    tracing::debug!("Caller dropped verify_current response receiver");
+                }
             }
             PostgresStoreCommand::CompareAndStore {
                 expected,
@@ -195,7 +200,9 @@ fn run_postgres_store_worker(
                     expected.as_ref(),
                     &candidate,
                 ));
-                let _ = response.send(result);
+                if response.send(result).is_err() {
+                    tracing::debug!("Caller dropped compare_and_store response receiver");
+                }
             }
         }
     }

@@ -47,10 +47,13 @@ pub fn static_module_registry_reader_from_context(
     }
 
     let candidate = ServerStaticModuleRegistryReader::shared(runtime.clone(), registry);
-    let _ = runtime.shared_insert_if_absent(candidate.clone());
-    runtime
-        .shared_get::<SharedStaticModuleRegistryReader>()
-        .unwrap_or(candidate)
+    if runtime.shared_insert_if_absent(candidate.clone()) {
+        candidate
+    } else {
+        runtime
+            .shared_get::<SharedStaticModuleRegistryReader>()
+            .unwrap_or(candidate)
+    }
 }
 
 #[async_trait]

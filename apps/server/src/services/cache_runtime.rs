@@ -14,8 +14,11 @@ pub fn ensure_cache_service(ctx: &ServerRuntimeContext) -> CacheService {
     }
 
     let candidate = CacheService::from_url(ctx.settings().cache.redis_url.as_deref());
-    let _ = ctx.shared_insert_if_absent(candidate.clone());
-    ctx.shared_get::<CacheService>().unwrap_or(candidate)
+    if ctx.shared_insert_if_absent(candidate.clone()) {
+        candidate
+    } else {
+        ctx.shared_get::<CacheService>().unwrap_or(candidate)
+    }
 }
 
 #[cfg(test)]

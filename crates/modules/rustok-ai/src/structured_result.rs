@@ -194,6 +194,9 @@ impl StructuredResultKeyring {
         result: &ai_structured_results::Model,
         now: DateTime<Utc>,
     ) -> Result<Value, PortError> {
+        // INVARIANT: Tenant isolation is enforced at the database level in caller queries
+        // via .filter(Column::TenantId.eq(tenant_id)). This check validates sealed envelope
+        // binding and prevents tampering before cryptographic decryption.
         if result.tenant_id != tenant_id
             || result.execution_id != execution_id
             || result.request_digest != expected_request_digest

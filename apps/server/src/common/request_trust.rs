@@ -12,11 +12,20 @@ use ipnet::IpNet;
 use super::settings::{ForwardedHeadersMode, RequestTrustSettings};
 
 fn trusted_proxy_nets(settings: &RequestTrustSettings) -> Vec<IpNet> {
-    settings
-        .trusted_proxy_cidrs
-        .iter()
-        .filter_map(|value| IpNet::from_str(value.trim()).ok())
-        .collect()
+    let mut nets = Vec::with_capacity(settings.trusted_proxy_cidrs.len());
+    for value in &settings.trusted_proxy_cidrs {
+        match IpNet::from_str(value.trim()) {
+            Ok(net) => nets.push(net),
+            Err(error) => {
+                tracing::warn!(
+                    cidr = %value,
+                    %error,
+                    "Ignoring invalid trusted proxy CIDR configuration"
+                );
+            }
+        }
+    }
+    nets
 }
 
 pub fn peer_ip_from_extensions(extensions: &Extensions) -> Option<IpAddr> {

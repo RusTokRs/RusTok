@@ -302,10 +302,17 @@ fn tenant_locale_entry_weight(
 }
 
 fn tenant_locale_cache(ctx: &ServerRuntimeContext) -> Arc<TenantLocaleCache> {
-    let candidate = Arc::new(TenantLocaleCache::new());
-    let _ = ctx.shared_insert_if_absent(candidate.clone());
-    ctx.shared_get::<Arc<TenantLocaleCache>>()
-        .unwrap_or(candidate)
+    if let Some(existing) = ctx.shared_get::<Arc<TenantLocaleCache>>() {
+        existing
+    } else {
+        let candidate = Arc::new(TenantLocaleCache::new());
+        if ctx.shared_insert_if_absent(candidate.clone()) {
+            candidate
+        } else {
+            ctx.shared_get::<Arc<TenantLocaleCache>>()
+                .unwrap_or(candidate)
+        }
+    }
 }
 
 pub async fn resolve_locale(

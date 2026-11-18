@@ -89,7 +89,7 @@ pub fn start_notification_fanout_worker_if_ready(ctx: &ServerRuntimeContext) -> 
     let stop_rx = StopHandle::ensure(ctx).subscribe();
 
     let instance_id = NOTIFICATION_FANOUT_WORKER_INSTANCE_IDS.fetch_add(1, Ordering::Relaxed);
-    let worker_id = format!("notification-fanout-{instance_id}");
+    let worker_id = notification_fanout_worker_id(instance_id);
     let worker = NotificationFanoutWorker::new(
         ctx.db_clone(),
         source_registry,
@@ -115,6 +115,10 @@ pub fn start_notification_fanout_worker_if_ready(ctx: &ServerRuntimeContext) -> 
         )),
     });
     Ok(())
+}
+
+fn notification_fanout_worker_id(instance_id: u64) -> String {
+    format!("notification-fanout-{instance_id}-{}", uuid::Uuid::new_v4())
 }
 
 async fn notification_fanout_worker_loop(
@@ -423,5 +427,20 @@ fn fanout_worker_enabled_from_environment() -> bool {
             );
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::notification_fanout_worker_id;
+
+    #[test]
+    fn fanout_lease_owner_ids_are_unique_even_when_local_instance_ids_match() {
+        let first = notification_fanout_worker_id(1);
+        let second = notification_fanout_worker_id(1);
+
+        assert_ne!(first, second);
+        assert!(first.starts_with("notification-fanout-1-"));
+        assert!(first.len() <= 191, "owner identity must fit the module contract");
     }
 }

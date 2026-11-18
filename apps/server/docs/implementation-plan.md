@@ -970,3 +970,378 @@ Deferred work remains the service-token TTL policy, the cross-crate OAuth code-r
 event, deduplication of `RbacService::record_claim_role_mismatch()`, and database/Redis
 failure-path evidence. The historical source-guard/ADR failures recorded in earlier batches
 were resolved by the refreshed `main`; the current runs above pass.
+
+
+## P9 — Empty module listener registry routing (2026-11-18)
+
+A worker host must bind the module listener registry even when the composed
+module set registers zero handlers. Previously the host treated an empty set as
+a reason not to start the dispatcher. That left the configured transport unable
+to distinguish an intentionally empty registry from a dispatcher that had not
+initialized: remote-only sealed families were refused before reaching Iggy, and
+the single-node outbox target had no local receiver for root events.
+
+### Implemented
+
+- Worker hosts now start the dispatcher for both populated and empty listener
+  sets. The empty registry is explicit and remains part of readiness; it is not
+  represented as a missing worker.
+- Required local sealed families still fail closed when no matching handler
+  exists. Remote-only families can be sent to the configured primary when the
+  registry is explicitly empty.
+- Added regression coverage for empty-registry startup and remote-only delivery.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::module_event_dispatcher
+cargo test -p rustok-server --lib services::event_transport_factory
+```
+
+
+
+## P10 — Unique notification lease-owner identities (2026-11-18)
+
+The server adapters previously derived the distributed lease owner for
+notification fanout and candidate work from a process-local atomic counter.
+Every replica therefore started with the same owner string (for example,
+`notification-fanout-1`). The owner services fence completion by comparing
+that string and the lease expiry. If a slow worker outlived its lease and another
+replica reclaimed the row with the same owner string, the stale worker could
+mistake the new lease for its own and commit after the reclaim.
+
+### Implemented
+
+- Fanout and candidate lease-owner IDs now include a fresh UUID for each worker
+  instance. The local atomic instance ID remains only for host-local handle
+  identity and diagnostics.
+- Added regression tests proving that two worker instances with the same local
+  counter value receive different lease-owner IDs and remain within the owner
+  contract's length limit.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::notification_fanout_worker
+cargo test -p rustok-server --lib services::notification_candidate_worker
+```
+
+
+
+## P11 — Comments worker readiness visibility (2026-11-18)
+
+The Comments TCP listener and schedule-audit handoff worker already had bounded
+shutdown drains, but neither appeared in the runtime worker snapshots. A task
+could therefore terminate unexpectedly while the HTTP health endpoint remained
+green.
+
+### Implemented
+
+- The optional Comments TCP listener and schedule-audit handoff worker are now
+  included in readiness whenever their handles are present.
+- Added a lifecycle regression test that verifies both workers are required
+  while running and are removed by the normal shutdown drain.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib --features mod-comments
+cargo test -p rustok-server --lib services::app_lifecycle::lifecycle_tests::comments_listener_and_audit_handoff_workers_are_required_when_started
+```
+
+
+
+## P12 — Notification intake versus Outbox retention (resolved by P18)
+
+The original failure boundary was real: Notifications persisted accepted
+receipts and permanent rejections in owner tables while Outbox pruned dispatched
+`sys_events` rows solely by age. A stalled intake worker could therefore lose
+its source envelope before recording a terminal outcome.
+
+P18 resolves the cross-owner boundary with Outbox-owned durable consumer
+registrations and per-event acknowledgements. The Outbox owner does not query
+notification-owned tables, and Notifications does not mutate relay state.
+See the accepted [consumer-retention decision](../../../DECISIONS/2026-11-18-outbox-consumer-retention-acknowledgements.md).
+
+The guarantee applies to rows that still exist when the consumer registration
+is committed. Already-pruned historical events cannot be reconstructed; old
+terminal notification receipts are backfilled before retention starts.
+
+
+
+## P13 — Acknowledge root-event projections before outbox completion (2026-11-18)
+
+The sealed contract path already awaited matching module handlers, but root
+`DomainEvent` delivery only broadcast into an in-memory channel. The outbox
+relay could mark a row dispatched before root projections completed; handler
+errors after the configured retry budget were logged and swallowed. In the
+Iggy profile, a local root-projection failure was also swallowed after remote
+acceptance, leaving no durable local retry.
+
+### Implemented
+
+- Added an acknowledged root-delivery path through the existing explicit module
+  listener registry. It waits for every matching handler and propagates handler,
+  capacity, and shutdown failures to the outbox relay.
+- The single-node `outbox` profile now uses the acknowledged local target.
+  The `outbox_iggy` profile also returns local projection failures so the
+  canonical outbox envelope is retried unchanged.
+- An unavailable local registry is rejected before irreversible remote
+  publication. A projection failure after remote acceptance may still cause
+  the same envelope to be published again; remote consumers must be idempotent.
+- Added regression coverage for handler completion, projection failure,
+  explicit empty registries, primary refusal, and retry with the same event ID.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-core --lib
+cargo test -p rustok-core --lib events::contract_delivery
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::event_transport_factory
+```
+
+
+
+## P14 — Retry and graceful shutdown for the in-process event forwarder (2026-11-18)
+
+The server event forwarder previously consumed an in-memory event and only
+logged a transport error. A transient database failure therefore lost the
+event before it reached the durable outbox. Backpressure accounting also had
+no release path for forwarded events or lagged messages, and the configured
+queue depth could exceed the Tokio broadcast ring capacity, allowing the ring
+to drop events before backpressure rejected new publishers. Shutdown aborted
+the forwarder immediately, discarding queued or in-flight events.
+
+### Implemented
+
+- The forwarder retries the same envelope with bounded exponential delay until
+  the transport accepts it; transport panics are caught and retried as well.
+- Root OutboxTransport publication is idempotent by envelope ID and verifies
+  exact canonical facts before accepting a duplicate, covering ambiguous
+  database commit responses.
+- Backpressure permits are released after persistence, for lagged messages,
+  and when queued messages are discarded during task teardown.
+- The effective backpressure depth is clamped to the broadcast capacity, and
+  permit acquisition uses compare-and-swap so concurrent publishers cannot
+  exceed the configured critical depth.
+- Shutdown signals the forwarder to drain accepted messages and allows up to
+  30 seconds before forced abort. P17 orders this dedicated drain after producer
+  workers have joined.
+- Added regression coverage for transient transport failure, shutdown draining,
+  permit release, concurrent backpressure acquisition, and idempotent outbox
+  retries.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-core --lib
+cargo test -p rustok-core --lib events::backpressure
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::event_bus
+cargo test -p rustok-server --lib services::app_lifecycle
+cargo test -p rustok-outbox --test sqlite_transport_regression_test
+```
+
+
+
+## P15 — Event forwarder readiness visibility (2026-11-18)
+
+The event forwarder was supervised and drained during shutdown, but it was not
+included in the runtime worker readiness snapshot. If its supervisor exited,
+the HTTP host could remain green even though the in-memory-to-outbox bridge was
+no longer running.
+
+### Implemented
+
+- A started event forwarder is now a required worker in local runtime readiness.
+- Readiness reports it as finished if its supervisor task has terminated.
+- Added a lifecycle regression assertion for the forwarder's required/live
+  snapshot state.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::app_lifecycle::tests::shutdown_aborts_invalidation_and_event_supervisors_even_with_live_clones
+```
+
+
+
+## P16 — Cross-cutting event-delivery invariants documented (2026-11-18)
+
+Codified the recurring failure patterns found in the server audit in
+`docs/standards/logic-hygiene-patterns.md`: replica-unique lease ownership,
+atomic backpressure reservation, durable idempotent forwarding, acknowledged
+projection delivery, and cooperative shutdown. Each invariant now includes a
+specific regression check so future changes can preserve the same guarantees.
+
+
+## P17 — Close event-forwarder admission and shutdown races (2026-11-18)
+
+The P14 bridge still had two loss windows: with the default
+`backpressure.enabled = false`, the Tokio broadcast ring could overwrite
+accepted events while the forwarder retried a failed outbox write; and the
+shared stop signal let the forwarder drain concurrently with producers that
+were still completing in-flight work. A third startup race allowed the first
+publisher to run before the spawned forwarder had subscribed.
+
+### Implemented
+
+- Install a hard admission controller for the server-owned EventBus-to-Outbox
+  forwarder bus, including when configurable backpressure is disabled. The hard
+  depth equals the broadcast capacity; enabling backpressure adds configurable
+  early thresholds and a possibly smaller depth.
+- Honor configured `channel_capacity` even when EventBus is requested before
+  EventRuntime has been composed.
+- Subscribe the initial forwarder receiver synchronously before returning the
+  EventBus to its first publisher; supervised restarts create a fresh receiver.
+- Give the forwarder a dedicated stop signal. The global stop first quiesces
+  producers; the forwarder is stopped and drained only after all other
+  registered worker drains have joined.
+- Add regressions for default hard admission, first-publish subscription, and
+  producer-first shutdown draining.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::event_bus
+cargo test -p rustok-server --lib services::app_lifecycle
+```
+
+
+## P18 — Retain Outbox events until required consumers acknowledge (2026-11-18)
+
+The Notifications intake worker previously wrote terminal outcomes into
+notification-owned tables, while Outbox retention deleted dispatched source
+events by age alone. A prolonged intake outage could therefore remove an event
+before its notification receipt or permanent rejection existed.
+
+### Implemented
+
+- Added Outbox-owned `sys_event_consumers` registrations and
+  `sys_event_consumer_receipts` acknowledgements. Retention now deletes a
+  dispatched event only after every registered consumer for its event type has
+  acknowledged the canonical event ID.
+- Added an append-only platform migration and shared standalone schema helper.
+  Receipt rows cascade with the canonical Outbox event.
+- Notifications registers its supported event types before the server starts
+  runtime workers and retention. A neutral receipt port commits the Outbox
+  acknowledgement in the same transaction as the accepted intake receipt or
+  permanent rejection; retryable failures create neither terminal receipt nor
+  acknowledgement.
+- Added bounded startup backfill for existing terminal Notifications receipts
+  before retention starts. Already-pruned IDs are harmless because the owner
+  terminal receipt is already durable.
+- Added regression coverage for multi-consumer retention holds, idempotent
+  acknowledgements, and atomic notification receipt/Outbox acknowledgement.
+- Registration is durable and additive. Disabling intake does not silently
+  release its retention obligation; unacknowledged events remain stored until
+  intake recovers or an operator explicitly retires the consumer after drain.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-outbox-storage --lib
+cargo test -p rustok-outbox-storage --lib consumers
+cargo check -p rustok-outbox --lib
+cargo test -p rustok-outbox --lib retention
+cargo check -p rustok-notifications --all-targets
+cargo test -p rustok-notifications --test outbox_intake_sqlite
+cargo check -p rustok-server --lib --features mod-notifications
+cargo test -p rustok-server --lib services::notification_outbox_intake_worker
+cargo test -p rustok-migrations
+node scripts/verify/verify-notifications-outbox-intake.mjs
+node scripts/verify/verify-outbox-retention-and-event-metrics.mjs
+node scripts/verify/verify-migration-backfill-contracts.mjs
+```
+
+PostgreSQL migration and concurrent retention/acknowledgement behavior remain
+maintainer/CI gates.
+
+
+## P19 — Release backpressure reservations on dispatcher lag (2026-11-18)
+
+The module dispatcher handled `broadcast::RecvError::Lagged` by advancing the
+receiver and continuing, but did not release the backpressure reservations for
+the skipped envelopes. Under a slow handler, the broadcast ring can overwrite
+events; those accepted-but-lost messages therefore remained counted forever and
+could eventually make the backpressure controller reject healthy publishers.
+
+### Implemented
+
+- Release one EventBus backpressure reservation for every skipped envelope when
+  the module dispatcher observes broadcast lag.
+- Clamp dispatcher semaphore capacities in the legacy `start()` path so
+  externally supplied oversized `DispatcherConfig` values cannot panic inside
+  the spawned task.
+- Use saturating retry-attempt arithmetic so `retry_count = usize::MAX` cannot
+  overflow before handler execution.
+- Added a regression test proving lagged reservations return the controller to
+  zero after the retained event completes.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-core --lib
+cargo test -p rustok-core --lib events::handler
+```
+
+
+
+## P20 — Surface core runtime worker failures in readiness (2026-11-18)
+
+The runtime readiness snapshot covered the event forwarder and several module
+workers, but omitted the Outbox relay, Outbox retention, remote-executor reaper,
+and SEO bulk worker. A terminated required worker could therefore leave the HTTP
+host reporting ready while durable delivery, retention, recovery, or SEO work had
+stopped.
+
+### Implemented
+
+- Added readiness snapshots for Outbox relay and Outbox retention.
+- Added snapshots for the remote-executor reaper and feature-gated SEO bulk
+  worker once those workers are started.
+- Extended the existing Outbox worker lifecycle test to require both core
+  Outbox workers to appear as live readiness entries.
+
+### Verification status
+
+Not run in this task, at the user's request. Run before merge:
+
+```bash
+cargo fmt --all -- --check
+cargo check -p rustok-server --lib
+cargo test -p rustok-server --lib services::app_lifecycle::tests::connect_runtime_workers_is_idempotent_for_outbox_relay_handle
+```
+

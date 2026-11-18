@@ -255,6 +255,7 @@ async fn load_page_for_import(
     let Some(existing) = existing else {
         return Ok(None);
     };
+    // INVARIANT: Pre-lock cross-tenant check rejects foreign rows fail-closed before taking exclusive lock.
     if existing.tenant_id != tenant_id {
         return Err(route_history_import_conflict(
             "Historical route import page identifier belongs to another tenant",
@@ -264,7 +265,11 @@ async fn load_page_for_import(
     Ok(match txn.get_database_backend() {
         DbBackend::Sqlite => query().one(txn).await?,
         DbBackend::Postgres | DbBackend::MySql => query().lock_exclusive().one(txn).await?,
-        _ => unreachable!("unsupported SeaORM database backend"),
+        backend => {
+            return Err(PagesError::Database(sea_orm::DbErr::Custom(format!(
+                "unsupported SeaORM database backend: {backend:?}"
+            ))));
+        }
     })
 }
 
@@ -418,6 +423,7 @@ fn verify_receipt(
     source: &str,
     item: &PreparedImportItem,
 ) -> PagesResult<()> {
+    // INVARIANT: Tenant isolation is enforced at the database level when querying provenance receipts.
     if receipt.tenant_id != tenant_id
         || receipt.source != source
         || receipt.source_record_id != item.source_record_id
@@ -478,13 +484,7 @@ fn import_request_hash(
 }
 
 fn encode_digest(digest: &[u8]) -> String {
-    use std::fmt::Write as _;
-
-    let mut encoded = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
-    }
-    encoded
+    hex::encode(digest)
 }
 
 fn checked_increment(value: u32, message: &'static str) -> PagesResult<u32> {

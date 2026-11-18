@@ -93,7 +93,7 @@ maintainer verification gate.
 `NotificationOutboxIntakeWorker` selects supported committed `sys_events` rows in
 stable `created_at/id` order, 32 by default and 64 maximum. Accepted receipts and
 permanent rejections are anti-joined, preventing invalid head-of-line starvation.
-The loop is default-off behind `RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED`.
+The loop is default-off behind `RUSTOK_NOTIFICATIONS_OUTBOX_INTAKE_ENABLED`. When enabled, the server registers the decoder's supported event types in the generic Outbox consumer ledger before starting retention. A neutral receipt port writes the Outbox acknowledgement in the same transaction as an accepted receipt or permanent rejection; retryable failures do not acknowledge. Startup backfills prior terminal receipts before retention begins. The Notifications owner never imports Outbox or queries relay-owned tables.
 
 ### Durable source fanout
 

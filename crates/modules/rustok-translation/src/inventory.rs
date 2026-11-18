@@ -188,7 +188,11 @@ impl TranslationInventoryService {
                     .await?
             }
             DbBackend::Sqlite => current_checkpoint_query.one(&transaction).await?,
-            _ => unreachable!("unsupported SeaORM database backend"),
+            _ => {
+                return Err(TranslationError::Database(sea_orm::DbErr::Custom(
+                    "unsupported SeaORM database backend for inventory checkpoint query".to_string(),
+                )));
+            }
         }
         .ok_or(TranslationError::CheckpointConflict)?;
         let expected_revision = checkpoint.as_ref().map_or(0, |row| row.revision);
@@ -459,7 +463,11 @@ impl TranslationInventoryService {
                     .await?
             }
             DbBackend::Sqlite => current_checkpoint_query.one(&transaction).await?,
-            _ => unreachable!("unsupported SeaORM database backend"),
+            _ => {
+                return Err(TranslationError::Database(sea_orm::DbErr::Custom(
+                    "unsupported SeaORM database backend for inventory checkpoint query".to_string(),
+                )));
+            }
         }
         .ok_or(TranslationError::CheckpointConflict)?;
         if current_checkpoint.revision != expected_checkpoint.revision

@@ -129,7 +129,7 @@ fn start_field_definition_cache_generation_reconciliation_with_timing(
     restart_delay: Duration,
 ) {
     let candidate = FieldDefinitionCacheGenerationStartLock::default();
-    let _ = ctx.shared_insert_if_absent(candidate.clone());
+    ctx.shared_insert_if_absent(candidate.clone());
     let start_lock = ctx
         .shared_get::<FieldDefinitionCacheGenerationStartLock>()
         .unwrap_or(candidate);

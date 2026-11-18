@@ -109,7 +109,11 @@ selector. See [FBA scope](../backend/module-backend-architecture.md#fba-contract
 | :--- | :--- | :--- | :--- |
 | `settings.rustok.events.delivery_profile` | `EVENT_DELIVERY_PROFILE` | `outbox` | Delivery mechanism: `outbox` (local relay), `outbox_iggy` (distributed stream). |
 | `settings.rustok.events.relay_interval_ms` | `OUTBOX_RELAY_INTERVAL_MS` | `1000` | Polling interval in ms for the transactional outbox relay worker. |
-| `settings.rustok.events.channel_capacity` | `EVENT_CHANNEL_CAPACITY` | `256` | In-memory broadcast buffer capacity for domain event subscribers. |
+| `settings.rustok.events.channel_capacity` | `EVENT_CHANNEL_CAPACITY` | `128` | In-memory broadcast buffer capacity for domain event subscribers and the hard event-forwarder admission bound. |
+| `settings.rustok.events.backpressure.enabled` | — | `false` | Enables configurable warning/critical thresholds; a hard admission bound at `channel_capacity` is always enforced. |
+| `settings.rustok.events.backpressure.max_queue_depth` | — | `10000` | Configurable outstanding-event limit when enabled; the effective value is capped at `channel_capacity`. |
+| `settings.rustok.events.backpressure.warning_threshold` | — | `0.7` | Configurable warning threshold when backpressure is enabled. |
+| `settings.rustok.events.backpressure.critical_threshold` | — | `0.9` | Configurable rejection threshold when backpressure is enabled. |
 | `iggy.tcp_address` | `IGGY_TCP_ADDRESS` | `127.0.0.1:8090` | TCP connection endpoint for bundled or external Iggy message stream. |
 | `iggy.root_username` | `IGGY_ROOT_USERNAME` | `iggy` | Administrative credentials for stream creation and topic management. |
 | `iggy.root_password` | `IGGY_ROOT_PASSWORD` | `iggy` | Secret credentials for Iggy cluster authentication. |

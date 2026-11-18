@@ -19,7 +19,9 @@ use crate::model::{
     AiRunDecisionTrace, ChatMessageRole, ExecutionMode, ExecutionOverride, ProviderCapability,
     ProviderUsagePolicy, ToolCall, ToolTrace,
 };
-use crate::{AiTaskDataClassification, ProviderSlug, ProviderTargetId};
+use crate::{
+    AiError, AiResult, AiTaskDataClassification, ProviderSlug, ProviderTargetId,
+};
 
 type AiRunCancellationSenders = HashMap<Uuid, watch::Sender<()>>;
 type SharedAiRunCancellations = Arc<Mutex<AiRunCancellationSenders>>;
@@ -84,27 +86,27 @@ pub struct AiHostRuntime {
 /// their own capability runtime.
 pub fn ai_host_runtime_from_context(
     context: &rustok_api::HostRuntimeContext,
-) -> Result<AiHostRuntime, String> {
+) -> AiResult<AiHostRuntime> {
     let event_bus = context
         .shared_get::<TransactionalEventBus>()
-        .ok_or_else(|| "AI requires TransactionalEventBus in HostRuntimeContext".to_string())?;
+        .ok_or_else(|| AiError::InvalidConfig("AI requires TransactionalEventBus in HostRuntimeContext".to_string()))?;
     let module_registry = context
         .shared_get::<ModuleRegistry>()
-        .ok_or_else(|| "AI requires ModuleRegistry in HostRuntimeContext".to_string())?;
+        .ok_or_else(|| AiError::InvalidConfig("AI requires ModuleRegistry in HostRuntimeContext".to_string()))?;
     let secret_registry = context
         .shared_get::<SharedAiSecretResolverRegistry>()
         .ok_or_else(|| {
-            "AI requires SharedAiSecretResolverRegistry in HostRuntimeContext".to_string()
+            AiError::InvalidConfig("AI requires SharedAiSecretResolverRegistry in HostRuntimeContext".to_string())
         })?
         .0;
     let egress_policy = context
         .shared_get::<SharedAiEgressPolicy>()
-        .ok_or_else(|| "AI requires SharedAiEgressPolicy in HostRuntimeContext".to_string())?
+        .ok_or_else(|| AiError::InvalidConfig("AI requires SharedAiEgressPolicy in HostRuntimeContext".to_string()))?
         .0;
     let provider_targets = context
         .shared_get::<SharedAiProviderTargetCatalog>()
         .ok_or_else(|| {
-            "AI requires SharedAiProviderTargetCatalog in HostRuntimeContext".to_string()
+            AiError::InvalidConfig("AI requires SharedAiProviderTargetCatalog in HostRuntimeContext".to_string())
         })?
         .0;
     let order_status_port = context
@@ -276,7 +278,9 @@ impl AiHostRuntime {
             .unwrap_or_else(|p| p.into_inner())
             .remove(&run_id)
         {
-            let _ = sender.send(());
+            if sender.send(()).is_err() {
+                tracing::debug!(%run_id, "cancellation receiver was already dropped");
+            }
         }
     }
 

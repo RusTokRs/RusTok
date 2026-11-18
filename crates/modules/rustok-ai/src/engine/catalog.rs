@@ -1,13 +1,62 @@
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "server")]
 use std::{collections::BTreeMap, net::IpAddr};
+use thiserror::Error;
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ProviderCatalogError {
+    #[error("provider slug must be non-empty snake_case ASCII")]
+    InvalidProviderSlug,
+    #[error("provider target id must be non-empty lowercase ASCII")]
+    InvalidProviderTargetId,
+    #[error("provider target ids must be unique")]
+    DuplicateTargetId,
+    #[error("invalid RUSTOK_AI_PROVIDER_TARGETS_JSON: {0}")]
+    InvalidTargetsJson(String),
+    #[error("provider target `{id}` references unknown integration `{provider_slug}`")]
+    UnknownIntegration {
+        id: ProviderTargetId,
+        provider_slug: ProviderSlug,
+    },
+    #[error("provider target `{id}` references integration `{provider_slug}` which is not compiled into this deployment")]
+    IntegrationNotCompiled {
+        id: ProviderTargetId,
+        provider_slug: ProviderSlug,
+    },
+    #[error("provider target `{0}` requires a display name")]
+    MissingDisplayName(ProviderTargetId),
+    #[error("provider setting `{0}` is required")]
+    MissingRequiredSetting(String),
+    #[error("unknown provider setting `{0}`")]
+    UnknownSetting(String),
+    #[error("provider setting `{0}` must be text")]
+    SettingMustBeText(String),
+    #[error("provider setting `{0}` must be an integer")]
+    SettingMustBeInteger(String),
+    #[error("provider setting `{0}` must be boolean")]
+    SettingMustBeBoolean(String),
+    #[error("provider setting `{0}` must be a credential ref")]
+    SettingMustBeSecretRef(String),
+    #[error("invalid provider URL: {0}")]
+    InvalidUrl(String),
+    #[error("provider URL must use HTTP(S)")]
+    InvalidUrlScheme,
+    #[error("provider URL requires a host")]
+    MissingUrlHost,
+    #[error("loopback and private provider origins are disabled by server policy")]
+    LocalOriginsDisabled,
+    #[error("non-local provider URLs must use HTTPS")]
+    HttpsRequired,
+    #[error("provider origin `{0}` is not in the server egress allowlist")]
+    HostNotPermitted(String),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ProviderSlug(String);
 
 impl ProviderSlug {
-    pub fn new(value: impl Into<String>) -> Result<Self, String> {
+    pub fn new(value: impl Into<String>) -> Result<Self, ProviderCatalogError> {
         let value = value.into();
         let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
         if normalized.is_empty()
@@ -15,7 +64,7 @@ impl ProviderSlug {
                 .chars()
                 .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
         {
-            return Err("provider slug must be non-empty snake_case ASCII".to_string());
+            return Err(ProviderCatalogError::InvalidProviderSlug);
         }
         Ok(Self(normalized))
     }
@@ -44,7 +93,7 @@ impl Default for ProviderSlug {
 }
 
 impl std::str::FromStr for ProviderSlug {
-    type Err = String;
+    type Err = ProviderCatalogError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         Self::new(value)
@@ -168,20 +217,28 @@ impl ProviderIntegration {
 pub struct ProviderTargetId(String);
 
 impl ProviderTargetId {
-    pub fn new(value: impl Into<String>) -> Result<Self, String> {
+    pub fn new(value: impl Into<String>) -> Result<Self, ProviderCatalogError> {
         let value = value.into().trim().to_ascii_lowercase();
         if value.is_empty()
             || !value
                 .chars()
                 .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-')
         {
-            return Err("provider target id must be non-empty lowercase ASCII".to_string());
+            return Err(ProviderCatalogError::InvalidProviderTargetId);
         }
         Ok(Self(value))
     }
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl std::str::FromStr for ProviderTargetId {
+    type Err = ProviderCatalogError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::new(value)
     }
 }
 
@@ -220,7 +277,7 @@ pub struct AiProviderTargetCatalog {
 
 #[cfg(feature = "server")]
 impl AiProviderTargetCatalog {
-    pub fn new(targets: Vec<AiProviderTarget>) -> Result<Self, String> {
+    pub fn new(targets: Vec<AiProviderTarget>) -> Result<Self, ProviderCatalogError> {
         Self::new_with_egress_policy(targets, &ProviderEgressPolicy::default())
     }
 
@@ -232,12 +289,12 @@ impl AiProviderTargetCatalog {
     pub fn new_with_egress_policy(
         targets: Vec<AiProviderTarget>,
         egress_policy: &ProviderEgressPolicy,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, ProviderCatalogError> {
         let mut values = BTreeMap::new();
         for target in targets {
             validate_provider_target(&target, egress_policy)?;
             if values.insert(target.id.clone(), target).is_some() {
-                return Err("provider target ids must be unique".to_string());
+                return Err(ProviderCatalogError::DuplicateTargetId);
             }
         }
         Ok(Self { targets: values })
@@ -245,7 +302,7 @@ impl AiProviderTargetCatalog {
 
     /// Reads deployment configuration only. Values in this JSON must never be
     /// accepted through tenant-facing transports.
-    pub fn from_environment() -> Result<Self, String> {
+    pub fn from_environment() -> Result<Self, ProviderCatalogError> {
         Self::from_environment_with_egress_policy(&ProviderEgressPolicy::default())
     }
 
@@ -253,12 +310,12 @@ impl AiProviderTargetCatalog {
     /// egress policy. This must run before targets are exposed to profiles/UI.
     pub fn from_environment_with_egress_policy(
         egress_policy: &ProviderEgressPolicy,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, ProviderCatalogError> {
         let Some(raw) = std::env::var_os("RUSTOK_AI_PROVIDER_TARGETS_JSON") else {
             return Ok(Self::default());
         };
         let targets = serde_json::from_str::<Vec<AiProviderTarget>>(&raw.to_string_lossy())
-            .map_err(|error| format!("invalid RUSTOK_AI_PROVIDER_TARGETS_JSON: {error}"))?;
+            .map_err(|error| ProviderCatalogError::InvalidTargetsJson(error.to_string()))?;
         Self::new_with_egress_policy(targets, egress_policy)
     }
 
@@ -275,24 +332,21 @@ impl AiProviderTargetCatalog {
 fn validate_provider_target(
     target: &AiProviderTarget,
     egress_policy: &ProviderEgressPolicy,
-) -> Result<(), String> {
+) -> Result<(), ProviderCatalogError> {
     let descriptor = provider_catalog_entry(&target.provider_slug).ok_or_else(|| {
-        format!(
-            "provider target `{}` references unknown integration `{}`",
-            target.id, target.provider_slug
-        )
+        ProviderCatalogError::UnknownIntegration {
+            id: target.id.clone(),
+            provider_slug: target.provider_slug.clone(),
+        }
     })?;
     if !descriptor.compiled_in {
-        return Err(format!(
-            "provider target `{}` references integration `{}` which is not compiled into this deployment",
-            target.id, target.provider_slug
-        ));
+        return Err(ProviderCatalogError::IntegrationNotCompiled {
+            id: target.id.clone(),
+            provider_slug: target.provider_slug.clone(),
+        });
     }
     if target.display_name.trim().is_empty() {
-        return Err(format!(
-            "provider target `{}` requires a display name",
-            target.id
-        ));
+        return Err(ProviderCatalogError::MissingDisplayName(target.id.clone()));
     }
     egress_policy.validate_settings(descriptor, &target.settings)
 }
@@ -374,10 +428,10 @@ impl ProviderEgressPolicy {
         &self,
         descriptor: &ProviderCatalogEntry,
         settings: &BTreeMap<String, serde_json::Value>,
-    ) -> Result<(), String> {
+    ) -> Result<(), ProviderCatalogError> {
         for field in descriptor.settings {
             if field.required && !settings.contains_key(field.key) {
-                return Err(format!("provider setting `{}` is required", field.key));
+                return Err(ProviderCatalogError::MissingRequiredSetting(field.key.to_string()));
             }
         }
         for (key, value) in settings {
@@ -385,21 +439,21 @@ impl ProviderEgressPolicy {
                 .settings
                 .iter()
                 .find(|field| field.key == key)
-                .ok_or_else(|| format!("unknown provider setting `{key}`"))?;
+                .ok_or_else(|| ProviderCatalogError::UnknownSetting(key.to_string()))?;
             match field.kind {
                 ProviderFieldKind::Text | ProviderFieldKind::Url => {
                     if !value.is_string() {
-                        return Err(format!("provider setting `{key}` must be text"));
+                        return Err(ProviderCatalogError::SettingMustBeText(key.to_string()));
                     }
                 }
                 ProviderFieldKind::Integer if value.as_i64().is_none() => {
-                    return Err(format!("provider setting `{key}` must be an integer"));
+                    return Err(ProviderCatalogError::SettingMustBeInteger(key.to_string()));
                 }
                 ProviderFieldKind::Boolean if !value.is_boolean() => {
-                    return Err(format!("provider setting `{key}` must be boolean"));
+                    return Err(ProviderCatalogError::SettingMustBeBoolean(key.to_string()));
                 }
                 ProviderFieldKind::SecretRef => {
-                    return Err(format!("provider setting `{key}` must be a credential ref"));
+                    return Err(ProviderCatalogError::SettingMustBeSecretRef(key.to_string()));
                 }
                 _ => {}
             }
@@ -410,15 +464,15 @@ impl ProviderEgressPolicy {
         Ok(())
     }
 
-    pub fn validate_egress_url(&self, value: &str) -> Result<(), String> {
+    pub fn validate_egress_url(&self, value: &str) -> Result<(), ProviderCatalogError> {
         let url =
-            url::Url::parse(value).map_err(|error| format!("invalid provider URL: {error}"))?;
+            url::Url::parse(value).map_err(|error| ProviderCatalogError::InvalidUrl(error.to_string()))?;
         if !matches!(url.scheme(), "https" | "http") {
-            return Err("provider URL must use HTTP(S)".to_string());
+            return Err(ProviderCatalogError::InvalidUrlScheme);
         }
         let host = url
             .host_str()
-            .ok_or_else(|| "provider URL requires a host".to_string())?
+            .ok_or(ProviderCatalogError::MissingUrlHost)?
             .to_ascii_lowercase();
         let local = host == "localhost"
             || host.ends_with(".localhost")
@@ -427,19 +481,15 @@ impl ProviderEgressPolicy {
             if self.allow_local_origins {
                 return Ok(());
             }
-            return Err(
-                "loopback and private provider origins are disabled by server policy".to_string(),
-            );
+            return Err(ProviderCatalogError::LocalOriginsDisabled);
         }
         if url.scheme() != "https" {
-            return Err("non-local provider URLs must use HTTPS".to_string());
+            return Err(ProviderCatalogError::HttpsRequired);
         }
         if self.allowed_origins.iter().any(|origin| origin == &host) {
             Ok(())
         } else {
-            Err(format!(
-                "provider origin `{host}` is not in the server egress allowlist"
-            ))
+            Err(ProviderCatalogError::HostNotPermitted(host))
         }
     }
 }

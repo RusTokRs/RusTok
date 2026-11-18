@@ -39,15 +39,17 @@ impl CachedRegistryModule {
     }
 }
 
+type RegistryModuleKey = String;
+
 struct RegistryModuleExpiry {
     positive_ttl: Duration,
     negative_ttl: Duration,
 }
 
-impl Expiry<String, Arc<CachedRegistryModule>> for RegistryModuleExpiry {
+impl Expiry<RegistryModuleKey, Arc<CachedRegistryModule>> for RegistryModuleExpiry {
     fn expire_after_create(
         &self,
-        _key: &String,
+        _key: &RegistryModuleKey,
         value: &Arc<CachedRegistryModule>,
         _created_at: Instant,
     ) -> Option<Duration> {
@@ -60,7 +62,7 @@ impl Expiry<String, Arc<CachedRegistryModule>> for RegistryModuleExpiry {
 
     fn expire_after_update(
         &self,
-        _key: &String,
+        _key: &RegistryModuleKey,
         value: &Arc<CachedRegistryModule>,
         _updated_at: Instant,
         _duration_until_expiry: Option<Duration>,

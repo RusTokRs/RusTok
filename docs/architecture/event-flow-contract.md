@@ -106,6 +106,32 @@ This contract does not include:
 For example, `WorkflowCronScheduler` remains a separate background runtime path and is not
 published as an `event_listener`.
 
+## Acknowledged local root projections (2026-11-18; source only)
+
+The Outbox relay's root `DomainEvent` path now uses the same explicit
+`EventHandler` registry as sealed local delivery. It waits for every matching
+module handler and returns handler, capacity, or listener-lifecycle failures to
+the Outbox relay instead of acknowledging the row after an in-memory broadcast.
+An initialized empty registry is valid when no module handler matches a root
+event; an absent or inactive registry is not.
+
+For `outbox`, the relay acknowledges only after local module handlers complete.
+For `outbox_iggy`, the configured primary accepts the unchanged envelope first,
+then local module handlers must complete. A local failure can resend the same
+event identity to Iggy, so remote consumers remain at-least-once and must be
+idempotent. This path does not notify arbitrary broadcast subscribers or
+acknowledge a remote persistent receive/cursor.
+
+The generic `EventBus.publish_envelope` broadcast API remains best-effort.
+The Outbox root path does not broadcast to arbitrary EventBus subscribers; it
+invokes only registered local module handlers through
+`publish_root_envelope_and_wait`.
+The in-process EventBus-to-Outbox compatibility bridge remains process-local
+until its first outbox insert; business mutations requiring atomic event
+durability must use `TransactionalEventBus`.
+
+See the [accepted root-delivery decision](../../DECISIONS/2026-11-18-acknowledged-root-event-delivery.md).
+
 ## Content and Orchestration Events
 
 A distinction must be made between:
@@ -241,7 +267,8 @@ Existing EventHandler/module registry/dispatcher/EventBus/Memory now offer expli
 opt-in through `start_with_contract_delivery`. Handlers validate the canonical frame and are
 awaited under bounded concurrency; unbound/closed/no-handler/capacity/failure paths refuse local
 acknowledgement. A Weak bus binding follows the running task's lifecycle and avoids handler/bus
-cycles. Root wire/APIs and best-effort root broadcast do not acquire this stronger guarantee.
+cycles. Root wire/API shapes remain unchanged. The generic broadcast API stays best-effort; the Outbox
+relay's root path has a separate acknowledged local module-handler boundary, documented below.
 This is not another event bus, in-memory fallback queue or domain publisher; Outbox remains the
 single durable retry/DLQ owner.
 
@@ -262,6 +289,21 @@ This is source wiring, not runtime certification. Canonical Rust digests, scoped
 actual relay/Iggy/restart/lag/Search concurrency and generic Index's Inventory-owned source /
 revision remain open; Product step 8 is incomplete. See the [source packet](../../crates/modules/rustok-inventory/contracts/evidence/reservation-events-source.json)
 and [delivery decision](../../DECISIONS/2026-07-17-sealed-typed-event-families.md#acknowledged-local-contract-listeners-2026-11-01).
+
+## Durable consumer retention acknowledgements (2026-11-18)
+
+Outbox retention is consumer-aware. Each durable consumer registers the event
+types it requires; a dispatched `sys_events` row remains retained until every
+registered consumer for that type acknowledges the canonical event ID. The
+generic Outbox owner stores registrations and acknowledgements and never reads
+consumer-owned receipt tables.
+
+Notifications registers before retention starts and commits its Outbox
+acknowledgement in the same transaction as its accepted intake receipt or
+permanent rejection. Retryable intake failures leave the event unacknowledged.
+This protects an existing row through a prolonged consumer outage; it cannot
+reconstruct historical rows already pruned before the consumer was registered.
+See the [consumer-retention decision](../../DECISIONS/2026-11-18-outbox-consumer-retention-acknowledgements.md).
 
 ## Inventory source canonical continuation (2026-11-02; source only)
 

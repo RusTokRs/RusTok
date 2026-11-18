@@ -342,6 +342,7 @@ fn validate_tenant_locale_policy_projection(
     projection: &TenantLocalePolicyProjection,
     tenant_id: Uuid,
 ) -> TranslationResult<()> {
+    // INVARIANT: In-memory verification ensuring the received policy projection matches the active tenant_id.
     if projection.tenant_id != tenant_id {
         return Err(TranslationError::TranslationPolicyInvariant(
             "tenant locale policy returned another tenant".to_string(),

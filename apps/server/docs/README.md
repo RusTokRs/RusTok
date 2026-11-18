@@ -302,6 +302,11 @@ cycle-safe because host preflight runs before GraphQL's normal document validati
   fanout, and candidate workers are also required readiness workers once started.
   A dead queue/reconciliation task cannot leave the HTTP host green while its
   durable work remains unprocessed.
+- Notification intake registers its supported event types in the Outbox-owned
+  consumer ledger before runtime retention starts. Accepted receipts and
+  permanent rejections acknowledge the original event in the same transaction;
+  unacknowledged events remain retained through intake outages. Registration is
+  durable, so disabling the worker does not release an existing retention hold.
 - Outbox relay polling, claim leases, retry backoff, and outbox-retention
   polling are each capped at one day. Relay batches are capped at 10,000 events,
   in-flight delivery concurrency at 128, and in-memory event channel capacity
@@ -849,12 +854,16 @@ frame to the configured primary first, then awaits matching local handlers. Unav
 or local failure propagates, retaining Outbox retry/DLQ and original event identity; remote send
 can repeat after partial local success. Families with no matching local handler remain remotely
 consumed, but an unbound registry is never interpreted as proof that no handler is required.
-Root fanout stays best-effort. Artifact intake and cache/generation wrappers forward typed frames
-through the existing chain. No extra bus, raw `sys_events` pipeline or host domain publisher.
+Root `DomainEvent` records delivered by the Outbox relay now await every matching registered
+module handler through the same listener registry; an explicit empty registry is valid when no
+root handler matches. The generic `EventBus.publish_envelope` broadcast API remains best-effort and
+is not the Outbox acknowledgement boundary. Artifact intake and cache/generation wrappers forward
+typed frames through the existing chain. No extra bus, raw `sys_events` pipeline or host domain publisher.
+See the [accepted root-delivery decision](../../../DECISIONS/2026-11-18-acknowledged-root-event-delivery.md).
 
-Five transport-double definitions are **uncompiled/unrun**; they do not certify a real Iggy
-connector, persistent receive/cursor ACK, relay/startup/restart/lag/crash windows, artifact worker
-or PostgreSQL Search ordering. See the [Core API](../../../crates/libs/rustok-core/CRATE_API.md#acknowledged-sealed-module-delivery-2026-11-01-source-only)
+The transport-double and regression definitions are **uncompiled/unrun**; they do not certify a
+real Iggy connector, persistent receive/cursor ACK, relay/startup/restart/lag/crash windows,
+artifact worker or PostgreSQL Search ordering. See the [Core API](../../../crates/libs/rustok-core/CRATE_API.md#acknowledged-sealed-module-delivery-2026-11-01-source-only)
 and [Inventory packet](../../../crates/modules/rustok-inventory/contracts/evidence/reservation-events-source.json).
 
 ## Current service contexts for selected source work (2026-11-02; source only)

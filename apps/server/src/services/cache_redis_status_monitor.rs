@@ -96,7 +96,7 @@ impl CacheRedisStatusMonitorHandle {
 struct CacheRedisStatusMonitorStartLock(Arc<tokio::sync::Mutex<()>>);
 
 pub async fn start_cache_redis_status_monitor(ctx: &ServerRuntimeContext, cache: CacheService) {
-    let _ = ctx.shared_insert_if_absent(CacheRedisStatusMonitorStartLock::default());
+    ctx.shared_insert_if_absent(CacheRedisStatusMonitorStartLock::default());
     let Some(start_lock) = ctx.shared_get::<CacheRedisStatusMonitorStartLock>() else {
         tracing::error!("Cache Redis status monitor start lock is unavailable");
         return;

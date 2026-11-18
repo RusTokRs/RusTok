@@ -1,7 +1,9 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "slice": "NOTIFY-03D",
-  "promoted_by_slices": ["NOTIFY-03E"],
+  "promoted_by_slices": [
+    "NOTIFY-03E"
+  ],
   "canonical_plan": "crates/modules/rustok-forum/docs/implementation-plan.md",
   "owner_plan": "crates/modules/rustok-notifications/docs/implementation-plan.md",
   "receipt_migration": "crates/modules/rustok-notifications/src/migrations/m20260723_000013_add_outbox_intake_receipts.rs",
@@ -48,12 +50,21 @@
       "source_slug": "forum",
       "source_event_identity": "envelope_id",
       "source_revision": "source_revision_id"
+    },
+    "messenger.message.dispatched": {
+      "family": "root",
+      "source_slug": "messenger",
+      "source_event_identity": "conversation_id",
+      "source_revision": "message_id"
     }
   },
   "selection": {
     "default_batch_size": 32,
     "maximum_batch_size": 64,
-    "stable_order": ["created_at", "id"],
+    "stable_order": [
+      "created_at",
+      "id"
+    ],
     "anti_joins_receipts": true,
     "anti_joins_rejections": true,
     "committed_pending_dispatched_failed_are_visible": true,
@@ -81,5 +92,14 @@
     "PostgreSQL concurrent intake evidence",
     "worker health and intake lag metrics",
     "additional producer event families"
-  ]
+  ],
+  "retention": {
+    "outbox_consumer_registration": "sys_event_consumers",
+    "outbox_acknowledgement": "sys_event_consumer_receipts",
+    "registers_before_retention_worker": true,
+    "terminal_receipt_and_outbox_ack_same_transaction": true,
+    "startup_backfills_existing_terminal_receipts": true,
+    "retryable_failure_acknowledged": false,
+    "outbox_reads_notification_owned_tables": false
+  }
 }

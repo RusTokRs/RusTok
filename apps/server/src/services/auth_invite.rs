@@ -132,6 +132,7 @@ impl AuthLifecycleService {
 
         let claims =
             decode_invite_token(config, token).map_err(|_| InviteAcceptanceError::InvalidToken)?;
+        // INVARIANT: In-memory verification ensuring the decoded invite token belongs to the target tenant.
         if claims.tenant_id != tenant_id {
             return Err(InviteAcceptanceError::InvalidToken);
         }

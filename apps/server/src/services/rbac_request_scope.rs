@@ -121,16 +121,20 @@ pub(crate) fn ensure_scope_not_invalidated(
 /// unscoped grants. Other concurrent tasks retain their own task-local state; this is not a
 /// request-wide or transaction-spanning revocation fence.
 pub(crate) fn invalidate_current_rbac_request_scope(tenant_id: &Uuid, actor_id: &Uuid) {
-    let _ = CURRENT_RBAC_SCOPE.try_with(|state| {
+    if let Err(error) = CURRENT_RBAC_SCOPE.try_with(|state| {
         if state.scope.matches(tenant_id, actor_id) {
             state.valid.store(false, Ordering::Release);
         }
-    });
+    }) {
+        tracing::trace!(%error, "Current task has no active task-local RBAC scope to invalidate");
+    }
 }
 
 /// Invalidate the snapshot in this task for a full-cache invalidation.
 pub(crate) fn invalidate_current_rbac_request_scope_for_all() {
-    let _ = CURRENT_RBAC_SCOPE.try_with(|state| state.valid.store(false, Ordering::Release));
+    if let Err(error) = CURRENT_RBAC_SCOPE.try_with(|state| state.valid.store(false, Ordering::Release)) {
+        tracing::trace!(%error, "Current task has no active task-local RBAC scope to invalidate");
+    }
 }
 
 #[cfg(test)]

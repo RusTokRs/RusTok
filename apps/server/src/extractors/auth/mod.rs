@@ -417,6 +417,7 @@ pub async fn resolve_current_user_from_access_token(
         chrono::DateTime::<chrono::Utc>::from_timestamp(claims.exp as i64, 0)
             .ok_or((StatusCode::UNAUTHORIZED, "Invalid token expiry"))?;
 
+    // INVARIANT: In-memory verification ensuring the decoded JWT token payload belongs to the requested tenant.
     if claims.tenant_id != tenant_id {
         return Err((StatusCode::FORBIDDEN, "Token belongs to another tenant"));
     }
@@ -435,6 +436,7 @@ pub async fn resolve_current_user_from_access_token(
             return Err((StatusCode::UNAUTHORIZED, "Session subject mismatch"));
         }
 
+        // INVARIANT: In-memory check validating session activity and confirming database-scoped tenant identity.
         if session.tenant_id != tenant_id || !session.is_active() {
             return Err((StatusCode::UNAUTHORIZED, "Session expired"));
         }
@@ -481,6 +483,7 @@ pub async fn resolve_current_user_from_access_token(
                 .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
                 .ok_or((StatusCode::UNAUTHORIZED, "User not found"))?;
 
+            // INVARIANT: In-memory verification confirming database-scoped user tenant identity.
             if user.tenant_id != tenant_id {
                 return Err((StatusCode::FORBIDDEN, "User belongs to another tenant"));
             }

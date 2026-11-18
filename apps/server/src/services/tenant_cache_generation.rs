@@ -170,7 +170,8 @@ impl TenantCacheGenerationTransport {
             ));
         }
 
-        let _ = self.successful_rotations.observe(envelope.id);
+        // INVARIANT: Dedupe observation after successful cache generation rotation.
+        self.successful_rotations.observe(envelope.id);
         Ok(())
     }
 }
@@ -431,7 +432,7 @@ pub async fn start_tenant_cache_generation_listener(
     cache: CacheService,
 ) -> Result<()> {
     bind_tenant_backend_generations()?;
-    let _ = ctx.shared_insert_if_absent(TenantCacheGenerationListenerStartLock::default());
+    ctx.shared_insert_if_absent(TenantCacheGenerationListenerStartLock::default());
     let start_lock = ctx
         .shared_get::<TenantCacheGenerationListenerStartLock>()
         .ok_or_else(|| Error::Cache("tenant listener start lock is unavailable".to_string()))?;
@@ -453,7 +454,11 @@ pub async fn start_tenant_cache_generation_listener(
                 task.abort();
             }
             for task in tasks {
-                let _ = task.await;
+                if let Err(join_err) = task.await {
+                    if !join_err.is_cancelled() {
+                        tracing::warn!(error = %join_err, "Aborted stale tenant cache generation listener task failed unexpectedly");
+                    }
+                }
             }
         }
     }

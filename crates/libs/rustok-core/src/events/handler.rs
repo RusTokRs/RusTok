@@ -121,7 +121,7 @@ impl EventDispatcher {
         }
         let registration = self
             .bus
-            .bind_contract_listeners(self.handlers.clone(), self.config.max_concurrent)?;
+            .bind_contract_listeners(self.handlers.clone(), self.config.clone())?;
         Ok(self.start_inner(Some(registration)))
     }
 
@@ -129,6 +129,9 @@ impl EventDispatcher {
         let contract_listeners = registration
             .as_ref()
             .map(|registration| Arc::clone(&registration.state));
+        let shared_handler_capacity = contract_listeners
+            .as_ref()
+            .map(|listeners| Arc::clone(&listeners.handler_capacity));
         let handlers = Arc::new(self.handlers);
         let config = self.config;
         let mut receiver = self.bus.subscribe();
@@ -143,15 +146,32 @@ impl EventDispatcher {
                 let _contract_registration = registration;
                 consumer_runtime.restarted("startup");
                 info!(handlers = handlers.len(), "Event dispatcher started");
-                let queue_capacity = config.max_queue_depth.max(1);
+                let requested_queue_capacity = config.max_queue_depth.max(1);
                 if config.max_queue_depth == 0 {
                     warn!(
                         "Event dispatcher max_queue_depth was zero; using the minimum queue capacity of one"
                     );
                 }
+                let queue_capacity = requested_queue_capacity.min(Semaphore::MAX_PERMITS);
+                if requested_queue_capacity > Semaphore::MAX_PERMITS {
+                    warn!(
+                        requested_queue_capacity,
+                        max = Semaphore::MAX_PERMITS,
+                        "Event dispatcher max_queue_depth exceeds Tokio semaphore capacity; clamping"
+                    );
+                }
 
-                let max_concurrent = config.max_concurrent.max(1);
-                let semaphore = Arc::new(Semaphore::new(max_concurrent));
+                let requested_max_concurrent = config.max_concurrent.max(1);
+                let max_concurrent = requested_max_concurrent.min(Semaphore::MAX_PERMITS);
+                if requested_max_concurrent > Semaphore::MAX_PERMITS {
+                    warn!(
+                        requested_max_concurrent,
+                        max = Semaphore::MAX_PERMITS,
+                        "Event dispatcher max_concurrent exceeds Tokio semaphore capacity; clamping"
+                    );
+                }
+                let semaphore = shared_handler_capacity
+                    .unwrap_or_else(|| Arc::new(Semaphore::new(max_concurrent)));
                 let queue = Arc::new(Semaphore::new(queue_capacity));
                 let mut in_flight = JoinSet::new();
 
@@ -180,6 +200,15 @@ impl EventDispatcher {
                         received = receiver.recv() => match received {
                             Ok(envelope) => envelope,
                             Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                                // Accepted envelopes that were overwritten by the
+                                // broadcast ring still consumed backpressure slots.
+                                // Release every skipped reservation or capacity
+                                // remains permanently over-counted.
+                                if let Some(backpressure) = &backpressure {
+                                    for _ in 0..skipped {
+                                        backpressure.release();
+                                    }
+                                }
                                 consumer_runtime.lagged(skipped);
                                 continue;
                             }
@@ -278,6 +307,10 @@ impl EventDispatcher {
         if config.fail_fast {
             for handler in matching_handlers {
                 let envelope = envelope.clone();
+                let Ok(_permit) = Arc::clone(&semaphore).acquire_owned().await else {
+                    error!("Event dispatcher handler semaphore closed");
+                    break;
+                };
                 if let Err(error) = Self::handle_with_retry(handler, envelope, &config).await {
                     error!(
                         event_type = event_type.as_str(),
@@ -334,13 +367,13 @@ impl EventDispatcher {
         consumer_runtime.record_dispatch_latency(&event_type, dispatch_started_at);
     }
 
-    async fn handle_with_retry(
+    pub(super) async fn handle_with_retry(
         handler: Arc<dyn EventHandler>,
         envelope: EventEnvelope,
         config: &DispatcherConfig,
     ) -> Result<(), Error> {
         let mut attempts = 0;
-        let max_attempts = config.retry_count + 1;
+        let max_attempts = config.retry_count.saturating_add(1);
         let event_type = envelope.event.event_type();
         let handler_name = handler.name();
 
@@ -657,6 +690,90 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatcher_releases_backpressure_for_lagged_messages() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tokio::sync::Notify;
+
+        struct BlockingHandler {
+            started: Arc<AtomicUsize>,
+            release: Arc<Notify>,
+        }
+
+        #[async_trait]
+        impl EventHandler for BlockingHandler {
+            fn name(&self) -> &'static str {
+                "lagged_backpressure_test"
+            }
+
+            fn handles(&self, _event: &DomainEvent) -> bool {
+                true
+            }
+
+            async fn handle(&self, _envelope: &EventEnvelope) -> HandlerResult {
+                self.started.fetch_add(1, Ordering::SeqCst);
+                self.release.notified().await;
+                Ok(())
+            }
+        }
+
+        let bus = EventBus::with_backpressure(
+            1,
+            super::super::backpressure::BackpressureController::new(
+                super::super::backpressure::BackpressureConfig::new(10, 0.8, 1.0),
+            ),
+        );
+        let backpressure = bus.backpressure().expect("backpressure controller");
+        let started = Arc::new(AtomicUsize::new(0));
+        let release = Arc::new(Notify::new());
+        let mut dispatcher = EventDispatcher::with_config(
+            bus.clone(),
+            DispatcherConfig {
+                max_concurrent: 1,
+                max_queue_depth: 1,
+                ..DispatcherConfig::default()
+            },
+        );
+        dispatcher.register(BlockingHandler {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+        });
+        let running = dispatcher.start();
+
+        for _ in 0..3 {
+            bus.publish(
+                Uuid::new_v4(),
+                None,
+                DomainEvent::IndexUpdated {
+                    index_name: "products".to_string(),
+                    target_id: Uuid::new_v4(),
+                },
+            )
+            .expect("event should be admitted before the controller reaches critical depth");
+        }
+
+        while started.load(Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+
+        release.notify_one();
+        for _ in 0..100 {
+            if backpressure.current_depth() == 0 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+
+        assert_eq!(
+            backpressure.current_depth(),
+            0,
+            "lagged messages must release their backpressure reservations"
+        );
+
+        running.abort();
+        assert!(running.join().await.is_err());
+    }
+
+    #[tokio::test]
     async fn handle_with_retry_calls_on_error_after_retry_budget_is_exhausted() {
         let attempts = Arc::new(AtomicUsize::new(0));
         let error_notifications = Arc::new(AtomicUsize::new(0));
@@ -780,6 +897,31 @@ mod tests {
 
         assert_eq!(handled.load(Ordering::SeqCst), 2);
         assert_eq!(controller.current_depth(), 0);
+    }
+
+    #[tokio::test]
+    async fn dispatcher_start_clamps_oversized_semaphore_config() {
+        let bus = EventBus::new();
+        let dispatcher = EventDispatcher::with_config(
+            bus,
+            DispatcherConfig {
+                max_concurrent: Semaphore::MAX_PERMITS.saturating_add(1),
+                max_queue_depth: Semaphore::MAX_PERMITS.saturating_add(1),
+                ..DispatcherConfig::default()
+            },
+        );
+        let running = dispatcher.start();
+
+        tokio::task::yield_now().await;
+        assert!(
+            !running.is_finished(),
+            "oversized legacy dispatcher configuration must not panic its worker"
+        );
+
+        running
+            .stop()
+            .await
+            .expect("clamped dispatcher should stop cleanly");
     }
 
     #[tokio::test]
