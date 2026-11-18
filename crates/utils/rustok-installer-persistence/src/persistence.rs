@@ -191,7 +191,7 @@ impl InstallerPersistenceService {
         session: &InstallSessionRecord,
         receipt: &InstallReceipt,
     ) -> Result<install_step_receipt::Model, sea_orm::DbErr> {
-        require_attempt_fence(session)?;
+        let owner = require_attempt_fence(session)?;
         let receipt_session_id = parse_session_uuid(&receipt.session_id)?;
         if receipt_session_id != session.id {
             return Err(sea_orm::DbErr::Custom(
@@ -218,6 +218,22 @@ impl InstallerPersistenceService {
                 session.id
             )));
         }
+
+        let now = Utc::now();
+        let touch = install_session::Entity::update_many()
+            .col_expr(
+                install_session::Column::UpdatedAt,
+                sea_orm::sea_query::Expr::value(now),
+            )
+            .filter(install_session::Column::Id.eq(session.id))
+            .filter(install_session::Column::LockOwner.eq(owner))
+            .filter(
+                install_session::Column::AttemptGeneration.eq(session.attempt_generation),
+            )
+            .filter(install_session::Column::Status.eq(current.status))
+            .exec(&txn)
+            .await?;
+        ensure_attempt_fence_applied(session, touch.rows_affected)?;
 
         let model = install_step_receipt::ActiveModel {
             id: Set(rustok_core::generate_id()),
