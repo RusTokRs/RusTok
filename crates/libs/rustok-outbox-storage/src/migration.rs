@@ -233,60 +233,128 @@ pub async fn drop_sys_events_superseded_indexes(manager: &SchemaManager<'_>) -> 
 }
 
 /// Creates the generic durable-consumer registration and acknowledgement schema.
-pub async fn create_sys_event_consumer_tables(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    manager.create_table(
-        Table::create()
-            .table(SysEventConsumers::Table)
-            .if_not_exists()
-            .col(ColumnDef::new(SysEventConsumers::EventType).string_len(255).not_null())
-            .col(ColumnDef::new(SysEventConsumers::ConsumerKey).string_len(128).not_null())
-            .col(ColumnDef::new(SysEventConsumers::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
-            .primary_key(Index::create().col(SysEventConsumers::EventType).col(SysEventConsumers::ConsumerKey))
-            .to_owned(),
-    ).await?;
+pub async fn create_sys_event_consumer_tables(
+    manager: &SchemaManager<'_>,
+) -> Result<(), DbErr> {
+    manager
+        .create_table(
+            Table::create()
+                .table(SysEventConsumers::Table)
+                .if_not_exists()
+                .col(
+                    ColumnDef::new(SysEventConsumers::EventType)
+                        .string_len(255)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(SysEventConsumers::ConsumerKey)
+                        .string_len(128)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(SysEventConsumers::CreatedAt)
+                        .timestamp_with_time_zone()
+                        .not_null()
+                        .default(Expr::current_timestamp()),
+                )
+                .primary_key(
+                    Index::create()
+                        .col(SysEventConsumers::EventType)
+                        .col(SysEventConsumers::ConsumerKey),
+                )
+                .to_owned(),
+        )
+        .await?;
 
-    manager.create_table(
-        Table::create()
-            .table(SysEventConsumerReceipts::Table)
-            .if_not_exists()
-            .col(ColumnDef::new(SysEventConsumerReceipts::OutboxEventId).uuid().not_null())
-            .col(ColumnDef::new(SysEventConsumerReceipts::ConsumerKey).string_len(128).not_null())
-            .col(ColumnDef::new(SysEventConsumerReceipts::EventType).string_len(255).not_null())
-            .col(ColumnDef::new(SysEventConsumerReceipts::AcknowledgedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
-            .primary_key(Index::create().col(SysEventConsumerReceipts::OutboxEventId).col(SysEventConsumerReceipts::ConsumerKey))
-            .foreign_key(
-                ForeignKey::create()
-                    .name("fk_sys_event_consumer_receipts_event")
-                    .from(SysEventConsumerReceipts::Table, SysEventConsumerReceipts::OutboxEventId)
-                    .to(SysEvents::Table, SysEvents::Id)
-                    .on_delete(ForeignKeyAction::Cascade),
-            )
-            .to_owned(),
-    ).await?;
+    manager
+        .create_table(
+            Table::create()
+                .table(SysEventConsumerReceipts::Table)
+                .if_not_exists()
+                .col(
+                    ColumnDef::new(SysEventConsumerReceipts::OutboxEventId)
+                        .uuid()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(SysEventConsumerReceipts::ConsumerKey)
+                        .string_len(128)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(SysEventConsumerReceipts::EventType)
+                        .string_len(255)
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(SysEventConsumerReceipts::AcknowledgedAt)
+                        .timestamp_with_time_zone()
+                        .not_null()
+                        .default(Expr::current_timestamp()),
+                )
+                .primary_key(
+                    Index::create()
+                        .col(SysEventConsumerReceipts::OutboxEventId)
+                        .col(SysEventConsumerReceipts::ConsumerKey),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .name("fk_sys_event_consumer_receipts_event")
+                        .from(
+                            SysEventConsumerReceipts::Table,
+                            SysEventConsumerReceipts::OutboxEventId,
+                        )
+                        .to(SysEvents::Table, SysEvents::Id)
+                        .on_delete(ForeignKeyAction::Cascade),
+                )
+                .to_owned(),
+        )
+        .await?;
 
-    manager.create_index(
-        Index::create()
-            .if_not_exists()
+    manager
+        .create_index(
+            Index::create()
+                .if_not_exists()
                 .name("idx_sys_event_consumers_consumer_key")
-            .table(SysEventConsumers::Table)
-            .col(SysEventConsumers::ConsumerKey)
-            .to_owned(),
-    ).await?;
-    manager.create_index(
-        Index::create()
-            .if_not_exists()
+                .table(SysEventConsumers::Table)
+                .col(SysEventConsumers::ConsumerKey)
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .create_index(
+            Index::create()
+                .if_not_exists()
                 .name("idx_sys_event_consumer_receipts_consumer_key")
-            .table(SysEventConsumerReceipts::Table)
-            .col(SysEventConsumerReceipts::ConsumerKey)
-            .col(SysEventConsumerReceipts::OutboxEventId)
-            .to_owned(),
-    ).await?;
+                .table(SysEventConsumerReceipts::Table)
+                .col(SysEventConsumerReceipts::ConsumerKey)
+                .col(SysEventConsumerReceipts::OutboxEventId)
+                .to_owned(),
+        )
+        .await?;
     Ok(())
 }
 
-pub async fn drop_sys_event_consumer_tables(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    manager.drop_table(Table::drop().table(SysEventConsumerReceipts::Table).if_exists().to_owned()).await?;
-    manager.drop_table(Table::drop().table(SysEventConsumers::Table).if_exists().to_owned()).await
+/// Drops the generic durable-consumer schema during rollback.
+pub async fn drop_sys_event_consumer_tables(
+    manager: &SchemaManager<'_>,
+) -> Result<(), DbErr> {
+    manager
+        .drop_table(
+            Table::drop()
+                .table(SysEventConsumerReceipts::Table)
+                .if_exists()
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .drop_table(
+            Table::drop()
+                .table(SysEventConsumers::Table)
+                .if_exists()
+                .to_owned(),
+        )
+        .await
 }
 
 /// Creates the schema owned by the generic durable owner-operation receipt
@@ -405,10 +473,21 @@ enum SysEvents {
 }
 
 #[derive(DeriveIden)]
-enum SysEventConsumers { Table, EventType, ConsumerKey, CreatedAt }
+enum SysEventConsumers {
+    Table,
+    EventType,
+    ConsumerKey,
+    CreatedAt,
+}
 
 #[derive(DeriveIden)]
-enum SysEventConsumerReceipts { Table, OutboxEventId, ConsumerKey, EventType, AcknowledgedAt }
+enum SysEventConsumerReceipts {
+    Table,
+    OutboxEventId,
+    ConsumerKey,
+    EventType,
+    AcknowledgedAt,
+}
 
 #[derive(DeriveIden)]
 enum OwnerOperationReceipts {
