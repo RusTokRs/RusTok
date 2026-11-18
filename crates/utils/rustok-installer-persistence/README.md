@@ -13,8 +13,10 @@ the schema created by `rustok-migrations`.
 
 - Persist installer sessions, state changes, tenant association, and locks.
 - Claim installer sessions once with a monotonic attempt generation and fail
-  closed while an unreconciled session (including `recovery_required`) remains;
-  lease expiry alone does not release global admission.
+  closed while any unfinished non-draft session (including `recovery_required`)
+  remains, even if its lease owner was cleared. Only an ownerless `draft`
+  session can be reclaimed after explicit reconciliation; lease expiry alone
+  does not release global admission.
 - Fence every state, tenant, and receipt mutation with the persisted owner and
   generation. PostgreSQL/MySQL acquire a row lock before checking the fence;
   SQLite reserves its writer before reading. Receipt rows retain their
