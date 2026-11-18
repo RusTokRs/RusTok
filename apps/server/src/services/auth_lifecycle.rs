@@ -708,6 +708,44 @@ impl AuthLifecycleService {
         }
     }
 
+    async fn find_session_by_id_for_update_in_tx(
+        txn: &DatabaseTransaction,
+        tenant_id: uuid::Uuid,
+        session_id: uuid::Uuid,
+    ) -> std::result::Result<Option<sessions::Model>, AuthLifecycleError> {
+        let query = || {
+            sessions::Entity::find_by_id(session_id)
+                .filter(sessions::Column::TenantId.eq(tenant_id))
+                .filter(sessions::Column::RevokedAt.is_null())
+        };
+        match txn.get_database_backend() {
+            DatabaseBackend::Postgres | DatabaseBackend::MySql => query()
+                .lock_exclusive()
+                .one(txn)
+                .await
+                .map_err(AuthLifecycleError::from),
+            DatabaseBackend::Sqlite => {
+                // The id is already known, so reserve the SQLite write lock
+                // before reading. A concurrent refresh/logout cannot change
+                // the session between the state read and the revocation write.
+                let statement = Statement::from_sql_and_values(
+                    DatabaseBackend::Sqlite,
+                    "UPDATE sessions SET last_used_at = last_used_at WHERE tenant_id = ?1 AND id = ?2 AND revoked_at IS NULL",
+                    [tenant_id.into(), session_id.into()],
+                );
+                let result = txn
+                    .execute_raw(statement)
+                    .await
+                    .map_err(AuthLifecycleError::from)?;
+                if result.rows_affected() != 1 {
+                    return Ok(None);
+                }
+                query().one(txn).await.map_err(AuthLifecycleError::from)
+            }
+            _ => Err(AuthLifecycleError::Internal(Error::InternalServerError)),
+        }
+    }
+
     async fn find_refresh_session_for_update_in_tx(
         txn: &DatabaseTransaction,
         tenant_id: uuid::Uuid,
@@ -1221,12 +1259,8 @@ impl AuthLifecycleService {
         session_id: uuid::Uuid,
     ) -> std::result::Result<(), AuthLifecycleError> {
         let tx = db.begin().await.map_err(AuthLifecycleError::from)?;
-        let session = sessions::Entity::find_by_id(session_id)
-            .filter(sessions::Column::TenantId.eq(tenant_id))
-            .filter(sessions::Column::RevokedAt.is_null())
-            .one(&tx)
-            .await
-            .map_err(AuthLifecycleError::from)?;
+        let session =
+            Self::find_session_by_id_for_update_in_tx(&tx, tenant_id, session_id).await?;
 
         // Logout stays idempotent: an unknown or already-revoked
         // session is a successful no-op and emits no event.
@@ -3060,6 +3094,57 @@ mod tests {
             result2.rows_affected, 0,
             "already-revoked session is skipped"
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn logout_by_session_id_revokes_under_lock_and_is_idempotent() {
+        let db = setup_test_db_with_migrations::<Migrator>().await;
+        let tenant = tenants::ActiveModel::new("Logout by session id", "logout-by-session-id")
+            .insert(&db)
+            .await
+            .expect("tenant");
+        let user = users::ActiveModel::new(tenant.id, "logout-by-id@example.com", "hash")
+            .insert(&db)
+            .await
+            .expect("user");
+        let session = sessions::ActiveModel::new(
+            tenant.id,
+            user.id,
+            hash_refresh_token("logout-by-id-refresh-token"),
+            Utc::now() + Duration::hours(1),
+            None,
+            None,
+        )
+        .insert(&db)
+        .await
+        .expect("session");
+
+        AuthLifecycleService::logout_db(&db, tenant.id, session.id)
+            .await
+            .expect("logout active session");
+
+        let revoked = sessions::Entity::find_by_id(session.id)
+            .one(&db)
+            .await
+            .expect("read revoked session")
+            .expect("session remains as revocation evidence");
+        let revoked_at = revoked.revoked_at.expect("session was revoked");
+        assert_eq!(
+            revoked.token_hash,
+            hash_refresh_token("logout-by-id-refresh-token"),
+            "logout must not overwrite the current token digest"
+        );
+
+        AuthLifecycleService::logout_db(&db, tenant.id, session.id)
+            .await
+            .expect("repeated logout is idempotent");
+        let after_repeat = sessions::Entity::find_by_id(session.id)
+            .one(&db)
+            .await
+            .expect("read session after repeated logout")
+            .expect("session remains present");
+        assert_eq!(after_repeat.revoked_at, Some(revoked_at));
     }
 
     #[tokio::test]
