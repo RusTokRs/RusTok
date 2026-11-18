@@ -1321,19 +1321,24 @@ cargo test -p rustok-core --lib events::handler
 
 ## P20 — Surface core runtime worker failures in readiness (2026-11-18)
 
-The runtime readiness snapshot covered the event forwarder and several module
-workers, but omitted the Outbox relay, Outbox retention, remote-executor reaper,
-and SEO bulk worker. A terminated required worker could therefore leave the HTTP
-host reporting ready while durable delivery, retention, recovery, or SEO work had
-stopped.
+The readiness review identified the Outbox relay, Outbox retention,
+remote-executor reaper, and SEO workers as critical runtime obligations.
+The health controller already owned explicit, configuration-aware checks for
+these workers. Mirroring them in `additional_runtime_worker_snapshots` was
+redundant and emitted duplicate Outbox/remote-executor checks plus a second,
+non-canonical SEO worker label. P21 records and corrects that implementation
+mistake; the explicit checks in `health.rs` remain authoritative.
 
 ### Implemented
 
-- Added readiness snapshots for Outbox relay and Outbox retention.
-- Added snapshots for the remote-executor reaper and feature-gated SEO bulk
-  worker once those workers are started.
-- Extended the existing Outbox worker lifecycle test to require both core
-  Outbox workers to appear as live readiness entries.
+- Kept the existing explicit checks for Outbox relay/retention,
+  remote-executor reaper, and each enabled SEO worker as the single source of
+  readiness truth.
+- Kept the event-forwarder snapshot in the additional worker list because it
+  has no separate explicit check; it becomes required when the EventBus
+  forwarder handle is registered.
+- Added a regression test that rejects duplicate readiness check names and
+  asserts one canonical check for each core worker.
 
 ### Verification status
 
@@ -1342,6 +1347,41 @@ Not run in this task, at the user's request. Run before merge:
 ```bash
 cargo fmt --all -- --check
 cargo check -p rustok-server --lib
-cargo test -p rustok-server --lib services::app_lifecycle::tests::connect_runtime_workers_is_idempotent_for_outbox_relay_handle
+cargo test -p rustok-server --lib controllers::health::tests::runtime_worker_readiness_uses_one_canonical_check_per_worker
+cargo test -p rustok-server --lib services::app_lifecycle::tests::additional_workers_respect_host_modes_and_auth_retention_config
+cargo check -p rustok-server --lib --features commerce-marketplace-financial
+cargo check -p rustok-server --lib --no-default-features --features mod-seo
 ```
 
+
+## P21 — Keep runtime worker readiness single-source (2026-11-18)
+
+A source-level re-review found that `controllers/health.rs` already creates
+configuration-aware checks for the Outbox relay, Outbox retention,
+remote-executor reaper, and SEO worker variants. The additional lifecycle
+snapshot list had duplicated those checks. The extra Outbox/remote entries
+reused the same check names; the SEO entry used a second name for the same
+supervised handle. Duplicate readiness entries can confuse operators and
+produce repeated worker metrics.
+
+### Implemented
+
+- Removed the redundant Outbox relay, Outbox retention, remote-executor, and
+  SEO entries from `additional_runtime_worker_snapshots`; the existing
+  `health.rs` checks remain the only canonical entries for those workers.
+- Retained the EventBus forwarder snapshot, which has no separate explicit
+  check, and classified it as optional until its handle is registered.
+- Removed a duplicate feature-gated import that would fail compilation when
+  `commerce-marketplace-financial` is enabled.
+- Removed the accidental `mod-workflow` gate from the SEO-only snapshot path;
+  the canonical SEO readiness checks are independently gated by `mod-seo`.
+- Added a regression test asserting readiness check names are unique and that
+  Outbox, remote-executor, and SEO worker checks each have one canonical entry.
+- Updated the readiness runbook to document Outbox retention, EventBus
+  forwarder, and the three independently configured SEO worker checks.
+
+### Verification status
+
+Not run in this task, at the user's request. No Rust compilation, formatting,
+or tests are claimed. Run the commands listed under P20 on one revision before
+integration; tests remain with the maintainer.
