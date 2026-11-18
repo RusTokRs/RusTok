@@ -1317,6 +1317,9 @@ mod tests {
         db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_consents::Entity)))
             .await
             .expect("OAuth consents table");
+        db.execute_raw(backend.build(&schema.create_table_from_entity(oauth_tokens::Entity)))
+            .await
+            .expect("OAuth tokens table");
 
         let tenant = tenants::ActiveModel::new("Consent lock tenant", "consent-lock")
             .insert(&db)
@@ -1352,7 +1355,81 @@ mod tests {
         .await
         .expect("active consent");
 
-        super::validate_locked_oauth_consent(
+        let now = Utc::now();
+        let current_id = Uuid::new_v4();
+        let current = oauth_tokens::ActiveModel {
+            id: Set(current_id),
+            app_id: Set(client.id),
+            user_id: Set(Some(user.id)),
+            tenant_id: Set(tenant.id),
+            token_hash: Set("consent-bound-refresh-token".to_string()),
+            family_id: Set(Some(current_id)),
+            authorization_code_id: Set(None),
+            grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
+            token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+            consent_granted_at: Set(Some(granted_at.clone())),
+            scopes: Set(serde_json::json!(["profile"])),
+            expires_at: Set((now + chrono::Duration::hours(1)).into()),
+            revoked_at: Set(None),
+            last_used_at: Set(None),
+            created_at: Set(now.into()),
+            updated_at: Set(now.into()),
+        }
+        .insert(&db)
+        .await
+        .expect("current refresh token");
+        let prepared = PreparedUserTokens {
+            access_token: "access-after-consent-change".to_string(),
+            access_model: oauth_tokens::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                app_id: Set(client.id),
+                user_id: Set(Some(user.id)),
+                tenant_id: Set(tenant.id),
+                token_hash: Set("access-after-consent-change".to_string()),
+                family_id: Set(Some(current_id)),
+                authorization_code_id: Set(None),
+                grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
+                token_kind: Set(oauth_tokens::TOKEN_KIND_ACCESS.to_string()),
+                consent_granted_at: Set(Some(granted_at.clone())),
+                scopes: Set(serde_json::json!(["profile"])),
+                expires_at: Set((now + chrono::Duration::minutes(15)).into()),
+                revoked_at: Set(None),
+                last_used_at: Set(None),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
+            },
+            refresh_token: Some("replacement-after-consent-change".to_string()),
+            refresh_model: Some(oauth_tokens::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                app_id: Set(client.id),
+                user_id: Set(Some(user.id)),
+                tenant_id: Set(tenant.id),
+                token_hash: Set("replacement-after-consent-change".to_string()),
+                family_id: Set(Some(current_id)),
+                authorization_code_id: Set(None),
+                grant_type: Set(super::AUTHORIZATION_CODE_GRANT.to_string()),
+                token_kind: Set(oauth_tokens::TOKEN_KIND_REFRESH.to_string()),
+                consent_granted_at: Set(Some(granted_at.clone())),
+                scopes: Set(serde_json::json!(["profile"])),
+                expires_at: Set((now + chrono::Duration::hours(1)).into()),
+                revoked_at: Set(None),
+                last_used_at: Set(None),
+                created_at: Set(now.into()),
+                updated_at: Set(now.into()),
+            }),
+            consent_granted_at: Some(granted_at.clone()),
+            expires_in: 900,
+        };
+
+        let mut changed_consent: oauth_consents::ActiveModel = consent.clone().into();
+        changed_consent.granted_at =
+            Set((granted_at.clone() + chrono::Duration::seconds(1)).into());
+        let changed_consent = changed_consent
+            .update(&db)
+            .await
+            .expect("change consent epoch without revoking");
+
+        let stale_epoch = super::validate_locked_oauth_consent(
             &db,
             &client,
             tenant.id,
@@ -1361,25 +1438,34 @@ mod tests {
             Some(granted_at.clone()),
         )
         .await
-        .expect("current consent epoch should pass");
-
-        let mut narrowed: oauth_consents::ActiveModel = consent.into();
-        narrowed.scopes = Set(serde_json::json!(["profile"]));
-        narrowed.granted_at = Set((granted_at.clone() + chrono::Duration::seconds(1)).into());
-        let narrowed = narrowed.update(&db).await.expect("narrow consent");
-
-        let stale_epoch = super::validate_locked_oauth_consent(
-            &db,
-            &client,
-            tenant.id,
-            user.id,
-            &["profile".to_string()],
-            Some(granted_at),
-        )
-        .await
         .expect_err("a changed consent epoch must reject in-flight issuance");
         assert_eq!(stale_epoch.error, "invalid_grant");
 
+        let commit_error = super::commit_refresh_rotation(&db, &client, &current, &prepared)
+            .await
+            .expect_err("refresh commit must revalidate consent under app/subject locks");
+        assert_eq!(commit_error.error, "invalid_grant");
+        let unchanged = oauth_tokens::Entity::find_by_id(current.id)
+            .one(&db)
+            .await
+            .expect("reload refresh token")
+            .expect("refresh token remains present");
+        assert!(
+            unchanged.revoked_at.is_none(),
+            "a consent-epoch mismatch must not consume the presented refresh token"
+        );
+        assert_eq!(
+            oauth_tokens::Entity::find()
+                .count(&db)
+                .await
+                .expect("count OAuth tokens"),
+            1,
+            "a rejected in-flight rotation must not persist replacement credentials"
+        );
+
+        let mut narrowed: oauth_consents::ActiveModel = changed_consent.into();
+        narrowed.scopes = Set(serde_json::json!(["profile"]));
+        let narrowed = narrowed.update(&db).await.expect("narrow consent");
         let widened_token = super::validate_locked_oauth_consent(
             &db,
             &client,
