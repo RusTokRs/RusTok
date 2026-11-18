@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use rustok_core::ModuleRuntimeExtensions;
 use rustok_index::{
-    EntityKey, EntityName, IndexSourceAbsenceProvider, IndexSourceAbsenceWatermark,
+    DomainError, EntityKey, EntityName, IndexSourceAbsenceProvider, IndexSourceAbsenceWatermark,
     IndexSourceFailure, IndexSourceRegistrationError, ModuleName, PostgresIndexSourceFactory,
     SchemaRef, SchemaVersion, register_index_source_absence_provider,
     register_postgres_index_source_factory,
@@ -155,10 +155,10 @@ fn require_product_key(db: &DatabaseConnection, key: &EntityKey) -> Result<(), I
     Ok(())
 }
 
-fn product_schema_ref() -> Result<SchemaRef, String> {
+fn product_schema_ref() -> Result<SchemaRef, DomainError> {
     Ok(SchemaRef {
-        module: ModuleName::new("rustok-product").map_err(|error| error.to_string())?,
-        entity: EntityName::new("product").map_err(|error| error.to_string())?,
+        module: ModuleName::new("rustok-product")?,
+        entity: EntityName::new("product")?,
         version: SchemaVersion::new(PRODUCT_SCHEMA_ROUTING_KEY),
     })
 }
